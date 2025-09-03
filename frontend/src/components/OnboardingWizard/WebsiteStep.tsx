@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import BusinessDescriptionStep from './BusinessDescriptionStep';
 import {
   Box,
   Button,
@@ -178,6 +179,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
   const [useAnalysisForGenAI, setUseAnalysisForGenAI] = useState(true);
   const [domainName, setDomainName] = useState<string>('');
   const [hasCheckedExisting, setHasCheckedExisting] = useState(false);
+  const [showBusinessForm, setShowBusinessForm] = useState(false);
   const [progress, setProgress] = useState<AnalysisProgress[]>([
     { step: 1, message: 'Validating website URL', completed: false },
     { step: 2, message: 'Crawling website content', completed: false },
@@ -926,6 +928,22 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
     </Zoom>
   );
 
+  // Conditional rendering for business description form
+  if (showBusinessForm) {
+    return (
+      <BusinessDescriptionStep
+        onBack={() => {
+          console.log('⬅️ Going back to website form...');
+          setShowBusinessForm(false);
+        }}
+        onContinue={() => {
+          console.log('➡️ Business info completed, proceeding to next step...');
+          onContinue();
+        }}
+      />
+    );
+  }
+
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
       {/* Enhanced Explanatory Text */}
@@ -977,6 +995,22 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
           </Grid>
         </Grid>
       </Card>
+
+      {/* No Website Button */}
+      <Box sx={{ mt: 2, textAlign: 'center', mb: 3 }}>
+        <Button
+          variant="outlined"
+          color="secondary"
+          onClick={() => {
+            console.log('🔄 Switching to business description form...');
+            setShowBusinessForm(true);
+          }}
+          startIcon={<BusinessIcon />}
+          disabled={loading}
+        >
+          Don't have a website?
+        </Button>
+      </Box>
 
       {loading && (
         <Card sx={{ mb: 3, p: 3 }}>

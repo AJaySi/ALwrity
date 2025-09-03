@@ -685,3 +685,76 @@ async def get_user_writing_personas(user_id: int = 1):
     except Exception as e:
         logger.error(f"Error getting user personas: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error") 
+
+# Business Information endpoints
+async def save_business_info(business_info: 'BusinessInfoRequest'):
+    """Save business information for users without websites."""
+    try:
+        from models.business_info_request import BusinessInfoRequest
+        from services.business_info_service import business_info_service
+        
+        logger.info(f"🔄 Saving business info for user_id: {business_info.user_id}")
+        result = business_info_service.save_business_info(business_info)
+        logger.success(f"✅ Business info saved successfully for user_id: {business_info.user_id}")
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error saving business info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save business info: {str(e)}")
+
+async def get_business_info(business_info_id: int):
+    """Get business information by ID."""
+    try:
+        from services.business_info_service import business_info_service
+        
+        logger.info(f"🔄 Getting business info for ID: {business_info_id}")
+        result = business_info_service.get_business_info(business_info_id)
+        if result:
+            logger.success(f"✅ Business info retrieved for ID: {business_info_id}")
+            return result
+        else:
+            logger.warning(f"⚠️ No business info found for ID: {business_info_id}")
+            raise HTTPException(status_code=404, detail="Business info not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting business info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get business info: {str(e)}")
+
+async def get_business_info_by_user(user_id: int):
+    """Get business information by user ID."""
+    try:
+        from services.business_info_service import business_info_service
+        
+        logger.info(f"🔄 Getting business info for user ID: {user_id}")
+        result = business_info_service.get_business_info_by_user(user_id)
+        if result:
+            logger.success(f"✅ Business info retrieved for user ID: {user_id}")
+            return result
+        else:
+            logger.warning(f"⚠️ No business info found for user ID: {user_id}")
+            raise HTTPException(status_code=404, detail="Business info not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting business info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get business info: {str(e)}")
+
+async def update_business_info(business_info_id: int, business_info: 'BusinessInfoRequest'):
+    """Update business information."""
+    try:
+        from models.business_info_request import BusinessInfoRequest
+        from services.business_info_service import business_info_service
+        
+        logger.info(f"🔄 Updating business info for ID: {business_info_id}")
+        result = business_info_service.update_business_info(business_info_id, business_info)
+        if result:
+            logger.success(f"✅ Business info updated for ID: {business_info_id}")
+            return result
+        else:
+            logger.warning(f"⚠️ No business info found to update for ID: {business_info_id}")
+            raise HTTPException(status_code=404, detail="Business info not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error updating business info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update business info: {str(e)}")

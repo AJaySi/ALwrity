@@ -1,0 +1,5 @@
+[33mcc8f9cd2e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/cleanup/remove-cache-files[m[33m, [m[1;32mcleanup/remove-cache-files[m[33m)[m Clean up: Remove all cache files and add comprehensive .gitignore
+[33mc19fc3f22[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m ALwrity Prompts - AI Integration Plan
+[33m5efee4235[m Added citation and quality metrics to the content editor.
+[33m10b50f973[m Alwrity Copilot Integration for LinkedIn Writer
+[33m64944104a[m merge: LinkedIn Writer PR #223 - resolve conflicts and integrate with existing routers
