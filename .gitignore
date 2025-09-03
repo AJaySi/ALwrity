@@ -13,7 +13,6 @@ __pycache__/
 
 .gitignore
 .pytest*
-
 # Cache files
 .cache/
 */cache/
@@ -22,7 +21,6 @@ __pycache__/
 
 venv_new
 venv
-
 # Environment files
 .env
 .env.local
@@ -74,7 +72,6 @@ yarn-error.log*
 build/
 dist/
 *.egg-info/
-
 # Logs
 *.log
 logs/
@@ -160,3 +157,6 @@ yarn.lock
 
 # Cache directories
 .pytest_cache
+
+# Documentation cache
+docs/__pycache__/
