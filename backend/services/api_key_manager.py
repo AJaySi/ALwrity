@@ -430,8 +430,11 @@ class APIKeyManager:
     
     def load_api_keys(self):
         """Load API keys from environment variables."""
-        # Reload environment variables first
-        load_dotenv(override=True)
+        # Reload environment variables first - use backend directory path
+        import os
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_path = os.path.join(backend_dir, ".env")
+        load_dotenv(env_path, override=True)
         
         env_mapping = {
             "OPENAI_API_KEY": "openai",
@@ -492,8 +495,10 @@ class APIKeyManager:
                 # Update environment variable
                 os.environ[env_var] = api_key
                 
-                # Update .env file
-                env_path = ".env"
+                # Update .env file - use backend directory path
+                import os
+                backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                env_path = os.path.join(backend_dir, ".env")
                 if os.path.exists(env_path):
                     with open(env_path, 'r') as f:
                         lines = f.readlines()
