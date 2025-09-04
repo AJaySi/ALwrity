@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Button, TextField, Typography, Card, CardContent, CircularProgress, Alert } from '@mui/material';
 import { ArrowBack as ArrowBackIcon, Save as SaveIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { businessInfoApi, BusinessInfo } from '../../api/businessInfo';
+import { onboardingCache } from '../../services/onboardingCache';
 
 interface BusinessDescriptionStepProps {
   onBack: () => void;
@@ -18,6 +19,17 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    console.log('🔄 BusinessDescriptionStep mounted. Loading cached data...');
+    const cachedData = onboardingCache.getStepData(2)?.businessInfo;
+    if (cachedData) {
+      setFormData(cachedData);
+      console.log('✅ Loaded cached business info:', cachedData);
+    } else {
+      console.log('ℹ️ No cached business info found.');
+    }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -38,6 +50,10 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
       const response = await businessInfoApi.saveBusinessInfo(dataToSave);
       console.log('✅ Business info saved to DB:', response);
       setSuccess('Business information saved successfully!');
+
+      // Also save to cache for consistency with other steps
+      onboardingCache.saveStepData(2, { businessInfo: response, hasWebsite: false });
+      console.log('✅ Business info saved to cache.');
 
       setTimeout(() => {
         onContinue();
