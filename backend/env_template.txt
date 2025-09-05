@@ -1,0 +1,8 @@
+# Clerk Authentication
+CLERK_SECRET_KEY=your_clerk_secret_key_here
+
+# Google Search Console
+GSC_REDIRECT_URI=http://localhost:8000/gsc/callback
+
+# Development Settings
+DISABLE_AUTH=false

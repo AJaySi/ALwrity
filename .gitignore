@@ -35,6 +35,10 @@ backend/content_cache.db
 backend/outline_cache.db
 backend/research_cache.db
 
+# Google OAuth credentials
+gsc_credentials.json
+**/gsc_credentials.json
+
 # Onboarding progress files
 .onboarding_progress.json
 backend/.onboarding_progress.json

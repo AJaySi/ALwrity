@@ -90,7 +90,7 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
             rows={4}
             margin="normal"
             required
-            helperText={`${formData.business_description.length}/1000 characters`}
+            helperText={`${formData.business_description?.length || 0}/1000 characters`}
             inputProps={{ maxLength: 1000 }}
             disabled={loading}
           />
@@ -101,7 +101,7 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
             onChange={handleChange}
             fullWidth
             margin="normal"
-            helperText={`${formData.industry.length}/100 characters`}
+            helperText={`${formData.industry?.length || 0}/100 characters`}
             inputProps={{ maxLength: 100 }}
             disabled={loading}
           />

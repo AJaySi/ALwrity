@@ -11,6 +11,7 @@ import {
   Button
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-react';
 
 // Shared components
 import { DashboardContainer, GlassCard } from '../shared/styled';
@@ -18,6 +19,9 @@ import SEOAnalyzerPanel from './components/SEOAnalyzerPanel';
 import { SEOCopilotKitProvider, SEOCopilotSuggestions } from './index';
 // Removed SEOCopilotTest
 import useSEOCopilotStore from '../../stores/seoCopilotStore';
+
+// GSC Components
+import GSCLoginButton from './components/GSCLoginButton';
 
 // Zustand store
 import { useSEODashboardStore } from '../../stores/seoDashboardStore';
@@ -28,6 +32,10 @@ import { userDataAPI } from '../../api/userData';
 // SEO Dashboard component
 const SEODashboard: React.FC = () => {
   const theme = useTheme();
+  
+  // Clerk authentication hooks
+  const { isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
   
   // Zustand store hooks
   const {
@@ -141,6 +149,52 @@ const SEODashboard: React.FC = () => {
     return <Alert severity="error">Failed to load dashboard data</Alert>;
   }
 
+  // Show sign-in prompt if not authenticated
+  if (!isLoaded) {
+    return <Skeleton variant="rectangular" height={200} />;
+  }
+
+  if (!isSignedIn) {
+    return (
+      <DashboardContainer>
+        <Container maxWidth="md">
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            minHeight: '60vh',
+            textAlign: 'center',
+            gap: 3
+          }}>
+            <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>
+              🔍 SEO Dashboard
+            </Typography>
+            <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+              Sign in to access your SEO analytics and Google Search Console data
+            </Typography>
+            <SignInButton mode="modal">
+              <Button 
+                variant="contained" 
+                size="large"
+                sx={{ 
+                  bgcolor: '#4285f4',
+                  '&:hover': { bgcolor: '#3367d6' },
+                  px: 4,
+                  py: 1.5,
+                  fontSize: '1.1rem',
+                  fontWeight: 600
+                }}
+              >
+                Sign In to Continue
+              </Button>
+            </SignInButton>
+          </Box>
+        </Container>
+      </DashboardContainer>
+    );
+  }
+
   return (
     <SEOCopilotKitProvider enableDebugMode={false}>
       <DashboardContainer>
@@ -161,7 +215,38 @@ const SEODashboard: React.FC = () => {
                     AI-powered insights and actionable recommendations
                   </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  {/* User Info */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip
+                      label={`Signed in as ${user?.primaryEmailAddress?.emailAddress || 'User'}`}
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(76, 175, 80, 0.25)',
+                        border: '1px solid rgba(76, 175, 80, 0.45)',
+                        color: 'white',
+                        fontWeight: 600
+                      }}
+                    />
+                    <SignOutButton>
+                      <Button 
+                        variant="outlined" 
+                        size="small"
+                        sx={{ 
+                          borderColor: 'rgba(255, 255, 255, 0.3)',
+                          color: 'white',
+                          '&:hover': { 
+                            borderColor: 'rgba(255, 255, 255, 0.5)',
+                            bgcolor: 'rgba(255, 255, 255, 0.1)'
+                          }
+                        }}
+                      >
+                        Sign Out
+                      </Button>
+                    </SignOutButton>
+                  </Box>
+                  
+                  {/* Freshness Indicator */}
                   {(() => {
                     const freshness = getAnalysisFreshness();
                     const chipColor = freshness.isStale ? 'rgba(255, 193, 7, 0.25)' : 'rgba(76, 175, 80, 0.25)';
@@ -193,6 +278,11 @@ const SEODashboard: React.FC = () => {
                     {analysisLoading ? 'Refreshing…' : 'Refresh'}
                   </Button>
                 </Box>
+              </Box>
+
+              {/* GSC Connection Section */}
+              <Box sx={{ mb: 3 }}>
+                <GSCLoginButton />
               </Box>
 
               {/* CopilotKit Test Panel removed */}

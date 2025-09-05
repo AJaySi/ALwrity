@@ -126,6 +126,7 @@ class FacebookStoryService(FacebookWriterBaseService):
         # Visual details
         v = request.visual_options
         interactive_types_str = ", ".join(v.interactive_types) if v.interactive_types else "None specified"
+        newline = '\n'
 
         prompt = f"""
         {base_prompt}
@@ -138,7 +139,7 @@ class FacebookStoryService(FacebookWriterBaseService):
         Content Requirements:
         - Include: {request.include or 'N/A'}
         - Avoid: {request.avoid or 'N/A'}
-        {('\n' + advanced_str) if advanced_str else ''}
+        {newline + advanced_str if advanced_str else ''}
         
         Visual Options:
         - Background Type: {v.background_type}

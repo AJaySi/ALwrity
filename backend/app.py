@@ -42,10 +42,6 @@ from api.onboarding import (
     get_onboarding_summary,
     get_website_analysis_data,
     get_research_preferences_data,
-    save_business_info,
-    get_business_info,
-    get_business_info_by_user,
-    update_business_info,
     StepCompletionRequest,
     APIKeyRequest
 )
@@ -437,50 +433,15 @@ async def research_preferences_data():
         logger.error(f"Error in research_preferences_data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Business Information endpoints
-@app.post("/api/onboarding/business-info")
-async def business_info_save(request: 'BusinessInfoRequest'):
-    """Save business information for users without websites."""
-    try:
-        from models.business_info_request import BusinessInfoRequest
-        return await save_business_info(request)
-    except Exception as e:
-        logger.error(f"Error in business_info_save: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/onboarding/business-info/{business_info_id}")
-async def business_info_get(business_info_id: int):
-    """Get business information by ID."""
-    try:
-        return await get_business_info(business_info_id)
-    except Exception as e:
-        logger.error(f"Error in business_info_get: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/onboarding/business-info/user/{user_id}")
-async def business_info_get_by_user(user_id: int):
-    """Get business information by user ID."""
-    try:
-        return await get_business_info_by_user(user_id)
-    except Exception as e:
-        logger.error(f"Error in business_info_get_by_user: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/api/onboarding/business-info/{business_info_id}")
-async def business_info_update(business_info_id: int, request: 'BusinessInfoRequest'):
-    """Update business information."""
-    try:
-        from models.business_info_request import BusinessInfoRequest
-        return await update_business_info(business_info_id, request)
-    except Exception as e:
-        logger.error(f"Error in business_info_update: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 # Include component logic router
 app.include_router(component_logic_router)
 
 # Include subscription and usage tracking router
 app.include_router(subscription_router)
+
+# Include GSC router
+from routers.gsc_auth import router as gsc_auth_router
+app.include_router(gsc_auth_router)
 
 # Include SEO tools router
 app.include_router(seo_tools_router)

@@ -1,0 +1,18 @@
+# Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key_here
+
+# CopilotKit
+REACT_APP_COPILOTKIT_API_KEY=your_copilotkit_api_key_here
+# ALwrity Frontend Configuration
+# Clerk Authentication
+REACT_APP_CLERK_PUBLISHABLE_KEY=pk_test_bGl2aW5nLWhhbXN0ZXItNTkuY2xlcmsuYWNjb3VudHMuZGV2JA
+
+# CopilotKit Configuration
+REACT_APP_COPILOTKIT_API_KEY=ck_pub_98fb2df734ffb1f160ae1ab731ccbfed
+
+# LinkedIn OAuth Configuration
+REACT_APP_LINKEDIN_CLIENT_ID=your_linkedin_client_id_here
+REACT_APP_LINKEDIN_REDIRECT_URI=http://localhost:3000/auth/linkedin/callback
+
+# Backend API
+REACT_APP_API_BASE_URL=http://localhost:8000
