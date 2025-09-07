@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Article as ArticleIcon,
   Search as SearchIcon,
-  TrendingUp as TrendingUpIcon,
   Campaign as CampaignIcon,
   Analytics as AnalyticsIcon,
   Psychology as PsychologyIcon,
@@ -10,67 +9,66 @@ import {
   Speed as SpeedIcon,
   Business as BusinessIcon,
   SocialDistance as SocialIcon,
-  Create as CreateIcon
+  Create as CreateIcon,
+  Dashboard as DashboardIcon,
+  Facebook as FacebookIcon,
+  LinkedIn as LinkedInIcon,
+  Twitter as TwitterIcon,
+  Instagram as InstagramIcon,
+  Web as WebIcon,
+  Timeline as StrategyIcon,
+  CalendarMonth as CalendarIcon,
+  Image as ImageIcon,
+  Audiotrack as AudioIcon,
+  VideoLibrary as VideoIcon
 } from '@mui/icons-material';
 import { ToolCategories } from '../components/shared/types';
 
 export const toolCategories: ToolCategories = {
-  'AI Content Writers': {
-    icon: React.createElement(ArticleIcon),
+  'Generate Content': {
+    icon: React.createElement(AutoAwesomeIcon),
     color: '#4CAF50',
     gradient: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
     tools: [
       {
-        name: 'AI Blog Writer',
-        description: 'Generate engaging blog posts with AI',
+        name: 'Blog Writer',
+        description: 'AI-powered blog post generation with SEO optimization',
         icon: React.createElement(ArticleIcon),
-        status: 'active',
-        path: '/ai-blog-writer',
-        features: ['SEO Optimized', 'Multiple Formats', 'Custom Tone']
+        status: 'beta',
+        path: '/blog-writer',
+        features: ['SEO Optimized', 'Multiple Formats', 'Custom Tone', 'Research Integration', 'Plagiarism Free'],
+        isHighlighted: true
       },
       {
-        name: 'AI Essay Writer',
-        description: 'Academic and professional essay writing',
-        icon: React.createElement(CreateIcon),
-        status: 'active',
-        path: '/ai-essay-writer',
-        features: ['Academic Style', 'Citation Support', 'Plagiarism Free']
+        name: 'Image Generator',
+        description: 'AI image creation and visual content generation',
+        icon: React.createElement(ImageIcon),
+        status: 'beta',
+        path: '/image-generator',
+        features: ['AI Art Generation', 'Style Customization', 'High Resolution', 'Brand Consistency', 'Multiple Formats'],
+        isHighlighted: true
       },
       {
-        name: 'AI News Article Writer',
-        description: 'Professional news and article writing',
-        icon: React.createElement(ArticleIcon),
-        status: 'active',
-        path: '/ai-news-writer',
-        features: ['Fact-Checked', 'Journalistic Style', 'Breaking News']
+        name: 'Audio Generator',
+        description: 'AI voice synthesis and audio content creation',
+        icon: React.createElement(AudioIcon),
+        status: 'premium',
+        path: '/audio-generator',
+        features: ['Voice Synthesis', 'Multiple Languages', 'Custom Voices', 'Audio Editing', 'Export Options'],
+        isHighlighted: true
       },
       {
-        name: 'AI Story Writer',
-        description: 'Creative storytelling and fiction writing',
-        icon: React.createElement(CreateIcon),
-        status: 'active',
-        path: '/ai-story-writer',
-        features: ['Creative Writing', 'Character Development', 'Plot Generation']
-      },
-      {
-        name: 'AI Copywriter',
-        description: 'Marketing copy and advertising content',
-        icon: React.createElement(CampaignIcon),
-        status: 'active',
-        path: '/ai-copywriter',
-        features: ['Persuasive Writing', 'Brand Voice', 'Call-to-Action']
-      },
-      {
-        name: 'AI Product Description Writer',
-        description: 'Compelling product descriptions',
-        icon: React.createElement(BusinessIcon),
-        status: 'active',
-        path: '/ai-product-writer',
-        features: ['E-commerce Optimized', 'Feature Highlighting', 'Conversion Focused']
+        name: 'Video Generator',
+        description: 'AI video creation and multimedia content generation',
+        icon: React.createElement(VideoIcon),
+        status: 'premium',
+        path: '/video-generator',
+        features: ['AI Video Creation', 'Scene Generation', 'Voice Integration', 'Custom Branding', 'Export Formats'],
+        isHighlighted: true
       }
     ]
   },
-  'SEO & Analytics': {
+  'SEO Tools': {
     icon: React.createElement(SearchIcon),
     color: '#2196F3',
     gradient: 'linear-gradient(135deg, #2196F3 0%, #1976D2 100%)',
@@ -248,25 +246,27 @@ export const toolCategories: ToolCategories = {
     tools: [
       {
         name: 'Facebook Content Writer',
-        description: 'Engaging Facebook posts and ads',
+        description: 'Engaging Facebook posts and ads with AI persona optimization',
         icon: React.createElement(SocialIcon),
-        status: 'active',
+        status: 'beta',
         path: '/facebook-writer',
-        features: ['Engagement Focused', 'Ad Copy', 'Post Scheduling']
+        features: ['Persona-Aware AI', 'Engagement Focused', 'Ad Copy', 'Post Scheduling', 'Platform Optimization'],
+        isHighlighted: true
       },
       {
         name: 'LinkedIn Content Writer',
-        description: 'Professional LinkedIn content',
+        description: 'Professional LinkedIn content with AI persona optimization',
         icon: React.createElement(BusinessIcon),
-        status: 'active',
+        status: 'beta',
         path: '/linkedin-writer',
-        features: ['Professional Tone', 'Thought Leadership', 'B2B Focus']
+        features: ['Persona-Aware AI', 'Professional Tone', 'Thought Leadership', 'B2B Focus', 'Platform Optimization'],
+        isHighlighted: true
       },
       {
         name: 'Twitter Content Writer',
         description: 'Viral Twitter threads and tweets',
         icon: React.createElement(SocialIcon),
-        status: 'active',
+        status: 'premium',
         path: '/twitter-writer',
         features: ['Viral Potential', 'Thread Creation', 'Hashtag Optimization']
       },
@@ -274,7 +274,7 @@ export const toolCategories: ToolCategories = {
         name: 'Instagram Content Writer',
         description: 'Visual and engaging Instagram content',
         icon: React.createElement(SocialIcon),
-        status: 'active',
+        status: 'premium',
         path: '/instagram-writer',
         features: ['Visual Descriptions', 'Hashtag Strategy', 'Story Content']
       },
@@ -282,95 +282,84 @@ export const toolCategories: ToolCategories = {
         name: 'YouTube Content Writer',
         description: 'Video scripts and descriptions',
         icon: React.createElement(SocialIcon),
-        status: 'active',
+        status: 'premium',
         path: '/youtube-writer',
         features: ['Video Scripts', 'SEO Descriptions', 'Engagement Hooks']
       }
     ]
   },
-  'Business & Marketing': {
-    icon: React.createElement(BusinessIcon),
+  'Dashboards': {
+    icon: React.createElement(DashboardIcon),
     color: '#9C27B0',
     gradient: 'linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)',
     tools: [
       {
-        name: 'Financial Report Generator',
-        description: 'Professional financial analysis and reports',
-        icon: React.createElement(AnalyticsIcon),
-        status: 'active',
-        path: '/financial-reports',
-        features: ['Data Analysis', 'Professional Reports', 'Insights Generation']
-      },
-      {
-        name: 'Email Templates',
-        description: 'Professional email templates and campaigns',
-        icon: React.createElement(CampaignIcon),
-        status: 'active',
-        path: '/email-templates',
-        features: ['Professional Templates', 'A/B Testing', 'Automation']
-      },
-      {
-        name: 'Press Release Writer',
-        description: 'Newsworthy press releases',
-        icon: React.createElement(ArticleIcon),
-        status: 'active',
-        path: '/press-releases',
-        features: ['Newsworthy Content', 'Media Ready', 'Distribution Ready']
-      },
-      {
-        name: 'Landing Page Copy',
-        description: 'High-converting landing page content',
-        icon: React.createElement(BusinessIcon),
-        status: 'active',
-        path: '/landing-page-copy',
-        features: ['Conversion Focused', 'A/B Testing', 'UX Optimized']
-      },
-      {
-        name: 'Competitive Intelligence',
-        description: 'Analyze competitors and market trends',
-        icon: React.createElement(PsychologyIcon),
-        status: 'premium',
-        path: '/competitive-intelligence',
-        features: ['Market Analysis', 'Competitor Tracking', 'Strategy Insights']
-      }
-    ]
-  },
-  'Creative & Advanced': {
-    icon: React.createElement(AutoAwesomeIcon),
-    color: '#E91E63',
-    gradient: 'linear-gradient(135deg, #E91E63 0%, #C2185B 100%)',
-    tools: [
-      {
-        name: 'AI Agents Crew',
-        description: 'Multi-agent AI content creation team',
-        icon: React.createElement(AutoAwesomeIcon),
-        status: 'premium',
-        path: '/ai-agents-crew',
-        features: ['Multi-Agent System', 'Collaborative Writing', 'Advanced AI']
-      },
-      {
-        name: 'Content Performance Predictor',
-        description: 'Predict content performance and engagement',
-        icon: React.createElement(AnalyticsIcon),
-        status: 'premium',
-        path: '/content-predictor',
-        features: ['Performance Prediction', 'Engagement Analysis', 'ROI Forecasting']
-      },
-      {
-        name: 'Web Researcher',
-        description: 'AI-powered web research and analysis',
+        name: 'SEO Dashboard',
+        description: 'Comprehensive SEO analytics and performance tracking',
         icon: React.createElement(SearchIcon),
-        status: 'active',
-        path: '/web-researcher',
-        features: ['Real-time Research', 'Data Analysis', 'Insight Generation']
+        status: 'beta',
+        path: '/seo-dashboard',
+        features: ['Keyword Rankings', 'Traffic Analytics', 'Backlink Monitoring', 'Site Health', 'Competitor Analysis'],
+        isHighlighted: true
       },
       {
-        name: 'Content Scheduler',
-        description: 'Intelligent content scheduling and planning',
-        icon: React.createElement(CampaignIcon),
-        status: 'active',
-        path: '/content-scheduler',
-        features: ['Smart Scheduling', 'Calendar Integration', 'Performance Tracking']
+        name: 'Facebook Dashboard',
+        description: 'Facebook page insights and content performance analytics',
+        icon: React.createElement(FacebookIcon),
+        status: 'beta',
+        path: '/facebook-dashboard',
+        features: ['Page Insights', 'Post Performance', 'Audience Analytics', 'Engagement Metrics', 'Ad Performance'],
+        isHighlighted: true
+      },
+      {
+        name: 'LinkedIn Dashboard',
+        description: 'LinkedIn company page and content analytics',
+        icon: React.createElement(LinkedInIcon),
+        status: 'beta',
+        path: '/linkedin-dashboard',
+        features: ['Company Analytics', 'Content Performance', 'Lead Generation', 'B2B Insights', 'Network Growth'],
+        isHighlighted: true
+      },
+      {
+        name: 'Twitter Dashboard',
+        description: 'Twitter analytics and engagement tracking',
+        icon: React.createElement(TwitterIcon),
+        status: 'pro',
+        path: '/twitter-dashboard',
+        features: ['Tweet Analytics', 'Follower Growth', 'Engagement Rates', 'Hashtag Performance', 'Mention Tracking']
+      },
+      {
+        name: 'Instagram Dashboard',
+        description: 'Instagram insights and visual content analytics',
+        icon: React.createElement(InstagramIcon),
+        status: 'pro',
+        path: '/instagram-dashboard',
+        features: ['Story Analytics', 'Post Performance', 'Reach & Impressions', 'Hashtag Insights', 'Audience Demographics']
+      },
+      {
+        name: 'Website Dashboard',
+        description: 'Website performance and visitor analytics',
+        icon: React.createElement(WebIcon),
+        status: 'pro',
+        path: '/website-dashboard',
+        features: ['Traffic Analysis', 'Page Performance', 'User Behavior', 'Conversion Tracking', 'Site Speed']
+      },
+      {
+        name: 'Strategy Dashboard',
+        description: 'Content strategy planning and performance overview',
+        icon: React.createElement(StrategyIcon),
+        status: 'beta',
+        path: '/strategy-dashboard',
+        features: ['Content Planning', 'Performance Overview', 'Goal Tracking', 'ROI Analysis', 'Strategic Insights'],
+        isHighlighted: true
+      },
+      {
+        name: 'Calendar Dashboard',
+        description: 'Content calendar management and scheduling analytics',
+        icon: React.createElement(CalendarIcon),
+        status: 'beta',
+        path: '/calendar-dashboard',
+        features: ['Content Scheduling', 'Publishing Calendar', 'Performance Tracking', 'Team Collaboration', 'Content Planning']
       }
     ]
   }

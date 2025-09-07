@@ -354,12 +354,29 @@ async def complete_onboarding():
                 detail="Cannot complete onboarding. At least one AI provider API key must be configured."
             )
         
+        # Generate writing persona from onboarding data
+        try:
+            from services.persona_analysis_service import PersonaAnalysisService
+            persona_service = PersonaAnalysisService()
+            
+            # Use user_id = 1 for now (assuming single user system)
+            user_id = 1
+            persona_result = persona_service.generate_persona_from_onboarding(user_id)
+            
+            if "error" not in persona_result:
+                logger.info(f"✅ Writing persona generated during onboarding completion: {persona_result.get('persona_id')}")
+            else:
+                logger.warning(f"⚠️ Persona generation failed during onboarding: {persona_result['error']}")
+        except Exception as e:
+            logger.warning(f"⚠️ Non-critical error generating persona during onboarding: {str(e)}")
+        
         progress.complete_onboarding()
         
         return {
             "message": "Onboarding completed successfully",
             "completed_at": progress.completed_at,
-            "completion_percentage": 100.0
+            "completion_percentage": 100.0,
+            "persona_generated": "error" not in persona_result if 'persona_result' in locals() else False
         }
     except HTTPException:
         raise
@@ -522,9 +539,11 @@ async def get_onboarding_summary():
         from services.database import get_db
         from services.website_analysis_service import WebsiteAnalysisService
         from services.research_preferences_service import ResearchPreferencesService
+        from services.persona_analysis_service import PersonaAnalysisService
         
         # Get current session (assuming session ID 1 for now)
         session_id = 1
+        user_id = 1  # Assuming single user system for now
         
         # Get API keys
         api_manager = get_api_key_manager()
@@ -548,18 +567,37 @@ async def get_onboarding_summary():
                 'brand_voice': research_preferences.get('writing_style', {}).get('complexity', 'Trustworthy and Expert')
             }
         
+        # Check persona generation readiness
+        persona_service = PersonaAnalysisService()
+        persona_readiness = None
+        try:
+            # Check if persona can be generated
+            onboarding_data = persona_service._collect_onboarding_data(user_id)
+            if onboarding_data:
+                data_sufficiency = persona_service._calculate_data_sufficiency(onboarding_data)
+                persona_readiness = {
+                    "ready": data_sufficiency >= 50.0,
+                    "data_sufficiency": data_sufficiency,
+                    "can_generate": website_analysis is not None
+                }
+        except Exception as e:
+            logger.warning(f"Could not check persona readiness: {str(e)}")
+            persona_readiness = {"ready": False, "error": str(e)}
+        
         return {
             "api_keys": api_keys,
             "website_url": website_analysis.get('website_url') if website_analysis else None,
             "style_analysis": website_analysis.get('style_analysis') if website_analysis else None,
             "research_preferences": research_preferences,
             "personalization_settings": personalization_settings,
+            "persona_readiness": persona_readiness,
             "integrations": {},  # TODO: Implement integrations data
             "capabilities": {
                 "ai_content": len(api_keys) > 0,
                 "style_analysis": website_analysis is not None,
                 "research_tools": research_preferences is not None,
                 "personalization": personalization_settings is not None,
+                "persona_generation": persona_readiness.get("ready", False) if persona_readiness else False,
                 "integrations": False  # TODO: Implement
             }
         }
@@ -680,4 +718,43 @@ async def update_business_info(business_info_id: int, business_info: 'BusinessIn
         raise
     except Exception as e:
         logger.error(f"❌ Error updating business info: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update business info: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to update business info: {str(e)}")
+
+# New persona-related endpoints
+
+async def check_persona_generation_readiness(user_id: int = 1):
+    """Check if user has sufficient data for persona generation."""
+    try:
+        from api.persona import validate_persona_generation_readiness
+        return await validate_persona_generation_readiness(user_id)
+    except Exception as e:
+        logger.error(f"Error checking persona readiness: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+async def generate_persona_preview(user_id: int = 1):
+    """Generate a preview of the writing persona without saving."""
+    try:
+        from api.persona import generate_persona_preview
+        return await generate_persona_preview(user_id)
+    except Exception as e:
+        logger.error(f"Error generating persona preview: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+async def generate_writing_persona(user_id: int = 1):
+    """Generate and save a writing persona from onboarding data."""
+    try:
+        from api.persona import generate_persona, PersonaGenerationRequest
+        request = PersonaGenerationRequest(force_regenerate=False)
+        return await generate_persona(user_id, request)
+    except Exception as e:
+        logger.error(f"Error generating writing persona: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+async def get_user_writing_personas(user_id: int = 1):
+    """Get all writing personas for the user."""
+    try:
+        from api.persona import get_user_personas
+        return await get_user_personas(user_id)
+    except Exception as e:
+        logger.error(f"Error getting user personas: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")

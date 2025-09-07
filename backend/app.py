@@ -433,6 +433,10 @@ app.include_router(content_planning_router)
 app.include_router(user_data_router)
 app.include_router(strategy_copilot_router)
 
+# Include persona router
+from api.persona_routes import router as persona_router
+app.include_router(persona_router)
+
 # SEO Dashboard endpoints
 @app.get("/api/seo-dashboard/data")
 async def seo_dashboard_data():

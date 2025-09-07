@@ -19,3 +19,5 @@ export { CopilotRecommendationsRenderer } from './CopilotRecommendationsRenderer
 export { default as ImageGenerationSuggestions } from './ImageGenerationSuggestions';
 export { default as ImageGenerationDemo } from './ImageGenerationDemo';
 export { default as ImageGenerationTest } from './ImageGenerationTest';
+
+// Persona Integration Components - Now integrated into main LinkedInWriter

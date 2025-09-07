@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.database import engine
 from models.enhanced_strategy_models import Base as EnhancedStrategyBase
 from models.monitoring_models import Base as MonitoringBase
+from models.persona_models import Base as PersonaBase
 from loguru import logger
 
 def create_all_tables():
@@ -29,6 +30,11 @@ def create_all_tables():
         logger.info("Step 2: Creating monitoring tables...")
         MonitoringBase.metadata.create_all(bind=engine)
         logger.info("✅ Monitoring tables created!")
+        
+        # Step 3: Create persona tables
+        logger.info("Step 3: Creating persona tables...")
+        PersonaBase.metadata.create_all(bind=engine)
+        logger.info("✅ Persona tables created!")
         
         logger.info("✅ All tables created successfully!")
         

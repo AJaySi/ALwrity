@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import AskAlwrityIcon from '../../assets/images/AskAlwrity-min.ico';
 
 // Shared components
 import DashboardHeader from '../shared/DashboardHeader';
@@ -20,13 +21,17 @@ import CategoryHeader from '../shared/CategoryHeader';
 import LoadingSkeleton from '../shared/LoadingSkeleton';
 import ErrorDisplay from '../shared/ErrorDisplay';
 import EmptyState from '../shared/EmptyState';
+import ContentLifecyclePillars from './ContentLifecyclePillars';
+import AnalyticsInsights from './components/AnalyticsInsights';
+import ToolsModal from './components/ToolsModal';
 
 // Shared types and utilities
-import { Tool, Category } from '../shared/types';
+import { Tool } from '../shared/types';
 import { getFilteredCategories, getToolsForCategory } from '../shared/utils';
 
-// Zustand store
+// Zustand stores
 import { useDashboardStore } from '../../stores/dashboardStore';
+import { useWorkflowStore } from '../../stores/workflowStore';
 
 // Data
 import { toolCategories } from '../../data/toolCategories';
@@ -34,7 +39,6 @@ import { toolCategories } from '../../data/toolCategories';
 // Main dashboard component
 const MainDashboard: React.FC = () => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
   
   // Zustand store hooks
@@ -50,12 +54,119 @@ const MainDashboard: React.FC = () => {
     setSearchQuery,
     setSelectedCategory,
     setSelectedSubCategory,
-    setError,
-    setLoading,
     showSnackbar,
     hideSnackbar,
     clearFilters,
   } = useDashboardStore();
+
+  // Workflow store hooks
+  const {
+    currentWorkflow,
+    workflowProgress,
+    isLoading: workflowLoading,
+    generateDailyWorkflow,
+    startWorkflow,
+    pauseWorkflow,
+    stopWorkflow
+  } = useWorkflowStore();
+
+  // Initialize workflow on component mount
+  React.useEffect(() => {
+    const initializeWorkflow = async () => {
+      try {
+        // Generate daily workflow for current user
+        // In a real app, you'd get the actual user ID from auth context
+        const userId = 'demo-user'; // Replace with actual user ID
+        await generateDailyWorkflow(userId);
+      } catch (error) {
+        console.warn('Failed to initialize workflow:', error);
+      }
+    };
+
+    initializeWorkflow();
+  }, [generateDailyWorkflow]);
+
+  // Debug logging for workflow state
+  React.useEffect(() => {
+    console.log('Workflow Debug:', {
+      currentWorkflow,
+      workflowProgress,
+      isWorkflowActive: currentWorkflow?.workflowStatus === 'in_progress',
+      workflowStatus: currentWorkflow?.workflowStatus,
+      hasWorkflow: !!currentWorkflow
+    });
+  }, [currentWorkflow, workflowProgress]);
+
+  // State to track if we need to start a newly generated workflow
+  const [shouldStartWorkflow, setShouldStartWorkflow] = React.useState(false);
+
+  // Tools Modal state
+  const [toolsModalOpen, setToolsModalOpen] = React.useState(false);
+  const [modalCategoryName, setModalCategoryName] = React.useState<string | null>(null);
+  const [modalCategory, setModalCategory] = React.useState<any>(null);
+  const [searchResults, setSearchResults] = React.useState<Tool[]>([]);
+
+  // Handle workflow start
+  const handleStartWorkflow = async () => {
+    try {
+      if (currentWorkflow) {
+        await startWorkflow(currentWorkflow.id);
+      } else {
+        // Generate workflow first, then mark that we should start it
+        await generateDailyWorkflow('demo-user');
+        setShouldStartWorkflow(true);
+      }
+    } catch (error) {
+      console.error('Failed to start workflow:', error);
+    }
+  };
+
+  // Auto-start workflow after generation
+  React.useEffect(() => {
+    if (shouldStartWorkflow && currentWorkflow && currentWorkflow.workflowStatus === 'not_started') {
+      const startGeneratedWorkflow = async () => {
+        try {
+          await startWorkflow(currentWorkflow.id);
+          setShouldStartWorkflow(false);
+        } catch (error) {
+          console.error('Failed to start generated workflow:', error);
+          setShouldStartWorkflow(false);
+        }
+      };
+      startGeneratedWorkflow();
+    }
+  }, [shouldStartWorkflow, currentWorkflow, startWorkflow]);
+
+  // Handle workflow pause
+  const handlePauseWorkflow = async () => {
+    if (currentWorkflow) {
+      try {
+        await pauseWorkflow(currentWorkflow.id);
+      } catch (error) {
+        console.error('Failed to pause workflow:', error);
+      }
+    }
+  };
+
+  // Handle workflow stop
+  const handleStopWorkflow = async () => {
+    if (currentWorkflow) {
+      try {
+        await stopWorkflow(currentWorkflow.id);
+      } catch (error) {
+        console.error('Failed to stop workflow:', error);
+      }
+    }
+  };
+
+  // Resume Plan modal from header In-Progress button
+  const handleResumePlanModal = () => {
+    // Programmatically click the Plan pillar Today chip
+    const planChip = document.querySelector('[data-pillar-id="plan"]');
+    if (planChip) {
+      (planChip as HTMLElement).click();
+    }
+  };
 
   const handleToolClick = (tool: Tool) => {
     console.log('Navigating to tool:', tool.path);
@@ -64,6 +175,56 @@ const MainDashboard: React.FC = () => {
       return;
     }
     showSnackbar(`Launching ${tool.name}...`, 'info');
+  };
+
+  // Handle category click to open modal
+  const handleCategoryClick = (categoryName: string | null, categoryData?: any) => {
+    setModalCategoryName(categoryName);
+    setModalCategory(categoryData);
+    setToolsModalOpen(true);
+  };
+
+  // Handle search to show results in modal with debouncing
+  React.useEffect(() => {
+    if (searchQuery && searchQuery.length >= 2) { // Only search after 2+ characters
+      const timeoutId = setTimeout(() => {
+        // Get all tools from all categories that match search
+        const allTools: Tool[] = [];
+        Object.values(toolCategories).forEach(category => {
+          if (category) {
+            const tools = getToolsForCategory(category, null);
+            allTools.push(...tools);
+          }
+        });
+        
+        const filtered = allTools.filter(tool => 
+          tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          tool.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          tool.features.some(feature => feature.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
+        
+        setSearchResults(filtered);
+        setModalCategoryName(null);
+        setModalCategory(null);
+        setToolsModalOpen(true);
+      }, 500); // 500ms delay
+
+      return () => clearTimeout(timeoutId);
+    } else if (searchQuery && searchQuery.length < 2) {
+      // Close modal if search query is too short
+      setToolsModalOpen(false);
+    }
+  }, [searchQuery, toolCategories]);
+
+  // Close modal and clear search
+  const handleCloseModal = () => {
+    setToolsModalOpen(false);
+    setModalCategoryName(null);
+    setModalCategory(null);
+    setSearchResults([]);
+    if (searchQuery) {
+      setSearchQuery('');
+    }
   };
 
   const filteredCategories = getFilteredCategories(
@@ -120,11 +281,26 @@ const MainDashboard: React.FC = () => {
           >
             {/* Dashboard Header */}
             <DashboardHeader
-              title="🚀 Alwrity Content Hub"
-              subtitle="Your AI-powered content creation suite"
+              title="Alwrity Content Hub"
+              subtitle=""
               statusChips={[]}
               rightContent={<SystemStatusIndicator />}
+              customIcon={AskAlwrityIcon}
+              workflowControls={{
+                onStartWorkflow: handleStartWorkflow,
+                onPauseWorkflow: handlePauseWorkflow,
+                onStopWorkflow: handleStopWorkflow,
+                onResumePlanModal: handleResumePlanModal,
+                isWorkflowActive: currentWorkflow?.workflowStatus === 'in_progress',
+                completedTasks: workflowProgress?.completedTasks || 0,
+                totalTasks: workflowProgress?.totalTasks || 0,
+                isLoading: workflowLoading
+              }}
             />
+
+
+            {/* Content Lifecycle Pillars - First Panel */}
+            <ContentLifecyclePillars />
 
             {/* Search and Filter */}
             <SearchFilter
@@ -137,58 +313,24 @@ const MainDashboard: React.FC = () => {
               onSubCategoryChange={setSelectedSubCategory}
               toolCategories={toolCategories}
               theme={theme}
+              onCategoryClick={handleCategoryClick}
             />
 
-            {/* Enhanced Tools Grid */}
-            <Box sx={{ mb: 4 }}>
-              {Object.entries(filteredCategories).map(([categoryName, category], categoryIndex) => (
-                <motion.div
-                  key={categoryName}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: categoryIndex * 0.1 }}
-                >
-                  <Box sx={{ mb: 5 }}>
-                    {/* Category Header */}
-                    <CategoryHeader
-                      categoryName={categoryName}
-                      category={category}
-                      theme={theme}
-                    />
+            {/* Analytics Insights - Good/Bad/Ugly */}
+            <AnalyticsInsights />
 
-                    <Grid container spacing={3}>
-                      {getToolsForCategory(category, selectedSubCategory).map((tool: Tool, toolIndex: number) => (
-                        <Grid item xs={12} sm={6} md={4} lg={3} key={tool.name}>
-                          <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.5, delay: (categoryIndex * 0.1) + (toolIndex * 0.05) }}
-                          >
-                            <ToolCard
-                              tool={tool}
-                              onToolClick={handleToolClick}
-                              isFavorite={favorites.includes(tool.name)}
-                              onToggleFavorite={toggleFavorite}
-                            />
-                          </motion.div>
-                        </Grid>
-                      ))}
-                    </Grid>
-                  </Box>
-                </motion.div>
-              ))}
-            </Box>
-
-            {/* Empty State */}
-            {Object.keys(filteredCategories).length === 0 && (
-              <EmptyState
-                icon={<span>🔍</span>}
-                title="No tools found matching your criteria"
-                message="Try adjusting your search or category filter"
-                onClearFilters={clearFilters}
-                clearButtonText="Clear Filters"
-              />
-            )}
+            {/* Tools Modal */}
+            <ToolsModal
+              open={toolsModalOpen}
+              onClose={handleCloseModal}
+              categoryName={modalCategoryName || undefined}
+              category={modalCategory}
+              searchQuery={searchQuery}
+              searchResults={searchResults}
+              onToolClick={handleToolClick}
+              favorites={favorites}
+              onToggleFavorite={toggleFavorite}
+            />
           </motion.div>
         </AnimatePresence>
 
