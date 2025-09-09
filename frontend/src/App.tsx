@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { CopilotKit } from "@copilotkit/react-core";
+import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-react';
 import "@copilotkit/react-ui/styles.css";
 import Wizard from './components/OnboardingWizard/Wizard';
 import MainDashboard from './components/MainDashboard/MainDashboard';
@@ -9,6 +10,7 @@ import SEODashboard from './components/SEODashboard/SEODashboard';
 import ContentPlanningDashboard from './components/ContentPlanningDashboard/ContentPlanningDashboard';
 import FacebookWriter from './components/FacebookWriter/FacebookWriter';
 import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
+import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
 
 import { apiClient } from './api/client';
 
@@ -169,28 +171,49 @@ const App: React.FC = () => {
     );
   }
 
+  // Get environment variables with fallbacks
+  const clerkPublishableKey = process.env.REACT_APP_CLERK_PUBLISHABLE_KEY || '';
+  const copilotApiKey = process.env.REACT_APP_COPILOTKIT_API_KEY || '';
+
+  // Show error if required keys are missing
+  if (!clerkPublishableKey) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography color="error" variant="h6">
+          Missing Clerk Publishable Key
+        </Typography>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          Please add REACT_APP_CLERK_PUBLISHABLE_KEY to your .env file
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
-    <CopilotKit 
-      publicApiKey={process.env.REACT_APP_COPILOTKIT_API_KEY}
-      showDevConsole={false}
-      onError={(e) => console.error("CopilotKit Error:", e)}
-      
-    >
-      <Router>
-        <ConditionalCopilotKit>
-          <Routes>
-            <Route path="/" element={<InitialRouteHandler />} />
-            <Route path="/onboarding" element={<Wizard />} />
-            <Route path="/dashboard" element={<MainDashboard />} />
-            <Route path="/seo" element={<SEODashboard />} />
-            <Route path="/seo-dashboard" element={<SEODashboard />} />
-            <Route path="/content-planning" element={<ContentPlanningDashboard />} />
-            <Route path="/facebook-writer" element={<FacebookWriter />} />
-            <Route path="/linkedin-writer" element={<LinkedInWriter />} />
-          </Routes>
-        </ConditionalCopilotKit>
-      </Router>
-    </CopilotKit>
+    <ClerkProvider publishableKey={clerkPublishableKey}>
+      <CopilotKit 
+        publicApiKey={copilotApiKey}
+        showDevConsole={false}
+        onError={(e) => console.error("CopilotKit Error:", e)}
+        
+      >
+        <Router>
+          <ConditionalCopilotKit>
+            <Routes>
+              <Route path="/" element={<InitialRouteHandler />} />
+              <Route path="/onboarding" element={<Wizard />} />
+              <Route path="/dashboard" element={<MainDashboard />} />
+              <Route path="/seo" element={<SEODashboard />} />
+              <Route path="/seo-dashboard" element={<SEODashboard />} />
+              <Route path="/content-planning" element={<ContentPlanningDashboard />} />
+              <Route path="/facebook-writer" element={<FacebookWriter />} />
+              <Route path="/linkedin-writer" element={<LinkedInWriter />} />
+              <Route path="/gsc/callback" element={<GSCAuthCallback />} />
+            </Routes>
+          </ConditionalCopilotKit>
+        </Router>
+      </CopilotKit>
+    </ClerkProvider>
   );
 };
 

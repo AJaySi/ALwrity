@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Python cache files
+__pycache__/
+*/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Cache files
+.cache/
+*/cache/
+**/cache/
+*.cache
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Google OAuth credentials
+gsc_credentials.json
+**/gsc_credentials.json
+
+# Build outputs
+build/
+dist/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files
+test_*.py
+*_test.py
+
+# Documentation cache
+docs/__pycache__/
