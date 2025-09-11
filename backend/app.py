@@ -457,6 +457,14 @@ app.include_router(strategy_copilot_router)
 from api.persona_routes import router as persona_router
 app.include_router(persona_router)
 
+# Include Stability AI routers
+from routers.stability import router as stability_router
+from routers.stability_advanced import router as stability_advanced_router
+from routers.stability_admin import router as stability_admin_router
+app.include_router(stability_router)
+app.include_router(stability_advanced_router)
+app.include_router(stability_admin_router)
+
 # SEO Dashboard endpoints
 @app.get("/api/seo-dashboard/data")
 async def seo_dashboard_data():

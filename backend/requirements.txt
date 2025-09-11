@@ -38,6 +38,14 @@ pyspellchecker>=0.7.2
 aiofiles>=23.2.0
 crawl4ai>=0.2.0
 
+# Image and audio processing for Stability AI
+Pillow>=10.0.0
+scikit-learn>=1.3.0
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
 # Utilities
 pydantic>=2.5.2,<3.0.0
 typing-extensions>=4.8.0 
