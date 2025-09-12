@@ -16,7 +16,7 @@
     "@types/react-dom": "^18.2.0",
     "@types/react-router-dom": "^5.3.3",
     "@types/recharts": "^1.8.29",
-    "axios": "^1.11.0",
+    "axios": "^1.12.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.543.0",
     "react": "^18.2.0",
