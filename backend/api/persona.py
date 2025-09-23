@@ -262,6 +262,75 @@ async def delete_persona(user_id: int, persona_id: int):
         logger.error(f"Error deleting persona: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete persona: {str(e)}")
 
+async def update_platform_persona(user_id: int, platform: str, update_data: Dict[str, Any]):
+    """Update platform-specific persona fields for a user's persona.
+
+    This updates the underlying PlatformPersona row for the given platform.
+    """
+    try:
+        from services.database import get_db_session
+        from models.persona_models import WritingPersona, PlatformPersona
+
+        session = get_db_session()
+
+        # Find the user's active core persona id
+        core_persona = session.query(WritingPersona).filter(
+            WritingPersona.user_id == user_id,
+            WritingPersona.is_active == True
+        ).order_by(WritingPersona.created_at.desc()).first()
+
+        if not core_persona:
+            raise HTTPException(status_code=404, detail="No active persona found for user")
+
+        # Find the platform persona for the requested platform
+        platform_persona = session.query(PlatformPersona).filter(
+            PlatformPersona.writing_persona_id == core_persona.id,
+            PlatformPersona.platform_type.ilike(platform),
+            PlatformPersona.is_active == True
+        ).first()
+
+        if not platform_persona:
+            raise HTTPException(status_code=404, detail=f"No platform persona found for platform {platform}")
+
+        # Update allowed platform fields
+        updatable_fields = [
+            'sentence_metrics', 'lexical_features', 'rhetorical_devices', 'tonal_range',
+            'stylistic_constraints', 'content_format_rules', 'engagement_patterns',
+            'posting_frequency', 'content_types', 'platform_best_practices', 'algorithm_considerations'
+        ]
+
+        updated_any = False
+        for field in updatable_fields:
+            if field in update_data:
+                setattr(platform_persona, field, update_data[field])
+                updated_any = True
+
+        if not updated_any:
+            # Nothing to update
+            session.close()
+            return {
+                "message": "No updatable fields provided",
+                "platform": platform_persona.platform_type,
+                "persona_id": core_persona.id
+            }
+
+        platform_persona.updated_at = datetime.utcnow()
+        session.commit()
+        session.close()
+
+        return {
+            "message": "Platform persona updated successfully",
+            "platform": platform,
+            "persona_id": core_persona.id,
+            "updated_at": platform_persona.updated_at.isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating platform persona: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update platform persona: {str(e)}")
+
 async def validate_persona_generation_readiness(user_id: int):
     """Check if user has sufficient onboarding data for persona generation."""
     try:

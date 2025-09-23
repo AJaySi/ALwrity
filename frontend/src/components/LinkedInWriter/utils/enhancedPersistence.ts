@@ -5,6 +5,9 @@
 
 import { useCopilotContext } from '@copilotkit/react-core';
 
+// Optional debug flag: set to true to enable verbose logs locally
+const DEBUG_PERSISTENCE = false;
+
 // Storage keys for different types of data
 export const STORAGE_KEYS = {
   CHAT_HISTORY: 'alwrity-copilot-chat-history',
@@ -198,7 +201,7 @@ export class CopilotPersistenceManager {
   public saveDraftContent(draft: string): void {
     try {
       localStorage.setItem(STORAGE_KEYS.DRAFT_CONTENT, draft);
-      console.log('💾 Saved draft content');
+      if (DEBUG_PERSISTENCE) console.log('💾 Saved draft content');
     } catch (error) {
       console.error('❌ Failed to save draft content:', error);
     }

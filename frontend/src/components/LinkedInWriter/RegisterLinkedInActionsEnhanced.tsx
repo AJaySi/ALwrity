@@ -58,6 +58,14 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
       // Persona-aware progress tracking
       const personaInfo = corePersona ? `using ${corePersona.persona_name} persona` : 'with standard settings';
       
+      // Start loading state for chat-triggered flow as well
+      window.dispatchEvent(new CustomEvent('linkedinwriter:loadingStart', {
+        detail: {
+          action: 'generateLinkedInPostWithPersona',
+          message: 'Generating LinkedIn post with persona optimization...'
+        }
+      }));
+      
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressInit', { detail: {
         steps: [
           { id: 'persona_analysis', label: `Analyzing ${personaInfo}` },
@@ -143,6 +151,13 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
           });
         }
         
+        // Append hashtags and CTA if present
+        const hashtags = res.data.hashtags?.map((h: any) => h.hashtag).join(' ') || '';
+        const cta = res.data.call_to_action || '';
+        let fullContent = enhancedContent;
+        if (hashtags) fullContent += `\n\n${hashtags}`;
+        if (cta) fullContent += `\n\n${cta}`;
+        
         // Update progress with persona validation
         window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { 
           detail: { 
@@ -217,10 +232,28 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
           } 
         }));
         
+        // Update grounding data so citations and quality chips render
+        window.dispatchEvent(new CustomEvent('linkedinwriter:updateGroundingData', {
+          detail: {
+            researchSources: res.research_sources || [],
+            citations: res.data?.citations || [],
+            qualityMetrics: res.data?.quality_metrics || null,
+            groundingEnabled: res.data?.grounding_enabled || false,
+            searchQueries: res.data?.search_queries || []
+          }
+        }));
+        
+        // Send draft content to editor
+        window.dispatchEvent(new CustomEvent('linkedinwriter:updateDraft', { detail: fullContent }));
+        
+        // Complete progress and end loading
+        window.dispatchEvent(new CustomEvent('linkedinwriter:progressComplete'));
+        window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
+        
         // Return enhanced content with persona information
         return {
           success: true,
-          content: enhancedContent,
+          content: fullContent,
           persona_applied: corePersona ? {
             name: corePersona.persona_name,
             archetype: corePersona.archetype,
@@ -238,6 +271,7 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
         };
       } else {
         window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: res.error } }));
+        window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd', { detail: { error: res.error } }));
         return { success: false, message: res.error || 'Failed to generate LinkedIn post' };
       }
     }

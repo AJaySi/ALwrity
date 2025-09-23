@@ -23,8 +23,14 @@ class FacebookPostService(FacebookWriterBaseService):
             actual_goal = request.custom_goal if request.post_goal.value == "Custom" else request.post_goal.value
             actual_tone = request.custom_tone if request.post_tone.value == "Custom" else request.post_tone.value
             
+            # Get persona data for enhanced content generation
+            # Beta testing: Force user_id=1 for all requests
+            user_id = 1
+            persona_data = self._get_persona_data(user_id)
+            
             # Build the prompt
-            prompt = self._build_post_prompt(request, actual_goal, actual_tone)
+            base_prompt = self._build_post_prompt(request, actual_goal, actual_tone)
+            prompt = self._build_persona_enhanced_prompt(base_prompt, persona_data)
             
             # Generate the post content
             content = self._generate_text(prompt, temperature=0.7, max_tokens=1024)

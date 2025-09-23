@@ -32,6 +32,7 @@ from api.persona import (
 )
 
 from services.persona_replication_engine import PersonaReplicationEngine
+from api.persona import update_platform_persona
 
 # Create router
 router = APIRouter(prefix="/api/personas", tags=["personas"])
@@ -47,7 +48,8 @@ async def generate_persona_endpoint(
 @router.get("/user/{user_id}")
 async def get_user_personas_endpoint(user_id: int):
     """Get all personas for a user."""
-    return await get_user_personas(user_id)
+    # Beta testing: Force user_id=1 for all requests
+    return await get_user_personas(1)
 
 @router.get("/{persona_id}")
 async def get_persona_details_endpoint(
@@ -55,7 +57,8 @@ async def get_persona_details_endpoint(
     user_id: int = Query(..., description="User ID")
 ):
     """Get detailed information about a specific persona."""
-    return await get_persona_details(user_id, persona_id)
+    # Beta testing: Force user_id=1 for all requests
+    return await get_persona_details(1, persona_id)
 
 @router.get("/platform/{platform}")
 async def get_platform_persona_endpoint(
@@ -63,7 +66,8 @@ async def get_platform_persona_endpoint(
     user_id: int = Query(1, description="User ID")
 ):
     """Get persona adaptation for a specific platform."""
-    return await get_platform_persona(user_id, platform)
+    # Beta testing: Force user_id=1 for all requests
+    return await get_platform_persona(1, platform)
 
 @router.put("/{persona_id}")
 async def update_persona_endpoint(
@@ -72,7 +76,8 @@ async def update_persona_endpoint(
     user_id: int = Query(..., description="User ID")
 ):
     """Update an existing persona."""
-    return await update_persona(user_id, persona_id, update_data)
+    # Beta testing: Force user_id=1 for all requests
+    return await update_persona(1, persona_id, update_data)
 
 @router.delete("/{persona_id}")
 async def delete_persona_endpoint(
@@ -80,21 +85,24 @@ async def delete_persona_endpoint(
     user_id: int = Query(..., description="User ID")
 ):
     """Delete a persona."""
-    return await delete_persona(user_id, persona_id)
+    # Beta testing: Force user_id=1 for all requests
+    return await delete_persona(1, persona_id)
 
 @router.get("/check/readiness")
 async def check_persona_readiness_endpoint(
     user_id: int = Query(1, description="User ID")
 ):
     """Check if user has sufficient data for persona generation."""
-    return await validate_persona_generation_readiness(user_id)
+    # Beta testing: Force user_id=1 for all requests
+    return await validate_persona_generation_readiness(1)
 
 @router.get("/preview/generate")
 async def generate_preview_endpoint(
     user_id: int = Query(1, description="User ID")
 ):
     """Generate a preview of the writing persona without saving."""
-    return await generate_persona_preview(user_id)
+    # Beta testing: Force user_id=1 for all requests
+    return await generate_persona_preview(1)
 
 @router.get("/platforms/supported")
 async def get_supported_platforms_endpoint():
@@ -135,7 +143,8 @@ async def generate_content_with_persona_endpoint(
 ):
     """Generate content using persona replication engine."""
     try:
-        user_id = request.get("user_id", 1)
+        # Beta testing: Force user_id=1 for all requests
+        user_id = 1
         platform = request.get("platform")
         content_request = request.get("content_request")
         content_type = request.get("content_type", "post")
@@ -164,7 +173,8 @@ async def export_persona_prompt_endpoint(
     """Export hardened persona prompt for external use."""
     try:
         engine = PersonaReplicationEngine()
-        export_package = engine.export_persona_for_external_use(user_id, platform)
+        # Beta testing: Force user_id=1 for all requests
+        export_package = engine.export_persona_for_external_use(1, platform)
         
         if "error" in export_package:
             raise HTTPException(status_code=400, detail=export_package["error"])
@@ -180,7 +190,8 @@ async def validate_content_endpoint(
 ):
     """Validate content against persona constraints."""
     try:
-        user_id = request.get("user_id", 1)
+        # Beta testing: Force user_id=1 for all requests
+        user_id = 1
         platform = request.get("platform")
         content = request.get("content")
         
@@ -205,3 +216,16 @@ async def validate_content_endpoint(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+@router.put("/platform/{platform}")
+async def update_platform_persona_endpoint(
+    platform: str,
+    update_data: Dict[str, Any],
+    user_id: int = Query(1, description="User ID")
+):
+    """Update platform-specific persona fields for a user.
+
+    Allows editing persona fields in the UI and saving them to the database.
+    """
+    # Beta testing: Force user_id=1 for all requests
+    return await update_platform_persona(1, platform, update_data)

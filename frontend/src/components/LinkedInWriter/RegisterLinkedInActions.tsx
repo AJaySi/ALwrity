@@ -117,6 +117,15 @@ const RegisterLinkedInActions: React.FC = () => {
     ],
     handler: async (args: any) => {
       const prefs = readPrefs();
+      
+      // Start loading state
+      window.dispatchEvent(new CustomEvent('linkedinwriter:loadingStart', { 
+        detail: { 
+          action: 'generateLinkedInPost', 
+          message: 'Generating LinkedIn post with persona optimization...' 
+        } 
+      }));
+      
       // Emit progress init
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressInit', { detail: {
         steps: [
@@ -251,6 +260,10 @@ const RegisterLinkedInActions: React.FC = () => {
           }
         }));
         
+        // Debug: Log the content being sent
+        console.log('[LinkedIn Writer] Sending draft update:', fullContent?.substring(0, 100) + '...');
+        console.log('[LinkedIn Writer] Full content length:', fullContent?.length);
+        
         window.dispatchEvent(new CustomEvent('linkedinwriter:updateDraft', { detail: fullContent }));
         
         window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { 
@@ -262,6 +275,10 @@ const RegisterLinkedInActions: React.FC = () => {
         }));
         
         window.dispatchEvent(new CustomEvent('linkedinwriter:progressComplete'));
+        
+        // End loading state
+        console.log('[LinkedIn Writer] Ending loading state...');
+        window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
         
         // Return recommendations message that CopilotKit can render
         const recommendations = res.data?.quality_metrics?.recommendations || [];
@@ -284,6 +301,8 @@ const RegisterLinkedInActions: React.FC = () => {
           };
         }
       }
+      // End loading state on error
+      window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: res.error } }));
       return { success: false, message: res.error || 'Failed to generate LinkedIn post' };
     }
@@ -301,6 +320,15 @@ const RegisterLinkedInActions: React.FC = () => {
     ],
     handler: async (args: any) => {
       const prefs = readPrefs();
+      
+      // Start loading state
+      window.dispatchEvent(new CustomEvent('linkedinwriter:loadingStart', { 
+        detail: { 
+          action: 'generateLinkedInArticle', 
+          message: 'Generating LinkedIn article with persona optimization...' 
+        } 
+      }));
+      
       // Emit progress init for article
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressInit', { detail: {
         steps: [
@@ -429,6 +457,9 @@ const RegisterLinkedInActions: React.FC = () => {
         
         window.dispatchEvent(new CustomEvent('linkedinwriter:progressComplete'));
         
+        // End loading state
+        window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
+        
         // Return recommendations message that CopilotKit can render
         const recommendations = res.data?.quality_metrics?.recommendations || [];
         if (recommendations.length > 0) {
@@ -450,6 +481,8 @@ const RegisterLinkedInActions: React.FC = () => {
           };
         }
       }
+      // End loading state on error
+      window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: res.error } }));
       return { success: false, message: res.error || 'Failed to generate LinkedIn article' };
     }

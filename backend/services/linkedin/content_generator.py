@@ -21,6 +21,8 @@ from services.linkedin.content_generator_prompts import (
     CarouselGenerator,
     VideoScriptGenerator
 )
+from services.persona_analysis_service import PersonaAnalysisService
+import time
 
 
 class ContentGenerator:
@@ -32,9 +34,76 @@ class ContentGenerator:
         self.gemini_grounded = gemini_grounded
         self.fallback_provider = fallback_provider
         
+        # Persona caching
+        self._persona_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_timestamps: Dict[str, float] = {}
+        self._cache_duration = 300  # 5 minutes cache duration
+        
         # Initialize specialized generators
         self.carousel_generator = CarouselGenerator(citation_manager, quality_analyzer)
         self.video_script_generator = VideoScriptGenerator(citation_manager, quality_analyzer)
+    
+    def _get_cached_persona_data(self, user_id: int, platform: str) -> Optional[Dict[str, Any]]:
+        """
+        Get persona data with caching for LinkedIn platform.
+        
+        Args:
+            user_id: User ID to get persona for
+            platform: Platform type (linkedin)
+            
+        Returns:
+            Persona data or None if not available
+        """
+        cache_key = f"{platform}_persona_{user_id}"
+        current_time = time.time()
+        
+        # Check cache first
+        if cache_key in self._persona_cache and cache_key in self._cache_timestamps:
+            cache_age = current_time - self._cache_timestamps[cache_key]
+            if cache_age < self._cache_duration:
+                logger.debug(f"Using cached persona data for user {user_id} (age: {cache_age:.1f}s)")
+                return self._persona_cache[cache_key]
+            else:
+                # Cache expired, remove it
+                logger.debug(f"Cache expired for user {user_id}, refreshing...")
+                del self._persona_cache[cache_key]
+                del self._cache_timestamps[cache_key]
+        
+        # Fetch fresh data
+        try:
+            persona_service = PersonaAnalysisService()
+            persona_data = persona_service.get_persona_for_platform(user_id, platform)
+            
+            # Cache the result
+            if persona_data:
+                self._persona_cache[cache_key] = persona_data
+                self._cache_timestamps[cache_key] = current_time
+                logger.debug(f"Cached persona data for user {user_id}")
+            
+            return persona_data
+            
+        except Exception as e:
+            logger.warning(f"Could not load persona data for {platform} content generation: {e}")
+            return None
+    
+    def _clear_persona_cache(self, user_id: int = None):
+        """
+        Clear persona cache for a specific user or all users.
+        
+        Args:
+            user_id: User ID to clear cache for, or None to clear all
+        """
+        if user_id is None:
+            self._persona_cache.clear()
+            self._cache_timestamps.clear()
+            logger.info("Cleared all persona cache")
+        else:
+            # Clear cache for all platforms for this user
+            keys_to_remove = [key for key in self._persona_cache.keys() if key.endswith(f"_{user_id}")]
+            for key in keys_to_remove:
+                del self._persona_cache[key]
+                del self._cache_timestamps[key]
+            logger.info(f"Cleared persona cache for user {user_id}")
     
     def _transform_gemini_sources(self, gemini_sources):
         """Transform Gemini sources to ResearchSource format."""
@@ -340,8 +409,28 @@ class ContentGenerator:
                 logger.error("Gemini Grounded Provider not available - cannot generate content without AI provider")
                 raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
                 
-            # Build the prompt for grounded generation using the new prompt builder
-            prompt = PostPromptBuilder.build_post_prompt(request)
+            # Build the prompt for grounded generation using persona if available (DB vs session override)
+            # Beta testing: Force user_id=1 for all requests
+            user_id = 1
+            persona_data = self._get_cached_persona_data(user_id, 'linkedin')
+            if getattr(request, 'persona_override', None):
+                try:
+                    # Merge shallowly: override core and platform adaptation parts
+                    override = request.persona_override
+                    if persona_data:
+                        core = persona_data.get('core_persona', {})
+                        platform_adapt = persona_data.get('platform_adaptation', {})
+                        if 'core_persona' in override:
+                            core.update(override['core_persona'])
+                        if 'platform_adaptation' in override:
+                            platform_adapt.update(override['platform_adaptation'])
+                        persona_data['core_persona'] = core
+                        persona_data['platform_adaptation'] = platform_adapt
+                    else:
+                        persona_data = override
+                except Exception:
+                    pass
+            prompt = PostPromptBuilder.build_post_prompt(request, persona=persona_data)
             
             # Generate grounded content using native Google Search grounding
             result = await self.gemini_grounded.generate_grounded_content(
@@ -355,7 +444,38 @@ class ContentGenerator:
             
         except Exception as e:
             logger.error(f"Error generating grounded post content: {str(e)}")
-            raise Exception(f"Failed to generate grounded post content: {str(e)}")
+            logger.info("Attempting fallback to standard content generation...")
+            
+            # Fallback to standard content generation without grounding
+            try:
+                if not self.fallback_provider:
+                    raise Exception("No fallback provider available")
+                
+                # Build a simpler prompt for fallback generation
+                prompt = PostPromptBuilder.build_post_prompt(request)
+                
+                # Generate content using fallback provider (it's a dict with functions)
+                if 'generate_text' in self.fallback_provider:
+                    result = await self.fallback_provider['generate_text'](
+                        prompt=prompt,
+                        temperature=0.7,
+                        max_tokens=request.max_length
+                    )
+                else:
+                    raise Exception("Fallback provider doesn't have generate_text method")
+                
+                # Return result in the expected format
+                return {
+                    'content': result.get('content', '') if isinstance(result, dict) else str(result),
+                    'sources': [],
+                    'citations': [],
+                    'grounding_enabled': False,
+                    'fallback_used': True
+                }
+                
+            except Exception as fallback_error:
+                logger.error(f"Fallback generation also failed: {str(fallback_error)}")
+                raise Exception(f"Failed to generate content: {str(e)}. Fallback also failed: {str(fallback_error)}")
     
     async def generate_grounded_article_content(self, request, research_sources: List) -> Dict[str, Any]:
         """Generate grounded article content using the enhanced Gemini provider with native grounding."""
@@ -364,8 +484,27 @@ class ContentGenerator:
                 logger.error("Gemini Grounded Provider not available - cannot generate content without AI provider")
                 raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
                 
-            # Build the prompt for grounded generation using the new prompt builder
-            prompt = ArticlePromptBuilder.build_article_prompt(request)
+            # Build the prompt for grounded generation using persona if available (DB vs session override)
+            # Beta testing: Force user_id=1 for all requests
+            user_id = 1
+            persona_data = self._get_cached_persona_data(user_id, 'linkedin')
+            if getattr(request, 'persona_override', None):
+                try:
+                    override = request.persona_override
+                    if persona_data:
+                        core = persona_data.get('core_persona', {})
+                        platform_adapt = persona_data.get('platform_adaptation', {})
+                        if 'core_persona' in override:
+                            core.update(override['core_persona'])
+                        if 'platform_adaptation' in override:
+                            platform_adapt.update(override['platform_adaptation'])
+                        persona_data['core_persona'] = core
+                        persona_data['platform_adaptation'] = platform_adapt
+                    else:
+                        persona_data = override
+                except Exception:
+                    pass
+            prompt = ArticlePromptBuilder.build_article_prompt(request, persona=persona_data)
             
             # Generate grounded content using native Google Search grounding
             result = await self.gemini_grounded.generate_grounded_content(

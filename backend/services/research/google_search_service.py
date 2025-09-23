@@ -45,8 +45,7 @@ class GoogleSearchService:
         self.base_url = "https://www.googleapis.com/customsearch/v1"
         
         if not self.api_key or not self.search_engine_id:
-            logger.warning("Google Search API credentials not configured. Service will use fallback methods.")
-            self.enabled = False
+            raise ValueError("Google Search API credentials not configured. Please set GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID environment variables.")
         else:
             self.enabled = True
             logger.info("Google Search Service initialized successfully")
@@ -69,8 +68,7 @@ class GoogleSearchService:
             List of search results with credibility scoring
         """
         if not self.enabled:
-            logger.warning("Google Search Service not enabled, using fallback research")
-            return await self._fallback_research(topic, industry)
+            raise RuntimeError("Google Search Service is not enabled. Please configure API credentials.")
         
         try:
             # Construct industry-specific search query
@@ -99,7 +97,7 @@ class GoogleSearchService:
             
         except Exception as e:
             logger.error(f"Google search failed: {str(e)}")
-            return await self._fallback_research(topic, industry)
+            raise RuntimeError(f"Google search failed: {str(e)}")
     
     def _build_search_query(self, topic: str, industry: str) -> str:
         """
@@ -465,45 +463,6 @@ class GoogleSearchService:
             "statistics": statistics
         }
     
-    async def _fallback_research(self, topic: str, industry: str) -> Dict[str, Any]:
-        """
-        Fallback research method when Google Search is not available.
-        
-        Args:
-            topic: The research topic
-            industry: The industry context
-            
-        Returns:
-            Fallback research data
-        """
-        logger.info(f"Using fallback research for {topic} in {industry}")
-        
-        return {
-            "sources": [
-                {
-                    "title": f"Industry insights on {topic} in {industry}",
-                    "url": f"https://example.com/{topic.lower().replace(' ', '-')}",
-                    "content": f"Professional insights and trends related to {topic} in the {industry} sector...",
-                    "relevance_score": 0.8,
-                    "credibility_score": 0.6,
-                    "domain_authority": 0.5,
-                    "source_type": "general",
-                    "grounding_enabled": False
-                }
-            ],
-            "key_insights": [
-                f"{topic} is transforming {industry} operations",
-                f"Industry leaders are investing in {topic}",
-                f"Expected growth in {topic} adoption within {industry}"
-            ],
-            "statistics": [
-                f"85% of {industry} companies are exploring {topic}",
-                f"Investment in {topic} increased by 40% this year"
-            ],
-            "grounding_enabled": False,
-            "search_query": f"{topic} {industry} trends",
-            "timestamp": datetime.utcnow().isoformat()
-        }
     
     async def test_api_connection(self) -> Dict[str, Any]:
         """
@@ -513,11 +472,7 @@ class GoogleSearchService:
             Test results and status information
         """
         if not self.enabled:
-            return {
-                "status": "disabled",
-                "message": "Google Search API credentials not configured",
-                "enabled": False
-            }
+            raise RuntimeError("Google Search Service is not enabled. Please configure API credentials.")
         
         try:
             # Perform a simple test search

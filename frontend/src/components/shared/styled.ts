@@ -96,23 +96,61 @@ export const SearchContainer = styled(Box)(({ theme }) => ({
 }));
 
 export const CategoryChip = styled(Chip, {
-  shouldForwardProp: (prop) => prop !== 'active',
-})<{ active?: boolean }>(({ theme, active }) => ({
-  background: active ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.1)',
+  shouldForwardProp: (prop) => prop !== 'active' && prop !== 'toolCount' && prop !== 'gradient',
+})<{ active?: boolean; toolCount?: number; gradient?: string }>(({ theme, active, toolCount, gradient }) => ({
+  background: active 
+    ? (gradient || 'linear-gradient(135deg, rgba(76, 175, 80, 0.4) 0%, rgba(139, 195, 74, 0.3) 50%, rgba(255, 255, 255, 0.2) 100%)')
+    : 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.05) 100%)',
   color: 'white',
-  fontWeight: 600,
+  fontWeight: active ? 700 : 600,
   fontSize: '0.9rem',
   padding: theme.spacing(1, 2),
-  border: `1px solid ${active ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.2)'}`,
+  border: active 
+    ? '2px solid rgba(255, 255, 255, 0.6)'
+    : '1px solid rgba(255, 255, 255, 0.25)',
+  boxShadow: active 
+    ? '0 6px 20px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+    : '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+  transform: active ? 'translateY(-2px) scale(1.05)' : 'none',
   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  position: 'relative',
   '&:hover': {
-    background: 'rgba(255, 255, 255, 0.25)',
+    background: active 
+      ? (gradient || 'linear-gradient(135deg, rgba(76, 175, 80, 0.5) 0%, rgba(139, 195, 74, 0.4) 50%, rgba(255, 255, 255, 0.25) 100%)')
+      : 'linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.1) 100%)',
     transform: 'translateY(-2px)',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    boxShadow: active 
+      ? '0 8px 25px rgba(76, 175, 80, 0.4), 0 0 0 1px rgba(76, 175, 80, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
+      : '0 4px 15px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+    border: active 
+      ? '2px solid rgba(76, 175, 80, 0.8)' 
+      : '1px solid rgba(255, 255, 255, 0.4)',
   },
   '& .MuiChip-label': {
     padding: theme.spacing(0.5, 1),
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
   },
+  // Tool count badge
+  ...(toolCount && {
+    '&::after': {
+      content: `"${toolCount}"`,
+      position: 'absolute',
+      top: -6,
+      right: -6,
+      backgroundColor: active ? '#4caf50' : 'rgba(255, 255, 255, 0.8)',
+      color: active ? 'white' : 'rgba(0, 0, 0, 0.8)',
+      borderRadius: '10px',
+      padding: '2px 6px',
+      fontSize: '0.7rem',
+      fontWeight: 700,
+      minWidth: '18px',
+      textAlign: 'center',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+      border: active ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(0,0,0,0.1)',
+    },
+  }),
 }));
 
 export const EnhancedGlassCard = styled(GlassCard)(({ theme }) => ({

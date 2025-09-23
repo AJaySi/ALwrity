@@ -11,6 +11,9 @@ backend_path = Path(__file__).parent.parent.parent.parent
 sys.path.append(str(backend_path))
 
 from services.llm_providers.gemini_provider import gemini_text_response, gemini_structured_json_response
+from services.persona_analysis_service import PersonaAnalysisService
+from typing import Dict, Any, Optional
+import time
 
 
 class FacebookWriterBaseService:
@@ -19,6 +22,12 @@ class FacebookWriterBaseService:
     def __init__(self):
         """Initialize the base service."""
         self.logger = logger
+        self.persona_service = PersonaAnalysisService()
+        
+        # Persona caching
+        self._persona_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_timestamps: Dict[str, float] = {}
+        self._cache_duration = 300  # 5 minutes cache duration
         
     def _generate_text(self, prompt: str, temperature: float = 0.7, max_tokens: int = 2048) -> str:
         """
@@ -146,6 +155,107 @@ class FacebookWriterBaseService:
         
         return base_suggestions
     
+    def _get_persona_data(self, user_id: int = 1) -> Optional[Dict[str, Any]]:
+        """
+        Get persona data for Facebook platform with caching.
+        
+        Args:
+            user_id: User ID to get persona for
+            
+        Returns:
+            Persona data or None if not available
+        """
+        cache_key = f"facebook_persona_{user_id}"
+        current_time = time.time()
+        
+        # Check cache first
+        if cache_key in self._persona_cache and cache_key in self._cache_timestamps:
+            cache_age = current_time - self._cache_timestamps[cache_key]
+            if cache_age < self._cache_duration:
+                self.logger.debug(f"Using cached persona data for user {user_id} (age: {cache_age:.1f}s)")
+                return self._persona_cache[cache_key]
+            else:
+                # Cache expired, remove it
+                self.logger.debug(f"Cache expired for user {user_id}, refreshing...")
+                del self._persona_cache[cache_key]
+                del self._cache_timestamps[cache_key]
+        
+        # Fetch fresh data
+        try:
+            persona_data = self.persona_service.get_persona_for_platform(user_id, 'facebook')
+            
+            # Cache the result
+            if persona_data:
+                self._persona_cache[cache_key] = persona_data
+                self._cache_timestamps[cache_key] = current_time
+                self.logger.debug(f"Cached persona data for user {user_id}")
+            
+            return persona_data
+            
+        except Exception as e:
+            self.logger.warning(f"Could not load persona data for Facebook content generation: {e}")
+            return None
+    
+    def _clear_persona_cache(self, user_id: int = None):
+        """
+        Clear persona cache for a specific user or all users.
+        
+        Args:
+            user_id: User ID to clear cache for, or None to clear all
+        """
+        if user_id is None:
+            self._persona_cache.clear()
+            self._cache_timestamps.clear()
+            self.logger.info("Cleared all persona cache")
+        else:
+            cache_key = f"facebook_persona_{user_id}"
+            if cache_key in self._persona_cache:
+                del self._persona_cache[cache_key]
+                del self._cache_timestamps[cache_key]
+                self.logger.info(f"Cleared persona cache for user {user_id}")
+    
+    def _build_persona_enhanced_prompt(self, base_prompt: str, persona_data: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Enhance prompt with persona data if available.
+        
+        Args:
+            base_prompt: Base prompt to enhance
+            persona_data: Persona data to incorporate
+            
+        Returns:
+            Enhanced prompt with persona guidance
+        """
+        if not persona_data:
+            return base_prompt
+        
+        try:
+            core_persona = persona_data.get('core_persona', {})
+            platform_persona = persona_data.get('platform_adaptation', {})
+            
+            if not core_persona:
+                return base_prompt
+            
+            persona_guidance = f"""
+PERSONA-AWARE WRITING GUIDANCE:
+- PERSONA: {core_persona.get('persona_name', 'Unknown')} ({core_persona.get('archetype', 'Unknown')})
+- CORE BELIEF: {core_persona.get('core_belief', 'Unknown')}
+- CONFIDENCE SCORE: {core_persona.get('confidence_score', 0)}%
+
+PLATFORM OPTIMIZATION (Facebook):
+- CHARACTER LIMIT: {platform_persona.get('content_format_rules', {}).get('character_limit', '63206')} characters
+- OPTIMAL LENGTH: {platform_persona.get('content_format_rules', {}).get('optimal_length', '40-80 characters')}
+- ENGAGEMENT PATTERN: {platform_persona.get('engagement_patterns', {}).get('posting_frequency', '1-2 times per day')}
+- HASHTAG STRATEGY: {platform_persona.get('lexical_features', {}).get('hashtag_strategy', '1-2 relevant hashtags')}
+
+ALWAYS generate content that matches this persona's linguistic fingerprint and platform optimization rules.
+"""
+            
+            return f"{base_prompt}\n\n{persona_guidance}"
+            
+        except Exception as e:
+            self.logger.warning(f"Error enhancing prompt with persona data: {e}")
+            return base_prompt
+
     def _handle_error(self, error: Exception, operation: str) -> Dict[str, Any]:
         """
         Handle errors and return standardized error response.

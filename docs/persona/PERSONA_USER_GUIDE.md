@@ -94,7 +94,7 @@ When using Facebook writer, you'll have access to:
 Your persona integrates with CopilotKit to provide intelligent, contextual assistance:
 
 #### **Contextual Conversations**
-- **Persona-Aware Responses**: The AI understands your writing style and preferences
+- **Persona-Aware Responses**: The AI understands your writing style and preferences                                                                                                        
 - **Platform-Specific Suggestions**: Recommendations tailored to the platform you're using
 - **Real-Time Optimization**: Live suggestions for improving your content
 - **Interactive Guidance**: Step-by-step assistance for content creation

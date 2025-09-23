@@ -1,0 +1,104 @@
+{
+  "test_summary": {
+    "total_duration": 52.56023073196411,
+    "total_tests": 4,
+    "successful_tests": 4,
+    "failed_tests": 0,
+    "total_api_calls": 4
+  },
+  "test_results": [
+    {
+      "test_name": "Single Phrase Test (Should be preserved as-is)",
+      "keyword_phrase": "ALwrity content generation",
+      "success": true,
+      "duration": 8.364419937133789,
+      "api_calls": 1,
+      "error": null,
+      "content_length": 44,
+      "sources_count": 0,
+      "citations_count": 0,
+      "grounding_status": {
+        "status": "success",
+        "sources_used": 0,
+        "citation_coverage": 0,
+        "quality_score": 0.0
+      },
+      "generation_metadata": {
+        "model_used": "gemini-2.0-flash-001",
+        "generation_time": 0.002626,
+        "research_time": 0.000537,
+        "grounding_enabled": true
+      }
+    },
+    {
+      "test_name": "Comma-Separated Test (Should be split by commas)",
+      "keyword_phrase": "AI tools, content creation, marketing automation",
+      "success": true,
+      "duration": 12.616755723953247,
+      "api_calls": 1,
+      "error": null,
+      "content_length": 44,
+      "sources_count": 5,
+      "citations_count": 3,
+      "grounding_status": {
+        "status": "success",
+        "sources_used": 5,
+        "citation_coverage": 0.6,
+        "quality_score": 0.359
+      },
+      "generation_metadata": {
+        "model_used": "gemini-2.0-flash-001",
+        "generation_time": 0.009273,
+        "research_time": 0.000285,
+        "grounding_enabled": true
+      }
+    },
+    {
+      "test_name": "Another Single Phrase Test",
+      "keyword_phrase": "LinkedIn content strategy",
+      "success": true,
+      "duration": 11.366000652313232,
+      "api_calls": 1,
+      "error": null,
+      "content_length": 44,
+      "sources_count": 4,
+      "citations_count": 3,
+      "grounding_status": {
+        "status": "success",
+        "sources_used": 4,
+        "citation_coverage": 0.75,
+        "quality_score": 0.359
+      },
+      "generation_metadata": {
+        "model_used": "gemini-2.0-flash-001",
+        "generation_time": 0.008166,
+        "research_time": 0.000473,
+        "grounding_enabled": true
+      }
+    },
+    {
+      "test_name": "Another Comma-Separated Test",
+      "keyword_phrase": "social media, digital marketing, brand awareness",
+      "success": true,
+      "duration": 12.107932806015015,
+      "api_calls": 1,
+      "error": null,
+      "content_length": 44,
+      "sources_count": 0,
+      "citations_count": 0,
+      "grounding_status": {
+        "status": "success",
+        "sources_used": 0,
+        "citation_coverage": 0,
+        "quality_score": 0.0
+      },
+      "generation_metadata": {
+        "model_used": "gemini-2.0-flash-001",
+        "generation_time": 0.004575,
+        "research_time": 0.000323,
+        "grounding_enabled": true
+      }
+    }
+  ],
+  "timestamp": "2025-09-14T22:39:30.220518"
+}

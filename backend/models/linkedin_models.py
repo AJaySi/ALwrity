@@ -61,6 +61,8 @@ class LinkedInPostRequest(BaseModel):
     max_length: int = Field(default=3000, description="Maximum character count", ge=100, le=3000)
     grounding_level: GroundingLevel = Field(default=GroundingLevel.ENHANCED, description="Level of content grounding")
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
+    user_id: Optional[int] = Field(default=1, description="User id for persona lookup")
+    persona_override: Optional[Dict[str, Any]] = Field(default=None, description="Session-only persona overrides to apply without saving")
     
     class Config:
         schema_extra = {
@@ -96,6 +98,8 @@ class LinkedInArticleRequest(BaseModel):
     word_count: int = Field(default=1500, description="Target word count", ge=500, le=5000)
     grounding_level: GroundingLevel = Field(default=GroundingLevel.ENHANCED, description="Level of content grounding")
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
+    user_id: Optional[int] = Field(default=1, description="User id for persona lookup")
+    persona_override: Optional[Dict[str, Any]] = Field(default=None, description="Session-only persona overrides to apply without saving")
     
     class Config:
         schema_extra = {

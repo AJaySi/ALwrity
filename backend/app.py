@@ -12,6 +12,7 @@ from collections import defaultdict
 from loguru import logger
 from dotenv import load_dotenv
 import asyncio
+from datetime import datetime
 from middleware.monitoring_middleware import monitoring_middleware
 
 # Load environment variables
@@ -48,6 +49,9 @@ from api.onboarding import (
 # Import component logic endpoints
 from api.component_logic import router as component_logic_router
 
+# Import subscription API endpoints
+from api.subscription_api import router as subscription_router
+
 # Import SEO tools router
 from routers.seo_tools import router as seo_tools_router
 # Import Facebook Writer endpoints
@@ -56,6 +60,11 @@ from api.facebook_writer.routers import facebook_router
 from routers.linkedin import router as linkedin_router
 # Import LinkedIn image generation router
 from api.linkedin_image_generation import router as linkedin_image_router
+from api.brainstorm import router as brainstorm_router
+
+# Import hallucination detector router
+from api.hallucination_detector import router as hallucination_detector_router
+from api.writing_assistant import router as writing_assistant_router
 
 # Import user data endpoints
 # Import content planning endpoints
@@ -170,6 +179,62 @@ async def rate_limit_middleware(request: Request, call_next):
 async def health():
     """Health check endpoint."""
     return health_check()
+
+@app.get("/health/database")
+async def database_health_check():
+    """Database health check endpoint including persona tables verification."""
+    try:
+        from services.database import get_db_session
+        from models.persona_models import WritingPersona, PlatformPersona, PersonaAnalysisResult, PersonaValidationResult
+        
+        session = get_db_session()
+        if not session:
+            return {"status": "error", "message": "Could not get database session"}
+        
+        # Test all persona tables
+        tables_status = {}
+        try:
+            session.query(WritingPersona).first()
+            tables_status["writing_personas"] = "ok"
+        except Exception as e:
+            tables_status["writing_personas"] = f"error: {str(e)}"
+        
+        try:
+            session.query(PlatformPersona).first()
+            tables_status["platform_personas"] = "ok"
+        except Exception as e:
+            tables_status["platform_personas"] = f"error: {str(e)}"
+        
+        try:
+            session.query(PersonaAnalysisResult).first()
+            tables_status["persona_analysis_results"] = "ok"
+        except Exception as e:
+            tables_status["persona_analysis_results"] = f"error: {str(e)}"
+        
+        try:
+            session.query(PersonaValidationResult).first()
+            tables_status["persona_validation_results"] = "ok"
+        except Exception as e:
+            tables_status["persona_validation_results"] = f"error: {str(e)}"
+        
+        session.close()
+        
+        # Check if all tables are ok
+        all_ok = all(status == "ok" for status in tables_status.values())
+        
+        return {
+            "status": "healthy" if all_ok else "warning",
+            "message": "Database connection successful" if all_ok else "Some persona tables may have issues",
+            "persona_tables": tables_status,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Database health check failed: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 # Onboarding status endpoints
 @app.get("/api/onboarding/status")
@@ -371,6 +436,9 @@ async def research_preferences_data():
 # Include component logic router
 app.include_router(component_logic_router)
 
+# Include subscription and usage tracking router
+app.include_router(subscription_router)
+
 # Include SEO tools router
 app.include_router(seo_tools_router)
 # Include Facebook Writer router
@@ -379,12 +447,31 @@ app.include_router(facebook_router)
 app.include_router(linkedin_router)
 # Include LinkedIn image generation router
 app.include_router(linkedin_image_router)
+app.include_router(brainstorm_router)
+
+# Include hallucination detector router
+app.include_router(hallucination_detector_router)
+app.include_router(writing_assistant_router)
 
 # Include user data router
 # Include content planning router
 app.include_router(content_planning_router)
 app.include_router(user_data_router)
 app.include_router(strategy_copilot_router)
+
+# Include AI Blog Writer router
+try:
+    from api.blog_writer.router import router as blog_writer_router
+    app.include_router(blog_writer_router)
+except Exception as e:
+    logger.warning(f"AI Blog Writer router not mounted: {e}")
+
+# Include Blog Writer SEO Analysis router (comprehensive SEO analysis)
+try:
+    from api.blog_writer.seo_analysis import router as blog_seo_analysis_router
+    app.include_router(blog_seo_analysis_router)
+except Exception as e:
+    logger.warning(f"Blog Writer SEO Analysis router not mounted: {e}")
 
 # Include persona router
 from api.persona_routes import router as persona_router

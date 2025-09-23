@@ -27,6 +27,15 @@ export const longRunningApiClient = axios.create({
   },
 });
 
+// Create a specialized client for polling operations with reasonable timeout
+export const pollingApiClient = axios.create({
+  baseURL: 'http://localhost:8000',
+  timeout: 60000, // 60 seconds timeout for polling status checks
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
 // Add request interceptor for logging (optional)
 apiClient.interceptors.request.use(
   (config) => {
@@ -87,6 +96,27 @@ longRunningApiClient.interceptors.response.use(
   },
   (error) => {
     console.error('Long-running API Error:', error.response?.status, error.response?.data);
+    return Promise.reject(error);
+  }
+);
+
+// Add interceptors for polling client
+pollingApiClient.interceptors.request.use(
+  (config) => {
+    console.log(`Making polling ${config.method?.toUpperCase()} request to ${config.url}`);
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+pollingApiClient.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    console.error('Polling API Error:', error.response?.status, error.response?.data);
     return Promise.reject(error);
   }
 ); 

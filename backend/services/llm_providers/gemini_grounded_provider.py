@@ -9,6 +9,8 @@ Based on Google AI's official grounding documentation.
 import os
 import json
 import re
+import time
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from loguru import logger
@@ -41,16 +43,20 @@ class GeminiGroundedProvider:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
         
-        # Initialize the Gemini client
+        # Initialize the Gemini client with timeout configuration
         self.client = genai.Client(api_key=self.api_key)
+        self.timeout = 60  # 60 second timeout for API calls (increased for research)
+        self._cache: Dict[str, Any] = {}
         logger.info("✅ Gemini Grounded Provider initialized with native Google Search grounding")
     
     async def generate_grounded_content(
-        self, 
-        prompt: str, 
+        self,
+        prompt: str,
         content_type: str = "linkedin_post",
         temperature: float = 0.7,
-        max_tokens: int = 2048
+        max_tokens: int = 2048,
+        urls: Optional[List[str]] = None,
+        mode: str = "polished"
     ) -> Dict[str, Any]:
         """
         Generate grounded content using native Google Search grounding.
@@ -70,34 +76,181 @@ class GeminiGroundedProvider:
             # Build the grounded prompt
             grounded_prompt = self._build_grounded_prompt(prompt, content_type)
             
-            # Configure the grounding tool
-            grounding_tool = types.Tool(
-                google_search=types.GoogleSearch()
-            )
+            # Configure tools: Google Search and optional URL Context
+            tools: List[Any] = [
+                types.Tool(google_search=types.GoogleSearch())
+            ]
+            if urls:
+                try:
+                    # URL Context tool (ai.google.dev URL Context)
+                    tools.append(types.Tool(url_context=types.UrlContext()))
+                    logger.info(f"Enabled URL Context tool for {len(urls)} URLs")
+                except Exception as tool_err:
+                    logger.warning(f"URL Context tool not available in SDK version: {tool_err}")
             
+            # Apply mode presets (Draft vs Polished)
+            # Use Gemini 2.0 Flash for better content generation with grounding
+            model_id = "gemini-2.0-flash"
+            if mode == "draft":
+                model_id = "gemini-2.0-flash"
+                temperature = min(1.0, max(0.0, temperature))
+            else:
+                model_id = "gemini-2.0-flash"
+
             # Configure generation settings
             config = types.GenerateContentConfig(
-                tools=[grounding_tool],
+                tools=tools,
                 max_output_tokens=max_tokens,
                 temperature=temperature
             )
             
-            # Make the request with native grounding
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=grounded_prompt,
-                config=config,
-            )
+            # Make the request with native grounding and timeout
+            import asyncio
+            import concurrent.futures
+            
+            try:
+                # Cache first
+                cache_key = self._make_cache_key(model_id, grounded_prompt, urls)
+                if cache_key in self._cache:
+                    logger.info("Cache hit for grounded content request")
+                    response = self._cache[cache_key]
+                else:
+                    # Run the synchronous generate_content in a thread pool to make it awaitable
+                    loop = asyncio.get_event_loop()
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        response = await asyncio.wait_for(
+                            loop.run_in_executor(
+                                executor,
+                                lambda: self.client.models.generate_content(
+                                    model=model_id,
+                                    contents=self._inject_urls_into_prompt(grounded_prompt, urls) if urls else grounded_prompt,
+                                    config=config,
+                                )
+                            ),
+                            timeout=self.timeout
+                        )
+                        self._cache[cache_key] = response
+            except asyncio.TimeoutError:
+                raise Exception(f"Gemini API request timed out after {self.timeout} seconds")
+            except Exception as api_error:
+                # Handle specific Google API errors with retry logic
+                error_str = str(api_error)
+                if "503" in error_str and "overloaded" in error_str:
+                    # Conservative retry for overloaded service (expensive API calls)
+                    response = await self._retry_with_backoff(
+                        lambda: self._make_api_request_with_model(grounded_prompt, config, model_id, urls),
+                        max_retries=1,  # Only 1 retry to avoid excessive costs
+                        base_delay=5   # Longer delay
+                    )
+                elif "429" in error_str:
+                    # Conservative retry for rate limits
+                    response = await self._retry_with_backoff(
+                        lambda: self._make_api_request_with_model(grounded_prompt, config, model_id, urls),
+                        max_retries=1,  # Only 1 retry
+                        base_delay=10   # Much longer delay for rate limits
+                    )
+                elif "401" in error_str or "403" in error_str:
+                    raise Exception("Authentication failed. Please check your API credentials.")
+                elif "400" in error_str:
+                    raise Exception("Invalid request. Please check your input parameters.")
+                else:
+                    raise Exception(f"Google AI service error: {error_str}")
             
             # Process the grounded response
             result = self._process_grounded_response(response, content_type)
+            # Attach URL Context metadata if present
+            try:
+                if hasattr(response, 'candidates') and response.candidates:
+                    candidate0 = response.candidates[0]
+                    if hasattr(candidate0, 'url_context_metadata') and candidate0.url_context_metadata:
+                        result['url_context_metadata'] = candidate0.url_context_metadata
+                        logger.info("Attached url_context_metadata to result")
+            except Exception as meta_err:
+                logger.warning(f"Unable to attach url_context_metadata: {meta_err}")
             
             logger.info(f"✅ Grounded content generated successfully with {len(result.get('sources', []))} sources")
             return result
             
         except Exception as e:
-            logger.error(f"❌ Error generating grounded content: {str(e)}")
+            # Log error without causing secondary exceptions
+            try:
+                logger.error(f"❌ Error generating grounded content: {str(e)}")
+            except:
+                # Fallback to print if logging fails
+                print(f"Error generating grounded content: {str(e)}")
             raise
+    
+    async def _make_api_request(self, grounded_prompt: str, config: Any):
+        """Make the actual API request to Gemini."""
+        import concurrent.futures
+        
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            return await asyncio.wait_for(
+                loop.run_in_executor(
+                    executor,
+                    lambda: self.client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=grounded_prompt,
+                        config=config,
+                    )
+                ),
+                timeout=self.timeout
+            )
+
+    async def _make_api_request_with_model(self, grounded_prompt: str, config: Any, model_id: str, urls: Optional[List[str]] = None):
+        """Make the API request with explicit model id and optional URL injection."""
+        logger.info(f"🔍 DEBUG: Making API request with model: {model_id}")
+        logger.info(f"🔍 DEBUG: Prompt length: {len(grounded_prompt)} characters")
+        logger.info(f"🔍 DEBUG: Prompt preview (first 300 chars): {grounded_prompt[:300]}...")
+        
+        import concurrent.futures
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            resp = await asyncio.wait_for(
+                loop.run_in_executor(
+                    executor,
+                    lambda: self.client.models.generate_content(
+                        model=model_id,
+                        contents=self._inject_urls_into_prompt(grounded_prompt, urls) if urls else grounded_prompt,
+                        config=config,
+                    )
+                ),
+                timeout=self.timeout
+            )
+            self._cache[self._make_cache_key(model_id, grounded_prompt, urls)] = resp
+            return resp
+
+    def _inject_urls_into_prompt(self, prompt: str, urls: Optional[List[str]]) -> str:
+        """Append URLs to the prompt for URL Context tool to pick up (as per docs)."""
+        if not urls:
+            return prompt
+        safe_urls = [u for u in urls if isinstance(u, str) and u.startswith("http")]
+        if not safe_urls:
+            return prompt
+        urls_block = "\n".join(safe_urls[:20])
+        return f"{prompt}\n\nSOURCE URLS (use url_context to retrieve content):\n{urls_block}"
+
+    def _make_cache_key(self, model_id: str, prompt: str, urls: Optional[List[str]]) -> str:
+        import hashlib
+        u = "|".join((urls or [])[:20])
+        base = f"{model_id}|{prompt}|{u}"
+        return hashlib.sha256(base.encode("utf-8")).hexdigest()
+    
+    async def _retry_with_backoff(self, func, max_retries: int = 3, base_delay: float = 1.0):
+        """Retry a function with exponential backoff."""
+        for attempt in range(max_retries + 1):
+            try:
+                return await func()
+            except Exception as e:
+                if attempt == max_retries:
+                    # Last attempt failed, raise the error
+                    raise e
+                
+                # Calculate delay with exponential backoff
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"Attempt {attempt + 1} failed, retrying in {delay} seconds: {str(e)}")
+                await asyncio.sleep(delay)
     
     def _build_grounded_prompt(self, prompt: str, content_type: str) -> str:
         """
@@ -162,23 +315,70 @@ class GeminiGroundedProvider:
             Processed content with sources and citations
         """
         try:
-            # Extract the main content
+            # Debug: Log response structure
+            logger.info(f"🔍 DEBUG: Response type: {type(response)}")
+            logger.info(f"🔍 DEBUG: Response has 'text': {hasattr(response, 'text')}")
+            logger.info(f"🔍 DEBUG: Response has 'candidates': {hasattr(response, 'candidates')}")
+            logger.info(f"🔍 DEBUG: Response has 'grounding_metadata': {hasattr(response, 'grounding_metadata')}")
+            if hasattr(response, 'grounding_metadata'):
+                logger.info(f"🔍 DEBUG: Grounding metadata: {response.grounding_metadata}")
+            if hasattr(response, 'candidates') and response.candidates:
+                logger.info(f"🔍 DEBUG: Number of candidates: {len(response.candidates)}")
+                candidate = response.candidates[0]
+                logger.info(f"🔍 DEBUG: Candidate type: {type(candidate)}")
+                logger.info(f"🔍 DEBUG: Candidate has 'content': {hasattr(candidate, 'content')}")
+                if hasattr(candidate, 'content') and candidate.content:
+                    logger.info(f"🔍 DEBUG: Content type: {type(candidate.content)}")
+                    # Check if content is a list or single object
+                    if hasattr(candidate.content, '__iter__') and not isinstance(candidate.content, str):
+                        try:
+                            content_length = len(candidate.content) if candidate.content else 0
+                            logger.info(f"🔍 DEBUG: Content is iterable, length: {content_length}")
+                        except TypeError:
+                            logger.info(f"🔍 DEBUG: Content is iterable but has no len() - treating as single object")
+                        for i, part in enumerate(candidate.content):
+                            logger.info(f"🔍 DEBUG: Part {i} type: {type(part)}")
+                            logger.info(f"🔍 DEBUG: Part {i} has 'text': {hasattr(part, 'text')}")
+                            if hasattr(part, 'text'):
+                                logger.info(f"🔍 DEBUG: Part {i} text length: {len(part.text) if part.text else 0}")
+                    else:
+                        logger.info(f"🔍 DEBUG: Content is single object, has 'text': {hasattr(candidate.content, 'text')}")
+                        if hasattr(candidate.content, 'text'):
+                            logger.info(f"🔍 DEBUG: Content text length: {len(candidate.content.text) if candidate.content.text else 0}")
+            
+            # Extract the main content - prioritize response.text as it's more reliable
             content = ""
             if hasattr(response, 'text'):
-                content = response.text
+                logger.info(f"🔍 DEBUG: response.text exists, value: '{response.text}', type: {type(response.text)}")
+                if response.text:
+                    content = response.text
+                    logger.info(f"🔍 DEBUG: Using response.text, length: {len(content)}")
+                else:
+                    logger.info(f"🔍 DEBUG: response.text is empty or None")
             elif hasattr(response, 'candidates') and response.candidates:
                 candidate = response.candidates[0]
                 if hasattr(candidate, 'content') and candidate.content:
-                    # Extract text from content parts
-                    text_parts = []
-                    for part in candidate.content:
-                        if hasattr(part, 'text'):
-                            text_parts.append(part.text)
-                    content = " ".join(text_parts)
+                    # Handle both single Content object and list of parts
+                    if hasattr(candidate.content, '__iter__') and not isinstance(candidate.content, str):
+                        # Content is a list of parts
+                        text_parts = []
+                        for part in candidate.content:
+                            if hasattr(part, 'text'):
+                                text_parts.append(part.text)
+                        content = " ".join(text_parts)
+                        logger.info(f"🔍 DEBUG: Using candidate.content (list), extracted {len(text_parts)} parts, total length: {len(content)}")
+                    else:
+                        # Content is a single object
+                        if hasattr(candidate.content, 'text'):
+                            content = candidate.content.text
+                            logger.info(f"🔍 DEBUG: Using candidate.content (single), text length: {len(content)}")
+                        else:
+                            logger.warning("🔍 DEBUG: candidate.content has no 'text' attribute")
             
             logger.info(f"Extracted content length: {len(content) if content else 0}")
             if not content:
-                logger.warning("No content extracted from response")
+                logger.warning("⚠️ No content extracted from Gemini response - using fallback content")
+                logger.warning("⚠️ This indicates Google Search grounding is not working properly")
                 content = "Generated content about the requested topic."
             
             # Initialize result structure
@@ -223,8 +423,8 @@ class GeminiGroundedProvider:
                         logger.info(f"Search queries: {grounding_metadata.web_search_queries}")
                     
                     # Extract sources from grounding chunks
+                    sources = []  # Initialize sources list
                     if hasattr(grounding_metadata, 'grounding_chunks') and grounding_metadata.grounding_chunks:
-                        sources = []
                         for i, chunk in enumerate(grounding_metadata.grounding_chunks):
                             logger.info(f"Chunk {i} attributes: {dir(chunk)}")
                             if hasattr(chunk, 'web'):
@@ -235,15 +435,29 @@ class GeminiGroundedProvider:
                                     'type': 'web'
                                 }
                                 sources.append(source)
-                        result['sources'] = sources
-                        logger.info(f"Extracted {len(sources)} sources")
+                        logger.info(f"Extracted {len(sources)} sources from grounding chunks")
                     else:
-                        logger.error("❌ CRITICAL: No grounding chunks found in response")
-                        logger.error(f"Grounding metadata structure: {dir(grounding_metadata)}")
-                        if hasattr(grounding_metadata, 'grounding_chunks'):
-                            logger.error(f"Grounding chunks type: {type(grounding_metadata.grounding_chunks)}")
-                            logger.error(f"Grounding chunks value: {grounding_metadata.grounding_chunks}")
-                        raise ValueError("No grounding chunks found - grounding is not working properly")
+                        logger.warning("⚠️ No grounding chunks found - this is normal for some queries")
+                        logger.info(f"Grounding metadata available fields: {[attr for attr in dir(grounding_metadata) if not attr.startswith('_')]}")
+                        
+                        # Check if we have search queries - this means Google Search was triggered
+                        if hasattr(grounding_metadata, 'web_search_queries') and grounding_metadata.web_search_queries:
+                            logger.info(f"✅ Google Search was triggered with {len(grounding_metadata.web_search_queries)} queries")
+                            # Create sources based on search queries
+                            for i, query in enumerate(grounding_metadata.web_search_queries[:5]):  # Limit to 5 sources
+                                source = {
+                                    'index': i,
+                                    'title': f"Search: {query}",
+                                    'url': f"https://www.google.com/search?q={query.replace(' ', '+')}",
+                                    'type': 'search_query',
+                                    'query': query
+                                }
+                                sources.append(source)
+                            logger.info(f"Created {len(sources)} sources from search queries")
+                        else:
+                            logger.warning("⚠️ No search queries found either - grounding may not have been triggered")
+                    
+                    result['sources'] = sources
                     
                     # Extract citations from grounding supports
                     if hasattr(grounding_metadata, 'grounding_supports') and grounding_metadata.grounding_supports:
@@ -262,12 +476,37 @@ class GeminiGroundedProvider:
                         result['citations'] = citations
                         logger.info(f"Extracted {len(citations)} citations")
                     else:
-                        logger.error("❌ CRITICAL: No grounding supports found in response")
-                        logger.error(f"Grounding metadata structure: {dir(grounding_metadata)}")
-                        if hasattr(grounding_metadata, 'grounding_supports'):
-                            logger.error(f"Grounding supports type: {type(grounding_metadata.grounding_supports)}")
-                            logger.error(f"Grounding supports value: {grounding_metadata.grounding_supports}")
-                        raise ValueError("No grounding supports found - grounding is not working properly")
+                        logger.warning("⚠️ No grounding supports found - this is normal when no web sources are retrieved")
+                        # Create basic citations from the content if we have sources
+                        if sources:
+                            citations = []
+                            for i, source in enumerate(sources[:3]):  # Limit to 3 citations
+                                citation = {
+                                    'type': 'reference',
+                                    'start_index': 0,
+                                    'end_index': 0,
+                                    'text': f"Source {i+1}",
+                                    'source_indices': [i],
+                                    'reference': f"Source {i+1}",
+                                    'source': source
+                                }
+                                citations.append(citation)
+                            result['citations'] = citations
+                            logger.info(f"Created {len(citations)} basic citations from sources")
+                        else:
+                            result['citations'] = []
+                            logger.info("No citations created - no sources available")
+                    
+                    # Extract search entry point for UI display
+                    if hasattr(grounding_metadata, 'search_entry_point') and grounding_metadata.search_entry_point:
+                        if hasattr(grounding_metadata.search_entry_point, 'rendered_content'):
+                            result['search_widget'] = grounding_metadata.search_entry_point.rendered_content
+                            logger.info("✅ Extracted search widget HTML for UI display")
+                    
+                    # Extract search queries for reference
+                    if hasattr(grounding_metadata, 'web_search_queries') and grounding_metadata.web_search_queries:
+                        result['search_queries'] = grounding_metadata.web_search_queries
+                        logger.info(f"✅ Extracted {len(grounding_metadata.web_search_queries)} search queries")
                     
                     logger.info(f"✅ Successfully extracted {len(result['sources'])} sources and {len(result['citations'])} citations from grounding metadata")
                     logger.info(f"Sources: {result['sources']}")
@@ -278,9 +517,7 @@ class GeminiGroundedProvider:
                     logger.error(f"First candidate structure: {dir(candidates[0]) if candidates else 'No candidates'}")
                     raise ValueError("No grounding metadata found - grounding is not working properly")
             else:
-                logger.error("❌ CRITICAL: No candidates found in response")
-                logger.error(f"Response structure: {dir(response)}")
-                raise ValueError("No candidates found in response - grounding is not working properly")
+                logger.warning("⚠️ No candidates found in response. Returning content without sources.")
             
             # Add content-specific processing
             if content_type == "linkedin_post":

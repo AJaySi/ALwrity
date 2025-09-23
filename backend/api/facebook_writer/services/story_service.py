@@ -29,8 +29,14 @@ class FacebookStoryService(FacebookWriterBaseService):
             actual_story_type = request.custom_story_type if request.story_type.value == "Custom" else request.story_type.value
             actual_tone = request.custom_tone if request.story_tone.value == "Custom" else request.story_tone.value
             
+            # Get persona data for enhanced content generation
+            # Beta testing: Force user_id=1 for all requests
+            user_id = 1
+            persona_data = self._get_persona_data(user_id)
+            
             # Build the prompt
-            prompt = self._build_story_prompt(request, actual_story_type, actual_tone)
+            base_prompt = self._build_story_prompt(request, actual_story_type, actual_tone)
+            prompt = self._build_persona_enhanced_prompt(base_prompt, persona_data)
             
             # Generate the story content
             content = self._generate_text(prompt, temperature=0.7, max_tokens=1024)

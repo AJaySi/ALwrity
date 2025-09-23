@@ -9,6 +9,8 @@ export { Header } from './Header';
 export { ContentEditor } from './ContentEditor';
 export { LoadingIndicator } from './LoadingIndicator';
 export { WelcomeMessage } from './WelcomeMessage';
+export { FeatureCarousel } from './FeatureCarousel';
+export { InfoModals } from './InfoModals';
 export { ProgressTracker } from './ProgressTracker';
 export { ContentRecommendations } from './ContentRecommendations';
 export { CopilotRecommendationsMessage } from './CopilotRecommendationsMessage';
@@ -21,3 +23,7 @@ export { default as ImageGenerationDemo } from './ImageGenerationDemo';
 export { default as ImageGenerationTest } from './ImageGenerationTest';
 
 // Persona Integration Components - Now integrated into main LinkedInWriter
+
+// Refactored Components
+export { default as BrainstormFlow } from './BrainstormFlow';
+export { default as CopilotActions } from './CopilotActions';

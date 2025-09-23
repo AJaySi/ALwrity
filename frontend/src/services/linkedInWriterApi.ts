@@ -1,4 +1,4 @@
-import { apiClient } from '../api/client';
+import { apiClient, aiApiClient } from '../api/client';
 
 // LinkedIn-specific enums
 export enum LinkedInPostType {
@@ -246,22 +246,22 @@ export const linkedInWriterApi = {
   },
 
   async generatePost(request: LinkedInPostRequest): Promise<LinkedInPostResponse> {
-    const { data } = await apiClient.post('/api/linkedin/generate-post', request);
+    const { data } = await aiApiClient.post('/api/linkedin/generate-post', request);
     return data;
   },
 
   async generateArticle(request: LinkedInArticleRequest): Promise<LinkedInArticleResponse> {
-    const { data } = await apiClient.post('/api/linkedin/generate-article', request);
+    const { data } = await aiApiClient.post('/api/linkedin/generate-article', request);
     return data;
   },
 
   async generateCarousel(request: LinkedInCarouselRequest): Promise<LinkedInCarouselResponse> {
-    const { data } = await apiClient.post('/api/linkedin/generate-carousel', request);
+    const { data } = await aiApiClient.post('/api/linkedin/generate-carousel', request);
     return data;
   },
 
   async generateVideoScript(request: LinkedInVideoScriptRequest): Promise<LinkedInVideoScriptResponse> {
-    const { data } = await apiClient.post('/api/linkedin/generate-video-script', request);
+    const { data } = await aiApiClient.post('/api/linkedin/generate-video-script', request);
     return data;
   },
 

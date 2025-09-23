@@ -18,16 +18,28 @@ from models.enhanced_strategy_models import Base as EnhancedStrategyBase
 # Monitoring models now use the same base as enhanced strategy models
 from models.monitoring_models import Base as MonitoringBase
 from models.persona_models import Base as PersonaBase
+from models.subscription_models import Base as SubscriptionBase
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')
 
-# Create engine
+# Create engine with safer pooling defaults and SQLite-friendly settings
+engine_kwargs = {
+    "echo": False,                 # Set to True for SQL debugging
+    "pool_pre_ping": True,        # Detect stale connections
+    "pool_recycle": 300,          # Recycle connections to avoid timeouts
+    "pool_size": int(os.getenv("DB_POOL_SIZE", "20")),
+    "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "40")),
+    "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
+}
+
+# SQLite needs special handling for multithreaded FastAPI
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
 engine = create_engine(
     DATABASE_URL,
-    echo=False,  # Set to True for SQL debugging
-    pool_pre_ping=True,
-    pool_recycle=300,
+    **engine_kwargs,
 )
 
 # Create session factory
@@ -59,7 +71,8 @@ def init_database():
         EnhancedStrategyBase.metadata.create_all(bind=engine)
         MonitoringBase.metadata.create_all(bind=engine)
         PersonaBase.metadata.create_all(bind=engine)
-        logger.info("Database initialized successfully with all models including personas")
+        SubscriptionBase.metadata.create_all(bind=engine)
+        logger.info("Database initialized successfully with all models including subscription system")
     except SQLAlchemyError as e:
         logger.error(f"Error initializing database: {str(e)}")
         raise

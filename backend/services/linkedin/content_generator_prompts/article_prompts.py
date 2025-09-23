@@ -4,14 +4,14 @@ LinkedIn Article Generation Prompts
 This module contains prompt templates and builders for generating LinkedIn articles.
 """
 
-from typing import Any
+from typing import Any, Optional, Dict
 
 
 class ArticlePromptBuilder:
     """Builder class for LinkedIn article generation prompts."""
     
     @staticmethod
-    def build_article_prompt(request: Any) -> str:
+    def build_article_prompt(request: Any, persona: Optional[Dict[str, Any]] = None) -> str:
         """
         Build prompt for article generation.
         
@@ -21,6 +21,27 @@ class ArticlePromptBuilder:
         Returns:
             Formatted prompt string for article generation
         """
+        persona_block = ""
+        if persona:
+            try:
+                core = persona.get('core_persona', persona)
+                platform_adaptation = persona.get('platform_adaptation', persona.get('platform_persona', {}))
+                linguistic = core.get('linguistic_fingerprint', {})
+                sentence_metrics = linguistic.get('sentence_metrics', {})
+                lexical_features = linguistic.get('lexical_features', {})
+                tonal_range = core.get('tonal_range', {})
+                persona_block = f"""
+        PERSONA CONTEXT:
+        - Persona Name: {core.get('persona_name', 'N/A')}
+        - Archetype: {core.get('archetype', 'N/A')}
+        - Core Belief: {core.get('core_belief', 'N/A')}
+        - Default Tone: {tonal_range.get('default_tone', request.tone)}
+        - Avg Sentence Length: {sentence_metrics.get('average_sentence_length_words', 18)} words
+        - Go-to Words: {', '.join(lexical_features.get('go_to_words', [])[:5])}
+        """.rstrip()
+            except Exception:
+                persona_block = ""
+
         prompt = f"""
         You are a senior content strategist and industry expert specializing in {request.industry}. Create a comprehensive, thought-provoking LinkedIn article that establishes authority, drives engagement, and provides genuine value to professionals in this field.
 
@@ -29,6 +50,8 @@ class ArticlePromptBuilder:
         TONE: {request.tone}
         TARGET AUDIENCE: {request.target_audience or 'Industry professionals, executives, and thought leaders'}
         WORD COUNT: {request.word_count} words
+
+        {persona_block}
 
         CONTENT STRUCTURE:
         - Compelling headline that promises specific value

@@ -389,43 +389,86 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
             config=generation_config,
         )
 
-        # Add debugging for response
-        logger.info("Gemini response | type=%s | has_text=%s | has_parsed=%s",
-                     type(response), hasattr(response, 'text'), hasattr(response, 'parsed'))
-        
-        if hasattr(response, 'text'):
-            logger.info(f"Gemini response.text: {repr(response.text)}")
+        # Check for parsed content first (primary method for structured output)
         if hasattr(response, 'parsed'):
-            logger.info(f"Gemini response.parsed: {repr(response.parsed)}")
-
-        # According to the documentation, we should use response.parsed for structured output
-        if hasattr(response, 'parsed') and response.parsed is not None:
-            logger.info("Using response.parsed for structured output")
-            return response.parsed
+            logger.info(f"Response has parsed attribute: {response.parsed is not None}")
+            if response.parsed is not None:
+                logger.info("Using response.parsed for structured output")
+                return response.parsed
+            else:
+                logger.warning("Response.parsed is None, falling back to text parsing")
+                # Debug: Check if there's any text content
+                if hasattr(response, 'text') and response.text:
+                    logger.info(f"Text response length: {len(response.text)}")
+                    logger.debug(f"Text response preview: {response.text[:200]}...")
         
-        # Fallback to text if parsed is not available
+        # Check for text content as fallback (only if no parsed content)
         if hasattr(response, 'text') and response.text:
-            logger.info("Falling back to response.text parsing")
-            text = response.text.strip()
-            
-            # Strip markdown code fences if present
-            if text.startswith('```'):
-                if text.lower().startswith('```json'):
-                    text = text[7:]
-                else:
-                    text = text[3:]
-                if text.endswith('```'):
-                    text = text[:-3]
-                text = text.strip()
-            
+            logger.info("No parsed content, trying to parse text response")
             try:
-                return json.loads(text)
+                import json
+                import re
+                
+                # Clean the text response to fix common JSON issues
+                cleaned_text = response.text.strip()
+                
+                # Remove any markdown code blocks if present
+                if cleaned_text.startswith('```json'):
+                    cleaned_text = cleaned_text[7:]
+                if cleaned_text.endswith('```'):
+                    cleaned_text = cleaned_text[:-3]
+                cleaned_text = cleaned_text.strip()
+                
+                # Try to find JSON content between curly braces
+                json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
+                if json_match:
+                    cleaned_text = json_match.group(0)
+                
+                parsed_text = json.loads(cleaned_text)
+                logger.info("Successfully parsed text as JSON")
+                return parsed_text
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse response.text as JSON: {e}")
-                return {"error": f"Failed to parse JSON response: {e}", "raw_response": text[:500]}
+                logger.error(f"Failed to parse text as JSON: {e}")
+                logger.debug(f"Problematic text (first 500 chars): {response.text[:500]}")
+                
+                # Try to extract and fix JSON manually
+                try:
+                    import re
+                    # Look for the main JSON object
+                    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+                    matches = re.findall(json_pattern, response.text, re.DOTALL)
+                    if matches:
+                        # Try the largest match (likely the main JSON)
+                        largest_match = max(matches, key=len)
+                        # Basic cleanup of common issues
+                        fixed_json = largest_match.replace('\n', ' ').replace('\r', ' ')
+                        # Remove any trailing commas before closing braces
+                        fixed_json = re.sub(r',\s*}', '}', fixed_json)
+                        fixed_json = re.sub(r',\s*]', ']', fixed_json)
+                        
+                        parsed_text = json.loads(fixed_json)
+                        logger.info("Successfully parsed cleaned JSON")
+                        return parsed_text
+                except Exception as fix_error:
+                    logger.error(f"Failed to fix JSON manually: {fix_error}")
         
-        logger.error("No valid response content found")
-        return {"error": "No valid response content found", "raw_response": ""}
+        # Check candidates for content (fallback for edge cases)
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'content') and candidate.content:
+                if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            try:
+                                import json
+                                parsed_text = json.loads(part.text)
+                                logger.info("Successfully parsed candidate text as JSON")
+                                return parsed_text
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Failed to parse candidate text as JSON: {e}")
+        
+        logger.error("No valid structured response content found")
+        return {"error": "No valid structured response content found"}
 
     except ValueError as e:
         # API key related errors
@@ -436,7 +479,8 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
         return {"error": str(e)}
 
 
-def _repair_json_string(text: str) -> Optional[str]:
+# Removed JSON repair functions to avoid false positives
+def _removed_repair_json_string(text: str) -> Optional[str]:
     """
     Attempt to repair common JSON issues in AI responses.
     """
@@ -485,13 +529,21 @@ def _repair_json_string(text: str) -> Optional[str]:
         fixed_lines.append(line)
     repaired = '\n'.join(fixed_lines)
     
-    # 3. Fix unescaped quotes in string values
-    # This is complex - we'll use a simple approach
+    # 3. Fix unterminated strings (common issue with AI responses)
     try:
-        # Try to balance quotes by adding missing ones
+        # Handle unterminated strings by finding the last incomplete string and closing it
         lines = repaired.split('\n')
         fixed_lines = []
-        for line in lines:
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            # Check for unterminated strings (line ends with quote but no closing quote)
+            if stripped.endswith('"') and i < len(lines) - 1:
+                next_line = lines[i + 1].strip()
+                # If next line doesn't start with quote or closing bracket, we might have an unterminated string
+                if not next_line.startswith('"') and not next_line.startswith(']') and not next_line.startswith('}'):
+                    # Check if this looks like an unterminated string value
+                    if ':' in line and not line.strip().endswith('",'):
+                        line = line + '",'
             # Count quotes in the line
             quote_count = line.count('"')
             if quote_count % 2 == 1:  # Odd number of quotes
@@ -514,7 +566,8 @@ def _repair_json_string(text: str) -> Optional[str]:
     return repaired
 
 
-def _extract_partial_json(text: str) -> Optional[Dict[str, Any]]:
+# Removed partial JSON extraction to avoid false positives
+def _removed_extract_partial_json(text: str) -> Optional[Dict[str, Any]]:
     """
     Extract partial JSON from truncated responses.
     Attempts to salvage as much data as possible from incomplete JSON.
@@ -568,26 +621,77 @@ def _extract_partial_json(text: str) -> Optional[Dict[str, Any]]:
             # Try to extract individual fields as a last resort
             fields = {}
             
-            # Extract key-value pairs using regex
-            kv_pattern = r'"([^"]+)"\s*:\s*"([^"]*)"'
-            matches = re.findall(kv_pattern, json_text)
-            for key, value in matches:
-                fields[key] = value
+            # Extract key-value pairs using regex (more comprehensive patterns)
+            kv_patterns = [
+                r'"([^"]+)"\s*:\s*"([^"]*)"',  # "key": "value"
+                r'"([^"]+)"\s*:\s*(\d+)',      # "key": 123
+                r'"([^"]+)"\s*:\s*(true|false)', # "key": true/false
+                r'"([^"]+)"\s*:\s*null',       # "key": null
+            ]
             
-            # Extract array fields
+            for pattern in kv_patterns:
+                matches = re.findall(pattern, json_text)
+                for key, value in matches:
+                    if value == 'true':
+                        fields[key] = True
+                    elif value == 'false':
+                        fields[key] = False
+                    elif value == 'null':
+                        fields[key] = None
+                    elif value.isdigit():
+                        fields[key] = int(value)
+                    else:
+                        fields[key] = value
+            
+            # Extract array fields (more robust)
             array_pattern = r'"([^"]+)"\s*:\s*\[([^\]]*)\]'
             array_matches = re.findall(array_pattern, json_text)
             for key, array_content in array_matches:
-                # Parse array items
+                # Parse array items more comprehensively
                 items = []
-                item_pattern = r'"([^"]*)"'
-                item_matches = re.findall(item_pattern, array_content)
-                items.extend(item_matches)
-                fields[key] = items
+                # Look for quoted strings, numbers, booleans, null
+                item_patterns = [
+                    r'"([^"]*)"',  # quoted strings
+                    r'(\d+)',      # numbers
+                    r'(true|false)', # booleans
+                    r'(null)',     # null
+                ]
+                for pattern in item_patterns:
+                    item_matches = re.findall(pattern, array_content)
+                    for match in item_matches:
+                        if match == 'true':
+                            items.append(True)
+                        elif match == 'false':
+                            items.append(False)
+                        elif match == 'null':
+                            items.append(None)
+                        elif match.isdigit():
+                            items.append(int(match))
+                        else:
+                            items.append(match)
+                if items:
+                    fields[key] = items
+            
+            # Extract nested object fields (basic)
+            object_pattern = r'"([^"]+)"\s*:\s*\{([^}]*)\}'
+            object_matches = re.findall(object_pattern, json_text)
+            for key, object_content in object_matches:
+                # Simple nested object extraction
+                nested_fields = {}
+                nested_kv_matches = re.findall(r'"([^"]+)"\s*:\s*"([^"]*)"', object_content)
+                for nested_key, nested_value in nested_kv_matches:
+                    nested_fields[nested_key] = nested_value
+                if nested_fields:
+                    fields[key] = nested_fields
             
             if fields:
-                logger.info(f"Extracted {len(fields)} fields from truncated JSON")
-                return fields
+                logger.info(f"Extracted {len(fields)} fields from truncated JSON: {list(fields.keys())}")
+                # Only return if we have a valid outline structure
+                if 'outline' in fields and isinstance(fields['outline'], list):
+                    return {'outline': fields['outline']}
+                else:
+                    logger.error("No valid 'outline' field found in partial JSON")
+                    return None
             
             return None
             
@@ -596,7 +700,8 @@ def _extract_partial_json(text: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _extract_key_value_pairs(text: str) -> Optional[Dict[str, Any]]:
+# Removed key-value extraction to avoid false positives
+def _removed_extract_key_value_pairs(text: str) -> Optional[Dict[str, Any]]:
     """
     Extract key-value pairs from malformed JSON text as a last resort.
     """

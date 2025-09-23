@@ -15,7 +15,12 @@ class FacebookReelService(FacebookWriterBaseService):
             actual_reel_type = request.custom_reel_type if request.reel_type.value == "Custom" else request.reel_type.value
             actual_style = request.custom_style if request.reel_style.value == "Custom" else request.reel_style.value
             
-            prompt = f"""
+            # Get persona data for enhanced content generation
+            # Beta testing: Force user_id=1 for all requests
+            user_id = 1
+            persona_data = self._get_persona_data(user_id)
+            
+            base_prompt = f"""
             Create a Facebook Reel script for:
             Business: {request.business_type}
             Audience: {request.target_audience}
@@ -30,6 +35,7 @@ class FacebookReelService(FacebookWriterBaseService):
             Create an engaging reel script with scene breakdown, timing, and music suggestions.
             """
             
+            prompt = self._build_persona_enhanced_prompt(base_prompt, persona_data)
             content = self._generate_text(prompt, temperature=0.7, max_tokens=1024)
             
             return FacebookReelResponse(

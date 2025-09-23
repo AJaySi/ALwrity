@@ -13,12 +13,6 @@ export function formatDraftContent(content: string, citations?: any[], researchS
   
   // Insert inline citations if available
   if (citations && citations.length > 0 && researchSources && researchSources.length > 0) {
-    console.log('🔍 [formatDraftContent] Processing citations:', {
-      citationsCount: citations.length,
-      researchSourcesCount: researchSources.length,
-      citations: citations,
-      contentLength: content.length
-    });
 
     // Create a map of citation references to source numbers
     const citationMap = new Map();
@@ -28,8 +22,6 @@ export function formatDraftContent(content: string, citations?: any[], researchS
         citationMap.set(citation.reference, sourceNum);
       }
     });
-    
-    console.log('🔍 [formatDraftContent] Citation map created:', citationMap);
 
     // Since citation references don't exist in the content text,
     // we need to insert citations strategically throughout the content
@@ -51,26 +43,13 @@ export function formatDraftContent(content: string, citations?: any[], researchS
         const sentenceWithCitation = targetSentence.trim() + citeHtml;
         sentencesWithCitations[targetSentenceIndex] = sentenceWithCitation;
         
-        console.log(`✅ [formatDraftContent] Added citation [${sourceNum}] to sentence ${targetSentenceIndex + 1}`);
       });
       
       // Reconstruct content with citations
       formatted = sentences.map((sentence, index) => {
         return sentencesWithCitations[index] || sentence;
       }).join('. ') + '.';
-      
-      console.log(`✅ [formatDraftContent] Inserted ${totalCitations} citations strategically throughout content`);
-      
-      // Debug: Show sample of content with citations
-      const sampleContent = formatted.substring(0, 500) + (formatted.length > 500 ? '...' : '');
-      console.log('🔍 [formatDraftContent] Sample content with citations:', sampleContent);
-      
-      // Debug: Count citation markers in final content
-      const citationMarkers = (formatted.match(/\[\d+\]/g) || []).length;
-      console.log(`🔍 [formatDraftContent] Found ${citationMarkers} citation markers in final content`);
     }
-    
-    console.log('🔍 [formatDraftContent] Final formatted content length:', formatted.length);
   }
   
   // Format hashtags

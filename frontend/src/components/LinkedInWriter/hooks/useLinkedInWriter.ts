@@ -156,10 +156,12 @@ export function useLinkedInWriter() {
     };
 
     const handleProgressComplete = () => {
+      console.log('[LinkedIn Writer] Progress completed - hiding progress tracker');
       setProgressSteps(prev => prev.map(s => s.status === 'completed' ? s : { ...s, status: 'completed', timestamp: new Date().toISOString() }));
       setProgressActive(false);
       // Keep progress visible for a moment to show completion, then hide
       setTimeout(() => {
+        console.log('[LinkedIn Writer] Hiding progress steps after delay');
         setProgressSteps([]);
       }, 1500);
     };
@@ -234,6 +236,9 @@ export function useLinkedInWriter() {
   // Handle draft updates from CopilotKit actions
   useEffect(() => {
     const handleUpdateDraft = (event: CustomEvent) => {
+      console.log('[LinkedIn Writer] Draft updated:', event.detail?.substring(0, 100) + '...');
+      console.log('[LinkedIn Writer] Draft length:', event.detail?.length);
+      console.log('[LinkedIn Writer] Setting draft and clearing loading state...');
       setDraft(event.detail);
       setIsGenerating(false);
       setLoadingMessage('');
@@ -243,6 +248,7 @@ export function useLinkedInWriter() {
       // Hide progress tracker when content is generated
       setProgressActive(false);
       setProgressSteps([]);
+      console.log('[LinkedIn Writer] Draft update complete');
     };
 
     const handleAppendDraft = (event: CustomEvent) => {
@@ -255,15 +261,18 @@ export function useLinkedInWriter() {
 
     const handleLoadingStart = (event: CustomEvent) => {
       const { action, message } = event.detail;
+      console.log('[LinkedIn Writer] Loading started:', { action, message });
       setCurrentAction(action);
       setLoadingMessage(message);
       setIsGenerating(true);
     };
 
     const handleLoadingEnd = (event: CustomEvent) => {
+      console.log('[LinkedIn Writer] Loading ended - clearing all loading states');
       setIsGenerating(false);
       setLoadingMessage('');
       setCurrentAction(null);
+      console.log('[LinkedIn Writer] Loading state cleared');
     };
 
     const handleApplyEdit = (event: CustomEvent) => {

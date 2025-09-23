@@ -12,6 +12,7 @@ from services.llm_providers.gemini_provider import gemini_structured_json_respon
 from .data_collector import OnboardingDataCollector
 from .prompt_builder import PersonaPromptBuilder
 from services.persona.linkedin.linkedin_persona_service import LinkedInPersonaService
+from services.persona.facebook.facebook_persona_service import FacebookPersonaService
 
 
 class CorePersonaService:
@@ -22,6 +23,7 @@ class CorePersonaService:
         self.data_collector = OnboardingDataCollector()
         self.prompt_builder = PersonaPromptBuilder()
         self.linkedin_service = LinkedInPersonaService()
+        self.facebook_service = FacebookPersonaService()
         logger.info("CorePersonaService initialized")
     
     def generate_core_persona(self, onboarding_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -78,6 +80,10 @@ class CorePersonaService:
         # Use LinkedIn service for LinkedIn platform
         if platform.lower() == "linkedin":
             return self.linkedin_service.generate_linkedin_persona(core_persona, onboarding_data)
+        
+        # Use Facebook service for Facebook platform
+        if platform.lower() == "facebook":
+            return self.facebook_service.generate_facebook_persona(core_persona, onboarding_data)
         
         # Use generic platform adaptation for other platforms
         platform_constraints = self._get_platform_constraints(platform)

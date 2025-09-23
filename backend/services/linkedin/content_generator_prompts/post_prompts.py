@@ -4,14 +4,14 @@ LinkedIn Post Generation Prompts
 This module contains prompt templates and builders for generating LinkedIn posts.
 """
 
-from typing import Any
+from typing import Any, Optional, Dict
 
 
 class PostPromptBuilder:
     """Builder class for LinkedIn post generation prompts."""
     
     @staticmethod
-    def build_post_prompt(request: Any) -> str:
+    def build_post_prompt(request: Any, persona: Optional[Dict[str, Any]] = None) -> str:
         """
         Build prompt for post generation.
         
@@ -21,6 +21,33 @@ class PostPromptBuilder:
         Returns:
             Formatted prompt string for post generation
         """
+        persona_block = ""
+        if persona:
+            try:
+                # Expecting structure similar to persona_service.get_persona_for_platform output
+                core = persona.get('core_persona', persona)
+                platform_adaptation = persona.get('platform_adaptation', persona.get('platform_persona', {}))
+                linguistic = core.get('linguistic_fingerprint', {})
+                sentence_metrics = linguistic.get('sentence_metrics', {})
+                lexical_features = linguistic.get('lexical_features', {})
+                rhetorical_devices = linguistic.get('rhetorical_devices', {})
+                tonal_range = core.get('tonal_range', {})
+
+                persona_block = f"""
+        PERSONA CONTEXT:
+        - Persona Name: {core.get('persona_name', 'N/A')}
+        - Archetype: {core.get('archetype', 'N/A')}
+        - Core Belief: {core.get('core_belief', 'N/A')}
+        - Tone: {tonal_range.get('default_tone', request.tone)}
+        - Sentence Length (avg): {sentence_metrics.get('average_sentence_length_words', 15)} words
+        - Preferred Sentence Type: {sentence_metrics.get('preferred_sentence_type', 'simple and compound')}
+        - Go-to Words: {', '.join(lexical_features.get('go_to_words', [])[:5])}
+        - Avoid Words: {', '.join(lexical_features.get('avoid_words', [])[:5])}
+        - Rhetorical Style: {rhetorical_devices.get('summary','balanced rhetorical questions and examples')}
+        """.rstrip()
+            except Exception:
+                persona_block = ""
+
         prompt = f"""
         You are an expert LinkedIn content strategist with 10+ years of experience in the {request.industry} industry. Create a highly engaging, professional LinkedIn post that drives meaningful engagement and establishes thought leadership.
 
@@ -29,6 +56,8 @@ class PostPromptBuilder:
         TONE: {request.tone}
         TARGET AUDIENCE: {request.target_audience or 'Industry professionals, decision-makers, and thought leaders'}
         MAX LENGTH: {request.max_length} characters
+
+        {persona_block}
 
         CONTENT REQUIREMENTS:
         - Start with a compelling hook that addresses a pain point or opportunity
