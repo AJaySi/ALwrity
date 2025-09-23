@@ -11,11 +11,17 @@ __pycache__/
 *.pyo
 *.pyd
 
+.gitignore
+.pytest*
+
 # Cache files
 .cache/
 */cache/
 **/cache/
 *.cache
+
+venv_new
+venv
 
 # Environment files
 .env
