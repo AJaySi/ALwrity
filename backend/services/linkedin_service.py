@@ -37,12 +37,8 @@ class LinkedInService:
     
     def __init__(self):
         """Initialize the LinkedIn service with all required components."""
-        try:
-            self.google_search = GoogleSearchService()
-            logger.info("✅ Google Search Service initialized")
-        except Exception as e:
-            logger.warning(f"⚠️ Google Search Service not available: {e}")
-            self.google_search = None
+        # Google Search Service not used - removed to avoid false warnings
+        self.google_search = None
             
         try:
             self.gemini_grounded = GeminiGroundedProvider()
