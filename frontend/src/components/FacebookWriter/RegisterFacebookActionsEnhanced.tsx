@@ -99,6 +99,7 @@ const RegisterFacebookActionsEnhanced: React.FC = () => {
         return {
           success: true,
           content: enhancedContent,
+          message: 'Facebook post generated with persona optimization and copied to draft successfully',
           persona_applied: {
             persona_name: corePersona?.persona_name,
             archetype: corePersona?.archetype,

@@ -32,7 +32,17 @@ export const facebookWriterApi = {
     return data;
   },
   async hashtagsGenerate(payload: { content_topic?: string; draft?: string }): Promise<any> {
-    const { data } = await apiClient.post('/api/facebook-writer/hashtags/generate', payload);
+    // Transform the simple payload to match backend requirements
+    const fullPayload = {
+      business_type: "General Business",
+      industry: "Technology",
+      target_audience: "General audience",
+      purpose: "Engagement", // Use the correct enum value
+      content_topic: payload.content_topic || "general content",
+      hashtag_count: 10,
+      include_categories: []
+    };
+    const { data } = await apiClient.post('/api/facebook-writer/hashtags/generate', fullPayload);
     return data;
   },
   async storyGenerate(payload: {
@@ -188,7 +198,74 @@ export const facebookWriterApi = {
   }): Promise<any> {
     const { data } = await apiClient.post('/api/facebook-writer/page-about/generate', payload);
     return data;
+  },
+  
+  // Image-enhanced generation methods
+  async storyGenerateWithImages(payload: any): Promise<any> {
+    const { data } = await apiClient.post('/api/facebook-writer/story/generate-with-images', payload);
+    return data;
+  },
+  
+  async reelGenerateWithImages(payload: any): Promise<any> {
+    const { data } = await apiClient.post('/api/facebook-writer/reel/generate-with-images', payload);
+    return data;
+  },
+  
+  async carouselGenerateWithImages(payload: any): Promise<any> {
+    const { data } = await apiClient.post('/api/facebook-writer/carousel/generate-with-images', payload);
+    return data;
+  },
+  
+  // Gemini image generation for Facebook Story
+  async generateStoryImage(payload: any): Promise<any> {
+    const { data } = await apiClient.post('/api/facebook-writer/story/generate-image', payload);
+    return data;
+  },
+
+  // Direct Imagen image generation with prompt
+  async generateImagenImages(payload: { prompt: string; number_of_images?: number; aspect_ratio?: string }): Promise<any> {
+    const { data } = await apiClient.post('/api/facebook-writer/images/imagen', payload);
+    return data;
+  },
+
+  // LinkedIn-style simple image generation endpoint for Facebook
+  async generateFacebookImage(payload: { prompt: string; content_context?: any; aspect_ratio?: string }): Promise<any> {
+    const { data } = await apiClient.post('/api/facebook-writer/generate-image', payload);
+    return data;
+  },
+
+  // New Facebook image generation endpoint (LinkedIn-style)
+  async generateFacebookImageNew(payload: { prompt: string; content_context?: any; aspect_ratio?: string }): Promise<any> {
+    const { data } = await apiClient.post('/api/facebook/generate-image', payload);
+    return data;
+  },
+
+  // Facebook Social Integration APIs
+  async getFacebookConnectionStatus(): Promise<any> {
+    // Using test endpoint for now since we don't have Clerk authentication set up
+    const { data } = await apiClient.get('/api/social/facebook/connection-status-test');
+    return data;
+  },
+
+  async startFacebookOAuth(): Promise<string> {
+    // This will redirect, so we return the URL to open in new window
+    // Using test endpoint for now since we don't have Clerk authentication set up
+    return `${apiClient.defaults.baseURL}/api/social/facebook/oauth/start-test`;
+  },
+
+  async getFacebookPages(): Promise<any> {
+    // Using test endpoint for now since we don't have Clerk authentication set up
+    const { data } = await apiClient.get('/api/social/facebook/pages-test');
+    return data;
+  },
+
+  async publishFacebookPost(payload: { page_id: string; message: string; link?: string }): Promise<any> {
+    const { data } = await apiClient.post('/api/social/facebook/publish', payload);
+    return data;
+  },
+
+  async disconnectFacebook(): Promise<any> {
+    const { data } = await apiClient.post('/api/social/facebook/disconnect');
+    return data;
   }
 };
-
-

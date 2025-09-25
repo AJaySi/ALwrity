@@ -23,6 +23,7 @@ except ImportError:
 
 
 from .save_image import save_generated_image
+from .alternative_image_generators import AlternativeImageGenerator
 
 # Configure logging
 logging.basicConfig(
@@ -250,34 +251,38 @@ def _generate_imagen_images_base64(prompt: str, aspect_ratio: str = "1:1") -> Li
         logger.info(f"Using aspect ratio: {imagen_aspect_ratio}")
         logger.info(f"Using model: {IMAGEN_FALLBACK_CONFIG['preferred_model']}")
         
-        # Generate images using configured Imagen model
-        # Note: sample_image_size is not supported in current library version
-        config_params = {
-            'number_of_images': IMAGEN_FALLBACK_CONFIG['max_images'],
-            'aspect_ratio': imagen_aspect_ratio,
-        }
-        
-        # Add additional configuration options if needed
-        # config_params['guidance_scale'] = 7.5  # Optional: control image generation quality
-        # config_params['person_generation'] = 'allow_adult'  # Optional: control person generation
-        
+        # Generate images using the free Imagen API approach
         response = client.models.generate_images(
-            model=IMAGEN_FALLBACK_CONFIG['preferred_model'],
+            model="models/imagen-4.0-generate-001",
             prompt=imagen_prompt,
-            config=types.GenerateImagesConfig(**config_params)
+            config=dict(
+                number_of_images=IMAGEN_FALLBACK_CONFIG['max_images'],
+                output_mime_type="image/jpeg",
+                aspect_ratio=imagen_aspect_ratio,
+                image_size="1K",
+            )
         )
         
-        # Extract base64 images from response
+        # Extract base64 images from response using the new approach
         images_b64: List[str] = []
         for generated_image in response.generated_images:
-            if hasattr(generated_image, 'image') and hasattr(generated_image.image, 'image_bytes'):
-                # Convert image bytes to base64
-                image_bytes = generated_image.image.image_bytes
-                if isinstance(image_bytes, bytes):
-                    images_b64.append(base64.b64encode(image_bytes).decode('utf-8'))
-                else:
-                    # If already base64 string
-                    images_b64.append(str(image_bytes))
+            if hasattr(generated_image, 'image'):
+                # Get image data directly from the generated_image.image object
+                if hasattr(generated_image.image, 'image_bytes'):
+                    # Convert image bytes to base64
+                    image_bytes = generated_image.image.image_bytes
+                    if isinstance(image_bytes, bytes):
+                        images_b64.append(base64.b64encode(image_bytes).decode('utf-8'))
+                    else:
+                        # If already base64 string
+                        images_b64.append(str(image_bytes))
+                elif hasattr(generated_image.image, 'data'):
+                    # Alternative: if image data is in 'data' attribute
+                    image_data = generated_image.image.data
+                    if isinstance(image_data, bytes):
+                        images_b64.append(base64.b64encode(image_data).decode('utf-8'))
+                    else:
+                        images_b64.append(str(image_data))
         
         if images_b64:
             logger.info(f"✅ Imagen fallback successful! Generated {len(images_b64)} images")
@@ -338,7 +343,7 @@ def generate_gemini_images_base64(
     """
     Return list of base64 PNG images generated from a prompt.
     
-    Primary method: Gemini API for image generation
+    Primary method: Gemini 2.5 Flash Image Preview model
     Fallback method: Imagen API when Gemini fails (quota limits, API errors, etc.)
 
     Implements best practices per Gemini docs: send text prompt, parse inline image parts,
@@ -349,7 +354,7 @@ def generate_gemini_images_base64(
     - Imagen: https://ai.google.dev/gemini-api/docs/imagen
     """
     logger = logging.getLogger('gemini_image_generator')
-    logger.info("Generating image (base64) with Gemini (with Imagen fallback)")
+    logger.info("Generating image (base64) with Gemini 2.5 Flash Image Preview (with Imagen fallback)")
 
     if enhance_prompt and keywords:
         pg = AIPromptGenerator()
@@ -377,8 +382,9 @@ def generate_gemini_images_base64(
     delay = initial_retry_delay
     while retry <= max_retries:
         try:
+            # Use the new Gemini 2.5 Flash Image Preview model
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp-image-generation",
+                model="gemini-2.5-flash-image-preview",
                 contents=[prompt],
             )
             
@@ -395,24 +401,35 @@ def generate_gemini_images_base64(
                         images_b64.append(str(raw))
             
             if images_b64:
-                logger.info(f"✅ Gemini generated {len(images_b64)} images successfully")
+                logger.info(f"✅ Gemini 2.5 Flash Image Preview generated {len(images_b64)} images successfully")
                 return images_b64
             else:
-                logger.warning("Gemini returned no images, falling back to Imagen")
+                logger.warning("Gemini 2.5 Flash Image Preview returned no images, falling back to Imagen")
                 if enable_imagen_fallback and IMAGEN_FALLBACK_CONFIG['enabled']:
                     return _generate_imagen_images_base64(prompt, aspect_ratio)
                 return []
                 
         except Exception as e:
             msg = str(e)
-            logger.warning(f"Gemini image gen error: {msg}")
+            logger.warning(f"Gemini 2.5 Flash Image Preview error: {msg}")
             
             # Check if this is a quota/API error that warrants fallback
             if any(error_type in msg.lower() for error_type in [
                 'quota', 'resource_exhausted', 'rate_limit', 'billing', 'api_key', '403', '429'
             ]):
-                logger.info("Gemini quota/API error detected, falling back to Imagen")
+                logger.info("Gemini quota/API error detected, trying alternative generators")
+                try:
+                    alternative_generator = AlternativeImageGenerator()
+                    alternative_images = alternative_generator.generate_images(prompt, aspect_ratio=aspect_ratio, n=1)
+                    if alternative_images:
+                        logger.info(f"✅ Alternative generator produced {len(alternative_images)} images")
+                        return alternative_images
+                except Exception as alt_e:
+                    logger.error(f"Alternative generators failed: {str(alt_e)}")
+                
+                # Fall back to Imagen if alternatives fail
                 if enable_imagen_fallback and IMAGEN_FALLBACK_CONFIG['enabled']:
+                    logger.info("Falling back to Imagen")
                     return _generate_imagen_images_base64(prompt, aspect_ratio)
                 return []
             
@@ -429,10 +446,22 @@ def generate_gemini_images_base64(
                 return _generate_imagen_images_base64(prompt, aspect_ratio)
             return []
     
-    # If all retries exhausted, fall back to Imagen
+    # If all retries exhausted, try alternative generators
+    logger.info("All Gemini retries exhausted, trying alternative image generators")
+    try:
+        alternative_generator = AlternativeImageGenerator()
+        alternative_images = alternative_generator.generate_images(prompt, aspect_ratio=aspect_ratio, n=1)
+        if alternative_images:
+            logger.info(f"✅ Alternative generator produced {len(alternative_images)} images")
+            return alternative_images
+    except Exception as e:
+        logger.error(f"Alternative generators failed: {str(e)}")
+    
+    # Final fallback to Imagen if enabled
     if enable_imagen_fallback and IMAGEN_FALLBACK_CONFIG['enabled']:
-        logger.info("All Gemini retries exhausted, falling back to Imagen")
+        logger.info("Falling back to Imagen as final option")
         return _generate_imagen_images_base64(prompt, aspect_ratio)
+    
     return []
 
 
@@ -491,6 +520,65 @@ def generate_gemini_image(
         return None
 
 
+def generate_gemini_image_edit(
+    text_prompt: str,
+    base_image: str,  # Base64 encoded image
+    max_retries: int = 3
+) -> Optional[str]:
+    """
+    Edit an existing image using Gemini 2.5 Flash Image Preview model.
+    
+    Args:
+        text_prompt: Text describing the edit to make
+        base_image: Base64 encoded image to edit
+        max_retries: Maximum number of retry attempts
+        
+    Returns:
+        Base64 encoded edited image or None if failed
+    """
+    logger = logging.getLogger('gemini_image_generator')
+    
+    client = _ensure_client()
+    if client is None:
+        logger.error("Gemini client not available or API key missing")
+        return None
+    
+    try:
+        # Decode base64 image
+        image_data = base64.b64decode(base_image)
+        image = Image.open(BytesIO(image_data))
+        
+        logger.info(f"Editing image with prompt: {text_prompt[:100]}...")
+        
+        # Generate content with text and image input
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-image-preview",
+            contents=[text_prompt, image],
+        )
+        
+        # Extract edited image data
+        image_parts = [
+            part.inline_data.data
+            for part in response.candidates[0].content.parts
+            if part.inline_data
+        ]
+        
+        if not image_parts:
+            logger.warning("No edited images generated in response")
+            return None
+        
+        # Convert to base64
+        edited_image_data = image_parts[0]
+        base64_edited_image = base64.b64encode(edited_image_data).decode('utf-8')
+        
+        logger.info("Successfully edited image")
+        return base64_edited_image
+            
+    except Exception as e:
+        logger.error(f"Error editing image with Gemini: {str(e)}")
+        return None
+
+
 def edit_image(image_path, prompt, max_retries=2, initial_retry_delay=1.0):
     """
     - Image editing (text and image to image)
@@ -529,11 +617,8 @@ def edit_image(image_path, prompt, max_retries=2, initial_retry_delay=1.0):
 
             logger.info("Sending request to Gemini API for image editing")
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp-image-generation",
+                model="gemini-2.5-flash-image-preview",
                 contents=[text_input, image],
-                config=types.GenerateContentConfig(
-                    response_modalities=['Text', 'Image']
-                )
             )
             logger.info("Received response from Gemini API for image editing")
 

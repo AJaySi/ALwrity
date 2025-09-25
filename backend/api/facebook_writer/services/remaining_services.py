@@ -1,13 +1,100 @@
 """Remaining Facebook Writer services - placeholder implementations."""
 
+import asyncio
 from typing import Dict, Any, List
 from ..models import *
 from ..models.carousel_models import CarouselSlide
 from .base_service import FacebookWriterBaseService
+from loguru import logger
+
+try:
+    from services.image_generation.persona_aware_image_service import (
+        PersonaAwareImageService, 
+        ImageGenerationRequest
+    )
+except Exception:
+    PersonaAwareImageService = None
+    ImageGenerationRequest = None
 
 
 class FacebookReelService(FacebookWriterBaseService):
-    """Service for generating Facebook reels."""
+    """Service for generating Facebook reels with persona-aware images."""
+    
+    def __init__(self):
+        super().__init__()
+        self.image_service = PersonaAwareImageService() if PersonaAwareImageService else None
+        logger.info("FacebookReelService initialized with image generation")
+    
+    async def generate_reel_with_images(self, request: FacebookReelRequest) -> FacebookReelResponse:
+        """Generate Facebook reel with persona-aware thumbnail images."""
+        try:
+            logger.info(f"Generating reel with images for {request.business_type}")
+            
+            # Generate reel script first
+            script_response = self.generate_reel(request)
+            if not script_response.success:
+                return script_response
+            
+            # Generate thumbnail images if service is available
+            if self.image_service:
+                thumbnails = await self._generate_reel_thumbnails(request, script_response.script)
+                script_response.thumbnail_images = [img.image_base64 for img in thumbnails]
+                logger.info(f"Generated {len(thumbnails)} thumbnails for reel")
+            
+            return script_response
+            
+        except Exception as e:
+            logger.error(f"Error generating reel with images: {e}")
+            return self.generate_reel(request)
+    
+    async def _generate_reel_thumbnails(self, request: FacebookReelRequest, script: str) -> List:
+        """Generate persona-aware thumbnail images for reel."""
+        try:
+            user_id = 1  # Beta testing
+            persona_data = self._get_persona_data(user_id) or {}
+            
+            visual_style = self._determine_reel_visual_style(request)
+            
+            img_request = ImageGenerationRequest(
+                content_type="reel",
+                business_type=request.business_type,
+                target_audience=request.target_audience,
+                content_context=script,
+                visual_style=visual_style,
+                aspect_ratio="9:16",
+                persona_data=persona_data,
+                additional_prompt=f"Thumbnail for {request.reel_type.value} reel about {request.topic}",
+                num_images=3
+            )
+            
+            return await self.image_service.generate_persona_aware_images(img_request)
+            
+        except Exception as e:
+            logger.error(f"Error generating reel thumbnails: {e}")
+            return []
+    
+    def _determine_reel_visual_style(self, request: FacebookReelRequest) -> str:
+        """Determine visual style for reel thumbnails."""
+        reel_type = request.reel_type.value
+        style = request.reel_style.value
+        
+        style_mapping = {
+            "Product demonstration": "dynamic product showcase",
+            "Tutorial/How-to": "step-by-step educational",
+            "Behind the scenes": "authentic behind-the-scenes",
+            "Trending topic": "viral social media style"
+        }
+        
+        base_style = style_mapping.get(reel_type, "engaging social media")
+        
+        if style == "Fast-paced":
+            base_style += " with energetic, dynamic composition"
+        elif style == "Vibrant":
+            base_style += " with bold, colorful aesthetic"
+        elif style == "Minimalist":
+            base_style += " with clean, simple composition"
+        
+        return base_style
     
     def generate_reel(self, request: FacebookReelRequest) -> FacebookReelResponse:
         """Generate a Facebook reel script."""
@@ -52,7 +139,100 @@ class FacebookReelService(FacebookWriterBaseService):
 
 
 class FacebookCarouselService(FacebookWriterBaseService):
-    """Service for generating Facebook carousels."""
+    """Service for generating Facebook carousels with persona-aware images."""
+    
+    def __init__(self):
+        super().__init__()
+        self.image_service = PersonaAwareImageService() if PersonaAwareImageService else None
+        logger.info("FacebookCarouselService initialized with image generation")
+    
+    async def generate_carousel_with_images(self, request: FacebookCarouselRequest) -> FacebookCarouselResponse:
+        """Generate Facebook carousel with persona-aware images for each slide."""
+        try:
+            logger.info(f"Generating carousel with images for {request.business_type}")
+            
+            # Generate carousel content first
+            content_response = self.generate_carousel(request)
+            if not content_response.success:
+                return content_response
+            
+            # Generate images for each slide if service is available
+            if self.image_service:
+                slide_images = await self._generate_carousel_slide_images(request, content_response.slides)
+                
+                # Update slides with images
+                for i, slide in enumerate(content_response.slides):
+                    if i < len(slide_images):
+                        slide.image_base64 = slide_images[i].image_base64
+                        slide.image_metadata = {
+                            "provider": slide_images[i].provider.value,
+                            "generation_time": slide_images[i].generation_time,
+                            "confidence_score": slide_images[i].confidence_score
+                        }
+                
+                logger.info(f"Generated {len(slide_images)} images for carousel slides")
+            
+            return content_response
+            
+        except Exception as e:
+            logger.error(f"Error generating carousel with images: {e}")
+            return self.generate_carousel(request)
+    
+    async def _generate_carousel_slide_images(self, request: FacebookCarouselRequest, slides: List[CarouselSlide]) -> List:
+        """Generate persona-aware images for carousel slides."""
+        try:
+            user_id = 1  # Beta testing
+            persona_data = self._get_persona_data(user_id) or {}
+            
+            images = []
+            
+            for i, slide in enumerate(slides):
+                visual_style = self._determine_carousel_slide_style(request, slide, i)
+                
+                img_request = ImageGenerationRequest(
+                    content_type="carousel",
+                    business_type=request.business_type,
+                    target_audience=request.target_audience,
+                    content_context=f"{slide.title}: {slide.content}",
+                    visual_style=visual_style,
+                    aspect_ratio="1:1",
+                    persona_data=persona_data,
+                    additional_prompt=slide.image_description,
+                    num_images=1
+                )
+                
+                slide_images = await self.image_service.generate_persona_aware_images(img_request)
+                if slide_images:
+                    images.append(slide_images[0])
+            
+            return images
+            
+        except Exception as e:
+            logger.error(f"Error generating carousel slide images: {e}")
+            return []
+    
+    def _determine_carousel_slide_style(self, request: FacebookCarouselRequest, slide: CarouselSlide, slide_index: int) -> str:
+        """Determine visual style for carousel slide."""
+        carousel_type = request.carousel_type.value
+        
+        style_mapping = {
+            "Product showcase": "clean product photography with consistent branding",
+            "Step-by-step guide": "educational infographic with clear hierarchy",
+            "Before/After": "comparative visual with clear contrast",
+            "Customer testimonials": "authentic testimonial style with professional photography",
+            "Features & Benefits": "feature highlight with modern design"
+        }
+        
+        base_style = style_mapping.get(carousel_type, "professional social media")
+        
+        if slide_index == 0:
+            base_style += " with strong opening visual impact"
+        elif slide_index == len(request.slides) - 1:
+            base_style += " with compelling call-to-action visual"
+        else:
+            base_style += " with consistent visual flow"
+        
+        return base_style
     
     def generate_carousel(self, request: FacebookCarouselRequest) -> FacebookCarouselResponse:
         """Generate a Facebook carousel post."""

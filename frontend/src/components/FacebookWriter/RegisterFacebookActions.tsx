@@ -153,6 +153,8 @@ const HashtagsHITL: React.FC<{ args: any; respond: (data: any) => void }> = ({ a
       setLoading(true);
       setError(null);
       const res = await facebookWriterApi.hashtagsGenerate({ content_topic: topic });
+      console.log('Hashtag generation response:', res);
+      
       const hashtags = res?.hashtags || res?.data?.hashtags;
       if (Array.isArray(hashtags) && hashtags.length) {
         const line = hashtags.join(' ');
@@ -160,13 +162,14 @@ const HashtagsHITL: React.FC<{ args: any; respond: (data: any) => void }> = ({ a
         logAssistant(line);
         respond({ success: true, hashtags });
       } else {
+        console.log('No hashtags found in response:', res);
         respond({ success: true, message: 'Hashtags generated.' });
       }
     } catch (e: any) {
+      console.error('[FB Writer] hashtags.generate error:', e);
       const msg = e?.response?.data?.detail || e?.message || 'Failed to generate hashtags';
       setError(`${msg}`);
       respond({ success: false, message: `${msg}` });
-      console.error('[FB Writer] hashtags.generate error', e);
     } finally {
       setLoading(false);
     }
@@ -431,33 +434,49 @@ const RegisterFacebookActions: React.FC = () => {
         const exact = VALID_TYPES.find(v => v.toLowerCase() === s);
         return exact || 'Product showcase';
       };
-      const res = await facebookWriterApi.carouselGenerate({
-        business_type: args?.business_type,
-        target_audience: args?.target_audience,
-        carousel_type: mapType(args?.carousel_type),
+      // If we only want images: gate by provider availability
+      try {
+        const health = await facebookWriterApi.health();
+        const available = !!health?.image_providers?.available;
+        if (!available) {
+          const msg = 'Image generation not configured. Please set GEMINI_API_KEY (or Nano Banana) in backend/.env and restart.';
+          window.dispatchEvent(new CustomEvent('fbwriter:assistantMessage', { detail: { content: msg } }));
+          return { success: false, message: msg };
+        }
+      } catch {}
+
+      // Generate carousel images using the new Facebook image generation endpoint
+      const carouselImages = [];
+      const numSlides = Math.min(10, Math.max(3, Number(args?.num_slides) || 5));
+      
+      for (let i = 0; i < numSlides; i++) {
+        try {
+          const slidePrompt = `${args?.topic || 'Feature breakdown'} - Slide ${i + 1} of ${numSlides}, ${mapType(args?.carousel_type)} style`;
+          const imgRes = await facebookWriterApi.generateFacebookImageNew({
+            prompt: slidePrompt,
+            aspect_ratio: '1:1',
+            content_context: {
+              content_type: 'carousel',
         topic: args?.topic || 'Feature breakdown',
-        num_slides: Math.min(10, Math.max(3, Number(args?.num_slides) || 5)),
-        include_cta: args?.include_cta,
-        cta_text: args?.cta_text,
-        brand_colors: args?.brand_colors,
-        include: args?.include,
-        avoid: args?.avoid
-      });
-      const main = res?.main_caption || res?.data?.main_caption;
-      const slides = res?.slides || res?.data?.slides;
-      let out = '';
-      if (main) out += `\n\n${main}`;
-      if (Array.isArray(slides)) {
-        out += '\n\nCarousel Slides:';
-        slides.forEach((s: any, i: number) => {
-          out += `\n${i + 1}. ${s.title}: ${s.content}`;
-        });
+              business_type: args?.business_type || 'general',
+              slide_number: i + 1,
+              total_slides: numSlides
+            }
+          });
+          
+          if (imgRes?.images && imgRes.images.length > 0) {
+            carouselImages.push(imgRes.images[0]);
+          }
+        } catch (err) {
+          console.warn(`Failed to generate image for slide ${i + 1}:`, err);
+        }
       }
-      if (out) {
-        window.dispatchEvent(new CustomEvent('fbwriter:appendDraft', { detail: out }));
-        return { success: true, content: out };
+      
+      if (carouselImages.length > 0) {
+        window.dispatchEvent(new CustomEvent('fbwriter:storyImages', { detail: carouselImages }));
+        return { success: true, count: carouselImages.length };
       }
-      return { success: true, message: 'Carousel generated.' };
+      return { success: false, message: 'No images generated. Check API keys/billing.' };
     }
   });
   useCopilotActionTyped({
@@ -617,13 +636,30 @@ const RegisterFacebookActions: React.FC = () => {
         post_tone: mapTone(args?.post_tone),
         media_type: 'None'
       };
+      
+      // Trigger progress indicator
+      window.dispatchEvent(new CustomEvent('fbwriter:generatingStart'));
+      window.dispatchEvent(new CustomEvent('fbwriter:setGenerationType', { detail: 'post' }));
+      
+      try {
       const res = await facebookWriterApi.postGenerate(payload);
       const content = res?.content || res?.data?.content;
       if (content) {
+          // Use the new copyToDraft action to ensure proper UI sync
         window.dispatchEvent(new CustomEvent('fbwriter:updateDraft', { detail: content }));
-        return { success: true, content };
-      }
+          window.dispatchEvent(new CustomEvent('fbwriter:generatingEnd'));
+          return { 
+            success: true, 
+            content,
+            message: 'Facebook post generated and copied to draft successfully'
+          };
+        }
+        window.dispatchEvent(new CustomEvent('fbwriter:generatingEnd'));
       return { success: true, message: 'Post generated.' };
+      } catch (error) {
+        window.dispatchEvent(new CustomEvent('fbwriter:generatingEnd'));
+        throw error;
+      }
     }
   });
 
@@ -635,14 +671,78 @@ const RegisterFacebookActions: React.FC = () => {
     ],
     renderAndWaitForResponse: ({ args, respond }: any) => <HashtagsHITL args={args} respond={respond} />,
     handler: async (args: any) => {
+      // Trigger progress indicator
+      window.dispatchEvent(new CustomEvent('fbwriter:generatingStart'));
+      window.dispatchEvent(new CustomEvent('fbwriter:setGenerationType', { detail: 'hashtags' }));
+      
+      try {
       const res = await facebookWriterApi.hashtagsGenerate({ content_topic: args?.content_topic });
       const hashtags = res?.hashtags || res?.data?.hashtags;
       if (Array.isArray(hashtags) && hashtags.length) {
         const line = hashtags.join(' ');
         window.dispatchEvent(new CustomEvent('fbwriter:appendDraft', { detail: `\n\n${line}` }));
+          window.dispatchEvent(new CustomEvent('fbwriter:generatingEnd'));
         return { success: true, hashtags };
       }
+        window.dispatchEvent(new CustomEvent('fbwriter:generatingEnd'));
       return { success: true, message: 'Hashtags generated.' };
+      } catch (error) {
+        window.dispatchEvent(new CustomEvent('fbwriter:generatingEnd'));
+        throw error;
+      }
+    }
+  });
+
+  // New action to copy generated content to draft
+  useCopilotActionTyped({
+    name: 'copyToDraft',
+    description: 'Copy generated Facebook post content to the main draft area',
+    parameters: [
+      { name: 'content', type: 'string', required: true, description: 'The Facebook post content to copy to draft' },
+      { name: 'replace', type: 'boolean', required: false, description: 'Whether to replace existing draft (true) or append (false)' }
+    ],
+    handler: async (args: any) => {
+      try {
+        const content = args?.content || '';
+        const replace = args?.replace !== false; // Default to replace
+        
+        if (!content || content.trim().length === 0) {
+          return { success: false, error: 'No content provided to copy to draft' };
+        }
+
+        // Clean up the content
+        const cleanContent = content
+          .replace(/^Here's a.*?:\s*/i, '')
+          .replace(/^Facebook post[:\s]*/i, '')
+          .replace(/```[\s\S]*?```/g, '')
+          .trim();
+
+        if (cleanContent.length < 10) {
+          return { success: false, error: 'Content too short to be a valid Facebook post' };
+        }
+
+        // Dispatch the appropriate event
+        if (replace) {
+          window.dispatchEvent(new CustomEvent('fbwriter:updateDraft', { detail: cleanContent }));
+        } else {
+          window.dispatchEvent(new CustomEvent('fbwriter:appendDraft', { detail: cleanContent }));
+        }
+
+        console.log('📝 Copilot copied content to draft:', cleanContent.substring(0, 100) + '...');
+        
+        return { 
+          success: true, 
+          message: `Content ${replace ? 'copied to' : 'appended to'} draft successfully`,
+          content: cleanContent,
+          action: replace ? 'replaced' : 'appended'
+        };
+      } catch (error) {
+        console.error('Error copying content to draft:', error);
+        return { 
+          success: false, 
+          error: `Failed to copy content to draft: ${error}` 
+        };
+      }
     }
   });
 
@@ -842,6 +942,38 @@ const RegisterFacebookActions: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
+
+        // 1) Always try to generate an image via the new Facebook image endpoint (LinkedIn-style)
+        let imageGenerated = false;
+        try {
+          const parts: string[] = [];
+          if (form.story_type) parts.push(String(mapStoryType(form.story_type)));
+          if (form.story_tone) parts.push(`${mapStoryTone(form.story_tone)} tone`);
+          if (form.include) parts.push(`Include: ${form.include}`);
+          if (form.avoid) parts.push(`Avoid: ${form.avoid}`);
+          const prompt = (form.visual_options?.background_image_prompt || parts.join(', ')) || 'Facebook story visual';
+          const imgRes = await facebookWriterApi.generateFacebookImageNew({ 
+            prompt, 
+            aspect_ratio: '9:16', 
+            content_context: {
+              content_type: 'story',
+              topic: form.include || 'story',
+              business_type: form.business_type || 'general'
+            }
+          });
+          const images = imgRes?.images;
+          if (Array.isArray(images) && images.length) {
+            window.dispatchEvent(new CustomEvent('fbwriter:storyImages', { detail: images }));
+            imageGenerated = true;
+          } else if (imgRes && imgRes.error) {
+            window.dispatchEvent(new CustomEvent('fbwriter:assistantMessage', { detail: { content: `Image generation failed: ${imgRes.error}` } }));
+          }
+        } catch (imgErr: any) {
+          const msg = imgErr?.response?.data?.detail || imgErr?.message || 'Image generation failed';
+          window.dispatchEvent(new CustomEvent('fbwriter:assistantMessage', { detail: { content: msg } }));
+        }
+
+        // 2) Always generate text as well (preserve existing behavior)
         const payload = {
           ...form,
           story_type: mapStoryType(form.story_type),
@@ -858,9 +990,9 @@ const RegisterFacebookActions: React.FC = () => {
         if (content) {
           window.dispatchEvent(new CustomEvent('fbwriter:appendDraft', { detail: `\n\n${content}` }));
           logAssistant(content);
-          safeRespond({ success: true, content });
+          safeRespond({ success: true, content, image: imageGenerated });
         } else {
-          safeRespond({ success: true, message: 'Story generated.' });
+          safeRespond({ success: true, message: imageGenerated ? 'Story image generated.' : 'Story generated.' });
         }
       } catch (e: any) {
         const msg = e?.response?.data?.detail || e?.message || 'Failed to generate story';
@@ -913,7 +1045,7 @@ const RegisterFacebookActions: React.FC = () => {
 
   useCopilotActionTyped({
     name: 'generateFacebookStory',
-    description: 'Generate a Facebook Story script/copy',
+    description: 'Generate a Facebook Story image',
     parameters: [
       { name: 'business_type', type: 'string', required: false },
       { name: 'target_audience', type: 'string', required: false },
@@ -943,43 +1075,371 @@ const RegisterFacebookActions: React.FC = () => {
     ],
     renderAndWaitForResponse: ({ args, respond }: any) => <StoryHITL args={args} respond={respond} />,
     handler: async (args: any) => {
-      const res = await facebookWriterApi.storyGenerate({
-        business_type: args?.business_type,
-        target_audience: args?.target_audience,
-        story_type: mapStoryType(args?.story_type),
-        story_tone: mapStoryTone(args?.story_tone),
-        include: args?.include,
-        avoid: args?.avoid,
-        use_hook: args?.use_hook,
-        use_story: args?.use_story,
-        use_cta: args?.use_cta,
-        use_question: args?.use_question,
-        use_emoji: args?.use_emoji,
-        use_hashtags: args?.use_hashtags,
-        visual_options: {
-          background_type: args?.visual_options?.background_type,
-          background_image_prompt: args?.visual_options?.background_image_prompt,
-          gradient_style: args?.visual_options?.gradient_style,
-          text_overlay: args?.visual_options?.text_overlay,
-          text_style: args?.visual_options?.text_style,
-          text_color: args?.visual_options?.text_color,
-          text_position: args?.visual_options?.text_position,
-          stickers: args?.visual_options?.stickers,
-          interactive_elements: args?.visual_options?.interactive_elements,
-          interactive_types: Array.isArray(args?.visual_options?.interactive_types) ? args?.visual_options?.interactive_types : undefined,
-          call_to_action: args?.visual_options?.call_to_action
+      // Build an image prompt
+      const parts: string[] = [];
+      if (args?.story_type) parts.push(String(args.story_type));
+      if (args?.story_tone) parts.push(`${args.story_tone} tone`);
+      if (args?.include) parts.push(`Include: ${args.include}`);
+      if (args?.avoid) parts.push(`Avoid: ${args.avoid}`);
+      const prompt = (args?.visual_options?.background_image_prompt || args?.topic || parts.join(', ')) || 'Facebook story visual';
+
+      try {
+        const health = await facebookWriterApi.health();
+        if (!health?.image_providers?.available) {
+          const msg = 'Image generation not configured. Please set GEMINI_API_KEY (or Nano Banana) in backend/.env and restart.';
+          window.dispatchEvent(new CustomEvent('fbwriter:assistantMessage', { detail: { content: msg } }));
+          return { success: false, message: msg };
         }
-      });
-      const content = res?.content || res?.data?.content;
-      const images = res?.images_base64 || res?.data?.images_base64;
-      if (content) {
-        window.dispatchEvent(new CustomEvent('fbwriter:appendDraft', { detail: `\n\n${content}` }));
-        if (Array.isArray(images) && images.length) {
-          window.dispatchEvent(new CustomEvent('fbwriter:storyImages', { detail: images }));
-        }
-        return { success: true, content };
+      } catch {}
+
+      const res = await facebookWriterApi.generateImagenImages({ prompt, number_of_images: 1, aspect_ratio: '9:16' });
+      const images = res?.images;
+      if (Array.isArray(images) && images.length) {
+        window.dispatchEvent(new CustomEvent('fbwriter:storyImages', { detail: images }));
+        return { success: true, count: images.length };
       }
-      return { success: true, message: 'Story generated.' };
+      return { success: false, message: 'No images generated. Check API keys/billing.' };
+    }
+  });
+
+  // Image-enhanced generation actions
+  useCopilotActionTyped({
+    name: 'generateFacebookStoryWithImages',
+    description: 'Generate a Facebook story with persona-aware images',
+    parameters: [
+      { name: 'business_type', type: 'string', required: false },
+      { name: 'target_audience', type: 'string', required: false },
+      { name: 'story_type', type: 'string', required: false },
+      { name: 'story_tone', type: 'string', required: false },
+      { name: 'background_image_prompt', type: 'string', required: false }
+    ],
+    handler: async (args: any) => {
+      try {
+        const payload = {
+          business_type: args?.business_type || 'SaaS',
+          target_audience: args?.target_audience || 'Marketing managers at SMEs',
+          story_type: args?.story_type || 'Product showcase',
+          story_tone: args?.story_tone || 'Professional',
+          include: args?.include || '',
+          avoid: args?.avoid || '',
+          visual_options: {
+            background_image_prompt: args?.background_image_prompt || '',
+            background_type: 'Image',
+            text_overlay: true,
+            stickers: true,
+            interactive_elements: true
+          }
+        };
+        
+        const res = await facebookWriterApi.storyGenerateWithImages(payload);
+      const content = res?.content || res?.data?.content;
+        const images = res?.images_base64 || res?.data?.images_base64 || [];
+        
+      if (content) {
+          window.dispatchEvent(new CustomEvent('fbwriter:updateDraft', { detail: content }));
+          
+          if (images.length > 0) {
+            window.dispatchEvent(new CustomEvent('fbwriter:showGeneratedImages', { 
+              detail: { images, type: 'story' } 
+            }));
+          }
+          
+          return { success: true, content, images };
+        }
+        
+        return { success: true, message: 'Story with images generated.' };
+      } catch (e: any) {
+        return { success: false, message: e?.message || 'Failed to generate story with images' };
+      }
+    }
+  });
+
+  useCopilotActionTyped({
+    name: 'generateFacebookReelWithImages',
+    description: 'Generate a Facebook reel with persona-aware thumbnail images',
+    parameters: [
+      { name: 'business_type', type: 'string', required: false },
+      { name: 'target_audience', type: 'string', required: false },
+      { name: 'reel_type', type: 'string', required: false },
+      { name: 'reel_style', type: 'string', required: false },
+      { name: 'topic', type: 'string', required: false }
+    ],
+    handler: async (args: any) => {
+      try {
+        const payload = {
+          business_type: args?.business_type || 'SaaS',
+          target_audience: args?.target_audience || 'Marketing managers at SMEs',
+          reel_type: args?.reel_type || 'Product demonstration',
+          reel_length: '30-60 seconds',
+          reel_style: args?.reel_style || 'Fast-paced',
+          topic: args?.topic || 'Feature walkthrough',
+          include: args?.include || '',
+          avoid: args?.avoid || '',
+          music_preference: 'Trending'
+        };
+        
+        const res = await facebookWriterApi.reelGenerateWithImages(payload);
+        const script = res?.script || res?.data?.script;
+        const thumbnails = res?.thumbnail_images || res?.data?.thumbnail_images || [];
+        
+        if (script) {
+          window.dispatchEvent(new CustomEvent('fbwriter:updateDraft', { detail: script }));
+          
+          if (thumbnails.length > 0) {
+            window.dispatchEvent(new CustomEvent('fbwriter:showGeneratedImages', { 
+              detail: { images: thumbnails, type: 'reel' } 
+            }));
+          }
+          
+          return { success: true, content: script, thumbnails };
+        }
+        
+        return { success: true, message: 'Reel with images generated.' };
+      } catch (e: any) {
+        return { success: false, message: e?.message || 'Failed to generate reel with images' };
+      }
+    }
+  });
+
+  useCopilotActionTyped({
+    name: 'generateFacebookCarouselWithImages',
+    description: 'Generate a Facebook carousel with persona-aware images for each slide',
+    parameters: [
+      { name: 'business_type', type: 'string', required: false },
+      { name: 'target_audience', type: 'string', required: false },
+      { name: 'carousel_type', type: 'string', required: false },
+      { name: 'topic', type: 'string', required: false },
+      { name: 'num_slides', type: 'number', required: false }
+    ],
+    handler: async (args: any) => {
+      try {
+        const payload = {
+          business_type: args?.business_type || 'SaaS',
+          target_audience: args?.target_audience || 'Marketing managers at SMEs',
+          carousel_type: args?.carousel_type || 'Product showcase',
+          topic: args?.topic || 'Feature breakdown',
+          num_slides: args?.num_slides || 5,
+          include_cta: true,
+          cta_text: 'Learn More',
+          include: args?.include || '',
+          avoid: args?.avoid || ''
+        };
+        
+        const res = await facebookWriterApi.carouselGenerateWithImages(payload);
+        const mainCaption = res?.main_caption || res?.data?.main_caption;
+        const slides = res?.slides || res?.data?.slides || [];
+        
+        if (mainCaption) {
+          let content = mainCaption;
+          if (slides.length > 0) {
+            content += '\n\nCarousel Slides:';
+            slides.forEach((slide: any, i: number) => {
+              content += `\n${i + 1}. ${slide.title}: ${slide.content}`;
+            });
+          }
+          
+          window.dispatchEvent(new CustomEvent('fbwriter:updateDraft', { detail: content }));
+          
+          // Show carousel images
+          const slideImages = slides.filter((slide: any) => slide.image_base64).map((slide: any) => slide.image_base64);
+          if (slideImages.length > 0) {
+            window.dispatchEvent(new CustomEvent('fbwriter:showGeneratedImages', { 
+              detail: { images: slideImages, type: 'carousel' } 
+            }));
+          }
+          
+          return { success: true, content, slides };
+        }
+        
+        return { success: true, message: 'Carousel with images generated.' };
+      } catch (e: any) {
+        return { success: false, message: e?.message || 'Failed to generate carousel with images' };
+      }
+    }
+  });
+
+  // Image generation action using Gemini API
+  useCopilotActionTyped({
+    name: 'generateFacebookStoryImage',
+    description: 'Generate an image for Facebook Story using Gemini API based on story content and visual description',
+    parameters: [
+      { name: 'story_text', type: 'string', required: true },
+      { name: 'visual_description', type: 'string', required: true },
+      { name: 'background_color', type: 'string', required: false },
+      { name: 'text_overlay', type: 'string', required: false },
+      { name: 'emojis', type: 'string', required: false },
+      { name: 'aspect_ratio', type: 'string', required: false }
+    ],
+    handler: async (args: any) => {
+      try {
+        const payload = {
+          story_text: args?.story_text || '',
+          visual_description: args?.visual_description || '',
+          background_color: args?.background_color || 'PINK gradient',
+          text_overlay: args?.text_overlay || '',
+          emojis: args?.emojis || '',
+          aspect_ratio: args?.aspect_ratio || '9:16' // Facebook Story format
+        };
+
+        const response = await facebookWriterApi.generateStoryImage(payload);
+        
+        return {
+          success: true,
+          message: 'Facebook Story image generated successfully using Gemini API',
+          data: response
+        };
+      } catch (error) {
+        return {
+          success: false,
+          message: `Failed to generate Facebook Story image: ${error}`,
+          error: error
+        };
+      }
+    }
+  });
+
+  // Facebook Publishing Action
+  useCopilotActionTyped({
+    name: 'publishFacebookPost',
+    description: 'Publish the current Facebook post draft to a selected Facebook page',
+    parameters: [
+      { name: 'page_name', type: 'string', required: false, description: 'Name of the Facebook page to publish to (optional - will use default if not specified)' },
+      { name: 'confirm', type: 'boolean', required: false, description: 'Whether to confirm before publishing (default: true)' }
+    ],
+    handler: async (args: any) => {
+      try {
+        console.log('🚀 Copilot: Starting Facebook post publication');
+        
+        // Get current draft content
+        const currentDraft = document.querySelector('[data-testid="post-draft"]')?.textContent || 
+                           document.querySelector('.post-draft')?.textContent || '';
+        
+        if (!currentDraft || currentDraft.trim().length === 0) {
+          return {
+            success: false,
+            error: 'No post content found. Please generate a post first.',
+            message: 'No post content available to publish'
+          };
+        }
+
+        console.log('📝 Copilot: Found post content, checking Facebook connection');
+        
+        // Check Facebook connection status
+        const connectionStatus = await facebookWriterApi.getFacebookConnectionStatus();
+        
+        if (!connectionStatus.connected) {
+          return {
+            success: false,
+            error: 'Facebook not connected',
+            message: 'Please connect your Facebook account first using the "Connect Facebook" button',
+            action_required: 'connect_facebook'
+          };
+        }
+
+        console.log('📘 Copilot: Facebook connected, fetching pages');
+        
+        // Get available pages
+        const pages: Array<{ id: string; name: string }> = await facebookWriterApi.getFacebookPages();
+        
+        if (!pages || pages.length === 0) {
+          return {
+            success: false,
+            error: 'No Facebook pages found',
+            message: 'No Facebook pages available for publishing. Please ensure you have admin access to at least one Facebook page.',
+            action_required: 'check_pages'
+          };
+        }
+
+        // Find target page
+        let targetPage = pages[0]; // Default to first page
+        if (args?.page_name) {
+          const foundPage = pages.find((page) => 
+            page.name.toLowerCase().includes(args.page_name.toLowerCase())
+          );
+          if (foundPage) {
+            targetPage = foundPage;
+          } else {
+            console.log(`⚠️ Copilot: Page "${args.page_name}" not found, using default page "${targetPage.name}"`);
+          }
+        }
+
+        console.log(`📘 Copilot: Publishing to page "${targetPage.name}" (ID: ${targetPage.id})`);
+
+        // Publish the post
+        const result = await facebookWriterApi.publishFacebookPost({
+          page_id: targetPage.id,
+          message: currentDraft.trim()
+        });
+
+        if (result.success) {
+          console.log(`✅ Copilot: Successfully published post ${result.post_id}`);
+          
+          // Dispatch success event to UI
+          window.dispatchEvent(new CustomEvent('fbwriter:toast', { 
+            detail: { 
+              message: `Posted to ${targetPage.name} successfully!`, 
+              type: 'success',
+              action: result.permalink_url ? { label: 'View Post', url: result.permalink_url } : undefined
+            }
+          }));
+
+          return {
+            success: true,
+            message: `Successfully published post to Facebook page "${targetPage.name}"`,
+            post_id: result.post_id,
+            page_name: targetPage.name,
+            permalink_url: result.permalink_url,
+            content_preview: currentDraft.substring(0, 100) + (currentDraft.length > 100 ? '...' : '')
+          };
+        } else {
+          console.error(`❌ Copilot: Failed to publish post: ${result.error}`);
+          return {
+            success: false,
+            error: result.error || 'Unknown publishing error',
+            message: `Failed to publish post to Facebook: ${result.error}`,
+            page_name: targetPage.name
+          };
+        }
+
+      } catch (error: any) {
+        console.error('❌ Copilot: Error in Facebook publishing action:', error);
+        return {
+          success: false,
+          error: `Publishing failed: ${error.message}`,
+          message: `Failed to publish to Facebook: ${error.message}`
+        };
+      }
+    }
+  });
+
+  // Hashtag generation action
+  useCopilotActionTyped({
+    name: 'generateFacebookHashtags',
+    description: 'Generate relevant hashtags for Facebook content',
+    parameters: [
+      { name: 'content_topic', type: 'string', required: false }
+    ],
+    renderAndWaitForResponse: ({ args, respond }: any) => <HashtagsHITL args={args} respond={respond} />,
+    handler: async (args: any) => {
+      try {
+        const res = await facebookWriterApi.hashtagsGenerate({ content_topic: args?.content_topic || 'general content' });
+        console.log('Hashtag generation response:', res);
+        
+        const hashtags = res?.hashtags || res?.data?.hashtags;
+        if (Array.isArray(hashtags) && hashtags.length) {
+          const line = hashtags.join(' ');
+          window.dispatchEvent(new CustomEvent('fbwriter:appendDraft', { detail: `\n\n${line}` }));
+          logAssistant(line);
+          return { success: true, hashtags };
+        } else {
+          console.log('No hashtags found in response:', res);
+          return { success: true, message: 'Hashtags generated.' };
+        }
+      } catch (e: any) {
+        console.error('[FB Writer] hashtags.generate error:', e);
+        const msg = e?.response?.data?.detail || e?.message || 'Failed to generate hashtags';
+        return { success: false, message: msg };
+      }
     }
   });
 

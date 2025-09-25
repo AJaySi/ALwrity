@@ -64,6 +64,8 @@ from api.facebook_writer.routers import facebook_router
 from routers.linkedin import router as linkedin_router
 # Import LinkedIn image generation router
 from api.linkedin_image_generation import router as linkedin_image_router
+# Import Facebook image generation router
+from api.facebook_image_generation import router as facebook_image_router
 from api.brainstorm import router as brainstorm_router
 
 # Import hallucination detector router
@@ -494,6 +496,17 @@ app.include_router(facebook_router)
 app.include_router(linkedin_router)
 # Include LinkedIn image generation router
 app.include_router(linkedin_image_router)
+# Include Facebook image generation router
+app.include_router(facebook_image_router)
+
+# Include Facebook social integration router
+from api.facebook_social.router import router as facebook_social_router
+app.include_router(facebook_social_router)
+
+# Include Facebook data deletion router
+from api.facebook_data_deletion import router as facebook_data_deletion_router
+app.include_router(facebook_data_deletion_router)
+
 app.include_router(brainstorm_router)
 
 # Include hallucination detector router

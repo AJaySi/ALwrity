@@ -48,4 +48,8 @@ pytest-asyncio>=0.21.0
 
 # Utilities
 pydantic>=2.5.2,<3.0.0
-typing-extensions>=4.8.0 
+typing-extensions>=4.8.0
+
+# Facebook Social Integration
+httpx>=0.25.0
+cryptography>=41.0.0 

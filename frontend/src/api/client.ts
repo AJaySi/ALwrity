@@ -37,12 +37,26 @@ export const pollingApiClient = axios.create({
 });
 
 // Add request interceptor for logging (optional)
+let inflight = 0;
+function emitBusy(delta: number) {
+  try {
+    inflight = Math.max(0, inflight + delta);
+    window.dispatchEvent(new CustomEvent('fbwriter:busy', { detail: { inflight } }));
+  } catch {}
+}
+function emitToast(message: string) {
+  try { if (message) window.dispatchEvent(new CustomEvent('fbwriter:toast', { detail: { message } })); } catch {}
+}
+
 apiClient.interceptors.request.use(
   (config) => {
     console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
+    emitBusy(+1);
     return config;
   },
   (error) => {
+    emitBusy(-1);
+    emitToast(error?.message || 'Network error');
     return Promise.reject(error);
   }
 );
@@ -50,10 +64,14 @@ apiClient.interceptors.request.use(
 // Add response interceptor for error handling (optional)
 apiClient.interceptors.response.use(
   (response) => {
+    emitBusy(-1);
     return response;
   },
   (error) => {
+    emitBusy(-1);
     console.error('API Error:', error.response?.status, error.response?.data);
+    const detail = error?.response?.data?.detail || error?.message || 'Request failed';
+    emitToast(detail);
     return Promise.reject(error);
   }
 );
@@ -62,19 +80,26 @@ apiClient.interceptors.response.use(
 aiApiClient.interceptors.request.use(
   (config) => {
     console.log(`Making AI ${config.method?.toUpperCase()} request to ${config.url}`);
+    emitBusy(+1);
     return config;
   },
   (error) => {
+    emitBusy(-1);
+    emitToast(error?.message || 'Network error');
     return Promise.reject(error);
   }
 );
 
 aiApiClient.interceptors.response.use(
   (response) => {
+    emitBusy(-1);
     return response;
   },
   (error) => {
+    emitBusy(-1);
     console.error('AI API Error:', error.response?.status, error.response?.data);
+    const detail = error?.response?.data?.detail || error?.message || 'Request failed';
+    emitToast(detail);
     return Promise.reject(error);
   }
 );
@@ -83,19 +108,26 @@ aiApiClient.interceptors.response.use(
 longRunningApiClient.interceptors.request.use(
   (config) => {
     console.log(`Making long-running ${config.method?.toUpperCase()} request to ${config.url}`);
+    emitBusy(+1);
     return config;
   },
   (error) => {
+    emitBusy(-1);
+    emitToast(error?.message || 'Network error');
     return Promise.reject(error);
   }
 );
 
 longRunningApiClient.interceptors.response.use(
   (response) => {
+    emitBusy(-1);
     return response;
   },
   (error) => {
+    emitBusy(-1);
     console.error('Long-running API Error:', error.response?.status, error.response?.data);
+    const detail = error?.response?.data?.detail || error?.message || 'Request failed';
+    emitToast(detail);
     return Promise.reject(error);
   }
 );

@@ -128,6 +128,9 @@ class FacebookStoryService(FacebookWriterBaseService):
         interactive_types_str = ", ".join(v.interactive_types) if v.interactive_types else "None specified"
         newline = '\n'
 
+        # Prepare advanced content section
+        advanced_content = f"\n{advanced_str}" if advanced_str else ""
+        
         prompt = f"""
         {base_prompt}
         

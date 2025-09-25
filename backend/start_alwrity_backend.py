@@ -262,10 +262,15 @@ def setup_persona_tables():
     try:
         from services.database import engine
         from models.persona_models import Base as PersonaBase
+        from models.enhanced_persona_models import Base as EnhancedPersonaBase
         
-        # Create persona tables
+        # Create basic persona tables
         PersonaBase.metadata.create_all(bind=engine)
-        print("✅ Persona tables created successfully")
+        print("✅ Basic persona tables created successfully")
+        
+        # Create enhanced persona tables
+        EnhancedPersonaBase.metadata.create_all(bind=engine)
+        print("✅ Enhanced persona tables created successfully")
         
         # Verify tables were created
         from sqlalchemy import inspect
@@ -276,7 +281,11 @@ def setup_persona_tables():
             'writing_personas',
             'platform_personas', 
             'persona_analysis_results',
-            'persona_validation_results'
+            'persona_validation_results',
+            'enhanced_writing_personas',
+            'enhanced_platform_personas',
+            'persona_quality_metrics',
+            'persona_learning_data'
         ]
         
         created_tables = [table for table in persona_tables if table in tables]
@@ -299,6 +308,7 @@ def verify_persona_tables():
     try:
         from services.database import get_db_session
         from models.persona_models import WritingPersona, PlatformPersona, PersonaAnalysisResult, PersonaValidationResult
+        from models.enhanced_persona_models import EnhancedWritingPersona, EnhancedPlatformPersona, PersonaQualityMetrics, PersonaLearningData
         
         session = get_db_session()
         if session:
@@ -307,6 +317,10 @@ def verify_persona_tables():
             session.query(PlatformPersona).first()
             session.query(PersonaAnalysisResult).first()
             session.query(PersonaValidationResult).first()
+            session.query(EnhancedWritingPersona).first()
+            session.query(EnhancedPlatformPersona).first()
+            session.query(PersonaQualityMetrics).first()
+            session.query(PersonaLearningData).first()
             session.close()
             print("✅ All persona tables verified successfully")
             return True

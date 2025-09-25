@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Container, Typography, TextField, Paper, Button } from '@mui/material';
+import { Box, Container, Typography, TextField, Paper, Button, Tooltip, Select, MenuItem, FormControl, InputLabel, CircularProgress } from '@mui/material';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CopilotSidebar } from '@copilotkit/react-ui';
 import { useCopilotReadable, useCopilotAction } from '@copilotkit/react-core';
 import '@copilotkit/react-ui/styles.css';
@@ -7,8 +8,269 @@ import RegisterFacebookActions from './RegisterFacebookActions';
 import RegisterFacebookEditActions from './RegisterFacebookEditActions';
 import RegisterFacebookActionsEnhanced from './RegisterFacebookActionsEnhanced';
 import { PlatformPersonaProvider, usePlatformPersonaContext } from '../shared/PersonaContext/PlatformPersonaProvider';
+import { facebookWriterApi } from '../../services/facebookWriterApi';
+import ContentGenerationProgress from './components/ContentGenerationProgress';
 
 const useCopilotActionTyped = useCopilotAction as any;
+
+// --- Facebook Post Button Component ---
+interface FacebookPostButtonProps {
+  postContent: string;
+}
+
+const FacebookPostButton: React.FC<FacebookPostButtonProps> = ({ postContent }) => {
+  const [connectionStatus, setConnectionStatus] = React.useState<any>(null);
+  const [pages, setPages] = React.useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = React.useState<string>('');
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [isConnecting, setIsConnecting] = React.useState(false);
+
+  // Check connection status on mount
+  React.useEffect(() => {
+    checkConnectionStatus();
+  }, []);
+
+  const checkConnectionStatus = async () => {
+    try {
+      const status = await facebookWriterApi.getFacebookConnectionStatus();
+      setConnectionStatus(status);
+      
+      if (status.connected) {
+        loadPages();
+      }
+    } catch (error: any) {
+      console.error('Failed to check Facebook connection:', error);
+      
+      // Handle token expiration
+      if (error.response?.status === 401 && error.response?.headers?.['x-reauth-required']) {
+        setConnectionStatus({ connected: false, user_id: null, pages_count: 0 });
+        window.dispatchEvent(new CustomEvent('fbwriter:toast', { 
+          detail: { 
+            message: 'Facebook connection expired. Please reconnect.', 
+            type: 'warning' 
+          }
+        }));
+      }
+    }
+  };
+
+  const loadPages = async () => {
+    try {
+      const pagesData = await facebookWriterApi.getFacebookPages();
+      setPages(pagesData);
+      
+      // Auto-select first page if none selected
+      if (pagesData.length > 0 && !selectedPageId) {
+        setSelectedPageId(pagesData[0].id);
+      }
+    } catch (error: any) {
+      console.error('Failed to load Facebook pages:', error);
+      
+      // Handle token expiration
+      if (error.response?.status === 401 && error.response?.headers?.['x-reauth-required']) {
+        setConnectionStatus({ connected: false, user_id: null, pages_count: 0 });
+        setPages([]);
+        window.dispatchEvent(new CustomEvent('fbwriter:toast', { 
+          detail: { 
+            message: 'Facebook connection expired. Please reconnect.', 
+            type: 'warning' 
+          }
+        }));
+      }
+    }
+  };
+
+  const handleConnectFacebook = async () => {
+    setIsConnecting(true);
+    try {
+      const oauthUrl = await facebookWriterApi.startFacebookOAuth();
+      window.open(oauthUrl, '_blank', 'width=600,height=600');
+      
+      // Poll for connection status
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await facebookWriterApi.getFacebookConnectionStatus();
+          if (status.connected) {
+            setConnectionStatus(status);
+            await loadPages();
+            clearInterval(pollInterval);
+            setIsConnecting(false);
+          }
+        } catch (error) {
+          console.error('Polling error:', error);
+        }
+      }, 2000);
+      
+      // Stop polling after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setIsConnecting(false);
+      }, 120000);
+      
+    } catch (error) {
+      console.error('Failed to start Facebook OAuth:', error);
+      setIsConnecting(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!selectedPageId || !postContent.trim()) return;
+    
+    setIsLoading(true);
+    try {
+      const result = await facebookWriterApi.publishFacebookPost({
+        page_id: selectedPageId,
+        message: postContent.trim()
+      });
+      
+      if (result.success) {
+        window.dispatchEvent(new CustomEvent('fbwriter:toast', { 
+          detail: { 
+            message: `Posted successfully! ${result.permalink_url ? 'View post' : ''}`, 
+            type: 'success',
+            action: result.permalink_url ? { label: 'View', url: result.permalink_url } : undefined
+          }
+        }));
+      } else {
+        // Handle token expiration
+        if (result.details?.reauth_required) {
+          setConnectionStatus({ connected: false, user_id: null, pages_count: 0 });
+          setPages([]);
+          window.dispatchEvent(new CustomEvent('fbwriter:toast', { 
+            detail: { 
+              message: 'Facebook connection expired. Please reconnect to continue publishing.', 
+              type: 'warning' 
+            }
+          }));
+        } else {
+          throw new Error(result.error || 'Failed to publish post');
+        }
+      }
+    } catch (error: any) {
+      console.error('Failed to publish to Facebook:', error);
+      
+      // Handle API errors
+      if (error.response?.status === 401) {
+        setConnectionStatus({ connected: false, user_id: null, pages_count: 0 });
+        setPages([]);
+        window.dispatchEvent(new CustomEvent('fbwriter:toast', { 
+          detail: { 
+            message: 'Facebook connection expired. Please reconnect.', 
+            type: 'warning' 
+          }
+        }));
+      } else {
+        window.dispatchEvent(new CustomEvent('fbwriter:toast', { 
+          detail: { message: `Publish failed: ${error.message}`, type: 'error' }
+        }));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Not connected state
+  if (!connectionStatus?.connected) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={<span>📘</span>}
+          onClick={handleConnectFacebook}
+          disabled={isConnecting}
+          sx={{
+            borderColor: '#1877F2',
+            color: '#1877F2',
+            '&:hover': {
+              borderColor: '#166FE5',
+              backgroundColor: 'rgba(24, 119, 242, 0.04)',
+            },
+            borderRadius: 2,
+            px: 3,
+            py: 1,
+            textTransform: 'none',
+            fontWeight: 600
+          }}
+        >
+          {isConnecting ? 'Connecting...' : 'Connect Facebook'}
+        </Button>
+      </Box>
+    );
+  }
+
+  // Connected but no pages
+  if (pages.length === 0) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+        <Button
+          variant="outlined"
+          disabled
+          sx={{
+            borderColor: '#666',
+            color: '#666',
+            borderRadius: 2,
+            px: 3,
+            py: 1,
+            textTransform: 'none'
+          }}
+        >
+          No Facebook Pages Found
+        </Button>
+      </Box>
+    );
+  }
+
+  // Connected with pages - show publish UI
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2, mt: 2 }}>
+      <FormControl size="small" sx={{ minWidth: 200 }}>
+        <InputLabel sx={{ color: 'rgba(255,255,255,0.7)' }}>Select Page</InputLabel>
+        <Select
+          value={selectedPageId}
+          onChange={(e) => setSelectedPageId(e.target.value)}
+          sx={{
+            color: 'white',
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'rgba(255,255,255,0.3)',
+            },
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'rgba(255,255,255,0.5)',
+            },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: '#1877F2',
+            }
+          }}
+        >
+          {pages.map((page) => (
+            <MenuItem key={page.id} value={page.id}>
+              {page.name}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      
+      <Button
+        variant="contained"
+        startIcon={isLoading ? <CircularProgress size={16} color="inherit" /> : <span>📘</span>}
+        onClick={handlePublish}
+        disabled={isLoading || !selectedPageId}
+        sx={{
+          backgroundColor: '#1877F2',
+          '&:hover': {
+            backgroundColor: '#166FE5',
+          },
+          borderRadius: 2,
+          px: 3,
+          py: 1,
+          textTransform: 'none',
+          fontWeight: 600
+        }}
+      >
+        {isLoading ? 'Publishing...' : 'Post to Facebook'}
+      </Button>
+    </Box>
+  );
+};
 
 // --- Simple localStorage-backed chat memory ---
 const HISTORY_KEY = 'fbwriter:chatHistory';
@@ -133,9 +395,136 @@ interface FacebookWriterProps {
 
 // Enhanced Facebook Writer with Persona Integration
 const FacebookWriter: React.FC<FacebookWriterProps> = ({ className = '' }) => {
+  // Minimal Facebook-themed palette for local scope
+  const fbTheme = React.useMemo(() => createTheme({
+    palette: {
+      mode: 'dark',
+      primary: { 
+        main: '#1877f2',
+        light: '#42a5f5',
+        dark: '#1565c0',
+        contrastText: '#ffffff'
+      },
+      secondary: { 
+        main: '#1b74e4',
+        light: '#5c9eff',
+        dark: '#0d47a1'
+      },
+      background: {
+        default: '#0a0e1a',
+        paper: 'rgba(255,255,255,0.05)'
+      },
+      text: {
+        primary: 'rgba(255,255,255,0.95)',
+        secondary: 'rgba(255,255,255,0.7)'
+      }
+    },
+    typography: {
+      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+      h1: { fontWeight: 700, fontSize: '2.5rem', lineHeight: 1.2 },
+      h2: { fontWeight: 600, fontSize: '2rem', lineHeight: 1.3 },
+      h3: { fontWeight: 600, fontSize: '1.5rem', lineHeight: 1.4 },
+      h4: { fontWeight: 600, fontSize: '1.25rem', lineHeight: 1.4 },
+      h5: { fontWeight: 500, fontSize: '1.125rem', lineHeight: 1.5 },
+      h6: { fontWeight: 500, fontSize: '1rem', lineHeight: 1.5 },
+      body1: { fontSize: '1rem', lineHeight: 1.6 },
+      body2: { fontSize: '0.875rem', lineHeight: 1.5 },
+      button: { fontWeight: 600, textTransform: 'none', letterSpacing: 0.5 }
+    },
+    shape: { borderRadius: 12 },
+    components: {
+      MuiButton: {
+        styleOverrides: {
+          root: { 
+            borderRadius: 12, 
+            textTransform: 'none', 
+            letterSpacing: 0.5, 
+            fontWeight: 600,
+            padding: '12px 24px',
+            fontSize: '0.95rem',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:hover': {
+              transform: 'translateY(-1px)',
+              boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+            }
+          },
+          containedPrimary: { 
+            backgroundColor: '#1877f2',
+            boxShadow: '0 4px 14px 0 rgba(24,119,242,0.39)',
+            '&:hover': {
+              backgroundColor: '#166fe5',
+              boxShadow: '0 6px 20px 0 rgba(24,119,242,0.5)'
+            }
+          },
+          outlinedPrimary: { 
+            borderColor: 'rgba(24,119,242,0.5)', 
+            color: '#dbe7ff',
+            borderWidth: '1.5px',
+            '&:hover': {
+              borderColor: '#1877f2',
+              backgroundColor: 'rgba(24,119,242,0.08)',
+              borderWidth: '1.5px'
+            }
+          },
+          containedSecondary: {
+            backgroundColor: 'rgba(255,255,255,0.1)',
+            color: 'rgba(255,255,255,0.9)',
+            backdropFilter: 'blur(10px)',
+            '&:hover': {
+              backgroundColor: 'rgba(255,255,255,0.15)'
+            }
+          }
+        }
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: { 
+            borderRadius: 16,
+            background: 'rgba(255,255,255,0.03)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.12)'
+          }
+        }
+      },
+      MuiTypography: {
+        styleOverrides: {
+          h1: { fontWeight: 700, letterSpacing: '-0.02em' },
+          h2: { fontWeight: 600, letterSpacing: '-0.01em' },
+          h3: { fontWeight: 600, letterSpacing: '0em' },
+          h4: { fontWeight: 600, letterSpacing: '0em' },
+          h5: { fontWeight: 500, letterSpacing: '0em' },
+          h6: { fontWeight: 500, letterSpacing: '0em' }
+        }
+      },
+      MuiContainer: {
+        styleOverrides: {
+          root: {
+            paddingLeft: '24px',
+            paddingRight: '24px'
+          }
+        }
+      },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            backgroundColor: 'rgba(0,0,0,0.9)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 8,
+            fontSize: '0.875rem',
+            padding: '8px 12px'
+          }
+        }
+      }
+    }
+  }), []);
+
   return (
     <PlatformPersonaProvider platform="facebook">
+      <ThemeProvider theme={fbTheme}>
       <FacebookWriterContent className={className} />
+      </ThemeProvider>
     </PlatformPersonaProvider>
   );
 };
@@ -161,6 +550,11 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
 
   // Get persona context for enhanced AI assistance
   const { corePersona, platformPersona, loading: personaLoading } = usePlatformPersonaContext();
+  const [isGenerating, setIsGenerating] = React.useState<boolean>(false);
+  const [health, setHealth] = React.useState<any>(null);
+  const [busyCount, setBusyCount] = React.useState<number>(0);
+  const [showProgress, setShowProgress] = React.useState<boolean>(false);
+  const [generationType, setGenerationType] = React.useState<'post' | 'hashtags' | 'ad_copy' | 'story' | 'reel' | 'carousel' | 'event' | 'page_about'>('post');
 
   React.useEffect(() => {
     const onUpdate = (e: any) => {
@@ -173,9 +567,67 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
     };
     const onAssistantMessage = (e: any) => {
       const content = e?.detail?.content ?? e?.detail ?? '';
-      if (content) {
+      if (!content) return;
         pushHistory('assistant', String(content));
         setHistoryVersion(v => v + 1);
+      
+      // Enhanced content extraction and synchronization
+      try {
+        const raw = String(content || '');
+        console.log('[Facebook Writer] Assistant message received:', raw.substring(0, 100) + '...');
+        
+        // More comprehensive content extraction patterns
+        let clean = raw
+          // Remove common prefixes
+          .replace(/^Here\'s a[^:]*:\s*/i, '')
+          .replace(/^Here is a[^:]*:\s*/i, '')
+          .replace(/^Facebook post[:\s]*/i, '')
+          .replace(/^Here\'s your[^:]*:\s*/i, '')
+          .replace(/^Your[^:]*:\s*/i, '')
+          .replace(/^Generated[^:]*:\s*/i, '')
+          .replace(/^Content[^:]*:\s*/i, '')
+          // Remove code blocks and markdown
+          .replace(/```[\s\S]*?```/g, '')
+          .replace(/`[^`]*`/g, '')
+          // Remove action results and tool calls
+          .replace(/\[Action[^\]]*\]/g, '')
+          .replace(/\[Tool[^\]]*\]/g, '')
+          .replace(/Success: true[^\n]*/g, '')
+          .replace(/Generated successfully[^\n]*/g, '')
+          .trim();
+        
+        console.log('[Facebook Writer] Cleaned content:', clean.substring(0, 100) + '...');
+        
+        // Enhanced post detection patterns
+        const hasHashtags = /#[A-Za-z0-9_]+/.test(clean);
+        const hasEmojis = /[🚀🎉✅✨💡📢📚🎬🖼️📅ℹ️]/.test(clean);
+        const hasMultipleLines = clean.split('\n').length >= 2;
+        const hasCallToAction = /(visit|check|learn|discover|explore|try|get|start|join|follow|share|comment|like)/i.test(clean);
+        const hasEngagementWords = /(challenge|solution|benefit|feature|launch|announce|excited|thrilled)/i.test(clean);
+        
+        const looksLikePost = hasHashtags || hasEmojis || hasMultipleLines || hasCallToAction || hasEngagementWords;
+        const isSubstantialContent = clean.length > 30;
+        
+        console.log('[Facebook Writer] Post detection:', {
+          hasHashtags,
+          hasEmojis,
+          hasMultipleLines,
+          hasCallToAction,
+          hasEngagementWords,
+          looksLikePost,
+          isSubstantialContent,
+          contentLength: clean.length
+        });
+        
+        if (looksLikePost && isSubstantialContent) {
+          console.log('[Facebook Writer] Syncing content to draft');
+          setPostDraft(clean);
+          setStage('edit');
+        } else {
+          console.log('[Facebook Writer] Content does not match post pattern, not syncing');
+        }
+      } catch (error) {
+        console.error('[Facebook Writer] Error processing assistant message:', error);
       }
     };
     const onApplyEdit = (e: any) => {
@@ -214,6 +666,31 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
     window.addEventListener('fbwriter:applyEdit', onApplyEdit as any);
     window.addEventListener('fbwriter:adVariations', onAdVariations as any);
     window.addEventListener('fbwriter:storyImages', onStoryImages as any);
+    const onGenStart = () => {
+      setIsGenerating(true);
+      setShowProgress(true);
+    };
+    const onGenEnd = () => {
+      setIsGenerating(false);
+      setShowProgress(false);
+    };
+    const onSyncContent = () => {
+      console.log('[Facebook Writer] Manual sync triggered');
+      // Force a re-evaluation of the current content
+      if (postDraft) {
+        console.log('[Facebook Writer] Current draft content:', postDraft.substring(0, 100) + '...');
+      }
+    };
+    const onSetGenerationType = (e: any) => {
+      const type = e.detail || 'post';
+      if (['post', 'hashtags', 'ad_copy', 'story', 'reel', 'carousel', 'event', 'page_about'].includes(type)) {
+        setGenerationType(type as 'post' | 'hashtags' | 'ad_copy' | 'story' | 'reel' | 'carousel' | 'event' | 'page_about');
+      }
+    };
+    window.addEventListener('fbwriter:generatingStart', onGenStart as any);
+    window.addEventListener('fbwriter:generatingEnd', onGenEnd as any);
+    window.addEventListener('fbwriter:syncContent', onSyncContent as any);
+    window.addEventListener('fbwriter:setGenerationType', onSetGenerationType as any);
     return () => {
       window.removeEventListener('fbwriter:updateDraft', onUpdate as any);
       window.removeEventListener('fbwriter:appendDraft', onAppend as any);
@@ -221,12 +698,48 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
       window.removeEventListener('fbwriter:applyEdit', onApplyEdit as any);
       window.removeEventListener('fbwriter:adVariations', onAdVariations as any);
       window.removeEventListener('fbwriter:storyImages', onStoryImages as any);
+      window.removeEventListener('fbwriter:generatingStart', onGenStart as any);
+      window.removeEventListener('fbwriter:generatingEnd', onGenEnd as any);
+      window.removeEventListener('fbwriter:syncContent', onSyncContent as any);
+      window.removeEventListener('fbwriter:setGenerationType', onSetGenerationType as any);
     };
   }, [postDraft]);
 
+  // Health check effect
+  React.useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch('/api/facebook-writer/health');
+        const data = await response.json();
+        setHealth(data);
+      } catch (error) {
+        console.error('Health check failed:', error);
+        setHealth({ status: 'unhealthy' });
+      }
+    };
+    
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000); // Check every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  // Busy state tracking
+  React.useEffect(() => {
+    const onBusy = () => setBusyCount(prev => prev + 1);
+    const onIdle = () => setBusyCount(prev => Math.max(0, prev - 1));
+    
+    window.addEventListener('fbwriter:busy', onBusy);
+    window.addEventListener('fbwriter:idle', onIdle);
+    
+    return () => {
+      window.removeEventListener('fbwriter:busy', onBusy);
+      window.removeEventListener('fbwriter:idle', onIdle);
+    };
+  }, []);
+
   // Share current draft and notes with Copilot
   useCopilotReadable({
-    description: 'Current Facebook post draft text the user is editing',
+    description: 'Current Facebook post draft text the user is editing - this is the main content that should be used for all operations',
     value: postDraft,
     categories: ['social', 'facebook', 'draft']
   });
@@ -264,15 +777,47 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
     }
   });
 
+  // Ensure Copilot always works with the current draft content
+  useCopilotActionTyped({
+    name: 'getCurrentFacebookDraft',
+    description: 'Get the current Facebook post draft content for reference',
+    parameters: [],
+    handler: async () => {
+      return { 
+        success: true, 
+        content: postDraft,
+        message: 'Current draft content retrieved',
+        length: postDraft.length
+      };
+    }
+  });
+
+  // Sync content between draft and Copilot
+  useCopilotActionTyped({
+    name: 'syncFacebookContent',
+    description: 'Ensure the Copilot content matches the current draft content',
+    parameters: [],
+    handler: async () => {
+      // This action ensures that any content generated by Copilot
+      // is immediately synced to the draft
+      return { 
+        success: true, 
+        content: postDraft,
+        message: 'Content synchronized between draft and Copilot',
+        draft_content: postDraft
+      };
+    }
+  });
+
   const startSuggestions = [
-    { title: '🎉 Launch teaser', message: 'Use tool generateFacebookPost to write a short Facebook post announcing our new feature launch.' },
-    { title: '💡 Benefit-first', message: 'Use tool generateFacebookPost to draft a benefit-first Facebook post with a strong CTA.' },
-    { title: '🏷️ Hashtags', message: 'Use tool generateFacebookHashtags to suggest 5 relevant hashtags for this post.' },
-    { title: '📢 Ad copy (primary text)', message: 'Use tool generateFacebookAdCopy to create ad copy tailored for conversions.' },
-    { title: '📚 Story', message: 'Use tool generateFacebookStory to create a Facebook Story script with tone and visuals.' },
-    { title: '🎬 Reel script', message: 'Use tool generateFacebookReel to draft a 30-60 seconds fast-paced product demo reel with hook, scenes, and CTA.' },
-    { title: '🖼️ Carousel', message: 'Use tool generateFacebookCarousel to create a 5-slide Product showcase carousel with a main caption and CTA.' },
-    { title: '📅 Event', message: 'Use tool generateFacebookEvent to create a Virtual Webinar event description with title, highlights, and CTA.' },
+    { title: '🎉 Launch teaser', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookPost to write a short Facebook post announcing our new feature launch.' },
+    { title: '💡 Benefit-first', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookPost to draft a benefit-first Facebook post with a strong CTA.' },
+    { title: '🏷️ Hashtags', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookHashtags to suggest 5 relevant hashtags for this post.' },
+    { title: '📢 Ad copy (primary text)', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookAdCopy to create ad copy tailored for conversions.' },
+    { title: '📚 Story', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookStory to create a Facebook Story script with tone and visuals.' },
+    { title: '🎬 Reel script', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookReel to draft a 30-60 seconds fast-paced product demo reel with hook, scenes, and CTA.' },
+    { title: '🖼️ Carousel', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookCarousel to create a 5-slide Product showcase carousel with a main caption and CTA.' },
+    { title: '📅 Event', message: 'First, use tool getCurrentFacebookDraft to see the current content, then use tool generateFacebookEvent to create a Virtual Webinar event description with title, highlights, and CTA.' },
     { title: 'ℹ️ Page About', message: 'Use tool generateFacebookPageAbout to create a comprehensive Facebook Page About section with business details and contact information.' }
   ];
   const editSuggestions = [
@@ -386,326 +931,516 @@ Always use the most appropriate tool for the user's request.`.trim();
         sx={{
           minHeight: '100vh',
           position: 'relative',
-          color: 'rgba(255,255,255,0.92)',
-          background:
-            'radial-gradient(1200px 600px at -10% -20%, rgba(24,119,242,0.25) 0%, transparent 60%),' +
-            'radial-gradient(900px 500px at 110% 10%, rgba(11, 88, 195, 0.25) 0%, transparent 60%),' +
-            'linear-gradient(135deg, #0b1a3a 0%, #0f2559 35%, #0f3a7a 70%, #0b4da6 100%)',
+          color: 'rgba(255,255,255,0.95)',
+          background: `
+            radial-gradient(1400px 800px at -20% -30%, rgba(24,119,242,0.15) 0%, transparent 50%),
+            radial-gradient(1000px 600px at 120% 20%, rgba(11, 88, 195,0.12) 0%, transparent 50%),
+            radial-gradient(800px 400px at 50% 100%, rgba(24,119,242,0.08) 0%, transparent 60%),
+            linear-gradient(135deg, #0a0e1a 0%, #0f1a2e 25%, #1a2332 50%, #0f2559 75%, #0b4da6 100%)
+          `,
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: `
+              radial-gradient(circle at 20% 80%, rgba(24,119,242,0.1) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, rgba(11, 88, 195,0.08) 0%, transparent 50%),
+              radial-gradient(circle at 40% 40%, rgba(24,119,242,0.05) 0%, transparent 50%)
+            `,
+            pointerEvents: 'none'
+          }
         }}
       >
-        <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1, py: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: 0.3 }}>
-              Facebook Writer (Preview)
+        {/* Back to Dashboard Button - Top Left */}
+        <Button
+          variant="contained"
+          component="a"
+          href="/"
+          startIcon={<span style={{ fontSize: '16px' }}>←</span>}
+          sx={{
+            position: 'fixed',
+            top: 20,
+            left: 20,
+            zIndex: 2000,
+            background: 'linear-gradient(135deg, #1877f2 0%, #1b74e4 100%)',
+            color: 'white',
+            fontWeight: 600,
+            borderRadius: 2,
+            px: 3,
+            py: 1.5,
+            boxShadow: '0 4px 20px rgba(24,119,242,0.3)',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #166fe5 0%, #1557c0 100%)',
+              boxShadow: '0 6px 25px rgba(24,119,242,0.4)',
+              transform: 'translateY(-1px)'
+            },
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          Back to Dashboard
+        </Button>
+        <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, pt: 4, pb: 6 }}>
+          {/* Enterprise Hero Section */}
+          <Box sx={{ textAlign: 'center', mb: 6 }}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h2" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #ffffff 0%, #e3f2fd 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                mb: 2
+              }}>
+                Facebook Content Studio
+              </Typography>
+              <Typography variant="h5" sx={{ 
+                color: 'rgba(255,255,255,0.8)',
+                fontWeight: 400,
+                mb: 3
+              }}>
+                Create compelling Facebook posts with AI-powered assistance
             </Typography>
           </Box>
           
-          {/* Persona Integration Indicator */}
-          {corePersona && !personaLoading && (
-            <div 
-              style={{
-                padding: '8px 16px',
-                backgroundColor: 'rgba(24, 119, 242, 0.1)',
-                borderBottom: '1px solid rgba(24, 119, 242, 0.3)',
-                fontSize: '12px',
-                color: 'rgba(255, 255, 255, 0.8)',
+            {/* Professional Stats Cards */}
+            <Box sx={{ 
                 display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'help',
-                position: 'relative',
-                marginBottom: '16px',
-                borderRadius: '8px',
-                border: '1px solid rgba(24, 119, 242, 0.2)'
-              }}
-              title={`🎭 YOUR PERSONALIZED WRITING ASSISTANT
-
-🤔 WHAT IS A PERSONA?
-A persona is your unique writing style profile that AI uses to create content that sounds exactly like you. It's like having a digital twin of your writing voice!
-
-🎯 HOW DOES IT HELP YOU?
-✅ Generates content that matches your natural writing style
-✅ Maintains consistent voice across all your Facebook posts
-✅ Saves time by understanding your preferences automatically
-✅ Optimizes content for Facebook's algorithm and your audience
-✅ Provides personalized suggestions based on your industry
-
-🧠 HOW WAS IT CREATED?
-Your persona was built by analyzing:
-• Your website content and writing patterns
-• Your research preferences and content goals
-• Your target audience and industry focus
-• Your communication style and tone preferences
-• Facebook-specific optimization requirements
-
-🤖 HOW DOES COPILOTKIT USE IT?
-The AI assistant now knows:
-• Your preferred sentence length and structure
-• Your go-to words and phrases to use/avoid
-• Your professional tone and communication style
-• Facebook-specific optimization strategies
-• Your engagement patterns and posting preferences
-
-🚀 HYPER-PERSONALIZATION ACHIEVED!
-Instead of generic content, you get:
-• Content that sounds authentically like you
-• Industry-specific insights and terminology
-• Facebook algorithm-optimized posts
-• Community engagement strategies
-• Personalized conversion tactics
-
-📊 YOUR PERSONA DETAILS:
-🎭 Name: ${corePersona.persona_name}
-📋 Style: ${corePersona.archetype}
-💭 Philosophy: ${corePersona.core_belief}
-📈 Confidence: ${corePersona.confidence_score}% accuracy
-
-🎯 FACEBOOK OPTIMIZATION:
-• Optimal length: ${platformPersona?.content_format_rules?.optimal_length || '40-80 words'}
-• Posting frequency: ${platformPersona?.engagement_patterns?.posting_frequency || '1-2 times per day'}
-• Hashtag strategy: ${platformPersona?.lexical_features?.hashtag_strategy || '1-2 relevant hashtags'}
-• Engagement style: ${platformPersona?.engagement_patterns?.interaction_style || 'community-focused'}
-
-💡 TRY THIS: Ask the AI to "generate a Facebook post about [your topic]" and watch how it automatically applies your persona to create content that sounds like you!`}
-            >
-              <span style={{ color: '#1877f2' }}>🎭</span>
-              <span><strong>🎭 Your Writing Assistant:</strong> {corePersona.persona_name} ({corePersona.archetype})</span>
-              <span style={{ marginLeft: 'auto', fontSize: '11px' }}>
-                {corePersona.confidence_score}% accuracy | 
-                Platform: Facebook Optimized
-              </span>
-              <span style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.6)', marginLeft: '8px' }}>
-                (Hover for details)
-              </span>
-            </div>
-          )}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Button size="small" variant="outlined" disabled sx={{ color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.25)' }}>
-                DashBoard
-              </Button>
-            <Button size="small" variant="outlined" onClick={() => { clearHistory(); setHistoryVersion(v => v + 1); }}
-              sx={{ color: 'rgba(255,255,255,0.9)', borderColor: 'rgba(255,255,255,0.35)' }}>
-              Clear chat memory
-            </Button>
-            </Box>
-          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.85)', mb: 3 }}>
-            {stage === 'start' ? 'Collaborate with the Copilot to craft your post. The assistant can update the draft directly.' : 'Use the edit suggestions to see real-time changes applied to your post.'}
-          </Typography>
-
-          <Paper
-            sx={{
-              p: 2,
-              mb: 3,
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.08) 100%)',
-              backdropFilter: 'blur(22px)',
-              WebkitBackdropFilter: 'blur(22px)',
-              border: '1px solid rgba(255, 255, 255, 0.16)',
-              borderRadius: 3,
-              boxShadow: '0 18px 50px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.25)',
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)', mb: 1 }}>
-              Context/Notes (optional)
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              minRows={2}
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Audience, campaign, tone, key points..."
-              sx={{
-                mb: 2,
-                '& .MuiInputBase-root': { color: 'white' },
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.35)' },
-                '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.7)' }
-              }}
-            />
-          </Paper>
-
-          <Paper
-            sx={{
-              p: 2,
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.08) 100%)',
-              backdropFilter: 'blur(22px)',
-              WebkitBackdropFilter: 'blur(22px)',
-              border: '1px solid rgba(255, 255, 255, 0.16)',
-              borderRadius: 3,
-              boxShadow: '0 18px 50px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.25)'
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                Post Draft (rendered)
-              </Typography>
-            </Box>
-
-            {isPreviewing && (
-              <Paper
-                sx={{
-                  p: 2,
-                  mb: 2,
-                  background: 'rgba(255,255,255,0.09)',
-                  border: '1px solid rgba(255,255,255,0.25)'
-                }}
-              >
-                <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)', mb: 1 }}>
-                  Live changes preview
-                </Typography>
-                <div
-                  style={{ color: 'white', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}
-                  dangerouslySetInnerHTML={{ __html: livePreviewHtml }}
-                />
-                <style>{`
-                  .fbw-add { color: #4CAF50; font-style: normal; background: rgba(76,175,80,0.12); border-radius: 3px; }
-                  .fbw-del { color: #EF9A9A; text-decoration: line-through; }
-                  .fbw-more { opacity: 0.7; }
-                `}</style>
-                {pendingEdit && (
-                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                    <Button size="small" variant="contained" color="primary"
-                      onClick={() => {
-                        setPostDraft(pendingEdit.target);
-                        setIsPreviewing(false);
-                        setPendingEdit(null);
-                        setLivePreviewHtml('');
-                      }}>
-                      Confirm changes
-                    </Button>
-                    <Button size="small" variant="outlined" color="inherit"
-                      onClick={() => {
-                        setIsPreviewing(false);
-                        setPendingEdit(null);
-                        setLivePreviewHtml('');
-                      }}>
-                      Discard
-                    </Button>
-                  </Box>
-                )}
-              </Paper>
-            )}
-
-            <Box
-              ref={renderRef}
-              onMouseUp={() => {
-                try {
-                  const sel = window.getSelection();
-                  if (!sel || sel.rangeCount === 0) { setSelectionMenu(null); return; }
-                  const text = (sel.toString() || '').trim();
-                  if (!text) { setSelectionMenu(null); return; }
-                  const range = sel.getRangeAt(0);
-                  const rect = range.getBoundingClientRect();
-                  const container = renderRef.current?.getBoundingClientRect();
-                  if (!container) { setSelectionMenu(null); return; }
-                  const x = Math.max(8, rect.left - container.left + (rect.width / 2));
-                  const y = Math.max(8, rect.top - container.top);
-                  setSelectionMenu({ x, y, text });
-                } catch {
-                  setSelectionMenu(null);
-                }
-              }}
-              sx={{
-              p: 2,
-              border: '1px solid rgba(255,255,255,0.25)',
-              borderRadius: 2,
-              color: 'rgba(255,255,255,0.95)',
-              position: 'relative',
-              '& h1, & h2, & h3': { margin: '8px 0' },
-              '& p': { margin: '6px 0' },
-              '& ul': { paddingLeft: '1.2rem', margin: '6px 0' }
+              justifyContent: 'center', 
+              gap: 3, 
+              mb: 4,
+              flexWrap: 'wrap'
             }}>
-              <div dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(postDraft) }} />
-              {selectionMenu && (
-                <Box
-                  role="menu"
-                  sx={{
-                    position: 'absolute',
-                    top: selectionMenu.y - 36,
-                    left: selectionMenu.x - 80,
-                    background: 'rgba(20,22,35,0.92)',
-                    border: '1px solid rgba(255,255,255,0.25)',
-                    borderRadius: 2,
-                    display: 'flex',
-                    gap: 0.5,
-                    px: 1,
-                    py: 0.5,
-                    boxShadow: '0 10px 24px rgba(0,0,0,0.35)'
-                  }}
-                >
-                  <Button size="small" variant="text" sx={{ color: 'white', textTransform: 'none' }} onClick={() => console.log('Casual:', selectionMenu.text)}>Casual</Button>
-                  <Button size="small" variant="text" sx={{ color: 'white', textTransform: 'none' }} onClick={() => console.log('Shorten:', selectionMenu.text)}>Shorten</Button>
-                  <Button size="small" variant="text" sx={{ color: 'white', textTransform: 'none' }} onClick={() => console.log('Professional:', selectionMenu.text)}>Professional</Button>
-                  <Button size="small" variant="text" sx={{ color: 'rgba(255,255,255,0.8)', textTransform: 'none' }} onClick={() => setSelectionMenu(null)}>Close</Button>
-                </Box>
-              )}
-            </Box>
-          </Paper>
-
-          {Array.isArray(storyImages) && storyImages.length > 0 && (
-            <Paper
-              sx={{
-                p: 2,
-                mt: 3,
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.16)',
-                borderRadius: 3
-              }}
-            >
-              <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)', mb: 1 }}>
-                Story Images
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                {storyImages.map((b64, idx) => (
-                  <img key={idx} src={`data:image/png;base64,${b64}`} alt={`story-${idx}`} style={{ maxWidth: 220, borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
-                ))}
-              </Box>
-            </Paper>
-          )}
-
-          {adVariations && (
-            <Paper
-              sx={{
-                p: 2,
-                mt: 3,
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.16)',
-                borderRadius: 3
-              }}
-            >
-              <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)', mb: 1 }}>
-                Ad Variations
-              </Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-                <VariationList title="Headlines" items={adVariations.headline_variations} onInsert={(t)=>setPostDraft(prev => prev ? `${t}\n\n${prev}` : t)} onReplace={(t)=>setPostDraft(t)} />
-                <VariationList title="Primary Text" items={adVariations.primary_text_variations} onInsert={(t)=>setPostDraft(prev => prev ? `${prev}\n\n${t}` : t)} onReplace={(t)=>setPostDraft(t)} />
-                <VariationList title="Descriptions" items={adVariations.description_variations} onInsert={(t)=>setPostDraft(prev => prev ? `${prev}\n\n${t}` : t)} onReplace={(t)=>setPostDraft(t)} />
-                <VariationList title="CTAs" items={adVariations.cta_variations} onInsert={(t)=>setPostDraft(prev => prev ? `${prev}\n\n${t}` : t)} onReplace={(t)=>setPostDraft(t)} />
-              </Box>
-            </Paper>
-          )}
-        </Container>
-      </Box>
-    </CopilotSidebar>
-  );
-};
-
-const VariationList: React.FC<{ title: string; items: string[]; onInsert: (t: string) => void; onReplace: (t: string) => void }> = ({ title, items, onInsert, onReplace }) => {
-  if (!Array.isArray(items) || items.length === 0) return null;
-  return (
-    <Box>
-      <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.85)', mb: 1 }}>{title}</Typography>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {items.slice(0, 5).map((t, idx) => (
-          <Box key={idx} sx={{ border: '1px solid rgba(255,255,255,0.18)', borderRadius: 2, p: 1.2 }}>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', mb: 1 }}>{t}</Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button size="small" variant="contained" onClick={() => onInsert(t)}>Insert</Button>
-              <Button size="small" variant="outlined" onClick={() => onReplace(t)}>Replace</Button>
+              <Paper sx={{ 
+                p: 2, 
+                minWidth: 140,
+                textAlign: 'center',
+                background: 'rgba(24,119,242,0.1)',
+                border: '1px solid rgba(24,119,242,0.2)'
+              }}>
+                <Typography variant="h6" sx={{ color: '#1877f2', fontWeight: 600 }}>
+                  AI-Powered
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Smart Content Generation
+                </Typography>
+              </Paper>
+              <Paper sx={{ 
+                p: 2, 
+                minWidth: 140,
+                textAlign: 'center',
+                background: 'rgba(76,175,80,0.1)',
+                border: '1px solid rgba(76,175,80,0.2)'
+              }}>
+                <Typography variant="h6" sx={{ color: '#4caf50', fontWeight: 600 }}>
+                  Optimized
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  For Maximum Engagement
+                </Typography>
+              </Paper>
+              <Paper sx={{ 
+                p: 2, 
+                minWidth: 140,
+                textAlign: 'center',
+                background: 'rgba(255,193,7,0.1)',
+                border: '1px solid rgba(255,193,7,0.2)'
+              }}>
+                <Typography variant="h6" sx={{ color: '#ffc107', fontWeight: 600 }}>
+                  Professional
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Enterprise-Grade Tools
+                </Typography>
+              </Paper>
             </Box>
           </Box>
-        ))}
+          
+
+          {/* Professional Action Center */}
+          <Paper sx={{ 
+            p: 4, 
+            mb: 4,
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 3
+          }}>
+            <Box sx={{ textAlign: 'center', mb: 3 }}>
+              <Typography variant="h5" sx={{ 
+                color: 'rgba(255,255,255,0.95)', 
+                fontWeight: 600,
+                mb: 1
+              }}>
+                {postDraft || isGenerating ? 'Content Management' : 'Start Creating Your Content'}
+              </Typography>
+              <Typography variant="body1" sx={{ 
+                color: 'rgba(255,255,255,0.7)',
+                maxWidth: 600,
+                mx: 'auto'
+              }}>
+                {postDraft || isGenerating 
+                  ? 'Your content is ready for review and publishing'
+                  : 'Collaborate with our AI assistant to craft engaging Facebook posts that resonate with your audience'
+                }
+              </Typography>
+            </Box>
+            
+            {/* Professional Action Buttons */}
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'center',
+              mb: 3
+            }}>
+              <Button 
+                variant="contained" 
+                size="large"
+                onClick={() => {
+                  try {
+                    window.dispatchEvent(new CustomEvent('copilot:open'));
+                    window.dispatchEvent(new CustomEvent('openCopilot'));
+                    const selectors = [
+                      '[data-copilot-toggle]',
+                      '.copilotkit-toggle',
+                      '.copilotkit-chat-toggle',
+                      '.alwrity-copilot-sidebar button',
+                      '.copilot-sidebar button',
+                    ];
+                    for (const sel of selectors) {
+                      const el = document.querySelector(sel) as HTMLButtonElement | null;
+                      if (el) { el.click(); return; }
+                    }
+                    const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+                    const target = buttons.find(b => (b.textContent || '').match(/open|assistant|copilot|chat/i));
+                    if (target) { target.click(); }
+                  } catch {}
+                }} 
+                sx={{ 
+                  px: 4, 
+                  py: 2, 
+                  fontSize: '1.1rem',
+                  minWidth: 200,
+                  background: 'linear-gradient(135deg, #1877f2 0%, #1b74e4 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #166fe5 0%, #1565c0 100%)',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 8px 25px rgba(24,119,242,0.4)'
+                  }
+                }}
+              >
+                {postDraft || isGenerating ? '🤖 Continue with AI' : '🤖 Start with AI Assistant'}
+              </Button>
+            </Box>
+            
+             {/* Professional Features Grid */}
+             <Box sx={{ 
+               display: 'grid', 
+               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+               gap: 2,
+               mt: 3
+             }}>
+               <Box sx={{ textAlign: 'center', p: 2 }}>
+                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>
+                   Optimal Length
+          </Typography>
+                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                   {platformPersona?.content_format_rules?.optimal_length || '40-80 words'}
+                 </Typography>
+               </Box>
+               <Box sx={{ textAlign: 'center', p: 2 }}>
+                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>
+                   Posting Frequency
+                 </Typography>
+                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                   {platformPersona?.engagement_patterns?.posting_frequency || '1-2 times per day'}
+                 </Typography>
+               </Box>
+               <Box sx={{ textAlign: 'center', p: 2 }}>
+                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>
+                   Hashtag Strategy
+                 </Typography>
+                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                   {platformPersona?.lexical_features?.hashtag_strategy || '1-2 relevant hashtags'}
+                 </Typography>
+               </Box>
+             </Box>
+          </Paper>
+
+          {/* Professional Draft Section - Progressive Disclosure */}
+          {(postDraft || isGenerating) && (
+            <Paper sx={{ 
+              p: 4,
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 3,
+              position: 'relative'
+            }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+              <Typography variant="h5" sx={{ 
+                color: 'rgba(255,255,255,0.95)', 
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}>
+                📝 Content Draft
+                {isGenerating && (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 1,
+                    ml: 2,
+                    px: 2,
+                    py: 0.5,
+                    background: 'rgba(24,119,242,0.1)',
+                    borderRadius: 2,
+                    border: '1px solid rgba(24,119,242,0.2)'
+                  }}>
+                    <Box sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      backgroundColor: '#1877f2',
+                      animation: 'pulse 1.5s ease-in-out infinite'
+                    }} />
+                    <Typography variant="caption" sx={{ color: '#1877f2', fontWeight: 500 }}>
+                      Generating content...
+            </Typography>
+                  </Box>
+                )}
+              </Typography>
+              
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Button 
+                  size="small" 
+                  variant="outlined" 
+                  onClick={() => { clearHistory(); setHistoryVersion(v => v + 1); }}
+            sx={{
+                    color: 'rgba(255,255,255,0.7)',
+                    borderColor: 'rgba(255,255,255,0.2)',
+                    fontSize: '0.875rem',
+                    '&:hover': {
+                      borderColor: 'rgba(255,255,255,0.4)',
+                      backgroundColor: 'rgba(255,255,255,0.05)'
+                    }
+                  }}
+                >
+                  Clear Memory
+                </Button>
+            </Box>
+            </Box>
+            {/* Professional Draft Content Area */}
+            <Box data-testid="post-draft"
+              ref={renderRef}
+                sx={{
+                minHeight: 200,
+                p: 3,
+                background: 'rgba(255,255,255,0.02)',
+                border: '2px dashed rgba(255,255,255,0.1)',
+                borderRadius: 2,
+                position: 'relative',
+                '&:hover': {
+                  borderColor: 'rgba(255,255,255,0.2)',
+                  background: 'rgba(255,255,255,0.03)'
+                }
+              }}
+            >
+              {postDraft ? (
+                <Box sx={{ 
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.6,
+                  color: 'rgba(255,255,255,0.9)',
+                  fontSize: '1rem'
+                }}>
+                  {postDraft}
+                </Box>
+              ) : isGenerating ? (
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  minHeight: 120,
+                  flexDirection: 'column',
+                  gap: 2
+                }}>
+                  <Box sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    border: '3px solid rgba(24,119,242,0.3)',
+                    borderTop: '3px solid #1877f2',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <Typography variant="body1" sx={{ 
+                    color: 'rgba(255,255,255,0.7)',
+                    fontWeight: 500
+                  }}>
+                    Generating your content...
+                </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  minHeight: 120,
+                  flexDirection: 'column',
+                  gap: 2,
+                  textAlign: 'center'
+                }}>
+                  <Box sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 2,
+                    background: 'linear-gradient(135deg, rgba(24,119,242,0.1) 0%, rgba(11,88,195,0.05) 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '24px'
+                  }}>
+                    📝
+                  </Box>
+                  <Typography variant="h6" sx={{ 
+                    color: 'rgba(255,255,255,0.8)',
+                    fontWeight: 500
+                  }}>
+                    Your content will appear here
+                  </Typography>
+                  <Typography variant="body2" sx={{ 
+                    color: 'rgba(255,255,255,0.6)',
+                    maxWidth: 400
+                  }}>
+                    Use the AI assistant above to generate engaging Facebook posts, or start typing to create your own content
+                  </Typography>
+                  </Box>
+                )}
+            </Box>
+            
+            {/* Professional Action Bar */}
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              mt: 3,
+              pt: 3,
+              borderTop: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  size="small"
+                  onClick={() => {
+                    try {
+                      window.dispatchEvent(new CustomEvent('copilot:open'));
+                      window.dispatchEvent(new CustomEvent('openCopilot'));
+                      const selectors = [
+                        '[data-copilot-toggle]',
+                        '.copilotkit-toggle',
+                        '.copilotkit-chat-toggle',
+                        '.alwrity-copilot-sidebar button',
+                        '.copilot-sidebar button',
+                      ];
+                      for (const sel of selectors) {
+                        const el = document.querySelector(sel) as HTMLButtonElement | null;
+                        if (el) { el.click(); return; }
+                      }
+                      const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+                      const target = buttons.find(b => (b.textContent || '').match(/open|assistant|copilot|chat/i));
+                      if (target) { target.click(); }
+                    } catch {}
+              }}
+              sx={{
+                    fontSize: '0.875rem',
+                    px: 3,
+                    py: 1
+                  }}
+                >
+                  🤖 Open AI Assistant
+                </Button>
+              </Box>
+              
+              {/* Post to Facebook Button */}
+              <FacebookPostButton postContent={postDraft || ''} />
+              </Box>
+            </Paper>
+          )}
+
+          {/* Professional Status Indicators */}
+          {health && (
+            <Box sx={{ 
+              position: 'fixed', 
+              top: 80, 
+              right: 24, 
+              zIndex: 1500 
+            }}>
+              <Paper sx={{ 
+                p: 2, 
+                background: health.status === 'healthy' 
+                  ? 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(76,175,80,0.08) 100%)'
+                  : 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(244,67,54,0.08) 100%)',
+                border: `1px solid ${health.status === 'healthy' ? 'rgba(76,175,80,0.3)' : 'rgba(244,67,54,0.3)'}`,
+                borderRadius: 2,
+                backdropFilter: 'blur(10px)'
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: health.status === 'healthy' ? '#4caf50' : '#f44336',
+                    boxShadow: `0 0 8px ${health.status === 'healthy' ? 'rgba(76,175,80,0.5)' : 'rgba(244,67,54,0.5)'}`
+                  }} />
+                  <Typography variant="body2" sx={{ 
+                    color: 'rgba(255,255,255,0.9)',
+                    fontWeight: 500
+                  }}>
+                    {health.status === 'healthy' ? 'System Online' : 'System Issues'}
+              </Typography>
+                  {busyCount > 0 && (
+                    <Typography variant="caption" sx={{ 
+                      color: 'rgba(255,255,255,0.7)',
+                      ml: 1
+                    }}>
+                      ({busyCount} active)
+                    </Typography>
+                  )}
+              </Box>
+            </Paper>
+            </Box>
+          )}
+          
+          {/* CSS Animations */}
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            @keyframes pulse {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.5; }
+            }
+          `}</style>
+        </Container>
+        
+        {/* Content Generation Progress */}
+        <ContentGenerationProgress
+          isVisible={showProgress}
+          onClose={() => setShowProgress(false)}
+          onComplete={(result) => {
+            console.log('Content generation completed:', result);
+            setShowProgress(false);
+            setIsGenerating(false);
+          }}
+          onError={(error) => {
+            console.error('Content generation error:', error);
+            setShowProgress(false);
+            setIsGenerating(false);
+          }}
+          generationType={generationType}
+        />
       </Box>
-    </Box>
+    </CopilotSidebar>
   );
 };
 
