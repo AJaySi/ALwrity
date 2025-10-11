@@ -28,6 +28,9 @@ from api.component_logic import router as component_logic_router
 # Import subscription API endpoints
 from api.subscription_api import router as subscription_router
 
+# Import Step 3 onboarding routes
+from api.onboarding_utils.step3_routes import router as step3_routes
+
 # Import SEO tools router
 from routers.seo_tools import router as seo_tools_router
 # Import Facebook Writer endpoints
@@ -109,6 +112,16 @@ onboarding_manager = OnboardingManager(app)
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limiting middleware using modular utilities."""
     return await rate_limiter.rate_limit_middleware(request, call_next)
+
+# API key injection middleware for production (user-specific keys)
+@app.middleware("http")
+async def inject_user_api_keys(request: Request, call_next):
+    """
+    Inject user-specific API keys into environment for the request duration.
+    This allows existing code using os.getenv() to work in production.
+    """
+    from middleware.api_key_injection_middleware import api_key_injection_middleware
+    return await api_key_injection_middleware(request, call_next)
 
 # Health check endpoints using modular utilities
 @app.get("/health")

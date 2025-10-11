@@ -35,11 +35,11 @@ async def get_api_keys_for_onboarding():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-async def save_api_key(request: APIKeyRequest):
+async def save_api_key(request: APIKeyRequest, current_user: dict = None):
     try:
         from api.onboarding_utils.api_key_management_service import APIKeyManagementService
         api_service = APIKeyManagementService()
-        return await api_service.save_api_key(request.provider, request.api_key, request.description)
+        return await api_service.save_api_key(request.provider, request.api_key, request.description, current_user)
     except Exception as e:
         logger.error(f"Error saving API key: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")

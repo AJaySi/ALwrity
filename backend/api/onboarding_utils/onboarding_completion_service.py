@@ -8,13 +8,16 @@ from fastapi import HTTPException
 from loguru import logger
 
 from services.api_key_manager import get_onboarding_progress_for_user, get_api_key_manager, StepStatus
+from services.onboarding_database_service import OnboardingDatabaseService
+from services.database import get_db
 from services.persona_analysis_service import PersonaAnalysisService
 
 class OnboardingCompletionService:
     """Service for handling onboarding completion logic."""
     
     def __init__(self):
-        self.required_steps = [1, 2, 3, 6]  # Steps 1, 2, 3, and 6 are required
+        # Only pre-requisite steps; step 6 is the finalization itself
+        self.required_steps = [1, 2, 3]
     
     async def complete_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Complete the onboarding process with full validation."""
@@ -22,8 +25,8 @@ class OnboardingCompletionService:
             user_id = str(current_user.get('id'))
             progress = get_onboarding_progress_for_user(user_id)
             
-            # Validate required steps are completed
-            missing_steps = self._validate_required_steps(progress)
+            # Validate required steps are completed (with DB-aware fallbacks)
+            missing_steps = self._validate_required_steps(user_id, progress)
             if missing_steps:
                 missing_steps_str = ", ".join(missing_steps)
                 raise HTTPException(
@@ -53,13 +56,75 @@ class OnboardingCompletionService:
             logger.error(f"Error completing onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    def _validate_required_steps(self, progress) -> List[str]:
-        """Validate that all required steps are completed."""
+    def _validate_required_steps(self, user_id: str, progress) -> List[str]:
+        """Validate that all required steps are completed.
+
+        This method trusts the progress tracker, but also falls back to
+        database presence for Steps 2 and 3 so migration from file→DB
+        does not block completion.
+        """
         missing_steps = []
-        
+        db = None
+        db_service = None
+        try:
+            db = next(get_db())
+            db_service = OnboardingDatabaseService(db)
+        except Exception:
+            db = None
+            db_service = None
+
         for step_num in self.required_steps:
             step = progress.get_step_data(step_num)
-            if step and step.status not in [StepStatus.COMPLETED, StepStatus.SKIPPED]:
+            if step and step.status in [StepStatus.COMPLETED, StepStatus.SKIPPED]:
+                continue
+
+            # DB-aware fallbacks for migration period
+            try:
+                if db_service:
+                    if step_num == 2:
+                        # Treat as completed if website analysis exists in DB
+                        website = db_service.get_website_analysis(user_id, db)
+                        if website and (website.get('website_url') or website.get('writing_style')):
+                            # Optionally mark as completed in progress to keep state consistent
+                            try:
+                                progress.mark_step_completed(2, {'source': 'db-fallback'})
+                            except Exception:
+                                pass
+                            continue
+                        # Secondary fallback: research preferences captured style data
+                        prefs = db_service.get_research_preferences(user_id, db)
+                        if prefs and (prefs.get('writing_style') or prefs.get('content_characteristics')):
+                            try:
+                                progress.mark_step_completed(2, {'source': 'research-prefs-fallback'})
+                            except Exception:
+                                pass
+                            continue
+                        # Tertiary fallback: persona data created implies earlier steps done
+                        persona = None
+                        try:
+                            persona = db_service.get_persona_data(user_id, db)
+                        except Exception:
+                            persona = None
+                        if persona and persona.get('corePersona'):
+                            try:
+                                progress.mark_step_completed(2, {'source': 'persona-fallback'})
+                            except Exception:
+                                pass
+                            continue
+                    if step_num == 3:
+                        # Treat as completed if research preferences exist in DB
+                        prefs = db_service.get_research_preferences(user_id, db)
+                        if prefs and prefs.get('research_depth'):
+                            try:
+                                progress.mark_step_completed(3, {'source': 'db-fallback'})
+                            except Exception:
+                                pass
+                            continue
+            except Exception:
+                # If DB check fails, fall back to progress status only
+                pass
+
+            if step:
                 missing_steps.append(step.title)
         
         return missing_steps

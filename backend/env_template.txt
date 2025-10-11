@@ -30,3 +30,5 @@ DISABLE_AUTH=false
 OLLAMA_ENDPOINT=http://localhost:11434
 # Set to true to prefer local AI models over cloud providers
 PREFER_LOCAL_AI=true
+# local development
+DEPLOY_ENV=local

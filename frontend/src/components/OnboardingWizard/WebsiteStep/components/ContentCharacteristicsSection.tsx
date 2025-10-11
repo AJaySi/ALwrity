@@ -45,7 +45,12 @@ const ContentCharacteristicsSection: React.FC<ContentCharacteristicsSectionProps
   }
 
   return (
-    <Box sx={{ ...styles.analysisSection, mt: 4 }}>
+    <Box sx={{ 
+      ...styles.analysisSection, 
+      mt: 4,
+      '& .MuiTypography-root': { color: '#111827 !important', WebkitTextFillColor: '#111827' },
+      '& .MuiPaper-root': { backgroundColor: '#ffffff !important', backgroundImage: 'none !important' }
+    }}>
       <Typography 
         variant="h5" 
         sx={{

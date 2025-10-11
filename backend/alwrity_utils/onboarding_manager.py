@@ -165,10 +165,10 @@ class OnboardingManager:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/api/onboarding/api-keys")
-        async def api_key_save(request: APIKeyRequest):
+        async def api_key_save(request: APIKeyRequest, current_user: dict = Depends(get_current_user)):
             """Save an API key for a provider."""
             try:
-                return await save_api_key(request)
+                return await save_api_key(request, current_user)
             except Exception as e:
                 logger.error(f"Error in api_key_save: {e}")
                 raise HTTPException(status_code=500, detail=str(e))

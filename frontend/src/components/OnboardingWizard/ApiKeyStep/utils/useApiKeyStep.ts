@@ -103,6 +103,19 @@ export const useApiKeyStep = (onContinue: (stepData?: any) => void) => {
         // Store CopilotKit key in localStorage for frontend use
         localStorage.setItem('copilotkit_api_key', copilotkitKey.trim());
         console.log('ApiKeyStep: CopilotKit key saved to localStorage for frontend CopilotKit provider');
+        
+        // Also save to frontend .env file (for development)
+        try {
+          await apiClient.post('/api/frontend-env/update', {
+            key: 'REACT_APP_COPILOTKIT_API_KEY',
+            value: copilotkitKey.trim(),
+            description: 'CopilotKit API key for AI assistant functionality'
+          });
+          console.log('ApiKeyStep: CopilotKit key saved to frontend .env file');
+        } catch (envError) {
+          console.warn('ApiKeyStep: Failed to save CopilotKit key to frontend .env file:', envError);
+          // Don't fail the entire process if .env update fails
+        }
       }
 
       try {
@@ -215,7 +228,49 @@ export const useApiKeyStep = (onContinue: (stepData?: any) => void) => {
   ];
 
   // All three keys are required
-  const isValid = geminiKey.trim() && exaKey.trim() && copilotkitKey.trim();
+  const isValid = !!(geminiKey.trim() && exaKey.trim() && copilotkitKey.trim());
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('useApiKeyStep: Validation check:', {
+      gemini: geminiKey.trim(),
+      exa: exaKey.trim(),
+      copilotkit: copilotkitKey.trim(),
+      isValid
+    });
+  }, [geminiKey, exaKey, copilotkitKey, isValid]);
+  
+  // When keys change and all are valid, auto-save them
+  useEffect(() => {
+    if (isValid && (geminiKey || exaKey || copilotkitKey)) {
+      console.log('useApiKeyStep: All keys valid, auto-saving...');
+      // Save keys immediately when all are provided
+      const saveKeys = async () => {
+        try {
+          const promises = [];
+          
+          if (geminiKey.trim()) {
+            promises.push(saveApiKey('gemini', geminiKey.trim()));
+          }
+          if (exaKey.trim()) {
+            promises.push(saveApiKey('exa', exaKey.trim()));
+          }
+          if (copilotkitKey.trim()) {
+            promises.push(saveApiKey('copilotkit', copilotkitKey.trim()));
+            // Store CopilotKit key in localStorage for frontend use
+            localStorage.setItem('copilotkit_api_key', copilotkitKey.trim());
+          }
+          
+          await Promise.all(promises);
+          console.log('useApiKeyStep: All API keys auto-saved successfully (backend handles .env files)');
+        } catch (error) {
+          console.error('useApiKeyStep: Auto-save failed:', error);
+        }
+      };
+      
+      saveKeys();
+    }
+  }, [geminiKey, exaKey, copilotkitKey, isValid]);
 
   // Auto-scroll to next provider when current one is valid
   useEffect(() => {

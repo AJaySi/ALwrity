@@ -46,7 +46,12 @@ const TargetAudienceAnalysisSection: React.FC<TargetAudienceAnalysisSectionProps
   }
 
   return (
-    <Box sx={{ ...styles.analysisSection, mt: 4 }}>
+  <Box sx={{ 
+    ...styles.analysisSection, 
+    mt: 4,
+    '& .MuiTypography-root': { color: '#111827 !important', WebkitTextFillColor: '#111827' },
+    '& .MuiPaper-root': { backgroundColor: '#ffffff !important', backgroundImage: 'none !important' }
+  }}>
       <Typography 
         variant="h5" 
         sx={{
@@ -101,18 +106,18 @@ const TargetAudienceAnalysisSection: React.FC<TargetAudienceAnalysisSectionProps
                   <PsychologyIcon />
                 </Box>
                 <Box flex={1}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  <Typography variant="subtitle2" sx={{ color: '#1a202c !important', fontWeight: 600 }} gutterBottom>
                     Psychographic Profile
                   </Typography>
                   <Box component="ul" sx={styles.analysisList}>
                     {Array.isArray(targetAudience.psychographic_profile)
                       ? targetAudience.psychographic_profile.map((item: string, index: number) => (
-                          <Typography component="li" variant="body2" key={index} sx={styles.analysisListItem}>
+                          <Typography component="li" variant="body2" key={index} sx={{ ...styles.analysisListItem, color: '#1a202c !important' }}>
                             {item}
                           </Typography>
                         ))
                       : (
-                          <Typography component="li" variant="body2" sx={styles.analysisListItem}>
+                          <Typography component="li" variant="body2" sx={{ ...styles.analysisListItem, color: '#1a202c !important' }}>
                             {targetAudience.psychographic_profile}
                           </Typography>
                         )}
@@ -131,12 +136,12 @@ const TargetAudienceAnalysisSection: React.FC<TargetAudienceAnalysisSectionProps
                   <WarningIcon />
                 </Box>
                 <Box flex={1}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  <Typography variant="subtitle2" sx={{ color: '#1a202c !important', fontWeight: 600 }} gutterBottom>
                     Pain Points
                   </Typography>
                   <Box component="ul" sx={styles.analysisList}>
                     {targetAudience.pain_points.map((painPoint: string, index: number) => (
-                      <Typography component="li" variant="body2" key={index} sx={styles.analysisListItem}>
+                      <Typography component="li" variant="body2" key={index} sx={{ ...styles.analysisListItem, color: '#1a202c !important' }}>
                         {painPoint}
                       </Typography>
                     ))}
@@ -155,12 +160,12 @@ const TargetAudienceAnalysisSection: React.FC<TargetAudienceAnalysisSectionProps
                   <TrendingUpIcon />
                 </Box>
                 <Box flex={1}>
-                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  <Typography variant="subtitle2" sx={{ color: '#1a202c !important', fontWeight: 600 }} gutterBottom>
                     Motivations
                   </Typography>
                   <Box component="ul" sx={styles.analysisList}>
                     {targetAudience.motivations.map((motivation: string, index: number) => (
-                      <Typography component="li" variant="body2" key={index} sx={styles.analysisListItem}>
+                      <Typography component="li" variant="body2" key={index} sx={{ ...styles.analysisListItem, color: '#1a202c !important' }}>
                         {motivation}
                       </Typography>
                     ))}

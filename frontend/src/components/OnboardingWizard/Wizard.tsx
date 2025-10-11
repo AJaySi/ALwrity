@@ -49,6 +49,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
   const [stepData, setStepData] = useState<any>(null);
   const [competitorDataCollector, setCompetitorDataCollector] = useState<(() => any) | null>(null);
   const [isCurrentStepValid, setIsCurrentStepValid] = useState<boolean>(false);
+  const [stepValidationStates, setStepValidationStates] = useState<Record<number, boolean>>({});
   const [stepHeaderContent, setStepHeaderContent] = useState<StepHeaderContent>({
     title: steps[0].label,
     description: steps[0].description
@@ -61,18 +62,24 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     switch (step) {
       case 0: // API Keys
         const hasApiKeys = data && data.api_keys && Object.keys(data.api_keys).length > 0;
-        console.log(`Wizard: Step 0 (API Keys) validation:`, hasApiKeys);
-        return hasApiKeys;
+        console.log(`Wizard: Step 0 (API Keys) validation:`, !!hasApiKeys);
+        return !!hasApiKeys;
       
       case 1: // Website Analysis
         const hasWebsite = data && (data.website || data.website_url);
-        console.log(`Wizard: Step 1 (Website) validation:`, hasWebsite);
-        return hasWebsite;
+        console.log(`Wizard: Step 1 (Website) validation:`, !!hasWebsite);
+        return !!hasWebsite;
       
       case 2: // Competitor Analysis
         const hasCompetitorData = data && (data.competitors || data.researchSummary || data.sitemapAnalysis);
-        console.log(`Wizard: Step 2 (Competitor Analysis) validation:`, hasCompetitorData, 'Data keys:', data ? Object.keys(data) : 'no data');
-        return hasCompetitorData;
+        console.log(`Wizard: Step 2 (Competitor Analysis) validation:`, {
+          hasCompetitorData: !!hasCompetitorData,
+          hasCompetitors: !!(data && data.competitors),
+          hasResearchSummary: !!(data && data.researchSummary),
+          hasSitemapAnalysis: !!(data && data.sitemapAnalysis),
+          dataKeys: data ? Object.keys(data) : 'no data'
+        });
+        return !!hasCompetitorData;
       
       case 3: // Persona Generation
         const hasValidPersonaData = data && 
@@ -81,14 +88,14 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
                                   Object.keys(data.platformPersonas).length > 0 &&
                                   data.qualityMetrics;
         console.log(`Wizard: Step 3 (Persona Generation) validation:`, {
-          hasValidPersonaData,
+          hasValidPersonaData: !!hasValidPersonaData,
           hasCorePersona: !!(data && data.corePersona),
           hasPlatformPersonas: !!(data && data.platformPersonas),
           platformPersonasCount: data && data.platformPersonas ? Object.keys(data.platformPersonas).length : 0,
           hasQualityMetrics: !!(data && data.qualityMetrics),
           dataKeys: data ? Object.keys(data) : 'no data'
         });
-        return hasValidPersonaData;
+        return !!hasValidPersonaData;
       
       case 4: // Integrations
         console.log(`Wizard: Step 4 (Integrations) validation: always true (optional)`);
@@ -126,7 +133,16 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
   useEffect(() => {
     console.log(`Wizard: Validation effect triggered - activeStep: ${activeStep}, stepData:`, stepData);
     console.log(`Wizard: stepData type:`, typeof stepData, 'keys:', stepData ? Object.keys(stepData) : 'no data');
+    console.log(`Wizard: stepValidationStates:`, stepValidationStates);
     
+    // For step 0 (API Keys), step 1 (Website), and step 3 (Persona), use the step validation state if available
+    if ((activeStep === 0 || activeStep === 1 || activeStep === 3) && stepValidationStates[activeStep] !== undefined) {
+      console.log(`Wizard: Using step validation state for step ${activeStep}:`, stepValidationStates[activeStep]);
+      setIsCurrentStepValid(stepValidationStates[activeStep]);
+      return;
+    }
+    
+    // For other steps, use the existing validation logic
     // For CompetitorAnalysisStep, also check the competitorDataCollector data
     let dataToValidate = stepData;
     if (activeStep === 2 && competitorDataCollector) {
@@ -138,12 +154,37 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     console.log(`Wizard: Validation result for step ${activeStep}:`, isValid);
     console.log(`Wizard: Setting isCurrentStepValid to:`, isValid);
     setIsCurrentStepValid(isValid);
-  }, [activeStep, stepData, isStepDataValid, competitorDataCollector]);
+  }, [activeStep, stepData, isStepDataValid, competitorDataCollector, stepValidationStates]);
   
   // Debug: log all state changes
   useEffect(() => {
     console.log('Wizard: Render triggered - activeStep:', activeStep, 'direction:', direction);
   }, [activeStep, direction]);
+  
+  // Debug: log Continue button state
+  useEffect(() => {
+    console.log(`Wizard: isCurrentStepValid changed to: ${isCurrentStepValid} (Continue button ${isCurrentStepValid ? 'ENABLED' : 'DISABLED'})`);
+  }, [isCurrentStepValid]);
+
+  // Handle validation changes from individual steps
+  const handleStepValidationChange = useCallback((step: number, isValid: boolean) => {
+    console.log(`Wizard: handleStepValidationChange called - step: ${step}, isValid: ${isValid}`);
+    setStepValidationStates(prev => {
+      // Only update if the value actually changed
+      if (prev[step] === isValid) {
+        console.log(`Wizard: Validation state unchanged for step ${step}, skipping update`);
+        return prev; // Return same reference to prevent re-render
+      }
+      const newState = { ...prev, [step]: isValid };
+      console.log(`Wizard: Updated stepValidationStates:`, newState);
+      return newState;
+    });
+  }, []);
+  
+  // Memoized callback specifically for ApiKeyStep to prevent infinite loops
+  const handleApiKeyValidationChange = useCallback((isValid: boolean) => {
+    handleStepValidationChange(0, isValid);
+  }, [handleStepValidationChange]);
 
   // Memoize the onDataReady callback to prevent infinite loops
   const handleCompetitorDataReady = useCallback((dataCollector: (() => any) | undefined) => {
@@ -516,13 +557,13 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
 
   const renderStepContent = (step: number) => {
     const stepComponents = [
-      <ApiKeyStep key="api-keys" onContinue={handleNext} updateHeaderContent={updateHeaderContent} />,
-      <WebsiteStep key="website" onContinue={handleNext} updateHeaderContent={updateHeaderContent} />,
+      <ApiKeyStep key="api-keys" onContinue={handleNext} updateHeaderContent={updateHeaderContent} onValidationChange={handleApiKeyValidationChange} />,
+      <WebsiteStep key="website" onContinue={handleNext} updateHeaderContent={updateHeaderContent} onValidationChange={(isValid) => handleStepValidationChange(1, isValid)} />,
       <CompetitorAnalysisStep 
         key="research" 
         onContinue={handleNext} 
         onBack={handleBack}
-        userUrl={stepData?.website || ''}
+        userUrl={stepData?.website || localStorage.getItem('website_url') || ''}
         industryContext={stepData?.industryContext}
         onDataReady={handleCompetitorDataReady}
       />,
@@ -530,6 +571,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
         key="personalization" 
         onContinue={handleNext} 
         updateHeaderContent={updateHeaderContent}
+        onValidationChange={(isValid) => handleStepValidationChange(3, isValid)}
         onboardingData={personaOnboardingData}
         stepData={personaStepData}
       />,
