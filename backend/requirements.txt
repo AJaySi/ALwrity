@@ -28,6 +28,7 @@ google-ai-generativelanguage>=0.6.18,<0.7.0
 google-api-python-client>=2.100.0
 google-auth>=2.23.0
 google-auth-oauthlib>=1.0.0
+ollama>=0.3.0
 
 # Web scraping and content processing
 beautifulsoup4>=4.12.0
