@@ -441,6 +441,44 @@ class APIKeyManager:
         """Get all configured API keys."""
         return {k: v for k, v in self.api_keys.items() if v is not None}
     
+    def check_ollama_availability(self) -> bool:
+        """Check if Ollama is available locally.
+        
+        This method attempts to connect to the local Ollama service and
+        verify that it's responding to API requests. If available, it
+        sets the Ollama endpoint as a pseudo-key for provider detection.
+        
+        Returns:
+            bool: True if Ollama service is available and responding,
+                 False otherwise.
+                 
+        Side Effects:
+            If Ollama is available, sets self.api_keys["ollama"] to the
+            endpoint URL for provider detection purposes.
+            
+        Example:
+            >>> api_manager = APIKeyManager()
+            >>> if api_manager.check_ollama_availability():
+            ...     print("Ollama is ready for local AI generation")
+            ... else:
+            ...     print("Ollama not available, using cloud providers")
+            
+        Note:
+            This method uses a 5-second timeout to avoid blocking the
+            application startup if Ollama is not running.
+        """
+        try:
+            import requests
+            endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+            response = requests.get(f"{endpoint}/api/tags", timeout=5)
+            if response.status_code == 200:
+                # If Ollama is available, set a pseudo-key for provider detection
+                self.api_keys["ollama"] = endpoint
+                return True
+            return False
+        except Exception:
+            return False
+    
     def load_api_keys(self):
         """Load API keys from environment variables."""
         # Reload environment variables first - use backend directory path
@@ -461,12 +499,17 @@ class APIKeyManager:
             "FIRECRAWL_API_KEY": "firecrawl",
             "STABILITY_API_KEY": "stability",
             "COPILOTKIT_API_KEY": "copilotkit",
+            "OLLAMA_ENDPOINT": "ollama",
+            "DEEPSEEK_API_KEY": "deepseek",
         }
         
         for env_var, provider in env_mapping.items():
             api_key = os.getenv(env_var)
             if api_key:
                 self.api_keys[provider] = api_key
+        
+        # Special handling for Ollama - check availability instead of API key
+        self.check_ollama_availability()
     
     def get_provider_setup_info(self, provider: str) -> Optional[Dict[str, Any]]:
         """Get setup information for a specific provider."""
@@ -505,6 +548,8 @@ class APIKeyManager:
                 "firecrawl": "FIRECRAWL_API_KEY",
                 "stability": "STABILITY_API_KEY",
                 "copilotkit": "COPILOTKIT_API_KEY",
+                "ollama": "OLLAMA_ENDPOINT",
+                "deepseek": "DEEPSEEK_API_KEY",
             }
             
             env_var = env_mapping.get(provider)

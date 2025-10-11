@@ -2,6 +2,7 @@
 CLERK_SECRET_KEY=your_clerk_secret_key_here
 CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key_here
 
+
 # Google Search Console
 GSC_REDIRECT_URI=your-domain-name/gsc/callback
 
@@ -22,3 +23,10 @@ WORDPRESS_REDIRECT_URI=
 
 # Development Settings
 DISABLE_AUTH=false
+
+# Ollama Local AI Configuration
+# Set this to enable local AI models for privacy and cost savings
+# Ensure Ollama is installed and running: https://ollama.ai/
+OLLAMA_ENDPOINT=http://localhost:11434
+# Set to true to prefer local AI models over cloud providers
+PREFER_LOCAL_AI=true
