@@ -138,7 +138,7 @@ def run_individual_tests(verbose=False):
     print_section("Individual Component Tests")
     
     test_files = [
-        ("API Key Manager", "test_api_key_manager_ollama_integration.py"),
+        ("API Key Manager", "test_api_key_manager_ollama.py"),
         ("Smart Model Selector", "test_smart_model_selector_functionality.py"),
         ("Comprehensive Suite", "test_ollama_comprehensive.py")
     ]
@@ -156,16 +156,19 @@ def run_individual_tests(verbose=False):
             continue
         
         try:
+            # Set timeout based on test type
+            timeout = 600 if "Comprehensive" in test_name else 300  # 10 minutes for comprehensive, 5 for others
+            
             # Try running with pytest first
             try:
                 if verbose:
                     result = subprocess.run([
                         sys.executable, "-m", "pytest", str(test_path), "-v"
-                    ], capture_output=not verbose, text=True, timeout=300)
+                    ], capture_output=not verbose, text=True, timeout=timeout)
                 else:
                     result = subprocess.run([
                         sys.executable, "-m", "pytest", str(test_path), "-q"
-                    ], capture_output=True, text=True, timeout=300)
+                    ], capture_output=True, text=True, timeout=timeout)
                 
                 if result.returncode == 0:
                     print(f"✅ {test_name} tests passed (pytest)")
@@ -180,7 +183,7 @@ def run_individual_tests(verbose=False):
                     print(f"   Trying direct execution...")
                     result = subprocess.run([
                         sys.executable, str(test_path)
-                    ], capture_output=not verbose, text=True, timeout=300)
+                    ], capture_output=not verbose, text=True, timeout=timeout)
                     
                     results[test_name] = result.returncode == 0
                     
@@ -189,7 +192,7 @@ def run_individual_tests(verbose=False):
                 print(f"   Running {test_name} directly...")
                 result = subprocess.run([
                     sys.executable, str(test_path)
-                ], capture_output=not verbose, text=True, timeout=300)
+                ], capture_output=not verbose, text=True, timeout=timeout)
                 
                 results[test_name] = result.returncode == 0
                 

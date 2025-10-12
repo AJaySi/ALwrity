@@ -51,6 +51,17 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
         blog_output_format = "markdown"
         blog_length = 2000
         
+        # Initialize default LLM parameters (used by all code paths)
+        temperature = 0.7
+        max_tokens = 4000
+        top_p = 0.9
+        n = 1
+        fp = 16
+        frequency_penalty = 0.0
+        presence_penalty = 0.0
+        gpt_provider = "google"  # Default provider
+        model = "gemini-2.0-flash-001"  # Default model
+        
         # Use smart model selection if task_type is provided
         if task_type:
             try:
@@ -97,16 +108,9 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
         
         if not task_type:
             # Original provider selection logic as fallback
-            # Set default values for LLM parameters
+            # Reset to default provider and model for fallback
             gpt_provider = "google"  # Default to Google Gemini
             model = "gemini-2.0-flash-001"
-            temperature = 0.7
-            max_tokens = 4000
-            top_p = 0.9
-            n = 1
-            fp = 16
-            frequency_penalty = 0.0
-            presence_penalty = 0.0
             
             # Try to get provider from environment or config
             try:
@@ -149,13 +153,6 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                 gpt_provider = "google"
                 model = "gemini-2.0-flash-001"
         
-        # Set common parameters regardless of selection method
-        temperature = temperature if 'temperature' in locals() else 0.7
-        max_tokens = max_tokens if 'max_tokens' in locals() else 4000
-        top_p = top_p if 'top_p' in locals() else 0.9
-        n = n if 'n' in locals() else 1
-        fp = fp if 'fp' in locals() else 16
-
         # Construct the system prompt if not provided
         if system_prompt is None:
             system_instructions = f"""You are a highly skilled content writer with a knack for creating engaging and informative content. 
@@ -237,7 +234,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         temperature=temperature,
                         max_tokens=max_tokens,
                         system_prompt=system_instructions,
-                        task_type="reasoning"  # Default task type
+                        task_type=task_type
                     )
                 else:
                     return ollama_text_response(
@@ -246,7 +243,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         temperature=temperature,
                         max_tokens=max_tokens,
                         system_prompt=system_instructions,
-                        task_type="reasoning"  # Default task type
+                        task_type=task_type
                     )
             else:
                 logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")

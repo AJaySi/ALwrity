@@ -314,13 +314,21 @@ def ollama_text_response(prompt: str, model: Optional[str] = None, temperature: 
         
         # Parse response
         result = response.json()
-        if "response" in result:
+        generated_text = ""
+        
+        # Handle different response formats
+        if "response" in result and result["response"].strip():
             generated_text = result["response"].strip()
+        elif "thinking" in result and result["thinking"].strip():
+            # Some models (like qwen3) put the actual response in "thinking" field
+            generated_text = result["thinking"].strip()
+        
+        if generated_text:
             logger.info(f"[ollama_text_response] Successfully generated {len(generated_text)} characters")
             return generated_text
         else:
-            logger.error(f"[ollama_text_response] Unexpected response format: {result}")
-            raise RuntimeError("Invalid response format from Ollama")
+            logger.error(f"[ollama_text_response] No valid response found in: {result}")
+            raise RuntimeError("No valid response from Ollama model")
             
     except Exception as e:
         logger.error(f"[ollama_text_response] Error: {str(e)}")
@@ -431,9 +439,16 @@ Important: Return only the JSON object, no additional text or formatting.
         
         # Parse response
         result = response.json()
-        if "response" in result:
+        json_response = ""
+        
+        # Handle different response formats
+        if "response" in result and result["response"].strip():
             json_response = result["response"].strip()
-            
+        elif "thinking" in result and result["thinking"].strip():
+            # Some models (like qwen3) put the actual response in "thinking" field
+            json_response = result["thinking"].strip()
+        
+        if json_response:
             # Validate JSON
             try:
                 json.loads(json_response)
@@ -456,8 +471,8 @@ Important: Return only the JSON object, no additional text or formatting.
                 logger.error(f"[ollama_structured_json_response] Could not parse valid JSON from response")
                 return json_response
         else:
-            logger.error(f"[ollama_structured_json_response] Unexpected response format: {result}")
-            raise RuntimeError("Invalid response format from Ollama")
+            logger.error(f"[ollama_structured_json_response] No valid response found in: {result}")
+            raise RuntimeError("No valid response from Ollama model")
             
     except Exception as e:
         logger.error(f"[ollama_structured_json_response] Error: {str(e)}")
