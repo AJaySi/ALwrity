@@ -15,6 +15,7 @@ import {
   DialogActions,
   DialogContentText
 } from '@mui/material';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
 import {
   Analytics as AnalyticsIcon,
   History as HistoryIcon,
@@ -36,6 +37,7 @@ import {
 interface WebsiteStepProps {
   onContinue: (stepData?: any) => void;
   updateHeaderContent: (content: { title: string; description: string }) => void;
+  onValidationChange?: (isValid: boolean) => void;
 }
 
 interface StyleAnalysis {
@@ -148,7 +150,50 @@ interface ExistingAnalysis {
 // MAIN COMPONENT
 // =============================================================================
 
-const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderContent }) => {
+const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderContent, onValidationChange }) => {
+  // Scoped high-contrast theme for Step 2 only
+  const scopedTheme = React.useMemo(() => createTheme({
+    palette: {
+      mode: 'light',
+      background: { default: '#ffffff', paper: '#ffffff' },
+      text: { primary: '#111827', secondary: '#374151' }
+    },
+    components: {
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundColor: '#ffffff !important',
+            backgroundImage: 'none !important'
+          }
+        }
+      },
+      MuiCard: {
+        styleOverrides: {
+          root: {
+            backgroundColor: '#ffffff !important',
+            backgroundImage: 'none !important'
+          }
+        }
+      },
+      MuiTypography: {
+        styleOverrides: {
+          root: {
+            color: '#111827 !important',
+            WebkitTextFillColor: '#111827'
+          }
+        }
+      },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            color: '#111827',
+            backgroundColor: '#F9FAFB',
+            border: '1px solid #E5E7EB'
+          }
+        }
+      }
+    }
+  }), []);
   const [website, setWebsite] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -177,6 +222,16 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
       description: 'Let Alwrity analyze your website to understand your brand voice, writing style, and content characteristics. This helps us generate content that matches your existing tone and resonates with your audience.'
     });
   }, [updateHeaderContent]);
+
+  // Notify parent when validation state changes
+  useEffect(() => {
+    const isValid = !!(website.trim() && analysis);
+    console.log('WebsiteStep: Validation check:', { website: website.trim(), analysis: !!analysis, isValid });
+    if (onValidationChange) {
+      console.log('WebsiteStep: Calling onValidationChange with:', isValid);
+      onValidationChange(isValid);
+    }
+  }, [website, analysis, onValidationChange]);
 
   useEffect(() => {
     // Prefill from last session analysis on mount
@@ -280,6 +335,10 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
       if (analysisResult.success) {
         setDomainName(analysisResult.domainName || '');
         setAnalysis(analysisResult.analysis);
+        
+        // Store in localStorage for Step 3 (Competitor Analysis)
+        localStorage.setItem('website_url', fixedUrl);
+        localStorage.setItem('website_analysis_data', JSON.stringify(analysisResult.analysis));
         
         if (analysisResult.warning) {
           setSuccess(`Website style analysis completed successfully! Note: ${analysisResult.warning}`);
@@ -420,9 +479,11 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
   }
 
   return (
+    <ThemeProvider theme={scopedTheme}>
     <Box sx={{ 
-      maxWidth: 900, 
-      mx: 'auto', 
+      maxWidth: '100%',
+      width: '100%',
+      mx: 0,
       p: 3,
       '@keyframes fadeIn': {
         '0%': { opacity: 0, transform: 'translateY(20px)' },
@@ -444,13 +505,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
         </Typography>
       </Box>
 
-      {/* API Key Configuration Notice */}
-      <Alert severity="info" sx={{ mb: 3 }}>
-        <Typography variant="body2">
-          <strong>Note:</strong> To perform accurate style analysis, you need to configure AI provider API keys in step 1. 
-          If you haven't completed step 1 yet, please go back and configure your API keys for the best experience.
-        </Typography>
-      </Alert>
+      {/* API Key Configuration Notice removed per request */}
 
       <Card sx={{ mb: 3, p: 3 }}>
         <Grid container spacing={2} alignItems="center">
@@ -517,31 +572,6 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
             useAnalysisForGenAI={useAnalysisForGenAI}
             onUseAnalysisChange={setUseAnalysisForGenAI}
           />
-          
-          {/* Continue Button */}
-          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={handleContinue}
-              disabled={loading}
-              sx={{
-                px: 4,
-                py: 1.5,
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                borderRadius: 2,
-                boxShadow: '0 4px 14px rgba(25, 118, 210, 0.4)',
-                '&:hover': {
-                  boxShadow: '0 6px 20px rgba(25, 118, 210, 0.6)',
-                  transform: 'translateY(-2px)'
-                },
-                transition: 'all 0.2s ease-in-out'
-              }}
-            >
-              Continue to Next Step
-            </Button>
-          </Box>
         </Box>
       )}
 
@@ -605,6 +635,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 };
 

@@ -1,3 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite*
+
+# Environment
+.env
+.env.*
+
+# User data
+backend/lib/workspace/
+backend/lib/workspace/users/
+backend/logs/
+backend/linkedin_images/
+backend/test/
+backend/.onboarding_progress_user*
+backend/.onboarding_*.json
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/.env*
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs build
+docs-site/site/
+
 # Dependencies
 node_modules/
 */node_modules/
@@ -167,3 +202,7 @@ yarn.lock
 
 # Documentation cache
 docs/__pycache__/
+# Onboarding JSON files (CRITICAL: Should use database instead)
+.onboarding_progress.json
+*_onboarding_progress.json
+backend/.onboarding_progress*.json

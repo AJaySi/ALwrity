@@ -21,6 +21,7 @@ import { ComingSoonSection } from './PersonaStep/ComingSoonSection';
 interface PersonaStepProps {
   onContinue: (personaData: PersonaData) => void;
   updateHeaderContent: (content: StepHeaderContent) => void;
+  onValidationChange?: (isValid: boolean) => void;
   onboardingData?: {
     websiteAnalysis?: any;
     competitorResearch?: any;
@@ -61,6 +62,7 @@ interface QualityMetrics {
 const PersonaStep: React.FC<PersonaStepProps> = ({
   onContinue,
   updateHeaderContent,
+  onValidationChange,
   onboardingData = {},
   stepData
 }) => {
@@ -324,6 +326,23 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
       console.warn('PersonaStep: Missing persona data, cannot continue');
     }
   }, [corePersona, platformPersonas, qualityMetrics, selectedPlatforms, onContinue]);
+
+  // Validation effect - notify wizard when persona data is ready
+  useEffect(() => {
+    const isValid = !!(corePersona && platformPersonas && Object.keys(platformPersonas).length > 0 && qualityMetrics);
+    console.log('PersonaStep: Validation check:', {
+      corePersona: !!corePersona,
+      platformPersonas: !!platformPersonas,
+      platformPersonasCount: platformPersonas ? Object.keys(platformPersonas).length : 0,
+      qualityMetrics: !!qualityMetrics,
+      isValid
+    });
+    
+    if (onValidationChange) {
+      console.log('PersonaStep: Calling onValidationChange with:', isValid);
+      onValidationChange(isValid);
+    }
+  }, [corePersona, platformPersonas, qualityMetrics, onValidationChange]);
 
   // Auto-call onContinue when persona data is ready
   useEffect(() => {

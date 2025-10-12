@@ -8,7 +8,7 @@ Base = declarative_base()
 class OnboardingSession(Base):
     __tablename__ = 'onboarding_sessions'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)  # Replace with ForeignKey if you have a user table
+    user_id = Column(String(255), nullable=False)  # Clerk user ID (string)
     current_step = Column(Integer, default=1)
     progress = Column(Float, default=0.0)
     started_at = Column(DateTime, default=func.now())
@@ -16,6 +16,7 @@ class OnboardingSession(Base):
     api_keys = relationship('APIKey', back_populates='session', cascade="all, delete-orphan")
     website_analyses = relationship('WebsiteAnalysis', back_populates='session', cascade="all, delete-orphan")
     research_preferences = relationship('ResearchPreferences', back_populates='session', cascade="all, delete-orphan", uselist=False)
+    persona_data = relationship('PersonaData', back_populates='session', cascade="all, delete-orphan", uselist=False)
 
     def __repr__(self):
         return f"<OnboardingSession(id={self.id}, user_id={self.user_id}, step={self.current_step}, progress={self.progress})>"
@@ -59,6 +60,8 @@ class WebsiteAnalysis(Base):
     target_audience = Column(JSON)  # Demographics, expertise level, industry focus
     content_type = Column(JSON)  # Primary type, secondary types, purpose
     recommended_settings = Column(JSON)  # Writing tone, target audience, content type
+    # brand_analysis = Column(JSON)  # Brand voice, values, positioning, competitive differentiation
+    # content_strategy_insights = Column(JSON)  # SWOT analysis, strengths, weaknesses, opportunities, threats
     
     # Crawl results
     crawl_result = Column(JSON)  # Raw crawl data
@@ -89,6 +92,8 @@ class WebsiteAnalysis(Base):
             'target_audience': self.target_audience,
             'content_type': self.content_type,
             'recommended_settings': self.recommended_settings,
+            # 'brand_analysis': self.brand_analysis,
+            # 'content_strategy_insights': self.content_strategy_insights,
             'crawl_result': self.crawl_result,
             'style_patterns': self.style_patterns,
             'style_guidelines': self.style_guidelines,
@@ -144,3 +149,39 @@ class ResearchPreferences(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         } 
+
+class PersonaData(Base):
+    """Stores persona generation data from onboarding step 4."""
+    __tablename__ = 'persona_data'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey('onboarding_sessions.id', ondelete='CASCADE'), nullable=False)
+    
+    # Persona generation results
+    core_persona = Column(JSON)  # Core persona data (demographics, psychographics, etc.)
+    platform_personas = Column(JSON)  # Platform-specific personas (LinkedIn, Twitter, etc.)
+    quality_metrics = Column(JSON)  # Quality assessment metrics
+    selected_platforms = Column(JSON)  # Array of selected platforms
+    
+    # Metadata
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    session = relationship('OnboardingSession', back_populates='persona_data')
+    
+    def __repr__(self):
+        return f"<PersonaData(id={self.id}, session_id={self.session_id})>"
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'core_persona': self.core_persona,
+            'platform_personas': self.platform_personas,
+            'quality_metrics': self.quality_metrics,
+            'selected_platforms': self.selected_platforms,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }

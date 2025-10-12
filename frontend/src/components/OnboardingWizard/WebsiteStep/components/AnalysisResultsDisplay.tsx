@@ -157,9 +157,23 @@ const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
   const styles = useOnboardingStyles();
 
   return (
-    <Box sx={styles.analysisContainer}>
-      {/* Pro Upgrade Alert */}
-      {renderProUpgradeAlert()}
+    <Box sx={{
+      ...styles.analysisContainer,
+      // Global readability hard overrides for Step 2 display area
+      '& .MuiTypography-root': {
+        color: '#111827 !important',
+        WebkitTextFillColor: '#111827',
+      },
+      '& .MuiPaper-root': {
+        backgroundColor: '#ffffff !important',
+        backgroundImage: 'none !important',
+      },
+      '& .MuiCard-root': {
+        backgroundColor: '#ffffff !important',
+        backgroundImage: 'none !important',
+      }
+    }}>
+      {/* Pro Upgrade Alert removed per request */}
       
       {/* Main Analysis Results */}
       <Card sx={styles.analysisHeaderCard}>

@@ -21,9 +21,10 @@ import ApiKeySidebar from './ApiKeyStep/utils/ApiKeySidebar';
 interface ApiKeyStepProps {
   onContinue: (stepData?: any) => void;
   updateHeaderContent: (content: { title: string; description: string }) => void;
+  onValidationChange?: (isValid: boolean) => void;
 }
 
-const ApiKeyStep: React.FC<ApiKeyStepProps> = ({ onContinue, updateHeaderContent }) => {
+const ApiKeyStep: React.FC<ApiKeyStepProps> = ({ onContinue, updateHeaderContent, onValidationChange }) => {
   const [focusedProvider, setFocusedProvider] = useState<any>(null);
   
   const {
@@ -63,11 +64,20 @@ const ApiKeyStep: React.FC<ApiKeyStepProps> = ({ onContinue, updateHeaderContent
     }
   }, [updateHeaderContent, providers, currentProviderIndex]);
 
+  // Notify parent of validation changes
+  useEffect(() => {
+    console.log('ApiKeyStep: isValid changed to:', isValid);
+    console.log('ApiKeyStep: onValidationChange exists:', !!onValidationChange);
+    if (onValidationChange) {
+      console.log('ApiKeyStep: Calling onValidationChange with:', isValid);
+      onValidationChange(isValid);
+    }
+  }, [isValid, onValidationChange]);
+
   return (
     <>
       <Fade in={true} timeout={500}>
         <Container maxWidth="lg" sx={{ py: 2 }}>
-        <form onSubmit={(e) => { e.preventDefault(); handleContinue(); }}>
           {/* Main Content Layout */}
           <Grid container spacing={4} sx={{ mb: 4 }}>
             {/* Carousel Section */}
@@ -140,43 +150,6 @@ const ApiKeyStep: React.FC<ApiKeyStepProps> = ({ onContinue, updateHeaderContent
           )}
         </Box>
 
-          {/* Continue Button */}
-          <Box sx={{ mt: 6, display: 'flex', justifyContent: 'center' }}>
-            <OnboardingButton
-              variant="primary"
-              type="submit"
-              loading={loading}
-              disabled={!isValid || loading}
-              size="large"
-              sx={{
-                px: 6,
-                py: 2.5,
-                fontSize: '1.1rem',
-                fontWeight: 700,
-                borderRadius: 4,
-                background: isValid 
-                  ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
-                  : 'linear-gradient(135deg, #94A3B8 0%, #64748B 100%)',
-                boxShadow: isValid 
-                  ? '0 12px 32px rgba(16, 185, 129, 0.3), 0 6px 12px rgba(16, 185, 129, 0.2)'
-                  : '0 8px 16px rgba(148, 163, 184, 0.2)',
-                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                '&:hover': {
-                  transform: isValid ? 'translateY(-3px) scale(1.02)' : 'none',
-                  boxShadow: isValid 
-                    ? '0 16px 40px rgba(16, 185, 129, 0.4), 0 8px 16px rgba(16, 185, 129, 0.3)'
-                    : '0 8px 16px rgba(148, 163, 184, 0.2)',
-                },
-                '&:disabled': {
-                  '&:hover': {
-                    transform: 'none',
-                  }
-                }
-              }}
-            >
-              {isValid ? 'Continue' : 'Complete All Required API Keys'}
-            </OnboardingButton>
-        </Box>
 
         {/* Security Notice */}
           <Box sx={{ 
@@ -201,7 +174,6 @@ const ApiKeyStep: React.FC<ApiKeyStepProps> = ({ onContinue, updateHeaderContent
             Your API keys are encrypted and stored securely on your device
           </Typography>
         </Box>
-        </form>
         </Container>
       </Fade>
 

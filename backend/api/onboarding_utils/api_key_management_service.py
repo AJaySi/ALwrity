@@ -15,7 +15,20 @@ class APIKeyManagementService:
     """Service for handling API key management operations."""
     
     def __init__(self):
+        # Initialize APIKeyManager with database support
         self.api_key_manager = APIKeyManager()
+        # Ensure database service is available
+        if not hasattr(self.api_key_manager, 'use_database'):
+            self.api_key_manager.use_database = True
+            try:
+                from services.onboarding_database_service import OnboardingDatabaseService
+                self.api_key_manager.db_service = OnboardingDatabaseService()
+                logger.info("Database service initialized for APIKeyManager")
+            except Exception as e:
+                logger.warning(f"Database service not available: {e}")
+                self.api_key_manager.use_database = False
+                self.api_key_manager.db_service = None
+        
         # Simple cache for API keys
         self._api_keys_cache = None
         self._cache_timestamp = 0
@@ -75,9 +88,16 @@ class APIKeyManagementService:
             logger.error(f"Error getting API keys for onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    async def save_api_key(self, provider: str, api_key: str, description: str = None) -> Dict[str, Any]:
+    async def save_api_key(self, provider: str, api_key: str, description: str = None, current_user: dict = None) -> Dict[str, Any]:
         """Save an API key for a provider."""
         try:
+            logger.info(f"📝 save_api_key called for provider: {provider}")
+            
+            # Set user_id on the API key manager if available
+            if current_user and current_user.get('id'):
+                self.api_key_manager.user_id = current_user['id']
+                logger.info(f"Set user_id on APIKeyManager: {current_user['id']}")
+            
             success = self.api_key_manager.save_api_key(provider, api_key)
             
             if success:

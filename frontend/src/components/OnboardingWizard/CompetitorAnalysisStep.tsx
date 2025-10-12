@@ -154,15 +154,46 @@ const CompetitorAnalysisStep: React.FC<CompetitorAnalysisStepProps> = ({
       setAnalysisProgress(80);
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Get website URL from props or localStorage
-      const finalUserUrl = userUrl || localStorage.getItem('website_url') || '';
+      // Get website URL from multiple sources with better fallbacks
+      const propUserUrl = userUrl || '';
+      const localStorageUrl = localStorage.getItem('website_url') || '';
+      const sessionStorageUrl = sessionStorage.getItem('website_url') || '';
       
-      // Get website analysis data from localStorage or step data
-      const websiteAnalysisData = localStorage.getItem('website_analysis_data') 
-        ? JSON.parse(localStorage.getItem('website_analysis_data')!) 
-        : null;
+      // Try to get from onboarding context or global state
+      const onboardingContextUrl = (window as any).onboardingContext?.websiteUrl || '';
       
-      console.log('CompetitorAnalysisStep: Final URL to use:', finalUserUrl);
+      const finalUserUrl = propUserUrl || localStorageUrl || sessionStorageUrl || onboardingContextUrl || '';
+      
+      // Get website analysis data from multiple sources
+      const localStorageAnalysis = localStorage.getItem('website_analysis_data');
+      const sessionStorageAnalysis = sessionStorage.getItem('website_analysis_data');
+      
+      let websiteAnalysisData = null;
+      if (localStorageAnalysis) {
+        try {
+          websiteAnalysisData = JSON.parse(localStorageAnalysis);
+        } catch (e) {
+          console.warn('Failed to parse localStorage website_analysis_data:', e);
+        }
+      }
+      if (!websiteAnalysisData && sessionStorageAnalysis) {
+        try {
+          websiteAnalysisData = JSON.parse(sessionStorageAnalysis);
+        } catch (e) {
+          console.warn('Failed to parse sessionStorage website_analysis_data:', e);
+        }
+      }
+      
+      console.log('CompetitorAnalysisStep: URL sources debug:', {
+        propUserUrl,
+        localStorageUrl,
+        sessionStorageUrl,
+        onboardingContextUrl,
+        finalUserUrl,
+        hasLocalStorageAnalysis: !!localStorageAnalysis,
+        hasSessionStorageAnalysis: !!sessionStorageAnalysis,
+        websiteAnalysisData: websiteAnalysisData ? 'present' : 'null'
+      });
 
       console.log('CompetitorAnalysisStep: Making request with data:', {
         user_url: finalUserUrl,
@@ -170,6 +201,11 @@ const CompetitorAnalysisStep: React.FC<CompetitorAnalysisStepProps> = ({
         num_results: 25,
         website_analysis_data: websiteAnalysisData
       });
+
+      // Validate that we have a URL before making the request
+      if (!finalUserUrl || finalUserUrl.trim() === '') {
+        throw new Error('No website URL available for competitor analysis. Please complete Step 2 (Website Analysis) first.');
+      }
 
       const response = await aiApiClient.post('/api/onboarding/step3/discover-competitors', {
         // session_id removed - backend gets user from auth token

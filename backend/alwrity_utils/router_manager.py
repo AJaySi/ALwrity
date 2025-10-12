@@ -43,6 +43,10 @@ class RouterManager:
             from api.subscription_api import router as subscription_router
             self.include_router_safely(subscription_router, "subscription")
             
+            # Step 3 Research router (core onboarding functionality)
+            from api.onboarding_utils.step3_routes import router as step3_research_router
+            self.include_router_safely(step3_research_router, "step3_research")
+            
             # GSC router
             from routers.gsc_auth import router as gsc_auth_router
             self.include_router_safely(gsc_auth_router, "gsc_auth")
@@ -94,6 +98,10 @@ class RouterManager:
             # Error logging router
             from routers.error_logging import router as error_logging_router
             self.include_router_safely(error_logging_router, "error_logging")
+            
+            # Frontend environment manager router
+            from routers.frontend_env_manager import router as frontend_env_router
+            self.include_router_safely(frontend_env_router, "frontend_env_manager")
             
             logger.info("✅ Core routers included successfully")
             return True
@@ -148,12 +156,6 @@ class RouterManager:
             except Exception as e:
                 logger.warning(f"Stability AI routers not mounted: {e}")
             
-            # Step 3 Research router
-            try:
-                from api.onboarding_utils.step3_routes import router as step3_research_router
-                self.include_router_safely(step3_research_router, "step3_research")
-            except Exception as e:
-                logger.warning(f"Step 3 Research router not mounted: {e}")
             
             logger.info("✅ Optional routers processed")
             return True
