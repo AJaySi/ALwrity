@@ -47,7 +47,7 @@ const ConditionalCopilotKit: React.FC<{ children: React.ReactNode }> = ({ childr
 // Component to handle initial routing based on subscription and onboarding status
 // Flow: Subscription → Onboarding → Dashboard
 const InitialRouteHandler: React.FC = () => {
-  const { loading, error, isOnboardingComplete, initializeOnboarding } = useOnboarding();
+  const { loading, error, isOnboardingComplete, initializeOnboarding, data } = useOnboarding();
   const { subscription, loading: subscriptionLoading, error: subscriptionError, checkSubscription } = useSubscription();
   // Note: subscriptionError is available for future error handling
   const [connectionError, setConnectionError] = useState<{
@@ -125,8 +125,9 @@ const InitialRouteHandler: React.FC = () => {
     );
   }
 
-  // Loading state - checking both subscription and onboarding
-  if (loading || subscriptionLoading) {
+  // Loading state - ensure we wait for onboarding init after subscription is confirmed
+  const waitingForOnboardingInit = !!subscription && subscription.active && !subscriptionLoading && (loading || !data);
+  if (subscriptionLoading || loading || waitingForOnboardingInit) {
     return (
       <Box
         display="flex"
@@ -138,7 +139,7 @@ const InitialRouteHandler: React.FC = () => {
       >
         <CircularProgress size={60} />
         <Typography variant="h6" color="textSecondary">
-          {subscriptionLoading ? 'Checking subscription...' : 'Checking onboarding status...'}
+          {subscriptionLoading ? 'Checking subscription...' : 'Preparing your workspace...'}
         </Typography>
       </Box>
     );

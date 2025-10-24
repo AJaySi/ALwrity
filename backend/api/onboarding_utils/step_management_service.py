@@ -7,9 +7,9 @@ from typing import Dict, Any, List, Optional
 from fastapi import HTTPException
 from loguru import logger
 
-from services.api_key_manager import get_onboarding_progress_for_user, StepStatus
-from services.progressive_setup_service import ProgressiveSetupService
-from services.database import get_db_session
+from services.onboarding_progress_service import get_onboarding_progress_service
+from services.onboarding_database_service import OnboardingDatabaseService
+from services.database import get_db
 
 class StepManagementService:
     """Service for handling onboarding step management."""
@@ -21,25 +21,15 @@ class StepManagementService:
         """Get the current onboarding status (per user)."""
         try:
             user_id = str(current_user.get('id'))
-            progress = get_onboarding_progress_for_user(user_id)
-            
-            # Safety check: if all steps are completed, ensure is_completed is True
-            all_steps_completed = all(s.status in [StepStatus.COMPLETED, StepStatus.SKIPPED] for s in progress.steps)
-            if all_steps_completed and not progress.is_completed:
-                logger.info(f"[get_onboarding_status] All steps completed but is_completed was False, fixing...")
-                progress.is_completed = True
-                progress.completed_at = progress.started_at  # Use started_at as fallback
-                progress.current_step = len(progress.steps)
-                progress.save_progress()
-            
+            status = get_onboarding_progress_service().get_onboarding_status(user_id)
             return {
-                "is_completed": progress.is_completed,
-                "current_step": progress.current_step,
-                "completion_percentage": progress.get_completion_percentage(),
-                "next_step": progress.get_next_incomplete_step(),
-                "started_at": progress.started_at,
-                "completed_at": progress.completed_at,
-                "can_proceed_to_final": progress.can_complete_onboarding()
+                "is_completed": status["is_completed"],
+                "current_step": status["current_step"],
+                "completion_percentage": status["completion_percentage"],
+                "next_step": 6 if status["is_completed"] else max(1, status["current_step"]),
+                "started_at": status["started_at"],
+                "completed_at": status["completed_at"],
+                "can_proceed_to_final": True if status["is_completed"] else status["current_step"] >= 5,
             }
         except Exception as e:
             logger.error(f"Error getting onboarding status: {str(e)}")
@@ -49,29 +39,83 @@ class StepManagementService:
         """Get the full onboarding progress data."""
         try:
             user_id = str(current_user.get('id'))
-            progress = get_onboarding_progress_for_user(user_id)
-            
-            # Convert StepData objects to dictionaries
-            step_data = []
-            for step in progress.steps:
-                step_data.append({
-                    "step_number": step.step_number,
-                    "title": step.title,
-                    "description": step.description,
-                    "status": step.status.value,
-                    "completed_at": step.completed_at,
-                    "data": step.data,
-                    "validation_errors": step.validation_errors or []
-                })
-            
+            progress_service = get_onboarding_progress_service()
+            status = progress_service.get_onboarding_status(user_id)
+            data = progress_service.get_completion_data(user_id)
+
+            def completed(b: bool) -> str:
+                return 'completed' if b else 'pending'
+
+            api_keys = data.get('api_keys') or {}
+            website = data.get('website_analysis') or {}
+            research = data.get('research_preferences') or {}
+            persona = data.get('persona_data') or {}
+
+            steps = [
+                {
+                    "step_number": 1,
+                    "title": "API Keys",
+                    "description": "Connect your AI services",
+                    "status": completed(any(v for v in api_keys.values() if v)),
+                    "completed_at": None,
+                    "data": None,
+                    "validation_errors": []
+                },
+                {
+                    "step_number": 2,
+                    "title": "Website",
+                    "description": "Set up your website",
+                    "status": completed(bool(website.get('website_url') or website.get('writing_style'))),
+                    "completed_at": None,
+                    "data": website or None,
+                    "validation_errors": []
+                },
+                {
+                    "step_number": 3,
+                    "title": "Research",
+                    "description": "Discover competitors",
+                    "status": completed(bool(research.get('research_depth') or research.get('content_types'))),
+                    "completed_at": None,
+                    "data": research or None,
+                    "validation_errors": []
+                },
+                {
+                    "step_number": 4,
+                    "title": "Personalization",
+                    "description": "Customize your experience",
+                    "status": completed(bool(persona.get('corePersona') or persona.get('platformPersonas'))),
+                    "completed_at": None,
+                    "data": persona or None,
+                    "validation_errors": []
+                },
+                {
+                    "step_number": 5,
+                    "title": "Integrations",
+                    "description": "Connect additional services",
+                    "status": completed(status['current_step'] >= 5),
+                    "completed_at": None,
+                    "data": None,
+                    "validation_errors": []
+                },
+                {
+                    "step_number": 6,
+                    "title": "Finish",
+                    "description": "Complete setup",
+                    "status": completed(status['is_completed']),
+                    "completed_at": status['completed_at'],
+                    "data": None,
+                    "validation_errors": []
+                }
+            ]
+
             return {
-                "steps": step_data,
-                "current_step": progress.current_step,
-                "started_at": progress.started_at,
-                "last_updated": progress.last_updated,
-                "is_completed": progress.is_completed,
-                "completed_at": progress.completed_at,
-                "completion_percentage": progress.get_completion_percentage()
+                "steps": steps,
+                "current_step": 6 if status['is_completed'] else status['current_step'],
+                "started_at": status['started_at'],
+                "last_updated": status['last_updated'],
+                "is_completed": status['is_completed'],
+                "completed_at": status['completed_at'],
+                "completion_percentage": status['completion_percentage']
             }
         except Exception as e:
             logger.error(f"Error getting onboarding progress: {str(e)}")
@@ -81,20 +125,58 @@ class StepManagementService:
         """Get data for a specific step."""
         try:
             user_id = str(current_user.get('id'))
-            progress = get_onboarding_progress_for_user(user_id)
-            step = progress.get_step_data(step_number)
-            
-            if not step:
-                raise HTTPException(status_code=404, detail=f"Step {step_number} not found")
-            
+            db = next(get_db())
+            db_service = OnboardingDatabaseService()
+
+            if step_number == 2:
+                website = db_service.get_website_analysis(user_id, db) or {}
+                return {
+                    "step_number": 2,
+                    "title": "Website",
+                    "description": "Set up your website",
+                    "status": 'completed' if (website.get('website_url') or website.get('writing_style')) else 'pending',
+                    "completed_at": None,
+                    "data": website,
+                    "validation_errors": []
+                }
+            if step_number == 3:
+                research = db_service.get_research_preferences(user_id, db) or {}
+                return {
+                    "step_number": 3,
+                    "title": "Research",
+                    "description": "Discover competitors",
+                    "status": 'completed' if (research.get('research_depth') or research.get('content_types')) else 'pending',
+                    "completed_at": None,
+                    "data": research,
+                    "validation_errors": []
+                }
+            if step_number == 4:
+                persona = db_service.get_persona_data(user_id, db) or {}
+                return {
+                    "step_number": 4,
+                    "title": "Personalization",
+                    "description": "Customize your experience",
+                    "status": 'completed' if (persona.get('corePersona') or persona.get('platformPersonas')) else 'pending',
+                    "completed_at": None,
+                    "data": persona,
+                    "validation_errors": []
+                }
+
+            status = get_onboarding_progress_service().get_onboarding_status(user_id)
+            mapping = {
+                1: ('API Keys', 'Connect your AI services', status['current_step'] >= 1),
+                5: ('Integrations', 'Connect additional services', status['current_step'] >= 5),
+                6: ('Finish', 'Complete setup', status['is_completed'])
+            }
+            title, description, done = mapping.get(step_number, (f'Step {step_number}', 'Onboarding step', False))
             return {
-                "step_number": step.step_number,
-                "title": step.title,
-                "description": step.description,
-                "status": step.status.value,
-                "completed_at": step.completed_at,
-                "data": step.data,
-                "validation_errors": step.validation_errors or []
+                "step_number": step_number,
+                "title": title,
+                "description": description,
+                "status": 'completed' if done else 'pending',
+                "completed_at": status['completed_at'] if step_number == 6 and done else None,
+                "data": None,
+                "validation_errors": []
             }
         except HTTPException:
             raise
@@ -107,63 +189,41 @@ class StepManagementService:
         try:
             logger.info(f"[complete_step] Completing step {step_number}")
             user_id = str(current_user.get('id'))
-            progress = get_onboarding_progress_for_user(user_id)
-            step = progress.get_step_data(step_number)
-            
-            if not step:
-                logger.error(f"[complete_step] Step {step_number} not found")
-                raise HTTPException(status_code=404, detail=f"Step {step_number} not found")
-            
-            # Validate step data before marking as completed
-            from services.validation import validate_step_data
-            logger.info(f"[complete_step] Validating step {step_number} with data: {request_data}")
-            validation_errors = validate_step_data(step_number, request_data)
-            
-            if validation_errors:
-                logger.warning(f"[complete_step] Step {step_number} validation failed: {validation_errors}")
-                raise HTTPException(status_code=400, detail=f"Step validation failed: {'; '.join(validation_errors)}")
-            
-            # Mark step as completed
-            progress.mark_step_completed(step_number, request_data)
-            logger.info(f"[complete_step] Step {step_number} completed successfully")
-            
-            # If this is step 1 (API keys), also save to global .env file
-            if step_number == 1 and request_data and 'api_keys' in request_data:
-                try:
-                    from services.api_key_manager import APIKeyManager
-                    api_manager = APIKeyManager()
-                    
-                    # Save each API key to the global .env file
-                    api_keys = request_data['api_keys']
-                    for provider, api_key in api_keys.items():
-                        if api_key:  # Only save non-empty keys
-                            api_manager.save_api_key(provider, api_key)
-                            logger.info(f"[complete_step] Saved {provider} API key to global .env file")
-                except Exception as env_error:
-                    logger.warning(f"Could not save API keys to global .env file: {env_error}")
-                    # Don't fail the step completion for .env file issues
-            
-            # Initialize/upgrade user environment based on new step
+
+            # Optional validation
             try:
-                db_session = get_db_session()
-                if db_session:
-                    setup_service = ProgressiveSetupService(db_session)
-                    
-                    # Initialize environment if first time, or upgrade if progressing
-                    if step_number == 1:
-                        setup_service.initialize_user_environment(user_id)
-                    else:
-                        setup_service.upgrade_user_environment(user_id, step_number)
-                    
-                    db_session.close()
-            except Exception as env_error:
-                logger.warning(f"Could not set up user environment: {env_error}")
-                # Don't fail the step completion for environment setup issues
-            
+                from services.validation import validate_step_data
+                logger.info(f"[complete_step] Validating step {step_number} with data: {request_data}")
+                validation_errors = validate_step_data(step_number, request_data)
+                if validation_errors:
+                    logger.warning(f"[complete_step] Step {step_number} validation failed: {validation_errors}")
+                    raise HTTPException(status_code=400, detail=f"Step validation failed: {'; '.join(validation_errors)}")
+            except ImportError:
+                pass
+
+            db = next(get_db())
+            db_service = OnboardingDatabaseService()
+
+            # Step-specific side effects: save API keys to DB
+            if step_number == 1 and request_data and 'api_keys' in request_data:
+                api_keys = request_data['api_keys'] or {}
+                for provider, key in api_keys.items():
+                    if key:
+                        db_service.save_api_key(user_id, provider, key, db)
+
+            # Persist current step and progress in DB
+            db_service.update_step(user_id, step_number, db)
+            try:
+                progress_pct = min(100.0, round((step_number / 6) * 100))
+                db_service.update_progress(user_id, float(progress_pct), db)
+            except Exception:
+                pass
+
+            logger.info(f"[complete_step] Step {step_number} persisted to DB for user {user_id}")
             return {
-                "message": f"Step {step_number} completed successfully",
+                "message": "Step completed successfully",
                 "step_number": step_number,
-                "data": request_data
+                "data": request_data or {}
             }
         except HTTPException:
             raise

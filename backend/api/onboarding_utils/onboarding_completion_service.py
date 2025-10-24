@@ -4,10 +4,11 @@ Handles the complex logic for completing the onboarding process.
 """
 
 from typing import Dict, Any, List
+from datetime import datetime
 from fastapi import HTTPException
 from loguru import logger
 
-from services.api_key_manager import get_onboarding_progress_for_user, get_api_key_manager, StepStatus
+from services.onboarding_progress_service import get_onboarding_progress_service
 from services.onboarding_database_service import OnboardingDatabaseService
 from services.database import get_db
 from services.persona_analysis_service import PersonaAnalysisService
@@ -23,29 +24,31 @@ class OnboardingCompletionService:
         """Complete the onboarding process with full validation."""
         try:
             user_id = str(current_user.get('id'))
-            progress = get_onboarding_progress_for_user(user_id)
+            progress_service = get_onboarding_progress_service()
             
-            # Validate required steps are completed (with DB-aware fallbacks)
-            missing_steps = self._validate_required_steps(user_id, progress)
+            # Strict DB-only validation now that step persistence is solid
+            missing_steps = self._validate_required_steps_database(user_id)
             if missing_steps:
                 missing_steps_str = ", ".join(missing_steps)
                 raise HTTPException(
-                    status_code=400, 
+                    status_code=400,
                     detail=f"Cannot complete onboarding. The following steps must be completed first: {missing_steps_str}"
                 )
-            
-            # Validate API keys are configured (DB-aware)
+
+            # Require API keys in DB for completion
             self._validate_api_keys(user_id)
             
             # Generate writing persona from onboarding data only if not already present
             persona_generated = await self._generate_persona_from_onboarding(user_id)
             
-            # Complete the onboarding process
-            progress.complete_onboarding()
+            # Complete the onboarding process in database
+            success = progress_service.complete_onboarding(user_id)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to mark onboarding as complete")
             
             return {
                 "message": "Onboarding completed successfully",
-                "completed_at": progress.completed_at,
+                "completed_at": datetime.now().isoformat(),
                 "completion_percentage": 100.0,
                 "persona_generated": persona_generated
             }
@@ -55,6 +58,55 @@ class OnboardingCompletionService:
         except Exception as e:
             logger.error(f"Error completing onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
+    
+    def _validate_required_steps_database(self, user_id: str) -> List[str]:
+        """Validate that all required steps are completed using database only."""
+        missing_steps = []
+        try:
+            db = next(get_db())
+            db_service = OnboardingDatabaseService()
+            
+            # Debug logging
+            logger.info(f"Validating steps for user {user_id}")
+            
+            # Check each required step
+            for step_num in self.required_steps:
+                step_completed = False
+                
+                if step_num == 1:  # API Keys
+                    api_keys = db_service.get_api_keys(user_id, db)
+                    logger.info(f"Step 1 - API Keys: {api_keys}")
+                    step_completed = any(v for v in api_keys.values() if v)
+                    logger.info(f"Step 1 completed: {step_completed}")
+                elif step_num == 2:  # Website Analysis
+                    website = db_service.get_website_analysis(user_id, db)
+                    logger.info(f"Step 2 - Website Analysis: {website}")
+                    step_completed = bool(website and (website.get('website_url') or website.get('writing_style')))
+                    logger.info(f"Step 2 completed: {step_completed}")
+                elif step_num == 3:  # Research Preferences
+                    research = db_service.get_research_preferences(user_id, db)
+                    logger.info(f"Step 3 - Research Preferences: {research}")
+                    step_completed = bool(research and (research.get('research_depth') or research.get('content_types')))
+                    logger.info(f"Step 3 completed: {step_completed}")
+                elif step_num == 4:  # Persona Generation
+                    persona = db_service.get_persona_data(user_id, db)
+                    logger.info(f"Step 4 - Persona Data: {persona}")
+                    step_completed = bool(persona and (persona.get('corePersona') or persona.get('platformPersonas')))
+                    logger.info(f"Step 4 completed: {step_completed}")
+                elif step_num == 5:  # Integrations
+                    # For now, consider this always completed if we reach this point
+                    step_completed = True
+                    logger.info(f"Step 5 completed: {step_completed}")
+                
+                if not step_completed:
+                    missing_steps.append(f"Step {step_num}")
+            
+            logger.info(f"Missing steps: {missing_steps}")
+            return missing_steps
+            
+        except Exception as e:
+            logger.error(f"Error validating required steps: {e}")
+            return ["Validation error"]
     
     def _validate_required_steps(self, user_id: str, progress) -> List[str]:
         """Validate that all required steps are completed.
@@ -169,48 +221,19 @@ class OnboardingCompletionService:
         return missing_steps
     
     def _validate_api_keys(self, user_id: str):
-        """Validate that API keys are configured for the current user.
-
-        Priority:
-        1) Check database for per-user keys (production, user isolation)
-        2) Fallback to in-memory/env keys via APIKeyManager (development/local)
-        """
+        """Validate that API keys are configured for the current user (DB-only)."""
         try:
-            # Prefer per-user DB keys in production
-            db = None
-            try:
-                db = next(get_db())
-                db_service = OnboardingDatabaseService(db)
-                user_keys = db_service.get_api_keys(user_id, db)
-                if user_keys and any(v for v in user_keys.values()):
-                    return
-            except Exception:
-                # DB lookup failed - continue to env fallback
-                pass
-            finally:
-                try:
-                    if db and hasattr(db, 'close'):
-                        db.close()
-                except Exception:
-                    pass
-
-            # Fallback to env/in-memory
-            api_manager = get_api_key_manager()
-            # Ensure latest env is loaded (middleware may have injected per-request keys)
-            try:
-                api_manager.load_api_keys()
-            except Exception:
-                pass
-            api_keys = api_manager.get_all_keys()
-            if not api_keys:
+            db = next(get_db())
+            db_service = OnboardingDatabaseService()
+            user_keys = db_service.get_api_keys(user_id, db)
+            if not user_keys or not any(v for v in user_keys.values()):
                 raise HTTPException(
                     status_code=400,
-                    detail="Cannot complete onboarding. At least one AI provider API key must be configured."
+                    detail="Cannot complete onboarding. At least one AI provider API key must be configured in your account."
                 )
         except HTTPException:
             raise
         except Exception:
-            # On unexpected error, fail closed with clear message
             raise HTTPException(
                 status_code=400,
                 detail="Cannot complete onboarding. API key validation failed."

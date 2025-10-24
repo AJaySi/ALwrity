@@ -5,9 +5,7 @@ from fastapi import HTTPException, Depends
 
 from middleware.auth_middleware import get_current_user
 
-from .endpoint_models import (
-    get_onboarding_progress_for_user,
-)
+from services.onboarding_progress_service import get_onboarding_progress_service
 
 
 def health_check():
@@ -17,72 +15,77 @@ def health_check():
 async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         user_id = str(current_user.get('id'))
-        progress = get_onboarding_progress_for_user(user_id)
+        progress_service = get_onboarding_progress_service()
+        status = progress_service.get_onboarding_status(user_id)
 
+        # Get completion data for step validation
+        completion_data = progress_service.get_completion_data(user_id)
+        
+        # Build steps data based on database state
         steps_data = []
-        for step in progress.steps:
-            # Include step data for completed steps, especially persona data (step 4) and research data (step 3)
+        for step_num in range(1, 7):  # Steps 1-6
+            step_completed = False
             step_data = None
-            if step.data:
-                if step.step_number == 4:  # Personalization step with persona data
-                    # Include persona data for step 4 to ensure it's available for step 5
-                    step_data = step.data
-                    logger.info(f"Including persona data for step 4: {len(str(step_data))} chars")
-                elif step.step_number == 3:  # Research step with research preferences
-                    # Include research preferences for step 3 to ensure it's available for step 4
-                    step_data = step.data
-                    logger.info(f"Including research data for step 3: {len(str(step_data))} chars")
-
+            
+            # Check if step is completed based on database data
+            if step_num == 1:  # API Keys
+                api_keys = completion_data.get('api_keys', {})
+                step_completed = any(v for v in api_keys.values() if v)
+            elif step_num == 2:  # Website Analysis
+                website = completion_data.get('website_analysis', {})
+                step_completed = bool(website.get('website_url') or website.get('writing_style'))
+                if step_completed:
+                    step_data = website
+            elif step_num == 3:  # Research Preferences
+                research = completion_data.get('research_preferences', {})
+                step_completed = bool(research.get('research_depth') or research.get('content_types'))
+                if step_completed:
+                    step_data = research
+            elif step_num == 4:  # Persona Generation
+                persona = completion_data.get('persona_data', {})
+                step_completed = bool(persona.get('corePersona') or persona.get('platformPersonas'))
+                if step_completed:
+                    step_data = persona
+            elif step_num == 5:  # Integrations (always completed if we reach this point)
+                step_completed = status['current_step'] >= 5
+            elif step_num == 6:  # Final Step
+                step_completed = status['is_completed']
+            
             steps_data.append({
-                "step_number": step.step_number,
-                "title": step.title,
-                "description": step.description,
-                "status": step.status.value,
-                "completed_at": step.completed_at,
-                "has_data": step.data is not None and len(step.data) > 0 if step.data else False,
-                "data": step_data,  # Include actual data for critical steps
+                "step_number": step_num,
+                "title": f"Step {step_num}",
+                "description": f"Step {step_num} description",
+                "status": "completed" if step_completed else "pending",
+                "completed_at": datetime.now().isoformat() if step_completed else None,
+                "has_data": step_data is not None,
+                "data": step_data
             })
 
-        next_step = progress.get_next_incomplete_step()
-
-        # Derive a resilient current_step and is_completed from DB if file-based progress is absent/outdated
-        derived_current_step = progress.current_step
-        derived_is_completed = progress.is_completed
+        # Reconciliation: if not completed but all artifacts exist, mark complete once
         try:
-            # Only derive if we're at the initial state
-            if (progress.current_step in (1, 0)) or not progress.is_completed:
-                from services.onboarding_database_service import OnboardingDatabaseService
-                from services.database import SessionLocal
-                db = SessionLocal()
-                try:
-                    db_service = OnboardingDatabaseService()
-                    # If a DB session exists, prefer that state for completion
-                    session_row = db_service.get_session_by_user(user_id, db)
-                    if session_row:
-                        # Trust explicit completion state from DB if available
-                        if (getattr(session_row, 'current_step', 0) or 0) >= 6 or (getattr(session_row, 'progress', 0.0) or 0.0) >= 100.0:
-                            derived_current_step = max(derived_current_step, 6)
-                            derived_is_completed = True
-                    
-                    # If website analysis exists -> at least step 2 completed
-                    website = db_service.get_website_analysis(user_id, db)
-                    if website and (website.get('website_url') or website.get('writing_style') or website.get('status') == 'completed'):
-                        derived_current_step = max(derived_current_step, 2)
-                    # If competitor research data exists, bump to step 3 (best-effort via preferences)
-                    prefs = db_service.get_research_preferences(user_id, db)
-                    if prefs and (prefs.get('research_depth') or prefs.get('content_types')):
-                        derived_current_step = max(derived_current_step, 3)
-                    # If persona data exists, bump to step 5 (personalization done)
-                    persona = db_service.get_persona_data(user_id, db)
-                    if persona and (persona.get('corePersona') or persona.get('platformPersonas')):
-                        derived_current_step = max(derived_current_step, 5)
-                        # If DB session did not explicitly mark completion but all major data exists,
-                        # do not auto-complete; leave final step to the user.
-                finally:
-                    db.close()
+            if not status['is_completed']:
+                all_have = (
+                    any(v for v in completion_data.get('api_keys', {}).values() if v) and
+                    bool((completion_data.get('website_analysis') or {}).get('website_url') or (completion_data.get('website_analysis') or {}).get('writing_style')) and
+                    bool((completion_data.get('research_preferences') or {}).get('research_depth') or (completion_data.get('research_preferences') or {}).get('content_types')) and
+                    bool((completion_data.get('persona_data') or {}).get('corePersona') or (completion_data.get('persona_data') or {}).get('platformPersonas'))
+                )
+                if all_have:
+                    svc = progress_service
+                    svc.complete_onboarding(user_id)
+                    # refresh status after reconciliation
+                    status = svc.get_onboarding_status(user_id)
         except Exception:
-            # Non-fatal; keep original progress.current_step
             pass
+
+        # Determine next step robustly
+        next_step = 6 if status['is_completed'] else None
+        if not status['is_completed']:
+            for step in steps_data:
+                if step['status'] != 'completed':
+                    next_step = step['step_number']
+                    break
+
 
         response_data = {
             "user": {
@@ -93,24 +96,25 @@ async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_curre
                 "clerk_user_id": user_id,
             },
             "onboarding": {
-                "is_completed": derived_is_completed,
-                "current_step": derived_current_step,
-                "completion_percentage": progress.get_completion_percentage(),
+                "is_completed": status['is_completed'],
+                "current_step": 6 if status['is_completed'] else status['current_step'],
+                "completion_percentage": status['completion_percentage'],
                 "next_step": next_step,
-                "started_at": progress.started_at,
-                "last_updated": progress.last_updated,
-                "completed_at": progress.completed_at,
-                "can_proceed_to_final": progress.can_complete_onboarding(),
+                "started_at": status['started_at'],
+                "last_updated": status['last_updated'],
+                "completed_at": status['completed_at'],
+                "can_proceed_to_final": True if status['is_completed'] else status['current_step'] >= 5,
                 "steps": steps_data,
             },
             "session": {
                 "session_id": user_id,
-                "initialized_at": datetime.now().isoformat(),
+                "initialized_at": status['started_at'],
+                "last_activity": status['last_updated'],
             },
         }
 
         logger.info(
-            f"Batch init successful for user {user_id}: step {progress.current_step}/{len(progress.steps)}"
+            f"Batch init successful for user {user_id}: step {status['current_step']}/6"
         )
         return response_data
     except Exception as e:

@@ -6,6 +6,7 @@ Manages caching of expensive comprehensive user data operations.
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import and_
 from loguru import logger
 import json
@@ -19,6 +20,12 @@ class ComprehensiveUserDataCacheService:
     def __init__(self, db_session: Session):
         self.db = db_session
         self.data_processor = ComprehensiveUserDataProcessor()
+        # Ensure table exists in dev environments where migrations may not have run yet
+        try:
+            ComprehensiveUserDataCache.__table__.create(bind=self.db.bind, checkfirst=True)
+        except Exception:
+            # Non-fatal; subsequent operations handle absence defensively
+            pass
         
     async def get_cached_data(
         self, 
@@ -146,6 +153,10 @@ class ComprehensiveUserDataCacheService:
             
             return None
             
+        except OperationalError as e:
+            # Table might not exist yet; treat as cache miss
+            logger.warning(f"❕ Cache table not found (get): {str(e)}")
+            return None
         except Exception as e:
             logger.error(f"❌ Error getting from cache: {str(e)}")
             return None
@@ -185,6 +196,11 @@ class ComprehensiveUserDataCacheService:
                       f"Data Size: {len(str(data))} chars")
             return True
             
+        except OperationalError as e:
+            # Table might not exist yet; skip storing
+            logger.warning(f"❕ Cache table not found (store): {str(e)}")
+            self.db.rollback()
+            return False
         except Exception as e:
             logger.error(f"❌ Error storing in cache: {str(e)}")
             self.db.rollback()
@@ -225,6 +241,11 @@ class ComprehensiveUserDataCacheService:
             
             return deleted_count
             
+        except OperationalError as e:
+            # Table might not exist yet; nothing to cleanup
+            logger.warning(f"❕ Cache table not found (cleanup): {str(e)}")
+            self.db.rollback()
+            return 0
         except Exception as e:
             logger.error(f"❌ Error cleaning up cache: {str(e)}")
             self.db.rollback()
@@ -258,6 +279,15 @@ class ComprehensiveUserDataCacheService:
                 ]
             }
             
+        except OperationalError as e:
+            # Table might not exist yet; return empty stats to avoid noisy errors
+            logger.warning(f"❕ Cache table not found (stats): {str(e)}")
+            return {
+                "total_entries": 0,
+                "expired_entries": 0,
+                "valid_entries": 0,
+                "most_accessed": []
+            }
         except Exception as e:
             logger.error(f"❌ Error getting cache stats: {str(e)}")
             return {"error": str(e)}
