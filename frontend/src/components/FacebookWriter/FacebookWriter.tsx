@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, TextField, Paper, Button } from '@mui/material';
 import { CopilotSidebar } from '@copilotkit/react-ui';
 import { useCopilotReadable, useCopilotAction } from '@copilotkit/react-core';
@@ -7,6 +8,7 @@ import RegisterFacebookActions from './RegisterFacebookActions';
 import RegisterFacebookEditActions from './RegisterFacebookEditActions';
 import RegisterFacebookActionsEnhanced from './RegisterFacebookActionsEnhanced';
 import { PlatformPersonaProvider, usePlatformPersonaContext } from '../shared/PersonaContext/PlatformPersonaProvider';
+import { generatePlatformPersona } from '../../api/persona';
 
 const useCopilotActionTyped = useCopilotAction as any;
 
@@ -142,6 +144,7 @@ const FacebookWriter: React.FC<FacebookWriterProps> = ({ className = '' }) => {
 
 // Main Facebook Writer Content Component
 const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }) => {
+  const navigate = useNavigate();
   const [postDraft, setPostDraft] = React.useState<string>('');
   const [notes, setNotes] = React.useState<string>('');
   const [stage, setStage] = React.useState<'start' | 'edit'>('start');
@@ -160,7 +163,34 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
   const [selectionMenu, setSelectionMenu] = React.useState<{ x: number; y: number; text: string } | null>(null);
 
   // Get persona context for enhanced AI assistance
-  const { corePersona, platformPersona, loading: personaLoading } = usePlatformPersonaContext();
+  const { corePersona, platformPersona, loading: personaLoading, refreshPersonas } = usePlatformPersonaContext();
+
+  // State for generating persona
+  const [isGeneratingPersona, setIsGeneratingPersona] = React.useState<boolean>(false);
+  const [personaError, setPersonaError] = React.useState<string | null>(null);
+
+  // Handler to generate Facebook persona on-demand
+  const handleGeneratePersona = async () => {
+    setIsGeneratingPersona(true);
+    setPersonaError(null);
+    
+    try {
+      const result = await generatePlatformPersona('facebook');
+      
+      if (result.success) {
+        // Refresh the persona context to load the newly generated persona
+        await refreshPersonas();
+        console.log('✅ Facebook persona generated successfully');
+      } else {
+        throw new Error('Failed to generate persona');
+      }
+    } catch (error: any) {
+      console.error('Error generating persona:', error);
+      setPersonaError(error.message || 'Failed to generate Facebook persona');
+    } finally {
+      setIsGeneratingPersona(false);
+    }
+  };
 
   React.useEffect(() => {
     const onUpdate = (e: any) => {
@@ -395,9 +425,31 @@ Always use the most appropriate tool for the user's request.`.trim();
       >
         <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1, py: 4 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: 0.3 }}>
-              Facebook Writer (Preview)
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {/* Back Button */}
+              <Button
+                onClick={() => navigate('/dashboard')}
+                sx={{
+                  padding: '8px 16px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  '&:hover': {
+                    background: 'rgba(255, 255, 255, 0.2)',
+                  }
+                }}
+              >
+                ← Back to Dashboard
+              </Button>
+              
+              <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: 0.3 }}>
+                Facebook Writer
+              </Typography>
+            </Box>
           </Box>
           
           {/* Persona Integration Indicator */}
@@ -405,8 +457,8 @@ Always use the most appropriate tool for the user's request.`.trim();
             <div 
               style={{
                 padding: '8px 16px',
-                backgroundColor: 'rgba(24, 119, 242, 0.1)',
-                borderBottom: '1px solid rgba(24, 119, 242, 0.3)',
+                backgroundColor: platformPersona ? 'rgba(24, 119, 242, 0.1)' : 'rgba(255, 152, 0, 0.1)',
+                borderBottom: `1px solid ${platformPersona ? 'rgba(24, 119, 242, 0.3)' : 'rgba(255, 152, 0, 0.3)'}`,
                 fontSize: '12px',
                 color: 'rgba(255, 255, 255, 0.8)',
                 display: 'flex',
@@ -416,7 +468,7 @@ Always use the most appropriate tool for the user's request.`.trim();
                 position: 'relative',
                 marginBottom: '16px',
                 borderRadius: '8px',
-                border: '1px solid rgba(24, 119, 242, 0.2)'
+                border: `1px solid ${platformPersona ? 'rgba(24, 119, 242, 0.2)' : 'rgba(255, 152, 0, 0.2)'}`
               }}
               title={`🎭 YOUR PERSONALIZED WRITING ASSISTANT
 
@@ -468,15 +520,68 @@ Instead of generic content, you get:
 
 💡 TRY THIS: Ask the AI to "generate a Facebook post about [your topic]" and watch how it automatically applies your persona to create content that sounds like you!`}
             >
-              <span style={{ color: '#1877f2' }}>🎭</span>
-              <span><strong>🎭 Your Writing Assistant:</strong> {corePersona.persona_name} ({corePersona.archetype})</span>
+              <span style={{ color: platformPersona ? '#1877f2' : '#FF9800' }}>🎭</span>
+              <span>
+                <strong>🎭 Your Writing Assistant:</strong> {corePersona.persona_name} ({corePersona.archetype})
+                {!platformPersona && <span style={{ color: '#FF9800', marginLeft: '8px' }}>⚠️ Facebook persona not generated yet</span>}
+              </span>
               <span style={{ marginLeft: 'auto', fontSize: '11px' }}>
                 {corePersona.confidence_score}% accuracy | 
-                Platform: Facebook Optimized
+                Platform: {platformPersona ? 'Facebook Optimized' : 'Generic (Generate Facebook Persona for better results)'}
               </span>
               <span style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.6)', marginLeft: '8px' }}>
                 (Hover for details)
               </span>
+            </div>
+          )}
+          
+          {/* Warning when platform persona is missing */}
+          {corePersona && !platformPersona && !personaLoading && (
+            <div 
+              style={{
+                padding: '12px 16px',
+                backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                border: '1px solid rgba(255, 152, 0, 0.3)',
+                fontSize: '13px',
+                color: 'rgba(255, 255, 255, 0.9)',
+                marginBottom: '16px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}
+            >
+              <span style={{ fontSize: '20px' }}>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <strong>Facebook Persona Not Generated</strong>
+                <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginTop: '4px' }}>
+                  You're using a generic persona. Generate a Facebook-specific persona for personalized content that matches your brand voice and Facebook's algorithm.
+                </div>
+                {personaError && (
+                  <div style={{ fontSize: '11px', color: '#ff6b6b', marginTop: '4px' }}>
+                    ⚠️ {personaError}
+                  </div>
+                )}
+              </div>
+              <Button
+                onClick={handleGeneratePersona}
+                disabled={isGeneratingPersona}
+                size="small"
+                sx={{
+                  background: 'rgba(255, 152, 0, 0.2)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 152, 0, 0.4)',
+                  textTransform: 'none',
+                  '&:hover': {
+                    background: 'rgba(255, 152, 0, 0.3)',
+                  },
+                  '&:disabled': {
+                    opacity: 0.6
+                  }
+                }}
+              >
+                {isGeneratingPersona ? 'Generating...' : 'Generate Persona →'}
+              </Button>
             </div>
           )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

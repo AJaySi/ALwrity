@@ -87,7 +87,6 @@ const MainContentPreviewHeader: React.FC<MainContentPreviewHeaderProps> = ({
         {/* Persona Chip */}
         <PersonaChip 
           platform="linkedin" 
-          userId={1}
           onPersonaUpdate={(personaData) => {
             console.log('Persona updated:', personaData);
             // You can add additional logic here to handle persona updates

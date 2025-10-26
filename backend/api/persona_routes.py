@@ -3,14 +3,18 @@ FastAPI routes for persona management.
 Integrates persona generation and management into the main API.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Dict, Any, Optional
+from sqlalchemy.orm import Session
+from middleware.auth_middleware import get_current_user
+from services.database import get_db
 
 from api.persona import (
     generate_persona,
     get_user_personas,
     get_persona_details,
     get_platform_persona,
+    get_persona_summary,
     update_persona,
     delete_persona,
     validate_persona_generation_readiness,
@@ -32,7 +36,7 @@ from api.persona import (
 )
 
 from services.persona_replication_engine import PersonaReplicationEngine
-from api.persona import update_platform_persona
+from api.persona import update_platform_persona, generate_platform_persona
 
 # Create router
 router = APIRouter(prefix="/api/personas", tags=["personas"])
@@ -45,29 +49,45 @@ async def generate_persona_endpoint(
     """Generate a new writing persona from onboarding data."""
     return await generate_persona(user_id, request)
 
-@router.get("/user/{user_id}")
-async def get_user_personas_endpoint(user_id: int):
-    """Get all personas for a user."""
-    # Beta testing: Force user_id=1 for all requests
-    return await get_user_personas(1)
+@router.get("/user")
+async def get_user_personas_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get all personas for the current user."""
+    user_id = str(current_user.get('id'))
+    return await get_user_personas(user_id)
+
+@router.get("/summary")
+async def get_persona_summary_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get persona summary for the current user."""
+    user_id = str(current_user.get('id'))
+    return await get_persona_summary(user_id)
 
 @router.get("/{persona_id}")
 async def get_persona_details_endpoint(
     persona_id: int,
-    user_id: int = Query(..., description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get detailed information about a specific persona."""
-    # Beta testing: Force user_id=1 for all requests
-    return await get_persona_details(1, persona_id)
+    user_id = str(current_user.get('id'))
+    return await get_persona_details(user_id, persona_id)
 
 @router.get("/platform/{platform}")
 async def get_platform_persona_endpoint(
     platform: str,
-    user_id: int = Query(1, description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get persona adaptation for a specific platform."""
-    # Beta testing: Force user_id=1 for all requests
-    return await get_platform_persona(1, platform)
+    user_id = str(current_user.get('id'))
+    return await get_platform_persona(user_id, platform)
+
+@router.post("/generate-platform/{platform}")
+async def generate_platform_persona_endpoint(
+    platform: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generate a platform-specific persona from core persona."""
+    user_id = str(current_user.get('id'))
+    return await generate_platform_persona(user_id, platform, db)
 
 @router.put("/{persona_id}")
 async def update_persona_endpoint(

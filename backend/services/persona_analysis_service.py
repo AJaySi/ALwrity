@@ -1,6 +1,12 @@
 """
 Persona Analysis Service
 Uses Gemini structured responses to analyze onboarding data and create writing personas.
+
+NOTE: This service uses the legacy WritingPersona/PlatformPersona models.
+For new code, use PersonaDataService instead, which works with the PersonaData table
+and provides richer persona data from onboarding.
+
+DEPRECATED: Consider migrating to PersonaDataService for better data richness.
 """
 
 from typing import Dict, Any, List, Optional
@@ -514,7 +520,7 @@ Generate a platform-optimized persona adaptation that maintains brand consistenc
         
         return min(score, 100.0)
     
-    def get_user_personas(self, user_id: int) -> List[Dict[str, Any]]:
+    def get_user_personas(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all personas for a user."""
         try:
             session = get_db_session()
@@ -544,7 +550,7 @@ Generate a platform-optimized persona adaptation that maintains brand consistenc
             logger.error(f"Error getting user personas: {str(e)}")
             return []
     
-    def get_persona_for_platform(self, user_id: int, platform: str) -> Optional[Dict[str, Any]]:
+    def get_persona_for_platform(self, user_id: str, platform: str) -> Optional[Dict[str, Any]]:
         """Get the best persona for a specific platform."""
         try:
             session = get_db_session()

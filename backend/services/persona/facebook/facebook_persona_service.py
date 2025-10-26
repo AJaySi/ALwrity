@@ -355,19 +355,36 @@ class FacebookPersonaService:
                     "properties": {
                         "text_posts": {
                             "type": "object",
-                            "description": "Text post optimization for Facebook"
+                            "description": "Text post optimization for Facebook",
+                            "properties": {
+                                "optimal_length": {"type": "string"},
+                                "structure_guidelines": {"type": "array", "items": {"type": "string"}},
+                                "hook_strategies": {"type": "array", "items": {"type": "string"}}
+                            }
                         },
                         "image_posts": {
                             "type": "object",
-                            "description": "Image post optimization for Facebook"
+                            "description": "Image post optimization for Facebook",
+                            "properties": {
+                                "image_guidelines": {"type": "array", "items": {"type": "string"}},
+                                "caption_strategies": {"type": "array", "items": {"type": "string"}}
+                            }
                         },
                         "video_posts": {
                             "type": "object",
-                            "description": "Video post optimization for Facebook"
+                            "description": "Video post optimization for Facebook",
+                            "properties": {
+                                "video_length_guidelines": {"type": "array", "items": {"type": "string"}},
+                                "engagement_hooks": {"type": "array", "items": {"type": "string"}}
+                            }
                         },
                         "carousel_posts": {
                             "type": "object",
-                            "description": "Carousel post optimization for Facebook"
+                            "description": "Carousel post optimization for Facebook",
+                            "properties": {
+                                "slide_structure": {"type": "array", "items": {"type": "string"}},
+                                "storytelling_flow": {"type": "array", "items": {"type": "string"}}
+                            }
                         }
                     }
                 },

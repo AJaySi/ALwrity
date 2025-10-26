@@ -18,7 +18,7 @@ class WritingPersona(Base):
     
     # Primary fields
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String(255), nullable=False)  # Changed to String to support Clerk user IDs
     persona_name = Column(String(255), nullable=False)  # e.g., "Professional LinkedIn Voice", "Casual Blog Writer"
     
     # Core Identity

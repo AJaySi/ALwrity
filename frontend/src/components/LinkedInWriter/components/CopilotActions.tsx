@@ -16,9 +16,9 @@ interface CopilotActionsProps {
   setDraft: (draft: string) => void;
 }
 
-// Note: This is implemented as a hook-like utility, not a rendered component.
+// Note: This is implemented as a custom hook.
 // It returns the getIntelligentSuggestions function for use by the caller.
-const CopilotActions = ({
+export const useCopilotActions = ({
   draft,
   context,
   userPreferences,
@@ -428,5 +428,3 @@ const CopilotActions = ({
   // Return the suggestions function directly
   return getIntelligentSuggestions;
 };
-
-export default CopilotActions;

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from loguru import logger
+from sqlalchemy.orm import Session
 
 from services.persona_analysis_service import PersonaAnalysisService
 from services.database import get_db
@@ -110,50 +111,45 @@ async def generate_persona(user_id: int, request: PersonaGenerationRequest):
         logger.error(f"Error generating persona: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate persona: {str(e)}")
 
-async def get_user_personas(user_id: int):
-    """Get all personas for a user."""
+async def get_user_personas(user_id: str):
+    """Get all personas for a user using PersonaData."""
     try:
-        persona_service = get_persona_service()
-        personas = persona_service.get_user_personas(user_id)
+        from services.persona_data_service import PersonaDataService
+        
+        persona_service = PersonaDataService()
+        all_personas = persona_service.get_all_platform_personas(user_id)
         
         return {
-            "personas": personas,
-            "total_count": len(personas)
+            "personas": all_personas,
+            "total_count": len(all_personas),
+            "platforms": list(all_personas.keys())
         }
         
     except Exception as e:
         logger.error(f"Error getting user personas: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get personas: {str(e)}")
 
-async def get_persona_details(user_id: int, persona_id: int):
-    """Get detailed information about a specific persona."""
+async def get_persona_details(user_id: str, persona_id: int):
+    """Get detailed information about a specific persona using PersonaData."""
     try:
-        from services.database import get_db_session
-        from models.persona_models import WritingPersona, PlatformPersona
+        from services.persona_data_service import PersonaDataService
         
-        session = get_db_session()
+        persona_service = PersonaDataService()
+        persona_data = persona_service.get_user_persona_data(user_id)
         
-        # Get persona
-        persona = session.query(WritingPersona).filter(
-            WritingPersona.id == persona_id,
-            WritingPersona.user_id == user_id,
-            WritingPersona.is_active == True
-        ).first()
-        
-        if not persona:
+        if not persona_data:
             raise HTTPException(status_code=404, detail="Persona not found")
         
-        # Get platform adaptations
-        platform_personas = session.query(PlatformPersona).filter(
-            PlatformPersona.writing_persona_id == persona_id,
-            PlatformPersona.is_active == True
-        ).all()
-        
-        result = persona.to_dict()
-        result["platform_adaptations"] = [pp.to_dict() for pp in platform_personas]
-        
-        session.close()
-        return result
+        # Return the complete persona data with all platforms
+        return {
+            "persona_id": persona_data.get('id'),
+            "core_persona": persona_data.get('core_persona', {}),
+            "platform_personas": persona_data.get('platform_personas', {}),
+            "quality_metrics": persona_data.get('quality_metrics', {}),
+            "selected_platforms": persona_data.get('selected_platforms', []),
+            "created_at": persona_data.get('created_at'),
+            "updated_at": persona_data.get('updated_at')
+        }
         
     except HTTPException:
         raise
@@ -161,11 +157,13 @@ async def get_persona_details(user_id: int, persona_id: int):
         logger.error(f"Error getting persona details: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get persona details: {str(e)}")
 
-async def get_platform_persona(user_id: int, platform: str):
-    """Get persona adaptation for a specific platform."""
+async def get_platform_persona(user_id: str, platform: str):
+    """Get persona adaptation for a specific platform using PersonaData."""
     try:
-        persona_service = get_persona_service()
-        platform_persona = persona_service.get_persona_for_platform(user_id, platform)
+        from services.persona_data_service import PersonaDataService
+        
+        persona_service = PersonaDataService()
+        platform_persona = persona_service.get_platform_persona(user_id, platform)
         
         if not platform_persona:
             raise HTTPException(status_code=404, detail=f"No persona found for platform {platform}")
@@ -178,41 +176,52 @@ async def get_platform_persona(user_id: int, platform: str):
         logger.error(f"Error getting platform persona: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get platform persona: {str(e)}")
 
-async def update_persona(user_id: int, persona_id: int, update_data: Dict[str, Any]):
-    """Update an existing persona."""
+async def get_persona_summary(user_id: str):
+    """Get persona summary for a user using PersonaData."""
     try:
-        from services.database import get_db_session
-        from models.persona_models import WritingPersona
+        from services.persona_data_service import PersonaDataService
         
-        session = get_db_session()
+        persona_service = PersonaDataService()
+        summary = persona_service.get_persona_summary(user_id)
         
-        persona = session.query(WritingPersona).filter(
-            WritingPersona.id == persona_id,
-            WritingPersona.user_id == user_id
-        ).first()
+        return summary
         
-        if not persona:
-            raise HTTPException(status_code=404, detail="Persona not found")
+    except Exception as e:
+        logger.error(f"Error getting persona summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get persona summary: {str(e)}")
+
+async def update_persona(user_id: str, persona_id: int, update_data: Dict[str, Any]):
+    """Update an existing persona using PersonaData."""
+    try:
+        from services.persona_data_service import PersonaDataService
+        from models.onboarding import PersonaData
         
-        # Update allowed fields
-        updatable_fields = [
-            'persona_name', 'archetype', 'core_belief', 'brand_voice_description',
-            'linguistic_fingerprint', 'platform_adaptations'
-        ]
+        persona_service = PersonaDataService()
         
-        for field in updatable_fields:
-            if field in update_data:
-                setattr(persona, field, update_data[field])
-        
-        persona.updated_at = datetime.utcnow()
-        session.commit()
-        session.close()
-        
-        return {
-            "message": "Persona updated successfully",
-            "persona_id": persona_id,
-            "updated_at": persona.updated_at.isoformat()
-        }
+        # For PersonaData, we update the core_persona field
+        if 'core_persona' in update_data:
+            # Get current persona data
+            persona_data = persona_service.get_user_persona_data(user_id)
+            if not persona_data:
+                raise HTTPException(status_code=404, detail="Persona not found")
+            
+            # Update core persona with new data
+            persona_service.db.query(PersonaData).filter(
+                PersonaData.id == persona_data.get('id')
+            ).update({
+                'core_persona': update_data['core_persona'],
+                'updated_at': datetime.utcnow()
+            })
+            persona_service.db.commit()
+            persona_service.db.close()
+            
+            return {
+                "message": "Persona updated successfully",
+                "persona_id": persona_data.get('id'),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=400, detail="core_persona field is required for updates")
         
     except HTTPException:
         raise
@@ -220,40 +229,28 @@ async def update_persona(user_id: int, persona_id: int, update_data: Dict[str, A
         logger.error(f"Error updating persona: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update persona: {str(e)}")
 
-async def delete_persona(user_id: int, persona_id: int):
-    """Delete a persona (soft delete by setting is_active=False)."""
+async def delete_persona(user_id: str, persona_id: int):
+    """Delete a persona using PersonaData (not recommended, personas are generated during onboarding)."""
     try:
-        from services.database import get_db_session
-        from models.persona_models import WritingPersona, PlatformPersona
+        from services.persona_data_service import PersonaDataService
+        from models.onboarding import PersonaData
         
-        session = get_db_session()
+        persona_service = PersonaDataService()
         
-        persona = session.query(WritingPersona).filter(
-            WritingPersona.id == persona_id,
-            WritingPersona.user_id == user_id
-        ).first()
-        
-        if not persona:
+        # Get persona data
+        persona_data = persona_service.get_user_persona_data(user_id)
+        if not persona_data:
             raise HTTPException(status_code=404, detail="Persona not found")
         
-        # Soft delete persona and platform adaptations
-        persona.is_active = False
-        persona.updated_at = datetime.utcnow()
-        
-        platform_personas = session.query(PlatformPersona).filter(
-            PlatformPersona.writing_persona_id == persona_id
-        ).all()
-        
-        for pp in platform_personas:
-            pp.is_active = False
-            pp.updated_at = datetime.utcnow()
-        
-        session.commit()
-        session.close()
+        # For PersonaData, we mark it as deleted by setting a flag
+        # Note: In production, you might want to add a deleted_at field or similar
+        # For now, we'll just return a warning that deletion is not recommended
+        logger.warning(f"Delete persona requested for user {user_id}. PersonaData deletion is not recommended.")
         
         return {
-            "message": "Persona deleted successfully",
-            "persona_id": persona_id
+            "message": "Persona deletion requested. Note: Personas are generated during onboarding and deletion is not recommended.",
+            "persona_id": persona_data.get('id'),
+            "alternative": "Consider re-running onboarding to regenerate persona if needed."
         }
         
     except HTTPException:
@@ -262,67 +259,24 @@ async def delete_persona(user_id: int, persona_id: int):
         logger.error(f"Error deleting persona: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete persona: {str(e)}")
 
-async def update_platform_persona(user_id: int, platform: str, update_data: Dict[str, Any]):
-    """Update platform-specific persona fields for a user's persona.
-
-    This updates the underlying PlatformPersona row for the given platform.
-    """
+async def update_platform_persona(user_id: str, platform: str, update_data: Dict[str, Any]):
+    """Update platform-specific persona fields using PersonaData."""
     try:
-        from services.database import get_db_session
-        from models.persona_models import WritingPersona, PlatformPersona
+        from services.persona_data_service import PersonaDataService
 
-        session = get_db_session()
-
-        # Find the user's active core persona id
-        core_persona = session.query(WritingPersona).filter(
-            WritingPersona.user_id == user_id,
-            WritingPersona.is_active == True
-        ).order_by(WritingPersona.created_at.desc()).first()
-
-        if not core_persona:
-            raise HTTPException(status_code=404, detail="No active persona found for user")
-
-        # Find the platform persona for the requested platform
-        platform_persona = session.query(PlatformPersona).filter(
-            PlatformPersona.writing_persona_id == core_persona.id,
-            PlatformPersona.platform_type.ilike(platform),
-            PlatformPersona.is_active == True
-        ).first()
-
-        if not platform_persona:
+        persona_service = PersonaDataService()
+        
+        # Update platform-specific persona data
+        success = persona_service.update_platform_persona(user_id, platform, update_data)
+        
+        if not success:
             raise HTTPException(status_code=404, detail=f"No platform persona found for platform {platform}")
-
-        # Update allowed platform fields
-        updatable_fields = [
-            'sentence_metrics', 'lexical_features', 'rhetorical_devices', 'tonal_range',
-            'stylistic_constraints', 'content_format_rules', 'engagement_patterns',
-            'posting_frequency', 'content_types', 'platform_best_practices', 'algorithm_considerations'
-        ]
-
-        updated_any = False
-        for field in updatable_fields:
-            if field in update_data:
-                setattr(platform_persona, field, update_data[field])
-                updated_any = True
-
-        if not updated_any:
-            # Nothing to update
-            session.close()
-            return {
-                "message": "No updatable fields provided",
-                "platform": platform_persona.platform_type,
-                "persona_id": core_persona.id
-            }
-
-        platform_persona.updated_at = datetime.utcnow()
-        session.commit()
-        session.close()
 
         return {
             "message": "Platform persona updated successfully",
             "platform": platform,
-            "persona_id": core_persona.id,
-            "updated_at": platform_persona.updated_at.isoformat()
+            "user_id": user_id,
+            "updated_at": datetime.utcnow().isoformat()
         }
 
     except HTTPException:
@@ -330,6 +284,101 @@ async def update_platform_persona(user_id: int, platform: str, update_data: Dict
     except Exception as e:
         logger.error(f"Error updating platform persona: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update platform persona: {str(e)}")
+
+async def generate_platform_persona(user_id: str, platform: str, db_session):
+    """
+    Generate a platform-specific persona from core persona and save it.
+    
+    Args:
+        user_id: User ID from auth
+        platform: Platform name (facebook, linkedin, etc.)
+        db_session: Database session from FastAPI dependency injection
+    
+    Returns:
+        Generated platform persona with validation results
+    """
+    try:
+        logger.info(f"Generating {platform} persona for user {user_id}")
+        
+        # Import services
+        from services.persona_data_service import PersonaDataService
+        from services.onboarding_database_service import OnboardingDatabaseService
+        
+        persona_data_service = PersonaDataService(db_session=db_session)
+        onboarding_service = OnboardingDatabaseService(db=db_session)
+        
+        # Get core persona data
+        persona_data = persona_data_service.get_user_persona_data(user_id)
+        if not persona_data:
+            raise HTTPException(status_code=404, detail="Core persona not found")
+        
+        core_persona = persona_data.get('core_persona', {})
+        if not core_persona:
+            raise HTTPException(status_code=404, detail="Core persona data is empty")
+        
+        # Get onboarding data for context
+        onboarding_session = onboarding_service.get_session_by_user(user_id)
+        if not onboarding_session:
+            raise HTTPException(status_code=404, detail="Onboarding session not found")
+        
+        # Get website analysis for context
+        website_analysis = onboarding_service.get_website_analysis(user_id)
+        research_prefs = onboarding_service.get_research_preferences(user_id)
+        
+        onboarding_data = {
+            "website_url": website_analysis.get('website_url', '') if website_analysis else '',
+            "writing_style": website_analysis.get('writing_style', {}) if website_analysis else {},
+            "content_characteristics": website_analysis.get('content_characteristics', {}) if website_analysis else {},
+            "target_audience": website_analysis.get('target_audience', '') if website_analysis else '',
+            "research_preferences": research_prefs or {}
+        }
+        
+        # Generate platform persona based on platform
+        generated_persona = None
+        platform_service = None
+        
+        if platform.lower() == 'facebook':
+            from services.persona.facebook.facebook_persona_service import FacebookPersonaService
+            platform_service = FacebookPersonaService()
+            generated_persona = platform_service.generate_facebook_persona(
+                core_persona, 
+                onboarding_data
+            )
+        elif platform.lower() == 'linkedin':
+            from services.persona.linkedin.linkedin_persona_service import LinkedInPersonaService
+            platform_service = LinkedInPersonaService()
+            generated_persona = platform_service.generate_linkedin_persona(
+                core_persona,
+                onboarding_data
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+        
+        # Check for errors in generation
+        if "error" in generated_persona:
+            raise HTTPException(status_code=500, detail=generated_persona["error"])
+        
+        # Save the generated platform persona to database
+        success = persona_data_service.save_platform_persona(user_id, platform, generated_persona)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail=f"Failed to save {platform} persona")
+        
+        logger.info(f"✅ Successfully generated and saved {platform} persona for user {user_id}")
+        
+        return {
+            "success": True,
+            "platform": platform,
+            "persona": generated_persona,
+            "validation_results": generated_persona.get("validation_results", {}),
+            "quality_score": generated_persona.get("validation_results", {}).get("quality_score", 0)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating {platform} persona: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate {platform} persona: {str(e)}")
 
 async def validate_persona_generation_readiness(user_id: int):
     """Check if user has sufficient onboarding data for persona generation."""

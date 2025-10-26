@@ -26,4 +26,4 @@ export { default as ImageGenerationTest } from './ImageGenerationTest';
 
 // Refactored Components
 export { default as BrainstormFlow } from './BrainstormFlow';
-export { default as CopilotActions } from './CopilotActions';
+export { useCopilotActions } from './CopilotActions';

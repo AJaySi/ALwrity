@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PersonaEditorModal from './PersonaEditorModal';
+import { getUserPersonas, getPlatformPersona, updatePersona, updatePlatformPersona } from '../../../api/persona';
 
 interface PersonaData {
   id?: number;
@@ -28,13 +29,11 @@ interface PersonaData {
 
 interface PersonaChipProps {
   platform: string;
-  userId?: number;
   onPersonaUpdate?: (personaData: PersonaData) => void;
 }
 
 const PersonaChip: React.FC<PersonaChipProps> = ({
   platform,
-  userId = 1,
   onPersonaUpdate
 }) => {
   const [personaData, setPersonaData] = useState<PersonaData | null>(null);
@@ -48,44 +47,48 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
     setError(null);
     
     try {
-      // Fetch core persona list (take most recent active) and platform-specific details
-      const [coreRes, platformRes] = await Promise.all([
-        fetch(`/api/personas/user/${userId}`),
-        fetch(`/api/personas/platform/${platform}?user_id=${userId}`)
+      // Fetch core persona list (take most recent active) and platform-specific details using authenticated API client
+      const [coreList, platformData] = await Promise.all([
+        getUserPersonas(),
+        getPlatformPersona(platform)
       ]);
 
-      if (coreRes.ok && platformRes.ok) {
-        const coreList = await coreRes.json();
-        const platformData = await platformRes.json();
-        const core = (coreList?.personas && coreList.personas.length > 0) ? coreList.personas[0] : {};
+      if (coreList && platformData) {
+        // Extract core persona from the response
+        const corePersona = platformData?.core_persona || {};
+        const platformPersona = platformData?.platform_persona || {};
+        const qualityMetrics = platformData?.quality_metrics || {};
+        
+        if (!corePersona || Object.keys(corePersona).length === 0) {
+          setError('No persona found for this platform');
+          return;
+        }
 
         // Merge core + platform fields for editor convenience
         setPersonaData({
-          id: core.id,
-          user_id: core.user_id,
-          persona_name: core.persona_name,
-          archetype: core.archetype,
-          core_belief: core.core_belief,
-          brand_voice_description: core.brand_voice_description,
-          linguistic_fingerprint: core.linguistic_fingerprint,
-          platform_adaptations: core.platform_adaptations,
-          confidence_score: core.confidence_score,
-          ai_analysis_version: core.ai_analysis_version,
+          id: platformData?.id || 1,
+          user_id: 1, // Placeholder, not used
+          persona_name: corePersona.persona_name || 'Untitled Persona',
+          archetype: corePersona.archetype || 'General',
+          core_belief: corePersona.core_belief || '',
+          brand_voice_description: corePersona.brand_voice_description || corePersona.core_belief || '',
+          linguistic_fingerprint: corePersona.linguistic_fingerprint || {},
+          platform_adaptations: corePersona.platform_adaptations || {},
+          confidence_score: qualityMetrics.confidence_score || corePersona.confidence_score || 0,
+          ai_analysis_version: platformData?.ai_analysis_version || '1.0',
           platform_type: platform,
-          sentence_metrics: platformData?.sentence_metrics,
-          lexical_features: platformData?.lexical_features,
-          rhetorical_devices: platformData?.rhetorical_devices,
-          tonal_range: platformData?.tonal_range,
-          stylistic_constraints: platformData?.stylistic_constraints,
-          content_format_rules: platformData?.content_format_rules,
-          engagement_patterns: platformData?.engagement_patterns,
-          posting_frequency: platformData?.posting_frequency,
-          content_types: platformData?.content_types,
-          platform_best_practices: platformData?.platform_best_practices,
-          algorithm_considerations: platformData?.algorithm_considerations,
+          sentence_metrics: platformPersona?.sentence_metrics || {},
+          lexical_features: platformPersona?.lexical_features || {},
+          rhetorical_devices: platformPersona?.rhetorical_devices || {},
+          tonal_range: platformPersona?.tonal_range || {},
+          stylistic_constraints: platformPersona?.stylistic_constraints || {},
+          content_format_rules: platformPersona?.content_format_rules || {},
+          engagement_patterns: platformPersona?.engagement_patterns || {},
+          posting_frequency: platformPersona?.posting_frequency || {},
+          content_types: platformPersona?.content_types || {},
+          platform_best_practices: platformPersona?.platform_best_practices || {},
+          algorithm_considerations: platformPersona?.algorithm_considerations || {},
         } as any);
-      } else {
-        setError('No persona found for this platform');
       }
     } catch (err) {
       setError('Failed to load persona data');
@@ -98,7 +101,7 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
   useEffect(() => {
     fetchPersonaData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform, userId]);
+  }, [platform]);
 
   const handleSavePersona = async (data: PersonaData, saveToDatabase: boolean) => {
     try {
@@ -114,12 +117,8 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
             platform_adaptations: data.platform_adaptations,
           };
 
-          const coreRes = await fetch(`/api/personas/${data.id}?user_id=${userId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(corePayload)
-          });
-          if (!coreRes.ok) throw new Error('Failed to update core persona');
+          // Use authenticated API client, note that user ID is extracted from JWT
+          await updatePersona(1, data.id, { core_persona: corePayload });
         }
 
         // Save platform persona fields
@@ -137,12 +136,8 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
           algorithm_considerations: data.algorithm_considerations,
         };
 
-        const platRes = await fetch(`/api/personas/platform/${platform}?user_id=${userId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(platformPayload)
-        });
-        if (!platRes.ok) throw new Error('Failed to update platform persona');
+        // Use authenticated API client, note that user ID is extracted from JWT
+        await updatePlatformPersona(platform, platformPayload);
       }
 
       // Update local state

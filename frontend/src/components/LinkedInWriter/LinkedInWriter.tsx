@@ -6,7 +6,8 @@ import './styles/alwrity-copilot.css';
 import RegisterLinkedInActions from './RegisterLinkedInActions';
 import RegisterLinkedInEditActions from './RegisterLinkedInEditActions';
 import RegisterLinkedInActionsEnhanced from './RegisterLinkedInActionsEnhanced';
-import { Header, ContentEditor, LoadingIndicator, WelcomeMessage, ProgressTracker, CopilotActions } from './components';
+import { Header, ContentEditor, LoadingIndicator, WelcomeMessage, ProgressTracker } from './components';
+import { useCopilotActions } from './components/CopilotActions';
 import { useLinkedInWriter } from './hooks/useLinkedInWriter';
 import { useCopilotPersistence } from './utils/enhancedPersistence';
 import { PlatformPersonaProvider, usePlatformPersonaContext } from '../shared/PersonaContext/PlatformPersonaProvider';
@@ -226,8 +227,8 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
   });
 
 
-  // Initialize CopilotActions component to handle all copilot-related functionality
-  const getIntelligentSuggestions = CopilotActions({
+  // Use the CopilotActions hook to handle all copilot-related functionality
+  const getIntelligentSuggestions = useCopilotActions({
     draft,
     context,
     userPreferences,
@@ -237,7 +238,15 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
   });
 
   return (
-    <div className={`linkedin-writer ${className}`} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div 
+      className={`linkedin-writer ${className}`} 
+      style={{ 
+        height: '100vh', 
+        display: 'flex', 
+        flexDirection: 'column',
+        backgroundColor: '#ffffff' // White professional background
+      }}
+    >
       {/* Header */}
       <Header
         userPreferences={userPreferences}
@@ -267,7 +276,7 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
 
 
       {/* Main Content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#ffffff' }}>
         {/* Loading Indicator */}
         <LoadingIndicator
           isGenerating={isGenerating}

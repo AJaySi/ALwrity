@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LinkedInPreferences } from '../utils/storageUtils';
 import { PersonaChip } from '../../TextEditor/ContentPreviewHeaderComponents';
 import { usePlatformPersonaContext } from '../../shared/PersonaContext/PlatformPersonaProvider';
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onClearHistory,
   getHistoryLength
 }) => {
+  const navigate = useNavigate();
   const [personaOverride, setPersonaOverride] = useState<any>(null);
   const { corePersona, platformPersona } = usePlatformPersonaContext();
   
@@ -89,6 +91,34 @@ export const Header: React.FC<HeaderProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         {/* Left Section - Logo and Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          {/* Back Button */}
+          <button
+            onClick={() => navigate('/dashboard')}
+            style={{
+              padding: '8px 12px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              color: 'white',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+            }}
+            title="Back to Dashboard"
+          >
+            ← Back to Dashboard
+          </button>
+          
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <img 
               src={alwrityLogo} 
@@ -211,7 +241,6 @@ export const Header: React.FC<HeaderProps> = ({
                     }}>
                       <PersonaChip 
                         platform="linkedin" 
-                        userId={1}
                         onPersonaUpdate={handlePersonaUpdate}
                       />
                     </div>

@@ -3,9 +3,7 @@
  * Handles writing persona generation and management
  */
 
-import axios from 'axios';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+import { apiClient } from './client';
 
 export interface PersonaGenerationRequest {
   onboarding_session_id?: number;
@@ -79,7 +77,7 @@ export interface SupportedPlatformsResponse {
  */
 export const checkPersonaReadiness = async (userId: number = 1): Promise<PersonaReadinessResponse> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/onboarding/persona-readiness`, {
+    const response = await apiClient.get('/api/onboarding/persona-readiness', {
       params: { user_id: userId }
     });
     return response.data;
@@ -94,7 +92,7 @@ export const checkPersonaReadiness = async (userId: number = 1): Promise<Persona
  */
 export const generatePersonaPreview = async (userId: number = 1): Promise<PersonaPreviewResponse> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/onboarding/persona-preview`, {
+    const response = await apiClient.get('/api/onboarding/persona-preview', {
       params: { user_id: userId }
     });
     return response.data;
@@ -109,7 +107,7 @@ export const generatePersonaPreview = async (userId: number = 1): Promise<Person
  */
 export const generateWritingPersona = async (userId: number = 1, request: PersonaGenerationRequest = {}): Promise<PersonaGenerationResponse> => {
   try {
-    const response = await axios.post(`${API_BASE_URL}/api/personas/generate`, request, {
+    const response = await apiClient.post('/api/personas/generate', request, {
       params: { user_id: userId }
     });
     return response.data;
@@ -121,10 +119,11 @@ export const generateWritingPersona = async (userId: number = 1, request: Person
 
 /**
  * Get all writing personas for a user
+ * Note: user_id is extracted from Clerk JWT token, no need to pass it
  */
-export const getUserPersonas = async (userId: number = 1): Promise<{ personas: PersonaResponse[]; total_count: number }> => {
+export const getUserPersonas = async (): Promise<{ personas: PersonaResponse[]; total_count: number }> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/personas/user/${userId}`);
+    const response = await apiClient.get('/api/personas/user');
     return response.data;
   } catch (error: any) {
     console.error('Error getting user personas:', error);
@@ -137,7 +136,7 @@ export const getUserPersonas = async (userId: number = 1): Promise<{ personas: P
  */
 export const getPersonaDetails = async (userId: number, personaId: number): Promise<any> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/personas/${personaId}`, {
+    const response = await apiClient.get(`/api/personas/${personaId}`, {
       params: { user_id: userId }
     });
     return response.data;
@@ -149,12 +148,11 @@ export const getPersonaDetails = async (userId: number, personaId: number): Prom
 
 /**
  * Get persona adaptation for a specific platform
+ * Note: user_id is extracted from Clerk JWT token, no need to pass it
  */
-export const getPlatformPersona = async (userId: number, platform: string): Promise<any> => {
+export const getPlatformPersona = async (platform: string): Promise<any> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/personas/platform/${platform}`, {
-      params: { user_id: userId }
-    });
+    const response = await apiClient.get(`/api/personas/platform/${platform}`);
     return response.data;
   } catch (error: any) {
     console.error('Error getting platform persona:', error);
@@ -167,7 +165,7 @@ export const getPlatformPersona = async (userId: number, platform: string): Prom
  */
 export const getSupportedPlatforms = async (): Promise<SupportedPlatformsResponse> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/personas/platforms`);
+    const response = await apiClient.get('/api/personas/platforms');
     return response.data;
   } catch (error: any) {
     console.error('Error getting supported platforms:', error);
@@ -180,7 +178,7 @@ export const getSupportedPlatforms = async (): Promise<SupportedPlatformsRespons
  */
 export const updatePersona = async (userId: number, personaId: number, updateData: any): Promise<any> => {
   try {
-    const response = await axios.put(`${API_BASE_URL}/api/personas/${personaId}`, updateData, {
+    const response = await apiClient.put(`/api/personas/${personaId}`, updateData, {
       params: { user_id: userId }
     });
     return response.data;
@@ -191,11 +189,39 @@ export const updatePersona = async (userId: number, personaId: number, updateDat
 };
 
 /**
+ * Update platform-specific persona
+ * Note: user_id is extracted from Clerk JWT token
+ */
+export const updatePlatformPersona = async (platform: string, updateData: any): Promise<any> => {
+  try {
+    const response = await apiClient.put(`/api/personas/platform/${platform}`, updateData);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error updating platform persona:', error);
+    throw new Error(error.response?.data?.detail || 'Failed to update platform persona');
+  }
+};
+
+/**
+ * Generate a platform-specific persona from core persona
+ * Note: user_id is extracted from Clerk JWT token
+ */
+export const generatePlatformPersona = async (platform: string): Promise<any> => {
+  try {
+    const response = await apiClient.post(`/api/personas/generate-platform/${platform}`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`Error generating ${platform} persona:`, error);
+    throw new Error(error.response?.data?.detail || `Failed to generate ${platform} persona`);
+  }
+};
+
+/**
  * Delete a persona
  */
 export const deletePersona = async (userId: number, personaId: number): Promise<any> => {
   try {
-    const response = await axios.delete(`${API_BASE_URL}/api/personas/${personaId}`, {
+    const response = await apiClient.delete(`/api/personas/${personaId}`, {
       params: { user_id: userId }
     });
     return response.data;
@@ -215,7 +241,7 @@ export const generateContentWithPersona = async (
   contentType: string = 'post'
 ): Promise<any> => {
   try {
-    const response = await axios.post(`${API_BASE_URL}/api/personas/generate-content`, {
+    const response = await apiClient.post('/api/personas/generate-content', {
       user_id: userId,
       platform,
       content_request: contentRequest,
@@ -233,7 +259,7 @@ export const generateContentWithPersona = async (
  */
 export const exportPersonaPrompt = async (userId: number, platform: string): Promise<any> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/personas/export/${platform}`, {
+    const response = await apiClient.get(`/api/personas/export/${platform}`, {
       params: { user_id: userId }
     });
     return response.data;
