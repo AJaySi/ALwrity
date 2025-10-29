@@ -39,7 +39,7 @@ class CompetitorAnalyzer:
         }}
         """
         
-        from services.llm_providers.gemini_provider import gemini_structured_json_response
+        from services.llm_providers.main_text_generation import llm_text_gen
         
         competitor_schema = {
             "type": "object",
@@ -55,11 +55,9 @@ class CompetitorAnalyzer:
             "required": ["top_competitors", "content_gaps", "opportunities", "competitive_advantages", "market_positioning", "industry_leaders", "analysis_notes"]
         }
         
-        competitor_analysis = gemini_structured_json_response(
+        competitor_analysis = llm_text_gen(
             prompt=competitor_prompt,
-            schema=competitor_schema,
-            temperature=0.3,
-            max_tokens=4000
+            json_struct=competitor_schema
         )
         
         if isinstance(competitor_analysis, dict) and 'error' not in competitor_analysis:

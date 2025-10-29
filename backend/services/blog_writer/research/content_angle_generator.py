@@ -48,7 +48,7 @@ class ContentAngleGenerator:
         }}
         """
         
-        from services.llm_providers.gemini_provider import gemini_structured_json_response
+        from services.llm_providers.main_text_generation import llm_text_gen
         
         angles_schema = {
             "type": "object",
@@ -63,11 +63,9 @@ class ContentAngleGenerator:
             "required": ["content_angles"]
         }
         
-        angles_result = gemini_structured_json_response(
+        angles_result = llm_text_gen(
             prompt=angles_prompt,
-            schema=angles_schema,
-            temperature=0.7,
-            max_tokens=4000
+            json_struct=angles_schema
         )
         
         if isinstance(angles_result, dict) and 'content_angles' in angles_result:

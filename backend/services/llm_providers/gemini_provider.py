@@ -402,18 +402,33 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
         try:
             # Convert sync call to async for retry logic
             import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             
-            response = loop.run_until_complete(
-                retry_with_backoff(
-                    make_api_call,
-                    config=CONTENT_RETRY_CONFIG,
-                    operation_name="gemini_structured_json",
-                    context={"schema_type": type(types_schema).__name__, "max_tokens": max_tokens}
+            # Check if there's already an event loop running
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, we need to run this differently
+                logger.warning("⚠️ Already in async context, using direct sync call")
+                # For now, let's use a simpler approach without retry logic
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config=generation_config,
                 )
-            )
-            logger.info("✅ Gemini API call completed successfully")
+                logger.info("✅ Gemini API call completed successfully (sync mode)")
+            except RuntimeError:
+                # No event loop running, we can create one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                response = loop.run_until_complete(
+                    retry_with_backoff(
+                        make_api_call,
+                        config=CONTENT_RETRY_CONFIG,
+                        operation_name="gemini_structured_json",
+                        context={"schema_type": type(types_schema).__name__, "max_tokens": max_tokens}
+                    )
+                )
+                logger.info("✅ Gemini API call completed successfully")
         except Exception as api_error:
             logger.error(f"❌ Gemini API call failed: {api_error}")
             logger.error(f"❌ API Error type: {type(api_error).__name__}")

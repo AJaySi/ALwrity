@@ -10,10 +10,9 @@ from typing import Optional, Dict, Any
 from loguru import logger
 from ..onboarding.api_key_manager import APIKeyManager
 
-from .openai_provider import openai_chatgpt
 from .gemini_provider import gemini_text_response, gemini_structured_json_response
-from .anthropic_provider import anthropic_text_response
-from .deepseek_provider import deepseek_text_response
+from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
+
 
 def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: Optional[Dict[str, Any]] = None) -> str:
     """
@@ -31,13 +30,6 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
         logger.info("[llm_text_gen] Starting text generation")
         logger.debug(f"[llm_text_gen] Prompt length: {len(prompt)} characters")
         
-        # Initialize API key manager and reload keys from .env file
-        api_key_manager = APIKeyManager()
-        api_key_manager.load_api_keys()  # Force reload from .env file
-        
-        # Debug: Log loaded API keys
-        logger.debug(f"[llm_text_gen] Loaded API keys: {api_key_manager.get_all_keys()}")
-        
         # Set default values for LLM parameters
         gpt_provider = "google"  # Default to Google Gemini
         model = "gemini-2.0-flash-001"
@@ -49,6 +41,15 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
         frequency_penalty = 0.0
         presence_penalty = 0.0
         
+        # Check for GPT_PROVIDER environment variable
+        env_provider = os.getenv('GPT_PROVIDER', '').lower()
+        if env_provider in ['gemini', 'google']:
+            gpt_provider = "google"
+            model = "gemini-2.0-flash-001"
+        elif env_provider in ['hf_response_api', 'huggingface', 'hf']:
+            gpt_provider = "huggingface"
+            model = "openai/gpt-oss-120b:groq"
+        
         # Default blog characteristics
         blog_tone = "Professional"
         blog_demographic = "Professional"
@@ -57,41 +58,40 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
         blog_output_format = "markdown"
         blog_length = 2000
         
-        # Try to get provider from environment or config
-        try:
-            # Check which providers have API keys available
-            available_providers = []
-            if api_key_manager.get_api_key("openai"):
-                available_providers.append("openai")
-            if api_key_manager.get_api_key("gemini"):
-                available_providers.append("google")
-            if api_key_manager.get_api_key("anthropic"):
-                available_providers.append("anthropic")
-            if api_key_manager.get_api_key("deepseek"):
-                available_providers.append("deepseek")
-            
-            # Prefer Google Gemini if available, otherwise use first available
+        # Check which providers have API keys available using APIKeyManager
+        api_key_manager = APIKeyManager()
+        available_providers = []
+        if api_key_manager.get_api_key("gemini"):
+            available_providers.append("google")
+        if api_key_manager.get_api_key("hf_token"):
+            available_providers.append("huggingface")
+        
+        # If no environment variable set, auto-detect based on available keys
+        if not env_provider:
+            # Prefer Google Gemini if available, otherwise use Hugging Face
             if "google" in available_providers:
                 gpt_provider = "google"
                 model = "gemini-2.0-flash-001"
-            elif available_providers:
-                gpt_provider = available_providers[0]
-                if gpt_provider == "openai":
-                    model = "gpt-4o"
-                elif gpt_provider == "anthropic":
-                    model = "claude-3-5-sonnet-20241022"
-                elif gpt_provider == "deepseek":
-                    model = "deepseek-chat"
+            elif "huggingface" in available_providers:
+                gpt_provider = "huggingface"
+                model = "openai/gpt-oss-120b:groq"
             else:
-                logger.error("[llm_text_gen] No API keys found. Structured mock responses are disabled.")
-                raise RuntimeError("No LLM API keys configured. Configure provider API keys to enable AI responses.")
-                
-            logger.debug(f"[llm_text_gen] Using provider: {gpt_provider}, model: {model}")
+                logger.error("[llm_text_gen] No API keys found for supported providers.")
+                raise RuntimeError("No LLM API keys configured. Configure GEMINI_API_KEY or HF_TOKEN to enable AI responses.")
+        else:
+            # Environment variable was set, validate it's supported
+            if gpt_provider not in available_providers:
+                logger.warning(f"[llm_text_gen] Provider {gpt_provider} not available, falling back to available providers")
+                if "google" in available_providers:
+                    gpt_provider = "google"
+                    model = "gemini-2.0-flash-001"
+                elif "huggingface" in available_providers:
+                    gpt_provider = "huggingface"
+                    model = "openai/gpt-oss-120b:groq"
+                else:
+                    raise RuntimeError("No supported providers available.")
             
-        except Exception as err:
-            logger.warning(f"[llm_text_gen] Error determining provider, using defaults: {err}")
-            gpt_provider = "google"
-            model = "gemini-2.0-flash-001"
+        logger.debug(f"[llm_text_gen] Using provider: {gpt_provider}, model: {model}")
 
         # Construct the system prompt if not provided
         if system_prompt is None:
@@ -118,18 +118,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
 
         # Generate response based on provider
         try:
-            if gpt_provider == "openai":
-                return openai_chatgpt(
-                    prompt=prompt,
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    top_p=top_p,
-                    n=n,
-                    fp=fp,
-                    system_prompt=system_instructions
-                )
-            elif gpt_provider == "google":
+            if gpt_provider == "google":
                 if json_struct:
                     return gemini_structured_json_response(
                         prompt=prompt,
@@ -149,66 +138,83 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         max_tokens=max_tokens,
                         system_prompt=system_instructions
                     )
-            elif gpt_provider == "anthropic":
-                return anthropic_text_response(
-                    prompt=prompt,
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    system_prompt=system_instructions
-                )
-            elif gpt_provider == "deepseek":
-                return deepseek_text_response(
-                    prompt=prompt,
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    system_prompt=system_instructions
-                )
+            elif gpt_provider == "huggingface":
+                if json_struct:
+                    return huggingface_structured_json_response(
+                        prompt=prompt,
+                        schema=json_struct,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        system_prompt=system_instructions
+                    )
+                else:
+                    return huggingface_text_response(
+                        prompt=prompt,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        top_p=top_p,
+                        system_prompt=system_instructions
+                    )
             else:
                 logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")
-                raise RuntimeError("Unknown LLM provider.")
+                raise RuntimeError("Unknown LLM provider. Supported providers: google, huggingface")
         except Exception as provider_error:
             logger.error(f"[llm_text_gen] Provider {gpt_provider} failed: {str(provider_error)}")
-            # Try to fallback to another provider
-            fallback_providers = ["openai", "anthropic", "deepseek"]
-            for fallback_provider in fallback_providers:
-                if fallback_provider in available_providers and fallback_provider != gpt_provider:
-                    try:
-                        logger.info(f"[llm_text_gen] Trying fallback provider: {fallback_provider}")
-                        if fallback_provider == "openai":
-                            return openai_chatgpt(
+            
+            # CIRCUIT BREAKER: Only try ONE fallback to prevent expensive API calls
+            fallback_providers = ["google", "huggingface"]
+            fallback_providers = [p for p in fallback_providers if p in available_providers and p != gpt_provider]
+            
+            if fallback_providers:
+                fallback_provider = fallback_providers[0]  # Only try the first available
+                try:
+                    logger.info(f"[llm_text_gen] Trying SINGLE fallback provider: {fallback_provider}")
+                    if fallback_provider == "google":
+                        if json_struct:
+                            return gemini_structured_json_response(
                                 prompt=prompt,
-                                model="gpt-4o",
+                                schema=json_struct,
+                                temperature=temperature,
+                                top_p=top_p,
+                                top_k=n,
+                                max_tokens=max_tokens,
+                                system_prompt=system_instructions
+                            )
+                        else:
+                            return gemini_text_response(
+                                prompt=prompt,
+                                temperature=temperature,
+                                top_p=top_p,
+                                n=n,
+                                max_tokens=max_tokens,
+                                system_prompt=system_instructions
+                            )
+                    elif fallback_provider == "huggingface":
+                        if json_struct:
+                            return huggingface_structured_json_response(
+                                prompt=prompt,
+                                schema=json_struct,
+                                model="openai/gpt-oss-120b:groq",
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                system_prompt=system_instructions
+                            )
+                        else:
+                            return huggingface_text_response(
+                                prompt=prompt,
+                                model="openai/gpt-oss-120b:groq",
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 top_p=top_p,
-                                n=n,
-                                fp=fp,
                                 system_prompt=system_instructions
                             )
-                        elif fallback_provider == "anthropic":
-                            return anthropic_text_response(
-                                prompt=prompt,
-                                model="claude-3-5-sonnet-20241022",
-                                temperature=temperature,
-                                max_tokens=max_tokens,
-                                system_prompt=system_instructions
-                            )
-                        elif fallback_provider == "deepseek":
-                            return deepseek_text_response(
-                                prompt=prompt,
-                                model="deepseek-chat",
-                                temperature=temperature,
-                                max_tokens=max_tokens,
-                                system_prompt=system_instructions
-                            )
-                    except Exception as fallback_error:
-                        logger.error(f"[llm_text_gen] Fallback provider {fallback_provider} also failed: {str(fallback_error)}")
-                        continue
+                except Exception as fallback_error:
+                    logger.error(f"[llm_text_gen] Fallback provider {fallback_provider} also failed: {str(fallback_error)}")
             
-            # If all providers fail, raise an error (no mock)
-            logger.error("[llm_text_gen] All providers failed. Structured mock responses are disabled.")
+            # CIRCUIT BREAKER: Stop immediately to prevent expensive API calls
+            logger.error("[llm_text_gen] CIRCUIT BREAKER: Stopping to prevent expensive API calls.")
             raise RuntimeError("All LLM providers failed to generate a response.")
 
     except Exception as e:
@@ -217,7 +223,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
 
 def check_gpt_provider(gpt_provider: str) -> bool:
     """Check if the specified GPT provider is supported."""
-    supported_providers = ["openai", "google", "anthropic", "deepseek"]
+    supported_providers = ["google", "huggingface"]
     return gpt_provider in supported_providers
 
 def get_api_key(gpt_provider: str) -> Optional[str]:
@@ -225,10 +231,8 @@ def get_api_key(gpt_provider: str) -> Optional[str]:
     try:
         api_key_manager = APIKeyManager()
         provider_mapping = {
-            "openai": "openai",
             "google": "gemini",
-            "anthropic": "anthropic",
-            "deepseek": "deepseek"
+            "huggingface": "hf_token"
         }
         
         mapped_provider = provider_mapping.get(gpt_provider, gpt_provider)

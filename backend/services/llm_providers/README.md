@@ -1,6 +1,43 @@
-# Gemini Provider Module
+# LLM Providers Module
 
-This module provides functions for interacting with Google's Gemini API, specifically designed for structured JSON output and text generation. It follows the official Gemini API documentation and implements best practices for reliable AI interactions.
+This module provides functions for interacting with multiple LLM providers, specifically Google's Gemini API and Hugging Face Inference Providers. It follows official API documentation and implements best practices for reliable AI interactions.
+
+## Supported Providers
+
+- **Google Gemini**: High-quality text generation with structured JSON output
+- **Hugging Face**: Multiple models via Inference Providers with unified interface
+
+## Quick Start
+
+```python
+from services.llm_providers.main_text_generation import llm_text_gen
+
+# Generate text (auto-detects available provider)
+response = llm_text_gen("Write a blog post about AI trends")
+print(response)
+```
+
+## Configuration
+
+Set your preferred provider using the `GPT_PROVIDER` environment variable:
+
+```bash
+# Use Google Gemini (default)
+export GPT_PROVIDER=gemini
+
+# Use Hugging Face
+export GPT_PROVIDER=hf_response_api
+```
+
+Configure API keys:
+
+```bash
+# For Google Gemini
+export GEMINI_API_KEY=your_gemini_api_key_here
+
+# For Hugging Face
+export HF_TOKEN=your_huggingface_token_here
+```
 
 ## Key Features
 

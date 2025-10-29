@@ -44,7 +44,7 @@ class KeywordAnalyzer:
         }}
         """
         
-        from services.llm_providers.gemini_provider import gemini_structured_json_response
+        from services.llm_providers.main_text_generation import llm_text_gen
         
         keyword_schema = {
             "type": "object",
@@ -62,11 +62,9 @@ class KeywordAnalyzer:
             "required": ["primary", "secondary", "long_tail", "search_intent", "difficulty", "content_gaps", "semantic_keywords", "trending_terms", "analysis_insights"]
         }
         
-        keyword_analysis = gemini_structured_json_response(
+        keyword_analysis = llm_text_gen(
             prompt=keyword_prompt,
-            schema=keyword_schema,
-            temperature=0.3,
-            max_tokens=4000
+            json_struct=keyword_schema
         )
         
         if isinstance(keyword_analysis, dict) and 'error' not in keyword_analysis:

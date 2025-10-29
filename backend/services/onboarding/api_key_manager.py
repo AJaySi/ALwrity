@@ -388,10 +388,8 @@ class APIKeyManager:
     def _load_from_env(self):
         """Load API keys from environment variables."""
         providers = [
-            'OPENAI_API_KEY',
-            'ANTHROPIC_API_KEY', 
             'GEMINI_API_KEY',
-            'MISTRAL_API_KEY',
+            'HF_TOKEN',
             'TAVILY_API_KEY',
             'SERPER_API_KEY',
             'METAPHOR_API_KEY',

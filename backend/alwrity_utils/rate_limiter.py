@@ -14,7 +14,7 @@ from loguru import logger
 class RateLimiter:
     """Manages rate limiting for ALwrity backend."""
     
-    def __init__(self, window_seconds: int = 60, max_requests: int = 200):
+    def __init__(self, window_seconds: int = 60, max_requests: int = 1000):  # Increased for development
         self.window_seconds = window_seconds
         self.max_requests = max_requests
         self.request_counts: Dict[str, List[float]] = defaultdict(list)
@@ -28,6 +28,12 @@ class RateLimiter:
             "/ai-analytics",
             "/gap-analysis",
             "/calendar-events",
+            # Research endpoints - exempt from rate limiting
+            "/api/research",
+            "/api/blog-writer",
+            "/api/blog-writer/research",
+            "/api/blog-writer/research/",
+            "/api/blog/research/status",
             "/calendar-generation/progress",
             "/health",
             "/health/database",

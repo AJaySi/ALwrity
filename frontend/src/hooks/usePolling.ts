@@ -24,7 +24,7 @@ export function usePolling(
   options: UsePollingOptions = {}
 ): UsePollingReturn {
   const {
-    interval = 2000, // 2 seconds default
+    interval = 5000, // 5 seconds default - increased to reduce load
     onProgress,
     onComplete,
     onError
@@ -99,13 +99,17 @@ export function usePolling(
         }
 
         if (status.status === 'completed') {
+          console.log('✅ Task completed - stopping polling immediately');
           setResult(status.result);
           onComplete?.(status.result);
           stopPolling();
+          return; // Exit early to prevent further processing
         } else if (status.status === 'failed') {
+          console.log('❌ Task failed - stopping polling immediately');
           setError(status.error || 'Task failed');
           onError?.(status.error || 'Task failed');
           stopPolling();
+          return; // Exit early to prevent further processing
         }
 
         attemptsRef.current++;
@@ -113,11 +117,15 @@ export function usePolling(
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
         console.error('Polling error:', errorMessage);
         
-        // Only stop polling for actual task failures (404, task not found)
-        // For network errors, timeouts, etc., continue polling
+        // Stop polling for task failures and rate limiting
         if (errorMessage.includes('404') || errorMessage.includes('Task not found')) {
           setError('Task not found - it may have expired or been cleaned up');
           onError?.('Task not found - it may have expired or been cleaned up');
+          stopPolling();
+        } else if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
+          console.warn('Rate limited - stopping polling to prevent further issues');
+          setError('Rate limited - please try again later');
+          onError?.('Rate limited - please try again later');
           stopPolling();
         }
         // For other errors (timeouts, network issues), continue polling
