@@ -152,24 +152,8 @@ class SubscriptionExceptionHandler:
     
     def _setup_logging(self):
         """Setup structured logging for subscription errors."""
-        # Configure loguru for subscription-specific logging
-        logger.add(
-            "logs/subscription_errors.log",
-            rotation="1 day",
-            retention="30 days",
-            level="ERROR",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
-            filter=lambda record: "subscription" in record["name"].lower()
-        )
-        
-        logger.add(
-            "logs/usage_tracking.log",
-            rotation="1 day",
-            retention="90 days",
-            level="INFO",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
-            filter=lambda record: "usage_tracking" in str(record["message"]).lower()
-        )
+        from utils.logger_utils import get_service_logger
+        return get_service_logger("subscription_exception_handler")
     
     def handle_exception(
         self,

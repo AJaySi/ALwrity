@@ -21,6 +21,10 @@ export interface PlatformStatus {
   connected: boolean;
   last_sync?: string;
   data_points?: number;
+  // Additional Bing-specific properties
+  has_expired_tokens?: boolean;
+  last_token_date?: string;
+  total_tokens?: number;
 }
 
 export interface AIInsight {
@@ -40,6 +44,19 @@ export interface SEODashboardData {
   ai_insights: AIInsight[];
   last_updated: string;
   website_url?: string;  // User's website URL from onboarding
+  // Real data from backend
+  summary?: {
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  };
+  timeseries?: any[];
+  competitor_insights?: {
+    competitor_keywords: any[];
+    content_gaps: any[];
+    opportunity_score: number;
+  };
 }
 
 // SEO Dashboard API functions

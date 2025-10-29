@@ -21,7 +21,7 @@ if services_dir not in sys.path:
     sys.path.insert(0, services_dir)
 
 # Import real services - NO FALLBACKS
-from services.onboarding_data_service import OnboardingDataService
+from services.onboarding.data_service import OnboardingDataService
 from services.ai_analytics_service import AIAnalyticsService
 from services.content_gap_analyzer.ai_engine_service import AIEngineService
 from services.active_strategy_service import ActiveStrategyService

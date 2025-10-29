@@ -8,7 +8,7 @@ import os
 import json
 from typing import Optional, Dict, Any
 from loguru import logger
-from ..api_key_manager import APIKeyManager
+from ..onboarding.api_key_manager import APIKeyManager
 
 from .openai_provider import openai_chatgpt
 from .gemini_provider import gemini_text_response, gemini_structured_json_response

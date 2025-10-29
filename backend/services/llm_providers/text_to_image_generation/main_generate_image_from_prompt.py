@@ -15,11 +15,10 @@ import streamlit as st
 
 import openai  # OpenAI Python library to make API calls
 from loguru import logger
-logger.remove()
-logger.add(sys.stdout,
-        colorize=True,
-        format="<level>{level}</level>|<green>{file}:{line}:{function}</green>| {message}"
-    )
+from utils.logger_utils import get_service_logger
+
+# Use service-specific logger to avoid conflicts
+logger = get_service_logger("text_to_image_generation")
 
 #from .gen_dali2_images
 from .gen_dali3_images import generate_dalle3_images

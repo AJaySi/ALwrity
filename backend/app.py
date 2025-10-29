@@ -9,7 +9,7 @@ from loguru import logger
 from dotenv import load_dotenv
 import asyncio
 from datetime import datetime
-from middleware.monitoring_middleware import monitoring_middleware
+from services.subscription import monitoring_middleware
 
 # Import modular utilities
 from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager, OnboardingManager
@@ -74,7 +74,12 @@ from api.seo_dashboard import (
     get_seo_metrics_detailed,
     get_analysis_summary,
     batch_analyze_urls,
-    SEOAnalysisRequest
+    SEOAnalysisRequest,
+    get_seo_dashboard_overview,
+    get_gsc_raw_data,
+    get_bing_raw_data,
+    get_competitive_insights,
+    refresh_analytics_data
 )
 
 # Initialize FastAPI app
@@ -85,15 +90,28 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Build allowed origins list with env overrides to support dynamic tunnels (e.g., ngrok)
+default_allowed_origins = [
+    "http://localhost:3000",  # React dev server
+    "http://localhost:8000",  # Backend dev server
+    "http://localhost:3001",  # Alternative React port
+    "https://alwrity-ai.vercel.app",  # Vercel frontend
+]
+
+# Optional dynamic origins from environment (comma-separated)
+env_origins = os.getenv("ALWRITY_ALLOWED_ORIGINS", "").split(",") if os.getenv("ALWRITY_ALLOWED_ORIGINS") else []
+env_origins = [o.strip() for o in env_origins if o.strip()]
+
+# Convenience: NGROK_URL env var (single origin)
+ngrok_origin = os.getenv("NGROK_URL")
+if ngrok_origin:
+    env_origins.append(ngrok_origin.strip())
+
+allowed_origins = list(dict.fromkeys(default_allowed_origins + env_origins))  # de-duplicate, keep order
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # React dev server
-        "http://localhost:8000",  # Backend dev server
-        "http://localhost:3001",  # Alternative React port
-        "https://alwrity-ai.vercel.app",
-        "https://alwrity-ai.vercel.app",  # Vercel frontend
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -192,14 +210,40 @@ async def seo_metrics():
     return await get_seo_metrics()
 
 @app.get("/api/seo-dashboard/platforms")
-async def seo_platforms():
+async def seo_platforms(current_user: dict = Depends(get_current_user)):
     """Get platform status."""
-    return await get_platform_status()
+    return await get_platform_status(current_user)
 
 @app.get("/api/seo-dashboard/insights")
 async def seo_insights():
     """Get AI insights."""
     return await get_ai_insights()
+
+# New SEO Dashboard endpoints with real data
+@app.get("/api/seo-dashboard/overview")
+async def seo_dashboard_overview_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Get comprehensive SEO dashboard overview with real GSC/Bing data."""
+    return await get_seo_dashboard_overview(current_user, site_url)
+
+@app.get("/api/seo-dashboard/gsc/raw")
+async def gsc_raw_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Get raw GSC data for the specified site."""
+    return await get_gsc_raw_data(current_user, site_url)
+
+@app.get("/api/seo-dashboard/bing/raw")
+async def bing_raw_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Get raw Bing data for the specified site."""
+    return await get_bing_raw_data(current_user, site_url)
+
+@app.get("/api/seo-dashboard/competitive-insights")
+async def competitive_insights_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Get competitive insights from onboarding step 3 data."""
+    return await get_competitive_insights(current_user, site_url)
+
+@app.post("/api/seo-dashboard/refresh")
+async def refresh_analytics_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Refresh analytics data by invalidating cache and fetching fresh data."""
+    return await refresh_analytics_data(current_user, site_url)
 
 @app.get("/api/seo-dashboard/health")
 async def seo_dashboard_health():
@@ -231,6 +275,10 @@ async def seo_analysis_summary(url: str):
 async def batch_analyze_urls_endpoint(urls: list[str]):
     """Analyze multiple URLs in batch."""
     return await batch_analyze_urls(urls)
+
+# Include platform analytics router
+from routers.platform_analytics import router as platform_analytics_router
+app.include_router(platform_analytics_router)
 
 # Setup frontend serving using modular utilities
 frontend_serving.setup_frontend_serving()

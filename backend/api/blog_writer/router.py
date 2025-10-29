@@ -50,7 +50,9 @@ async def health() -> Dict[str, Any]:
 async def start_research(request: BlogResearchRequest) -> Dict[str, Any]:
     """Start a research operation and return a task ID for polling."""
     try:
-        task_id = task_manager.start_research_task(request)
+        # TODO: Get user_id from authentication context
+        user_id = "anonymous"  # This should come from auth middleware
+        task_id = await task_manager.start_research_task(request, user_id)
         return {"task_id": task_id, "status": "started"}
     except Exception as e:
         logger.error(f"Failed to start research: {e}")
@@ -61,7 +63,7 @@ async def start_research(request: BlogResearchRequest) -> Dict[str, Any]:
 async def get_research_status(task_id: str) -> Dict[str, Any]:
     """Get the status of a research operation."""
     try:
-        status = task_manager.get_task_status(task_id)
+        status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
         

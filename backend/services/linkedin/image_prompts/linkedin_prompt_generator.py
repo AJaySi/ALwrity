@@ -12,7 +12,7 @@ from datetime import datetime
 from loguru import logger
 
 # Import existing infrastructure
-from ...api_key_manager import APIKeyManager
+from ...onboarding.api_key_manager import APIKeyManager
 from ...llm_providers.gemini_provider import gemini_text_response
 
 

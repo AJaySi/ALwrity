@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from services.database import SessionLocal
-from services.onboarding_database_service import OnboardingDatabaseService
+from .database_service import OnboardingDatabaseService
 
 
 class OnboardingProgressService:

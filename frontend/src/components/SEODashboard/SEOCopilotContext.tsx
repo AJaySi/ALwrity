@@ -1,7 +1,7 @@
 // SEO CopilotKit Context Component
 // Provides real-time context and instructions to CopilotKit
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useCopilotReadable } from '@copilotkit/react-core';
 import { useSEOCopilotStore } from '../../stores/seoCopilotStore';
 
@@ -27,25 +27,29 @@ const SEOCopilotContext: React.FC<{ children: React.ReactNode }> = ({ children }
     }
   }, [personalizationData]);
 
+  // Memoize values to prevent unnecessary re-renders
+  const websiteUrl = useMemo(() => analysisData?.url || '', [analysisData?.url]);
+  const statusData = useMemo(() => ({
+    isLoading,
+    isAnalyzing,
+    isGenerating,
+    error
+  }), [isLoading, isAnalyzing, isGenerating, error]);
+  const suggestionsCount = useMemo(() => Array.isArray(suggestions) ? suggestions.length : 0, [suggestions]);
+
   // Register SEO analysis data with CopilotKit
   useCopilotReadable({
     description: "Current SEO analysis data and insights",
     value: analysisData,
     categories: ["seo", "analysis"]
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[CopilotContext] Registered analysis data', !!analysisData);
-  }
 
   // Provide a flat, explicit website URL for the LLM
   useCopilotReadable({
     description: "Current website URL the user is working on",
-    value: analysisData?.url || '',
+    value: websiteUrl,
     categories: ["seo", "context"]
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[CopilotContext] Registered website URL', analysisData?.url);
-  }
 
   // Register personalization data with CopilotKit
   useCopilotReadable({
@@ -53,9 +57,6 @@ const SEOCopilotContext: React.FC<{ children: React.ReactNode }> = ({ children }
     value: personalizationData,
     categories: ["user", "preferences"]
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[CopilotContext] Registered personalization', !!personalizationData);
-  }
 
   // Register dashboard layout with CopilotKit
   useCopilotReadable({
@@ -63,9 +64,6 @@ const SEOCopilotContext: React.FC<{ children: React.ReactNode }> = ({ children }
     value: dashboardLayout,
     categories: ["ui", "layout"]
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[CopilotContext] Registered layout', !!dashboardLayout);
-  }
 
   // Register suggestions with CopilotKit
   useCopilotReadable({
@@ -73,24 +71,25 @@ const SEOCopilotContext: React.FC<{ children: React.ReactNode }> = ({ children }
     value: suggestions,
     categories: ["actions", "suggestions"]
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[CopilotContext] Registered suggestions', Array.isArray(suggestions) ? suggestions.length : 0);
-  }
 
   // Register loading states with CopilotKit
   useCopilotReadable({
     description: "Current loading and processing states",
-    value: {
-      isLoading,
-      isAnalyzing,
-      isGenerating,
-      error
-    },
+    value: statusData,
     categories: ["status", "loading"]
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[CopilotContext] Registered status', { isLoading, isAnalyzing, isGenerating, hasError: !!error });
-  }
+
+  // Debug logging only in development and only when values actually change
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[CopilotContext] Registered analysis data', !!analysisData);
+      console.log('[CopilotContext] Registered website URL', websiteUrl);
+      console.log('[CopilotContext] Registered personalization', !!personalizationData);
+      console.log('[CopilotContext] Registered layout', !!dashboardLayout);
+      console.log('[CopilotContext] Registered suggestions', suggestionsCount);
+      console.log('[CopilotContext] Registered status', { isLoading, isAnalyzing, isGenerating, hasError: !!error });
+    }
+  }, [analysisData, websiteUrl, personalizationData, dashboardLayout, suggestionsCount, statusData]);
 
   return <>{children}</>;
 };

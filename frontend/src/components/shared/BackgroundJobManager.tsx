@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Button,
@@ -206,8 +206,14 @@ const BackgroundJobManager: React.FC<BackgroundJobManagerProps> = ({
     }
   };
 
+  // One-run guard to prevent duplicate calls in StrictMode
+  const jobsFetchedRef = useRef(false);
+
   // Poll for job updates
   useEffect(() => {
+    if (jobsFetchedRef.current) return;
+    jobsFetchedRef.current = true;
+    
     fetchJobs();
     
     // Only start polling if there are running jobs

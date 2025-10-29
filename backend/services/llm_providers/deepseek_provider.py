@@ -16,7 +16,7 @@ from tenacity import (
 )
 
 # Import APIKeyManager
-from ..api_key_manager import APIKeyManager
+from ..onboarding.api_key_manager import APIKeyManager
 
 try:
     import openai

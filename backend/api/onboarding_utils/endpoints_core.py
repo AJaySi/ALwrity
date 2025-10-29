@@ -5,7 +5,7 @@ from fastapi import HTTPException, Depends
 
 from middleware.auth_middleware import get_current_user
 
-from services.onboarding_progress_service import get_onboarding_progress_service
+from services.onboarding.progress_service import get_onboarding_progress_service
 
 
 def health_check():

@@ -10,7 +10,7 @@ from io import BytesIO
 import logging
 
 # Import APIKeyManager
-from ...api_key_manager import APIKeyManager
+from ...onboarding.api_key_manager import APIKeyManager
 
 try:
     from google import genai

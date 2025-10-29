@@ -10,11 +10,13 @@ from loguru import logger
 import time
 
 # Import existing services
-from services.api_key_manager import APIKeyManager
+from services.onboarding.api_key_manager import APIKeyManager
 from services.validation import check_all_api_keys
 from services.seo_analyzer import ComprehensiveSEOAnalyzer, SEOAnalysisResult, SEOAnalysisService
 from services.user_data_service import UserDataService
 from services.database import get_db_session
+from services.seo import SEODashboardService
+from middleware.auth_middleware import get_current_user
 
 # Initialize the SEO analyzer
 seo_analyzer = ComprehensiveSEOAnalyzer()
@@ -238,48 +240,126 @@ def generate_ai_insights(metrics: Dict[str, Any], platforms: Dict[str, Any]) -> 
     return insights
 
 # API Endpoints
-async def get_seo_dashboard_data() -> SEODashboardData:
+async def get_seo_dashboard_data(current_user: dict = Depends(get_current_user)) -> SEODashboardData:
     """Get comprehensive SEO dashboard data."""
     try:
-        # For now, return mock data
-        # In production, this would fetch real data from database
-        return get_mock_seo_data()
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            logger.error("No database session available")
+            return get_mock_seo_data()
+        
+        try:
+            # Use new SEO dashboard service
+            dashboard_service = SEODashboardService(db_session)
+            overview_data = await dashboard_service.get_dashboard_overview(user_id)
+            
+            # Convert to SEODashboardData format
+            return SEODashboardData(
+                health_score=SEOHealthScore(**overview_data.get("health_score", {})),
+                key_insight=overview_data.get("key_insight", "Connect your analytics accounts for personalized insights"),
+                priority_alert=overview_data.get("priority_alert", "No alerts at this time"),
+                metrics=_convert_metrics(overview_data.get("summary", {})),
+                platforms=_convert_platforms(overview_data.get("platforms", {})),
+                ai_insights=[AIInsight(**insight) for insight in overview_data.get("ai_insights", [])],
+                last_updated=overview_data.get("last_updated", datetime.now().isoformat()),
+                website_url=overview_data.get("website_url")
+            )
+        finally:
+            db_session.close()
+            
     except Exception as e:
         logger.error(f"Error getting SEO dashboard data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get SEO dashboard data")
+        # Fallback to mock data
+        return get_mock_seo_data()
 
-async def get_seo_health_score() -> SEOHealthScore:
+async def get_seo_health_score(current_user: dict = Depends(get_current_user)) -> SEOHealthScore:
     """Get current SEO health score."""
     try:
-        mock_data = get_mock_seo_data()
-        return mock_data.health_score
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+        
+        try:
+            dashboard_service = SEODashboardService(db_session)
+            overview_data = await dashboard_service.get_dashboard_overview(user_id)
+            health_score_data = overview_data.get("health_score", {})
+            return SEOHealthScore(**health_score_data)
+        finally:
+            db_session.close()
+            
     except Exception as e:
         logger.error(f"Error getting SEO health score: {e}")
         raise HTTPException(status_code=500, detail="Failed to get SEO health score")
 
-async def get_seo_metrics() -> Dict[str, SEOMetric]:
+async def get_seo_metrics(current_user: dict = Depends(get_current_user)) -> Dict[str, SEOMetric]:
     """Get SEO metrics."""
     try:
-        mock_data = get_mock_seo_data()
-        return mock_data.metrics
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+        
+        try:
+            dashboard_service = SEODashboardService(db_session)
+            overview_data = await dashboard_service.get_dashboard_overview(user_id)
+            summary_data = overview_data.get("summary", {})
+            return _convert_metrics(summary_data)
+        finally:
+            db_session.close()
+            
     except Exception as e:
         logger.error(f"Error getting SEO metrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to get SEO metrics")
 
-async def get_platform_status() -> Dict[str, PlatformStatus]:
+async def get_platform_status(
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Get platform connection status."""
     try:
-        mock_data = get_mock_seo_data()
-        return mock_data.platforms
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            logger.error("No database session available")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            # Use SEO dashboard service to get platform status
+            dashboard_service = SEODashboardService(db_session)
+            platform_status = await dashboard_service.get_platform_status(user_id)
+            
+            logger.info(f"Retrieved platform status for user {user_id}")
+            return platform_status
+            
+        finally:
+            db_session.close()
+            
     except Exception as e:
         logger.error(f"Error getting platform status: {e}")
         raise HTTPException(status_code=500, detail="Failed to get platform status")
 
-async def get_ai_insights() -> List[AIInsight]:
+async def get_ai_insights(current_user: dict = Depends(get_current_user)) -> List[AIInsight]:
     """Get AI-generated insights."""
     try:
-        mock_data = get_mock_seo_data()
-        return mock_data.ai_insights
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+        
+        try:
+            dashboard_service = SEODashboardService(db_session)
+            overview_data = await dashboard_service.get_dashboard_overview(user_id)
+            ai_insights_data = overview_data.get("ai_insights", [])
+            return [AIInsight(**insight) for insight in ai_insights_data]
+        finally:
+            db_session.close()
+            
     except Exception as e:
         logger.error(f"Error getting AI insights: {e}")
         raise HTTPException(status_code=500, detail="Failed to get AI insights")
@@ -568,4 +648,205 @@ async def batch_analyze_urls(urls: List[str]) -> Dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail=f"Error in batch analysis: {str(e)}"
-        ) 
+        )
+
+# New SEO Dashboard Endpoints with Real Data
+
+async def get_seo_dashboard_overview(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get comprehensive SEO dashboard overview with real GSC/Bing data."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            logger.error("No database session available")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            # Use SEO dashboard service to get real data
+            dashboard_service = SEODashboardService(db_session)
+            overview_data = await dashboard_service.get_dashboard_overview(user_id, site_url)
+            
+            logger.info(f"Retrieved SEO dashboard overview for user {user_id}")
+            return overview_data
+            
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        logger.error(f"Error getting SEO dashboard overview: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get dashboard overview")
+
+async def get_gsc_raw_data(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get raw GSC data for the specified site."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            logger.error("No database session available")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            # Use SEO dashboard service to get GSC data
+            dashboard_service = SEODashboardService(db_session)
+            gsc_data = await dashboard_service.get_gsc_data(user_id, site_url)
+            
+            logger.info(f"Retrieved GSC raw data for user {user_id}")
+            return gsc_data
+            
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        logger.error(f"Error getting GSC raw data: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get GSC data")
+
+async def get_bing_raw_data(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get raw Bing data for the specified site."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            logger.error("No database session available")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            # Use SEO dashboard service to get Bing data
+            dashboard_service = SEODashboardService(db_session)
+            bing_data = await dashboard_service.get_bing_data(user_id, site_url)
+            
+            logger.info(f"Retrieved Bing raw data for user {user_id}")
+            return bing_data
+            
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        logger.error(f"Error getting Bing raw data: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get Bing data")
+
+async def get_competitive_insights(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get competitive insights from onboarding step 3 data."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            logger.error("No database session available")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            # Use SEO dashboard service to get competitive insights
+            dashboard_service = SEODashboardService(db_session)
+            insights_data = await dashboard_service.get_competitive_insights(user_id)
+            
+            logger.info(f"Retrieved competitive insights for user {user_id}")
+            return insights_data
+            
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        logger.error(f"Error getting competitive insights: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get competitive insights")
+
+async def refresh_analytics_data(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """Refresh analytics data by invalidating cache and fetching fresh data."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session()
+        
+        if not db_session:
+            logger.error("No database session available")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            # Use SEO dashboard service to refresh data
+            dashboard_service = SEODashboardService(db_session)
+            refresh_result = await dashboard_service.refresh_analytics_data(user_id, site_url)
+            
+            logger.info(f"Refreshed analytics data for user {user_id}")
+            return refresh_result
+            
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        logger.error(f"Error refreshing analytics data: {e}")
+        raise HTTPException(status_code=500, detail="Failed to refresh analytics data")
+
+# Helper methods for data conversion
+def _convert_metrics(summary_data: Dict[str, Any]) -> Dict[str, SEOMetric]:
+    """Convert summary data to SEOMetric format."""
+    try:
+        return {
+            "traffic": SEOMetric(
+                value=summary_data.get("clicks", 0),
+                change=0,  # Would calculate from historical data
+                trend="up",
+                description="Organic traffic",
+                color="#4CAF50"
+            ),
+            "rankings": SEOMetric(
+                value=summary_data.get("position", 0),
+                change=0,  # Would calculate from historical data
+                trend="up",
+                description="Average ranking",
+                color="#2196F3"
+            ),
+            "mobile": SEOMetric(
+                value=0,  # Would get from performance data
+                change=0,
+                trend="stable",
+                description="Mobile speed",
+                color="#FF9800"
+            ),
+            "keywords": SEOMetric(
+                value=0,  # Would count from query data
+                change=0,
+                trend="up",
+                description="Keywords tracked",
+                color="#9C27B0"
+            )
+        }
+    except Exception as e:
+        logger.error(f"Error converting metrics: {e}")
+        return {}
+
+def _convert_platforms(platform_data: Dict[str, Any]) -> Dict[str, PlatformStatus]:
+    """Convert platform data to PlatformStatus format."""
+    try:
+        return {
+            "google_search_console": PlatformStatus(
+                status="connected" if platform_data.get("gsc", {}).get("connected", False) else "disconnected",
+                connected=platform_data.get("gsc", {}).get("connected", False),
+                last_sync=platform_data.get("gsc", {}).get("last_sync"),
+                data_points=len(platform_data.get("gsc", {}).get("sites", []))
+            ),
+            "bing_webmaster": PlatformStatus(
+                status="connected" if platform_data.get("bing", {}).get("connected", False) else "disconnected",
+                connected=platform_data.get("bing", {}).get("connected", False),
+                last_sync=platform_data.get("bing", {}).get("last_sync"),
+                data_points=len(platform_data.get("bing", {}).get("sites", []))
+            )
+        }
+    except Exception as e:
+        logger.error(f"Error converting platforms: {e}")
+        return {} 

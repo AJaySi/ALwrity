@@ -7,7 +7,7 @@ from typing import Dict, Any
 from fastapi import HTTPException
 from loguru import logger
 
-from services.api_key_manager import get_onboarding_progress, get_onboarding_progress_for_user
+from services.onboarding.api_key_manager import get_onboarding_progress, get_onboarding_progress_for_user
 
 class OnboardingControlService:
     """Service for handling onboarding control operations."""

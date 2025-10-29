@@ -58,7 +58,7 @@ class BingOAuthService:
                     state TEXT NOT NULL UNIQUE,
                     user_id TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP DEFAULT (datetime('now', '+10 minutes'))
+                    expires_at TIMESTAMP DEFAULT (datetime('now', '+20 minutes'))
                 )
             ''')
             conn.commit()
@@ -79,8 +79,8 @@ class BingOAuthService:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO bing_oauth_states (state, user_id)
-                    VALUES (?, ?)
+                    INSERT INTO bing_oauth_states (state, user_id, expires_at)
+                    VALUES (?, ?, datetime('now', '+20 minutes'))
                 ''', (state, user_id))
                 conn.commit()
 
@@ -114,17 +114,33 @@ class BingOAuthService:
             # Validate state parameter
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                # First, look up the state regardless of expiry to provide clearer logs
                 cursor.execute('''
-                    SELECT user_id FROM bing_oauth_states 
-                    WHERE state = ? AND expires_at > datetime('now')
+                    SELECT user_id, created_at, expires_at FROM bing_oauth_states 
+                    WHERE state = ?
                 ''', (state,))
-                result = cursor.fetchone()
-                
-                if not result:
-                    logger.error(f"Invalid or expired state parameter: {state}")
+                row = cursor.fetchone()
+
+                if not row:
+                    # State not found - likely already consumed (deleted) or never issued
+                    logger.error(f"Bing OAuth: State not found or already used. state='{state[:12]}...'")
                     return None
-                
-                user_id = result[0]
+
+                user_id, created_at, expires_at = row
+                # Check expiry explicitly
+                cursor.execute("SELECT datetime('now') < ?", (expires_at,))
+                not_expired = cursor.fetchone()[0] == 1
+                if not not_expired:
+                    logger.error(
+                        f"Bing OAuth: State expired. state='{state[:12]}...', user_id='{user_id}', "
+                        f"created_at='{created_at}', expires_at='{expires_at}'"
+                    )
+                    # Clean up expired state
+                    cursor.execute('DELETE FROM bing_oauth_states WHERE state = ?', (state,))
+                    conn.commit()
+                    return None
+
+                # Valid, not expired
                 logger.info(f"Bing OAuth: State validated for user {user_id}")
                 
                 # Clean up used state
@@ -174,6 +190,36 @@ class BingOAuthService:
                 conn.commit()
                 logger.info(f"Bing OAuth: Token inserted into database for user {user_id}")
             
+            # Proactively fetch and cache user sites using the fresh token
+            try:
+                headers = {'Authorization': f'Bearer {access_token}'}
+                response = requests.get(
+                    f"{self.api_base_url}/GetUserSites",
+                    headers={
+                        **headers,
+                        'Origin': 'https://www.bing.com',
+                        'Referer': 'https://www.bing.com/webmasters/'
+                    },
+                    timeout=15
+                )
+                sites = []
+                if response.status_code == 200:
+                    sites_data = response.json()
+                    if isinstance(sites_data, dict):
+                        if 'd' in sites_data:
+                            d_data = sites_data['d']
+                            if isinstance(d_data, dict) and 'results' in d_data:
+                                sites = d_data['results']
+                            elif isinstance(d_data, list):
+                                sites = d_data
+                    elif isinstance(sites_data, list):
+                        sites = sites_data
+                if sites:
+                    analytics_cache.set('bing_sites', user_id, sites, ttl_override=2*60*60)
+                    logger.info(f"Bing OAuth: Cached {len(sites)} sites for user {user_id} after OAuth callback")
+            except Exception as site_err:
+                logger.warning(f"Bing OAuth: Failed to prefetch sites after OAuth callback: {site_err}")
+            
             # Invalidate platform status and sites cache since connection status changed
             # Don't invalidate analytics data cache as it's expensive to regenerate
             analytics_cache.invalidate('platform_status', user_id)
@@ -193,6 +239,31 @@ class BingOAuthService:
         except Exception as e:
             logger.error(f"Error handling Bing Webmaster OAuth callback: {e}")
             return None
+
+    def purge_expired_tokens(self, user_id: str) -> int:
+        """Delete expired or inactive Bing tokens for a user to avoid refresh loops.
+        Returns number of rows deleted.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                # Delete tokens that are expired or explicitly inactive
+                cursor.execute('''
+                    DELETE FROM bing_oauth_tokens
+                    WHERE user_id = ? AND (is_active = FALSE OR (expires_at IS NOT NULL AND expires_at <= datetime('now')))
+                ''', (user_id,))
+                deleted = cursor.rowcount or 0
+                conn.commit()
+                if deleted > 0:
+                    logger.info(f"Bing OAuth: Purged {deleted} expired/inactive tokens for user {user_id}")
+                else:
+                    logger.info(f"Bing OAuth: No expired/inactive tokens to purge for user {user_id}")
+                # Invalidate platform status cache so UI updates
+                analytics_cache.invalidate('platform_status', user_id)
+                return deleted
+        except Exception as e:
+            logger.error(f"Bing OAuth: Error purging expired tokens for user {user_id}: {e}")
+            return 0
     
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active Bing tokens for a user."""
@@ -223,6 +294,85 @@ class BingOAuthService:
         except Exception as e:
             logger.error(f"Error getting Bing tokens for user {user_id}: {e}")
             return []
+
+    def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
+        """Get detailed token status for a user including expired tokens."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get all tokens (active and expired)
+                cursor.execute('''
+                    SELECT id, access_token, refresh_token, token_type, expires_at, scope, created_at, is_active
+                    FROM bing_oauth_tokens
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                ''', (user_id,))
+                
+                all_tokens = []
+                active_tokens = []
+                expired_tokens = []
+                
+                for row in cursor.fetchall():
+                    token_data = {
+                        "id": row[0],
+                        "access_token": row[1],
+                        "refresh_token": row[2],
+                        "token_type": row[3],
+                        "expires_at": row[4],
+                        "scope": row[5],
+                        "created_at": row[6],
+                        "is_active": bool(row[7])
+                    }
+                    all_tokens.append(token_data)
+                    
+                    # Determine expiry using robust parsing and is_active flag
+                    is_active_flag = bool(row[7])
+                    not_expired = False
+                    try:
+                        expires_at_val = row[4]
+                        if expires_at_val:
+                            # First try Python parsing
+                            try:
+                                dt = datetime.fromisoformat(expires_at_val) if isinstance(expires_at_val, str) else expires_at_val
+                                not_expired = dt > datetime.now()
+                            except Exception:
+                                # Fallback to SQLite comparison
+                                cursor.execute("SELECT datetime('now') < ?", (expires_at_val,))
+                                not_expired = cursor.fetchone()[0] == 1
+                        else:
+                            # No expiry stored => consider not expired
+                            not_expired = True
+                    except Exception:
+                        not_expired = False
+
+                    if is_active_flag and not_expired:
+                        active_tokens.append(token_data)
+                    else:
+                        expired_tokens.append(token_data)
+                
+                return {
+                    "has_tokens": len(all_tokens) > 0,
+                    "has_active_tokens": len(active_tokens) > 0,
+                    "has_expired_tokens": len(expired_tokens) > 0,
+                    "active_tokens": active_tokens,
+                    "expired_tokens": expired_tokens,
+                    "total_tokens": len(all_tokens),
+                    "last_token_date": all_tokens[0]["created_at"] if all_tokens else None
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting Bing token status for user {user_id}: {e}")
+            return {
+                "has_tokens": False,
+                "has_active_tokens": False,
+                "has_expired_tokens": False,
+                "active_tokens": [],
+                "expired_tokens": [],
+                "total_tokens": 0,
+                "last_token_date": None,
+                "error": str(e)
+            }
     
     def test_token(self, access_token: str) -> bool:
         """Test if a Bing access token is valid."""
@@ -264,7 +414,7 @@ class BingOAuthService:
             }
             
             response = requests.post(
-                f"{self.base_url}/webmasters/token",
+                f"{self.base_url}/webmasters/oauth/token",
                 data=token_data,
                 headers={
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -291,12 +441,19 @@ class BingOAuthService:
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE bing_oauth_tokens 
-                    SET access_token = ?, expires_at = ?, updated_at = datetime('now')
+                    SET access_token = ?, expires_at = ?, is_active = TRUE, updated_at = datetime('now')
                     WHERE user_id = ? AND refresh_token = ?
                 ''', (access_token, expires_at, user_id, refresh_token))
                 conn.commit()
             
             logger.info(f"Bing access token refreshed for user {user_id}")
+
+            # Invalidate caches that depend on token validity
+            try:
+                analytics_cache.invalidate('platform_status', user_id)
+                analytics_cache.invalidate('bing_sites', user_id)
+            except Exception as _:
+                pass
             return {
                 "access_token": access_token,
                 "expires_in": expires_in,
@@ -382,6 +539,15 @@ class BingOAuthService:
     def get_user_sites(self, user_id: str) -> List[Dict[str, Any]]:
         """Get list of user's verified sites from Bing Webmaster."""
         try:
+            # Fast path: return cached sites if available
+            try:
+                cached_sites = analytics_cache.get('bing_sites', user_id)
+                if cached_sites:
+                    logger.info(f"Bing get_user_sites: Returning {len(cached_sites)} cached sites for user {user_id}")
+                    return cached_sites
+            except Exception:
+                pass
+
             tokens = self.get_user_tokens(user_id)
             logger.info(f"Bing get_user_sites: Found {len(tokens)} tokens for user {user_id}")
             if not tokens:
@@ -453,6 +619,11 @@ class BingOAuthService:
                             
                         logger.info(f"Bing get_user_sites: Found {len(sites)} sites from token")
                         all_sites.extend(sites)
+                        # Cache sites immediately for future calls
+                        try:
+                            analytics_cache.set('bing_sites', user_id, all_sites, ttl_override=2*60*60)
+                        except Exception:
+                            pass
                     except Exception as e:
                         logger.error(f"Error getting Bing user sites: {e}")
             
@@ -473,13 +644,20 @@ class BingOAuthService:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                # Compute expires_at from expires_in if expires_at missing
+                expires_at_value = refreshed_token.get("expires_at")
+                if not expires_at_value and refreshed_token.get("expires_in"):
+                    try:
+                        expires_at_value = datetime.now() + timedelta(seconds=int(refreshed_token["expires_in"]))
+                    except Exception:
+                        expires_at_value = None
                 cursor.execute('''
                     UPDATE bing_oauth_tokens 
-                    SET access_token = ?, expires_at = ?, updated_at = datetime('now')
+                    SET access_token = ?, expires_at = ?, is_active = TRUE, updated_at = datetime('now')
                     WHERE id = ?
                 ''', (
                     refreshed_token["access_token"],
-                    refreshed_token.get("expires_at"),
+                    expires_at_value,
                     token_id
                 ))
                 conn.commit()

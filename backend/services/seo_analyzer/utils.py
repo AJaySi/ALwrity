@@ -18,14 +18,43 @@ class HTMLFetcher:
         })
 
     def fetch_html(self, url: str) -> Optional[str]:
-        """Fetch HTML content with error handling"""
+        """Fetch HTML content with retries and protocol fallback."""
+        def _try_fetch(target_url: str, timeout_s: int = 30) -> Optional[str]:
+            try:
+                response = self.session.get(
+                    target_url,
+                    timeout=timeout_s,
+                    allow_redirects=True,
+                )
+                response.raise_for_status()
+                return response.text
+            except Exception as inner_e:
+                logger.error(f"Error fetching HTML from {target_url}: {inner_e}")
+                return None
+
+        # First attempt
+        html = _try_fetch(url, timeout_s=30)
+        if html is not None:
+            return html
+
+        # Retry once (shorter timeout)
+        html = _try_fetch(url, timeout_s=15)
+        if html is not None:
+            return html
+
+        # If https fails due to resets, try http fallback once
         try:
-            response = self.session.get(url, timeout=30)
-            response.raise_for_status()
-            return response.text
-        except Exception as e:
-            logger.error(f"Error fetching HTML from {url}: {e}")
-            return None
+            if url.startswith("https://"):
+                http_url = "http://" + url[len("https://"):]
+                logger.info(f"SEO Analyzer: Falling back to HTTP for {http_url}")
+                html = _try_fetch(http_url, timeout_s=15)
+                if html is not None:
+                    return html
+        except Exception:
+            # Best-effort fallback; errors already logged in _try_fetch
+            pass
+
+        return None
 
 
 class AIInsightGenerator:

@@ -8,7 +8,7 @@ from typing import Dict, Any
 from fastapi import HTTPException
 from loguru import logger
 
-from services.api_key_manager import APIKeyManager
+from services.onboarding.api_key_manager import APIKeyManager
 from services.validation import check_all_api_keys
 
 class APIKeyManagementService:
@@ -21,7 +21,7 @@ class APIKeyManagementService:
         if not hasattr(self.api_key_manager, 'use_database'):
             self.api_key_manager.use_database = True
             try:
-                from services.onboarding_database_service import OnboardingDatabaseService
+                from services.onboarding.database_service import OnboardingDatabaseService
                 self.api_key_manager.db_service = OnboardingDatabaseService()
                 logger.info("Database service initialized for APIKeyManager")
             except Exception as e:

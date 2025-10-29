@@ -111,6 +111,9 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
         throw new Error('Failed to open Bing OAuth popup. Please allow popups for this site.');
       }
 
+      // Track if we've already handled success/error to avoid duplicate processing
+      let messageHandled = false;
+
       // Listen for popup completion and messages
       const messageHandler = (event: MessageEvent) => {
         console.log('Bing OAuth: Message received from any source:', {
@@ -139,6 +142,7 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
           
           if (event.data?.type === 'BING_OAUTH_SUCCESS') {
             console.log('Bing OAuth: Success message received:', event.data);
+            messageHandled = true;
             popup.close();
             window.removeEventListener('message', messageHandler);
             
@@ -148,6 +152,7 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
             }, 1000);
           } else if (event.data?.type === 'BING_OAUTH_ERROR') {
             console.error('Bing OAuth: Error message received:', event.data);
+            messageHandled = true;
             popup.close();
             window.removeEventListener('message', messageHandler);
             setError(event.data.error || 'Bing OAuth connection failed');
@@ -170,7 +175,13 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
           clearInterval(checkClosed);
           window.removeEventListener('message', messageHandler);
           console.log('Bing OAuth: Popup closed, refreshing status...');
-          console.log('Bing OAuth: Popup closed without receiving success/error message');
+          
+          if (!messageHandled) {
+            console.log('Bing OAuth: Popup closed without receiving success/error message');
+          } else {
+            console.log('Bing OAuth: Popup closed after successful message handling');
+          }
+          
           // Refresh status after OAuth completion
           setTimeout(() => {
             checkStatus();
@@ -217,10 +228,7 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
     setError(null);
   }, []);
 
-  // Check status on mount
-  useEffect(() => {
-    checkStatus();
-  }, [checkStatus]);
+  // Note: Status check is now handled by the parent component to avoid duplicate API calls
 
   return {
     connected,

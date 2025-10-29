@@ -74,15 +74,15 @@ class CachedAnalyticsAPI {
    * Get analytics data with caching
    */
   async getAnalyticsData(platforms?: string[], bypassCache: boolean = false): Promise<AnalyticsResponse> {
-    const params = platforms ? { platforms: platforms.join(',') } : undefined;
+    const baseParams: any = platforms ? { platforms: platforms.join(',') } : {};
     const endpoint = '/api/analytics/data';
     
     // If bypassing cache, add timestamp to force fresh request
-    const requestParams = bypassCache ? { ...params, _t: Date.now() } : params;
+    const requestParams = bypassCache ? { ...baseParams, _t: Date.now() } : baseParams;
     
     // Try to get from cache first (unless bypassing)
     if (!bypassCache) {
-      const cached = analyticsCache.get<AnalyticsResponse>(endpoint, params);
+      const cached = analyticsCache.get<AnalyticsResponse>(endpoint, baseParams);
       if (cached) {
         console.log('📦 Analytics Cache HIT: Analytics data (cached for 60 minutes)');
         return cached;
@@ -95,7 +95,7 @@ class CachedAnalyticsAPI {
     
     // Cache the result with extended TTL (unless bypassing)
     if (!bypassCache) {
-      analyticsCache.set(endpoint, params, response.data, this.CACHE_TTL.ANALYTICS_DATA);
+      analyticsCache.set(endpoint, baseParams, response.data, this.CACHE_TTL.ANALYTICS_DATA);
     }
     
     return response.data;

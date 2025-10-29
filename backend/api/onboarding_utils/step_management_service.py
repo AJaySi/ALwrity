@@ -7,8 +7,8 @@ from typing import Dict, Any, List, Optional
 from fastapi import HTTPException
 from loguru import logger
 
-from services.onboarding_progress_service import get_onboarding_progress_service
-from services.onboarding_database_service import OnboardingDatabaseService
+from services.onboarding.progress_service import get_onboarding_progress_service
+from services.onboarding.database_service import OnboardingDatabaseService
 from services.database import get_db
 
 class StepManagementService:

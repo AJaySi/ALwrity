@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-from services.api_key_manager import (
+from services.onboarding.api_key_manager import (
     OnboardingProgress,
     get_onboarding_progress,
     get_onboarding_progress_for_user,

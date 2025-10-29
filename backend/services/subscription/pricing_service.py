@@ -21,6 +21,53 @@ class PricingService:
         self.db = db
         self._pricing_cache = {}
         self._plans_cache = {}
+        # Lightweight in-process cache for limit checks
+        # key: f"{user_id}:{provider}", value: { 'result': (bool, str, dict), 'expires_at': datetime }
+        self._limits_cache: Dict[str, Dict[str, Any]] = {}
+
+    # ------------------- Billing period helpers -------------------
+    def _compute_next_period_end(self, start: datetime, cycle: str) -> datetime:
+        """Compute the next period end given a start and billing cycle."""
+        try:
+            cycle_value = cycle.value if hasattr(cycle, 'value') else str(cycle)
+        except Exception:
+            cycle_value = str(cycle)
+        if cycle_value == 'yearly':
+            return start + timedelta(days=365)
+        return start + timedelta(days=30)
+
+    def _ensure_subscription_current(self, subscription) -> bool:
+        """Auto-advance subscription period if expired and auto_renew is enabled."""
+        if not subscription:
+            return False
+        now = datetime.utcnow()
+        try:
+            if subscription.current_period_end and subscription.current_period_end < now:
+                if getattr(subscription, 'auto_renew', False):
+                    subscription.current_period_start = now
+                    subscription.current_period_end = self._compute_next_period_end(now, subscription.billing_cycle)
+                    # Keep status active if model enum else string
+                    try:
+                        subscription.status = subscription.status.ACTIVE  # type: ignore[attr-defined]
+                    except Exception:
+                        setattr(subscription, 'status', 'active')
+                    self.db.commit()
+                else:
+                    return False
+        except Exception:
+            self.db.rollback()
+        return True
+
+    def get_current_billing_period(self, user_id: str) -> Optional[str]:
+        """Return current billing period key (YYYY-MM) after ensuring subscription is current."""
+        subscription = self.db.query(UserSubscription).filter(
+            UserSubscription.user_id == user_id,
+            UserSubscription.is_active == True
+        ).first()
+        # Ensure subscription is current (advance if auto_renew)
+        self._ensure_subscription_current(subscription)
+        # Continue to use YYYY-MM for summaries
+        return datetime.now().strftime("%Y-%m")
         
     def initialize_default_pricing(self):
         """Initialize default pricing for all API providers."""
@@ -374,7 +421,9 @@ class PricingService:
             if free_plan:
                 return self._plan_to_limits_dict(free_plan)
             return None
-        
+
+        # Ensure current period before returning limits
+        self._ensure_subscription_current(subscription)
         return self._plan_to_limits_dict(subscription.plan)
     
     def _plan_to_limits_dict(self, plan: SubscriptionPlan) -> Dict[str, Any]:
@@ -404,14 +453,20 @@ class PricingService:
     def check_usage_limits(self, user_id: str, provider: APIProvider, 
                           tokens_requested: int = 0) -> Tuple[bool, str, Dict[str, Any]]:
         """Check if user can make an API call within their limits."""
-        
+        # Short TTL cache to reduce DB reads under sustained traffic
+        cache_key = f"{user_id}:{provider.value}"
+        now = datetime.utcnow()
+        cached = self._limits_cache.get(cache_key)
+        if cached and cached.get('expires_at') and cached['expires_at'] > now:
+            return tuple(cached['result'])  # type: ignore
+
         # Get user limits
         limits = self.get_user_limits(user_id)
         if not limits:
             return False, "No subscription plan found", {}
         
         # Get current usage for this billing period
-        current_period = datetime.now().strftime("%Y-%m")
+        current_period = self.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
         usage = self.db.query(UsageSummary).filter(
             UsageSummary.user_id == user_id,
             UsageSummary.billing_period == current_period
@@ -432,11 +487,16 @@ class PricingService:
         call_limit = limits['limits'].get(f"{provider_name}_calls", 0)
         
         if call_limit > 0 and current_calls >= call_limit:
-            return False, f"API call limit reached for {provider_name}", {
+            result = (False, f"API call limit reached for {provider_name}", {
                 'current_calls': current_calls,
                 'limit': call_limit,
                 'usage_percentage': 100.0
+            })
+            self._limits_cache[cache_key] = {
+                'result': result,
+                'expires_at': now + timedelta(seconds=30)
             }
+            return result
         
         # Check token limits for LLM providers
         if provider in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL]:
@@ -444,34 +504,48 @@ class PricingService:
             token_limit = limits['limits'].get(f"{provider_name}_tokens", 0)
             
             if token_limit > 0 and (current_tokens + tokens_requested) > token_limit:
-                return False, f"Token limit would be exceeded for {provider_name}", {
+                result = (False, f"Token limit would be exceeded for {provider_name}", {
                     'current_tokens': current_tokens,
                     'requested_tokens': tokens_requested,
                     'limit': token_limit,
                     'usage_percentage': ((current_tokens + tokens_requested) / token_limit) * 100
+                })
+                self._limits_cache[cache_key] = {
+                    'result': result,
+                    'expires_at': now + timedelta(seconds=30)
                 }
+                return result
         
         # Check cost limits
         cost_limit = limits['limits'].get('monthly_cost', 0)
         if cost_limit > 0 and usage.total_cost >= cost_limit:
-            return False, "Monthly cost limit reached", {
+            result = (False, "Monthly cost limit reached", {
                 'current_cost': usage.total_cost,
                 'limit': cost_limit,
                 'usage_percentage': 100.0
+            })
+            self._limits_cache[cache_key] = {
+                'result': result,
+                'expires_at': now + timedelta(seconds=30)
             }
+            return result
         
         # Calculate usage percentages for warnings
         call_usage_pct = (current_calls / max(call_limit, 1)) * 100 if call_limit > 0 else 0
         cost_usage_pct = (usage.total_cost / max(cost_limit, 1)) * 100 if cost_limit > 0 else 0
-        
-        return True, "Within limits", {
+        result = (True, "Within limits", {
             'current_calls': current_calls,
             'call_limit': call_limit,
             'call_usage_percentage': call_usage_pct,
             'current_cost': usage.total_cost,
             'cost_limit': cost_limit,
             'cost_usage_percentage': cost_usage_pct
+        })
+        self._limits_cache[cache_key] = {
+            'result': result,
+            'expires_at': now + timedelta(seconds=30)
         }
+        return result
     
     def estimate_tokens(self, text: str, provider: APIProvider) -> int:
         """Estimate token count for text based on provider."""

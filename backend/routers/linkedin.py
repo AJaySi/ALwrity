@@ -22,7 +22,7 @@ from services.linkedin_service import LinkedInService
 
 # Initialize the LinkedIn service instance
 linkedin_service = LinkedInService()
-from middleware.monitoring_middleware import DatabaseAPIMonitor
+from services.subscription.monitoring_middleware import DatabaseAPIMonitor
 from services.database import get_db_session
 from sqlalchemy.orm import Session
 

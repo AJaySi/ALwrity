@@ -11,8 +11,7 @@ from loguru import logger
 from functools import lru_cache
 
 from services.database import get_db
-from services.usage_tracking_service import UsageTrackingService
-from services.pricing_service import PricingService
+from services.subscription import UsageTrackingService, PricingService
 from middleware.auth_middleware import get_current_user
 from models.subscription_models import (
     APIProvider, SubscriptionPlan, UserSubscription, UsageSummary,
@@ -25,7 +24,7 @@ router = APIRouter(prefix="/api/subscription", tags=["subscription"])
 # Cache key: (user_id). TTL-like behavior implemented via timestamp check
 _dashboard_cache: Dict[str, Dict[str, Any]] = {}
 _dashboard_cache_ts: Dict[str, float] = {}
-_DASHBOARD_CACHE_TTL_SEC = 2.0
+_DASHBOARD_CACHE_TTL_SEC = 600.0
 
 @router.get("/usage/{user_id}")
 async def get_user_usage(
@@ -48,10 +47,9 @@ async def get_user_usage(
             "success": True,
             "data": stats
         }
-    
     except Exception as e:
         logger.error(f"Error getting user usage: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to get user usage")
 
 @router.get("/usage/{user_id}/trends")
 async def get_usage_trends(
@@ -279,19 +277,29 @@ async def get_subscription_status(
                     }
                 }
 
-        # Check if subscription is within valid period
+        # Check if subscription is within valid period; auto-advance if expired and auto_renew
         now = datetime.utcnow()
         if subscription.current_period_end < now:
-            return {
-                "success": True,
-                "data": {
-                    "active": False,
-                    "plan": subscription.plan.tier.value,
-                    "tier": subscription.plan.tier.value,
-                    "can_use_api": False,
-                    "reason": "Subscription expired"
+            if getattr(subscription, 'auto_renew', False):
+                # advance period
+                try:
+                    from services.pricing_service import PricingService
+                    pricing = PricingService(db)
+                    # reuse helper to ensure current
+                    pricing._ensure_subscription_current(subscription)
+                except Exception as e:
+                    logger.error(f"Failed to auto-advance subscription: {e}")
+            else:
+                return {
+                    "success": True,
+                    "data": {
+                        "active": False,
+                        "plan": subscription.plan.tier.value,
+                        "tier": subscription.plan.tier.value,
+                        "can_use_api": False,
+                        "reason": "Subscription expired"
+                    }
                 }
-            }
 
         return {
             "success": True,
@@ -544,7 +552,14 @@ async def get_dashboard_data(
         # Serve from short TTL cache to avoid hammering DB on bursts
         import time
         now = time.time()
-        if user_id in _dashboard_cache and (now - _dashboard_cache_ts.get(user_id, 0)) < _DASHBOARD_CACHE_TTL_SEC:
+        import os
+        nocache = False
+        try:
+            # Not having direct access to request here; provide env flag override as simple control
+            nocache = os.getenv('SUBSCRIPTION_DASHBOARD_NOCACHE', 'false').lower() in {'1','true','yes','on'}
+        except Exception:
+            nocache = False
+        if not nocache and user_id in _dashboard_cache and (now - _dashboard_cache_ts.get(user_id, 0)) < _DASHBOARD_CACHE_TTL_SEC:
             return _dashboard_cache[user_id]
 
         usage_service = UsageTrackingService(db)

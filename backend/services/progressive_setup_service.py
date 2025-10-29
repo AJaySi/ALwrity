@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from services.user_workspace_manager import UserWorkspaceManager
-from services.api_key_manager import get_onboarding_progress_for_user
+from services.onboarding.api_key_manager import get_onboarding_progress_for_user
 
 class ProgressiveSetupService:
     """Manages progressive backend setup based on user progress."""

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from services.content_planning_db import ContentPlanningDBService
 from services.ai_analysis_db_service import AIAnalysisDBService
 from services.ai_analytics_service import AIAnalyticsService
-from services.onboarding_data_service import OnboardingDataService
+from services.onboarding.data_service import OnboardingDataService
 
 # Import utilities
 from ..utils.error_handlers import ContentPlanningErrorHandler

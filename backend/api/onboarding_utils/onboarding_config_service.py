@@ -7,7 +7,7 @@ from typing import Dict, Any
 from fastapi import HTTPException
 from loguru import logger
 
-from services.api_key_manager import get_api_key_manager
+from services.onboarding.api_key_manager import get_api_key_manager
 from services.validation import check_all_api_keys
 
 class OnboardingConfigService:

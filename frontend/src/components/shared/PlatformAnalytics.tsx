@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Card,
@@ -26,6 +26,7 @@ import {
   Error as ErrorIcon,
   Warning,
 } from '@mui/icons-material';
+import { Button } from '@mui/material';
 import { PlatformAnalytics as PlatformAnalyticsType, AnalyticsSummary, PlatformConnectionStatus } from '../../api/analytics';
 import { cachedAnalyticsAPI } from '../../api/cachedAnalytics';
 import BingInsightsCard from './BingInsightsCard';
@@ -37,6 +38,8 @@ interface PlatformAnalyticsComponentProps {
   refreshInterval?: number; // in milliseconds, 0 = no auto-refresh
   onDataLoaded?: (data: any) => void;
   onRefreshReady?: (refreshFn: () => Promise<void>) => void; // Expose refresh function to parent
+  onReconnect?: (platform: string) => void; // Reconnect handler for individual platforms
+  showBackgroundJobs?: boolean; // Only render background jobs when user triggers
 }
 
 const PlatformAnalytics: React.FC<PlatformAnalyticsComponentProps> = ({
@@ -45,6 +48,8 @@ const PlatformAnalytics: React.FC<PlatformAnalyticsComponentProps> = ({
   refreshInterval = 0,
   onDataLoaded,
   onRefreshReady,
+  onReconnect,
+  showBackgroundJobs = false,
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +116,13 @@ const PlatformAnalytics: React.FC<PlatformAnalyticsComponentProps> = ({
     }
   }, [platforms, loadData]);
 
+  // One-run guard to prevent duplicate calls in StrictMode
+  const dataLoadedRef = useRef(false);
+
   useEffect(() => {
+    if (dataLoadedRef.current) return;
+    dataLoadedRef.current = true;
+    
     loadData();
 
     // Set up auto-refresh if interval is specified
@@ -300,9 +311,31 @@ const PlatformAnalytics: React.FC<PlatformAnalyticsComponentProps> = ({
           )}
 
           {data.status === 'error' && (
-            <Alert severity="error" sx={{ mt: 1 }}>
-              {data.error_message || 'Failed to load analytics data'}
-            </Alert>
+            <Box sx={{ mt: 1 }}>
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {data.error_message || 'Failed to load analytics data'}
+              </Alert>
+              {onReconnect && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  onClick={() => onReconnect(platform)}
+                  sx={{ 
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    borderColor: '#f44336',
+                    color: '#f44336',
+                    '&:hover': {
+                      borderColor: '#d32f2f',
+                      backgroundColor: 'rgba(244, 67, 54, 0.04)'
+                    }
+                  }}
+                >
+                  Reconnect {platform.toUpperCase()}
+                </Button>
+              )}
+            </Box>
           )}
 
           {data.status === 'partial' && (
@@ -423,18 +456,20 @@ const PlatformAnalytics: React.FC<PlatformAnalyticsComponentProps> = ({
           ))}
       </Grid>
 
-      {/* Background Job Manager */}
-      <Box sx={{ mt: 3 }}>
-        <BackgroundJobManager
-          siteUrl="https://www.alwrity.com/"
-          days={30}
-          onJobCompleted={(job) => {
-            console.log('🎉 Background job completed:', job);
-            // Refresh analytics data when job completes
-            forceRefresh();
-          }}
-        />
-      </Box>
+      {/* Background Job Manager - render only when explicitly enabled */}
+      {showBackgroundJobs && (
+        <Box sx={{ mt: 3 }}>
+          <BackgroundJobManager
+            siteUrl="https://www.alwrity.com/"
+            days={30}
+            onJobCompleted={(job) => {
+              console.log('🎉 Background job completed:', job);
+              // Refresh analytics data when job completes
+              forceRefresh();
+            }}
+          />
+        </Box>
+      )}
 
       {/* Debug Section - Show data structure for all platforms */}
       <Box sx={{ mt: 3 }}>

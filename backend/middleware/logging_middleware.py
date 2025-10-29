@@ -310,22 +310,23 @@ seo_logger = SEOToolsLogger()
 log_analyzer = LogAnalyzer()
 
 # Configure loguru for structured logging
-logger.add(
-    f"{LOG_BASE_DIR}/application.log",
-    rotation="1 day",
-    retention="30 days",
-    level="INFO",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
-    serialize=True
-)
+# Commented out to prevent conflicts with main logging configuration
+# logger.add(
+#     f"{LOG_BASE_DIR}/application.log",
+#     rotation="1 day",
+#     retention="30 days",
+#     level="INFO",
+#     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
+#     serialize=True
+# )
 
-logger.add(
-    f"{LOG_BASE_DIR}/errors.log",
-    rotation="1 day",
-    retention="30 days",
-    level="ERROR",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
-    serialize=True
-)
+# logger.add(
+#     f"{LOG_BASE_DIR}/errors.log",
+#     rotation="1 day",
+#     retention="30 days",
+#     level="ERROR",
+#     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
+#     serialize=True
+# )
 
 logger.info("Logging middleware initialized successfully")

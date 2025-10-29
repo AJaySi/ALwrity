@@ -15,8 +15,9 @@ from models.onboarding import OnboardingSession, WebsiteAnalysis, ResearchPrefer
 class OnboardingDataService:
     """Service to extract and use real onboarding data for AI personalization."""
     
-    def __init__(self):
+    def __init__(self, db: Optional[Session] = None):
         """Initialize the onboarding data service."""
+        self.db = db
         logger.info("OnboardingDataService initialized")
     
     def get_user_website_analysis(self, user_id: int) -> Optional[Dict[str, Any]]:
@@ -30,7 +31,7 @@ class OnboardingDataService:
             Website analysis data or None if not found
         """
         try:
-            session = get_db_session()
+            session = self.db or get_db_session()
             
             # Find onboarding session for user
             onboarding_session = session.query(OnboardingSession).filter(
@@ -67,7 +68,7 @@ class OnboardingDataService:
             Research preferences data or None if not found
         """
         try:
-            session = get_db_session()
+            session = self.db or get_db_session()
             
             # Find onboarding session for user
             onboarding_session = session.query(OnboardingSession).filter(
@@ -287,4 +288,4 @@ class OnboardingDataService:
                 "content_topics": ["Industry trends", "Expert insights"],
                 "search_intent": {"intent": "practical", "focus": "implementation"}
             }
-        } 
+        }

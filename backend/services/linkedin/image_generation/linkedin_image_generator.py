@@ -15,7 +15,7 @@ from PIL import Image
 from io import BytesIO
 
 # Import existing infrastructure
-from ...api_key_manager import APIKeyManager
+from ...onboarding.api_key_manager import APIKeyManager
 from ...llm_providers.text_to_image_generation.gen_gemini_images import generate_gemini_image
 
 # Set up logging

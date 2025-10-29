@@ -7,9 +7,9 @@ from typing import Dict, Any, Optional
 from fastapi import HTTPException
 from loguru import logger
 
-from services.api_key_manager import get_api_key_manager
+from services.onboarding.api_key_manager import get_api_key_manager
 from services.database import get_db
-from services.onboarding_database_service import OnboardingDatabaseService
+from services.onboarding.database_service import OnboardingDatabaseService
 from services.website_analysis_service import WebsiteAnalysisService
 from services.research_preferences_service import ResearchPreferencesService
 from services.persona_analysis_service import PersonaAnalysisService

@@ -302,7 +302,7 @@ async def generate_platform_persona(user_id: str, platform: str, db_session):
         
         # Import services
         from services.persona_data_service import PersonaDataService
-        from services.onboarding_database_service import OnboardingDatabaseService
+        from services.onboarding.database_service import OnboardingDatabaseService
         
         persona_data_service = PersonaDataService(db_session=db_session)
         onboarding_service = OnboardingDatabaseService(db=db_session)

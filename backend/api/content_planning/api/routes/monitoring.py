@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from loguru import logger
 
-from middleware.monitoring_middleware import get_monitoring_stats, get_lightweight_stats
+from services.subscription import get_monitoring_stats, get_lightweight_stats
 from services.comprehensive_user_data_cache_service import ComprehensiveUserDataCacheService
 from services.database import get_db
 

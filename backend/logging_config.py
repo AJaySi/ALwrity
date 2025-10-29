@@ -13,6 +13,9 @@ def setup_clean_logging():
     """Set up clean logging for end users."""
     verbose_mode = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
     
+    # Always remove all existing handlers first to prevent conflicts
+    logger.remove()
+    
     if not verbose_mode:
         # Suppress verbose logging for end users - be more aggressive
         logging.getLogger('sqlalchemy.engine').setLevel(logging.CRITICAL)
@@ -81,8 +84,6 @@ def setup_clean_logging():
             logging.getLogger(logger_name).setLevel(logging.WARNING)
         
         # Configure loguru to be less verbose (only show warnings and errors)
-        logger.remove()  # Remove default handler
-
         def warning_only_filter(record):
             return record["level"].name in ["WARNING", "ERROR", "CRITICAL"]
 
@@ -94,7 +95,6 @@ def setup_clean_logging():
         )
     else:
         # In verbose mode, show all log levels with detailed formatting
-        logger.remove()  # Remove default handler
         logger.add(
             sys.stdout.write,
             level="DEBUG",

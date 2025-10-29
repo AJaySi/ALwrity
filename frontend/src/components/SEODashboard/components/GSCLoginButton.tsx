@@ -22,6 +22,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '@clerk/clerk-react';
 import { gscAPI, GSCStatusResponse } from '../../../api/gsc';
+import { apiClient } from '../../../api/client';
 
 interface GSCLoginButtonProps {
   onStatusChange?: (connected: boolean) => void;
@@ -69,17 +70,28 @@ const GSCLoginButton: React.FC<GSCLoginButtonProps> = ({ onStatusChange }) => {
       setLoading(true);
       setError(null);
       
-      const statusResponse = await gscAPI.getStatus();
-      setStatus(statusResponse);
+      // Use backend API to check GSC status
+      const response = await apiClient.get('/api/seo-dashboard/platforms');
+      const platformData = response.data;
+      
+      const gscStatus = {
+        connected: platformData.gsc?.connected || false,
+        sites: platformData.gsc?.sites || [],
+        last_sync: platformData.gsc?.last_sync || undefined
+      };
+      
+      setStatus(gscStatus);
       
       if (onStatusChange) {
-        onStatusChange(statusResponse.connected);
+        onStatusChange(gscStatus.connected);
       }
       
-      console.log('GSC Login Button: Status checked, connected:', statusResponse.connected);
+      console.log('GSC Login Button: Status checked, connected:', gscStatus.connected);
     } catch (err) {
       console.error('GSC Login Button: Error checking status:', err);
       setError('Failed to check GSC connection status');
+      // Set disconnected status on error
+      setStatus({ connected: false, sites: [], last_sync: undefined });
     } finally {
       setLoading(false);
     }

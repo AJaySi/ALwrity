@@ -19,7 +19,7 @@ import traceback
 # Import models
 from models.subscription_models import Base as SubscriptionBase
 from services.database import DATABASE_URL
-from services.pricing_service import PricingService
+from services.subscription.pricing_service import PricingService
 
 def create_billing_tables():
     """Create all billing and subscription-related tables."""

@@ -307,7 +307,7 @@ class CalendarGenerationService:
             logger.info("🏥 Performing calendar generation health check")
             
             # Check AI services
-            from services.api_key_manager import APIKeyManager
+            from services.onboarding.api_key_manager import APIKeyManager
             api_manager = APIKeyManager()
             api_key_status = check_all_api_keys(api_manager)
             

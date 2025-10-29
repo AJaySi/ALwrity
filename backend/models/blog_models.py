@@ -71,6 +71,9 @@ class BlogResearchResponse(BaseModel):
     grounding_metadata: Optional[GroundingMetadata] = None  # Google grounding metadata
     original_keywords: List[str] = []  # Original user-provided keywords for caching
     error_message: Optional[str] = None  # Error message for graceful failures
+    retry_suggested: Optional[bool] = None  # Whether retry is recommended
+    error_code: Optional[str] = None  # Specific error code
+    actionable_steps: List[str] = []  # Steps user can take to resolve the issue
 
 
 class BlogOutlineSection(BaseModel):

@@ -16,6 +16,7 @@ from models.blog_models import (
     GroundingSupport,
     Citation,
 )
+from services.blog_writer.logger_config import blog_writer_logger, log_function_call
 
 from .keyword_analyzer import KeywordAnalyzer
 from .competitor_analyzer import CompetitorAnalyzer
@@ -32,6 +33,7 @@ class ResearchService:
         self.content_angle_generator = ContentAngleGenerator()
         self.data_filter = ResearchDataFilter()
     
+    @log_function_call("research_operation")
     async def research(self, request: BlogResearchRequest) -> BlogResearchResponse:
         """
         Stage 1: Research & Strategy (AI Orchestration)
@@ -47,6 +49,16 @@ class ResearchService:
             industry = request.industry or (request.persona.industry if request.persona and request.persona.industry else "General")
             target_audience = getattr(request.persona, 'target_audience', 'General') if request.persona else 'General'
             
+            # Log research parameters
+            blog_writer_logger.log_operation_start(
+                "research",
+                topic=topic,
+                industry=industry,
+                target_audience=target_audience,
+                keywords=request.keywords,
+                keyword_count=len(request.keywords)
+            )
+            
             # Check cache first for exact keyword match
             cached_result = research_cache.get_cached_result(
                 keywords=request.keywords,
@@ -56,10 +68,12 @@ class ResearchService:
             
             if cached_result:
                 logger.info(f"Returning cached research result for keywords: {request.keywords}")
+                blog_writer_logger.log_operation_end("research", 0, success=True, cache_hit=True)
                 return BlogResearchResponse(**cached_result)
             
             # Cache miss - proceed with API call
             logger.info(f"Cache miss - making API call for keywords: {request.keywords}")
+            blog_writer_logger.log_operation_start("gemini_api_call", api_name="gemini_grounded", operation="research")
             gemini = GeminiGroundedProvider()
 
             # Single comprehensive research prompt - Gemini handles Google Search automatically
@@ -82,10 +96,22 @@ class ResearchService:
             """
             
             # Single Gemini call with native Google Search grounding - no fallbacks
+            import time
+            api_start_time = time.time()
             gemini_result = await gemini.generate_grounded_content(
                 prompt=research_prompt,
                 content_type="research",
                 max_tokens=2000
+            )
+            api_duration_ms = (time.time() - api_start_time) * 1000
+            
+            # Log API call performance
+            blog_writer_logger.log_api_call(
+                "gemini_grounded",
+                "generate_grounded_content",
+                api_duration_ms,
+                token_usage=gemini_result.get("token_usage", {}),
+                content_length=len(gemini_result.get("content", ""))
             )
             
             # Extract sources from grounding metadata
@@ -105,6 +131,17 @@ class ResearchService:
             suggested_angles = self.content_angle_generator.generate(content, topic, industry)
             
             logger.info(f"Research completed successfully with {len(sources)} sources and {len(search_queries)} search queries")
+            
+            # Log analysis results
+            blog_writer_logger.log_performance(
+                "research_analysis",
+                len(content),
+                "characters",
+                sources_count=len(sources),
+                search_queries_count=len(search_queries),
+                keyword_analysis_keys=len(keyword_analysis),
+                suggested_angles_count=len(suggested_angles)
+            )
 
             # Create the response
             response = BlogResearchResponse(
@@ -146,7 +183,47 @@ class ResearchService:
             error_message = str(e)
             logger.error(f"Research failed: {error_message}")
             
-            # Return a graceful failure response instead of raising
+            # Log error with full context
+            blog_writer_logger.log_error(
+                e,
+                "research",
+                context={
+                    "topic": topic,
+                    "keywords": request.keywords,
+                    "industry": industry,
+                    "target_audience": target_audience
+                }
+            )
+            
+            # Import custom exceptions for better error handling
+            from services.blog_writer.exceptions import (
+                ResearchFailedException, 
+                APIRateLimitException, 
+                APITimeoutException,
+                ValidationException
+            )
+            
+            # Determine if this is a retryable error
+            retry_suggested = True
+            user_message = "Research failed. Please try again with different keywords or check your internet connection."
+            
+            if isinstance(e, APIRateLimitException):
+                retry_suggested = True
+                user_message = f"Rate limit exceeded. Please wait {e.context.get('retry_after', 60)} seconds before trying again."
+            elif isinstance(e, APITimeoutException):
+                retry_suggested = True
+                user_message = "Research request timed out. Please try again with a shorter query or check your internet connection."
+            elif isinstance(e, ValidationException):
+                retry_suggested = False
+                user_message = "Invalid research request. Please check your input parameters and try again."
+            elif "401" in error_message or "403" in error_message:
+                retry_suggested = False
+                user_message = "Authentication failed. Please check your API credentials."
+            elif "400" in error_message:
+                retry_suggested = False
+                user_message = "Invalid request. Please check your input parameters."
+            
+            # Return a graceful failure response with enhanced error information
             return BlogResearchResponse(
                 success=False,
                 sources=[],
@@ -155,9 +232,18 @@ class ResearchService:
                 suggested_angles=[],
                 search_widget="",
                 search_queries=[],
-                error_message=error_message
+                error_message=user_message,
+                retry_suggested=retry_suggested,
+                error_code=getattr(e, 'error_code', 'RESEARCH_FAILED'),
+                actionable_steps=getattr(e, 'actionable_steps', [
+                    "Try with different keywords",
+                    "Check your internet connection",
+                    "Wait a few minutes and try again",
+                    "Contact support if the issue persists"
+                ])
             )
     
+    @log_function_call("research_with_progress")
     async def research_with_progress(self, request: BlogResearchRequest, task_id: str) -> BlogResearchResponse:
         """
         Research method with progress updates for real-time feedback.
@@ -291,7 +377,47 @@ class ResearchService:
             error_message = str(e)
             logger.error(f"Research failed: {error_message}")
             
-            # Return a graceful failure response instead of raising
+            # Log error with full context
+            blog_writer_logger.log_error(
+                e,
+                "research",
+                context={
+                    "topic": topic,
+                    "keywords": request.keywords,
+                    "industry": industry,
+                    "target_audience": target_audience
+                }
+            )
+            
+            # Import custom exceptions for better error handling
+            from services.blog_writer.exceptions import (
+                ResearchFailedException, 
+                APIRateLimitException, 
+                APITimeoutException,
+                ValidationException
+            )
+            
+            # Determine if this is a retryable error
+            retry_suggested = True
+            user_message = "Research failed. Please try again with different keywords or check your internet connection."
+            
+            if isinstance(e, APIRateLimitException):
+                retry_suggested = True
+                user_message = f"Rate limit exceeded. Please wait {e.context.get('retry_after', 60)} seconds before trying again."
+            elif isinstance(e, APITimeoutException):
+                retry_suggested = True
+                user_message = "Research request timed out. Please try again with a shorter query or check your internet connection."
+            elif isinstance(e, ValidationException):
+                retry_suggested = False
+                user_message = "Invalid research request. Please check your input parameters and try again."
+            elif "401" in error_message or "403" in error_message:
+                retry_suggested = False
+                user_message = "Authentication failed. Please check your API credentials."
+            elif "400" in error_message:
+                retry_suggested = False
+                user_message = "Invalid request. Please check your input parameters."
+            
+            # Return a graceful failure response with enhanced error information
             return BlogResearchResponse(
                 success=False,
                 sources=[],
@@ -300,7 +426,15 @@ class ResearchService:
                 suggested_angles=[],
                 search_widget="",
                 search_queries=[],
-                error_message=error_message
+                error_message=user_message,
+                retry_suggested=retry_suggested,
+                error_code=getattr(e, 'error_code', 'RESEARCH_FAILED'),
+                actionable_steps=getattr(e, 'actionable_steps', [
+                    "Try with different keywords",
+                    "Check your internet connection",
+                    "Wait a few minutes and try again",
+                    "Contact support if the issue persists"
+                ])
             )
 
     def _extract_sources_from_grounding(self, gemini_result: Dict[str, Any]) -> List[ResearchSource]:

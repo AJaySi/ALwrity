@@ -15,6 +15,7 @@ from ..models.analytics_data import AnalyticsData
 from ..models.platform_types import PlatformType
 from .base_handler import BaseAnalyticsHandler
 from ..insights.bing_insights_service import BingInsightsService
+from services.bing_analytics_storage_service import BingAnalyticsStorageService
 import os
 
 
@@ -27,6 +28,8 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
         # Initialize insights service
         database_url = os.getenv('DATABASE_URL', 'sqlite:///./bing_analytics.db')
         self.insights_service = BingInsightsService(database_url)
+        # Storage service used in onboarding step 5
+        self.storage_service = BingAnalyticsStorageService(os.getenv('DATABASE_URL', 'sqlite:///alwrity.db'))
     
     async def get_analytics(self, user_id: str) -> AnalyticsData:
         """
@@ -44,43 +47,50 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
         
         logger.info("Fetching fresh Bing analytics for user {user_id} (expensive operation)", user_id=user_id)
         try:
-            # Get user's Bing connection status
-            connection_status = self.bing_service.get_connection_status(user_id)
+            # Get user's Bing connection status with detailed token info
+            token_status = self.bing_service.get_user_token_status(user_id)
             
-            if not connection_status.get('connected'):
-                return self.create_error_response('Bing Webmaster not connected')
+            if not token_status.get('has_active_tokens'):
+                if token_status.get('has_expired_tokens'):
+                    return self.create_error_response('Bing Webmaster tokens expired - please reconnect')
+                else:
+                    return self.create_error_response('Bing Webmaster not connected')
             
-            # Get the first connected site token info
-            token_sites = connection_status.get('sites', [])
-            if not token_sites:
-                return self.create_error_response('No Bing Webmaster sites found')
+            # Try once to fetch sites (may return empty if tokens are valid but no verified sites); do not block
+            sites = self.bing_service.get_user_sites(user_id)
             
-            # Get the first token's access token
-            token_info = token_sites[0]
+            # Get active tokens for access token
+            active_tokens = token_status.get('active_tokens', [])
+            if not active_tokens:
+                return self.create_error_response('No active Bing Webmaster tokens available')
+            
+            # Get the first active token's access token
+            token_info = active_tokens[0]
             access_token = token_info.get('access_token')
             
-            # Get the actual site URLs from Bing API when needed for analytics
-            # Check cache first for sites data
-            cached_sites = analytics_cache.get('bing_sites', user_id)
-            if cached_sites:
-                logger.info(f"Using cached Bing sites for analytics for user {user_id}")
-                sites = cached_sites
-            else:
-                # Fetch sites from API and cache them
-                logger.info(f"Fetching fresh Bing sites for analytics for user {user_id}")
-                sites = self.bing_service.get_user_sites(user_id)
-                if not sites:
-                    return self.create_error_response('No site URLs found in Bing Webmaster API')
-                
-                # Cache the sites for future use
-                analytics_cache.set('bing_sites', user_id, sites, ttl_override=2*60*60)
-                logger.info(f"Cached Bing sites for analytics for user {user_id} (TTL: 2 hours)")
+            # Cache the sites for future use (even if empty)
+            analytics_cache.set('bing_sites', user_id, sites or [], ttl_override=2*60*60)
+            logger.info(f"Cached Bing sites for analytics for user {user_id} (TTL: 2 hours)")
             
             if not access_token:
                 return self.create_error_response('Bing Webmaster access token not available')
             
-            # Get actual query stats for the first site using the Bing service
-            query_stats = await self._get_query_stats(user_id, sites)
+            # Do NOT call live Bing APIs here; use stored analytics like step 5
+            query_stats = {}
+            try:
+                # If sites available, use first; otherwise ask storage for any stored summary
+                site_url_for_storage = sites[0].get('Url', '') if (sites and isinstance(sites[0], dict)) else None
+                stored = self.storage_service.get_analytics_summary(user_id, site_url_for_storage, days=30)
+                if stored and isinstance(stored, dict):
+                    query_stats = {
+                        'total_clicks': stored.get('summary', {}).get('total_clicks', 0),
+                        'total_impressions': stored.get('summary', {}).get('total_impressions', 0),
+                        'total_queries': stored.get('summary', {}).get('total_queries', 0),
+                        'avg_ctr': stored.get('summary', {}).get('total_ctr', 0),
+                        'avg_position': stored.get('summary', {}).get('avg_position', 0),
+                    }
+            except Exception as e:
+                logger.warning(f"Bing analytics: Failed to read stored analytics summary: {e}")
             
             # Get enhanced insights from database
             insights = self._get_enhanced_insights(user_id, sites[0].get('Url', '') if sites else '')
@@ -101,7 +111,11 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
                 'note': 'Bing Webmaster API provides SEO insights, search performance, and index status data'
             }
             
-            result = self.create_success_response(metrics=metrics)
+            # If no stored data or no sites, return partial like step 5, else success
+            if (not sites) or (metrics.get('total_impressions', 0) == 0 and metrics.get('total_clicks', 0) == 0):
+                result = self.create_partial_response(metrics=metrics, error_message='Connected to Bing; waiting for stored analytics or site verification')
+            else:
+                result = self.create_success_response(metrics=metrics)
             
             # Cache the result to avoid expensive API calls
             analytics_cache.set('bing_analytics', user_id, result.__dict__)

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 # Import database services
 from services.content_planning_db import ContentPlanningDBService
 from services.ai_analysis_db_service import AIAnalysisDBService
-from services.onboarding_data_service import OnboardingDataService
+from services.onboarding.data_service import OnboardingDataService
 
 # Import migrated content gap analysis services
 from services.content_gap_analyzer.content_gap_analyzer import ContentGapAnalyzer

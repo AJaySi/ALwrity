@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from loguru import logger
-from services.onboarding_data_service import OnboardingDataService
+from services.onboarding.data_service import OnboardingDataService
 from services.user_data_service import UserDataService
 from services.llm_providers.gemini_provider import gemini_text_response, gemini_structured_json_response
 

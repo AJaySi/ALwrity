@@ -59,13 +59,8 @@ class Step1Validator:
     
     def _setup_logger(self):
         """Setup structured logging for validation."""
-        logger.remove()
-        logger.add(
-            sys.stdout,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-            level="INFO"
-        )
-        return logger
+        from utils.logger_utils import get_service_logger
+        return get_service_logger("step1_validator")
     
     async def validate_step1(self, user_id: int, strategy_id: int) -> Dict[str, Any]:
         """Execute and validate Step 1 with comprehensive logging."""

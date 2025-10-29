@@ -14,7 +14,7 @@ from models.subscription_models import (
     APIUsageLog, UsageSummary, APIProvider, UsageAlert, 
     UserSubscription, UsageStatus
 )
-from services.pricing_service import PricingService
+from .pricing_service import PricingService
 
 class UsageTrackingService:
     """Service for tracking API usage and managing subscription limits."""
@@ -22,6 +22,9 @@ class UsageTrackingService:
     def __init__(self, db: Session):
         self.db = db
         self.pricing_service = PricingService(db)
+        # TTL cache (30s) for enforcement results to cut DB chatter
+        # key: f"{user_id}:{provider}", value: { 'result': (bool,str,dict), 'expires_at': datetime }
+        self._enforce_cache: Dict[str, Dict[str, Any]] = {}
     
     async def track_api_usage(self, user_id: str, provider: APIProvider, 
                             endpoint: str, method: str, model_used: str = None,
@@ -54,7 +57,7 @@ class UsageTrackingService:
             )
             
             # Create usage log entry
-            billing_period = datetime.now().strftime("%Y-%m")
+            billing_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
             usage_log = APIUsageLog(
                 user_id=user_id,
                 provider=provider,
@@ -294,7 +297,7 @@ class UsageTrackingService:
         """Get comprehensive usage statistics for a user."""
         
         if not billing_period:
-            billing_period = datetime.now().strftime("%Y-%m")
+            billing_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
         
         # Get usage summary
         summary = self.db.query(UsageSummary).filter(
@@ -480,13 +483,24 @@ class UsageTrackingService:
     async def enforce_usage_limits(self, user_id: str, provider: APIProvider,
                                  tokens_requested: int = 0) -> Tuple[bool, str, Dict[str, Any]]:
         """Enforce usage limits before making an API call."""
-        
-        return self.pricing_service.check_usage_limits(
+        # Check short-lived cache first (30s)
+        cache_key = f"{user_id}:{provider.value}"
+        now = datetime.utcnow()
+        cached = self._enforce_cache.get(cache_key)
+        if cached and cached.get('expires_at') and cached['expires_at'] > now:
+            return tuple(cached['result'])  # type: ignore
+
+        result = self.pricing_service.check_usage_limits(
             user_id=user_id,
             provider=provider,
             tokens_requested=tokens_requested
         )
-
+        self._enforce_cache[cache_key] = {
+            'result': result,
+            'expires_at': now + timedelta(seconds=30)
+        }
+        return result
+    
     async def reset_current_billing_period(self, user_id: str) -> Dict[str, Any]:
         """Reset usage status for the current billing period (after plan change)."""
         try:

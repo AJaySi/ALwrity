@@ -3,6 +3,7 @@ Task Management System for Blog Writer API
 
 Handles background task execution, status tracking, and progress updates
 for research and outline generation operations.
+Now uses database-backed persistence for reliability and recovery.
 """
 
 import asyncio
@@ -18,14 +19,22 @@ from models.blog_models import (
     MediumBlogGenerateResult,
 )
 from services.blog_writer.blog_service import BlogWriterService
+from services.blog_writer.database_task_manager import DatabaseTaskManager
 
 
 class TaskManager:
     """Manages background tasks for research and outline generation."""
     
-    def __init__(self):
-        self.task_storage: Dict[str, Dict[str, Any]] = {}
-        self.service = BlogWriterService()
+    def __init__(self, db_connection=None):
+        # Fallback to in-memory storage if no database connection
+        if db_connection:
+            self.db_manager = DatabaseTaskManager(db_connection)
+            self.use_database = True
+        else:
+            self.task_storage: Dict[str, Dict[str, Any]] = {}
+            self.service = BlogWriterService()
+            self.use_database = False
+            logger.warning("No database connection provided, using in-memory task storage")
     
     def cleanup_old_tasks(self):
         """Remove tasks older than 1 hour to prevent memory leaks."""
@@ -54,54 +63,61 @@ class TaskManager:
         
         return task_id
     
-    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """Get the status of a task."""
-        self.cleanup_old_tasks()
-        
-        if task_id not in self.task_storage:
-            return None
-        
-        task = self.task_storage[task_id]
-        response = {
-            "task_id": task_id,
-            "status": task["status"],
-            "created_at": task["created_at"].isoformat(),
-            "progress_messages": task.get("progress_messages", [])
-        }
-        
-        if task["status"] == "completed":
-            response["result"] = task["result"]
-        elif task["status"] == "failed":
-            response["error"] = task["error"]
-        
-        return response
-    
-    async def update_progress(self, task_id: str, message: str):
-        """Update progress message for a task."""
-        if task_id in self.task_storage:
-            if "progress_messages" not in self.task_storage[task_id]:
-                self.task_storage[task_id]["progress_messages"] = []
+        if self.use_database:
+            return await self.db_manager.get_task_status(task_id)
+        else:
+            self.cleanup_old_tasks()
             
-            progress_entry = {
-                "timestamp": datetime.now().isoformat(),
-                "message": message
+            if task_id not in self.task_storage:
+                return None
+            
+            task = self.task_storage[task_id]
+            response = {
+                "task_id": task_id,
+                "status": task["status"],
+                "created_at": task["created_at"].isoformat(),
+                "progress_messages": task.get("progress_messages", [])
             }
-            self.task_storage[task_id]["progress_messages"].append(progress_entry)
             
-            # Keep only last 10 progress messages to prevent memory bloat
-            if len(self.task_storage[task_id]["progress_messages"]) > 10:
-                self.task_storage[task_id]["progress_messages"] = self.task_storage[task_id]["progress_messages"][-10:]
+            if task["status"] == "completed":
+                response["result"] = task["result"]
+            elif task["status"] == "failed":
+                response["error"] = task["error"]
             
-            logger.info(f"Progress update for task {task_id}: {message}")
+            return response
     
-    def start_research_task(self, request: BlogResearchRequest) -> str:
+    async def update_progress(self, task_id: str, message: str, percentage: float = None):
+        """Update progress message for a task."""
+        if self.use_database:
+            await self.db_manager.update_progress(task_id, message, percentage)
+        else:
+            if task_id in self.task_storage:
+                if "progress_messages" not in self.task_storage[task_id]:
+                    self.task_storage[task_id]["progress_messages"] = []
+                
+                progress_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "message": message
+                }
+                self.task_storage[task_id]["progress_messages"].append(progress_entry)
+                
+                # Keep only last 10 progress messages to prevent memory bloat
+                if len(self.task_storage[task_id]["progress_messages"]) > 10:
+                    self.task_storage[task_id]["progress_messages"] = self.task_storage[task_id]["progress_messages"][-10:]
+                
+                logger.info(f"Progress update for task {task_id}: {message}")
+    
+    async def start_research_task(self, request: BlogResearchRequest, user_id: str = "anonymous") -> str:
         """Start a research operation and return a task ID."""
-        task_id = self.create_task("research")
-        
-        # Start the research operation in the background
-        asyncio.create_task(self._run_research_task(task_id, request))
-        
-        return task_id
+        if self.use_database:
+            return await self.db_manager.start_research_task(request, user_id)
+        else:
+            task_id = self.create_task("research")
+            # Start the research operation in the background
+            asyncio.create_task(self._run_research_task(task_id, request))
+            return task_id
     
     def start_outline_task(self, request: BlogOutlineRequest) -> str:
         """Start an outline generation operation and return a task ID."""

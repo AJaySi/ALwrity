@@ -70,11 +70,10 @@ from google.genai import types
 
 
 from loguru import logger
-logger.remove()
-logger.add(sys.stdout,
-        colorize=True,
-        format="<level>{level}</level>|<green>{file}:{line}:{function}</green>| {message}"
-    )
+from utils.logger_utils import get_service_logger
+
+# Use service-specific logger to avoid conflicts
+logger = get_service_logger("gemini_audio_text")
 
 
 def load_environment():

@@ -279,3 +279,26 @@ async def bing_oauth_health():
         "timestamp": "2024-01-01T00:00:00Z",
         "version": "1.0.0"
     }
+
+@router.post("/purge-expired")
+async def purge_expired_bing_tokens(
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Purge user's expired/inactive Bing tokens to avoid refresh loops before reauth."""
+    try:
+        user_id = user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID not found.")
+
+        deleted = oauth_service.purge_expired_tokens(user_id)
+        return {
+            "success": True,
+            "purged": deleted,
+            "message": f"Purged {deleted} expired/inactive Bing tokens"
+        }
+    except Exception as e:
+        logger.error(f"Error purging expired Bing tokens: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to purge expired Bing tokens."
+        )

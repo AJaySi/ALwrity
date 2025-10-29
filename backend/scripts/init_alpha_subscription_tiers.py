@@ -18,6 +18,9 @@ from loguru import logger
 
 def create_alpha_subscription_tiers():
     """Create subscription tiers for alpha testers."""
+    if os.getenv('ENABLE_ALPHA', 'false').lower() not in {'1','true','yes','on'}:
+        logger.info("Alpha tier initialization is disabled (ENABLE_ALPHA is false)")
+        return False
     
     db = get_db_session()
     if not db:
@@ -225,6 +228,9 @@ def create_api_pricing(db: Session):
 
 def assign_default_plan_to_users():
     """Assign Free Alpha plan to all existing users."""
+    if os.getenv('ENABLE_ALPHA', 'false').lower() not in {'1','true','yes','on'}:
+        logger.info("Alpha default plan assignment is disabled (ENABLE_ALPHA is false)")
+        return False
     
     db = get_db_session()
     if not db:

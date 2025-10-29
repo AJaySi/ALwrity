@@ -7,7 +7,7 @@ import logging
 # Import our LinkedIn image generation services
 from services.linkedin.image_generation import LinkedInImageGenerator, LinkedInImageStorage
 from services.linkedin.image_prompts import LinkedInPromptGenerator
-from services.api_key_manager import APIKeyManager
+from services.onboarding.api_key_manager import APIKeyManager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

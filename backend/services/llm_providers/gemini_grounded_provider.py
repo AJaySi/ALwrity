@@ -131,30 +131,49 @@ class GeminiGroundedProvider:
                         )
                         self._cache[cache_key] = response
             except asyncio.TimeoutError:
-                raise Exception(f"Gemini API request timed out after {self.timeout} seconds")
+                from services.blog_writer.exceptions import APITimeoutException
+                raise APITimeoutException(
+                    f"Gemini API request timed out after {self.timeout} seconds",
+                    timeout_seconds=self.timeout,
+                    context={"content_type": content_type, "model_id": model_id}
+                )
             except Exception as api_error:
-                # Handle specific Google API errors with retry logic
+                # Handle specific Google API errors with enhanced retry logic
                 error_str = str(api_error)
-                if "503" in error_str and "overloaded" in error_str:
-                    # Conservative retry for overloaded service (expensive API calls)
-                    response = await self._retry_with_backoff(
-                        lambda: self._make_api_request_with_model(grounded_prompt, config, model_id, urls),
-                        max_retries=1,  # Only 1 retry to avoid excessive costs
-                        base_delay=5   # Longer delay
+                
+                # Non-retryable errors
+                if "401" in error_str or "403" in error_str:
+                    from services.blog_writer.exceptions import ValidationException
+                    raise ValidationException(
+                        "Authentication failed. Please check your API credentials.",
+                        field="api_key",
+                        context={"error": error_str, "content_type": content_type}
                     )
-                elif "429" in error_str:
-                    # Conservative retry for rate limits
-                    response = await self._retry_with_backoff(
-                        lambda: self._make_api_request_with_model(grounded_prompt, config, model_id, urls),
-                        max_retries=1,  # Only 1 retry
-                        base_delay=10   # Much longer delay for rate limits
-                    )
-                elif "401" in error_str or "403" in error_str:
-                    raise Exception("Authentication failed. Please check your API credentials.")
                 elif "400" in error_str:
-                    raise Exception("Invalid request. Please check your input parameters.")
-                else:
-                    raise Exception(f"Google AI service error: {error_str}")
+                    from services.blog_writer.exceptions import ValidationException
+                    raise ValidationException(
+                        "Invalid request. Please check your input parameters.",
+                        field="request",
+                        context={"error": error_str, "content_type": content_type}
+                    )
+                
+                # Retryable errors - use enhanced retry logic
+                from services.blog_writer.retry_utils import retry_with_backoff, RESEARCH_RETRY_CONFIG
+                
+                try:
+                    response = await retry_with_backoff(
+                        lambda: self._make_api_request_with_model(grounded_prompt, config, model_id, urls),
+                        config=RESEARCH_RETRY_CONFIG,
+                        operation_name=f"gemini_grounded_{content_type}",
+                        context={"content_type": content_type, "model_id": model_id}
+                    )
+                except Exception as retry_error:
+                    # If retry also failed, raise the original error with context
+                    from services.blog_writer.exceptions import ResearchFailedException
+                    raise ResearchFailedException(
+                        f"Google AI service error after retries: {error_str}",
+                        context={"original_error": error_str, "retry_error": str(retry_error), "content_type": content_type}
+                    )
             
             # Process the grounded response
             result = self._process_grounded_response(response, content_type)

@@ -70,7 +70,7 @@ class UserAPIKeyContext:
     def _load_from_database(self, user_id: str) -> Dict[str, str]:
         """Load API keys from database for specific user."""
         try:
-            from services.onboarding_database_service import OnboardingDatabaseService
+            from services.onboarding.database_service import OnboardingDatabaseService
             from services.database import SessionLocal
             
             db_service = OnboardingDatabaseService()

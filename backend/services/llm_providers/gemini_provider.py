@@ -77,11 +77,10 @@ else:
     print(f"No .env found at {env_path}, using current directory")
 
 from loguru import logger
-logger.remove()
-logger.add(sys.stdout,
-        colorize=True,
-        format="<level>{level}</level>|<green>{file}:{line}:{function}</green>| {message}"
-    )
+from utils.logger_utils import get_service_logger
+
+# Use service-specific logger to avoid conflicts
+logger = get_service_logger("gemini_provider")
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -389,17 +388,65 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
         )
 
         logger.info("🚀 Making Gemini API call...")
-        try:
-            response = client.models.generate_content(
+        
+        # Use enhanced retry logic for structured JSON calls
+        from services.blog_writer.retry_utils import retry_with_backoff, CONTENT_RETRY_CONFIG
+        
+        async def make_api_call():
+            return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
                 config=generation_config,
+            )
+        
+        try:
+            # Convert sync call to async for retry logic
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            response = loop.run_until_complete(
+                retry_with_backoff(
+                    make_api_call,
+                    config=CONTENT_RETRY_CONFIG,
+                    operation_name="gemini_structured_json",
+                    context={"schema_type": type(types_schema).__name__, "max_tokens": max_tokens}
+                )
             )
             logger.info("✅ Gemini API call completed successfully")
         except Exception as api_error:
             logger.error(f"❌ Gemini API call failed: {api_error}")
             logger.error(f"❌ API Error type: {type(api_error).__name__}")
-            raise api_error
+            
+            # Enhance error with specific exception types
+            error_str = str(api_error)
+            if "429" in error_str or "rate limit" in error_str.lower():
+                from services.blog_writer.exceptions import APIRateLimitException
+                raise APIRateLimitException(
+                    f"Rate limit exceeded for structured JSON generation: {error_str}",
+                    retry_after=60,
+                    context={"operation": "structured_json", "max_tokens": max_tokens}
+                )
+            elif "timeout" in error_str.lower():
+                from services.blog_writer.exceptions import APITimeoutException
+                raise APITimeoutException(
+                    f"Structured JSON generation timed out: {error_str}",
+                    timeout_seconds=60,
+                    context={"operation": "structured_json", "max_tokens": max_tokens}
+                )
+            elif "401" in error_str or "403" in error_str:
+                from services.blog_writer.exceptions import ValidationException
+                raise ValidationException(
+                    "Authentication failed for structured JSON generation. Please check your API credentials.",
+                    field="api_key",
+                    context={"error": error_str, "operation": "structured_json"}
+                )
+            else:
+                from services.blog_writer.exceptions import ContentGenerationException
+                raise ContentGenerationException(
+                    f"Structured JSON generation failed: {error_str}",
+                    context={"error": error_str, "operation": "structured_json", "max_tokens": max_tokens}
+                )
 
         # Check for parsed content first (primary method for structured output)
         if hasattr(response, 'parsed'):

@@ -1,6 +1,6 @@
 """Services package for ALwrity backend."""
 
-from .api_key_manager import (
+from .onboarding.api_key_manager import (
     APIKeyManager,
     OnboardingProgress,
     get_onboarding_progress,

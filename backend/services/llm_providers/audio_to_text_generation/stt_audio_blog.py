@@ -18,7 +18,7 @@ from tenacity import (
 from .gemini_audio_text import transcribe_audio
 
 # Import APIKeyManager
-from ...api_key_manager import APIKeyManager
+from ...onboarding.api_key_manager import APIKeyManager
 
 
 def progress_function(stream, chunk, bytes_remaining):

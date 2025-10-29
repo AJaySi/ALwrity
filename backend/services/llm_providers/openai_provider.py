@@ -17,7 +17,7 @@ from tenacity import (
 )
 
 # Import APIKeyManager
-from ..api_key_manager import APIKeyManager
+from ..onboarding.api_key_manager import APIKeyManager
 
 async def test_openai_api_key(api_key: str) -> Tuple[bool, str]:
     """

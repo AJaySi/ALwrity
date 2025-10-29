@@ -15,7 +15,7 @@ from io import BytesIO
 from loguru import logger
 
 # Import existing infrastructure
-from ...api_key_manager import APIKeyManager
+from ...onboarding.api_key_manager import APIKeyManager
 
 
 class LinkedInImageEditor:

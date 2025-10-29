@@ -12,7 +12,7 @@ import streamlit as st
 from loguru import logger
 
 # Import APIKeyManager
-from ...api_key_manager import APIKeyManager
+from ...onboarding.api_key_manager import APIKeyManager
 
 def save_generated_image(data):
     """Save the generated image to a file."""
