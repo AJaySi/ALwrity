@@ -133,6 +133,16 @@ class TaskManager:
         task_id = self.create_task("medium_generation")
         asyncio.create_task(self._run_medium_generation_task(task_id, request))
         return task_id
+
+    def start_content_generation_task(self, request: MediumBlogGenerateRequest) -> str:
+        """Start content generation (full blog via sections) with provider parity.
+
+        Internally reuses medium generator pipeline for now but tracked under
+        distinct task_type 'content_generation' and same polling contract.
+        """
+        task_id = self.create_task("content_generation")
+        asyncio.create_task(self._run_medium_generation_task(task_id, request))
+        return task_id
     
     async def _run_research_task(self, task_id: str, request: BlogResearchRequest):
         """Background task to run research and update status with progress messages."""

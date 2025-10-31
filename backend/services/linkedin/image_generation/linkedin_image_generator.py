@@ -16,7 +16,7 @@ from io import BytesIO
 
 # Import existing infrastructure
 from ...onboarding.api_key_manager import APIKeyManager
-from ...llm_providers.text_to_image_generation.gen_gemini_images import generate_gemini_image
+from ...llm_providers.main_image_generation import generate_image
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -270,41 +270,57 @@ class LinkedInImageGenerator:
     
     async def _generate_with_gemini(self, prompt: str, aspect_ratio: str) -> Dict[str, Any]:
         """
-        Generate image using existing Gemini infrastructure.
+        Generate image using unified image generation infrastructure.
         
         Args:
             prompt: Enhanced prompt for image generation
             aspect_ratio: Desired aspect ratio
             
         Returns:
-            Generation result from Gemini
+            Generation result from image generation provider
         """
         try:
-            # Use existing Gemini image generation function
-            # This integrates with the current infrastructure
-            result = generate_gemini_image(prompt, aspect_ratio=aspect_ratio)
+            # Map aspect ratio to dimensions (LinkedIn-optimized)
+            aspect_map = {
+                "1:1": (1024, 1024),
+                "16:9": (1920, 1080),
+                "4:3": (1366, 1024),
+                "9:16": (1080, 1920),  # Portrait for stories
+            }
+            width, height = aspect_map.get(aspect_ratio, (1024, 1024))
             
-            if result and os.path.exists(result):
-                # Read the generated image
-                with open(result, 'rb') as f:
-                    image_data = f.read()
-                
+            # Use unified image generation system (defaults to provider based on GPT_PROVIDER)
+            result = generate_image(
+                prompt=prompt,
+                options={
+                    "provider": "gemini",  # LinkedIn uses Gemini by default
+                    "model": self.model if hasattr(self, 'model') else None,
+                    "width": width,
+                    "height": height,
+                }
+            )
+            
+            if result and result.image_bytes:
                 return {
                     'success': True,
-                    'image_data': image_data,
-                    'image_path': result
+                    'image_data': result.image_bytes,
+                    'image_path': None,  # No file path, using bytes directly
+                    'width': result.width,
+                    'height': result.height,
+                    'provider': result.provider,
+                    'model': result.model,
                 }
             else:
                 return {
                     'success': False,
-                    'error': 'Gemini image generation returned no result'
+                    'error': 'Image generation returned no result'
                 }
                 
         except Exception as e:
-            logger.error(f"Error in Gemini image generation: {str(e)}")
+            logger.error(f"Error in image generation: {str(e)}")
             return {
                 'success': False,
-                'error': f"Gemini generation failed: {str(e)}"
+                'error': f"Image generation failed: {str(e)}"
             }
     
     async def _process_generated_image(

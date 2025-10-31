@@ -40,7 +40,7 @@ Return JSON format:
 }}"""
         
         try:
-            from services.llm_providers.gemini_provider import gemini_structured_json_response
+            from services.llm_providers.main_text_generation import llm_text_gen
             
             optimization_schema = {
                 "type": "object",
@@ -64,11 +64,10 @@ Return JSON format:
                 "propertyOrdering": ["outline"]
             }
             
-            optimized_data = gemini_structured_json_response(
+            optimized_data = llm_text_gen(
                 prompt=optimization_prompt,
-                schema=optimization_schema,
-                temperature=0.3,
-                max_tokens=6000  # Match main outline generator
+                json_struct=optimization_schema,
+                system_prompt=None
             )
             
             # Handle the new schema format with "outline" wrapper

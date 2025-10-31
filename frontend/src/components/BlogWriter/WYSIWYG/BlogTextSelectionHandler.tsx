@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { hallucinationDetectorService, HallucinationDetectionResponse } from '../../../services/hallucinationDetectorService';
 import TextSelectionMenu from './TextSelectionMenu';
 import useSmartTypingAssist from './SmartTypingAssist';
+import { debug } from '../../../utils/debug';
 
 interface BlogTextSelectionHandlerProps {
   contentRef: React.RefObject<HTMLDivElement | HTMLTextAreaElement>;
@@ -281,12 +282,15 @@ const useBlogTextSelectionHandler = (
         isGeneratingSuggestion={smartTypingAssist.isGeneratingSuggestion}
         allSuggestions={smartTypingAssist.allSuggestions}
         suggestionIndex={smartTypingAssist.suggestionIndex}
+        showContinueWritingPrompt={smartTypingAssist.showContinueWritingPrompt}
         onCheckFacts={handleCheckFacts}
         onCloseFactCheckResults={handleCloseFactCheckResults}
         onQuickEdit={handleQuickEdit}
         onAcceptSuggestion={smartTypingAssist.handleAcceptSuggestion}
         onRejectSuggestion={smartTypingAssist.handleRejectSuggestion}
         onNextSuggestion={smartTypingAssist.handleNextSuggestion}
+        onRequestSuggestion={smartTypingAssist.handleRequestSuggestion}
+        onDismissPrompt={smartTypingAssist.handleDismissPrompt}
       />
     )
   };

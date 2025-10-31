@@ -186,6 +186,8 @@ class BlogSEOMetadataRequest(BaseModel):
     title: Optional[str] = None
     keywords: List[str] = []
     research_data: Optional[Dict[str, Any]] = None
+    outline: Optional[List[Dict[str, Any]]] = None  # Add outline structure
+    seo_analysis: Optional[Dict[str, Any]] = None  # Add SEO analysis results
 
 
 class BlogSEOMetadataResponse(BaseModel):

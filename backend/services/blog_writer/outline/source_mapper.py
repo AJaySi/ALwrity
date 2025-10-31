@@ -559,14 +559,11 @@ Analyze the mapping and provide your recommendations.
             AI validation response
         """
         try:
-            from services.llm_providers.gemini_provider import gemini_text_response
+            from services.llm_providers.main_text_generation import llm_text_gen
             
-            response = gemini_text_response(
+            response = llm_text_gen(
                 prompt=prompt,
-                temperature=0.3,
-                top_p=0.9,
-                n=1,
-                max_tokens=2000,
+                json_struct=None,
                 system_prompt=None
             )
             

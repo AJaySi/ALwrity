@@ -24,27 +24,100 @@ The ALwrity Blog Writer is a powerful AI-driven content creation tool that helps
 
 ## How It Works
 
-### Simple 4-Step Process
+### Complete 6-Phase Workflow
 
-1. **Research Your Topic** - Enter your topic and keywords, then let AI research the latest information
-2. **Create an Outline** - AI generates a content outline that you can customize and refine
-3. **Write Section by Section** - Generate content for each section using AI, then edit as needed
-4. **Optimize and Publish** - Review SEO suggestions, make final edits, and publish your content
+ALwrity Blog Writer transforms your ideas into publish-ready content through a sophisticated, AI-powered workflow that ensures quality, accuracy, and SEO optimization at every step.
+
+```mermaid
+flowchart TD
+    A[Start: Keywords & Topic] --> B[Phase 1: Research & Strategy]
+    B --> C[Phase 2: Intelligent Outline]
+    C --> D[Phase 3: Content Generation]
+    D --> E[Phase 4: SEO Analysis]
+    E --> F[Phase 5: SEO Metadata]
+    F --> G[Phase 6: Publish & Distribute]
+    
+    B --> B1[Google Search Grounding]
+    B --> B2[Competitor Analysis]
+    B --> B3[Keyword Intelligence]
+    
+    C --> C1[AI Outline Generation]
+    C --> C2[Source Mapping]
+    C --> C3[Title Generation]
+    
+    D --> D1[Section-by-Section Writing]
+    D --> D2[Context Memory]
+    D --> D3[Flow Analysis]
+    
+    E --> E1[SEO Scoring]
+    E --> E2[Actionable Recommendations]
+    E --> E3[AI-Powered Refinement]
+    
+    F --> F1[Comprehensive Metadata]
+    F --> F2[Open Graph & Twitter Cards]
+    F --> F3[Schema.org Markup]
+    
+    G --> G1[Multi-Platform Publishing]
+    G --> G2[Scheduling]
+    G --> G3[Version Management]
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e8
+    style C fill:#fff3e0
+    style D fill:#fce4ec
+    style E fill:#f1f8e9
+    style F fill:#e0f2f1
+    style G fill:#f3e5f5
+```
+
+#### Phase 1: Research & Strategy
+AI-powered comprehensive research with Google Search grounding, competitor analysis, and keyword intelligence.
+
+#### Phase 2: Intelligent Outline
+AI-generated outlines with source mapping, grounding insights, and optimization recommendations.
+
+#### Phase 3: Content Generation
+Section-by-section content generation with SEO optimization, context memory, and engagement improvements.
+
+#### Phase 4: SEO Analysis
+Advanced SEO analysis with actionable recommendations and AI-powered optimization.
+
+#### Phase 5: SEO Metadata
+Optimized metadata generation for titles, descriptions, Open Graph, Twitter Cards, and structured data.
+
+#### Phase 6: Publish & Distribute
+Direct publishing to WordPress, Wix, Medium, and other platforms with scheduling capabilities.
+
+### Phase Features At a Glance
+
+| Phase | Key Features | Target Benefits | Best For |
+|-------|-------------|-----------------|----------|
+| **Phase 1: Research** | Google Search grounding, Competitor analysis, Keyword intelligence, Content angles | Comprehensive data, Time savings, Market insights | All content creators |
+| **Phase 2: Outline** | AI generation, Source mapping, Interactive refinement, Title suggestions | Structured content, SEO foundation, Editorial flexibility | Professional writers |
+| **Phase 3: Content** | Context-aware writing, Flow analysis, Source integration, Medium mode | High quality, Consistency, Citation accuracy | Content teams |
+| **Phase 4: SEO** | Multi-dimensional scoring, Actionable recommendations, AI refinement | Search visibility, Competitive edge, Performance tracking | SEO professionals |
+| **Phase 5: Metadata** | Comprehensive SEO tags, Social optimization, Schema markup, Multi-format export | Complete optimization, Rich snippets, Cross-platform readiness | Digital marketers |
+| **Phase 6: Publish** | Multi-platform support, Scheduling, Version management, Analytics integration | Efficiency, Strategic timing, Quality control | Solopreneurs & teams |
 
 ### What Happens Behind the Scenes
 
-- **Research Phase**: AI searches the web for current information and sources
-- **Outline Generation**: Creates a logical structure with headings and key points
-- **Content Writing**: Generates engaging, informative content for each section
-- **Quality Checks**: Runs fact-checking and SEO analysis automatically
-- **Publishing**: Formats content for your chosen platform
+The Blog Writer leverages sophisticated AI orchestration to ensure quality at every stage:
+
+- **Research Phase**: AI searches the web using Gemini's native Google Search integration for current, credible information and sources
+- **Outline Generation**: Creates logical structure with headings, key points, and source mapping using parallel processing
+- **Content Writing**: Generates engaging, context-aware content for each section with continuity tracking and flow analysis
+- **SEO Optimization**: Runs comprehensive analysis with parallel non-AI analyzers plus AI insights for actionable recommendations
+- **Metadata Generation**: Creates complete SEO metadata package with social media optimization in 2 AI calls maximum
+- **Publishing**: Formats content for your chosen platform with scheduling and version management
 
 ### User-Friendly Features
 
-- **Progress Tracking**: See real-time progress for research and writing tasks
-- **Visual Editor**: Edit content with an easy-to-use WYSIWYG interface
-- **Title Suggestions**: Choose from AI-generated title options
-- **SEO Integration**: Get SEO suggestions as you write
+- **Progress Tracking**: See real-time progress for all long-running tasks with detailed status updates
+- **Visual Editor**: Easy-to-use WYSIWYG interface with markdown support and live preview
+- **Title Suggestions**: Multiple AI-generated, SEO-scored title options to choose from
+- **SEO Integration**: Comprehensive analysis with one-click "Apply Recommendations" for instant optimization
+- **Context Memory**: Intelligent continuity tracking across sections for consistent, flowing content
+- **Source Attribution**: Automatic citation integration with research source mapping
 
 ## Content Types
 
@@ -130,30 +203,124 @@ The ALwrity Blog Writer is a powerful AI-driven content creation tool that helps
 
 ## Advanced Features
 
-### Content Templates
-- **Industry-specific**: Tailored templates
-- **Content Types**: Various formats
-- **Brand Guidelines**: Consistent styling
-- **Custom Templates**: Personalized formats
+### ✨ Assistive Writing & Quick Edits
+- **Continue Writing**: AI-powered contextual suggestions as you type
+- **Smart Typing Assist**: Automatic suggestions after 20+ words
+- **Quick Edit Options**: Improve, expand, shorten, professionalize, add transitions, add data
+- **Real-time Assistance**: Instant writing help without interrupting your flow
+- **Cost-Optimized**: First suggestion automatic, then manual "Continue Writing" for efficiency
+- **One-Click Improvements**: Select text and apply quick edits instantly
 
-### Collaboration Tools
-- **Team Editing**: Multiple contributors
-- **Version Control**: Content history
-- **Comments**: Feedback system
-- **Approval Workflow**: Review process
+### 🔍 Fact-Checking & Quality Assurance
+- **Hallucination Detection**: AI-powered verification of claims and facts
+- **Source Verification**: Automatic cross-checking against research sources
+- **Claim Analysis**: Detailed assessment of each verifiable statement
+- **Evidence Support**: Links to supporting or refuting sources
+- **Quality Scoring**: Overall confidence metrics for content accuracy
 
-### Automation
-- **Scheduled Publishing**: Automated posting
-- **Content Calendar**: Planning tools
-- **Social Sharing**: Auto-distribution
-- **Performance Monitoring**: Analytics tracking
+### 🖼️ Image Generation
+- **Section-Specific Images**: Generate images per blog section from the outline
+- **AI-Powered Prompts**: Auto-suggest images based on section content
+- **Advanced Options**: Stability AI, Hugging Face, Gemini
+- **Blog Optimization**: Sizes and formats for platform publishing
+- **Integrated Workflow**: Generate inside the outline editor
+
+### 📝 SEO Metadata Generation
+- **Comprehensive Package**: Title, description, tags, categories, hashtags in 2 AI calls
+- **Social Optimization**: Open Graph & Twitter Cards
+- **Structured Data**: Schema.org JSON-LD for rich snippets
+- **Multi-Format Export**: WordPress, Wix, HTML, JSON-LD
+- **Live Preview**: Google, Facebook, Twitter
+
+### Automation & Integration
+- **Multi-Platform Publishing**: One-click to WordPress, Wix, Medium
+- **Version Management**: Track changes and revisions
+- **Scheduled Publishing**: Set future publish dates
+- **Google Analytics Integration**: Track content performance
+- **Search Console**: Monitor search visibility
+
+## Who Benefits Most
+
+### For Technical Content Writers
+- **Research Automation**: Save hours of manual research with AI-powered Google Search grounding
+- **Source Attribution**: Automatic citation management and credibility scoring
+- **Quality Assurance**: Built-in fact-checking and hallucination detection
+- **Citation Integration**: Seamless source references throughout content
+
+### For Solopreneurs
+- **Time Efficiency**: Complete blog creation workflow in minutes instead of hours
+- **SEO Expertise**: Professional-grade optimization without hiring specialists
+- **Multi-Platform Publishing**: One workflow, multiple destinations (WordPress, Wix, Medium)
+- **Scheduling & Automation**: Strategic content distribution and timing optimization
+
+### For Digital Marketing & SEO Professionals
+- **Comprehensive SEO**: Multi-dimensional scoring with actionable insights
+- **Competitive Intelligence**: AI-powered competitor analysis and content gap identification
+- **Performance Tracking**: Integration with Google Analytics and Search Console
+- **ROI Optimization**: Data-driven content strategy and performance analytics
+
+## How to Use Advanced Features
+
+### Using Assistive Writing (Continue Writing)
+```mermaid
+flowchart LR
+    A[Start Typing] -->|20+ words| B[Auto Suggestion]
+    B --> C{Accept or Reject?}
+    C -->|Accept| D[Suggestion Inserted]
+    C -->|Reject| E[Dismiss Suggestion]
+    D --> F[Continue Writing Button]
+    E --> F
+    F -->|Click| G[Manual Suggestion]
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e8
+    style G fill:#fff3e0
+```
+
+**Quick Steps - Continue Writing:**
+1. Type 20+ words in any blog section
+2. First suggestion appears automatically below your text
+3. Click **"Accept"** to insert or **"Dismiss"** to skip
+4. Use **"✍️ Continue Writing"** for more suggestions
+5. Suggestions include source citations for fact-checking
+
+**Quick Steps - Text Selection Edits:**
+1. Select any text in your content
+2. Context menu appears automatically
+3. Choose quick edit: **Improve**, **Expand**, **Shorten**, **Professionalize**, **Add Transition**, or **Add Data**
+4. Text updates instantly with your selected improvement
+
+### Using Fact-Checking
+1. Select a paragraph or claim in your blog content
+2. Right-click to open context menu
+3. Click **"🔍 Fact Check"**
+4. Wait 15-30 seconds for analysis
+5. Review results: claims, confidence, supporting/refuting sources
+6. Click **"Apply Fix"** to insert source links
+
+### Using Image Generation
+1. In **Phase 2: Intelligent Outline**, click **"🖼️ Generate Image"** on any section
+2. Modal opens with auto-generated prompt (editable)
+3. Click **"Suggest Prompt"** for AI-optimized suggestions
+4. Optionally open **"Advanced Image Options"**
+5. Generate image (Stability AI, Hugging Face, or Gemini)
+6. Image auto-inserts into outline and metadata
+
+### Using SEO Metadata Generation
+1. In **Phase 5: SEO Metadata**, open the modal
+2. Click **"Generate All Metadata"** (max 2 AI calls)
+3. Review tabs: Preview, Core, Social, Structured Data
+4. Edit any field; previews update live
+5. Copy formats for WordPress, Wix, or custom
+6. Images from Phase 2 auto-fill Open Graph
 
 ## Getting Started
 
-1. **[Research Integration](research.md)** - Set up automated research
-2. **[SEO Analysis](seo-analysis.md)** - Configure SEO optimization
-3. **[Implementation Spec](implementation-spec.md)** - Technical details
-4. **[Best Practices](../../guides/best-practices.md)** - Optimization tips
+1. **[Research Integration](research.md)** - Comprehensive Phase 1 research capabilities
+2. **[Workflow Guide](workflow-guide.md)** - Step-by-step 6-phase workflow walkthrough
+3. **[SEO Analysis](seo-analysis.md)** - Phase 4 & 5 optimization strategies
+4. **[Implementation Spec](implementation-spec.md)** - Technical architecture and API details
+5. **[Best Practices](../../guides/best-practices.md)** - Advanced optimization tips
 
 ## Related Features
 

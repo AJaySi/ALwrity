@@ -71,12 +71,25 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
     return `${current}/${max}`;
   };
 
+  // Consistent text input styling for better contrast
+  const textInputSx = {
+    '& .MuiInputBase-input': {
+      color: '#202124'
+    },
+    '& .MuiInputLabel-root': {
+      color: '#5f6368'
+    },
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: '#dadce0'
+    }
+  } as const;
+
   const openGraph = metadata.open_graph || {};
   const twitterCard = metadata.twitter_card || {};
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: '#202124', fontWeight: 600 }}>
         <ShareIcon sx={{ color: 'primary.main' }} />
         Social Media Metadata
       </Typography>
@@ -84,11 +97,11 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
       <Grid container spacing={3}>
         {/* Open Graph Section */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
               <FacebookIcon sx={{ color: '#1877F2' }} />
               <LinkedInIcon sx={{ color: '#0077B5' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#202124' }}>
                 Open Graph Tags
               </Typography>
               <Chip label="Facebook & LinkedIn" size="small" color="primary" />
@@ -97,7 +110,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     OG Title
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -114,6 +127,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={openGraph.title || ''}
                   onChange={handleNestedFieldChange('open_graph', 'title')}
                   placeholder="Open Graph title (60 characters max)"
+                  sx={textInputSx}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -131,7 +145,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     OG Description
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -150,6 +164,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={openGraph.description || ''}
                   onChange={handleNestedFieldChange('open_graph', 'description')}
                   placeholder="Open Graph description (160 characters max)"
+                  sx={textInputSx}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -167,7 +182,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     OG Image URL
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -184,6 +199,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={openGraph.image || ''}
                   onChange={handleNestedFieldChange('open_graph', 'image')}
                   placeholder="https://example.com/image.jpg"
+                  sx={textInputSx}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -196,7 +212,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     OG URL
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -213,6 +229,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={openGraph.url || ''}
                   onChange={handleNestedFieldChange('open_graph', 'url')}
                   placeholder="https://example.com/blog-post"
+                  sx={textInputSx}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -224,18 +241,18 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
               </Grid>
             </Grid>
 
-            <Alert severity="info" sx={{ mt: 2 }}>
-              Open Graph tags are used by Facebook, LinkedIn, and other social platforms to display rich previews
-            </Alert>
+            <Typography variant="caption" sx={{ mt: 2, color: '#5f6368', display: 'block' }}>
+              Open Graph tags are used by Facebook, LinkedIn, and others to display rich previews.
+            </Typography>
           </Paper>
         </Grid>
 
         {/* Twitter Card Section */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
               <TwitterIcon sx={{ color: '#1DA1F2' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#202124' }}>
                 Twitter Card Tags
               </Typography>
               <Chip label="Twitter & X" size="small" color="info" />
@@ -244,7 +261,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Twitter Title
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -261,6 +278,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={twitterCard.title || ''}
                   onChange={handleNestedFieldChange('twitter_card', 'title')}
                   placeholder="Twitter card title (70 characters max)"
+                  sx={textInputSx}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -278,7 +296,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Twitter Description
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -297,6 +315,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={twitterCard.description || ''}
                   onChange={handleNestedFieldChange('twitter_card', 'description')}
                   placeholder="Twitter card description (200 characters max)"
+                  sx={textInputSx}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -314,7 +333,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Twitter Image URL
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -331,6 +350,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={twitterCard.image || ''}
                   onChange={handleNestedFieldChange('twitter_card', 'image')}
                   placeholder="https://example.com/twitter-image.jpg"
+                  sx={textInputSx}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -343,7 +363,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Twitter Site Handle
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -360,6 +380,7 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                   value={twitterCard.site || ''}
                   onChange={handleNestedFieldChange('twitter_card', 'site')}
                   placeholder="@yourwebsite"
+                  sx={textInputSx}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -371,16 +392,16 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
               </Grid>
             </Grid>
 
-            <Alert severity="info" sx={{ mt: 2 }}>
-              Twitter cards provide rich previews when your content is shared on Twitter/X
-            </Alert>
+            <Typography variant="caption" sx={{ mt: 2, color: '#5f6368', display: 'block' }}>
+              Twitter cards provide rich previews when your content is shared on Twitter/X.
+            </Typography>
           </Paper>
         </Grid>
 
         {/* Social Media Preview */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
               <ShareIcon />
               Social Media Preview
             </Typography>
@@ -388,22 +409,22 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
             <Grid container spacing={2}>
               {/* Facebook Preview */}
               <Grid item xs={12} md={6}>
-                <Card sx={{ border: '1px solid #e0e0e0' }}>
+                <Card sx={{ border: '1px solid #e0e0e0', boxShadow: 'none', background: '#ffffff' }}>
                   <CardContent sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                       <FacebookIcon sx={{ color: '#1877F2' }} />
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                         Facebook Preview
                       </Typography>
                     </Box>
-                    <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, bgcolor: '#f5f5f5' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                    <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2.5, bgcolor: '#fafafa' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#202124' }}>
                         {openGraph.title || 'Your Blog Title'}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
+                      <Typography variant="caption" sx={{ color: '#5f6368', mb: 1, display: 'block' }}>
                         {openGraph.url || 'yourwebsite.com'}
                       </Typography>
-                      <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.875rem', color: '#5f6368' }}>
                         {openGraph.description || 'Your meta description will appear here...'}
                       </Typography>
                     </Box>
@@ -413,22 +434,22 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
 
               {/* Twitter Preview */}
               <Grid item xs={12} md={6}>
-                <Card sx={{ border: '1px solid #e0e0e0' }}>
+                <Card sx={{ border: '1px solid #e0e0e0', boxShadow: 'none', background: '#ffffff' }}>
                   <CardContent sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                       <TwitterIcon sx={{ color: '#1DA1F2' }} />
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                         Twitter Preview
                       </Typography>
                     </Box>
-                    <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, bgcolor: '#f5f5f5' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                    <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2.5, bgcolor: '#fafafa' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#202124' }}>
                         {twitterCard.title || 'Your Blog Title'}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
+                      <Typography variant="caption" sx={{ color: '#5f6368', mb: 1, display: 'block' }}>
                         {twitterCard.site || '@yourwebsite'}
                       </Typography>
-                      <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.875rem', color: '#5f6368' }}>
                         {twitterCard.description || 'Your Twitter description will appear here...'}
                       </Typography>
                     </Box>

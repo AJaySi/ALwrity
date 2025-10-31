@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { blogWriterApi } from '../../services/blogWriterApi';
+import { debug } from '../../utils/debug';
 
 interface Props { 
   sectionId: string; 
@@ -17,36 +18,27 @@ export const ContinuityBadge: React.FC<Props> = ({ sectionId, refreshToken, disa
     
     // If we have flow analysis results, use them instead of API call
     if (flowAnalysisResults && flowAnalysisResults.sections) {
-      console.log('🔍 [ContinuityBadge] Flow analysis results available:', flowAnalysisResults);
-      console.log('🔍 [ContinuityBadge] Looking for section ID:', sectionId);
-      console.log('🔍 [ContinuityBadge] Available section IDs:', flowAnalysisResults.sections.map((s: any) => s.section_id));
-      
       const sectionAnalysis = flowAnalysisResults.sections.find((s: any) => s.section_id === sectionId);
       if (sectionAnalysis) {
-        console.log('🔍 [ContinuityBadge] Found section analysis:', sectionAnalysis);
         if (mounted) {
           setMetrics({
-            flow: sectionAnalysis.flow_score, // Already in decimal format (0.0-1.0)
+            flow: sectionAnalysis.flow_score,
             consistency: sectionAnalysis.consistency_score,
             progression: sectionAnalysis.progression_score
           });
         }
         return;
-      } else {
-        console.log('🔍 [ContinuityBadge] No matching section found for ID:', sectionId);
       }
     }
     
     // Fallback to API call if no flow analysis results
-    console.log('🔍 [ContinuityBadge] Fetching continuity for section:', sectionId);
+    debug.log('[ContinuityBadge] fetching', { sectionId });
     blogWriterApi.getContinuity(sectionId)
       .then(res => { 
-        console.log('🔍 [ContinuityBadge] Received continuity data:', res);
         if (mounted) setMetrics(res.continuity_metrics || null); 
       })
       .catch((error) => { 
-        console.log('🔍 [ContinuityBadge] Error fetching continuity:', error);
-        /* ignore */ 
+        debug.error('[ContinuityBadge] fetch error', error);
       });
     return () => { mounted = false; };
   }, [sectionId, refreshToken, flowAnalysisResults]);

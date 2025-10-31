@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BlogOutlineSection, SourceMappingStats, GroundingInsights, OptimizationResults, ResearchCoverage } from '../../services/blogWriterApi';
 import EnhancedOutlineInsights from './EnhancedOutlineInsights';
 import OutlineIntelligenceChips from './OutlineIntelligenceChips';
+import ImageGeneratorModal from '../ImageGen/ImageGeneratorModal';
 
 interface Props {
   outline: BlogOutlineSection[];
@@ -24,7 +25,10 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
 }) => {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [hoveredSection, setHoveredSection] = useState<string | null>(null);
   const [showAddSection, setShowAddSection] = useState(false);
+  const [imageModalState, setImageModalState] = useState<{ open: boolean; sectionId?: string }>(() => ({ open: false }));
+  const [sectionImages, setSectionImages] = useState<Record<string, string>>({});
   const [newSectionData, setNewSectionData] = useState({
     heading: '',
     subheadings: '',
@@ -94,6 +98,31 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
       border: '1px solid #e0e0e0',
       overflow: 'hidden'
     }}>
+      {imageModalState.open && (
+        <ImageGeneratorModal
+          isOpen={imageModalState.open}
+          onClose={() => setImageModalState({ open: false })}
+          defaultPrompt={(() => {
+            const sec = outline.find(s => s.id === imageModalState.sectionId);
+            return sec?.heading || '';
+          })()}
+          context={(() => {
+            const sec = outline.find(s => s.id === imageModalState.sectionId);
+            return {
+              title: sec?.heading,
+              section: sec,
+              outline,
+              research,
+              sectionId: imageModalState.sectionId
+            };
+          })()}
+          onImageGenerated={(imageBase64, sectionId) => {
+            if (sectionId) {
+              setSectionImages(prev => ({ ...prev, [sectionId]: imageBase64 }));
+            }
+          }}
+        />
+      )}
       {/* Header */}
       <div style={{ 
         padding: '20px', 
@@ -275,12 +304,15 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
             {/* Section Header */}
             <div style={{
               padding: '16px 20px',
-              backgroundColor: expandedSections.has(section.id) ? '#f8f9fa' : 'white',
+              backgroundColor: expandedSections.has(section.id) || hoveredSection === section.id ? '#f8f9fa' : 'white',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              transition: 'background-color 0.2s ease'
             }}
+            onMouseEnter={() => setHoveredSection(section.id)}
+            onMouseLeave={() => setHoveredSection(null)}
             onClick={() => toggleExpanded(section.id)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                 <div style={{
@@ -375,6 +407,24 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
                 >
                   ✏️
                 </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setImageModalState({ open: true, sectionId: section.id });
+                  }}
+                  title="Generate Image"
+                  style={{
+                    backgroundColor: '#1976d2',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    color: '#fff'
+                  }}
+                >
+                  🖼️ Generate Image
+                </button>
                 
                 <button
                   onClick={(e) => {
@@ -448,7 +498,7 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
             </div>
 
             {/* Expanded Section Content */}
-            {expandedSections.has(section.id) && (
+            {(expandedSections.has(section.id) || hoveredSection === section.id) && (
               <div style={{ padding: '0 20px 20px 52px', backgroundColor: '#fafafa' }}>
                 {/* Subheadings */}
                 {section.subheadings && section.subheadings.length > 0 && (
@@ -533,6 +583,53 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Generated Image Display */}
+                {sectionImages[section.id] && (
+                  <div style={{ marginTop: 16, marginBottom: 16 }}>
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#333' }}>
+                      🖼️ Generated Image
+                    </h4>
+                    <div style={{ 
+                      border: '1px solid #e0e0e0', 
+                      borderRadius: '8px', 
+                      overflow: 'hidden',
+                      maxWidth: '600px',
+                      backgroundColor: 'white'
+                    }}>
+                      <img 
+                        src={`data:image/png;base64,${sectionImages[section.id]}`} 
+                        alt={`Generated image for ${section.heading}`}
+                        style={{ 
+                          width: '100%', 
+                          height: 'auto',
+                          display: 'block'
+                        }} 
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setImageModalState({ open: true, sectionId: section.id });
+                    }}
+                    style={{
+                      backgroundColor: '#1976d2',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: 500
+                    }}
+                  >
+                    Generate Image for this section
+                  </button>
+                </div>
               </div>
             )}
           </div>

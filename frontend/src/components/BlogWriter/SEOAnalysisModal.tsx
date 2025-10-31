@@ -23,7 +23,9 @@ import {
   Grid,
   Paper,
   IconButton,
-  Tooltip
+  Tooltip,
+  Avatar,
+  CircularProgress
 } from '@mui/material';
 import { apiClient } from '../../api/client';
 import { 
@@ -32,11 +34,11 @@ import {
   Warning, 
   TrendingUp, 
   Search,
-  BarChart,
   Refresh,
   Close
 } from '@mui/icons-material';
 import { KeywordAnalysis, ReadabilityAnalysis, StructureAnalysis, Recommendations } from './SEO';
+import OverallScoreCard from './SEO/OverallScoreCard';
 
 interface SEOAnalysisResult {
   overall_score: number;
@@ -139,7 +141,27 @@ interface SEOAnalysisModalProps {
   blogContent: string;
   blogTitle?: string;
   researchData: any;
-  onApplyRecommendations?: (recommendations: any[]) => void;
+  onApplyRecommendations?: (recommendations: SEOAnalysisResult['actionable_recommendations']) => Promise<void>;
+  onAnalysisComplete?: (analysis: SEOAnalysisResult) => void;
+}
+
+// Simple content hashing helper (SHA-256)
+async function hashContent(text: string): Promise<string> {
+  try {
+    const enc = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest('SHA-256', enc);
+    const bytes = Array.from(new Uint8Array(digest));
+    return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    // Fallback hash
+    let h = 0;
+    for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+    return String(h);
+  }
+}
+
+function getSeoCacheKey(contentHash: string, title?: string) {
+  return `seo_cache:${contentHash}:${title || ''}`;
 }
 
 export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
@@ -148,7 +170,8 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
   blogContent,
   blogTitle,
   researchData,
-  onApplyRecommendations
+  onApplyRecommendations,
+  onAnalysisComplete
 }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<SEOAnalysisResult | null>(null);
@@ -156,18 +179,37 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
   const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState('recommendations');
+  const [contentHash, setContentHash] = useState<string>('');
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
-  // Debug logging
   console.log('SEOAnalysisModal render:', { isOpen, blogContent: blogContent?.length, researchData: !!researchData });
 
-  const runSEOAnalysis = useCallback(async () => {
+  const runSEOAnalysis = useCallback(async (forceRefresh = false) => {
     try {
       setIsAnalyzing(true);
       setError(null);
       setProgress(0);
       setProgressMessage('Starting SEO analysis...');
 
-      // Simulate progress updates (in real implementation, this would be SSE)
+      // Cache check
+      const hash = contentHash || (await hashContent(`${blogTitle || ''}\n${blogContent}`));
+      const cacheKey = getSeoCacheKey(hash, blogTitle);
+      if (!forceRefresh) {
+        const cached = typeof window !== 'undefined' ? window.localStorage.getItem(cacheKey) : null;
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setAnalysisResult(parsed as SEOAnalysisResult);
+          setIsAnalyzing(false);
+          // Notify parent that analysis is complete (from cache)
+          if (onAnalysisComplete) {
+            onAnalysisComplete(parsed as SEOAnalysisResult);
+          }
+          return;
+        }
+      }
+
+      // Simulated progress
       const progressStages = [
         { progress: 20, message: 'Extracting keywords from research data...' },
         { progress: 40, message: 'Analyzing content structure and readability...' },
@@ -182,7 +224,7 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      // Make API call to analyze blog content
+      // Backend call
       const response = await apiClient.post('/api/blog-writer/seo/analyze', {
         blog_content: blogContent,
         blog_title: blogTitle,
@@ -191,15 +233,8 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
 
       const result = response.data;
       console.log('🔍 Backend SEO Analysis Response:', result);
-      
-      // Convert API response to frontend format - fail fast if data is missing
-      if (!result.success) {
-        throw new Error(result.recommendations?.[0] || 'SEO analysis failed');
-      }
-
-      if (!result.overall_score && result.overall_score !== 0) {
-        throw new Error('Invalid SEO score received from API');
-      }
+      if (!result.success) throw new Error(result.recommendations?.[0] || 'SEO analysis failed');
+      if (!result.overall_score && result.overall_score !== 0) throw new Error('Invalid SEO score received from API');
 
       const convertedResult: SEOAnalysisResult = {
         overall_score: result.overall_score,
@@ -256,26 +291,50 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
       };
       
       setAnalysisResult(convertedResult);
+
+      // Save to cache
+      try {
+        const h = hash || (await hashContent(`${blogTitle || ''}\n${blogContent}`));
+        const key = getSeoCacheKey(h, blogTitle);
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(key, JSON.stringify(convertedResult));
+        }
+      } catch {}
+
       setIsAnalyzing(false);
+
+      // Notify parent that analysis is complete (fresh analysis)
+      if (onAnalysisComplete) {
+        onAnalysisComplete(convertedResult);
+      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
       setIsAnalyzing(false);
     }
-  }, [blogContent, blogTitle, researchData]);
+  }, [blogContent, blogTitle, researchData, contentHash, onAnalysisComplete]);
+
+  // Precompute hash when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      (async () => {
+        const h = await hashContent(`${blogTitle || ''}\n${blogContent}`);
+        setContentHash(h);
+      })();
+    }
+  }, [isOpen, blogContent, blogTitle]);
+
+  useEffect(() => {
+    if (isOpen && !analysisResult) {
+      runSEOAnalysis();
+    }
+  }, [isOpen, analysisResult, runSEOAnalysis]);
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'success.main';
     if (score >= 60) return 'warning.main';
     return 'error.main';
   };
-
-  const getScoreBadgeVariant = (score: number) => {
-    if (score >= 80) return 'success';
-    if (score >= 60) return 'warning';
-    return 'error';
-  };
-
 
   // Tooltip content for each metric
   const getMetricTooltip = (category: string) => {
@@ -326,12 +385,6 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
     return tooltips[category as keyof typeof tooltips] || tooltips.structure;
   };
 
-  useEffect(() => {
-    if (isOpen && !analysisResult) {
-      runSEOAnalysis();
-    }
-  }, [isOpen, analysisResult, runSEOAnalysis]);
-
   return (
     <Dialog 
       open={isOpen} 
@@ -342,14 +395,14 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
         sx: {
           maxHeight: '90vh',
           borderRadius: 3,
-          background: 'rgba(255, 255, 255, 0.98)',
+          backgroundColor: '#f8fafc',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(0,0,0,0.1)',
-          color: 'text.primary'
+          border: '1px solid rgba(148,163,184,0.25)',
+          color: '#0f172a'
         }
       }}
     >
-      <DialogContent sx={{ p: 0 }}>
+      <DialogContent sx={{ p: 0, color: '#0f172a' }}>
         <Box sx={{ p: 3, borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -358,9 +411,22 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
                 SEO Analysis Results
               </Typography>
             </Box>
-            <IconButton onClick={onClose} sx={{ color: 'text.secondary' }}>
-              <Close />
-            </IconButton>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Refresh />}
+                onClick={() => {
+                  setAnalysisResult(null);
+                  runSEOAnalysis(true);
+                }}
+              >
+                Refresh
+              </Button>
+              <IconButton onClick={onClose} sx={{ color: 'text.secondary' }}>
+                <Close />
+              </IconButton>
+            </Box>
           </Box>
           <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
             Comprehensive analysis of your blog content's SEO optimization
@@ -410,138 +476,14 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
         {analysisResult && (
           <Box sx={{ p: 3 }}>
             {/* Overall Score Section */}
-            <Card sx={{ mb: 3, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(0,0,0,0.1)' }}>
-              <CardHeader>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <BarChart sx={{ color: 'primary.main' }} />
-                  <Typography variant="h6" component="h3" sx={{ fontWeight: 600 }}>
-                    Overall SEO Score
-                  </Typography>
-                </Box>
-              </CardHeader>
-              <CardContent>
-                <Grid container spacing={3} alignItems="center">
-                  <Grid item xs={4}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography 
-                        variant="h2" 
-                        sx={{ 
-                          fontWeight: 'bold',
-                          color: getScoreColor(analysisResult.overall_score),
-                          background: 'linear-gradient(45deg, #4caf50, #8bc34a)',
-                          backgroundClip: 'text',
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent'
-                        }}
-                      >
-                        {analysisResult.overall_score}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                        Overall Score
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h3" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                        {analysisResult.analysis_summary.overall_grade}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                        Grade
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Chip 
-                        label={analysisResult.analysis_summary.status}
-                        color={getScoreBadgeVariant(analysisResult.overall_score)}
-                        variant="filled"
-                        sx={{ 
-                          fontWeight: 600,
-                          fontSize: '0.9rem',
-                          px: 2,
-                          py: 1
-                        }}
-                      />
-                    </Box>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-
-            {/* Category Scores */}
-            <Card sx={{ mb: 3, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(0,0,0,0.1)' }}>
-              <CardHeader>
-                <Typography variant="h6" component="h3" sx={{ fontWeight: 600 }}>
-                  Category Breakdown
-                </Typography>
-              </CardHeader>
-              <CardContent>
-                <Grid container spacing={2}>
-                  {Object.entries(analysisResult.category_scores).map(([category, score]) => {
-                    const tooltip = getMetricTooltip(category);
-                    return (
-                      <Grid item xs={6} md={4} key={category}>
-                        <Tooltip
-                          title={
-                            <Box sx={{ p: 1 }}>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                                {tooltip.title}
-                              </Typography>
-                              <Typography variant="body2" sx={{ mb: 1 }}>
-                                {tooltip.description}
-                              </Typography>
-                              <Typography variant="caption" sx={{ display: 'block', mb: 1, fontStyle: 'italic' }}>
-                                <strong>Methodology:</strong> {tooltip.methodology}
-                              </Typography>
-                              <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                                <strong>Score Meaning:</strong> {tooltip.score_meaning}
-                              </Typography>
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                <strong>Examples:</strong> {tooltip.examples}
-                              </Typography>
-                            </Box>
-                          }
-                          arrow
-                          placement="top"
-                        >
-                          <Paper 
-                            sx={{ 
-                              p: 2, 
-                              textAlign: 'center',
-                              background: 'rgba(255,255,255,0.8)',
-                              border: '1px solid rgba(0,0,0,0.1)',
-                              borderRadius: 2,
-                              cursor: 'help',
-                              '&:hover': {
-                                background: 'rgba(255,255,255,0.9)',
-                                transform: 'translateY(-2px)',
-                                transition: 'all 0.2s ease-in-out'
-                              }
-                            }}
-                          >
-                            <Typography 
-                              variant="h4" 
-                              sx={{ 
-                                fontWeight: 'bold',
-                                color: getScoreColor(score),
-                                mb: 1
-                              }}
-                            >
-                              {score}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: 'text.secondary', textTransform: 'capitalize' }}>
-                              {category.replace('_', ' ')}
-                            </Typography>
-                          </Paper>
-                        </Tooltip>
-                      </Grid>
-                    );
-                  })}
-                </Grid>
-              </CardContent>
-            </Card>
+            <OverallScoreCard
+              overallScore={analysisResult.overall_score}
+              overallGrade={analysisResult.analysis_summary.overall_grade}
+              statusLabel={analysisResult.analysis_summary.status}
+              categoryScores={analysisResult.category_scores}
+              getMetricTooltip={getMetricTooltip}
+              getScoreColor={getScoreColor}
+            />
 
             {/* Detailed Analysis Tabs */}
             <Card sx={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -603,43 +545,41 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
                   <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
                       <TrendingUp sx={{ color: 'primary.main' }} />
-                      <Typography variant="h6" component="h3" sx={{ fontWeight: 600 }}>
+                      <Typography variant="h6" component="h3" sx={{ fontWeight: 700, color: '#0f172a' }}>
                         AI-Powered Insights
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                      <Paper sx={{ p: 3, backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 3, boxShadow: '0 12px 28px rgba(15,23,42,0.08)', color: '#0f172a' }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
                           Content Summary
                         </Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        <Typography variant="body2" sx={{ color: '#475569', lineHeight: 1.6 }}>
                           {analysisResult.analysis_summary.ai_summary}
                         </Typography>
                       </Paper>
-                      
-                      <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                      <Paper sx={{ p: 3, backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 3, boxShadow: '0 12px 28px rgba(15,23,42,0.08)', color: '#0f172a' }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
                           Key Strengths
                         </Typography>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                           {analysisResult.analysis_summary.key_strengths.map((strength, index) => (
                             <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <CheckCircle sx={{ color: 'success.main', fontSize: 16 }} />
-                              <Typography variant="body2">{strength}</Typography>
+                              <Typography variant="body2" sx={{ color: '#1f2937' }}>{strength}</Typography>
                             </Box>
                           ))}
                         </Box>
                       </Paper>
-                      
-                      <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                      <Paper sx={{ p: 3, backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 3, boxShadow: '0 12px 28px rgba(15,23,42,0.08)', color: '#0f172a' }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
                           Areas for Improvement
                         </Typography>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                           {analysisResult.analysis_summary.key_weaknesses.map((weakness, index) => (
                             <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Warning sx={{ color: 'warning.main', fontSize: 16 }} />
-                              <Typography variant="body2">{weakness}</Typography>
+                              <Typography variant="body2" sx={{ color: '#1f2937' }}>{weakness}</Typography>
                             </Box>
                           ))}
                         </Box>
@@ -652,19 +592,35 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
 
             {/* Action Buttons */}
             <Box sx={{ p: 3, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              {applyError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  <Cancel sx={{ mr: 1 }} />
+                  {applyError}
+                </Alert>
+              )}
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                <Button variant="outlined" onClick={onClose} sx={{ color: 'text.secondary' }}>
+                <Button variant="outlined" onClick={onClose} sx={{ color: 'text.secondary' }} disabled={isApplying}>
                   Close
                 </Button>
                 <Button 
                   variant="contained"
-                  onClick={() => {
-                    if (onApplyRecommendations) {
-                      onApplyRecommendations(analysisResult.actionable_recommendations);
+                  onClick={async () => {
+                    if (!onApplyRecommendations) return;
+                    setApplyError(null);
+                    setIsApplying(true);
+                    try {
+                      await onApplyRecommendations(analysisResult.actionable_recommendations);
+                      // Increased delay to ensure sections are fully updated and phase stays in SEO
+                      setTimeout(() => {
+                        onClose();
+                      }, 200);
+                    } catch (applyErr: any) {
+                      setApplyError(applyErr?.message || 'Failed to apply recommendations.');
+                    } finally {
+                      setIsApplying(false);
                     }
-                    onClose();
                   }}
-                  disabled={!onApplyRecommendations}
+                  disabled={!onApplyRecommendations || isApplying}
                   sx={{
                     background: 'linear-gradient(45deg, #4caf50, #8bc34a)',
                     '&:hover': {
@@ -672,7 +628,14 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
                     }
                   }}
                 >
-                  Apply Recommendations
+                  {isApplying ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CircularProgress size={16} color="inherit" />
+                      Applying...
+                    </Box>
+                  ) : (
+                    'Apply Recommendations'
+                  )}
                 </Button>
               </Box>
             </Box>

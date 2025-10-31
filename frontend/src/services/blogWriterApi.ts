@@ -166,15 +166,53 @@ export interface BlogSectionResponse {
   continuity_metrics?: { flow?: number; consistency?: number; progression?: number };
 }
 
+export interface BlogSEOActionableRecommendation {
+  category: string;
+  priority: 'High' | 'Medium' | 'Low' | string;
+  recommendation: string;
+  impact: string;
+}
+
+export interface BlogSEOAnalysisSummary {
+  overall_grade: string;
+  status: string;
+  strongest_category: string;
+  weakest_category: string;
+  key_strengths: string[];
+  key_weaknesses: string[];
+  ai_summary: string;
+}
+
 export interface BlogSEOAnalyzeResponse {
   success: boolean;
-  seo_score: number;
-  density: Record<string, any>;
-  structure: Record<string, any>;
-  readability: Record<string, any>;
-  link_suggestions: any[];
-  image_alt_status: Record<string, any>;
-  recommendations: string[];
+  analysis_id?: string;
+  overall_score: number;
+  category_scores: Record<string, number>;
+  analysis_summary: BlogSEOAnalysisSummary;
+  actionable_recommendations: BlogSEOActionableRecommendation[];
+  detailed_analysis?: any;
+  visualization_data?: any;
+  generated_at?: string;
+  error?: string;
+}
+
+export interface BlogSEOApplyRecommendationsRequest {
+  title: string;
+  sections: Array<{ id: string; heading: string; content: string }>;
+  outline: BlogOutlineSection[];
+  research: Record<string, any>;
+  recommendations: BlogSEOActionableRecommendation[];
+  persona?: Record<string, any>;
+  tone?: string;
+  audience?: string;
+}
+
+export interface BlogSEOApplyRecommendationsResponse {
+  success: boolean;
+  title?: string;
+  sections: Array<{ id: string; heading: string; content: string; notes?: string[] }>;
+  applied?: Array<{ category: string; summary: string }>;
+  error?: string;
 }
 
 export interface BlogSEOMetadataResponse {
@@ -260,6 +298,11 @@ export const blogWriterApi = {
 
   async pollRewriteStatus(taskId: string): Promise<TaskStatusResponse> {
     const { data } = await pollingApiClient.get(`/api/blog/rewrite/status/${taskId}`);
+    return data;
+  },
+
+  async applySeoRecommendations(payload: BlogSEOApplyRecommendationsRequest): Promise<BlogSEOApplyRecommendationsResponse> {
+    const { data } = await apiClient.post('/api/blog/seo/apply-recommendations', payload);
     return data;
   },
 

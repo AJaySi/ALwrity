@@ -56,6 +56,28 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 }) => {
   const [showRawJson, setShowRawJson] = useState(false);
   
+  // Helpers for counters and consistent input styling
+  const getCharacterCountColor = (current: number, max: number) => {
+    if (current > max) return 'error';
+    if (current > max * 0.9) return 'warning';
+    return 'success';
+  };
+
+  const getCharacterCountText = (current: number, max: number) => {
+    if (current > max) return `${current}/${max} (Too long)`;
+    if (current > max * 0.9) return `${current}/${max} (Near limit)`;
+    return `${current}/${max}`;
+  };
+
+  const textInputSx = {
+    '& .MuiInputBase-input': {
+      color: '#202124'
+    },
+    '& .MuiInputLabel-root': {
+      color: '#5f6368'
+    }
+  } as const;
+  
   const handleTextFieldChange = (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
     onMetadataEdit(field, event.target.value);
   };
@@ -123,7 +145,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
       <Grid container spacing={3}>
         {/* Article Information */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <CodeIcon />
               Article Schema
@@ -149,6 +171,19 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={jsonLdSchema.headline || ''}
                   onChange={handleSchemaFieldChange('headline')}
                   placeholder="Article headline"
+                  sx={textInputSx}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Typography
+                          variant="caption"
+                          color={getCharacterCountColor((jsonLdSchema.headline || '').length, 110)}
+                        >
+                          {getCharacterCountText((jsonLdSchema.headline || '').length, 110)}
+                        </Typography>
+                      </InputAdornment>
+                    )
+                  }}
                 />
               </Grid>
 
@@ -173,6 +208,19 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={jsonLdSchema.description || ''}
                   onChange={handleSchemaFieldChange('description')}
                   placeholder="Article description"
+                  sx={textInputSx}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Typography
+                          variant="caption"
+                          color={getCharacterCountColor((jsonLdSchema.description || '').length, 200)}
+                        >
+                          {getCharacterCountText((jsonLdSchema.description || '').length, 200)}
+                        </Typography>
+                      </InputAdornment>
+                    )
+                  }}
                 />
               </Grid>
 
@@ -202,6 +250,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                       </InputAdornment>
                     )
                   }}
+                  sx={textInputSx}
                 />
               </Grid>
 
@@ -228,6 +277,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   InputProps={{
                     endAdornment: <InputAdornment position="end">words</InputAdornment>
                   }}
+                  sx={textInputSx}
                 />
               </Grid>
             </Grid>
@@ -236,7 +286,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Author Information */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <PersonIcon />
               Author Information
@@ -262,6 +312,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={author.name || ''}
                   onChange={handleAuthorFieldChange('name')}
                   placeholder="Author Name"
+                  sx={textInputSx}
                 />
               </Grid>
 
@@ -284,6 +335,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={author['@type'] || ''}
                   onChange={handleAuthorFieldChange('@type')}
                   placeholder="Person"
+                  sx={textInputSx}
                 />
               </Grid>
             </Grid>
@@ -292,7 +344,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Publisher Information */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <BusinessIcon />
               Publisher Information
@@ -318,6 +370,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={publisher.name || ''}
                   onChange={handlePublisherFieldChange('name')}
                   placeholder="Publisher Name"
+                  sx={textInputSx}
                 />
               </Grid>
 
@@ -340,6 +393,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={publisher.logo || ''}
                   onChange={handlePublisherFieldChange('logo')}
                   placeholder="https://example.com/logo.png"
+                  sx={textInputSx}
                 />
               </Grid>
             </Grid>
@@ -348,7 +402,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Publication Dates */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <CalendarIcon />
               Publication Dates
@@ -375,6 +429,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={jsonLdSchema.datePublished || ''}
                   onChange={handleSchemaFieldChange('datePublished')}
                   InputLabelProps={{ shrink: true }}
+                  sx={textInputSx}
                 />
               </Grid>
 
@@ -398,6 +453,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   value={jsonLdSchema.dateModified || ''}
                   onChange={handleSchemaFieldChange('dateModified')}
                   InputLabelProps={{ shrink: true }}
+                  sx={textInputSx}
                 />
               </Grid>
             </Grid>
@@ -406,7 +462,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Keywords */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <CodeIcon />
               Keywords & Categories
@@ -438,6 +494,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                   }}
                   placeholder="keyword1, keyword2, keyword3"
                   helperText="Separate keywords with commas"
+                  sx={textInputSx}
                 />
               </Grid>
             </Grid>
@@ -479,7 +536,9 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                     readOnly: true,
                     sx: {
                       fontFamily: 'monospace',
-                      fontSize: '0.875rem'
+                      fontSize: '0.875rem',
+                      background: '#0f172a',
+                      color: '#e2e8f0'
                     }
                   }}
                   sx={{

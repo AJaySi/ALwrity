@@ -15,7 +15,7 @@ from models.blog_models import (
     MediumGeneratedSection,
     ResearchSource,
 )
-from services.llm_providers.gemini_provider import gemini_structured_json_response
+from services.llm_providers.main_text_generation import llm_text_gen
 from services.cache.persistent_content_cache import persistent_content_cache
 
 
@@ -176,11 +176,9 @@ class MediumBlogGenerator:
             f"Sections to write:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )
 
-        ai_resp = gemini_structured_json_response(
+        ai_resp = llm_text_gen(
             prompt=prompt,
-            schema=schema,
-            temperature=0.2,
-            max_tokens=8192,
+            json_struct=schema,
             system_prompt=system,
         )
 

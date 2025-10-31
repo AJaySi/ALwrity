@@ -44,7 +44,7 @@ class SectionEnhancer:
         """
         
         try:
-            from services.llm_providers.gemini_provider import gemini_structured_json_response
+            from services.llm_providers.main_text_generation import llm_text_gen
             
             enhancement_schema = {
                 "type": "object",
@@ -58,11 +58,10 @@ class SectionEnhancer:
                 "required": ["heading", "subheadings", "key_points", "target_words", "keywords"]
             }
             
-            enhanced_data = gemini_structured_json_response(
+            enhanced_data = llm_text_gen(
                 prompt=enhancement_prompt,
-                schema=enhancement_schema,
-                temperature=0.4,
-                max_tokens=1000
+                json_struct=enhancement_schema,
+                system_prompt=None
             )
             
             if isinstance(enhanced_data, dict) and 'error' not in enhanced_data:

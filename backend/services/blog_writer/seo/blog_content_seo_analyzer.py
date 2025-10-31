@@ -10,13 +10,13 @@ import re
 import textstat
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from loguru import logger
+from utils.logger_utils import get_service_logger
 
 from services.seo_analyzer import (
     ContentAnalyzer, KeywordAnalyzer, 
     URLStructureAnalyzer, AIInsightGenerator
 )
-from services.llm_providers.gemini_provider import gemini_structured_json_response
+from services.llm_providers.main_text_generation import llm_text_gen
 
 
 class BlogContentSEOAnalyzer:
@@ -24,11 +24,13 @@ class BlogContentSEOAnalyzer:
     
     def __init__(self):
         """Initialize the blog content SEO analyzer"""
+        # Service-specific logger (no global reconfiguration)
+        global logger
+        logger = get_service_logger("blog_content_seo_analyzer")
         self.content_analyzer = ContentAnalyzer()
         self.keyword_analyzer = KeywordAnalyzer()
         self.url_analyzer = URLStructureAnalyzer()
         self.ai_insights = AIInsightGenerator()
-        self.gemini_provider = gemini_structured_json_response
         
         logger.info("BlogContentSEOAnalyzer initialized")
     
@@ -598,7 +600,7 @@ class BlogContentSEOAnalyzer:
         return recommendations
     
     async def _run_ai_analysis(self, blog_content: str, keywords_data: Dict[str, Any], non_ai_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Run single AI analysis for structured insights"""
+        """Run single AI analysis for structured insights (provider-agnostic)"""
         try:
             # Prepare context for AI analysis
             context = {
@@ -610,7 +612,6 @@ class BlogContentSEOAnalyzer:
             # Create AI prompt for structured analysis
             prompt = self._create_ai_analysis_prompt(context)
             
-            # Get structured response from Gemini
             schema = {
                 "type": "object",
                 "properties": {
@@ -653,18 +654,17 @@ class BlogContentSEOAnalyzer:
                 }
             }
             
-            ai_response = self.gemini_provider(
+            # Provider-agnostic structured response respecting GPT_PROVIDER
+            ai_response = llm_text_gen(
                 prompt=prompt,
-                schema=schema,
-                temperature=0.2,
-                max_tokens=8192
+                json_struct=schema,
+                system_prompt=None
             )
             
             return ai_response
             
         except Exception as e:
             logger.error(f"AI analysis failed: {e}")
-            # Fail fast - don't return mock data
             raise e
     
     def _create_ai_analysis_prompt(self, context: Dict[str, Any]) -> str:

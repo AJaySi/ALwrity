@@ -7,6 +7,7 @@ content creation, SEO analysis, and publishing.
 
 from fastapi import APIRouter, HTTPException
 from typing import Any, Dict, List
+from pydantic import BaseModel, Field
 from loguru import logger
 
 from models.blog_models import (
@@ -29,6 +30,7 @@ from models.blog_models import (
     HallucinationCheckResponse,
 )
 from services.blog_writer.blog_service import BlogWriterService
+from services.blog_writer.seo.blog_seo_recommendation_applier import BlogSEORecommendationApplier
 from .task_manager import task_manager
 from .cache_manager import cache_manager
 from models.blog_models import MediumBlogGenerateRequest
@@ -37,6 +39,44 @@ from models.blog_models import MediumBlogGenerateRequest
 router = APIRouter(prefix="/api/blog", tags=["AI Blog Writer"])
 
 service = BlogWriterService()
+recommendation_applier = BlogSEORecommendationApplier()
+# ---------------------------
+# SEO Recommendation Endpoints
+# ---------------------------
+
+
+class RecommendationItem(BaseModel):
+    category: str = Field(..., description="Recommendation category, e.g. Structure")
+    priority: str = Field(..., description="Priority level: High | Medium | Low")
+    recommendation: str = Field(..., description="Action to perform")
+    impact: str = Field(..., description="Expected impact or rationale")
+
+
+class SEOApplyRecommendationsRequest(BaseModel):
+    title: str = Field(..., description="Current blog title")
+    sections: List[Dict[str, Any]] = Field(..., description="Array of sections with id, heading, content")
+    outline: List[Dict[str, Any]] = Field(default_factory=list, description="Outline structure for context")
+    research: Dict[str, Any] = Field(default_factory=dict, description="Research data used for the blog")
+    recommendations: List[RecommendationItem] = Field(..., description="Actionable recommendations to apply")
+    persona: Dict[str, Any] = Field(default_factory=dict, description="Persona settings if available")
+    tone: str | None = Field(default=None, description="Desired tone override")
+    audience: str | None = Field(default=None, description="Target audience override")
+
+
+@router.post("/seo/apply-recommendations")
+async def apply_seo_recommendations(request: SEOApplyRecommendationsRequest) -> Dict[str, Any]:
+    """Apply actionable SEO recommendations and return updated content."""
+    try:
+        result = await recommendation_applier.apply_recommendations(request.dict())
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to apply recommendations"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to apply SEO recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @router.get("/health")
@@ -92,7 +132,7 @@ async def start_outline_generation(request: BlogOutlineRequest) -> Dict[str, Any
 async def get_outline_status(task_id: str) -> Dict[str, Any]:
     """Get the status of an outline generation operation."""
     try:
-        status = task_manager.get_task_status(task_id)
+        status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
         
@@ -161,6 +201,50 @@ async def generate_section(request: BlogSectionRequest) -> BlogSectionResponse:
         return await service.generate_section(request)
     except Exception as e:
         logger.error(f"Failed to generate section: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/content/start")
+async def start_content_generation(request: Dict[str, Any]) -> Dict[str, Any]:
+    """Start full content generation and return a task id for polling.
+
+    Accepts a payload compatible with MediumBlogGenerateRequest to minimize duplication.
+    """
+    try:
+        # Map dict to MediumBlogGenerateRequest for reuse
+        from models.blog_models import MediumBlogGenerateRequest, MediumSectionOutline, PersonaInfo
+        sections = [MediumSectionOutline(**s) for s in request.get("sections", [])]
+        persona = None
+        if request.get("persona"):
+            persona = PersonaInfo(**request.get("persona"))
+        req = MediumBlogGenerateRequest(
+            title=request.get("title", "Untitled Blog"),
+            sections=sections,
+            persona=persona,
+            tone=request.get("tone"),
+            audience=request.get("audience"),
+            globalTargetWords=request.get("globalTargetWords", 1000),
+            researchKeywords=request.get("researchKeywords") or request.get("keywords"),
+        )
+        task_id = task_manager.start_content_generation_task(req)
+        return {"task_id": task_id, "status": "started"}
+    except Exception as e:
+        logger.error(f"Failed to start content generation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/content/status/{task_id}")
+async def content_generation_status(task_id: str) -> Dict[str, Any]:
+    """Poll status for content generation task."""
+    try:
+        status = await task_manager.get_task_status(task_id)
+        if status is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return status
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get content generation status for {task_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -342,7 +426,7 @@ async def start_medium_generation(request: MediumBlogGenerateRequest):
 async def medium_generation_status(task_id: str):
     """Poll status for medium blog generation task."""
     try:
-        status = task_manager.get_task_status(task_id)
+        status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
         return status
@@ -366,7 +450,7 @@ async def start_blog_rewrite(request: Dict[str, Any]) -> Dict[str, Any]:
 async def rewrite_status(task_id: str):
     """Poll status for blog rewrite task."""
     try:
-        status = service.task_manager.get_task_status(task_id)
+        status = await service.task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
         return status

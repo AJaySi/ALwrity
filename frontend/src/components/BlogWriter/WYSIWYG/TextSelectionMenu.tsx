@@ -34,12 +34,15 @@ interface TextSelectionMenuProps {
     }>;
   }>;
   suggestionIndex: number;
+  showContinueWritingPrompt: boolean;
   onCheckFacts: (text: string) => void;
   onCloseFactCheckResults: () => void;
   onQuickEdit: (editType: string, selectedText: string) => void;
   onAcceptSuggestion: () => void;
   onRejectSuggestion: () => void;
   onNextSuggestion: () => void;
+  onRequestSuggestion: () => void;
+  onDismissPrompt: () => void;
 }
 
 const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
@@ -51,12 +54,15 @@ const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   isGeneratingSuggestion,
   allSuggestions,
   suggestionIndex,
+  showContinueWritingPrompt,
   onCheckFacts,
   onCloseFactCheckResults,
   onQuickEdit,
   onAcceptSuggestion,
   onRejectSuggestion,
-  onNextSuggestion
+  onNextSuggestion,
+  onRequestSuggestion,
+  onDismissPrompt
 }) => {
   return (
     <>
@@ -387,8 +393,10 @@ const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
             boxShadow: '0 12px 28px rgba(0, 0, 0, 0.25)',
             backdropFilter: 'blur(12px)',
             zIndex: 10002,
-            maxWidth: '400px',
+            maxWidth: '420px',
             minWidth: '320px',
+            maxHeight: '350px',
+            overflow: 'auto',
             color: 'white'
           }}
         >
@@ -536,6 +544,93 @@ const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
             <div style={{ fontSize: '11px', opacity: 0.8 }}>
               AI is crafting helpful content
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Continue Writing Prompt */}
+      {showContinueWritingPrompt && !isGeneratingSuggestion && !smartSuggestion && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          background: 'rgba(59, 130, 246, 0.95)',
+          color: 'white',
+          padding: '16px 20px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 10001,
+          minWidth: '280px',
+          maxWidth: '360px'
+        }}>
+          <div style={{
+            fontSize: '13px',
+            fontWeight: '600',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            ✨ AI Writing Assistant
+          </div>
+          <div style={{
+            fontSize: '12px',
+            opacity: 0.9,
+            marginBottom: '16px',
+            lineHeight: '1.5'
+          }}>
+            ALwrity can contextually continue writing your blog. Click below to get AI-powered suggestions.
+          </div>
+          <div style={{
+            display: 'flex',
+            gap: '8px'
+          }}>
+            <button
+              onClick={onRequestSuggestion}
+              style={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                color: 'white',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                flex: 1
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+              }}
+            >
+              ✍️ Continue Writing
+            </button>
+            <button
+              onClick={onDismissPrompt}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                color: 'white',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+              }}
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useCopilotTrigger } from '../../hooks/useCopilotTrigger';
+import BlogWriterPhasesSection from './BlogWriterPhasesSection';
 
 interface BlogWriterLandingProps {
   onStartWriting: () => void;
@@ -198,7 +199,7 @@ const BlogWriterLanding: React.FC<BlogWriterLandingProps> = ({ onStartWriting })
         </div>
       </div>
 
-      {/* SuperPowers Modal */}
+      {/* SuperPowers Modal with 6 Phases */}
       {showSuperPowers && (
         <div style={{
           position: 'fixed',
@@ -206,20 +207,18 @@ const BlogWriterLanding: React.FC<BlogWriterLandingProps> = ({ onStartWriting })
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          backgroundColor: 'rgba(0, 0, 0, 0.95)',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'center',
-          zIndex: 1000
+          zIndex: 1000,
+          overflowY: 'auto'
         }}>
           <div style={{
             backgroundColor: 'white',
-            borderRadius: '20px',
-            padding: '40px',
-            maxWidth: '900px',
-            width: '90%',
-            maxHeight: '80vh',
-            overflow: 'auto',
+            width: '100%',
+            maxWidth: '1400px',
+            minHeight: '100%',
             boxShadow: '0 25px 50px rgba(0, 0, 0, 0.3)'
           }}>
             {/* Modal Header */}
@@ -271,69 +270,82 @@ const BlogWriterLanding: React.FC<BlogWriterLandingProps> = ({ onStartWriting })
               </button>
             </div>
 
-            {/* SuperPowers Grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-              gap: '24px'
-            }}>
-              {superPowers.map((power, index) => (
-                <div
-                  key={index}
-                  style={{
-                    padding: '24px',
-                    borderRadius: '16px',
-                    border: '1px solid #e0e0e0',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.1)';
-                    e.currentTarget.style.borderColor = '#1976d2';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                    e.currentTarget.style.borderColor = '#e0e0e0';
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    marginBottom: '12px'
-                  }}>
+            {/* 6 Phases Section */}
+            <BlogWriterPhasesSection />
+            
+            {/* Quick SuperPowers Grid */}
+            <div style={{ padding: '40px', borderTop: '1px solid #f0f0f0' }}>
+              <h2 style={{
+                margin: '0 0 20px 0',
+                fontSize: '1.5rem',
+                textAlign: 'center',
+                color: '#333'
+              }}>
+                Quick Feature Overview
+              </h2>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                gap: '20px'
+              }}>
+                {superPowers.map((power, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      padding: '20px',
+                      borderRadius: '12px',
+                      border: '1px solid #e0e0e0',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-4px)';
+                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.1)';
+                      e.currentTarget.style.borderColor = '#1976d2';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
+                      e.currentTarget.style.borderColor = '#e0e0e0';
+                    }}
+                  >
                     <div style={{
-                      fontSize: '2rem',
-                      width: '60px',
-                      height: '60px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      background: 'linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%)',
-                      borderRadius: '12px'
+                      gap: '16px',
+                      marginBottom: '12px'
                     }}>
-                      {power.icon}
+                      <div style={{
+                        fontSize: '2rem',
+                        width: '60px',
+                        height: '60px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%)',
+                        borderRadius: '12px'
+                      }}>
+                        {power.icon}
+                      </div>
+                      <h3 style={{
+                        margin: 0,
+                        fontSize: '1.1rem',
+                        color: '#333',
+                        fontWeight: '600'
+                      }}>
+                        {power.title}
+                      </h3>
                     </div>
-                    <h3 style={{
+                    <p style={{
                       margin: 0,
-                      fontSize: '1.3rem',
-                      color: '#333',
-                      fontWeight: '600'
+                      color: '#666',
+                      lineHeight: '1.6',
+                      fontSize: '0.9rem'
                     }}>
-                      {power.title}
-                    </h3>
+                      {power.description}
+                    </p>
                   </div>
-                  <p style={{
-                    margin: 0,
-                    color: '#666',
-                    lineHeight: '1.6',
-                    fontSize: '1rem'
-                  }}>
-                    {power.description}
-                  </p>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Modal Footer */}

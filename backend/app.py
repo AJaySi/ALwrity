@@ -42,6 +42,7 @@ from routers.linkedin import router as linkedin_router
 # Import LinkedIn image generation router
 from api.linkedin_image_generation import router as linkedin_image_router
 from api.brainstorm import router as brainstorm_router
+from api.images import router as images_router
 
 # Import hallucination detector router
 from api.hallucination_detector import router as hallucination_detector_router
@@ -279,6 +280,7 @@ async def batch_analyze_urls_endpoint(urls: list[str]):
 # Include platform analytics router
 from routers.platform_analytics import router as platform_analytics_router
 app.include_router(platform_analytics_router)
+app.include_router(images_router)
 
 # Setup frontend serving using modular utilities
 frontend_serving.setup_frontend_serving()

@@ -8,36 +8,36 @@ The ALwrity Blog Writer follows a sophisticated 6-phase workflow designed to cre
 
 ```mermaid
 flowchart TD
-    A[Start: Keywords & Topic] --> B[Phase 1: Research & Discovery]
-    B --> C[Phase 2: Outline Generation]
+    A[Start: Keywords & Topic] --> B[Phase 1: Research & Strategy]
+    B --> C[Phase 2: Intelligent Outline]
     C --> D[Phase 3: Content Generation]
     D --> E[Phase 4: SEO Analysis]
-    E --> F[Phase 5: Quality Assurance]
-    F --> G[Phase 6: Publishing]
+    E --> F[Phase 5: SEO Metadata]
+    F --> G[Phase 6: Publish & Distribute]
     
-    B --> B1[Web Search & Source Collection]
+    B --> B1[Google Search Grounding]
     B --> B2[Competitor Analysis]
     B --> B3[Research Caching]
     
-    C --> C1[Content Structure Planning]
-    C --> C2[Section Definition]
-    C --> C3[Source Mapping]
+    C --> C1[AI Outline Generation]
+    C --> C2[Source Mapping]
+    C --> C3[Title Generation]
     
     D --> D1[Section-by-Section Writing]
-    D --> D2[Citation Integration]
-    D --> D3[Continuity Tracking]
+    D --> D2[Context Memory]
+    D --> D3[Flow Analysis]
     
     E --> E1[SEO Scoring]
-    E --> E2[Keyword Analysis]
-    E --> E3[Readability Assessment]
+    E --> E2[Actionable Recommendations]
+    E --> E3[AI-Powered Refinement]
     
-    F --> F1[Fact Verification]
-    F --> F2[Hallucination Detection]
-    F --> F3[Quality Scoring]
+    F --> F1[Comprehensive Metadata]
+    F --> F2[Open Graph & Twitter Cards]
+    F --> F3[Schema.org Markup]
     
-    G --> G1[Platform Integration]
-    G --> G2[Metadata Generation]
-    G --> G3[Content Publishing]
+    G --> G1[Multi-Platform Publishing]
+    G --> G2[Scheduling]
+    G --> G3[Version Management]
     
     style A fill:#e3f2fd
     style B fill:#e8f5e8
@@ -58,40 +58,40 @@ gantt
     dateFormat X
     axisFormat %M:%S
     
-    section Research
+    section Phase 1 Research
     Keyword Analysis    :0, 10
-    Web Search         :10, 30
-    Source Collection  :20, 40
-    Competitor Analysis :30, 50
-    Research Caching   :40, 60
+    Google Search       :10, 40
+    Source Extraction   :30, 50
+    Competitor Analysis :40, 60
+    Research Caching    :50, 60
     
-    section Outline
-    Structure Planning :60, 70
-    Section Definition :70, 80
-    Source Mapping     :80, 90
-    Title Generation   :90, 100
+    section Phase 2 Outline
+    AI Structure Planning :60, 80
+    Section Definition  :75, 90
+    Source Mapping      :85, 100
+    Title Generation    :95, 110
     
-    section Content
-    Section 1 Writing  :100, 120
-    Section 2 Writing  :120, 140
-    Section 3 Writing  :140, 160
-    Citation Integration :160, 170
+    section Phase 3 Content
+    Section 1 Writing   :110, 140
+    Section 2 Writing   :130, 160
+    Section 3 Writing   :150, 180
+    Context Continuity  :170, 200
     
-    section SEO
-    Structure Analysis :170, 180
-    Keyword Analysis   :180, 190
-    Readability Check  :190, 200
-    SEO Scoring        :200, 210
+    section Phase 4 SEO
+    Parallel Analysis   :200, 215
+    AI Scoring          :210, 230
+    Recommendations     :220, 235
+    Apply Refinement    :230, 250
     
-    section Quality
-    Fact Verification  :210, 220
-    Hallucination Check :220, 230
-    Quality Scoring    :230, 240
+    section Phase 5 Metadata
+    Core Metadata       :250, 265
+    Social Tags         :260, 275
+    Schema Markup       :270, 285
     
-    section Publishing
-    Platform Integration :240, 250
-    Metadata Generation :250, 260
-    Content Publishing  :260, 270
+    section Phase 6 Publish
+    Platform Setup      :285, 295
+    Content Publishing  :290, 310
+    Verification        :305, 320
 ```
 
 ## 📋 Prerequisites
@@ -104,7 +104,7 @@ Before starting, ensure you have:
 - **Content Goals**: Defined objectives for your blog post
 - **Word Count Target**: Desired length (typically 1000-3000 words)
 
-## 🔍 Phase 1: Research & Discovery
+## 🔍 Phase 1: Research & Strategy
 
 ### Step 1: Initiate Research
 
@@ -170,7 +170,7 @@ Before starting, ensure you have:
 - ✅ Relevant to your target audience
 - ✅ Covers multiple aspects of your topic
 
-## 📝 Phase 2: Outline Generation
+## 📝 Phase 2: Intelligent Outline
 
 ### Step 1: Generate Outline
 
@@ -234,6 +234,31 @@ Before starting, ensure you have:
 - **Rebalance Word Count**: Adjust section lengths
 - **Add Sections**: Include missing content areas
 - **Improve SEO**: Better keyword distribution
+
+### 🖼️ Generate Images for Sections (Optional)
+
+While in Phase 2, you can generate images for your outline sections.
+
+**How It Works:**
+1. Click the **"🖼️ Generate Image"** button on any section in the outline
+2. Image modal opens with auto-generated prompt based on section heading
+3. Click **"Suggest Prompt"** for AI-optimized suggestions
+4. Optionally open **"Advanced Image Options"** for custom settings
+5. Choose provider: Stability AI, Hugging Face, or Gemini
+6. Generate and images auto-insert into outline and metadata
+
+**Best Practices:**
+- Generate images during outline review
+- Use specific, descriptive prompts
+- Match image style to your brand
+- Generate multiple variations if needed
+
+**Image Features:**
+- Provider selection (Stability AI, Hugging Face, Gemini)
+- Aspect ratio options (1:1, 16:9, 4:3)
+- Style customization
+- Auto-prompt suggestions
+- Platform-optimized outputs
 
 ## ✍️ Phase 3: Content Generation
 
@@ -311,7 +336,71 @@ Repeat the process for each outline section:
 - Use continuity metrics to ensure flow
 - Adjust tone and style as needed
 
-## 🔍 Phase 4: SEO Analysis & Optimization
+### Advanced Features in Phase 3
+
+#### ✨ Assistive Writing (Continue Writing)
+As you write in any blog section, the AI provides contextual suggestions to help you continue.
+
+**How It Works:**
+1. Type 20+ words in any section
+2. First suggestion appears automatically below your cursor
+3. Click **"Accept"** to insert or **"Dismiss"** to skip
+4. Click **"✍️ Continue Writing"** to request more suggestions
+5. Suggestions include source citations when available
+
+**Benefits:**
+- Real-time writing assistance
+- Context-aware continuations
+- Source-backed suggestions
+- Cost-optimized (first auto, then manual)
+
+#### Quick Edit Options
+Select text to access quick edit options in the context menu:
+
+**Available Quick Edits:**
+- **✏️ Improve**: Enhance readability and engagement
+- **➕ Add Transition**: Insert transitional phrases (Furthermore, Additionally, Moreover)
+- **📏 Shorten**: Condense while maintaining meaning
+- **📝 Expand**: Add explanatory content and insights
+- **💼 Professionalize**: Make more formal (convert contractions, improve tone)
+- **📊 Add Data**: Insert statistical backing statements
+
+**How It Works:**
+1. Select any text in your blog content
+2. Context menu appears near your cursor
+3. Choose a quick edit option
+4. Text updates instantly
+
+**Best For:**
+- Improving flow between sentences
+- Adjusting tone and formality
+- Adding supporting statements
+- Professionalizing casual language
+
+#### 🔍 Fact-Checking
+Verify claims and facts in your content with AI-powered checking.
+
+**How It Works:**
+1. Select any paragraph or claim text
+2. Right-click or use the context menu
+3. Click **"🔍 Fact Check"**
+4. Wait 15-30 seconds for analysis
+5. Review detailed results with supporting/refuting sources
+6. Click **"Apply Fix"** to insert source links if needed
+
+**What Gets Analyzed:**
+- Verifiable claims and statements
+- Statistical data and percentages
+- Dates, names, and events
+- Industry-specific facts
+
+**Results Include:**
+- Claim-by-claim confidence scores
+- Supporting evidence URLs
+- Refuting sources (if applicable)
+- Overall factual accuracy score
+
+## 🔍 Phase 4: SEO Analysis
 
 ### Step 1: Perform SEO Analysis
 
@@ -356,7 +445,21 @@ Repeat the process for each outline section:
 - ✅ Proper heading structure
 - ✅ Actionable recommendations
 
-### Step 3: Generate SEO Metadata
+### Step 3: Apply SEO Recommendations (Optional)
+
+**Endpoint**: `POST /api/blog/seo/apply-recommendations`
+
+Use the "Apply Recommendations" button to automatically improve your content based on SEO analysis. The AI will:
+- Optimize keyword density and placement
+- Improve content structure and headings
+- Enhance readability and flow
+- Maintain your original voice and intent
+
+**Expected Duration**: 20-40 seconds
+
+## 📝 Phase 5: SEO Metadata
+
+### Step 1: Generate Core Metadata
 
 **Endpoint**: `POST /api/blog/seo/metadata`
 
@@ -373,66 +476,50 @@ Repeat the process for each outline section:
 }
 ```
 
-**Generated Metadata**:
-- **SEO Title**: Optimized for search engines
-- **Meta Description**: Compelling 155-character description
-- **URL Slug**: SEO-friendly URL structure
-- **Tags & Categories**: Relevant content classification
-- **Social Media Tags**: Open Graph and Twitter Card data
-- **JSON-LD Schema**: Structured data for search engines
+**What Happens** (First AI Call):
+1. **SEO Title**: Optimized for search engines (50-60 chars)
+2. **Meta Description**: Compelling description with CTA (150-160 chars)
+3. **URL Slug**: Clean, hyphenated, keyword-rich (3-5 words)
+4. **Blog Tags**: Mix of primary, semantic, and long-tail keywords (5-8)
+5. **Blog Categories**: Industry-standard classification (2-3)
+6. **Social Hashtags**: Industry-specific with trending terms (5-10)
+7. **Reading Time**: Calculated from word count
 
-## 🛡️ Phase 5: Quality Assurance
+**Expected Duration**: 10-15 seconds
 
-### Step 1: Perform Hallucination Check
+### Step 2: Generate Social Media & Schema Metadata
 
-**Endpoint**: `POST /api/blog/quality/hallucination-check`
+**What Happens** (Second AI Call):
+1. **Open Graph Tags**: Optimized for Facebook/LinkedIn sharing
+2. **Twitter Cards**: Twitter-specific optimization
+3. **JSON-LD Schema**: Structured data for search engines
+4. **Multi-Format Export**: WordPress, Wix, HTML, JSON-LD ready formats
 
-**Request Example**:
-```json
-{
-  "content": "Complete blog content here...",
-  "sources": [
-    "https://example.com/source1",
-    "https://example.com/source2"
-  ]
-}
-```
+**Generated Metadata Output**:
+- **Core Elements**: Title, description, URL slug, tags, categories
+- **Social Optimization**: Open Graph and Twitter Card tags
+- **Structured Data**: Article schema with author, dates, organization
+- **Platform Formats**: Copy-ready for WordPress, Wix, custom
 
-**What Happens**:
-1. **Fact Verification**: Checks content against research sources
-2. **Hallucination Detection**: Identifies potential AI-generated inaccuracies
-3. **Content Validation**: Ensures factual accuracy and credibility
-4. **Quality Scoring**: Generates content quality metrics
+**Expected Duration**: 10-15 seconds
 
-**Expected Duration**: 15-25 seconds
-
-### Step 2: Review Quality Results
-
-**Key Metrics**:
-- **Factual Accuracy**: Percentage of verified claims
-- **Source Coverage**: Percentage of content backed by sources
-- **Quality Score**: Overall content quality (0-100)
-- **Improvement Suggestions**: Specific enhancement recommendations
+### Step 3: Review & Export Metadata
 
 **Quality Checklist**:
-- ✅ High factual accuracy (90%+)
-- ✅ Good source coverage (80%+)
-- ✅ Quality score above 85
-- ✅ No major factual errors
-- ✅ Clear improvement suggestions
+- ✅ SEO title is 50-60 characters with primary keyword
+- ✅ Meta description includes CTA in first 120 chars
+- ✅ URL slug is clean, readable, and keyword-rich
+- ✅ Tags and categories are relevant and varied
+- ✅ Social tags are optimized for each platform
+- ✅ Schema markup is valid JSON-LD
 
-### Step 3: Content Optimization (Optional)
+**Export Options**:
+- Copy HTML meta tags directly to your platform
+- Export JSON-LD for search engines
+- WordPress-ready format with Yoast compatibility
+- Wix integration format
 
-**Endpoint**: `POST /api/blog/section/optimize`
-
-**Common Optimizations**:
-- **Improve Readability**: Simplify complex sentences
-- **Enhance Engagement**: Add compelling examples and stories
-- **Strengthen Arguments**: Provide more supporting evidence
-- **Fix Flow Issues**: Improve section transitions
-- **Optimize Keywords**: Better keyword integration
-
-## 🚀 Phase 6: Publishing & Distribution
+## 🚀 Phase 6: Publish & Distribute
 
 ### Step 1: Prepare for Publishing
 

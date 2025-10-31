@@ -1,6 +1,6 @@
 /**
  * Structure Analysis Component
- * 
+ *
  * Displays comprehensive content structure analysis including structure overview,
  * content elements detection, and heading structure analysis.
  */
@@ -14,7 +14,7 @@ import {
   Chip,
   Tooltip
 } from '@mui/material';
-import { 
+import {
   BarChart
 } from '@mui/icons-material';
 
@@ -52,127 +52,157 @@ interface StructureAnalysisProps {
   };
 }
 
+const baseCard = {
+  p: 3,
+  backgroundColor: '#ffffff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 2,
+  boxShadow: '0 12px 28px rgba(15,23,42,0.08)',
+  color: '#0f172a',
+  minHeight: '100%'
+} as const;
+
+const infoRow = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '0.75rem 0',
+  cursor: 'help'
+} as const;
+
+const statLabel = {
+  color: '#475569',
+  fontWeight: 500
+} as const;
+
+const statValue = {
+  color: '#0f172a',
+  fontWeight: 700
+} as const;
+
+const highlightCard = (borderColor: string) => ({
+  p: 2,
+  borderRadius: 2,
+  border: `1px solid ${borderColor}`,
+  background: `linear-gradient(140deg, ${borderColor}15, ${borderColor}22)`
+});
+
 export const StructureAnalysis: React.FC<StructureAnalysisProps> = ({ detailedAnalysis }) => {
+  const structure = detailedAnalysis?.content_structure;
+  const quality = detailedAnalysis?.content_quality;
+  const headings = detailedAnalysis?.heading_structure;
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
         <BarChart sx={{ color: 'primary.main' }} />
-        <Typography variant="h6" component="h3" sx={{ fontWeight: 600 }}>
+        <Typography variant="h6" component="h3" sx={{ fontWeight: 700, letterSpacing: 0.2, color: '#0f172a' }}>
           Content Structure Analysis
         </Typography>
       </Box>
       <Grid container spacing={3}>
         {/* Content Structure Overview */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+          <Paper sx={baseCard}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#0f172a' }}>
               Structure Overview
             </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
               <Tooltip
                 title={
                   <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#0f172a' }}>
                       Total Sections
                     </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 1, color: '#475569' }}>
                       Number of main content sections (H2 headings) in your blog post.
                     </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: '#64748b' }}>
                       <strong>Optimal Range:</strong> 3-8 sections for most blog posts
                     </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>Why it matters:</strong> Good sectioning improves readability and helps search engines understand your content structure.
+                    <Typography variant="caption" sx={{ display: 'block', color: '#64748b' }}>
+                      <strong>Why it matters:</strong> Good sectioning improves readability and structure.
                     </Typography>
                   </Box>
                 }
                 arrow
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}>
-                  <Typography variant="body2">Total Sections</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {detailedAnalysis?.content_structure?.total_sections || 'N/A'}
+                <Box sx={infoRow}>
+                  <Typography variant="body2" sx={statLabel}>Total Sections</Typography>
+                  <Typography variant="body2" sx={statValue}>
+                    {structure?.total_sections || 'N/A'}
                   </Typography>
                 </Box>
               </Tooltip>
-              
+
               <Tooltip
                 title={
                   <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#0f172a' }}>
                       Total Paragraphs
                     </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 1, color: '#475569' }}>
                       Number of paragraphs in your content (excluding headings).
                     </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                    <Typography variant="caption" sx={{ display: 'block', color: '#64748b' }}>
                       <strong>Optimal Range:</strong> 8-20 paragraphs for most blog posts
                     </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>Why it matters:</strong> Appropriate paragraph count indicates good content depth and organization.
-                    </Typography>
                   </Box>
                 }
                 arrow
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}>
-                  <Typography variant="body2">Total Paragraphs</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {detailedAnalysis?.content_structure?.total_paragraphs || 'N/A'}
+                <Box sx={infoRow}>
+                  <Typography variant="body2" sx={statLabel}>Total Paragraphs</Typography>
+                  <Typography variant="body2" sx={statValue}>
+                    {structure?.total_paragraphs || 'N/A'}
                   </Typography>
                 </Box>
               </Tooltip>
-              
+
               <Tooltip
                 title={
                   <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#0f172a' }}>
                       Total Sentences
                     </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 1, color: '#475569' }}>
                       Total number of sentences in your content.
                     </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                    <Typography variant="caption" sx={{ display: 'block', color: '#64748b' }}>
                       <strong>Optimal Range:</strong> 40-100 sentences for most blog posts
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>Why it matters:</strong> Sentence count affects readability and content comprehensiveness.
                     </Typography>
                   </Box>
                 }
                 arrow
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}>
-                  <Typography variant="body2">Total Sentences</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {detailedAnalysis?.content_structure?.total_sentences || 'N/A'}
+                <Box sx={infoRow}>
+                  <Typography variant="body2" sx={statLabel}>Total Sentences</Typography>
+                  <Typography variant="body2" sx={statValue}>
+                    {structure?.total_sentences || 'N/A'}
                   </Typography>
                 </Box>
               </Tooltip>
-              
+
               <Tooltip
                 title={
                   <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#0f172a' }}>
                       Structure Score
                     </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 1, color: '#475569' }}>
                       Overall score (0-100) for your content's structural organization.
                     </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                      <strong>Scoring Factors:</strong> Section count, paragraph count, introduction/conclusion presence
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>Why it matters:</strong> Well-structured content ranks better and provides better user experience.
+                    <Typography variant="caption" sx={{ display: 'block', color: '#64748b' }}>
+                      <strong>Scoring Factors:</strong> Section count, paragraph count, intro/conclusion presence.
                     </Typography>
                   </Box>
                 }
                 arrow
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}>
-                  <Typography variant="body2">Structure Score</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {detailedAnalysis?.content_structure?.structure_score || 'N/A'}
+                <Box sx={infoRow}>
+                  <Typography variant="body2" sx={statLabel}>Structure Score</Typography>
+                  <Typography variant="body2" sx={statValue}>
+                    {structure?.structure_score || 'N/A'}
                   </Typography>
                 </Box>
               </Tooltip>
@@ -182,94 +212,52 @@ export const StructureAnalysis: React.FC<StructureAnalysisProps> = ({ detailedAn
 
         {/* Content Elements */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+          <Paper sx={baseCard}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#0f172a' }}>
               Content Elements
             </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
               <Tooltip
-                title={
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                      Introduction Section
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Whether your content has a clear introduction that sets context and expectations.
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                      <strong>Why it matters:</strong> Introductions help readers understand what they'll learn and improve engagement.
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>SEO Impact:</strong> Clear introductions help search engines understand your content's purpose.
-                    </Typography>
-                  </Box>
-                }
+                title="Whether your content has a clear introduction that sets context and expectations."
                 arrow
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}>
-                  <Typography variant="body2">Has Introduction</Typography>
-                  <Chip 
-                    label={detailedAnalysis?.content_structure?.has_introduction ? 'Yes' : 'No'}
-                    color={detailedAnalysis?.content_structure?.has_introduction ? 'success' : 'error'}
+                <Box sx={infoRow}>
+                  <Typography variant="body2" sx={statLabel}>Has Introduction</Typography>
+                  <Chip
+                    label={structure?.has_introduction ? 'Yes' : 'No'}
+                    color={structure?.has_introduction ? 'success' : 'error'}
                     size="small"
+                    sx={{ fontWeight: 600 }}
                   />
                 </Box>
               </Tooltip>
-              
+
               <Tooltip
-                title={
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                      Conclusion Section
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Whether your content has a clear conclusion that summarizes key points.
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                      <strong>Why it matters:</strong> Conclusions help readers retain information and provide closure.
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>SEO Impact:</strong> Good conclusions can improve time on page and reduce bounce rate.
-                    </Typography>
-                  </Box>
-                }
+                title="Whether your content ends with a clear conclusion summarizing key points."
                 arrow
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}>
-                  <Typography variant="body2">Has Conclusion</Typography>
-                  <Chip 
-                    label={detailedAnalysis?.content_structure?.has_conclusion ? 'Yes' : 'No'}
-                    color={detailedAnalysis?.content_structure?.has_conclusion ? 'success' : 'error'}
+                <Box sx={infoRow}>
+                  <Typography variant="body2" sx={statLabel}>Has Conclusion</Typography>
+                  <Chip
+                    label={structure?.has_conclusion ? 'Yes' : 'No'}
+                    color={structure?.has_conclusion ? 'success' : 'error'}
                     size="small"
+                    sx={{ fontWeight: 600 }}
                   />
                 </Box>
               </Tooltip>
-              
+
               <Tooltip
-                title={
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                      Call to Action
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Whether your content includes a clear call to action for readers.
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                      <strong>Why it matters:</strong> CTAs guide readers to take desired actions and improve conversion rates.
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>SEO Impact:</strong> Strong CTAs can improve user engagement metrics.
-                    </Typography>
-                  </Box>
-                }
+                title="Whether your content includes a clear call to action for readers."
                 arrow
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}>
-                  <Typography variant="body2">Has Call to Action</Typography>
-                  <Chip 
-                    label={detailedAnalysis?.content_structure?.has_call_to_action ? 'Yes' : 'No'}
-                    color={detailedAnalysis?.content_structure?.has_call_to_action ? 'success' : 'error'}
+                <Box sx={infoRow}>
+                  <Typography variant="body2" sx={statLabel}>Has Call to Action</Typography>
+                  <Chip
+                    label={structure?.has_call_to_action ? 'Yes' : 'No'}
+                    color={structure?.has_call_to_action ? 'success' : 'error'}
                     size="small"
+                    sx={{ fontWeight: 600 }}
                   />
                 </Box>
               </Tooltip>
@@ -281,193 +269,104 @@ export const StructureAnalysis: React.FC<StructureAnalysisProps> = ({ detailedAn
       {/* Content Quality Metrics */}
       <Grid container spacing={3} sx={{ mt: 2 }}>
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+          <Paper sx={baseCard}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#0f172a' }}>
               Content Quality Metrics
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <Tooltip
-                  title={
-                    <Box sx={{ p: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Word Count
-                      </Typography>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        Total number of words in your content.
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                        <strong>Optimal Range:</strong> 800-2000 words for most blog posts
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        <strong>Why it matters:</strong> Longer content typically ranks better and provides more value to readers.
-                      </Typography>
-                    </Box>
-                  }
+                  title="Total number of words in your content. Longer content typically ranks better."
                   arrow
                 >
-                  <Box sx={{ p: 2, background: 'rgba(76, 175, 80, 0.1)', borderRadius: 2, border: '1px solid rgba(76, 175, 80, 0.3)', cursor: 'help' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'success.main', mb: 1 }}>
+                  <Box sx={highlightCard('rgba(34,197,94,0.65)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#15803d', mb: 1 }}>
                       Word Count
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                      {detailedAnalysis?.content_quality?.word_count || 'N/A'}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {quality?.word_count || 'N/A'}
                     </Typography>
                   </Box>
                 </Tooltip>
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <Tooltip
-                  title={
-                    <Box sx={{ p: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Vocabulary Diversity
-                      </Typography>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        Ratio of unique words to total words, indicating content variety.
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                        <strong>Optimal Range:</strong> 0.4-0.7 (40-70% unique words)
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        <strong>Why it matters:</strong> Higher diversity indicates richer, more engaging content.
-                      </Typography>
-                    </Box>
-                  }
+                  title="Ratio of unique words to total words, indicating content variety and richness."
                   arrow
                 >
-                  <Box sx={{ p: 2, background: 'rgba(33, 150, 243, 0.1)', borderRadius: 2, border: '1px solid rgba(33, 150, 243, 0.3)', cursor: 'help' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', mb: 1 }}>
+                  <Box sx={highlightCard('rgba(59,130,246,0.65)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1d4ed8', mb: 1 }}>
                       Vocabulary Diversity
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                      {detailedAnalysis?.content_quality?.vocabulary_diversity ? 
-                        (detailedAnalysis.content_quality.vocabulary_diversity * 100).toFixed(1) + '%' : 'N/A'}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {quality?.vocabulary_diversity !== undefined
+                        ? `${(quality.vocabulary_diversity * 100).toFixed(1)}%`
+                        : 'N/A'}
                     </Typography>
                   </Box>
                 </Tooltip>
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <Tooltip
-                  title={
-                    <Box sx={{ p: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Content Depth Score
-                      </Typography>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        Score (0-100) indicating how comprehensive and detailed your content is.
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                        <strong>Scoring Factors:</strong> Word count, section depth, information density
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        <strong>Why it matters:</strong> Deeper content provides more value and ranks better in search results.
-                      </Typography>
-                    </Box>
-                  }
+                  title="Score (0-100) indicating how comprehensive and detailed your content is."
                   arrow
                 >
-                  <Box sx={{ p: 2, background: 'rgba(156, 39, 176, 0.1)', borderRadius: 2, border: '1px solid rgba(156, 39, 176, 0.3)', cursor: 'help' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'secondary.main', mb: 1 }}>
+                  <Box sx={highlightCard('rgba(168,85,247,0.65)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#7c3aed', mb: 1 }}>
                       Content Depth Score
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                      {detailedAnalysis?.content_quality?.content_depth_score || 'N/A'}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {quality?.content_depth_score || 'N/A'}
                     </Typography>
                   </Box>
                 </Tooltip>
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <Tooltip
-                  title={
-                    <Box sx={{ p: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Flow Score
-                      </Typography>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        Score (0-100) indicating how well your content flows from one idea to the next.
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                        <strong>Scoring Factors:</strong> Transition words, sentence variety, logical progression
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        <strong>Why it matters:</strong> Good flow improves readability and keeps readers engaged.
-                      </Typography>
-                    </Box>
-                  }
+                  title="Score (0-100) indicating how well your content flows from one idea to the next."
                   arrow
                 >
-                  <Box sx={{ p: 2, background: 'rgba(255, 152, 0, 0.1)', borderRadius: 2, border: '1px solid rgba(255, 152, 0, 0.3)', cursor: 'help' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'warning.main', mb: 1 }}>
+                  <Box sx={highlightCard('rgba(14,165,233,0.6)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0284c7', mb: 1 }}>
                       Flow Score
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                      {detailedAnalysis?.content_quality?.flow_score || 'N/A'}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {quality?.flow_score || 'N/A'}
                     </Typography>
                   </Box>
                 </Tooltip>
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <Tooltip
-                  title={
-                    <Box sx={{ p: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Transition Words
-                      </Typography>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        Number of transition words used to connect ideas and improve flow.
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                        <strong>Optimal Range:</strong> 5-15 transition words for most blog posts
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        <strong>Why it matters:</strong> Transition words improve readability and help readers follow your logic.
-                      </Typography>
-                    </Box>
-                  }
+                  title="Number of transition words used – higher values suggest smoother narrative flow."
                   arrow
                 >
-                  <Box sx={{ p: 2, background: 'rgba(244, 67, 54, 0.1)', borderRadius: 2, border: '1px solid rgba(244, 67, 54, 0.3)', cursor: 'help' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'error.main', mb: 1 }}>
-                      Transition Words
+                  <Box sx={highlightCard('rgba(251,191,36,0.6)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#b45309', mb: 1 }}>
+                      Transition Words Used
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                      {detailedAnalysis?.content_quality?.transition_words_used || 'N/A'}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {quality?.transition_words_used || 'N/A'}
                     </Typography>
                   </Box>
                 </Tooltip>
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <Tooltip
-                  title={
-                    <Box sx={{ p: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Unique Words
-                      </Typography>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        Number of unique words used in your content.
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                        <strong>Why it matters:</strong> More unique words indicate richer vocabulary and better content variety.
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        <strong>SEO Impact:</strong> Diverse vocabulary can help with semantic SEO and topic coverage.
-                      </Typography>
-                    </Box>
-                  }
+                  title="Average unique words used throughout the article. Indicates lexical richness."
                   arrow
                 >
-                  <Box sx={{ p: 2, background: 'rgba(0, 150, 136, 0.1)', borderRadius: 2, border: '1px solid rgba(0, 150, 136, 0.3)', cursor: 'help' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'info.main', mb: 1 }}>
+                  <Box sx={highlightCard('rgba(244,114,182,0.6)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#be185d', mb: 1 }}>
                       Unique Words
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                      {detailedAnalysis?.content_quality?.unique_words || 'N/A'}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {quality?.unique_words || 'N/A'}
                     </Typography>
                   </Box>
                 </Tooltip>
@@ -478,136 +377,58 @@ export const StructureAnalysis: React.FC<StructureAnalysisProps> = ({ detailedAn
       </Grid>
 
       {/* Heading Structure */}
-      <Grid container spacing={3} sx={{ mt: 2 }}>
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-              Heading Structure Analysis
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ p: 2, background: 'rgba(76, 175, 80, 0.1)', borderRadius: 2, border: '1px solid rgba(76, 175, 80, 0.3)' }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'success.main', mb: 1 }}>
-                    H1 Headings ({detailedAnalysis?.heading_structure?.h1_count || 0})
-                  </Typography>
-                  {detailedAnalysis?.heading_structure?.h1_headings?.map((heading: string, index: number) => (
-                    <Typography key={index} variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                      • {heading}
+      {headings && (
+        <Grid container spacing={3} sx={{ mt: 2 }}>
+          <Grid item xs={12}>
+            <Paper sx={baseCard}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#0f172a' }}>
+                Heading Structure
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Box sx={highlightCard('rgba(59,130,246,0.45)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1d4ed8', mb: 1 }}>
+                      H1 Headings
                     </Typography>
-                  ))}
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ p: 2, background: 'rgba(33, 150, 243, 0.1)', borderRadius: 2, border: '1px solid rgba(33, 150, 243, 0.3)' }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', mb: 1 }}>
-                    H2 Headings ({detailedAnalysis?.heading_structure?.h2_count || 0})
-                  </Typography>
-                  {detailedAnalysis?.heading_structure?.h2_headings?.slice(0, 3).map((heading: string, index: number) => (
-                    <Typography key={index} variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                      • {heading}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {headings.h1_count}
                     </Typography>
-                  ))}
-                  {detailedAnalysis?.heading_structure?.h2_headings && detailedAnalysis.heading_structure.h2_headings.length > 3 && (
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      ... and {detailedAnalysis.heading_structure.h2_headings.length - 3} more
-                    </Typography>
-                  )}
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ p: 2, background: 'rgba(156, 39, 176, 0.1)', borderRadius: 2, border: '1px solid rgba(156, 39, 176, 0.3)' }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'secondary.main', mb: 1 }}>
-                    H3 Headings ({detailedAnalysis?.heading_structure?.h3_count || 0})
-                  </Typography>
-                  {detailedAnalysis?.heading_structure?.h3_headings?.slice(0, 3).map((heading: string, index: number) => (
-                    <Typography key={index} variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                      • {heading}
-                    </Typography>
-                  ))}
-                  {detailedAnalysis?.heading_structure?.h3_headings && detailedAnalysis.heading_structure.h3_headings.length > 3 && (
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      ... and {detailedAnalysis.heading_structure.h3_headings.length - 3} more
-                    </Typography>
-                  )}
-                </Box>
-              </Grid>
-            </Grid>
-            <Box sx={{ mt: 2, p: 2, background: 'rgba(0,0,0,0.02)', borderRadius: 2 }}>
-              <Tooltip
-                title={
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                      Heading Hierarchy Score
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Score (0-100) indicating how well your heading structure follows SEO best practices.
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                      <strong>Scoring Factors:</strong> H1 presence, logical hierarchy, keyword usage in headings
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      <strong>Why it matters:</strong> Good heading structure helps search engines understand your content and improves readability.
+                    <Typography variant="caption" sx={{ color: '#64748b' }}>
+                      {headings.h1_headings?.[0] ? `Primary: ${headings.h1_headings[0]}` : 'Primary heading analysis'}
                     </Typography>
                   </Box>
-                }
-                arrow
-              >
-                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, cursor: 'help' }}>
-                  Heading Hierarchy Score: {detailedAnalysis?.heading_structure?.heading_hierarchy_score || 'N/A'}
-                </Typography>
-              </Tooltip>
-            </Box>
-            
-            {/* Structure Recommendations */}
-            {detailedAnalysis?.content_structure?.recommendations && detailedAnalysis.content_structure.recommendations.length > 0 && (
-              <Box sx={{ mt: 2, p: 2, background: 'rgba(255, 193, 7, 0.1)', borderRadius: 2, border: '1px solid rgba(255, 193, 7, 0.3)' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'warning.main' }}>
-                  Structure Recommendations
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  {detailedAnalysis.content_structure.recommendations.map((recommendation: string, index: number) => (
-                    <Typography key={index} variant="caption" sx={{ display: 'block' }}>
-                      • {recommendation}
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Box sx={highlightCard('rgba(34,197,94,0.45)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#15803d', mb: 1 }}>
+                      H2 Headings
                     </Typography>
-                  ))}
-                </Box>
-              </Box>
-            )}
-            
-            {/* Heading Recommendations */}
-            {detailedAnalysis?.heading_structure?.recommendations && detailedAnalysis.heading_structure.recommendations.length > 0 && (
-              <Box sx={{ mt: 2, p: 2, background: 'rgba(33, 150, 243, 0.1)', borderRadius: 2, border: '1px solid rgba(33, 150, 243, 0.3)' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'primary.main' }}>
-                  Heading Recommendations
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  {detailedAnalysis.heading_structure.recommendations.map((recommendation: string, index: number) => (
-                    <Typography key={index} variant="caption" sx={{ display: 'block' }}>
-                      • {recommendation}
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {headings.h2_count}
                     </Typography>
-                  ))}
-                </Box>
-              </Box>
-            )}
-            
-            {/* Content Quality Recommendations */}
-            {detailedAnalysis?.content_quality?.recommendations && detailedAnalysis.content_quality.recommendations.length > 0 && (
-              <Box sx={{ mt: 2, p: 2, background: 'rgba(76, 175, 80, 0.1)', borderRadius: 2, border: '1px solid rgba(76, 175, 80, 0.3)' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'success.main' }}>
-                  Content Quality Recommendations
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  {detailedAnalysis.content_quality.recommendations.map((recommendation: string, index: number) => (
-                    <Typography key={index} variant="caption" sx={{ display: 'block' }}>
-                      • {recommendation}
+                    <Typography variant="caption" sx={{ color: '#64748b' }}>
+                      {headings.h2_headings?.slice(0, 2).join(', ') || 'Summary of subtopics'}
                     </Typography>
-                  ))}
-                </Box>
-              </Box>
-            )}
-          </Paper>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Box sx={highlightCard('rgba(14,165,233,0.45)')}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0ea5e9', mb: 1 }}>
+                      H3 Headings
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                      {headings.h3_count}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b' }}>
+                      {headings.h3_headings?.slice(0, 2).join(', ') || 'Supportive outline points'}
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Grid>
         </Grid>
-      </Grid>
+      )}
     </Box>
   );
 };

@@ -75,9 +75,22 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
     return `${current}/${max}`;
   };
 
+  // Consistent text input styling for better contrast
+  const textInputSx = {
+    '& .MuiInputBase-input': {
+      color: '#202124'
+    },
+    '& .MuiInputLabel-root': {
+      color: '#5f6368'
+    },
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: '#dadce0'
+    }
+  } as const;
+
   return (
     <Box>
-      <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: '#202124', fontWeight: 600 }}>
         <SearchIcon sx={{ color: 'primary.main' }} />
         Core SEO Metadata
       </Typography>
@@ -85,10 +98,10 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
       <Grid container spacing={3}>
         {/* SEO Title */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <SearchIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <SearchIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 SEO Title
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -107,6 +120,7 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
               value={metadata.seo_title || ''}
               onChange={handleTextFieldChange('seo_title')}
               placeholder="Enter SEO-optimized title (50-60 characters)"
+              sx={textInputSx}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -120,18 +134,18 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 )
               }}
             />
-            <Alert severity="info" sx={{ mt: 1 }}>
-              Include your primary keyword and make it compelling for clicks
-            </Alert>
+            <Typography variant="caption" sx={{ mt: 1, color: '#5f6368', display: 'block' }}>
+              Include your primary keyword and keep between 50–60 characters
+            </Typography>
           </Paper>
         </Grid>
 
         {/* Meta Description */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <SearchIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <SearchIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 Meta Description
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -150,6 +164,7 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
               value={metadata.meta_description || ''}
               onChange={handleTextFieldChange('meta_description')}
               placeholder="Enter compelling meta description (150-160 characters)"
+              sx={textInputSx}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -163,18 +178,18 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 )
               }}
             />
-            <Alert severity="info" sx={{ mt: 1 }}>
-              Include a call-to-action and your primary keyword
-            </Alert>
+            <Typography variant="caption" sx={{ mt: 1, color: '#5f6368', display: 'block' }}>
+              Aim for 150–160 characters with a clear value proposition
+            </Typography>
           </Paper>
         </Grid>
 
         {/* URL Slug */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <LinkIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <LinkIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 URL Slug
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -192,16 +207,18 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
               onChange={handleTextFieldChange('url_slug')}
               placeholder="seo-friendly-url-slug"
               helperText="Use lowercase letters, numbers, and hyphens only"
+              sx={textInputSx}
+              FormHelperTextProps={{ sx: { color: '#5f6368' } }}
             />
           </Paper>
         </Grid>
 
         {/* Focus Keyword */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUpIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <TrendingUpIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 Focus Keyword
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -219,16 +236,18 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
               onChange={handleTextFieldChange('focus_keyword')}
               placeholder="primary-keyword"
               helperText="Your main SEO keyword for this post"
+              sx={textInputSx}
+              FormHelperTextProps={{ sx: { color: '#5f6368' } }}
             />
           </Paper>
         </Grid>
 
         {/* Blog Tags */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TagIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <TagIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 Blog Tags
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -241,12 +260,12 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
               </Tooltip>
             </Box>
             <FormControl fullWidth>
-              <InputLabel>Tags</InputLabel>
+              <InputLabel sx={{ color: '#5f6368' }}>Tags</InputLabel>
               <Select
                 multiple
                 value={metadata.blog_tags || []}
                 onChange={handleTagsChange('blog_tags')}
-                input={<OutlinedInput label="Tags" />}
+                input={<OutlinedInput label="Tags" sx={{ color: '#202124', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#dadce0' } }} />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {selected.map((value: string) => (
@@ -262,18 +281,18 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 ))}
               </Select>
             </FormControl>
-            <Alert severity="info" sx={{ mt: 1 }}>
-              Add relevant tags for better categorization and discoverability
-            </Alert>
+            <Typography variant="caption" sx={{ mt: 1, color: '#5f6368', display: 'block' }}>
+              Add 3–6 relevant tags for better categorization and discoverability
+            </Typography>
           </Paper>
         </Grid>
 
         {/* Blog Categories */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CategoryIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <CategoryIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 Blog Categories
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -286,12 +305,12 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
               </Tooltip>
             </Box>
             <FormControl fullWidth>
-              <InputLabel>Categories</InputLabel>
+              <InputLabel sx={{ color: '#5f6368' }}>Categories</InputLabel>
               <Select
                 multiple
                 value={metadata.blog_categories || []}
                 onChange={handleTagsChange('blog_categories')}
-                input={<OutlinedInput label="Categories" />}
+                input={<OutlinedInput label="Categories" sx={{ color: '#202124', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#dadce0' } }} />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {selected.map((value: string) => (
@@ -307,18 +326,18 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 ))}
               </Select>
             </FormControl>
-            <Alert severity="info" sx={{ mt: 1 }}>
-              Select 2-3 primary categories for your content
-            </Alert>
+            <Typography variant="caption" sx={{ mt: 1, color: '#5f6368', display: 'block' }}>
+              Select 1–3 primary categories for your content
+            </Typography>
           </Paper>
         </Grid>
 
         {/* Social Hashtags */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TagIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <TagIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 Social Hashtags
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -331,12 +350,12 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
               </Tooltip>
             </Box>
             <FormControl fullWidth>
-              <InputLabel>Hashtags</InputLabel>
+              <InputLabel sx={{ color: '#5f6368' }}>Hashtags</InputLabel>
               <Select
                 multiple
                 value={metadata.social_hashtags || []}
                 onChange={handleTagsChange('social_hashtags')}
-                input={<OutlinedInput label="Hashtags" />}
+                input={<OutlinedInput label="Hashtags" sx={{ color: '#202124', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#dadce0' } }} />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {selected.map((value: string) => (
@@ -352,18 +371,18 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 ))}
               </Select>
             </FormControl>
-            <Alert severity="info" sx={{ mt: 1 }}>
-              Include # symbol for social media platforms
-            </Alert>
+            <Typography variant="caption" sx={{ mt: 1, color: '#5f6368', display: 'block' }}>
+              Include # symbol (e.g., #multimodalAI). 3–5 hashtags recommended.
+            </Typography>
           </Paper>
         </Grid>
 
         {/* Reading Time */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)' }}>
+          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <ScheduleIcon sx={{ fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
+                <ScheduleIcon sx={{ fontSize: 20, color: '#5f6368' }} />
                 Reading Time
               </Typography>
               <Tooltip title="Copy to clipboard">
@@ -385,6 +404,8 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 endAdornment: <InputAdornment position="end">minutes</InputAdornment>
               }}
               helperText="Estimated reading time for your content"
+              sx={textInputSx}
+              FormHelperTextProps={{ sx: { color: '#5f6368' } }}
             />
           </Paper>
         </Grid>

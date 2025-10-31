@@ -1,16 +1,13 @@
 import os
 import asyncio
-import concurrent.futures
 from typing import Any, Dict, List
 from dataclasses import dataclass
 import requests
 from loguru import logger
+import time
+import random
 
-try:
-    from google import genai
-    GOOGLE_GENAI_AVAILABLE = True
-except Exception:
-    GOOGLE_GENAI_AVAILABLE = False
+from services.llm_providers.main_text_generation import llm_text_gen
 
 
 @dataclass
@@ -29,16 +26,9 @@ class WritingAssistantService:
 
     def __init__(self) -> None:
         self.exa_api_key = os.getenv("EXA_API_KEY")
-        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
 
         if not self.exa_api_key:
             logger.warning("EXA_API_KEY not configured; writing assistant will fail")
-
-        if not (GOOGLE_GENAI_AVAILABLE and self.gemini_api_key):
-            logger.warning("Gemini not available; writing assistant will fail")
-            self.gemini_client = None
-        else:
-            self.gemini_client = genai.Client(api_key=self.gemini_api_key)
 
         self.http_timeout_seconds = 15
         
@@ -151,9 +141,6 @@ class WritingAssistantService:
             raise
 
     async def _generate_continuation(self, text: str, sources: List[Dict[str, Any]]) -> tuple[str, float]:
-        if not self.gemini_client:
-            raise Exception("Gemini client not available")
-
         # Build compact sources context block
         source_blocks: List[str] = []
         for i, s in enumerate(sources[:5]):
@@ -164,12 +151,12 @@ class WritingAssistantService:
             )
         sources_text = "\n\n".join(source_blocks) if source_blocks else "(No sources)"
 
-        # Based on Exa demo guidance for completion-only behavior and inline citations
+        # Provider-agnostic behavior: short continuation with one inline citation hint
         system_prompt = (
-            "You are an essay-completion bot that completes a sentence or continues prose. "
+            "You are an assistive writing continuation bot. "
             "Only produce 1-2 SHORT sentences. Do not repeat or paraphrase the user's stub. "
-            "Continue in the same tone and topic as the stub. Prefer concrete, current facts from the provided sources. "
-            "Include exactly one brief, verifiable citation hint in parentheses with an author (or 'Source') and URL in square brackets, e.g., ((Doe, 2021)[https://example.com])."
+            "Match tone and topic. Prefer concrete, current facts from the provided sources. "
+            "Include exactly one brief citation hint in parentheses with an author (or 'Source') and URL in square brackets, e.g., ((Doe, 2021)[https://example.com])."
         )
 
         user_prompt = (
@@ -179,17 +166,20 @@ class WritingAssistantService:
         )
 
         try:
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                resp = await loop.run_in_executor(
-                    executor,
-                    lambda: self.gemini_client.models.generate_content(
-                        model="gemini-1.5-flash", contents=f"{system_prompt}\n\n{user_prompt}"
-                    ),
-                )
-            suggestion = (resp.text or "").strip()
+            # Inter-call jitter to reduce burst rate limits
+            time.sleep(random.uniform(0.05, 0.15))
+
+            ai_resp = llm_text_gen(
+                prompt=user_prompt,
+                json_struct=None,
+                system_prompt=system_prompt,
+            )
+            if isinstance(ai_resp, dict) and ai_resp.get("text"):
+                suggestion = (ai_resp.get("text", "") or "").strip()
+            else:
+                suggestion = (str(ai_resp or "")).strip()
             if not suggestion:
-                raise Exception("Gemini returned empty suggestion")
+                raise Exception("Assistive writer returned empty suggestion")
             # naive confidence from number of sources present
             confidence = 0.7 if sources else 0.5
             return suggestion, confidence

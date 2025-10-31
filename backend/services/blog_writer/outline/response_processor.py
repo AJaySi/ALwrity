@@ -20,7 +20,7 @@ class ResponseProcessor:
     
     async def generate_with_retry(self, prompt: str, schema: Dict[str, Any], task_id: str = None) -> Dict[str, Any]:
         """Generate outline with retry logic for API failures."""
-        from services.llm_providers.gemini_provider import gemini_structured_json_response
+        from services.llm_providers.main_text_generation import llm_text_gen
         from api.blog_writer.task_manager import task_manager
         
         max_retries = 2  # Conservative retry for expensive API calls
@@ -29,17 +29,16 @@ class ResponseProcessor:
         for attempt in range(max_retries + 1):
             try:
                 if task_id:
-                    await task_manager.update_progress(task_id, f"🤖 Calling Gemini API for outline generation (attempt {attempt + 1}/{max_retries + 1})...")
+                    await task_manager.update_progress(task_id, f"🤖 Calling AI API for outline generation (attempt {attempt + 1}/{max_retries + 1})...")
                 
-                outline_data = gemini_structured_json_response(
+                outline_data = llm_text_gen(
                     prompt=prompt,
-                    schema=schema,
-                    temperature=0.3,
-                    max_tokens=6000  # Increased further to avoid truncation
+                    json_struct=schema,
+                    system_prompt=None
                 )
                 
                 # Log response for debugging
-                logger.info(f"Gemini response received: {type(outline_data)}")
+                logger.info(f"AI response received: {type(outline_data)}")
                 
                 # Check for errors in the response
                 if isinstance(outline_data, dict) and 'error' in outline_data:
@@ -47,17 +46,17 @@ class ResponseProcessor:
                     if "503" in error_msg and "overloaded" in error_msg and attempt < max_retries:
                         if task_id:
                             await task_manager.update_progress(task_id, f"⚠️ AI service overloaded, retrying in {retry_delay} seconds...")
-                        logger.warning(f"Gemini API overloaded, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries + 1})")
+                        logger.warning(f"AI API overloaded, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries + 1})")
                         await asyncio.sleep(retry_delay)
                         continue
                     elif "No valid structured response content found" in error_msg and attempt < max_retries:
                         if task_id:
                             await task_manager.update_progress(task_id, f"⚠️ Invalid response format, retrying in {retry_delay} seconds...")
-                        logger.warning(f"Gemini response parsing failed, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries + 1})")
+                        logger.warning(f"AI response parsing failed, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries + 1})")
                         await asyncio.sleep(retry_delay)
                         continue
                     else:
-                        logger.error(f"Gemini structured response error: {outline_data['error']}")
+                        logger.error(f"AI structured response error: {outline_data['error']}")
                         raise ValueError(f"AI outline generation failed: {outline_data['error']}")
                 
                 # Validate required fields
@@ -69,7 +68,7 @@ class ResponseProcessor:
                         await asyncio.sleep(retry_delay)
                         continue
                     else:
-                        raise ValueError("Invalid outline structure in Gemini response")
+                        raise ValueError("Invalid outline structure in AI response")
                 
                 # If we get here, the response is valid
                 return outline_data
@@ -79,7 +78,7 @@ class ResponseProcessor:
                 if ("503" in error_str or "overloaded" in error_str) and attempt < max_retries:
                     if task_id:
                         await task_manager.update_progress(task_id, f"⚠️ AI service error, retrying in {retry_delay} seconds...")
-                    logger.warning(f"Gemini API error, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries + 1}): {error_str}")
+                    logger.warning(f"AI API error, retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries + 1}): {error_str}")
                     await asyncio.sleep(retry_delay)
                     continue
                 else:

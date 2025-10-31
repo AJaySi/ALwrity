@@ -3,6 +3,7 @@ import { useResearchPolling } from '../../hooks/usePolling';
 import ResearchProgressModal from './ResearchProgressModal';
 import { BlogResearchResponse } from '../../services/blogWriterApi';
 import { researchCache } from '../../services/researchCache';
+import { debug } from '../../utils/debug';
 
 interface ResearchPollingHandlerProps {
   taskId: string | null;
@@ -19,11 +20,11 @@ export const ResearchPollingHandler: React.FC<ResearchPollingHandlerProps> = ({
 
   const polling = useResearchPolling({
     onProgress: (message) => {
-      console.log('ResearchPollingHandler - Progress message received:', message);
+      debug.log('[ResearchPollingHandler] progress', { message });
       setCurrentMessage(message);
     },
     onComplete: (result) => {
-      console.log('ResearchPollingHandler - Research completed:', result);
+      debug.log('[ResearchPollingHandler] complete');
       
       // Cache the result for future use
       if (result && result.keywords) {
@@ -39,7 +40,7 @@ export const ResearchPollingHandler: React.FC<ResearchPollingHandlerProps> = ({
       setCurrentMessage('');
     },
     onError: (error) => {
-      console.error('Research polling error:', error);
+      debug.error('[ResearchPollingHandler] error', error);
       onError?.(error);
       setCurrentMessage('');
     }
@@ -61,14 +62,14 @@ export const ResearchPollingHandler: React.FC<ResearchPollingHandlerProps> = ({
     };
   }, [polling]);
 
-  console.log('ResearchPollingHandler render:', {
-    taskId,
-    isPolling: polling.isPolling,
-    status: polling.currentStatus,
-    progressMessages: polling.progressMessages?.length,
-    currentMessage,
-    error: polling.error
-  });
+  // Only log on meaningful changes
+  useEffect(() => {
+    debug.log('[ResearchPollingHandler] state', {
+      isPolling: polling.isPolling,
+      status: polling.currentStatus,
+      progressCount: polling.progressMessages?.length || 0
+    });
+  }, [polling.isPolling, polling.currentStatus, polling.progressMessages?.length]);
 
   // Render the unified research progress modal when a task is present
   return (

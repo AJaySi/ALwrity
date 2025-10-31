@@ -10,10 +10,19 @@ const SEOMiniPanel: React.FC<Props> = ({ analysis }) => {
   return (
     <div style={{ border: '1px solid #eee', padding: 8, marginTop: 8 }}>
       <div style={{ fontWeight: 600 }}>SEO Mini Panel</div>
-      <div>Score: {analysis.seo_score}</div>
-      {!!analysis.recommendations?.length && (
+      <div>Score: {analysis.overall_score}</div>
+      {!!analysis.analysis_summary && (
+        <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
+          Grade {analysis.analysis_summary.overall_grade} · {analysis.analysis_summary.status}
+        </div>
+      )}
+      {!!analysis.actionable_recommendations?.length && (
         <ul>
-          {analysis.recommendations.slice(0, 3).map((r, i) => (<li key={i}>{r}</li>))}
+          {analysis.actionable_recommendations.slice(0, 3).map((rec, index) => (
+            <li key={index}>
+              <strong>{rec.category}:</strong> {rec.recommendation}
+            </li>
+          ))}
         </ul>
       )}
     </div>

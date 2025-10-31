@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
-from services.llm_providers.gemini_provider import gemini_structured_json_response
+from services.llm_providers.main_text_generation import llm_text_gen
 
 
 class BlogSEOMetadataGenerator:
@@ -20,14 +20,15 @@ class BlogSEOMetadataGenerator:
     
     def __init__(self):
         """Initialize the metadata generator"""
-        self.gemini_provider = gemini_structured_json_response
         logger.info("BlogSEOMetadataGenerator initialized")
     
     async def generate_comprehensive_metadata(
         self, 
         blog_content: str, 
         blog_title: str,
-        research_data: Dict[str, Any]
+        research_data: Dict[str, Any],
+        outline: Optional[List[Dict[str, Any]]] = None,
+        seo_analysis: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Generate comprehensive SEO metadata using maximum 2 AI calls
@@ -36,6 +37,8 @@ class BlogSEOMetadataGenerator:
             blog_content: The blog content to analyze
             blog_title: The blog title
             research_data: Research data containing keywords and insights
+            outline: Outline structure with sections and headings
+            seo_analysis: SEO analysis results from previous phase
             
         Returns:
             Comprehensive metadata including all SEO elements
@@ -49,11 +52,15 @@ class BlogSEOMetadataGenerator:
             
             # Call 1: Generate core SEO metadata (parallel with Call 2)
             logger.info("Generating core SEO metadata")
-            core_metadata_task = self._generate_core_metadata(blog_content, blog_title, keywords_data)
+            core_metadata_task = self._generate_core_metadata(
+                blog_content, blog_title, keywords_data, outline, seo_analysis
+            )
             
             # Call 2: Generate social media and structured data (parallel with Call 1)
             logger.info("Generating social media and structured data")
-            social_metadata_task = self._generate_social_metadata(blog_content, blog_title, keywords_data)
+            social_metadata_task = self._generate_social_metadata(
+                blog_content, blog_title, keywords_data, outline, seo_analysis
+            )
             
             # Wait for both calls to complete
             core_metadata, social_metadata = await asyncio.gather(
@@ -105,12 +112,16 @@ class BlogSEOMetadataGenerator:
         self, 
         blog_content: str, 
         blog_title: str, 
-        keywords_data: Dict[str, Any]
+        keywords_data: Dict[str, Any],
+        outline: Optional[List[Dict[str, Any]]] = None,
+        seo_analysis: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Generate core SEO metadata (Call 1)"""
         try:
             # Create comprehensive prompt for core metadata
-            prompt = self._create_core_metadata_prompt(blog_content, blog_title, keywords_data)
+            prompt = self._create_core_metadata_prompt(
+                blog_content, blog_title, keywords_data, outline, seo_analysis
+            )
             
             # Define simplified structured schema for core metadata
             schema = {
@@ -155,17 +166,26 @@ class BlogSEOMetadataGenerator:
                 "required": ["seo_title", "meta_description", "url_slug", "blog_tags", "blog_categories", "social_hashtags", "reading_time", "focus_keyword"]
             }
             
-            # Get structured response from Gemini
-            ai_response = self.gemini_provider(
-                prompt,
-                schema,
-                temperature=0.3,
-                max_tokens=2048
+            # Get structured response using provider-agnostic llm_text_gen
+            ai_response_raw = llm_text_gen(
+                prompt=prompt,
+                json_struct=schema,
+                system_prompt=None
             )
+            
+            # Handle response: llm_text_gen may return dict (from structured JSON) or str (needs parsing)
+            ai_response = ai_response_raw
+            if isinstance(ai_response_raw, str):
+                try:
+                    import json
+                    ai_response = json.loads(ai_response_raw)
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse JSON response: {ai_response_raw[:200]}...")
+                    ai_response = None
             
             # Check if we got a valid response
             if not ai_response or not isinstance(ai_response, dict):
-                logger.error("Core metadata generation failed: Invalid response from Gemini")
+                logger.error("Core metadata generation failed: Invalid response from LLM")
                 # Return fallback response
                 primary_keywords = ', '.join(keywords_data.get('primary_keywords', ['content']))
                 word_count = len(blog_content.split())
@@ -193,12 +213,16 @@ class BlogSEOMetadataGenerator:
         self, 
         blog_content: str, 
         blog_title: str, 
-        keywords_data: Dict[str, Any]
+        keywords_data: Dict[str, Any],
+        outline: Optional[List[Dict[str, Any]]] = None,
+        seo_analysis: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Generate social media and structured data (Call 2)"""
         try:
             # Create comprehensive prompt for social metadata
-            prompt = self._create_social_metadata_prompt(blog_content, blog_title, keywords_data)
+            prompt = self._create_social_metadata_prompt(
+                blog_content, blog_title, keywords_data, outline, seo_analysis
+            )
             
             # Define simplified structured schema for social metadata
             schema = {
@@ -246,17 +270,26 @@ class BlogSEOMetadataGenerator:
                 "required": ["open_graph", "twitter_card", "json_ld_schema"]
             }
             
-            # Get structured response from Gemini
-            ai_response = self.gemini_provider(
-                prompt,
-                schema,
-                temperature=0.3,
-                max_tokens=2048
+            # Get structured response using provider-agnostic llm_text_gen
+            ai_response_raw = llm_text_gen(
+                prompt=prompt,
+                json_struct=schema,
+                system_prompt=None
             )
+            
+            # Handle response: llm_text_gen may return dict (from structured JSON) or str (needs parsing)
+            ai_response = ai_response_raw
+            if isinstance(ai_response_raw, str):
+                try:
+                    import json
+                    ai_response = json.loads(ai_response_raw)
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse JSON response: {ai_response_raw[:200]}...")
+                    ai_response = None
             
             # Check if we got a valid response
             if not ai_response or not isinstance(ai_response, dict) or not ai_response.get('open_graph') or not ai_response.get('twitter_card') or not ai_response.get('json_ld_schema'):
-                logger.error("Social metadata generation failed: Invalid or empty response from Gemini")
+                logger.error("Social metadata generation failed: Invalid or empty response from LLM")
                 # Return fallback response
                 return {
                     'open_graph': {
@@ -301,11 +334,47 @@ class BlogSEOMetadataGenerator:
             logger.error(f"Social metadata generation failed: {e}")
             raise e
     
+    def _extract_content_highlights(self, blog_content: str, max_length: int = 2500) -> str:
+        """Extract key sections from blog content for prompt context"""
+        try:
+            lines = blog_content.split('\n')
+            
+            # Get first paragraph (introduction)
+            intro = ""
+            for line in lines[:20]:
+                if line.strip() and not line.strip().startswith('#'):
+                    intro += line.strip() + " "
+                    if len(intro) > 300:
+                        break
+            
+            # Get section headings
+            headings = [line.strip() for line in lines if line.strip().startswith('##')][:6]
+            
+            # Get conclusion if available
+            conclusion = ""
+            for line in reversed(lines[-20:]):
+                if line.strip() and not line.strip().startswith('#'):
+                    conclusion = line.strip() + " " + conclusion
+                    if len(conclusion) > 300:
+                        break
+            
+            highlights = f"INTRODUCTION: {intro[:300]}...\n\n"
+            highlights += f"SECTION HEADINGS: {' | '.join([h.replace('##', '').strip() for h in headings])}\n\n"
+            if conclusion:
+                highlights += f"CONCLUSION: {conclusion[:300]}..."
+            
+            return highlights[:max_length]
+        except Exception as e:
+            logger.warning(f"Failed to extract content highlights: {e}")
+            return blog_content[:2000] + "..."
+    
     def _create_core_metadata_prompt(
         self, 
         blog_content: str, 
         blog_title: str, 
-        keywords_data: Dict[str, Any]
+        keywords_data: Dict[str, Any],
+        outline: Optional[List[Dict[str, Any]]] = None,
+        seo_analysis: Optional[Dict[str, Any]] = None
     ) -> str:
         """Create high-quality prompt for core metadata generation"""
         
@@ -314,30 +383,106 @@ class BlogSEOMetadataGenerator:
         search_intent = keywords_data.get('search_intent', 'informational')
         target_audience = keywords_data.get('target_audience', 'general')
         industry = keywords_data.get('industry', 'general')
-        
-        # Calculate word count for reading time estimation
         word_count = len(blog_content.split())
         
+        # Extract outline structure
+        outline_context = ""
+        if outline:
+            headings = [s.get('heading', '') for s in outline if s.get('heading')]
+            outline_context = f"""
+OUTLINE STRUCTURE:
+- Total sections: {len(outline)}
+- Section headings: {', '.join(headings[:8])}
+- Content hierarchy: Well-structured with {len(outline)} main sections
+"""
+        
+        # Extract SEO analysis insights
+        seo_context = ""
+        if seo_analysis:
+            overall_score = seo_analysis.get('overall_score', seo_analysis.get('seo_score', 0))
+            category_scores = seo_analysis.get('category_scores', {})
+            applied_recs = seo_analysis.get('applied_recommendations', [])
+            
+            seo_context = f"""
+SEO ANALYSIS RESULTS:
+- Overall SEO Score: {overall_score}/100
+- Category Scores: Structure {category_scores.get('structure', category_scores.get('Structure', 0))}, Keywords {category_scores.get('keywords', category_scores.get('Keywords', 0))}, Readability {category_scores.get('readability', category_scores.get('Readability', 0))}
+- Applied Recommendations: {len(applied_recs)} SEO optimizations have been applied
+- Content Quality: Optimized for search engines with keyword focus
+"""
+        
+        # Get more content context (key sections instead of just first 1000 chars)
+        content_preview = self._extract_content_highlights(blog_content)
+        
         prompt = f"""
-Generate SEO metadata for this blog post.
+Generate comprehensive, personalized SEO metadata for this blog post.
 
-BLOG TITLE: {blog_title}
-BLOG CONTENT: {blog_content[:1000]}...
+=== BLOG CONTENT CONTEXT ===
+TITLE: {blog_title}
+CONTENT PREVIEW (key sections): {content_preview}
+WORD COUNT: {word_count} words
+READING TIME ESTIMATE: {max(1, word_count // 200)} minutes
+
+{outline_context}
+
+=== KEYWORD & AUDIENCE DATA ===
 PRIMARY KEYWORDS: {primary_keywords}
 SEMANTIC KEYWORDS: {semantic_keywords}
-WORD COUNT: {word_count}
+SEARCH INTENT: {search_intent}
+TARGET AUDIENCE: {target_audience}
+INDUSTRY: {industry}
 
-Generate:
-1. SEO TITLE (50-60 characters) - include primary keyword
-2. META DESCRIPTION (150-160 characters) - include CTA
-3. URL SLUG (lowercase, hyphens, 3-5 words)
-4. BLOG TAGS (5-8 relevant tags)
-5. BLOG CATEGORIES (2-3 categories)
-6. SOCIAL HASHTAGS (5-10 hashtags with #)
-7. READING TIME (calculate from {word_count} words)
-8. FOCUS KEYWORD (primary keyword for SEO)
+{seo_context}
 
-Make it compelling and SEO-optimized.
+=== METADATA GENERATION REQUIREMENTS ===
+1. SEO TITLE (50-60 characters, must include primary keyword):
+   - Front-load primary keyword
+   - Make it compelling and click-worthy
+   - Include power words if appropriate for {target_audience} audience
+   - Optimized for {search_intent} search intent
+
+2. META DESCRIPTION (150-160 characters, must include CTA):
+   - Include primary keyword naturally in first 120 chars
+   - Add compelling call-to-action (e.g., "Learn more", "Discover how", "Get started")
+   - Highlight value proposition for {target_audience} audience
+   - Use {industry} industry-specific terminology where relevant
+
+3. URL SLUG (lowercase, hyphens, 3-5 words):
+   - Include primary keyword
+   - Remove stop words
+   - Keep it concise and readable
+
+4. BLOG TAGS (5-8 relevant tags):
+   - Mix of primary, semantic, and long-tail keywords
+   - Industry-specific tags for {industry}
+   - Audience-relevant tags for {target_audience}
+
+5. BLOG CATEGORIES (2-3 categories):
+   - Based on content structure and {industry} industry standards
+   - Reflect main themes from outline sections
+
+6. SOCIAL HASHTAGS (5-10 hashtags with #):
+   - Include primary keyword as hashtag
+   - Industry-specific hashtags for {industry}
+   - Trending/relevant hashtags for {target_audience}
+
+7. READING TIME (calculate from {word_count} words):
+   - Average reading speed: 200 words/minute
+   - Round to nearest minute
+
+8. FOCUS KEYWORD (primary keyword for SEO):
+   - Select the most important primary keyword
+   - Should match the main topic and search intent
+
+=== QUALITY REQUIREMENTS ===
+- All metadata must be unique, not generic
+- Incorporate insights from SEO analysis if provided
+- Reflect the actual content structure from outline
+- Use language appropriate for {target_audience} audience
+- Optimize for {search_intent} search intent
+- Make descriptions compelling and action-oriented
+
+Generate metadata that is personalized, compelling, and SEO-optimized.
 """
         return prompt
     
@@ -345,7 +490,9 @@ Make it compelling and SEO-optimized.
         self, 
         blog_content: str, 
         blog_title: str, 
-        keywords_data: Dict[str, Any]
+        keywords_data: Dict[str, Any],
+        outline: Optional[List[Dict[str, Any]]] = None,
+        seo_analysis: Optional[Dict[str, Any]] = None
     ) -> str:
         """Create high-quality prompt for social metadata generation"""
         
@@ -353,49 +500,68 @@ Make it compelling and SEO-optimized.
         search_intent = keywords_data.get('search_intent', 'informational')
         target_audience = keywords_data.get('target_audience', 'general')
         industry = keywords_data.get('industry', 'general')
-        
         current_date = datetime.now().isoformat()
         
+        # Add outline and SEO context similar to core metadata prompt
+        outline_context = ""
+        if outline:
+            headings = [s.get('heading', '') for s in outline if s.get('heading')]
+            outline_context = f"\nOUTLINE SECTIONS: {', '.join(headings[:6])}\n"
+        
+        seo_context = ""
+        if seo_analysis:
+            overall_score = seo_analysis.get('overall_score', seo_analysis.get('seo_score', 0))
+            seo_context = f"\nSEO SCORE: {overall_score}/100 (optimized content)\n"
+        
+        content_preview = self._extract_content_highlights(blog_content, 1500)
+        
         prompt = f"""
-Generate social media metadata for this blog post.
+Generate engaging social media metadata for this blog post.
 
-BLOG TITLE: {blog_title}
-BLOG CONTENT: {blog_content[:800]}...
-PRIMARY KEYWORDS: {primary_keywords}
+=== CONTENT ===
+TITLE: {blog_title}
+CONTENT: {content_preview}
+{outline_context}
+{seo_context}
+KEYWORDS: {primary_keywords}
+TARGET AUDIENCE: {target_audience}
+INDUSTRY: {industry}
 CURRENT DATE: {current_date}
 
-Generate:
+=== GENERATION REQUIREMENTS ===
 
 1. OPEN GRAPH (Facebook/LinkedIn):
-   - title: 60 chars max
-   - description: 160 chars max  
-   - image: image URL
+   - title: 60 chars max, include primary keyword, compelling for {target_audience}
+   - description: 160 chars max, include CTA and value proposition
+   - image: Suggest an appropriate image URL (placeholder if none available)
    - type: "article"
-   - site_name: site name
-   - url: canonical URL
+   - site_name: Use appropriate site name for {industry} industry
+   - url: Generate canonical URL structure
 
 2. TWITTER CARD:
    - card: "summary_large_image"
-   - title: 70 chars max
-   - description: 200 chars max with hashtags
-   - image: image URL
-   - site: @sitename
-   - creator: @author
+   - title: 70 chars max, optimized for Twitter audience
+   - description: 200 chars max with relevant hashtags inline
+   - image: Match Open Graph image
+   - site: @yourwebsite (placeholder, user should update)
+   - creator: @author (placeholder, user should update)
 
-3. JSON-LD SCHEMA:
+3. JSON-LD SCHEMA (Article):
    - @context: "https://schema.org"
    - @type: "Article"
-   - headline: article title
-   - description: article description
-   - author: {{"@type": "Person", "name": "Author Name"}}
-   - publisher: {{"@type": "Organization", "name": "Site Name"}}
-   - datePublished: ISO date
-   - dateModified: ISO date
-   - mainEntityOfPage: canonical URL
-   - keywords: array of keywords
-   - wordCount: word count
+   - headline: Article title (optimized)
+   - description: Article description (150-200 chars)
+   - author: {{"@type": "Person", "name": "Author Name"}} (placeholder)
+   - publisher: {{"@type": "Organization", "name": "Site Name", "logo": {{"@type": "ImageObject", "url": "logo-url"}}}}
+   - datePublished: {current_date}
+   - dateModified: {current_date}
+   - mainEntityOfPage: {{"@type": "WebPage", "@id": "canonical-url"}}
+   - keywords: Array of primary and semantic keywords
+   - wordCount: {len(blog_content.split())}
+   - articleSection: Primary category based on content
+   - inLanguage: "en-US"
 
-Make it engaging and SEO-optimized.
+Make it engaging, personalized for {target_audience}, and optimized for {industry} industry.
 """
         return prompt
     

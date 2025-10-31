@@ -275,11 +275,17 @@ class BlogWriterService:
             # Initialize metadata generator
             metadata_generator = BlogSEOMetadataGenerator()
             
-            # Generate comprehensive metadata
+            # Extract outline and seo_analysis from request
+            outline = request.outline if hasattr(request, 'outline') else None
+            seo_analysis = request.seo_analysis if hasattr(request, 'seo_analysis') else None
+            
+            # Generate comprehensive metadata with full context
             metadata_results = await metadata_generator.generate_comprehensive_metadata(
                 blog_content=request.content,
                 blog_title=request.title or "Untitled Blog Post",
-                research_data=request.research_data or {}
+                research_data=request.research_data or {},
+                outline=outline,
+                seo_analysis=seo_analysis
             )
             
             # Convert to BlogSEOMetadataResponse format

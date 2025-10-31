@@ -4,11 +4,11 @@ from typing import Dict, Any, List
 from ..models.story_models import FacebookStoryRequest, FacebookStoryResponse
 from .base_service import FacebookWriterBaseService
 try:
-    from ...services.llm_providers.text_to_image_generation.gen_gemini_images import (
-        generate_gemini_images_base64,
-    )
+    from ...services.llm_providers.main_image_generation import generate_image
+    from base64 import b64encode
 except Exception:
-    generate_gemini_images_base64 = None  # type: ignore
+    generate_image = None  # type: ignore
+    b64encode = None  # type: ignore
 
 
 class FacebookStoryService(FacebookWriterBaseService):
@@ -50,22 +50,29 @@ class FacebookStoryService(FacebookWriterBaseService):
             # Generate visual suggestions and engagement tips
             visual_suggestions = self._generate_visual_suggestions(actual_story_type, request.visual_options)
             engagement_tips = self._generate_engagement_tips("story")
-            # Optional: generate one story image (9:16) using Gemini
+            # Optional: generate one story image (9:16) using unified image generation
             images_base64: List[str] = []
             try:
-                if generate_gemini_images_base64 is not None:
+                if generate_image is not None and b64encode is not None:
                     img_prompt = request.visual_options.background_image_prompt or (
                         f"Facebook story background for {request.business_type}. "
                         f"Style: {actual_tone}. Type: {actual_story_type}. Vertical mobile 9:16, high contrast, legible overlay space."
                     )
-                    images_base64 = generate_gemini_images_base64(
-                        img_prompt,
-                        enhance_prompt=False,
-                        aspect_ratio="9:16",
-                        max_retries=2,
-                        initial_retry_delay=1.0,
-                    ) or []
-            except Exception:
+                    # Generate image using unified system (9:16 aspect ratio = 1080x1920)
+                    result = generate_image(
+                        prompt=img_prompt,
+                        options={
+                            "provider": "gemini",  # Facebook stories use Gemini
+                            "width": 1080,
+                            "height": 1920,
+                        }
+                    )
+                    if result and result.image_bytes:
+                        # Convert bytes to base64
+                        image_b64 = b64encode(result.image_bytes).decode('utf-8')
+                        images_base64 = [image_b64]
+            except Exception as e:
+                # Log error but continue without images
                 images_base64 = []
             
             return FacebookStoryResponse(

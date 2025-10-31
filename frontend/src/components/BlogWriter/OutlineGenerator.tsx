@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { blogWriterApi, BlogResearchResponse } from '../../services/blogWriterApi';
 
@@ -11,18 +11,38 @@ interface OutlineGeneratorProps {
 
 const useCopilotActionTyped = useCopilotAction as any;
 
-export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({
+export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({ 
   research,
   onTaskStart,
   onPollingStart,
   onModalShow
-}) => {
+}, ref) => {
+  // Expose an imperative method to trigger outline generation directly (bypass LLM)
+  useImperativeHandle(ref, () => ({
+    generateNow: async () => {
+      if (!research) {
+        return { success: false, message: 'No research yet. Please research a topic first.' };
+      }
+      try {
+        onModalShow?.();
+        const { task_id } = await blogWriterApi.startOutlineGeneration({ research });
+        onTaskStart(task_id);
+        onPollingStart(task_id);
+        return { success: true, task_id };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return { success: false, message: errorMessage };
+      }
+    }
+  }));
   useCopilotActionTyped({
     name: 'generateOutline',
     description: 'Generate outline from research results using AI analysis',
     parameters: [],
     handler: async () => {
-      if (!research) return { success: false, message: 'No research yet. Please research a topic first.' };
+      if (!research) {
+        return { success: false, message: 'No research yet. Please research a topic first.' };
+      }
       
       try {
         // Show progress modal immediately when user clicks "Create outline"
@@ -64,7 +84,6 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({
       }
     },
     render: ({ status }: any) => {
-      console.log('generateOutline render called with status:', status);
       if (status === 'inProgress' || status === 'executing') {
         return (
           <div style={{ 
@@ -105,6 +124,6 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({
   });
 
   return null; // This component only provides the copilot action
-};
+});
 
 export default OutlineGenerator;

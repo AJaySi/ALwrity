@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { debug } from '../../utils/debug';
 import { CopilotSidebar } from '@copilotkit/react-ui';
+import { useCopilotChatHeadless_c } from '@copilotkit/react-core';
 import { useCopilotAction } from '@copilotkit/react-core';
 import '@copilotkit/react-ui/styles.css';
-import { blogWriterApi } from '../../services/blogWriterApi';
+import WriterCopilotSidebar from './BlogWriterUtils/WriterCopilotSidebar';
+import { blogWriterApi, BlogSEOActionableRecommendation } from '../../services/blogWriterApi';
 import { useOutlinePolling, useMediumGenerationPolling, useResearchPolling, useRewritePolling } from '../../hooks/usePolling';
 import { useClaimFixer } from '../../hooks/useClaimFixer';
 import { useMarkdownProcessor } from '../../hooks/useMarkdownProcessor';
@@ -26,10 +29,16 @@ import OutlineRefiner from './OutlineRefiner';
 import { SEOProcessor } from './SEO';
 import BlogWriterLanding from './BlogWriterLanding';
 import { OutlineProgressModal } from './OutlineProgressModal';
+import TaskProgressModals from './BlogWriterUtils/TaskProgressModals';
 import OutlineFeedbackForm from './OutlineFeedbackForm';
 import { BlogEditor } from './WYSIWYG';
 import { SEOAnalysisModal } from './SEOAnalysisModal';
 import { SEOMetadataModal } from './SEOMetadataModal';
+import PhaseNavigation from './PhaseNavigation';
+import { usePhaseNavigation } from '../../hooks/usePhaseNavigation';
+import HeaderBar from './BlogWriterUtils/HeaderBar';
+import PhaseContent from './BlogWriterUtils/PhaseContent';
+import useBlogWriterCopilotActions from './BlogWriterUtils/useBlogWriterCopilotActions';
 
 // Type assertion for CopilotKit action
 const useCopilotActionTyped = useCopilotAction as any;
@@ -59,6 +68,7 @@ export const BlogWriter: React.FC = () => {
     flowAnalysisResults,
     setOutline,
     setTitleOptions,
+    setSelectedTitle,
     setSections,
     setSeoAnalysis,
     setGenMode,
@@ -78,6 +88,227 @@ export const BlogWriter: React.FC = () => {
     handleContentUpdate,
     handleContentSave
   } = useBlogWriterState();
+
+  const [isSEOAnalysisModalOpen, setIsSEOAnalysisModalOpen] = useState(false);
+  const [isSEOMetadataModalOpen, setIsSEOMetadataModalOpen] = useState(false);
+  const [seoRecommendationsApplied, setSeoRecommendationsApplied] = useState(false);
+  const lastSEOModalOpenRef = useRef<number>(0);
+
+  // Phase navigation hook
+  const {
+    phases,
+    currentPhase,
+    navigateToPhase,
+    resetUserSelection
+  } = usePhaseNavigation(
+    research,
+    outline,
+    outlineConfirmed,
+    Object.keys(sections).length > 0,
+    contentConfirmed,
+    seoAnalysis,
+    seoMetadata,
+    seoRecommendationsApplied
+  );
+
+  // Helper: run same checks as analyzeSEO and open modal
+  const runSEOAnalysisDirect = (): string => {
+    const hasSections = !!sections && Object.keys(sections).length > 0;
+    const hasResearch = !!research && !!(research as any).keyword_analysis;
+    if (!hasSections) return "No blog content available for SEO analysis. Please generate content first.";
+    if (!hasResearch) return "Research data is required for SEO analysis. Please run research first.";
+    // Prevent rapid re-opens
+    const now = Date.now();
+    if (isSEOAnalysisModalOpen && now - lastSEOModalOpenRef.current < 1000) {
+      return "SEO analysis is already open.";
+    }
+    
+    // Mark content phase as done when user clicks "Next: Run SEO Analysis"
+    if (!contentConfirmed) {
+      setContentConfirmed(true);
+      debug.log('[BlogWriter] Content phase marked as done (SEO analysis triggered)');
+    }
+    
+    setSeoRecommendationsApplied(false);
+    if (!isSEOAnalysisModalOpen) {
+      setIsSEOAnalysisModalOpen(true);
+      lastSEOModalOpenRef.current = now;
+      debug.log('[BlogWriter] SEO modal opened (direct)');
+    }
+    return "Running SEO analysis of your blog content. This will analyze content structure, keyword optimization, readability, and provide actionable recommendations.";
+  };
+
+  const handleApplySeoRecommendations = useCallback(async (
+    recommendations: BlogSEOActionableRecommendation[]
+  ) => {
+    if (!outline || outline.length === 0) {
+      throw new Error('An outline is required before applying recommendations.');
+    }
+
+    const sectionPayload = outline.map((section) => ({
+      id: section.id,
+      heading: section.heading,
+      content: sections[section.id] ?? '',
+    }));
+
+    const response = await blogWriterApi.applySeoRecommendations({
+      title: selectedTitle || outline[0]?.heading || 'Untitled Blog',
+      sections: sectionPayload,
+      outline,
+      research: (research as any) || {},
+      recommendations,
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to apply recommendations.');
+    }
+
+    if (!response.sections || !Array.isArray(response.sections)) {
+      throw new Error('Recommendation response did not include updated sections.');
+    }
+
+    // Update sections - create new object reference to trigger React re-render
+    const newSections: Record<string, string> = {};
+    response.sections.forEach((section) => {
+      if (section.id && section.content) {
+        newSections[section.id] = section.content;
+      }
+    });
+    
+    // Validate we have sections before updating
+    if (Object.keys(newSections).length === 0) {
+      throw new Error('No valid sections received from SEO recommendations application.');
+    }
+    
+    // Validate sections have actual content
+    const sectionsWithContent = Object.values(newSections).filter(c => c && c.trim().length > 0);
+    if (sectionsWithContent.length === 0) {
+      throw new Error('SEO recommendations resulted in empty sections. Please try again.');
+    }
+    
+    // Log detailed section info for debugging
+    const sectionIds = Object.keys(newSections);
+    const sectionSizes = sectionIds.map(id => ({ id, length: newSections[id]?.length || 0 }));
+    debug.log('[BlogWriter] Applied SEO recommendations: sections updated', { 
+      sectionCount: sectionIds.length,
+      sectionsWithContent: sectionsWithContent.length,
+      sectionIds: sectionIds,
+      sectionSizes: sectionSizes,
+      totalContentLength: Object.values(newSections).reduce((sum, c) => sum + (c?.length || 0), 0)
+    });
+    
+    // Update sections state
+    setSections(newSections);
+    
+    // Force a delay to ensure React processes the state update before proceeding
+    // This gives React time to re-render with new sections before phase navigation checks
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    setContinuityRefresh(Date.now());
+    setFlowAnalysisCompleted(false);
+    setFlowAnalysisResults(null);
+
+    if (response.title && response.title !== selectedTitle) {
+      setSelectedTitle(response.title);
+    }
+
+    if (response.applied) {
+      setSeoAnalysis(prev => prev ? { ...prev, applied_recommendations: response.applied } : prev);
+      debug.log('[BlogWriter] SEO analysis state updated with applied recommendations');
+    }
+
+    // Mark recommendations as applied (this will trigger phase navigation check)
+    // But we'll stay in SEO phase to show updated content
+    setSeoRecommendationsApplied(true);
+    debug.log('[BlogWriter] seoRecommendationsApplied set to true');
+    
+    // Ensure we stay in SEO phase to show updated content
+    // Force navigation to SEO phase if we're not already there (safeguard)
+    if (currentPhase !== 'seo') {
+      navigateToPhase('seo');
+      debug.log('[BlogWriter] Forced navigation to SEO phase after applying recommendations');
+    } else {
+      debug.log('[BlogWriter] Already in SEO phase, staying to show updated content');
+    }
+  }, [outline, sections, selectedTitle, research, setSections, setSelectedTitle, setContinuityRefresh, setFlowAnalysisCompleted, setFlowAnalysisResults, setSeoAnalysis, currentPhase, navigateToPhase]);
+
+  // Handle SEO analysis completion
+  const handleSEOAnalysisComplete = useCallback((analysis: any) => {
+    setSeoAnalysis(analysis);
+    debug.log('[BlogWriter] SEO analysis completed', { hasAnalysis: !!analysis });
+  }, [setSeoAnalysis]);
+
+  // Handle SEO modal close - mark SEO phase as done if not already marked
+  const handleSEOModalClose = useCallback(() => {
+    // Mark SEO phase as done when modal closes (even without applying recommendations)
+    if (!seoAnalysis) {
+      // Set a minimal valid seoAnalysis object to mark phase as complete
+      setSeoAnalysis({
+        success: true,
+        overall_score: 0,
+        category_scores: {},
+        analysis_summary: {
+          overall_grade: 'N/A',
+          status: 'Skipped',
+          strongest_category: 'N/A',
+          weakest_category: 'N/A',
+          key_strengths: [],
+          key_weaknesses: [],
+          ai_summary: 'SEO analysis was skipped by user'
+        },
+        actionable_recommendations: [],
+        generated_at: new Date().toISOString()
+      });
+      debug.log('[BlogWriter] SEO phase marked as done (modal closed without analysis)');
+    }
+    setIsSEOAnalysisModalOpen(false);
+    debug.log('[BlogWriter] SEO modal closed');
+  }, [seoAnalysis, setSeoAnalysis, setIsSEOAnalysisModalOpen]);
+
+  // Mark SEO phase as completed when recommendations are applied
+  useEffect(() => {
+    if (seoRecommendationsApplied && seoAnalysis) {
+      // SEO phase is considered complete when recommendations are applied
+      // But stay in SEO phase to show updated content
+      debug.log('[BlogWriter] SEO recommendations applied, SEO phase marked as complete');
+      
+      // Ensure we stay in SEO phase to show updated content (override auto-progression)
+      if (currentPhase !== 'seo' && Object.keys(sections).length > 0) {
+        navigateToPhase('seo');
+        debug.log('[BlogWriter] Forced stay in SEO phase to show updated content');
+      }
+    }
+  }, [seoRecommendationsApplied, seoAnalysis, currentPhase, sections, navigateToPhase]);
+
+  // Track when outlines/content become available for the first time
+  const prevOutlineLenRef = useRef<number>(outline.length);
+  const prevOutlineConfirmedRef = useRef<boolean>(outlineConfirmed);
+  const prevContentConfirmedRef = useRef<boolean>(contentConfirmed);
+  
+  useEffect(() => {
+    const prevLen = prevOutlineLenRef.current;
+    if (research && prevLen === 0 && outline.length > 0) {
+      resetUserSelection();
+    }
+    prevOutlineLenRef.current = outline.length;
+  }, [research, outline.length, resetUserSelection]);
+
+  // Only reset user selection when transitioning from not-confirmed to confirmed
+  useEffect(() => {
+    const wasConfirmed = prevOutlineConfirmedRef.current;
+    if (!wasConfirmed && outlineConfirmed && Object.keys(sections).length > 0) {
+      resetUserSelection(); // Allow auto-progression to content phase
+    }
+    prevOutlineConfirmedRef.current = outlineConfirmed;
+  }, [outlineConfirmed, sections, resetUserSelection]);
+
+  useEffect(() => {
+    const wasConfirmed = prevContentConfirmedRef.current;
+    if (!wasConfirmed && contentConfirmed && seoAnalysis) {
+      resetUserSelection(); // Allow auto-progression to SEO phase
+    }
+    prevContentConfirmedRef.current = contentConfirmed;
+  }, [contentConfirmed, seoAnalysis, resetUserSelection]);
 
   // Custom hooks for complex functionality
   const { buildFullMarkdown, buildUpdatedMarkdownForClaim, applyClaimFix } = useClaimFixer(
@@ -139,28 +370,63 @@ export const BlogWriter: React.FC = () => {
     onError: (err) => console.error('Rewrite failed:', err)
   });
 
-  // Get context-aware suggestions based on current task status
-  const suggestions = useSuggestions(
-    research, 
-    outline, 
-    outlineConfirmed,
-    { isPolling: researchPolling.isPolling, currentStatus: researchPolling.currentStatus },
-    { isPolling: outlinePolling.isPolling, currentStatus: outlinePolling.currentStatus },
-    { isPolling: mediumPolling.isPolling, currentStatus: mediumPolling.currentStatus },
-    Object.keys(sections).length > 0, // hasContent
-    flowAnalysisCompleted, // flowAnalysisCompleted state
-    contentConfirmed // contentConfirmed state
-  );
-
   // Add minimum display time for modal
   const [showModal, setShowModal] = useState(false);
   const [modalStartTime, setModalStartTime] = useState<number | null>(null);
   const [isMediumGenerationStarting, setIsMediumGenerationStarting] = useState(false);
   const [showOutlineModal, setShowOutlineModal] = useState(false);
   
-  // SEO Analysis Modal state
-  const [isSEOAnalysisModalOpen, setIsSEOAnalysisModalOpen] = useState(false);
-  const [isSEOMetadataModalOpen, setIsSEOMetadataModalOpen] = useState(false);
+  const suggestions = useSuggestions({
+    research,
+    outline,
+    outlineConfirmed,
+    researchPolling: { isPolling: researchPolling.isPolling, currentStatus: researchPolling.currentStatus },
+    outlinePolling: { isPolling: outlinePolling.isPolling, currentStatus: outlinePolling.currentStatus },
+    mediumPolling: { isPolling: mediumPolling.isPolling, currentStatus: mediumPolling.currentStatus },
+    hasContent: Object.keys(sections).length > 0,
+    flowAnalysisCompleted,
+    contentConfirmed,
+    seoAnalysis,
+    seoMetadata,
+    seoRecommendationsApplied,
+  });
+
+  // Drive CopilotKit suggestions programmatically
+  const copilotHeadless = (useCopilotChatHeadless_c as any)?.();
+  const setSuggestionsRef = useRef<any>(null);
+  useEffect(() => {
+    setSuggestionsRef.current = copilotHeadless?.setSuggestions;
+  }, [copilotHeadless]);
+
+  const suggestionsPayload = React.useMemo(
+    () => (Array.isArray(suggestions) ? suggestions.map((s: any) => ({ title: s.title, message: s.message })) : []),
+    [suggestions]
+  );
+  const prevSuggestionsRef = useRef<string>("__init__");
+  const suggestionsJson = React.useMemo(() => JSON.stringify(suggestionsPayload), [suggestionsPayload]);
+  useEffect(() => {
+    try {
+      if (!setSuggestionsRef.current) return;
+      if (suggestionsJson !== prevSuggestionsRef.current) {
+        setSuggestionsRef.current(suggestionsPayload);
+        debug.log('[BlogWriter] Copilot suggestions pushed', { count: suggestionsPayload.length });
+        prevSuggestionsRef.current = suggestionsJson;
+      }
+    } catch {}
+  }, [suggestionsJson, suggestionsPayload]);
+
+  const handlePhaseClick = useCallback((phaseId: string) => {
+    navigateToPhase(phaseId);
+    if (phaseId === 'seo') {
+      if (seoAnalysis) {
+        setIsSEOAnalysisModalOpen(true);
+        debug.log('[BlogWriter] SEO modal opened (phase navigation)');
+      } else {
+        runSEOAnalysisDirect();
+      }
+    }
+  }, [navigateToPhase, seoAnalysis, runSEOAnalysisDirect]);
+  const outlineGenRef = useRef<any>(null);
 
   useEffect(() => {
     if ((mediumPolling.isPolling || rewritePolling.isPolling || isMediumGenerationStarting) && !showModal) {
@@ -214,96 +480,73 @@ export const BlogWriter: React.FC = () => {
     progressCount: mediumPolling.progressMessages.length
   });
 
-  // Debug SEO modal state
-  console.log('🔍 SEO Analysis Modal state:', {
-    isSEOAnalysisModalOpen,
-    hasResearch: !!research,
-    hasContent: !!sections && Object.keys(sections).length > 0,
-    researchKeys: research ? Object.keys(research) : [],
-    sectionsKeys: sections ? Object.keys(sections) : []
-  });
+  // Log critical state changes only (reduce noise)
+  const lastPhaseRef = useRef<string>('');
+  const lastSeoOpenRef = useRef<boolean>(false);
+  const lastSectionsLenRef = useRef<number>(0);
 
-  // Debug action registration
-  console.log('📋 CopilotKit Actions Registered:', ['confirmBlogContent', 'analyzeSEO']);
-
-  // Copilot action for confirming blog content
-  useCopilotActionTyped({
-    name: "confirmBlogContent",
-    description: "Confirm that the blog content is ready and move to the next stage (SEO analysis)",
-    parameters: [],
-    handler: async () => {
-      console.log('Blog content confirmed by user');
-      setContentConfirmed(true);
-      return "Blog content has been confirmed! You can now proceed with SEO analysis and publishing.";
+  useEffect(() => {
+    if (currentPhase !== lastPhaseRef.current) {
+      debug.log('[BlogWriter] Phase changed', { currentPhase });
+      lastPhaseRef.current = currentPhase;
     }
-  });
+  }, [currentPhase]);
 
-  // Copilot action for running SEO analysis
-  useCopilotActionTyped({
-    name: "analyzeSEO",
-    description: "Analyze the blog content for SEO optimization and provide detailed recommendations",
-    parameters: [],
-    handler: async () => {
-      console.log('🚀 SEO Analysis Action Triggered!');
-      console.log('Current modal state before:', isSEOAnalysisModalOpen);
-      console.log('Sections available:', !!sections && Object.keys(sections).length > 0);
-      console.log('Research data available:', !!research && !!research.keyword_analysis);
-      
-      // Check if we have content to analyze
-      if (!sections || Object.keys(sections).length === 0) {
-        console.log('❌ No content available for SEO analysis');
-        return "No blog content available for SEO analysis. Please generate content first.";
+  useEffect(() => {
+    const open = isSEOAnalysisModalOpen;
+    if (open !== lastSeoOpenRef.current) {
+      debug.log('[BlogWriter] SEO modal', { isOpen: open });
+      lastSeoOpenRef.current = open;
+    }
+  }, [isSEOAnalysisModalOpen]);
+
+  useEffect(() => {
+    const len = Object.keys(sections || {}).length;
+    if (len !== lastSectionsLenRef.current) {
+      debug.log('[BlogWriter] Sections updated', { count: len });
+      lastSectionsLenRef.current = len;
+    }
+  }, [sections]);
+
+  useEffect(() => {
+    debug.log('[BlogWriter] Suggestions updated', { suggestions });
+  }, [suggestions]);
+
+  // Force-sync Copilot suggestions right after SEO recommendations applied (guarded by previous suggestions key)
+  useEffect(() => {
+    if (!seoAnalysis || !seoRecommendationsApplied || !setSuggestionsRef.current) return;
+    try {
+      if (suggestionsJson !== prevSuggestionsRef.current) {
+        setSuggestionsRef.current(suggestionsPayload);
+        debug.log('[BlogWriter] Forced Copilot suggestions sync after SEO recommendations applied', { count: suggestionsPayload.length });
+        prevSuggestionsRef.current = suggestionsJson;
       }
-      
-      // Check if we have research data
-      if (!research || !research.keyword_analysis) {
-        console.log('❌ No research data available for SEO analysis');
-        return "Research data is required for SEO analysis. Please run research first.";
-      }
-      
-      // Open SEO analysis modal
-      console.log('✅ All checks passed, opening SEO analysis modal');
+    } catch (e) {
+      console.error('Failed to push Copilot suggestions after SEO apply:', e);
+    }
+  }, [seoAnalysis, seoRecommendationsApplied, suggestionsJson, suggestionsPayload]);
+
+  const confirmBlogContentCb = useCallback(() => {
+    debug.log('[BlogWriter] Blog content confirmed by user');
+    setContentConfirmed(true);
+    resetUserSelection();
+    setSeoRecommendationsApplied(false);
+    navigateToPhase('seo');
+    setTimeout(() => {
       setIsSEOAnalysisModalOpen(true);
-      console.log('Modal state set to true');
-      
-      return "Running SEO analysis of your blog content. This will analyze content structure, keyword optimization, readability, and provide actionable recommendations.";
-    }
-  });
+      debug.log('[BlogWriter] SEO modal opened (confirm→direct)');
+    }, 0);
+    return "✅ Blog content has been confirmed! Running SEO analysis now.";
+  }, [setContentConfirmed, resetUserSelection, navigateToPhase, setIsSEOAnalysisModalOpen]);
 
-  // Generate SEO Metadata Action
-  useCopilotActionTyped({
-    name: "generateSEOMetadata",
-    description: "Generate comprehensive SEO metadata including titles, descriptions, Open Graph tags, Twitter cards, and structured data",
-    parameters: [
-      {
-        name: "title",
-        type: "string",
-        description: "Optional blog title to use for metadata generation",
-        required: false
-      }
-    ],
-    handler: async ({ title }: { title?: string }) => {
-      console.log('🚀 Generate SEO Metadata Action Triggered!');
-      console.log('Title provided:', title);
-      console.log('Selected title:', selectedTitle);
-      console.log('Sections available:', !!sections && Object.keys(sections).length > 0);
-      console.log('Research data available:', !!research && !!research.keyword_analysis);
-      
-      // Check if we have content to generate metadata for
-      if (!sections || Object.keys(sections).length === 0) {
-        return "Please generate blog content first before creating SEO metadata. Use the content generation features to create your blog post.";
-      }
-      
-      if (!research || !research.keyword_analysis) {
-        return "Please complete research first to get keyword data for SEO metadata generation. Use the research features to gather keyword insights.";
-      }
-      
-      // Open the SEO metadata modal
-      setIsSEOMetadataModalOpen(true);
-      console.log('SEO Metadata modal opened');
-      
-      return "Opening SEO metadata generator! This will create optimized titles, descriptions, Open Graph tags, Twitter cards, and structured data for your blog post.";
-    }
+  useBlogWriterCopilotActions({
+    isSEOAnalysisModalOpen,
+    lastSEOModalOpenRef,
+    runSEOAnalysisDirect,
+    confirmBlogContent: confirmBlogContentCb,
+    sections,
+    research,
+    openSEOMetadata: () => setIsSEOMetadataModalOpen(true),
   });
 
 
@@ -366,6 +609,7 @@ export const BlogWriter: React.FC = () => {
       
       {/* New extracted functionality components */}
       <OutlineGenerator
+        ref={outlineGenRef}
         research={research}
         onTaskStart={(taskId) => setOutlineTaskId(taskId)}
         onPollingStart={(taskId) => outlinePolling.startPolling(taskId)}
@@ -395,241 +639,70 @@ export const BlogWriter: React.FC = () => {
       {!research ? (
         <BlogWriterLanding 
           onStartWriting={() => {
-            // This will trigger the copilot to start the research process
-            // The user can then interact with the copilot to begin research
+            // Trigger the copilot to start the research process
           }}
         />
       ) : (
         <>
-      <div style={{ padding: 16, borderBottom: '1px solid #eee' }}>
-        <h2 style={{ margin: 0 }}>AI Blog Writer</h2>
-      </div>
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-            <div style={{ flex: 1, overflow: 'auto' }}>
-          {research && outline.length === 0 && <ResearchResults research={research} />}
-          {outline.length > 0 && (
-            <div>
-              {outlineConfirmed ? (
-                /* WYSIWYG Editor - Show when outline is confirmed */
-        <BlogEditor
-          outline={outline}
-          research={research}
-          initialTitle={selectedTitle || (typeof window !== 'undefined' ? localStorage.getItem('blog_selected_title') : '') || 'Your Amazing Blog Title'}
-          titleOptions={titleOptions}
-          researchTitles={researchTitles}
-          aiGeneratedTitles={aiGeneratedTitles}
-          sections={sections}
-          onContentUpdate={handleContentUpdate}
-          onSave={handleContentSave}
-          continuityRefresh={continuityRefresh}
-          flowAnalysisResults={flowAnalysisResults}
-        />
-              ) : (
-                /* Outline Editor - Show when outline is not confirmed */
-                <>
-                  {/* Enhanced Title Selection */}
-                  <EnhancedTitleSelector
-                      titleOptions={titleOptions}
-                      selectedTitle={selectedTitle}
-                    sections={outline}
-                    researchTitles={researchTitles}
-                    aiGeneratedTitles={aiGeneratedTitles}
-                    onTitleSelect={handleTitleSelect}
-                    onCustomTitle={handleCustomTitle}
-                    />
-                  
-
-                  {/* Enhanced Outline Editor */}
-                  <EnhancedOutlineEditor 
-                    outline={outline} 
-                    research={research}
-                    sourceMappingStats={sourceMappingStats}
-                    groundingInsights={groundingInsights}
-                    optimizationResults={optimizationResults}
-                    researchCoverage={researchCoverage}
-                    onRefine={(op, id, payload) => blogWriterApi.refineOutline({ outline, operation: op, section_id: id, payload }).then((res: any) => setOutline(res.outline))} 
-                  />
-
-                  {/* Draft/Polished Mode Toggle */}
-                  <div style={{ margin: '12px 0' }}>
-                    <label style={{ marginRight: 8 }}>Generation mode:</label>
-                    <select value={genMode} onChange={(e) => setGenMode(e.target.value as 'draft' | 'polished')}>
-                      <option value="draft">Draft (faster, lower cost)</option>
-                      <option value="polished">Polished (higher quality)</option>
-                    </select>
-                  </div>
-
-                  {outline.map(s => (
-                    <div key={s.id} style={{ marginBottom: 16 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <h4 style={{ margin: 0 }}>{s.heading}</h4>
-                        {/* Continuity badge */}
-                        {sections[s.id] && (
-                          <ContinuityBadge sectionId={s.id} refreshToken={continuityRefresh} />
-                        )}
-                      </div>
-                      {sections[s.id] ? (
-                        <>
-                          <pre style={{ whiteSpace: 'pre-wrap' }}>{sections[s.id]}</pre>
-                          <SEOMiniPanel analysis={seoAnalysis} />
-                        </>
-                      ) : (
-                        <div style={{ fontStyle: 'italic', color: '#666' }}>Ask the copilot to generate this section.</div>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      <HeaderBar
+        phases={phases}
+        currentPhase={currentPhase}
+        onPhaseClick={handlePhaseClick}
+      />
+      <PhaseContent
+        currentPhase={currentPhase}
+        research={research}
+        outline={outline}
+        outlineConfirmed={outlineConfirmed}
+        titleOptions={titleOptions}
+        selectedTitle={selectedTitle}
+        researchTitles={researchTitles}
+        aiGeneratedTitles={aiGeneratedTitles}
+        sourceMappingStats={sourceMappingStats}
+        groundingInsights={groundingInsights}
+        optimizationResults={optimizationResults}
+        researchCoverage={researchCoverage}
+        setOutline={setOutline}
+        sections={sections}
+        handleContentUpdate={handleContentUpdate}
+        handleContentSave={handleContentSave}
+        continuityRefresh={continuityRefresh}
+        flowAnalysisResults={flowAnalysisResults}
+        outlineGenRef={outlineGenRef}
+        blogWriterApi={blogWriterApi}
+        contentConfirmed={contentConfirmed}
+        seoAnalysis={seoAnalysis}
+        seoMetadata={seoMetadata}
+        onTitleSelect={handleTitleSelect}
+        onCustomTitle={handleCustomTitle}
+      />
         </>
       )}
 
-      <CopilotSidebar
-        labels={{ 
-          title: 'ALwrity Co-Pilot', 
-          initial: !research 
-            ? 'Hi! I can help you research, outline, and draft your blog. Just tell me what topic you want to write about and I\'ll get started!' 
-            : 'Great! I can see you have research data. Let me help you create an outline and generate content for your blog.'
-        }}
+      <WriterCopilotSidebar
         suggestions={suggestions}
-        makeSystemMessage={(context: string, additional?: string) => {
-          // Get current state information
-          const hasResearch = research !== null;
-          const hasOutline = outline.length > 0;
-          const isOutlineConfirmed = outlineConfirmed;
-          const researchInfo = hasResearch ? {
-            sources: research.sources?.length || 0,
-            queries: research.search_queries?.length || 0,
-            angles: research.suggested_angles?.length || 0,
-            primaryKeywords: research.keyword_analysis?.primary || [],
-            searchIntent: research.keyword_analysis?.search_intent || 'informational'
-          } : null;
-
-          const outlineContext = hasOutline ? `
-OUTLINE DETAILS:
-- Total sections: ${outline.length}
-- Section headings: ${outline.map(s => s.heading).join(', ')}
-- Total target words: ${outline.reduce((sum, s) => sum + (s.target_words || 0), 0)}
-- Section breakdown: ${outline.map(s => `${s.heading} (${s.target_words || 0} words, ${s.subheadings?.length || 0} subheadings, ${s.key_points?.length || 0} key points)`).join('; ')}
-` : '';
-
-          const toolGuide = `
-You are the ALwrity Blog Writing Assistant. You MUST call the appropriate frontend actions (tools) to fulfill user requests.
-
-CURRENT STATE:
-${hasResearch && researchInfo ? `
-✅ RESEARCH COMPLETED:
-- Found ${researchInfo.sources} sources with Google Search grounding
-- Generated ${researchInfo.queries} search queries
-- Created ${researchInfo.angles} content angles
-- Primary keywords: ${researchInfo.primaryKeywords.join(', ')}
-- Search intent: ${researchInfo.searchIntent}
-` : '❌ No research completed yet'}
-
-${hasOutline ? `✅ OUTLINE GENERATED: ${outline.length} sections created${isOutlineConfirmed ? ' (CONFIRMED)' : ' (PENDING CONFIRMATION)'}` : '❌ No outline generated yet'}
-${outlineContext}
-
-Available tools:
-- getResearchKeywords(prompt?: string) - Get keywords from user for research
-- performResearch(formData: string) - Perform research with collected keywords (formData is JSON string with keywords and blogLength)
-- researchTopic(keywords: string, industry?: string, target_audience?: string)
-- chatWithResearchData(question: string) - Chat with research data to explore insights and get recommendations
-- generateOutline()
-- createOutlineWithCustomInputs(customInstructions: string) - Create outline with user's custom instructions
-- refineOutline(prompt?: string) - Refine outline based on user feedback
-- chatWithOutline(question?: string) - Chat with outline to get insights and ask questions about content structure
-- confirmOutlineAndGenerateContent() - Confirm outline and mark as ready for content generation (does NOT auto-generate content)
-- generateSection(sectionId: string)
-- generateAllSections()
-- refineOutlineStructure(operation: add|remove|move|merge|rename, sectionId?: string, payload?: object)
-- enhanceSection(sectionId: string, focus?: string) - Enhance a specific section with AI improvements
-- optimizeOutline(focus?: string) - Optimize entire outline for better flow, SEO, and engagement
-- rebalanceOutline(targetWords?: number) - Rebalance word count distribution across sections
-- confirmBlogContent() - Confirm that blog content is ready and move to SEO stage
-- analyzeSEO() - Analyze SEO for blog content with comprehensive insights and visual interface
-- generateSEOMetadata(title?: string)
-- publishToPlatform(platform: 'wix'|'wordpress', schedule_time?: string)
-
-       CRITICAL BEHAVIOR & USER GUIDANCE:
-       - When user wants to research ANY topic, IMMEDIATELY call getResearchKeywords() to get their input
-       - When user asks to research something, call getResearchKeywords() first to collect their keywords
-       - After getResearchKeywords() completes, IMMEDIATELY call performResearch() with the collected data
-       
-       USER GUIDANCE STRATEGY:
-       - After research completion, ALWAYS guide user toward outline creation as the next step
-       - If user wants to explore research data, use chatWithResearchData() but then guide them to outline creation
-       - If user has specific outline requirements, use createOutlineWithCustomInputs() with their instructions
-       - When user asks for outline, call generateOutline() or createOutlineWithCustomInputs() based on their needs
-       - After outline generation, ALWAYS guide user to review and confirm the outline
-       - If user wants to discuss the outline, use chatWithOutline() to provide insights and answer questions
-       - If user wants to refine the outline, use refineOutline() to collect their feedback and refine
-       - When user says "I confirm the outline" or "I confirm the outline and am ready to generate content" or clicks "Confirm & Generate Content", IMMEDIATELY call confirmOutlineAndGenerateContent() - DO NOT ask for additional confirmation
-       - CRITICAL: If user explicitly confirms the outline, do NOT ask "are you sure?" or "please confirm" - the confirmation is already given
-       - Only after outline confirmation, show content generation suggestions and wait for user to explicitly request content generation
-       - When user asks to generate content before outline confirmation, remind them to confirm the outline first
-       - Content generation should ONLY happen when user explicitly clicks "Generate all sections" or "Generate [specific section]"
-       - When user has generated content and wants to rewrite, use rewriteBlog() to collect feedback and rewriteBlog() to process
-       - For rewrite requests, collect detailed feedback about what they want to change, tone, audience, and focus
-       - After content generation, guide users to review and confirm their content before moving to SEO stage
-       - When user says "I have reviewed and confirmed my blog content is ready for the next stage" or clicks "Next: Confirm Blog Content", IMMEDIATELY call confirmBlogContent() - DO NOT ask for additional confirmation
-       - CRITICAL: If user explicitly confirms blog content, do NOT ask "are you sure?" or "please confirm" - the confirmation is already given
-       - Only after content confirmation, show SEO analysis and publishing suggestions
-       - When user asks for SEO analysis before content confirmation, remind them to confirm the content first
-       - For SEO analysis, ALWAYS use analyzeSEO() - this is the ONLY SEO analysis tool available and provides comprehensive insights with visual interface
-       - IMPORTANT: There is NO "basic" or "simple" SEO analysis - only the comprehensive one. Do NOT mention multiple SEO analysis options
-       
-       ENGAGEMENT TACTICS:
-       - DO NOT ask for clarification - take action immediately with the information provided
-       - Always call the appropriate tool instead of just talking about what you could do
-       - Be aware of the current state and reference research results when relevant
-       - Guide users through the process: Research → Outline → Outline Review & Confirmation → Content → Content Review & Confirmation → SEO → Publish
-       - Use encouraging language and highlight progress made
-       - If user seems lost, remind them of the current stage and suggest the next step
-       - When research is complete, emphasize the value of the data found and guide to outline creation
-       - When outline is generated, emphasize the importance of reviewing and confirming before content generation
-       - Encourage users to make small manual edits to the outline UI before using AI for major changes
-`;
-          return [toolGuide, additional].filter(Boolean).join('\n\n');
-        }}
+        research={research}
+        outline={outline}
+        outlineConfirmed={outlineConfirmed}
       />
       
-      {/* Outline Progress Modal */}
-      {/* Outline modal */}
-      <OutlineProgressModal
-        isVisible={showOutlineModal}
-        status={outlinePolling.currentStatus}
-        progressMessages={outlinePolling.progressMessages.map(m => m.message)}
-        latestMessage={outlinePolling.progressMessages.length > 0 ? outlinePolling.progressMessages[outlinePolling.progressMessages.length - 1].message : ''}
-        error={outlinePolling.error}
-      />
-
-      {/* Medium generation / Rewrite modal */}
-      <OutlineProgressModal
-        isVisible={showModal}
-        status={rewritePolling.isPolling ? rewritePolling.currentStatus : mediumPolling.currentStatus}
-        progressMessages={rewritePolling.isPolling ? rewritePolling.progressMessages.map(m => m.message) : mediumPolling.progressMessages.map(m => m.message)}
-        latestMessage={rewritePolling.isPolling ? 
-          (rewritePolling.progressMessages.length > 0 ? rewritePolling.progressMessages[rewritePolling.progressMessages.length - 1].message : '') :
-          (mediumPolling.progressMessages.length > 0 ? mediumPolling.progressMessages[mediumPolling.progressMessages.length - 1].message : '')
-        }
-        error={rewritePolling.isPolling ? rewritePolling.error : mediumPolling.error}
-        titleOverride={rewritePolling.isPolling ? '🔄 Rewriting Your Blog' : '📝 Generating Your Blog Content'}
+      <TaskProgressModals
+        showOutlineModal={showOutlineModal}
+        outlinePolling={outlinePolling}
+        showModal={showModal}
+        rewritePolling={rewritePolling}
+        mediumPolling={mediumPolling}
       />
 
       {/* SEO Analysis Modal */}
       <SEOAnalysisModal
         isOpen={isSEOAnalysisModalOpen}
-        onClose={() => setIsSEOAnalysisModalOpen(false)}
+        onClose={handleSEOModalClose}
         blogContent={buildFullMarkdown()}
         blogTitle={selectedTitle}
         researchData={research}
-        onApplyRecommendations={(recommendations) => {
-          console.log('Applying SEO recommendations:', recommendations);
-          // TODO: Implement recommendation application logic
-        }}
+        onApplyRecommendations={handleApplySeoRecommendations}
+        onAnalysisComplete={handleSEOAnalysisComplete}
       />
 
       {/* SEO Metadata Modal */}
@@ -639,10 +712,14 @@ Available tools:
         blogContent={buildFullMarkdown()}
         blogTitle={selectedTitle}
         researchData={research}
+        outline={outline}
+        seoAnalysis={seoAnalysis}
         onMetadataGenerated={(metadata) => {
           console.log('SEO metadata generated:', metadata);
           setSeoMetadata(metadata);
-          // TODO: Implement metadata application logic
+          // Metadata is now saved and will be used when publishing to WordPress/Wix
+          // The metadata includes all SEO fields (title, description, tags, Open Graph, etc.)
+          // Publisher component will use this metadata when calling publish API
         }}
       />
     </div>

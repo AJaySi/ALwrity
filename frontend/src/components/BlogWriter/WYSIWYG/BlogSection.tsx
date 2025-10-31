@@ -70,8 +70,21 @@ const BlogSection: React.FC<BlogSectionProps> = ({
       // Handle text replacement in the textarea
       if (contentRef.current) {
         const textarea = contentRef.current;
-        const currentContent = textarea.value;
-        const updatedContent = currentContent.replace(originalText, newText);
+        
+        // For smart suggestions, newText is already the complete updated content with insertion
+        // For other edits (like text selection improvements), we need to replace originalText with newText
+        let updatedContent: string;
+        
+        if (editType === 'smart-suggestion') {
+          // newText already contains the full content with suggestion inserted
+          updatedContent = newText;
+        } else {
+          // For other edits, replace the selected text
+          const currentContent = textarea.value;
+          updatedContent = currentContent.replace(originalText, newText);
+        }
+        
+        console.log('🔍 [BlogSection] Text updated, editType:', editType, 'New length:', updatedContent.length);
         setContent(updatedContent);
         
         // Update parent state
@@ -79,14 +92,8 @@ const BlogSection: React.FC<BlogSectionProps> = ({
           onContentUpdate([{ id, content: updatedContent }]);
         }
         
-        // Focus back to textarea and set cursor after the replaced text
-        setTimeout(() => {
-          if (contentRef.current) {
-            const newCursorPosition = updatedContent.indexOf(newText) + newText.length;
-            contentRef.current.focus();
-            contentRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-          }
-        }, 100);
+        // Note: Cursor positioning is handled by SmartTypingAssist for smart-suggestion edits
+        // For other edits, we may need to handle cursor positioning here if needed
       }
     }
   );
