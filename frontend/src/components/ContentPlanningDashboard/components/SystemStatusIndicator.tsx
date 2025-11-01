@@ -119,25 +119,44 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
   const fetchDetailedStats = async () => {
     try {
       const response = await apiClient.get('/api/content-planning/monitoring/api-stats');
-      const result = response.data;
-      if (result.status === 'success') {
-        setDetailedStats(result.data);
-        if (result.data?.cache_performance) {
-          setCachePerf(result.data.cache_performance);
+      const result = response?.data;
+      
+      // Validate response structure
+      if (!result || result.status !== 'success' || !result.data) {
+        console.warn('Invalid response structure from api-stats endpoint:', result);
+        setChartData([]);
+        return;
+      }
+      
+      const data = result.data;
+      setDetailedStats(data);
+      
+      if (data?.cache_performance) {
+        setCachePerf(data.cache_performance);
         }
         
-        // Generate chart data
-        const chartData = result.data.top_endpoints.slice(0, 5).map((endpoint: any, index: number) => ({
-          name: endpoint.endpoint.split(' ')[1].split('/').pop() || 'API',
-          requests: endpoint.count,
-          avgTime: endpoint.avg_time,
-          errors: endpoint.errors,
-          hitRate: endpoint.cache_hit_rate
+      // Generate chart data - safely handle missing top_endpoints
+      if (data?.top_endpoints && Array.isArray(data.top_endpoints) && data.top_endpoints.length > 0) {
+        try {
+          const chartData = data.top_endpoints.slice(0, 5).map((endpoint: any) => ({
+            name: endpoint?.endpoint?.split(' ')[1]?.split('/').pop() || 'API',
+            requests: endpoint?.count || 0,
+            avgTime: endpoint?.avg_time || 0,
+            errors: endpoint?.errors || 0,
+            hitRate: endpoint?.cache_hit_rate || 0
         }));
         setChartData(chartData);
+        } catch (mapError) {
+          console.error('Error mapping chart data:', mapError);
+          setChartData([]);
+        }
+      } else {
+        // If top_endpoints is missing or not an array, set empty chart data
+        setChartData([]);
       }
     } catch (err) {
       console.error('Error fetching detailed stats:', err);
+      setChartData([]);
     }
   };
 
@@ -353,7 +372,7 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
               )}
 
               {/* Recent Errors Section */}
-              {detailedStats?.recent_errors && detailedStats.recent_errors.length > 0 && (
+              {detailedStats?.recent_errors && Array.isArray(detailedStats.recent_errors) && detailedStats.recent_errors.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -395,6 +414,8 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
           >
             Close
           </Button>
+          <Tooltip title={loading ? "Refreshing data..." : "Refresh monitoring data"}>
+            <span>
           <Button 
             onClick={fetchDetailedStats}
             variant="contained"
@@ -403,6 +424,8 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
           >
             Refresh Data
           </Button>
+            </span>
+          </Tooltip>
         </DialogActions>
       </Dialog>
     </>

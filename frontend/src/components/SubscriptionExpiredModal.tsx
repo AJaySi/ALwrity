@@ -39,6 +39,25 @@ const SubscriptionExpiredModal: React.FC<SubscriptionExpiredModalProps> = ({
   subscriptionData,
   errorData
 }) => {
+  // Debug logging to verify modal state
+  React.useEffect(() => {
+    if (open) {
+      console.log('SubscriptionExpiredModal: Modal opened', {
+        open,
+        errorData,
+        hasUsageInfo: !!errorData?.usage_info
+      });
+    }
+  }, [open, errorData]);
+  
+  const handleDialogClose = (_event: object, reason?: string) => {
+    if (reason === 'backdropClick') {
+      console.log('SubscriptionExpiredModal: Ignoring backdrop click close');
+      return;
+    }
+    onClose();
+  };
+
   const handleRenewClick = () => {
     onRenewSubscription();
     onClose();
@@ -47,15 +66,20 @@ const SubscriptionExpiredModal: React.FC<SubscriptionExpiredModalProps> = ({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={handleDialogClose}
       maxWidth="sm"
       fullWidth
+      disableEscapeKeyDown
       PaperProps={{
         sx: {
           borderRadius: 3,
           background: 'linear-gradient(135deg, #fff 0%, #f8fafc 100%)',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          zIndex: 9999, // Ensure modal appears above everything
         }
+      }}
+      sx={{
+        zIndex: 9999, // Ensure modal backdrop appears above everything
       }}
     >
       <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
@@ -93,56 +117,156 @@ const SubscriptionExpiredModal: React.FC<SubscriptionExpiredModalProps> = ({
             borderRadius: 2
           }}
         >
-          <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary' }}>
+          {/* Main error message */}
+          <Typography variant="body1" sx={{ mb: 2, color: 'text.secondary', lineHeight: 1.6 }}>
             {errorData?.message || (errorData?.usage_info 
               ? 'You\'ve reached your monthly usage limit for this plan. Upgrade your plan to get higher limits.'
               : 'To continue using Alwrity and access all features, you need to renew your subscription.'
             )}
           </Typography>
           
+          {/* Detailed usage information */}
           {errorData?.usage_info && (
-            <Box sx={{ mb: 2, p: 2, background: 'rgba(255,255,255,0.7)', borderRadius: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: 'text.primary' }}>
+            <Box sx={{ mb: 2, p: 2.5, background: 'rgba(255,255,255,0.9)', borderRadius: 2, border: '1px solid #e2e8f0' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'text.primary', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Warning sx={{ fontSize: 18, color: 'warning.main' }} />
                 Usage Information:
               </Typography>
-              {errorData.usage_info.call_usage_percentage && (
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  You've used {errorData.usage_info.call_usage_percentage.toFixed(1)}% of your monthly limit
-                </Typography>
+              
+              {/* Provider and operation type */}
+              <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+                {errorData.provider && (
+                  <Box sx={{ 
+                    flex: '1 1 auto',
+                    px: 2, 
+                    py: 1.5, 
+                    background: 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)', 
+                    borderRadius: 1.5,
+                    border: '1px solid #a5b4fc'
+                  }}>
+                    <Typography variant="caption" sx={{ color: '#4338ca', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                      Provider:
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#312e81', fontWeight: 700 }}>
+                      {errorData.provider}
+                    </Typography>
+                  </Box>
+                )}
+                
+                {errorData.usage_info.operation_type && (
+                  <Box sx={{ 
+                    flex: '1 1 auto',
+                    px: 2, 
+                    py: 1.5, 
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', 
+                    borderRadius: 1.5,
+                    border: '1px solid #fbbf24'
+                  }}>
+                    <Typography variant="caption" sx={{ color: '#92400e', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                      Operation:
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#78350f', fontWeight: 700, textTransform: 'capitalize' }}>
+                      {errorData.usage_info.operation_type.replace(/_/g, ' ')}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+              
+              {/* Token usage details (if available) */}
+              {(errorData.usage_info.current_tokens !== undefined || errorData.usage_info.current_calls !== undefined) && (
+                <Box sx={{ 
+                  p: 2, 
+                  background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)', 
+                  borderRadius: 1.5,
+                  border: '1px solid #f87171',
+                  mb: 2
+                }}>
+                  {errorData.usage_info.current_tokens !== undefined && (
+                    <>
+                      <Typography variant="body2" sx={{ color: '#7f1d1d', fontWeight: 600, mb: 1 }}>
+                        Token Usage:
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
+                        <Typography variant="h6" sx={{ color: '#991b1b', fontWeight: 700 }}>
+                          {errorData.usage_info.current_tokens?.toLocaleString() || 0}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: '#7f1d1d' }}>
+                          / {errorData.usage_info.limit?.toLocaleString() || 0}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#7f1d1d', ml: 'auto' }}>
+                          ({((errorData.usage_info.current_tokens / errorData.usage_info.limit) * 100).toFixed(1)}% used)
+                        </Typography>
+                      </Box>
+                      
+                      {errorData.usage_info.requested_tokens && (
+                        <Typography variant="caption" sx={{ color: '#7f1d1d', display: 'block', mt: 1 }}>
+                          Requested: {errorData.usage_info.requested_tokens.toLocaleString()} tokens
+                          {errorData.usage_info.current_tokens + errorData.usage_info.requested_tokens > errorData.usage_info.limit && (
+                            <span style={{ fontWeight: 700, marginLeft: 4 }}>
+                              (Would exceed by: {((errorData.usage_info.current_tokens + errorData.usage_info.requested_tokens) - errorData.usage_info.limit).toLocaleString()} tokens)
+                            </span>
+                          )}
+                        </Typography>
+                      )}
+                    </>
+                  )}
+                  
+                  {errorData.usage_info.current_calls !== undefined && (
+                    <>
+                      <Typography variant="body2" sx={{ color: '#7f1d1d', fontWeight: 600, mb: 1, mt: errorData.usage_info.current_tokens !== undefined ? 2 : 0 }}>
+                        API Call Usage:
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                        <Typography variant="h6" sx={{ color: '#991b1b', fontWeight: 700 }}>
+                          {errorData.usage_info.current_calls?.toLocaleString() || 0}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: '#7f1d1d' }}>
+                          / {errorData.usage_info.call_limit?.toLocaleString() || 0}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#7f1d1d', ml: 'auto' }}>
+                          ({((errorData.usage_info.current_calls / errorData.usage_info.call_limit) * 100).toFixed(1)}% used)
+                        </Typography>
+                      </Box>
+                    </>
+                  )}
+                </Box>
               )}
-              {errorData.provider && (
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  Provider: {errorData.provider}
-                </Typography>
+              
+              {/* Error type badge */}
+              {errorData.usage_info.error_type && (
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <Box sx={{ 
+                    px: 2, 
+                    py: 0.5, 
+                    background: '#dc2626', 
+                    borderRadius: 1,
+                    display: 'inline-block'
+                  }}>
+                    <Typography variant="caption" sx={{ color: 'white', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {errorData.usage_info.error_type.replace(/_/g, ' ')}
+                    </Typography>
+                  </Box>
+                </Box>
               )}
             </Box>
           )}
           
+          {/* Current plan information */}
           {subscriptionData && (
             <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
               {subscriptionData.plan && (
                 <Box sx={{ 
-                  px: 2, 
-                  py: 1, 
-                  background: 'rgba(255,255,255,0.7)', 
-                  borderRadius: 1,
-                  border: '1px solid #e2e8f0'
+                  px: 3, 
+                  py: 1.5, 
+                  background: 'rgba(255,255,255,0.9)', 
+                  borderRadius: 1.5,
+                  border: '2px solid #e2e8f0'
                 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                    Current Plan: {subscriptionData.plan}
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                    Current Plan:
                   </Typography>
-                </Box>
-              )}
-              {subscriptionData.tier && subscriptionData.tier !== subscriptionData.plan && (
-                <Box sx={{ 
-                  px: 2, 
-                  py: 1, 
-                  background: 'rgba(255,255,255,0.7)', 
-                  borderRadius: 1,
-                  border: '1px solid #e2e8f0'
-                }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                    Tier: {subscriptionData.tier}
+                  <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 700, textTransform: 'capitalize' }}>
+                    {subscriptionData.plan}
                   </Typography>
                 </Box>
               )}

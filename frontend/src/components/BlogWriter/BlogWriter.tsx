@@ -66,6 +66,7 @@ export const BlogWriter: React.FC = () => {
     contentConfirmed,
     flowAnalysisCompleted,
     flowAnalysisResults,
+    sectionImages,
     setOutline,
     setTitleOptions,
     setSelectedTitle,
@@ -78,6 +79,7 @@ export const BlogWriter: React.FC = () => {
     setContentConfirmed,
     setFlowAnalysisCompleted,
     setFlowAnalysisResults,
+    setSectionImages,
     handleResearchComplete,
     handleOutlineComplete,
     handleOutlineError,
@@ -670,6 +672,8 @@ export const BlogWriter: React.FC = () => {
         flowAnalysisResults={flowAnalysisResults}
         outlineGenRef={outlineGenRef}
         blogWriterApi={blogWriterApi}
+        sectionImages={sectionImages}
+        setSectionImages={setSectionImages}
         contentConfirmed={contentConfirmed}
         seoAnalysis={seoAnalysis}
         seoMetadata={seoMetadata}

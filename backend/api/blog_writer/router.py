@@ -5,10 +5,11 @@ Main router for blog writing operations including research, outline generation,
 content creation, SEO analysis, and publishing.
 """
 
-from fastapi import APIRouter, HTTPException
-from typing import Any, Dict, List
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from loguru import logger
+from middleware.auth_middleware import get_current_user
 
 from models.blog_models import (
     BlogResearchRequest,
@@ -64,10 +65,21 @@ class SEOApplyRecommendationsRequest(BaseModel):
 
 
 @router.post("/seo/apply-recommendations")
-async def apply_seo_recommendations(request: SEOApplyRecommendationsRequest) -> Dict[str, Any]:
+async def apply_seo_recommendations(
+    request: SEOApplyRecommendationsRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Apply actionable SEO recommendations and return updated content."""
     try:
-        result = await recommendation_applier.apply_recommendations(request.dict())
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+        
+        result = await recommendation_applier.apply_recommendations(request.dict(), user_id=user_id)
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Failed to apply recommendations"))
         return result
@@ -87,13 +99,24 @@ async def health() -> Dict[str, Any]:
 
 # Research Endpoints
 @router.post("/research/start")
-async def start_research(request: BlogResearchRequest) -> Dict[str, Any]:
+async def start_research(
+    request: BlogResearchRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Start a research operation and return a task ID for polling."""
     try:
-        # TODO: Get user_id from authentication context
-        user_id = "anonymous"  # This should come from auth middleware
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+        
         task_id = await task_manager.start_research_task(request, user_id)
         return {"task_id": task_id, "status": "started"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to start research: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -106,6 +129,50 @@ async def get_research_status(task_id: str) -> Dict[str, Any]:
         status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # If task failed with subscription error, return HTTP error so frontend interceptor can catch it
+        if status.get('status') == 'failed' and status.get('error_status') in [429, 402]:
+            error_data = status.get('error_data', {}) or {}
+            error_status = status.get('error_status', 429)
+
+            if not isinstance(error_data, dict):
+                logger.warning(f"Research task {task_id} error_data not dict: {error_data}")
+                error_data = {'error': str(error_data)}
+
+            # Determine provider and usage info
+            stored_error_message = status.get('error', error_data.get('error'))
+            provider = error_data.get('provider', 'unknown')
+            usage_info = error_data.get('usage_info')
+
+            if not usage_info:
+                usage_info = {
+                    'provider': provider,
+                    'message': stored_error_message,
+                    'error_type': error_data.get('error_type', 'unknown')
+                }
+                # Include any known fields from error_data
+                for key in ['current_tokens', 'requested_tokens', 'limit', 'current_calls']:
+                    if key in error_data:
+                        usage_info[key] = error_data[key]
+
+            # Build error message for detail
+            error_msg = error_data.get('message', stored_error_message or 'Subscription limit exceeded')
+            
+            # Log the subscription error with all context
+            logger.warning(f"Research task {task_id} failed with subscription error {error_status}: {error_msg}")
+            logger.warning(f"   Provider: {provider}, Usage Info: {usage_info}")
+            
+            # Use JSONResponse to ensure detail is returned as-is, not wrapped in an array
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=error_status,
+                content={
+                    'error': error_data.get('error', stored_error_message or 'Subscription limit exceeded'),
+                    'message': error_msg,
+                    'provider': provider,
+                    'usage_info': usage_info
+                }
+            )
         
         logger.info(f"Research status request for {task_id}: {status['status']} with {len(status.get('progress_messages', []))} progress messages")
         return status
@@ -310,20 +377,46 @@ async def hallucination_check(request: HallucinationCheckRequest) -> Hallucinati
 
 # SEO Endpoints
 @router.post("/seo/analyze", response_model=BlogSEOAnalyzeResponse)
-async def seo_analyze(request: BlogSEOAnalyzeRequest) -> BlogSEOAnalyzeResponse:
+async def seo_analyze(
+    request: BlogSEOAnalyzeRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> BlogSEOAnalyzeResponse:
     """Analyze content for SEO optimization opportunities."""
     try:
-        return await service.seo_analyze(request)
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+        
+        return await service.seo_analyze(request, user_id=user_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to perform SEO analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/seo/metadata", response_model=BlogSEOMetadataResponse)
-async def seo_metadata(request: BlogSEOMetadataRequest) -> BlogSEOMetadataResponse:
+async def seo_metadata(
+    request: BlogSEOMetadataRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> BlogSEOMetadataResponse:
     """Generate SEO metadata for the blog post."""
     try:
-        return await service.seo_metadata(request)
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+        
+        return await service.seo_metadata(request, user_id=user_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to generate SEO metadata: {e}")
         raise HTTPException(status_code=500, detail=str(e))

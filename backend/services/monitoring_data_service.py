@@ -55,6 +55,14 @@ class MonitoringDataService:
                     alert_threshold=task_data.get('alertThreshold', ''),
                     status='active'
                 )
+                
+                # Initialize next_execution based on frequency
+                from services.scheduler.utils.frequency_calculator import calculate_next_execution
+                task.next_execution = calculate_next_execution(
+                    frequency=task.frequency,
+                    base_time=datetime.utcnow()
+                )
+                
                 self.db.add(task)
             
             # Save activation status
@@ -357,3 +365,80 @@ class MonitoringDataService:
             logger.error(f"Error updating performance metrics for strategy {strategy_id}: {e}")
             self.db.rollback()
             return False
+    
+    def get_user_execution_logs(
+        self,
+        user_id: int,
+        limit: Optional[int] = 50,
+        offset: Optional[int] = 0,
+        status_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get execution logs for a specific user.
+        
+        Args:
+            user_id: User ID to filter execution logs
+            limit: Maximum number of logs to return
+            offset: Number of logs to skip (for pagination)
+            status_filter: Optional status filter ('success', 'failed', 'running', 'skipped')
+            
+        Returns:
+            List of execution log dictionaries with task details
+        """
+        try:
+            logger.info(f"Getting execution logs for user {user_id}")
+            
+            # Build query for execution logs filtered by user_id
+            query = self.db.query(TaskExecutionLog).filter(
+                TaskExecutionLog.user_id == user_id
+            )
+            
+            # Apply status filter if provided
+            if status_filter:
+                query = query.filter(TaskExecutionLog.status == status_filter)
+            
+            # Order by execution date (most recent first)
+            query = query.order_by(desc(TaskExecutionLog.execution_date))
+            
+            # Apply pagination
+            if limit:
+                query = query.limit(limit)
+            if offset:
+                query = query.offset(offset)
+            
+            logs = query.all()
+            
+            # Convert to dictionaries with task details
+            logs_data = []
+            for log in logs:
+                # Get task details if available
+                task = self.db.query(MonitoringTask).filter(
+                    MonitoringTask.id == log.task_id
+                ).first()
+                
+                log_data = {
+                    "id": log.id,
+                    "task_id": log.task_id,
+                    "user_id": log.user_id,
+                    "execution_date": log.execution_date.isoformat() if log.execution_date else None,
+                    "status": log.status,
+                    "result_data": log.result_data,
+                    "error_message": log.error_message,
+                    "execution_time_ms": log.execution_time_ms,
+                    "created_at": log.created_at.isoformat() if log.created_at else None,
+                    "task": {
+                        "title": task.task_title if task else None,
+                        "description": task.task_description if task else None,
+                        "assignee": task.assignee if task else None,
+                        "frequency": task.frequency if task else None,
+                        "strategy_id": task.strategy_id if task else None
+                    } if task else None
+                }
+                logs_data.append(log_data)
+            
+            logger.info(f"Retrieved {len(logs_data)} execution logs for user {user_id}")
+            return logs_data
+            
+        except Exception as e:
+            logger.error(f"Error getting execution logs for user {user_id}: {e}")
+            return []

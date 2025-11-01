@@ -63,6 +63,9 @@ pytest-asyncio>=0.21.0
 pydantic>=2.5.2,<3.0.0
 typing-extensions>=4.8.0
 
+# Task scheduling
+apscheduler>=3.10.0
+
 # Optional dependencies (for enhanced features)
 redis>=5.0.0
 schedule>=1.2.0 

@@ -56,18 +56,10 @@ export interface PromptSuggestion {
 }
 
 export async function fetchPromptSuggestions(payload: any): Promise<PromptSuggestion[]> {
-  const res = await fetch('/api/images/suggest-prompts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || 'Failed to fetch prompt suggestions');
-  }
-  const data = await res.json();
-  return data.suggestions || [];
+  // Use apiClient directly (same pattern as SEO analysis in SEOAnalysisModal.tsx)
+  // The apiClient interceptor will handle auth token injection automatically
+  const response = await apiClient.post('/api/images/suggest-prompts', payload);
+  return response.data.suggestions || [];
 }
 
 

@@ -30,6 +30,7 @@ interface BlogEditorProps {
   onSave?: (content: any) => void;
   continuityRefresh?: number;
   flowAnalysisResults?: any;
+  sectionImages?: Record<string, string>;
 }
 
 const BlogEditor: React.FC<BlogEditorProps> = ({ 
@@ -43,7 +44,8 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   onContentUpdate, 
   onSave,
   continuityRefresh,
-  flowAnalysisResults
+  flowAnalysisResults,
+  sectionImages = {}
 }) => {
   const [blogTitle, setBlogTitle] = useState(initialTitle || 'Your Amazing Blog Title');
   const [sections, setSections] = useState<any[]>([]);
@@ -143,17 +145,25 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                   <Divider sx={{ mt: 3, opacity: 0.3 }} />
                 </div>
                 <div>
-                  {sections.map((section) => (
-                    <BlogSection 
-                      key={section.id} 
-                      {...section} 
-                      onContentUpdate={onContentUpdate}
-                      expandedSections={expandedSections}
-                      toggleSectionExpansion={toggleSectionExpansion}
-                      refreshToken={continuityRefresh}
-                      flowAnalysisResults={flowAnalysisResults}
-                    />
-                  ))}
+                  {sections.map((section, index) => {
+                    // Robust image mapping: prefer outline index id (order is consistent across phases)
+                    const imageIdByIndex = outline[index]?.id;
+                    const outlineSection = outline.find(s => (s.id === section.id) || (s.heading === section.title));
+                    const imageId = imageIdByIndex || outlineSection?.id || section.id;
+                    const sectionImage = sectionImages?.[imageId] || null;
+                    return (
+                      <BlogSection 
+                        key={section.id} 
+                        {...section} 
+                        onContentUpdate={onContentUpdate}
+                        expandedSections={expandedSections}
+                        toggleSectionExpansion={toggleSectionExpansion}
+                        refreshToken={continuityRefresh}
+                        flowAnalysisResults={flowAnalysisResults}
+                        sectionImage={sectionImage}
+                      />
+                    );
+                  })}
                 </div>
             </Paper>
           </div>

@@ -12,6 +12,8 @@ interface Props {
   groundingInsights?: GroundingInsights | null;
   optimizationResults?: OptimizationResults | null;
   researchCoverage?: ResearchCoverage | null;
+  sectionImages?: Record<string, string>;
+  setSectionImages?: (images: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
 }
 
 const EnhancedOutlineEditor: React.FC<Props> = ({ 
@@ -21,14 +23,15 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
   sourceMappingStats, 
   groundingInsights, 
   optimizationResults, 
-  researchCoverage 
+  researchCoverage,
+  sectionImages = {},
+  setSectionImages
 }) => {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
   const [showAddSection, setShowAddSection] = useState(false);
   const [imageModalState, setImageModalState] = useState<{ open: boolean; sectionId?: string }>(() => ({ open: false }));
-  const [sectionImages, setSectionImages] = useState<Record<string, string>>({});
   const [newSectionData, setNewSectionData] = useState({
     heading: '',
     subheadings: '',
@@ -117,8 +120,8 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
             };
           })()}
           onImageGenerated={(imageBase64, sectionId) => {
-            if (sectionId) {
-              setSectionImages(prev => ({ ...prev, [sectionId]: imageBase64 }));
+            if (sectionId && setSectionImages) {
+              setSectionImages((prev: Record<string, string>) => ({ ...prev, [sectionId]: imageBase64 }));
             }
           }}
         />

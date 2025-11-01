@@ -58,19 +58,25 @@ const InitialRouteHandler: React.FC = () => {
     error: null,
   });
 
-  // Check subscription on mount
+  // Check subscription on mount (non-blocking - don't wait for it to route)
   useEffect(() => {
-    checkSubscription().catch((err) => {
-      console.error('Error checking subscription:', err);
-      
-      // Check if it's a connection error - handle it locally
-      if (err instanceof Error && (err.name === 'NetworkError' || err.name === 'ConnectionError')) {
-        setConnectionError({
-          hasError: true,
-          error: err,
-        });
-      }
-    });
+    // Delay subscription check slightly to allow auth token getter to be installed first
+    const timeoutId = setTimeout(() => {
+      checkSubscription().catch((err) => {
+        console.error('Error checking subscription (non-blocking):', err);
+        
+        // Check if it's a connection error - handle it locally
+        if (err instanceof Error && (err.name === 'NetworkError' || err.name === 'ConnectionError')) {
+          setConnectionError({
+            hasError: true,
+            error: err,
+          });
+        }
+        // Don't block routing on subscription check errors - allow graceful degradation
+      });
+    }, 100); // Small delay to ensure TokenInstaller has run
+    
+    return () => clearTimeout(timeoutId);
   }, []); // Remove checkSubscription dependency to prevent loop
 
   // Initialize onboarding only after subscription is confirmed
@@ -125,9 +131,10 @@ const InitialRouteHandler: React.FC = () => {
     );
   }
 
-  // Loading state - ensure we wait for onboarding init after subscription is confirmed
-  const waitingForOnboardingInit = !!subscription && subscription.active && !subscriptionLoading && (loading || !data);
-  if (subscriptionLoading || loading || waitingForOnboardingInit) {
+  // Loading state - only wait for onboarding init, not subscription check
+  // Subscription check is non-blocking and happens in background
+  const waitingForOnboardingInit = loading || !data;
+  if (loading || waitingForOnboardingInit) {
     return (
       <Box
         display="flex"
@@ -167,29 +174,79 @@ const InitialRouteHandler: React.FC = () => {
     );
   }
 
-  if (!subscription) {
-    return null; // Should not happen, but just in case
+  // Decision tree for SIGNED-IN users:
+  // Priority: Subscription → Onboarding → Dashboard (as per user flow: Landing → Subscription → Onboarding → Dashboard)
+  
+  // 1. If subscription is still loading, show loading state
+  if (subscriptionLoading) {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        minHeight="100vh"
+        gap={2}
+      >
+        <CircularProgress size={60} />
+        <Typography variant="h6" color="textSecondary">
+          Checking subscription...
+        </Typography>
+      </Box>
+    );
   }
 
-  // Decision tree for SIGNED-IN users:
-  // Priority: Subscription → Onboarding → Dashboard
-  
-  // Check if user is new (no subscription record at all)
+  // 2. No subscription data yet - handle gracefully
+  // If onboarding is complete, allow access to dashboard (user already went through flow)
+  // If onboarding not complete, check if subscription check is still loading or failed
+  if (!subscription) {
+    if (isOnboardingComplete) {
+      console.log('InitialRouteHandler: Onboarding complete but no subscription data → Dashboard (allow access)');
+      return <Navigate to="/dashboard" replace />;
+    }
+    
+    // Onboarding not complete and no subscription data
+    // If subscription check is still loading, show loading state
+    if (subscriptionLoading) {
+      return (
+        <Box
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          justifyContent="center"
+          minHeight="100vh"
+          gap={2}
+        >
+          <CircularProgress size={60} />
+          <Typography variant="h6" color="textSecondary">
+            Checking subscription...
+          </Typography>
+        </Box>
+      );
+    }
+    
+    // Subscription check completed but returned null/undefined
+    // This likely means no subscription - redirect to pricing
+    console.log('InitialRouteHandler: No subscription data after check → Pricing page');
+    return <Navigate to="/pricing" replace />;
+  }
+
+  // 3. Check subscription status first
   const isNewUser = !subscription || subscription.plan === 'none';
   
-  // 1. No active subscription? → Must subscribe first (even if onboarding is complete)
+  // No active subscription → Must subscribe first
   if (isNewUser || !subscription.active) {
     console.log('InitialRouteHandler: No active subscription → Pricing page');
     return <Navigate to="/pricing" replace />;
   }
 
-  // 2. Has active subscription, check onboarding status
+  // 4. Has active subscription, check onboarding status
   if (!isOnboardingComplete) {
     console.log('InitialRouteHandler: Subscription active but onboarding incomplete → Onboarding');
     return <Navigate to="/onboarding" replace />;
   }
 
-  // 3. Has subscription AND completed onboarding → Dashboard
+  // 5. Has subscription AND completed onboarding → Dashboard
   console.log('InitialRouteHandler: All set (subscription + onboarding) → Dashboard');
   return <Navigate to="/dashboard" replace />;
 };

@@ -31,6 +31,8 @@ interface PhaseContentProps {
   seoMetadata: any;
   onTitleSelect: any;
   onCustomTitle: any;
+  sectionImages?: Record<string, string>;
+  setSectionImages?: (images: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
 }
 
 export const PhaseContent: React.FC<PhaseContentProps> = ({
@@ -58,7 +60,9 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   seoAnalysis,
   seoMetadata,
   onTitleSelect,
-  onCustomTitle
+  onCustomTitle,
+  sectionImages,
+  setSectionImages
 }) => {
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -100,6 +104,8 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                   optimizationResults={optimizationResults}
                   researchCoverage={researchCoverage}
                   onRefine={(op: any, id: any, payload: any) => blogWriterApi.refineOutline({ outline, operation: op, section_id: id, payload }).then((res: any) => setOutline(res.outline))}
+                  sectionImages={sectionImages}
+                  setSectionImages={setSectionImages}
                 />
               </>
             ) : (
@@ -126,6 +132,7 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                 onSave={handleContentSave}
                 continuityRefresh={continuityRefresh || undefined}
                 flowAnalysisResults={flowAnalysisResults}
+                sectionImages={sectionImages}
               />
             ) : (
               <div style={{ padding: '20px', textAlign: 'center' }}>
@@ -151,6 +158,7 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                 onSave={handleContentSave}
                 continuityRefresh={continuityRefresh || undefined}
                 flowAnalysisResults={flowAnalysisResults}
+                sectionImages={sectionImages}
               />
             ) : (
               <div style={{ padding: '20px', textAlign: 'center' }}>

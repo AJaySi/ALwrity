@@ -56,7 +56,9 @@ class GeminiGroundedProvider:
         temperature: float = 0.7,
         max_tokens: int = 2048,
         urls: Optional[List[str]] = None,
-        mode: str = "polished"
+        mode: str = "polished",
+        user_id: Optional[str] = None,
+        validate_subsequent_operations: bool = False
     ) -> Dict[str, Any]:
         """
         Generate grounded content using native Google Search grounding.
@@ -66,12 +68,49 @@ class GeminiGroundedProvider:
             content_type: Type of content to generate
             temperature: Creativity level (0.0-1.0)
             max_tokens: Maximum tokens in response
+            urls: Optional list of URLs for URL Context tool
+            mode: Content mode ("draft" or "polished")
+            user_id: User ID for subscription checking (required if validate_subsequent_operations=True)
+            validate_subsequent_operations: If True, validates Google Grounding + 3 LLM calls for research workflow
             
         Returns:
             Dictionary containing generated content and grounding metadata
         """
         try:
-            logger.info(f"Generating grounded content for {content_type} using native Google Search")
+            # PRE-FLIGHT VALIDATION: If this is part of a research workflow, validate ALL operations
+            # MUST happen BEFORE any API calls - return immediately if validation fails
+            if validate_subsequent_operations:
+                if not user_id:
+                    raise ValueError("user_id is required when validate_subsequent_operations=True")
+                
+                from services.database import get_db
+                from services.subscription import PricingService
+                from services.subscription.preflight_validator import validate_research_operations
+                from fastapi import HTTPException
+                import os
+                
+                db = next(get_db())
+                try:
+                    pricing_service = PricingService(db)
+                    gpt_provider = os.getenv("GPT_PROVIDER", "google")
+                    
+                    # Validate ALL research operations before making ANY API calls
+                    # This prevents wasteful external API calls if subsequent LLM calls would fail
+                    # Raises HTTPException immediately if validation fails - frontend gets immediate response
+                    validate_research_operations(
+                        pricing_service=pricing_service,
+                        user_id=user_id,
+                        gpt_provider=gpt_provider
+                    )
+                except HTTPException as http_ex:
+                    # Re-raise immediately - don't proceed with API call
+                    logger.error(f"[Gemini Grounded] ❌ Pre-flight validation failed - blocking API call")
+                    raise
+                finally:
+                    db.close()
+            
+            logger.info(f"[Gemini Grounded] ✅ Pre-flight validation passed - proceeding with API call")
+            logger.info(f"[Gemini Grounded] Generating grounded content for {content_type} using native Google Search")
             
             # Build the grounded prompt
             grounded_prompt = self._build_grounded_prompt(prompt, content_type)

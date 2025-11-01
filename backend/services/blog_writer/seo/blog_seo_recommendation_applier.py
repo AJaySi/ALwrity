@@ -20,8 +20,11 @@ class BlogSEORecommendationApplier:
     def __init__(self):
         logger.debug("Initialized BlogSEORecommendationApplier")
 
-    async def apply_recommendations(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def apply_recommendations(self, payload: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """Apply recommendations and return updated content."""
+        
+        if not user_id:
+            raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
 
         title = payload.get("title", "Untitled Blog")
         sections: List[Dict[str, Any]] = payload.get("sections", [])
@@ -88,6 +91,7 @@ class BlogSEORecommendationApplier:
             prompt,
             None,
             schema,
+            user_id,  # Pass user_id for subscription checking
         )
 
         if not result or result.get("error"):

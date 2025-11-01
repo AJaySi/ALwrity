@@ -50,16 +50,22 @@ class SubscriptionPlan(Base):
     price_monthly = Column(Float, nullable=False, default=0.0)
     price_yearly = Column(Float, nullable=False, default=0.0)
     
-    # API Call Limits
-    gemini_calls_limit = Column(Integer, default=0)  # 0 = unlimited
-    openai_calls_limit = Column(Integer, default=0)
-    anthropic_calls_limit = Column(Integer, default=0)
-    mistral_calls_limit = Column(Integer, default=0)
+    # Unified AI Text Generation Call Limit (applies to all LLM providers: gemini, openai, anthropic, mistral)
+    # Note: This column may not exist in older databases - use getattr() when accessing
+    ai_text_generation_calls_limit = Column(Integer, default=0, nullable=True)  # 0 = unlimited, None if column doesn't exist
+    
+    # Legacy per-provider limits (kept for backwards compatibility and analytics)
+    gemini_calls_limit = Column(Integer, default=0)  # 0 = unlimited (deprecated, use ai_text_generation_calls_limit)
+    openai_calls_limit = Column(Integer, default=0)  # (deprecated, use ai_text_generation_calls_limit)
+    anthropic_calls_limit = Column(Integer, default=0)  # (deprecated, use ai_text_generation_calls_limit)
+    mistral_calls_limit = Column(Integer, default=0)  # (deprecated, use ai_text_generation_calls_limit)
+    
+    # Other API Call Limits (non-LLM)
     tavily_calls_limit = Column(Integer, default=0)
     serper_calls_limit = Column(Integer, default=0)
     metaphor_calls_limit = Column(Integer, default=0)
     firecrawl_calls_limit = Column(Integer, default=0)
-    stability_calls_limit = Column(Integer, default=0)
+    stability_calls_limit = Column(Integer, default=0)  # Image generation
     
     # Token Limits (for LLM providers)
     gemini_tokens_limit = Column(Integer, default=0)

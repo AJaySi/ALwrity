@@ -219,9 +219,22 @@ export interface BlogSEOMetadataResponse {
   success: boolean;
   title_options: string[];
   meta_descriptions: string[];
+  seo_title?: string;
+  meta_description?: string;
+  url_slug?: string;
+  blog_tags: string[];
+  blog_categories: string[];
+  social_hashtags: string[];
   open_graph: Record<string, any>;
   twitter_card: Record<string, any>;
-  schema: Record<string, any>;
+  json_ld_schema?: Record<string, any>;
+  schema?: Record<string, any>; // Legacy field name
+  canonical_url?: string;
+  reading_time?: number;
+  focus_keyword?: string;
+  generated_at?: string;
+  optimization_score?: number;
+  error?: string;
 }
 
 export interface BlogPublishResponse {
@@ -241,6 +254,26 @@ export interface TaskStatusResponse {
   }>;
   result?: BlogResearchResponse;
   error?: string;
+  // Subscription error details (set by backend when subscription limit is exceeded)
+  error_status?: number; // HTTP status code (429 for usage limit, 402 for subscription expired)
+  error_data?: {
+    error?: string;
+    message?: string;
+    provider?: string;
+    usage_info?: {
+      provider?: string;
+      current_calls?: number;
+      limit?: number;
+      type?: string;
+      breakdown?: {
+        gemini?: number;
+        openai?: number;
+        anthropic?: number;
+        mistral?: number;
+      };
+    };
+    [key: string]: any; // Allow additional fields
+  };
 }
 
 export const blogWriterApi = {

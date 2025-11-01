@@ -28,6 +28,7 @@ import {
   Modal,
   Fade,
   Backdrop,
+  Snackbar,
 } from '@mui/material';
 import {
   Check as CheckIcon,
@@ -35,6 +36,7 @@ import {
   Star as StarIcon,
   WorkspacePremium as PremiumIcon,
   Info as InfoIcon,
+  Warning,
   Psychology,
   Search,
   FactCheck,
@@ -83,6 +85,7 @@ const PricingPage: React.FC = () => {
   const [subscribing, setSubscribing] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
+  const [successSnackbar, setSuccessSnackbar] = useState({ open: false, message: '', countdown: 3 });
   const [knowMoreModal, setKnowMoreModal] = useState<{ open: boolean; title: string; content: React.ReactNode }>({
     open: false,
     title: '',
@@ -172,27 +175,70 @@ const PricingPage: React.FC = () => {
       setSubscribing(true);
       const userId = localStorage.getItem('user_id') || 'anonymous';
 
-      await apiClient.post(`/api/subscription/subscribe/${userId}`, {
+      const response = await apiClient.post(`/api/subscription/subscribe/${userId}`, {
         plan_id: selectedPlan,
         billing_cycle: yearlyBilling ? 'yearly' : 'monthly'
       });
 
-      // Refresh subscription status
+      console.log('Subscription renewed successfully:', response.data);
+
+      // Refresh subscription status immediately
       window.dispatchEvent(new CustomEvent('subscription-updated'));
+      
+      // Also trigger user authenticated event to refresh subscription context
+      window.dispatchEvent(new CustomEvent('user-authenticated'));
 
       setPaymentModalOpen(false);
 
-      // After subscription, check if onboarding is complete
-      // If not complete, redirect to onboarding; otherwise to dashboard
-      const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
-      if (onboardingComplete) {
-        navigate('/dashboard');
-      } else {
-        navigate('/onboarding');
-      }
+      // Get plan name for success message
+      const planName = plans.find(p => p.id === selectedPlan)?.name || 'subscription';
+      
+      // Show success message with countdown
+      setSuccessSnackbar({ 
+        open: true, 
+        message: `🎉 ${planName} plan activated! Your usage limits have been reset. Returning to your work in 3 seconds...`,
+        countdown: 3 
+      });
+
+      // Countdown timer
+      let countdown = 3;
+      const countdownInterval = setInterval(() => {
+        countdown -= 1;
+        if (countdown > 0) {
+          setSuccessSnackbar(prev => ({ 
+            ...prev, 
+            message: `🎉 ${planName} plan activated! Your usage limits have been reset. Returning to your work in ${countdown} second${countdown !== 1 ? 's' : ''}...`,
+            countdown 
+          }));
+        } else {
+          clearInterval(countdownInterval);
+        }
+      }, 1000);
+
+      // Auto-redirect after 3 seconds
+      setTimeout(() => {
+        clearInterval(countdownInterval);
+        
+        // After subscription, check if onboarding is complete
+        // If not complete, redirect to onboarding; otherwise to dashboard
+        const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
+        if (onboardingComplete) {
+          // Try to go back to where the user was (e.g., blog writer)
+          // If no history, go to dashboard
+          const referrer = sessionStorage.getItem('subscription_referrer');
+          if (referrer && referrer !== '/pricing') {
+            navigate(referrer);
+          } else {
+            navigate('/dashboard');
+          }
+        } else {
+          navigate('/onboarding');
+        }
+      }, 3000);
     } catch (err) {
       console.error('Error subscribing:', err);
       setError('Failed to process subscription');
+      setSuccessSnackbar({ open: false, message: '', countdown: 0 });
     } finally {
       setSubscribing(false);
     }
@@ -900,32 +946,71 @@ const PricingPage: React.FC = () => {
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 400,
+            width: 450,
             bgcolor: 'background.paper',
             border: '2px solid #000',
             boxShadow: 24,
             p: 4,
             borderRadius: 2,
           }}>
-            <Typography variant="h6" component="h2" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Warning sx={{ color: 'warning.main' }} />
               Alpha Testing Subscription
             </Typography>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              Thank you for participating in our alpha testing! For the Basic plan, we're crediting $29 to your account.
+            
+            {/* Alpha Testing Notice */}
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                ⚠️ Alpha Testing Mode - No Payment Required
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block' }}>
+                Payment integration is coming soon. For now, subscriptions are activated without charge.
+              </Typography>
+            </Alert>
+            
+            <Typography variant="body1" sx={{ mb: 2 }}>
+              Thank you for participating in our alpha testing! We're crediting the Basic plan ($29 value) to your account.
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              In production, this would integrate with Stripe/Paddle for real payment processing.
-            </Typography>
+            
+            {/* TODO: Payment Integration Notice */}
+            <Box sx={{ 
+              p: 2, 
+              mb: 3, 
+              bgcolor: 'info.lighter', 
+              borderRadius: 1, 
+              border: '1px solid',
+              borderColor: 'info.light'
+            }}>
+              <Typography variant="body2" color="info.dark">
+                <strong>Coming in Production:</strong>
+              </Typography>
+              <Typography variant="caption" color="info.dark" sx={{ display: 'block', mt: 0.5 }}>
+                • Secure Stripe/PayPal payment processing<br />
+                • Automatic renewal management<br />
+                • Payment verification & receipts<br />
+                • Upgrade/downgrade options
+              </Typography>
+            </Box>
+            
+            {/* Note: Current behavior allows renewal without payment verification */}
+            {/* This is intentional for alpha testing but will be secured in production */}
+            
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-              <Button onClick={() => setPaymentModalOpen(false)}>
+              <Button onClick={() => setPaymentModalOpen(false)} variant="outlined">
                 Cancel
               </Button>
               <Button
                 variant="contained"
                 onClick={handlePaymentConfirm}
                 disabled={subscribing}
+                sx={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                  }
+                }}
               >
-                {subscribing ? <CircularProgress size={20} /> : 'Confirm Subscription'}
+                {subscribing ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Confirm Subscription'}
               </Button>
             </Box>
           </Box>
@@ -981,6 +1066,37 @@ const PricingPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Success Snackbar */}
+      <Snackbar
+        open={successSnackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSuccessSnackbar({ open: false, message: '', countdown: 0 })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        sx={{ 
+          top: { xs: 16, sm: 24 },
+          '& .MuiSnackbarContent-root': {
+            minWidth: { xs: '90vw', sm: '500px' }
+          }
+        }}
+      >
+        <Alert 
+          severity="success" 
+          variant="filled"
+          onClose={() => setSuccessSnackbar({ open: false, message: '', countdown: 0 })}
+          sx={{ 
+            width: '100%',
+            fontSize: '1rem',
+            alignItems: 'center',
+            boxShadow: '0 8px 24px rgba(76, 175, 80, 0.4)',
+            '& .MuiAlert-icon': {
+              fontSize: '2rem'
+            }
+          }}
+        >
+          {successSnackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { blogWriterApi, TaskStatusResponse } from '../services/blogWriterApi';
+import { triggerSubscriptionError } from '../api/client';
 
 export interface UsePollingOptions {
   interval?: number; // Polling interval in milliseconds
@@ -108,6 +109,43 @@ export function usePolling(
           console.log('❌ Task failed - stopping polling immediately');
           setError(status.error || 'Task failed');
           onError?.(status.error || 'Task failed');
+          
+          // Check if this is a subscription error and trigger modal
+          if (status.error_status === 429 || status.error_status === 402) {
+            console.log('usePolling: Detected subscription error in task status', {
+              error_status: status.error_status,
+              error_data: status.error_data,
+              error: status.error
+            });
+            
+            // Create a mock error object with the subscription error data
+            const errorData = status.error_data || {};
+            
+            // Ensure usage_info is properly nested - it might be at the top level or nested
+            const usageInfo = errorData.usage_info || 
+                             (errorData.current_calls !== undefined ? errorData : null) ||
+                             errorData;
+            
+            const mockError = {
+              response: {
+                status: status.error_status,
+                data: {
+                  error: errorData.error || status.error || 'Subscription limit exceeded',
+                  message: errorData.message || errorData.error || status.error || 'You have reached your usage limit.',
+                  provider: errorData.provider || usageInfo?.provider || 'unknown',
+                  usage_info: usageInfo
+                }
+              }
+            };
+            
+            console.log('usePolling: Triggering subscription error handler with:', mockError);
+            const handled = triggerSubscriptionError(mockError);
+            
+            if (!handled) {
+              console.warn('usePolling: Subscription error handler did not handle the error');
+            }
+          }
+          
           stopPolling();
           return; // Exit early to prevent further processing
         }
@@ -116,6 +154,38 @@ export function usePolling(
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
         console.error('Polling error:', errorMessage);
+        
+        // Check if this is an axios error with subscription limit status
+        // This is a fallback in case the interceptor doesn't catch it
+        const axiosError = err as any;
+        if (axiosError?.response?.status === 429 || axiosError?.response?.status === 402) {
+          console.log('usePolling: Detected subscription error in axios error response', {
+            status: axiosError.response.status,
+            data: axiosError.response.data
+          });
+          
+          // Trigger subscription error handler (modal will show)
+          const handled = triggerSubscriptionError(axiosError);
+          console.log('usePolling: triggerSubscriptionError returned', handled);
+          
+          if (handled) {
+            console.log('usePolling: Subscription error handled, stopping polling');
+            const errorMsg = axiosError.response?.data?.message || 
+                           axiosError.response?.data?.error || 
+                           'Subscription limit exceeded';
+            setError(errorMsg);
+            onError?.(errorMsg);
+            stopPolling();
+            return; // Exit early - don't continue processing
+          } else {
+            console.warn('usePolling: Subscription error not handled by global handler, dispatching fallback event');
+            try {
+              window.dispatchEvent(new CustomEvent('subscription-error', { detail: axiosError }));
+            } catch (eventError) {
+              console.error('usePolling: Failed to dispatch subscription-error event', eventError);
+            }
+          }
+        }
         
         // Stop polling for task failures and rate limiting
         if (errorMessage.includes('404') || errorMessage.includes('Task not found')) {

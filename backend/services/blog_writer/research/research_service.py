@@ -4,7 +4,8 @@ Research Service - Core research functionality for AI Blog Writer.
 Handles Google Search grounding, caching, and research orchestration.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from datetime import datetime
 from loguru import logger
 
 from models.blog_models import (
@@ -17,6 +18,7 @@ from models.blog_models import (
     Citation,
 )
 from services.blog_writer.logger_config import blog_writer_logger, log_function_call
+from fastapi import HTTPException
 
 from .keyword_analyzer import KeywordAnalyzer
 from .competitor_analyzer import CompetitorAnalyzer
@@ -34,7 +36,7 @@ class ResearchService:
         self.data_filter = ResearchDataFilter()
     
     @log_function_call("research_operation")
-    async def research(self, request: BlogResearchRequest) -> BlogResearchResponse:
+    async def research(self, request: BlogResearchRequest, user_id: str) -> BlogResearchResponse:
         """
         Stage 1: Research & Strategy (AI Orchestration)
         Uses ONLY Gemini's native Google Search grounding - ONE API call for everything.
@@ -71,6 +73,10 @@ class ResearchService:
                 blog_writer_logger.log_operation_end("research", 0, success=True, cache_hit=True)
                 return BlogResearchResponse(**cached_result)
             
+            # User ID validation (validation logic is now in Google Grounding provider)
+            if not user_id:
+                raise ValueError("user_id is required for research operation. Please provide Clerk user ID.")
+            
             # Cache miss - proceed with API call
             logger.info(f"Cache miss - making API call for keywords: {request.keywords}")
             blog_writer_logger.log_operation_start("gemini_api_call", api_name="gemini_grounded", operation="research")
@@ -96,12 +102,15 @@ class ResearchService:
             """
             
             # Single Gemini call with native Google Search grounding - no fallbacks
+            # Validation is handled inside generate_grounded_content when validate_subsequent_operations=True
             import time
             api_start_time = time.time()
             gemini_result = await gemini.generate_grounded_content(
                 prompt=research_prompt,
                 content_type="research",
-                max_tokens=2000
+                max_tokens=2000,
+                user_id=user_id,
+                validate_subsequent_operations=True  # Validates Google Grounding + 3 LLM calls
             )
             api_duration_ms = (time.time() - api_start_time) * 1000
             
@@ -126,9 +135,9 @@ class ResearchService:
             
             # Parse the comprehensive response for different analysis components
             content = gemini_result.get("content", "")
-            keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords)
-            competitor_analysis = self.competitor_analyzer.analyze(content)
-            suggested_angles = self.content_angle_generator.generate(content, topic, industry)
+            keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords, user_id=user_id)
+            competitor_analysis = self.competitor_analyzer.analyze(content, user_id=user_id)
+            suggested_angles = self.content_angle_generator.generate(content, topic, industry, user_id=user_id)
             
             logger.info(f"Research completed successfully with {len(sources)} sources and {len(search_queries)} search queries")
             
@@ -179,6 +188,9 @@ class ResearchService:
             
             return filtered_response
             
+        except HTTPException:
+            # Re-raise HTTPException (subscription errors) - let task manager handle it
+            raise
         except Exception as e:
             error_message = str(e)
             logger.error(f"Research failed: {error_message}")
@@ -244,7 +256,7 @@ class ResearchService:
             )
     
     @log_function_call("research_with_progress")
-    async def research_with_progress(self, request: BlogResearchRequest, task_id: str) -> BlogResearchResponse:
+    async def research_with_progress(self, request: BlogResearchRequest, task_id: str, user_id: str) -> BlogResearchResponse:
         """
         Research method with progress updates for real-time feedback.
         """
@@ -281,6 +293,11 @@ class ResearchService:
                 logger.info(f"Returning cached research result for keywords: {request.keywords}")
                 return BlogResearchResponse(**cached_result)
             
+            # User ID validation (validation logic is now in Google Grounding provider)
+            if not user_id:
+                await task_manager.update_progress(task_id, "❌ Error: User ID is required for research operation")
+                raise ValueError("user_id is required for research operation. Please provide Clerk user ID.")
+            
             # Cache miss - proceed with API call
             await task_manager.update_progress(task_id, "🌐 Cache miss - connecting to Google Search grounding...")
             logger.info(f"Cache miss - making API call for keywords: {request.keywords}")
@@ -307,11 +324,20 @@ class ResearchService:
             
             await task_manager.update_progress(task_id, "🤖 Making AI request to Gemini with Google Search grounding...")
             # Single Gemini call with native Google Search grounding - no fallbacks
-            gemini_result = await gemini.generate_grounded_content(
-                prompt=research_prompt,
-                content_type="research",
-                max_tokens=2000
-            )
+            # Validation is handled inside generate_grounded_content when validate_subsequent_operations=True
+            try:
+                gemini_result = await gemini.generate_grounded_content(
+                    prompt=research_prompt,
+                    content_type="research",
+                    max_tokens=2000,
+                    user_id=user_id,
+                    validate_subsequent_operations=True  # Validates Google Grounding + 3 LLM calls
+                )
+            except HTTPException as http_error:
+                # Re-raise HTTPException so it can be properly handled by task manager
+                logger.error(f"Subscription limit exceeded for research: {http_error.detail}")
+                await task_manager.update_progress(task_id, f"❌ Subscription limit exceeded: {http_error.detail.get('message', str(http_error.detail)) if isinstance(http_error.detail, dict) else str(http_error.detail)}")
+                raise  # Re-raise HTTPException to preserve status code and error details
             
             await task_manager.update_progress(task_id, "📊 Processing research results and extracting insights...")
             # Extract sources from grounding metadata
@@ -327,9 +353,9 @@ class ResearchService:
             await task_manager.update_progress(task_id, "🔍 Analyzing keywords and content angles...")
             # Parse the comprehensive response for different analysis components
             content = gemini_result.get("content", "")
-            keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords)
-            competitor_analysis = self.competitor_analyzer.analyze(content)
-            suggested_angles = self.content_angle_generator.generate(content, topic, industry)
+            keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords, user_id=user_id)
+            competitor_analysis = self.competitor_analyzer.analyze(content, user_id=user_id)
+            suggested_angles = self.content_angle_generator.generate(content, topic, industry, user_id=user_id)
             
             await task_manager.update_progress(task_id, "💾 Caching results for future use...")
             logger.info(f"Research completed successfully with {len(sources)} sources and {len(search_queries)} search queries")
@@ -373,6 +399,9 @@ class ResearchService:
             
             return filtered_response
             
+        except HTTPException:
+            # Re-raise HTTPException (subscription errors) - let task manager handle it
+            raise
         except Exception as e:
             error_message = str(e)
             logger.error(f"Research failed: {error_message}")

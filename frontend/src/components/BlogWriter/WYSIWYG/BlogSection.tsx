@@ -40,6 +40,7 @@ interface BlogSectionProps {
   toggleSectionExpansion: (sectionId: any) => void;
   refreshToken?: number;
   flowAnalysisResults?: any;
+  sectionImage?: string;
 }
 
 const BlogSection: React.FC<BlogSectionProps> = ({ 
@@ -53,7 +54,8 @@ const BlogSection: React.FC<BlogSectionProps> = ({
   expandedSections,
   toggleSectionExpansion,
   refreshToken,
-  flowAnalysisResults
+  flowAnalysisResults,
+  sectionImage
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [sectionTitle, setSectionTitle] = useState(title);
@@ -181,6 +183,31 @@ const BlogSection: React.FC<BlogSectionProps> = ({
         )}
         
       </div>
+
+      {/* Section Image Display */}
+      {sectionImage && (
+        <div style={{ marginBottom: '16px', marginTop: '8px' }}>
+          <div style={{ 
+            border: '1px solid #e0e0e0', 
+            borderRadius: '8px', 
+            overflow: 'hidden',
+            maxWidth: '100%',
+            backgroundColor: '#fff'
+          }}>
+            <img 
+              src={`data:image/png;base64,${sectionImage}`} 
+              alt={`Cover image for ${sectionTitle}`}
+              style={{ 
+                width: '100%', 
+                height: 'auto',
+                display: 'block',
+                maxHeight: '400px',
+                objectFit: 'contain'
+              }} 
+            />
+          </div>
+        </div>
+      )}
       
       <div 
         className="relative"

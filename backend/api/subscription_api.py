@@ -94,6 +94,7 @@ async def get_subscription_plans(
                 "description": plan.description,
                 "features": plan.features or [],
                 "limits": {
+                    "ai_text_generation_calls": getattr(plan, 'ai_text_generation_calls_limit', None) or 0,
                     "gemini_calls": plan.gemini_calls_limit,
                     "openai_calls": plan.openai_calls_limit,
                     "anthropic_calls": plan.anthropic_calls_limit,
@@ -162,6 +163,7 @@ async def get_user_subscription(
                         },
                         "status": "free",
                         "limits": {
+                            "ai_text_generation_calls": getattr(free_plan, 'ai_text_generation_calls_limit', None) or 0,
                             "gemini_calls": free_plan.gemini_calls_limit,
                             "openai_calls": free_plan.openai_calls_limit,
                             "anthropic_calls": free_plan.anthropic_calls_limit,
@@ -200,6 +202,7 @@ async def get_user_subscription(
                     "is_free": False
                 },
                 "limits": {
+                    "ai_text_generation_calls": getattr(subscription.plan, 'ai_text_generation_calls_limit', None) or 0,
                     "gemini_calls": subscription.plan.gemini_calls_limit,
                     "openai_calls": subscription.plan.openai_calls_limit,
                     "anthropic_calls": subscription.plan.anthropic_calls_limit,
@@ -252,6 +255,7 @@ async def get_subscription_status(
                         "tier": "free",
                         "can_use_api": True,
                         "limits": {
+                            "ai_text_generation_calls": getattr(free_plan, 'ai_text_generation_calls_limit', None) or 0,
                             "gemini_calls": free_plan.gemini_calls_limit,
                             "openai_calls": free_plan.openai_calls_limit,
                             "anthropic_calls": free_plan.anthropic_calls_limit,
@@ -309,6 +313,7 @@ async def get_subscription_status(
                 "tier": subscription.plan.tier.value,
                 "can_use_api": True,
                 "limits": {
+                    "ai_text_generation_calls": getattr(subscription.plan, 'ai_text_generation_calls_limit', None) or 0,
                     "gemini_calls": subscription.plan.gemini_calls_limit,
                     "openai_calls": subscription.plan.openai_calls_limit,
                     "anthropic_calls": subscription.plan.anthropic_calls_limit,
@@ -331,9 +336,14 @@ async def get_subscription_status(
 async def subscribe_to_plan(
     user_id: str,
     subscription_data: dict,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """Create or update a user's subscription."""
+    """Create or update a user's subscription (renewal)."""
+    
+    # Verify user can only subscribe/renew their own subscription
+    if current_user.get('id') != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     try:
         plan_id = subscription_data.get('plan_id')
@@ -388,12 +398,75 @@ async def subscribe_to_plan(
 
         db.commit()
 
+        # Get current usage BEFORE reset for logging
+        current_period = datetime.utcnow().strftime("%Y-%m")
+        usage_before = db.query(UsageSummary).filter(
+            UsageSummary.user_id == user_id,
+            UsageSummary.billing_period == current_period
+        ).first()
+        
+        # Log renewal request details
+        logger.info("=" * 80)
+        logger.info(f"[SUBSCRIPTION RENEWAL] 🔄 Processing renewal request")
+        logger.info(f"   ├─ User: {user_id}")
+        logger.info(f"   ├─ Plan: {plan.name} (ID: {plan_id}, Tier: {plan.tier.value})")
+        logger.info(f"   ├─ Billing Cycle: {billing_cycle}")
+        logger.info(f"   ├─ Period Start: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   └─ Period End: {subscription.current_period_end.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        if usage_before:
+            logger.info(f"   📊 Current Usage BEFORE Reset (Period: {current_period}):")
+            logger.info(f"      ├─ Gemini: {usage_before.gemini_tokens or 0} tokens / {usage_before.gemini_calls or 0} calls")
+            logger.info(f"      ├─ Mistral/HF: {usage_before.mistral_tokens or 0} tokens / {usage_before.mistral_calls or 0} calls")
+            logger.info(f"      ├─ OpenAI: {usage_before.openai_tokens or 0} tokens / {usage_before.openai_calls or 0} calls")
+            logger.info(f"      ├─ Stability (Images): {usage_before.stability_calls or 0} calls")
+            logger.info(f"      ├─ Total Tokens: {usage_before.total_tokens or 0}")
+            logger.info(f"      ├─ Total Calls: {usage_before.total_calls or 0}")
+            logger.info(f"      └─ Usage Status: {usage_before.usage_status.value}")
+        else:
+            logger.info(f"   📊 No usage summary found for period {current_period} (will be created on reset)")
+
+        # Clear subscription limits cache to force refresh on next check
+        try:
+            from services.subscription import PricingService
+            # Clear cache for this specific user (class-level cache shared across all instances)
+            cleared_count = PricingService.clear_user_cache(user_id)
+            logger.info(f"   🗑️  Cleared {cleared_count} subscription cache entries for user {user_id}")
+        except Exception as cache_err:
+            logger.error(f"   ❌ Failed to clear cache after subscribe: {cache_err}")
+
         # Reset usage status for current billing period so new plan takes effect immediately
+        reset_result = None
         try:
             usage_service = UsageTrackingService(db)
-            await usage_service.reset_current_billing_period(user_id)
+            reset_result = await usage_service.reset_current_billing_period(user_id)
+            
+            # Re-query usage summary from DB after reset to get fresh data
+            usage_after = db.query(UsageSummary).filter(
+                UsageSummary.user_id == user_id,
+                UsageSummary.billing_period == current_period
+            ).first()
+            
+            if reset_result.get('reset'):
+                logger.info(f"   ✅ Usage counters RESET successfully")
+                if usage_after:
+                    logger.info(f"   📊 New Usage AFTER Reset:")
+                    logger.info(f"      ├─ Gemini: {usage_after.gemini_tokens or 0} tokens / {usage_after.gemini_calls or 0} calls")
+                    logger.info(f"      ├─ Mistral/HF: {usage_after.mistral_tokens or 0} tokens / {usage_after.mistral_calls or 0} calls")
+                    logger.info(f"      ├─ OpenAI: {usage_after.openai_tokens or 0} tokens / {usage_after.openai_calls or 0} calls")
+                    logger.info(f"      ├─ Stability (Images): {usage_after.stability_calls or 0} calls")
+                    logger.info(f"      ├─ Total Tokens: {usage_after.total_tokens or 0}")
+                    logger.info(f"      ├─ Total Calls: {usage_after.total_calls or 0}")
+                    logger.info(f"      └─ Usage Status: {usage_after.usage_status.value}")
+                else:
+                    logger.warning(f"   ⚠️  Usage summary not found after reset - may need to be created on next API call")
+            else:
+                logger.warning(f"   ⚠️  Reset returned: {reset_result.get('reason', 'unknown')}")
         except Exception as reset_err:
-            logger.error(f"Failed to reset usage after subscribe: {reset_err}")
+            logger.error(f"   ❌ Failed to reset usage after subscribe: {reset_err}", exc_info=True)
+        
+        logger.info(f"   ✅ Renewal completed: User {user_id} → {plan.name} ({billing_cycle})")
+        logger.info("=" * 80)
 
         return {
             "success": True,
@@ -404,7 +477,20 @@ async def subscribe_to_plan(
                 "billing_cycle": billing_cycle,
                 "current_period_start": subscription.current_period_start.isoformat(),
                 "current_period_end": subscription.current_period_end.isoformat(),
-                "status": subscription.status.value
+                "status": subscription.status.value,
+                "limits": {
+                    "ai_text_generation_calls": getattr(plan, 'ai_text_generation_calls_limit', None) or 0,
+                    "gemini_calls": plan.gemini_calls_limit,
+                    "openai_calls": plan.openai_calls_limit,
+                    "anthropic_calls": plan.anthropic_calls_limit,
+                    "mistral_calls": plan.mistral_calls_limit,
+                    "tavily_calls": plan.tavily_calls_limit,
+                    "serper_calls": plan.serper_calls_limit,
+                    "metaphor_calls": plan.metaphor_calls_limit,
+                    "firecrawl_calls": plan.firecrawl_calls_limit,
+                    "stability_calls": plan.stability_calls_limit,
+                    "monthly_cost": plan.monthly_cost_limit
+                }
             }
         }
 

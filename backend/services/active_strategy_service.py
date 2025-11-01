@@ -295,3 +295,55 @@ class ActiveStrategyService:
             'cached_users': list(self._memory_cache.keys()),
             'last_updates': {k: v.isoformat() for k, v in self._last_cache_update.items()}
         }
+    
+    def count_active_strategies_with_tasks(self) -> int:
+        """
+        Count how many active strategies have monitoring tasks.
+        
+        This is used for intelligent scheduling - if there are no active strategies
+        with tasks, the scheduler can check less frequently.
+        
+        Returns:
+            Number of active strategies that have at least one active monitoring task
+        """
+        try:
+            if not self.db_session:
+                logger.warning("Database session not available")
+                return 0
+            
+            from sqlalchemy import func, and_
+            from models.monitoring_models import MonitoringTask
+            
+            # Count distinct strategies that:
+            # 1. Have activation status = 'active'
+            # 2. Have at least one active monitoring task
+            count = self.db_session.query(
+                func.count(func.distinct(EnhancedContentStrategy.id))
+            ).join(
+                StrategyActivationStatus,
+                EnhancedContentStrategy.id == StrategyActivationStatus.strategy_id
+            ).join(
+                MonitoringTask,
+                EnhancedContentStrategy.id == MonitoringTask.strategy_id
+            ).filter(
+                and_(
+                    StrategyActivationStatus.status == 'active',
+                    MonitoringTask.status == 'active'
+                )
+            ).scalar()
+            
+            return count or 0
+            
+        except Exception as e:
+            logger.error(f"Error counting active strategies with tasks: {e}")
+            # On error, assume there are active strategies (safer to check more frequently)
+            return 1
+    
+    def has_active_strategies_with_tasks(self) -> bool:
+        """
+        Check if there are any active strategies with monitoring tasks.
+        
+        Returns:
+            True if there are active strategies with tasks, False otherwise
+        """
+        return self.count_active_strategies_with_tasks() > 0

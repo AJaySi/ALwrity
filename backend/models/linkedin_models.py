@@ -65,7 +65,7 @@ class LinkedInPostRequest(BaseModel):
     persona_override: Optional[Dict[str, Any]] = Field(default=None, description="Session-only persona overrides to apply without saving")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "topic": "AI in healthcare transformation",
                 "industry": "Healthcare",
@@ -102,7 +102,7 @@ class LinkedInArticleRequest(BaseModel):
     persona_override: Optional[Dict[str, Any]] = Field(default=None, description="Session-only persona overrides to apply without saving")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "topic": "Digital transformation in manufacturing",
                 "industry": "Manufacturing",
@@ -135,7 +135,7 @@ class LinkedInCarouselRequest(BaseModel):
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "topic": "Future of remote work",
                 "industry": "Technology",
@@ -167,7 +167,7 @@ class LinkedInVideoScriptRequest(BaseModel):
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "topic": "Cybersecurity best practices",
                 "industry": "Technology",
@@ -197,7 +197,7 @@ class LinkedInCommentResponseRequest(BaseModel):
     grounding_level: GroundingLevel = Field(default=GroundingLevel.BASIC, description="Level of content grounding")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "original_comment": "Great insights on AI implementation!",
                 "post_context": "Post about AI transformation in healthcare",
@@ -353,7 +353,7 @@ class LinkedInPostResponse(BaseModel):
     grounding_status: Optional[Dict[str, Any]] = Field(None, description="Grounding operation status")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "success": True,
                 "data": {

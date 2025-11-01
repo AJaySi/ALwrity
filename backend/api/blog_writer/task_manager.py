@@ -10,6 +10,7 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List
+from fastapi import HTTPException
 from loguru import logger
 
 from models.blog_models import (
@@ -85,6 +86,10 @@ class TaskManager:
                 response["result"] = task["result"]
             elif task["status"] == "failed":
                 response["error"] = task["error"]
+                if "error_status" in task:
+                    response["error_status"] = task["error_status"]
+                if "error_data" in task:
+                    response["error_data"] = task["error_data"]
             
             return response
     
@@ -109,14 +114,17 @@ class TaskManager:
                 
                 logger.info(f"Progress update for task {task_id}: {message}")
     
-    async def start_research_task(self, request: BlogResearchRequest, user_id: str = "anonymous") -> str:
+    async def start_research_task(self, request: BlogResearchRequest, user_id: str) -> str:
         """Start a research operation and return a task ID."""
         if self.use_database:
             return await self.db_manager.start_research_task(request, user_id)
         else:
             task_id = self.create_task("research")
+            # Store user_id in task for subscription checks
+            if task_id in self.task_storage:
+                self.task_storage[task_id]["user_id"] = user_id
             # Start the research operation in the background
-            asyncio.create_task(self._run_research_task(task_id, request))
+            asyncio.create_task(self._run_research_task(task_id, request, user_id))
             return task_id
     
     def start_outline_task(self, request: BlogOutlineRequest) -> str:
@@ -144,7 +152,7 @@ class TaskManager:
         asyncio.create_task(self._run_medium_generation_task(task_id, request))
         return task_id
     
-    async def _run_research_task(self, task_id: str, request: BlogResearchRequest):
+    async def _run_research_task(self, task_id: str, request: BlogResearchRequest, user_id: str):
         """Background task to run research and update status with progress messages."""
         try:
             # Update status to running
@@ -157,8 +165,8 @@ class TaskManager:
             # Check cache first
             await self.update_progress(task_id, "📋 Checking cache for existing research...")
             
-            # Run the actual research with progress updates
-            result = await self.service.research_with_progress(request, task_id)
+            # Run the actual research with progress updates (pass user_id for subscription checks)
+            result = await self.service.research_with_progress(request, task_id, user_id)
             
             # Check if research failed gracefully
             if not result.success:
@@ -171,6 +179,16 @@ class TaskManager:
                 self.task_storage[task_id]["status"] = "completed"
                 self.task_storage[task_id]["result"] = result.dict()
             
+        except HTTPException as http_error:
+            # Handle HTTPException (e.g., 429 subscription limit) - preserve error details for frontend
+            error_detail = http_error.detail
+            error_message = error_detail.get('message', str(error_detail)) if isinstance(error_detail, dict) else str(error_detail)
+            await self.update_progress(task_id, f"❌ {error_message}")
+            self.task_storage[task_id]["status"] = "failed"
+            self.task_storage[task_id]["error"] = error_message
+            # Store HTTP error details for frontend modal
+            self.task_storage[task_id]["error_status"] = http_error.status_code
+            self.task_storage[task_id]["error_data"] = error_detail if isinstance(error_detail, dict) else {"error": str(error_detail)}
         except Exception as e:
             await self.update_progress(task_id, f"❌ Research failed with error: {str(e)}")
             # Update status to failed

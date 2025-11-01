@@ -11,7 +11,7 @@ from loguru import logger
 class CompetitorAnalyzer:
     """Analyzes competitors and market intelligence from research content."""
     
-    def analyze(self, content: str) -> Dict[str, Any]:
+    def analyze(self, content: str, user_id: str = None) -> Dict[str, Any]:
         """Parse comprehensive competitor analysis from the research content using AI."""
         competitor_prompt = f"""
         Analyze the following research content and extract competitor insights:
@@ -57,7 +57,8 @@ class CompetitorAnalyzer:
         
         competitor_analysis = llm_text_gen(
             prompt=competitor_prompt,
-            json_struct=competitor_schema
+            json_struct=competitor_schema,
+            user_id=user_id
         )
         
         if isinstance(competitor_analysis, dict) and 'error' not in competitor_analysis:

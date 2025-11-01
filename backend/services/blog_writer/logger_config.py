@@ -163,13 +163,18 @@ class BlogWriterLogger:
         context: Optional[Dict[str, Any]] = None
     ):
         """Log error with full context."""
+        # Safely format error message to avoid KeyError on format strings in error messages
+        error_str = str(error)
+        # Replace any curly braces that might be in the error message to avoid format string issues
+        safe_error_str = error_str.replace('{', '{{').replace('}', '}}')
+        
         logger.error(
-            f"Error in {operation}: {str(error)}",
+            f"Error in {operation}: {safe_error_str}",
             extra={
                 "event_type": "error",
                 "operation": operation,
                 "error_type": type(error).__name__,
-                "error_message": str(error),
+                "error_message": error_str,  # Keep original in extra, but use safe version in format string
                 "context": context or {}
             },
             exc_info=True

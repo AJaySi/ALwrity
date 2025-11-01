@@ -477,6 +477,39 @@ async def test_publish_to_wix(request: WixPublishRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/refresh-token")
+async def refresh_wix_token(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Refresh Wix access token using refresh token
+    
+    Args:
+        request: Dict containing refresh_token
+        
+    Returns:
+        New token information with access_token, refresh_token, expires_in
+    """
+    try:
+        refresh_token = request.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(status_code=400, detail="Missing refresh_token")
+        
+        # Refresh the token
+        new_tokens = wix_service.refresh_access_token(refresh_token)
+        
+        return {
+            "success": True,
+            "access_token": new_tokens.get("access_token"),
+            "refresh_token": new_tokens.get("refresh_token"),
+            "expires_in": new_tokens.get("expires_in"),
+            "token_type": new_tokens.get("token_type", "Bearer")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to refresh Wix token: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh token: {str(e)}")
+
+
 @router.post("/test/publish/real")
 async def test_publish_real(payload: Dict[str, Any]) -> Dict[str, Any]:
     """

@@ -11,7 +11,7 @@ from loguru import logger
 class KeywordAnalyzer:
     """Analyzes keywords from research content using AI-powered extraction."""
     
-    def analyze(self, content: str, original_keywords: List[str]) -> Dict[str, Any]:
+    def analyze(self, content: str, original_keywords: List[str], user_id: str = None) -> Dict[str, Any]:
         """Parse comprehensive keyword analysis from the research content using AI."""
         # Use AI to extract and analyze keywords from the rich research content
         keyword_prompt = f"""
@@ -64,7 +64,8 @@ class KeywordAnalyzer:
         
         keyword_analysis = llm_text_gen(
             prompt=keyword_prompt,
-            json_struct=keyword_schema
+            json_struct=keyword_schema,
+            user_id=user_id
         )
         
         if isinstance(keyword_analysis, dict) and 'error' not in keyword_analysis:

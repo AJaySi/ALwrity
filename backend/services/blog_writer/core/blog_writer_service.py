@@ -96,13 +96,13 @@ class BlogWriterService:
         self.blog_rewriter = BlogRewriter(self.task_manager)
     
     # Research Methods
-    async def research(self, request: BlogResearchRequest) -> BlogResearchResponse:
+    async def research(self, request: BlogResearchRequest, user_id: str) -> BlogResearchResponse:
         """Conduct comprehensive research using Google Search grounding."""
-        return await self.research_service.research(request)
+        return await self.research_service.research(request, user_id)
     
-    async def research_with_progress(self, request: BlogResearchRequest, task_id: str) -> BlogResearchResponse:
+    async def research_with_progress(self, request: BlogResearchRequest, task_id: str, user_id: str) -> BlogResearchResponse:
         """Conduct research with real-time progress updates."""
-        return await self.research_service.research_with_progress(request, task_id)
+        return await self.research_service.research_with_progress(request, task_id, user_id)
     
     # Outline Methods
     async def generate_outline(self, request: BlogOutlineRequest) -> BlogOutlineResponse:
@@ -204,10 +204,13 @@ class BlogWriterService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def seo_analyze(self, request: BlogSEOAnalyzeRequest) -> BlogSEOAnalyzeResponse:
+    async def seo_analyze(self, request: BlogSEOAnalyzeRequest, user_id: str = None) -> BlogSEOAnalyzeResponse:
         """Analyze content for SEO optimization using comprehensive blog-specific analyzer."""
         try:
             from services.blog_writer.seo.blog_content_seo_analyzer import BlogContentSEOAnalyzer
+
+            if not user_id:
+                raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
 
             content = request.content or ""
             target_keywords = request.keywords or []
@@ -231,7 +234,7 @@ class BlogWriterService:
             
             # Use our comprehensive SEO analyzer
             analyzer = BlogContentSEOAnalyzer()
-            analysis_results = await analyzer.analyze_blog_content(content, research_data)
+            analysis_results = await analyzer.analyze_blog_content(content, research_data, user_id=user_id)
             
             # Convert results to response format
             recommendations = analysis_results.get('actionable_recommendations', [])
@@ -267,10 +270,13 @@ class BlogWriterService:
                 recommendations=[f"SEO analysis failed: {str(e)}"]
             )
 
-    async def seo_metadata(self, request: BlogSEOMetadataRequest) -> BlogSEOMetadataResponse:
+    async def seo_metadata(self, request: BlogSEOMetadataRequest, user_id: str = None) -> BlogSEOMetadataResponse:
         """Generate comprehensive SEO metadata for content."""
         try:
             from services.blog_writer.seo.blog_seo_metadata_generator import BlogSEOMetadataGenerator
+            
+            if not user_id:
+                raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
             
             # Initialize metadata generator
             metadata_generator = BlogSEOMetadataGenerator()
@@ -285,7 +291,8 @@ class BlogWriterService:
                 blog_title=request.title or "Untitled Blog Post",
                 research_data=request.research_data or {},
                 outline=outline,
-                seo_analysis=seo_analysis
+                seo_analysis=seo_analysis,
+                user_id=user_id
             )
             
             # Convert to BlogSEOMetadataResponse format

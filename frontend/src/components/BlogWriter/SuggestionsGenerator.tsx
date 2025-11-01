@@ -145,11 +145,7 @@ export const useSuggestions = ({
             priority: 'high'
           });
           items.push({ 
-            title: 'Content Analysis', 
-            message: 'Analyze the flow and quality of my blog content to get improvement suggestions'
-          });
-          items.push({
-            title: 'Content Analysis',
+            title: '📊 Content Analysis', 
             message: 'Analyze the flow and quality of my blog content to get improvement suggestions'
           });
         } else if (seoAnalysis && !seoRecommendationsApplied) {
@@ -160,7 +156,7 @@ export const useSuggestions = ({
             priority: 'high'
           });
           items.push({
-            title: 'Content Analysis',
+            title: '📊 Content Analysis',
             message: 'Run analyzeContentQuality to review narrative flow and get final improvement suggestions before publishing.'
           });
           items.push({
@@ -175,33 +171,21 @@ export const useSuggestions = ({
               message: 'SEO recommendations are applied. Execute generateSEOMetadata immediately so we can prepare titles, descriptions, and schema without further prompts.',
               priority: 'high'
             });
-          } else {
             items.push({
-              title: 'Next: Publish',
-              message: 'The blog is SEO-optimized. Use publishToPlatform with your preferred destination (wix|wordpress) right away—no additional confirmation needed.',
-              priority: 'high'
+              title: '📊 Content Analysis',
+              message: 'Run analyzeContentQuality to validate flow, consistency, and progression before publishing.'
             });
-          }
-
-          items.push({
-            title: 'Content Analysis',
-            message: 'Run analyzeContentQuality to validate flow, consistency, and progression before publishing.'
-          });
-          items.push({
-            title: 'Publish',
-            message: seoMetadata 
-              ? 'Publish my blog to your preferred platform using publishToPlatform.'
-              : 'Generate SEO metadata first, then publish your blog.'
-          });
-
-          if (seoMetadata) {
+          } else {
+            // SEO metadata is ready - show publishing options
             items.push({
               title: '🚀 Publish to Wix',
-              message: 'Publish my blog to Wix using publishToPlatform with platform "wix".'
+              message: 'Publish my blog to Wix using publishToPlatform with platform "wix".',
+              priority: 'high'
             });
             items.push({
               title: '🌐 Publish to WordPress',
-              message: 'Publish my blog to WordPress using publishToPlatform with platform "wordpress".'
+              message: 'Publish my blog to WordPress using publishToPlatform with platform "wordpress".',
+              priority: 'high'
             });
           }
         }

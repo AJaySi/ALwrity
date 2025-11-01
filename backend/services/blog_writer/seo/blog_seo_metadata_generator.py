@@ -28,7 +28,8 @@ class BlogSEOMetadataGenerator:
         blog_title: str,
         research_data: Dict[str, Any],
         outline: Optional[List[Dict[str, Any]]] = None,
-        seo_analysis: Optional[Dict[str, Any]] = None
+        seo_analysis: Optional[Dict[str, Any]] = None,
+        user_id: str = None
     ) -> Dict[str, Any]:
         """
         Generate comprehensive SEO metadata using maximum 2 AI calls
@@ -39,10 +40,13 @@ class BlogSEOMetadataGenerator:
             research_data: Research data containing keywords and insights
             outline: Outline structure with sections and headings
             seo_analysis: SEO analysis results from previous phase
+            user_id: Clerk user ID for subscription checking (required)
             
         Returns:
             Comprehensive metadata including all SEO elements
         """
+        if not user_id:
+            raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
         try:
             logger.info("Starting comprehensive SEO metadata generation")
             
@@ -53,13 +57,13 @@ class BlogSEOMetadataGenerator:
             # Call 1: Generate core SEO metadata (parallel with Call 2)
             logger.info("Generating core SEO metadata")
             core_metadata_task = self._generate_core_metadata(
-                blog_content, blog_title, keywords_data, outline, seo_analysis
+                blog_content, blog_title, keywords_data, outline, seo_analysis, user_id=user_id
             )
             
             # Call 2: Generate social media and structured data (parallel with Call 1)
             logger.info("Generating social media and structured data")
             social_metadata_task = self._generate_social_metadata(
-                blog_content, blog_title, keywords_data, outline, seo_analysis
+                blog_content, blog_title, keywords_data, outline, seo_analysis, user_id=user_id
             )
             
             # Wait for both calls to complete
@@ -114,9 +118,12 @@ class BlogSEOMetadataGenerator:
         blog_title: str, 
         keywords_data: Dict[str, Any],
         outline: Optional[List[Dict[str, Any]]] = None,
-        seo_analysis: Optional[Dict[str, Any]] = None
+        seo_analysis: Optional[Dict[str, Any]] = None,
+        user_id: str = None
     ) -> Dict[str, Any]:
         """Generate core SEO metadata (Call 1)"""
+        if not user_id:
+            raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
         try:
             # Create comprehensive prompt for core metadata
             prompt = self._create_core_metadata_prompt(
@@ -170,7 +177,8 @@ class BlogSEOMetadataGenerator:
             ai_response_raw = llm_text_gen(
                 prompt=prompt,
                 json_struct=schema,
-                system_prompt=None
+                system_prompt=None,
+                user_id=user_id  # Pass user_id for subscription checking
             )
             
             # Handle response: llm_text_gen may return dict (from structured JSON) or str (needs parsing)
@@ -215,9 +223,12 @@ class BlogSEOMetadataGenerator:
         blog_title: str, 
         keywords_data: Dict[str, Any],
         outline: Optional[List[Dict[str, Any]]] = None,
-        seo_analysis: Optional[Dict[str, Any]] = None
+        seo_analysis: Optional[Dict[str, Any]] = None,
+        user_id: str = None
     ) -> Dict[str, Any]:
         """Generate social media and structured data (Call 2)"""
+        if not user_id:
+            raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
         try:
             # Create comprehensive prompt for social metadata
             prompt = self._create_social_metadata_prompt(
@@ -274,7 +285,8 @@ class BlogSEOMetadataGenerator:
             ai_response_raw = llm_text_gen(
                 prompt=prompt,
                 json_struct=schema,
-                system_prompt=None
+                system_prompt=None,
+                user_id=user_id  # Pass user_id for subscription checking
             )
             
             # Handle response: llm_text_gen may return dict (from structured JSON) or str (needs parsing)

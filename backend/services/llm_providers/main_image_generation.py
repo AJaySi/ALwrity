@@ -40,7 +40,38 @@ def _get_provider(provider_name: str):
     raise ValueError(f"Unknown image provider: {provider_name}")
 
 
-def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None) -> ImageGenerationResult:
+def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_id: Optional[str] = None) -> ImageGenerationResult:
+    """Generate image with pre-flight validation.
+    
+    Args:
+        prompt: Image generation prompt
+        options: Image generation options (provider, model, width, height, etc.)
+        user_id: User ID for subscription checking (optional, but required for validation)
+    """
+    # PRE-FLIGHT VALIDATION: Validate image generation before API call
+    # MUST happen BEFORE any API calls - return immediately if validation fails
+    if user_id:
+        from services.database import get_db
+        from services.subscription import PricingService
+        from services.subscription.preflight_validator import validate_image_generation_operations
+        from fastapi import HTTPException
+        
+        db = next(get_db())
+        try:
+            pricing_service = PricingService(db)
+            # Raises HTTPException immediately if validation fails - frontend gets immediate response
+            validate_image_generation_operations(
+                pricing_service=pricing_service,
+                user_id=user_id
+            )
+        except HTTPException as http_ex:
+            # Re-raise immediately - don't proceed with API call
+            logger.error(f"[Image Generation] ❌ Pre-flight validation failed - blocking API call")
+            raise
+        finally:
+            db.close()
+    
+    logger.info(f"[Image Generation] ✅ Pre-flight validation passed - proceeding with image generation")
     opts = options or {}
     provider_name = _select_provider(opts.get("provider"))
 

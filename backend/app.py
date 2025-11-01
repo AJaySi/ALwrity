@@ -298,6 +298,11 @@ async def startup_event():
     try:
         # Initialize database
         init_database()
+        
+        # Start task scheduler
+        from services.scheduler import get_scheduler
+        await get_scheduler().start()
+        
         logger.info("ALwrity backend started successfully")
     except Exception as e:
         logger.error(f"Error during startup: {e}")
@@ -307,6 +312,10 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown."""
     try:
+        # Stop task scheduler
+        from services.scheduler import get_scheduler
+        await get_scheduler().stop()
+        
         # Close database connections
         close_database()
         logger.info("ALwrity backend shutdown successfully")

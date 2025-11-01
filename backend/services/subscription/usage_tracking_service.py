@@ -502,7 +502,7 @@ class UsageTrackingService:
         return result
     
     async def reset_current_billing_period(self, user_id: str) -> Dict[str, Any]:
-        """Reset usage status for the current billing period (after plan change)."""
+        """Reset usage status and counters for the current billing period (after plan renewal/change)."""
         try:
             billing_period = datetime.now().strftime("%Y-%m")
             summary = self.db.query(UsageSummary).filter(
@@ -514,11 +514,52 @@ class UsageTrackingService:
                 # Nothing to reset
                 return {"reset": False, "reason": "no_summary"}
 
-            # Clear LIMIT_REACHED so the user can resume; keep counters intact
+            # CRITICAL: Reset ALL usage counters to 0 so user gets fresh limits with new/renewed plan
+            # Clear LIMIT_REACHED status
             summary.usage_status = UsageStatus.ACTIVE
+            
+            # Reset all LLM provider call counters
+            summary.gemini_calls = 0
+            summary.openai_calls = 0
+            summary.anthropic_calls = 0
+            summary.mistral_calls = 0
+            
+            # Reset all LLM provider token counters
+            summary.gemini_tokens = 0
+            summary.openai_tokens = 0
+            summary.anthropic_tokens = 0
+            summary.mistral_tokens = 0
+            
+            # Reset search/research provider counters
+            summary.tavily_calls = 0
+            summary.serper_calls = 0
+            summary.metaphor_calls = 0
+            summary.firecrawl_calls = 0
+            
+            # Reset image generation counters
+            summary.stability_calls = 0
+            
+            # Reset cost counters
+            summary.gemini_cost = 0.0
+            summary.openai_cost = 0.0
+            summary.anthropic_cost = 0.0
+            summary.mistral_cost = 0.0
+            summary.tavily_cost = 0.0
+            summary.serper_cost = 0.0
+            summary.metaphor_cost = 0.0
+            summary.firecrawl_cost = 0.0
+            summary.stability_cost = 0.0
+            
+            # Reset totals
+            summary.total_calls = 0
+            summary.total_tokens = 0
+            summary.total_cost = 0.0
+            
             summary.updated_at = datetime.utcnow()
             self.db.commit()
-            return {"reset": True}
+            
+            logger.info(f"Reset usage counters for user {user_id} in billing period {billing_period} after renewal")
+            return {"reset": True, "counters_reset": True}
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error resetting usage status: {e}")

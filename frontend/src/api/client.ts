@@ -7,6 +7,24 @@ export const setGlobalSubscriptionErrorHandler = (handler: (error: any) => boole
   globalSubscriptionErrorHandler = handler;
 };
 
+// Export a function to trigger subscription error handler from outside axios interceptors
+export const triggerSubscriptionError = (error: any) => {
+  const status = error?.response?.status;
+  console.log('triggerSubscriptionError: Received error', {
+    hasHandler: !!globalSubscriptionErrorHandler,
+    status,
+    dataKeys: error?.response?.data ? Object.keys(error.response.data) : null
+  });
+
+  if (globalSubscriptionErrorHandler) {
+    console.log('triggerSubscriptionError: Calling global subscription error handler');
+    return globalSubscriptionErrorHandler(error);
+  }
+
+  console.warn('triggerSubscriptionError: No global subscription error handler registered');
+  return false;
+};
+
 // Optional token getter installed from within the app after Clerk is available
 let authTokenGetter: (() => Promise<string | null>) | null = null;
 
@@ -64,13 +82,27 @@ apiClient.interceptors.request.use(
   async (config) => {
     console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
     try {
-      const token = authTokenGetter ? await authTokenGetter() : null;
+      if (!authTokenGetter) {
+        console.warn(`[apiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
+        console.warn(`[apiClient] This usually means TokenInstaller hasn't run yet. Request will likely fail with 401.`);
+      } else {
+        try {
+          const token = await authTokenGetter();
       if (token) {
         config.headers = config.headers || {};
         (config.headers as any)['Authorization'] = `Bearer ${token}`;
+            console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
+          } else {
+            console.warn(`[apiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
+            console.warn(`[apiClient] User ID from localStorage: ${localStorage.getItem('user_id') || 'none'}`);
+          }
+        } catch (tokenError) {
+          console.error(`[apiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
+        }
       }
     } catch (e) {
-      // non-fatal
+      console.error(`[apiClient] ❌ Unexpected error in request interceptor for ${config.url}:`, e);
+      // non-fatal - let the request proceed, backend will return 401 if needed
     }
     return config;
   },
@@ -138,13 +170,17 @@ apiClient.interceptors.response.use(
         console.error('Token refresh failed:', retryError);
       }
 
-      // If retry failed and not in onboarding, redirect
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding') ||
-                                 window.location.pathname === '/';
-      if (!isOnboardingRoute) {
+      // If retry failed, don't redirect during app initialization (root route)
+      // Only redirect if we're on a protected route and definitely authenticated
+      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
+      const isRootRoute = window.location.pathname === '/';
+      
+      // Don't redirect from root route during app initialization - allow InitialRouteHandler to work
+      if (!isRootRoute && !isOnboardingRoute) {
+        // Only redirect if we're definitely not just initializing
         try { window.location.assign('/'); } catch {}
       } else {
-        console.warn('401 Unauthorized - token refresh failed');
+        console.warn('401 Unauthorized - token refresh failed (during initialization, not redirecting)');
       }
     }
 
@@ -204,12 +240,14 @@ aiApiClient.interceptors.response.use(
         console.error('Token refresh failed:', retryError);
       }
       
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding') || 
-                                 window.location.pathname === '/';
-      if (!isOnboardingRoute) {
+      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
+      const isRootRoute = window.location.pathname === '/';
+      
+      // Don't redirect from root route during app initialization
+      if (!isRootRoute && !isOnboardingRoute) {
         try { window.location.assign('/'); } catch {}
       } else {
-        console.warn('401 Unauthorized - token refresh failed');
+        console.warn('401 Unauthorized - token refresh failed (during initialization, not redirecting)');
       }
     }
     
@@ -254,13 +292,15 @@ longRunningApiClient.interceptors.response.use(
   },
   (error) => {
     if (error?.response?.status === 401) {
-      // Only redirect on 401 if we're not in onboarding flow
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding') || 
-                                 window.location.pathname === '/';
-      if (!isOnboardingRoute) {
+      // Only redirect on 401 if we're not in onboarding flow or root route
+      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
+      const isRootRoute = window.location.pathname === '/';
+      
+      // Don't redirect from root route during app initialization
+      if (!isRootRoute && !isOnboardingRoute) {
         try { window.location.assign('/'); } catch {}
       } else {
-        console.warn('401 Unauthorized during onboarding - token may need refresh');
+        console.warn('401 Unauthorized during initialization - token may need refresh (not redirecting)');
       }
     }
     // Check if it's a subscription-related error and handle it globally
@@ -304,13 +344,15 @@ pollingApiClient.interceptors.response.use(
   },
   (error) => {
     if (error?.response?.status === 401) {
-      // Only redirect on 401 if we're not in onboarding flow
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding') || 
-                                 window.location.pathname === '/';
-      if (!isOnboardingRoute) {
+      // Only redirect on 401 if we're not in onboarding flow or root route
+      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
+      const isRootRoute = window.location.pathname === '/';
+      
+      // Don't redirect from root route during app initialization
+      if (!isRootRoute && !isOnboardingRoute) {
         try { window.location.assign('/'); } catch {}
       } else {
-        console.warn('401 Unauthorized during onboarding - token may need refresh');
+        console.warn('401 Unauthorized during initialization - token may need refresh (not redirecting)');
       }
     }
     // Check if it's a subscription-related error and handle it globally

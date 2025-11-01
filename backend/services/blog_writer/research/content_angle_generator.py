@@ -11,7 +11,7 @@ from loguru import logger
 class ContentAngleGenerator:
     """Generates strategic content angles from research content."""
     
-    def generate(self, content: str, topic: str, industry: str) -> List[str]:
+    def generate(self, content: str, topic: str, industry: str, user_id: str = None) -> List[str]:
         """Parse strategic content angles from the research content using AI."""
         angles_prompt = f"""
         Analyze the following research content and create strategic content angles for: {topic} in {industry}
@@ -65,7 +65,8 @@ class ContentAngleGenerator:
         
         angles_result = llm_text_gen(
             prompt=angles_prompt,
-            json_struct=angles_schema
+            json_struct=angles_schema,
+            user_id=user_id
         )
         
         if isinstance(angles_result, dict) and 'content_angles' in angles_result:

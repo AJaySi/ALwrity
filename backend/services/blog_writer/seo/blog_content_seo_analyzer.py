@@ -34,17 +34,21 @@ class BlogContentSEOAnalyzer:
         
         logger.info("BlogContentSEOAnalyzer initialized")
     
-    async def analyze_blog_content(self, blog_content: str, research_data: Dict[str, Any], blog_title: Optional[str] = None) -> Dict[str, Any]:
+    async def analyze_blog_content(self, blog_content: str, research_data: Dict[str, Any], blog_title: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
         """
         Main analysis method with parallel processing
         
         Args:
             blog_content: The blog content to analyze
             research_data: Research data containing keywords and other insights
+            blog_title: Optional blog title
+            user_id: Clerk user ID for subscription checking (required)
             
         Returns:
             Comprehensive SEO analysis results
         """
+        if not user_id:
+            raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
         try:
             logger.info("Starting blog content SEO analysis")
             
@@ -58,7 +62,7 @@ class BlogContentSEOAnalyzer:
             
             # Phase 2: Single AI analysis for structured insights
             logger.info("Running AI analysis")
-            ai_insights = await self._run_ai_analysis(blog_content, keywords_data, non_ai_results)
+            ai_insights = await self._run_ai_analysis(blog_content, keywords_data, non_ai_results, user_id=user_id)
             
             # Phase 3: Compile and format results
             logger.info("Compiling results")
@@ -599,8 +603,10 @@ class BlogContentSEOAnalyzer:
         
         return recommendations
     
-    async def _run_ai_analysis(self, blog_content: str, keywords_data: Dict[str, Any], non_ai_results: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_ai_analysis(self, blog_content: str, keywords_data: Dict[str, Any], non_ai_results: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """Run single AI analysis for structured insights (provider-agnostic)"""
+        if not user_id:
+            raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
         try:
             # Prepare context for AI analysis
             context = {
@@ -658,7 +664,8 @@ class BlogContentSEOAnalyzer:
             ai_response = llm_text_gen(
                 prompt=prompt,
                 json_struct=schema,
-                system_prompt=None
+                system_prompt=None,
+                user_id=user_id  # Pass user_id for subscription checking
             )
             
             return ai_response

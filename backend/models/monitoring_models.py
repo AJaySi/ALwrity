@@ -48,8 +48,9 @@ class TaskExecutionLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(Integer, ForeignKey("monitoring_tasks.id"), nullable=False)
+    user_id = Column(Integer, nullable=True)  # User ID for user isolation (nullable for backward compatibility)
     execution_date = Column(DateTime, default=datetime.utcnow)
-    status = Column(String(50), nullable=False)  # 'success', 'failed', 'skipped'
+    status = Column(String(50), nullable=False)  # 'success', 'failed', 'skipped', 'running'
     result_data = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
     execution_time_ms = Column(Integer, nullable=True)

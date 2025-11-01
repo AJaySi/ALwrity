@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -63,6 +63,15 @@ async def activate_strategy_with_monitoring(
         monitoring_success = await monitoring_service.save_monitoring_data(strategy_id, monitoring_plan)
         if not monitoring_success:
             logger.warning(f"Failed to save monitoring data for strategy {strategy_id}")
+        
+        # Trigger scheduler interval adjustment (scheduler will check more frequently now)
+        try:
+            from services.scheduler import get_scheduler
+            scheduler = get_scheduler()
+            await scheduler.trigger_interval_adjustment()
+            logger.info(f"Triggered scheduler interval adjustment after strategy {strategy_id} activation")
+        except Exception as e:
+            logger.warning(f"Could not trigger scheduler interval adjustment: {e}")
         
         logger.info(f"Successfully activated strategy {strategy_id} with monitoring")
         return {
@@ -395,6 +404,150 @@ async def get_monitoring_tasks(
     except Exception as e:
         logger.error(f"Error retrieving monitoring tasks: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/user/{user_id}/monitoring-tasks")
+async def get_user_monitoring_tasks(
+    user_id: int,
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None, description="Filter by task status"),
+    limit: int = Query(50, description="Maximum number of tasks to return"),
+    offset: int = Query(0, description="Number of tasks to skip")
+):
+    """
+    Get all monitoring tasks for a specific user with their execution status.
+    
+    Uses the scheduler's task loader to get tasks filtered by user_id for proper user isolation.
+    """
+    try:
+        logger.info(f"Getting monitoring tasks for user {user_id}")
+        
+        # Use scheduler task loader for user-specific tasks
+        from services.scheduler.utils.task_loader import load_due_monitoring_tasks
+        
+        # Load all tasks for user (not just due tasks - we want all user tasks)
+        # Join with strategy to filter by user
+        tasks_query = db.query(MonitoringTask).join(
+            EnhancedContentStrategy,
+            MonitoringTask.strategy_id == EnhancedContentStrategy.id
+        ).filter(
+            EnhancedContentStrategy.user_id == user_id
+        )
+        
+        # Apply status filter if provided
+        if status:
+            tasks_query = tasks_query.filter(MonitoringTask.status == status)
+        
+        # Get tasks with pagination
+        tasks = tasks_query.order_by(desc(MonitoringTask.created_at)).offset(offset).limit(limit).all()
+        
+        tasks_data = []
+        for task in tasks:
+            # Get latest execution log
+            latest_log = db.query(TaskExecutionLog).filter(
+                TaskExecutionLog.task_id == task.id
+            ).order_by(desc(TaskExecutionLog.execution_date)).first()
+            
+            # Get strategy info
+            strategy = db.query(EnhancedContentStrategy).filter(
+                EnhancedContentStrategy.id == task.strategy_id
+            ).first()
+            
+            task_data = {
+                "id": task.id,
+                "strategy_id": task.strategy_id,
+                "strategy_name": strategy.name if strategy else None,
+                "title": task.task_title,
+                "description": task.task_description,
+                "assignee": task.assignee,
+                "frequency": task.frequency,
+                "metric": task.metric,
+                "measurementMethod": task.measurement_method,
+                "successCriteria": task.success_criteria,
+                "alertThreshold": task.alert_threshold,
+                "status": task.status,
+                "lastExecuted": latest_log.execution_date.isoformat() if latest_log else None,
+                "nextExecution": task.next_execution.isoformat() if task.next_execution else None,
+                "executionCount": db.query(TaskExecutionLog).filter(
+                    TaskExecutionLog.task_id == task.id
+                ).count(),
+                "created_at": task.created_at.isoformat() if task.created_at else None
+            }
+            tasks_data.append(task_data)
+        
+        # Get total count for pagination
+        total_count = db.query(MonitoringTask).join(
+            EnhancedContentStrategy,
+            MonitoringTask.strategy_id == EnhancedContentStrategy.id
+        ).filter(
+            EnhancedContentStrategy.user_id == user_id
+        )
+        if status:
+            total_count = total_count.filter(MonitoringTask.status == status)
+        total_count = total_count.count()
+        
+        return {
+            "success": True,
+            "data": tasks_data,
+            "pagination": {
+                "total": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": (offset + len(tasks_data)) < total_count
+            },
+            "message": f"Retrieved {len(tasks_data)} monitoring tasks for user {user_id}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving user monitoring tasks: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve monitoring tasks: {str(e)}")
+
+@router.get("/user/{user_id}/execution-logs")
+async def get_user_execution_logs(
+    user_id: int,
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None, description="Filter by execution status"),
+    limit: int = Query(50, description="Maximum number of logs to return"),
+    offset: int = Query(0, description="Number of logs to skip")
+):
+    """
+    Get execution logs for a specific user.
+    
+    Provides user isolation by filtering execution logs by user_id.
+    """
+    try:
+        logger.info(f"Getting execution logs for user {user_id}")
+        
+        monitoring_service = MonitoringDataService(db)
+        logs_data = monitoring_service.get_user_execution_logs(
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            status_filter=status
+        )
+        
+        # Get total count for pagination
+        count_query = db.query(TaskExecutionLog).filter(
+            TaskExecutionLog.user_id == user_id
+        )
+        if status:
+            count_query = count_query.filter(TaskExecutionLog.status == status)
+        total_count = count_query.count()
+        
+        return {
+            "success": True,
+            "data": logs_data,
+            "pagination": {
+                "total": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": (offset + len(logs_data)) < total_count
+            },
+            "message": f"Retrieved {len(logs_data)} execution logs for user {user_id}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving execution logs for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve execution logs: {str(e)}")
 
 @router.get("/{strategy_id}/data-freshness")
 async def get_data_freshness(

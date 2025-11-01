@@ -33,6 +33,9 @@ export const useBlogWriterState = () => {
   // Content confirmation state
   const [contentConfirmed, setContentConfirmed] = useState<boolean>(false);
 
+  // Section images state - persists images generated in outline phase to content phase
+  const [sectionImages, setSectionImages] = useState<Record<string, string>>({});
+
   // Cache recovery - restore most recent research on page load
   useEffect(() => {
     const cachedEntries = researchCache.getAllCachedEntries();
@@ -211,6 +214,7 @@ export const useBlogWriterState = () => {
     contentConfirmed,
     flowAnalysisCompleted,
     flowAnalysisResults,
+    sectionImages,
     
     // Setters
     setResearch,
@@ -233,6 +237,7 @@ export const useBlogWriterState = () => {
     setContentConfirmed,
     setFlowAnalysisCompleted,
     setFlowAnalysisResults,
+    setSectionImages,
     
     // Handlers
     handleResearchComplete,

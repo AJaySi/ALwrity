@@ -105,12 +105,13 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   /* Enhanced Start Button with Phase 1 Improvements */
                   <Box sx={{ position: 'relative', display: 'inline-flex' }}>
                     <Tooltip title={tooltipMessage} arrow placement="bottom">
-                      <Button
-                        variant="contained"
-                        size={isFirstVisit ? "medium" : "small"}
-                        startIcon={<PlayArrow />}
-                        onClick={workflowControls.onStartWorkflow}
-                        disabled={workflowControls.isLoading}
+                      <span>
+                        <Button
+                          variant="contained"
+                          size={isFirstVisit ? "medium" : "small"}
+                          startIcon={<PlayArrow />}
+                          onClick={workflowControls.onStartWorkflow}
+                          disabled={workflowControls.isLoading}
                         sx={{
                           position: 'relative',
                           overflow: 'hidden',
@@ -180,8 +181,9 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                           },
                         }}
                       >
-                        {isFirstVisit ? '🚀 Start Journey' : 'Start'}
-                      </Button>
+                          {isFirstVisit ? '🚀 Start Journey' : 'Start'}
+                        </Button>
+                      </span>
                     </Tooltip>
                     <Box
                       sx={{
