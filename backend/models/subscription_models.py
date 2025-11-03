@@ -34,6 +34,7 @@ class APIProvider(enum.Enum):
     METAPHOR = "metaphor"
     FIRECRAWL = "firecrawl"
     STABILITY = "stability"
+    EXA = "exa"
 
 class BillingCycle(enum.Enum):
     MONTHLY = "monthly"
@@ -66,6 +67,7 @@ class SubscriptionPlan(Base):
     metaphor_calls_limit = Column(Integer, default=0)
     firecrawl_calls_limit = Column(Integer, default=0)
     stability_calls_limit = Column(Integer, default=0)  # Image generation
+    exa_calls_limit = Column(Integer, default=0)  # Exa neural search
     
     # Token Limits (for LLM providers)
     gemini_tokens_limit = Column(Integer, default=0)
@@ -182,6 +184,7 @@ class UsageSummary(Base):
     metaphor_calls = Column(Integer, default=0)
     firecrawl_calls = Column(Integer, default=0)
     stability_calls = Column(Integer, default=0)
+    exa_calls = Column(Integer, default=0)
     
     # Token Usage
     gemini_tokens = Column(Integer, default=0)
@@ -199,6 +202,7 @@ class UsageSummary(Base):
     metaphor_cost = Column(Float, default=0.0)
     firecrawl_cost = Column(Float, default=0.0)
     stability_cost = Column(Float, default=0.0)
+    exa_cost = Column(Float, default=0.0)
     
     # Totals
     total_calls = Column(Integer, default=0)

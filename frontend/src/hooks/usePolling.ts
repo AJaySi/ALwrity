@@ -153,7 +153,7 @@ export function usePolling(
         attemptsRef.current++;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-        console.error('Polling error:', errorMessage);
+        console.error('Polling error:', errorMessage, err);
         
         // Check if this is an axios error with subscription limit status
         // This is a fallback in case the interceptor doesn't catch it
@@ -161,15 +161,17 @@ export function usePolling(
         if (axiosError?.response?.status === 429 || axiosError?.response?.status === 402) {
           console.log('usePolling: Detected subscription error in axios error response', {
             status: axiosError.response.status,
-            data: axiosError.response.data
+            data: axiosError.response.data,
+            errorDataKeys: axiosError.response.data ? Object.keys(axiosError.response.data) : null
           });
           
           // Trigger subscription error handler (modal will show)
+          // Note: The interceptor may have already called this, but we call it again to be safe
           const handled = triggerSubscriptionError(axiosError);
           console.log('usePolling: triggerSubscriptionError returned', handled);
           
           if (handled) {
-            console.log('usePolling: Subscription error handled, stopping polling');
+            console.log('usePolling: Subscription error handled, stopping polling - modal should be visible');
             const errorMsg = axiosError.response?.data?.message || 
                            axiosError.response?.data?.error || 
                            'Subscription limit exceeded';

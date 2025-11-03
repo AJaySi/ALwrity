@@ -105,13 +105,20 @@ class BlogWriterService:
         return await self.research_service.research_with_progress(request, task_id, user_id)
     
     # Outline Methods
-    async def generate_outline(self, request: BlogOutlineRequest) -> BlogOutlineResponse:
-        """Generate AI-powered outline from research data."""
-        return await self.outline_service.generate_outline(request)
+    async def generate_outline(self, request: BlogOutlineRequest, user_id: str) -> BlogOutlineResponse:
+        """Generate AI-powered outline from research data.
+        
+        Args:
+            request: Outline generation request with research data
+            user_id: User ID (required for subscription checks and usage tracking)
+        """
+        if not user_id:
+            raise ValueError("user_id is required for outline generation (subscription checks and usage tracking)")
+        return await self.outline_service.generate_outline(request, user_id)
     
-    async def generate_outline_with_progress(self, request: BlogOutlineRequest, task_id: str) -> BlogOutlineResponse:
+    async def generate_outline_with_progress(self, request: BlogOutlineRequest, task_id: str, user_id: str) -> BlogOutlineResponse:
         """Generate outline with real-time progress updates."""
-        return await self.outline_service.generate_outline_with_progress(request, task_id)
+        return await self.outline_service.generate_outline_with_progress(request, task_id, user_id)
     
     async def refine_outline(self, request: BlogOutlineRefineRequest) -> BlogOutlineResponse:
         """Refine outline with HITL operations."""
@@ -334,9 +341,17 @@ class BlogWriterService:
         # TODO: Move to content module
         return BlogPublishResponse(success=True, platform=request.platform, url="https://example.com/post")
 
-    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str) -> MediumBlogGenerateResult:
-        """Use Gemini structured JSON to generate a medium-length blog in one call."""
-        return await self.medium_blog_generator.generate_medium_blog_with_progress(req, task_id)
+    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str, user_id: str) -> MediumBlogGenerateResult:
+        """Use Gemini structured JSON to generate a medium-length blog in one call.
+        
+        Args:
+            req: Medium blog generation request
+            task_id: Task ID for progress updates
+            user_id: User ID (required for subscription checks and usage tracking)
+        """
+        if not user_id:
+            raise ValueError("user_id is required for medium blog generation (subscription checks and usage tracking)")
+        return await self.medium_blog_generator.generate_medium_blog_with_progress(req, task_id, user_id)
 
     async def analyze_flow_basic(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze flow metrics for entire blog using single AI call (cost-effective)."""

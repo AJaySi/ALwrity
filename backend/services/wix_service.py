@@ -7,6 +7,7 @@ Handles authentication, permission checking, and blog publishing to Wix websites
 import os
 import json
 import requests
+import uuid
 from typing import Dict, Any, Optional, List
 from loguru import logger
 from datetime import datetime, timedelta
@@ -19,6 +20,9 @@ from services.integrations.wix.media import WixMediaService
 from services.integrations.wix.utils import extract_meta_from_token, normalize_token_string, extract_member_id_from_access_token as utils_extract_member
 from services.integrations.wix.content import convert_content_to_ricos as ricos_builder
 from services.integrations.wix.auth import WixAuthService
+from services.integrations.wix.seo import build_seo_data
+from services.integrations.wix.ricos_converter import markdown_to_html, convert_via_wix_api
+from services.integrations.wix.blog_publisher import create_blog_post as publish_blog_post
 
 class WixService:
     """Service for interacting with Wix APIs"""
@@ -237,13 +241,35 @@ class WixService:
             logger.error(f"Failed to import image to Wix: {e}")
             raise
     
-    def convert_content_to_ricos(self, content: str, images: List[str] = None) -> Dict[str, Any]:
+    def convert_content_to_ricos(self, content: str, images: List[str] = None, 
+                                 use_wix_api: bool = False, access_token: str = None) -> Dict[str, Any]:
+        """
+        Convert markdown content to Ricos JSON format.
+        
+        Args:
+            content: Markdown content to convert
+            images: Optional list of image URLs
+            use_wix_api: If True, use Wix's official Ricos Documents API (requires access_token)
+            access_token: Wix access token (required if use_wix_api=True)
+            
+        Returns:
+            Ricos JSON document
+        """
+        if use_wix_api and access_token:
+            try:
+                return convert_via_wix_api(content, access_token, self.base_url)
+            except Exception as e:
+                logger.warning(f"Failed to convert via Wix API, falling back to custom parser: {e}")
+                # Fall back to custom parser
+        
+        # Use custom parser (current implementation)
         return ricos_builder(content, images)
+    
     
     def create_blog_post(self, access_token: str, title: str, content: str, 
                         cover_image_url: str = None, category_ids: List[str] = None,
                         tag_ids: List[str] = None, publish: bool = True, 
-                        member_id: str = None) -> Dict[str, Any]:
+                        member_id: str = None, seo_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Create and optionally publish a blog post on Wix
         
@@ -256,101 +282,33 @@ class WixService:
             tag_ids: Optional list of tag IDs
             publish: Whether to publish immediately or save as draft
             member_id: Required for third-party apps - the member ID of the post author
+            seo_metadata: Optional SEO metadata dict with fields like:
+                - seo_title: SEO optimized title
+                - meta_description: Meta description
+                - focus_keyword: Main keyword
+                - blog_tags: List of tag strings (for keywords)
+                - open_graph: Open Graph data
+                - canonical_url: Canonical URL
             
         Returns:
             Created blog post information
         """
-        if not member_id:
-            raise ValueError("memberId is required for third-party apps creating blog posts")
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json'
-        }
-        
-        # Build valid Ricos rich content (minimum: one paragraph with text)
-        ricos_content = self.convert_content_to_ricos(content or "This is a post from ALwrity.", None)
-
-        # Minimal payload per Wix docs: title, memberId, and richContent
-        blog_data = {
-            'draftPost': {
-                'title': title,
-                'memberId': member_id,  # Required for third-party apps
-                'richContent': ricos_content,
-                'excerpt': (content or '').strip()[:200]
-            },
-            'publish': publish,
-            'fieldsets': ['URL']  # Simplified fieldsets
-        }
-        
-        # Add cover image if provided
-        if cover_image_url:
-            try:
-                media_id = self.import_image_to_wix(access_token, cover_image_url, f'Cover: {title}')
-                blog_data['draftPost']['media'] = {
-                    'wixMedia': {
-                        'image': {'id': media_id}
-                    },
-                    'displayed': True,
-                    'custom': True
-                }
-            except Exception as e:
-                logger.warning(f"Failed to import cover image: {e}")
-        
-        # Add categories if provided
-        if category_ids:
-            blog_data['draftPost']['categoryIds'] = category_ids
-        
-        # Add tags if provided
-        if tag_ids:
-            blog_data['draftPost']['tagIds'] = tag_ids
-        
-        try:
-            # Check what permissions we have in the token
-            logger.info("DEBUG: Checking token permissions...")
-            try:
-                import jwt
-                # Extract token string manually since _normalize_access_token doesn't exist
-                token_str = str(access_token)
-                if token_str and token_str.startswith('OauthNG.JWS.'):
-                    jwt_part = token_str[12:]
-                    payload = jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
-                    logger.info(f"DEBUG: Full token payload: {payload}")
-                    
-                    # Check for permissions in various possible locations
-                    data_payload = payload.get('data', {})
-                    if isinstance(data_payload, str):
-                        try:
-                            data_payload = json.loads(data_payload)
-                        except:
-                            pass
-                    
-                    instance_data = data_payload.get('instance', {})
-                    permissions = instance_data.get('permissions', '')
-                    scopes = instance_data.get('scopes', [])
-                    meta_site_id = instance_data.get('metaSiteId')
-                    if isinstance(meta_site_id, str) and meta_site_id:
-                        headers['wix-site-id'] = meta_site_id
-                        logger.info(f"DEBUG: Added wix-site-id header: {meta_site_id}")
-                    logger.info(f"DEBUG: Token permissions: {permissions}")
-                    logger.info(f"DEBUG: Token scopes: {scopes}")
-                else:
-                    logger.info("DEBUG: Could not decode token for permission check")
-            except Exception as perm_e:
-                logger.warning(f"DEBUG: Failed to check permissions: {perm_e}")
-            
-            logger.info(f"DEBUG: Sending simplified blog data: {json.dumps(blog_data, indent=2)}")
-            extra_headers = {}
-            if 'wix-site-id' in headers:
-                extra_headers['wix-site-id'] = headers['wix-site-id']
-            result = self.blog_service.create_draft_post(access_token, blog_data, extra_headers or None)
-            logger.info(f"DEBUG: Create draft result: {result}")
-            return result
-        except requests.RequestException as e:
-            logger.error(f"Failed to create blog post: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                logger.error(f"Response body: {e.response.text}")
-            raise
+        return publish_blog_post(
+            blog_service=self.blog_service,
+            access_token=access_token,
+            title=title,
+            content=content,
+            member_id=member_id,
+            cover_image_url=cover_image_url,
+            category_ids=category_ids,
+            tag_ids=tag_ids,
+            publish=publish,
+            seo_metadata=seo_metadata,
+            import_image_func=self.import_image_to_wix,
+            lookup_categories_func=self.lookup_or_create_categories,
+            lookup_tags_func=self.lookup_or_create_tags,
+            base_url=self.base_url
+        )
     
     def get_blog_categories(self, access_token: str) -> List[Dict[str, Any]]:
         """
@@ -383,6 +341,138 @@ class WixService:
         except requests.RequestException as e:
             logger.error(f"Failed to get blog tags: {e}")
             raise
+    
+    def lookup_or_create_categories(self, access_token: str, category_names: List[str], 
+                                    extra_headers: Optional[Dict[str, str]] = None) -> List[str]:
+        """
+        Lookup existing categories by name or create new ones, return their IDs.
+        
+        Args:
+            access_token: Valid access token
+            category_names: List of category name strings
+            extra_headers: Optional extra headers (e.g., wix-site-id)
+            
+        Returns:
+            List of category UUIDs
+        """
+        if not category_names:
+            return []
+        
+        try:
+            # Get existing categories
+            existing_categories = self.blog_service.list_categories(access_token, extra_headers)
+            
+            # Create name -> ID mapping (case-insensitive)
+            category_map = {}
+            for cat in existing_categories:
+                cat_label = cat.get('label', '').strip()
+                cat_id = cat.get('id')
+                if cat_label and cat_id:
+                    category_map[cat_label.lower()] = cat_id
+            
+            category_ids = []
+            for category_name in category_names:
+                category_name_clean = str(category_name).strip()
+                if not category_name_clean:
+                    continue
+                
+                # Lookup existing category (case-insensitive)
+                category_id = category_map.get(category_name_clean.lower())
+                
+                if not category_id:
+                    # Create new category
+                    try:
+                        logger.info(f"Creating new category: {category_name_clean}")
+                        result = self.blog_service.create_category(
+                            access_token, 
+                            label=category_name_clean,
+                            extra_headers=extra_headers
+                        )
+                        new_category = result.get('category', {})
+                        category_id = new_category.get('id')
+                        if category_id:
+                            category_ids.append(category_id)
+                            # Update map to avoid duplicate creates
+                            category_map[category_name_clean.lower()] = category_id
+                            logger.info(f"Created category '{category_name_clean}' with ID: {category_id}")
+                    except Exception as create_error:
+                        logger.warning(f"Failed to create category '{category_name_clean}': {create_error}")
+                        # Continue with other categories
+                else:
+                    category_ids.append(category_id)
+                    logger.info(f"Found existing category '{category_name_clean}' with ID: {category_id}")
+            
+            return category_ids
+            
+        except requests.RequestException as e:
+            logger.error(f"Failed to lookup/create categories: {e}")
+            return []
+    
+    def lookup_or_create_tags(self, access_token: str, tag_names: List[str],
+                             extra_headers: Optional[Dict[str, str]] = None) -> List[str]:
+        """
+        Lookup existing tags by name or create new ones, return their IDs.
+        
+        Args:
+            access_token: Valid access token
+            tag_names: List of tag name strings
+            extra_headers: Optional extra headers (e.g., wix-site-id)
+            
+        Returns:
+            List of tag UUIDs
+        """
+        if not tag_names:
+            return []
+        
+        try:
+            # Get existing tags
+            existing_tags = self.blog_service.list_tags(access_token, extra_headers)
+            
+            # Create name -> ID mapping (case-insensitive)
+            tag_map = {}
+            for tag in existing_tags:
+                tag_label = tag.get('label', '').strip()
+                tag_id = tag.get('id')
+                if tag_label and tag_id:
+                    tag_map[tag_label.lower()] = tag_id
+            
+            tag_ids = []
+            for tag_name in tag_names:
+                tag_name_clean = str(tag_name).strip()
+                if not tag_name_clean:
+                    continue
+                
+                # Lookup existing tag (case-insensitive)
+                tag_id = tag_map.get(tag_name_clean.lower())
+                
+                if not tag_id:
+                    # Create new tag
+                    try:
+                        logger.info(f"Creating new tag: {tag_name_clean}")
+                        result = self.blog_service.create_tag(
+                            access_token,
+                            label=tag_name_clean,
+                            extra_headers=extra_headers
+                        )
+                        new_tag = result.get('tag', {})
+                        tag_id = new_tag.get('id')
+                        if tag_id:
+                            tag_ids.append(tag_id)
+                            # Update map to avoid duplicate creates
+                            tag_map[tag_name_clean.lower()] = tag_id
+                            logger.info(f"Created tag '{tag_name_clean}' with ID: {tag_id}")
+                    except Exception as create_error:
+                        logger.warning(f"Failed to create tag '{tag_name_clean}': {create_error}")
+                        # Continue with other tags
+                else:
+                    tag_ids.append(tag_id)
+                    logger.info(f"Found existing tag '{tag_name_clean}' with ID: {tag_id}")
+            
+            return tag_ids
+            
+        except requests.RequestException as e:
+            logger.error(f"Failed to lookup/create tags: {e}")
+            return []
 
     def publish_draft_post(self, access_token: str, draft_post_id: str) -> Dict[str, Any]:
         """

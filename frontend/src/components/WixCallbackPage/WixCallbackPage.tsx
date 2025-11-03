@@ -57,8 +57,18 @@ const WixCallbackPage: React.FC = () => {
             return;
           }
         } catch {}
-        // Fallback redirect for same-tab flow and let onboarding hook mark Wix as connected
-        window.location.replace('/onboarding?step=5&wix_connected=true');
+        // Fallback redirect for same-tab flow - check if we have a stored redirect URL
+        const redirectUrl = sessionStorage.getItem('wix_oauth_redirect');
+        console.log('[Wix Callback] Checking redirect URL:', redirectUrl);
+        if (redirectUrl) {
+          console.log('[Wix Callback] Redirecting to stored URL:', redirectUrl);
+          sessionStorage.removeItem('wix_oauth_redirect');
+          window.location.replace(redirectUrl);
+        } else {
+          // Default to onboarding if no redirect URL stored
+          console.warn('[Wix Callback] No redirect URL found, defaulting to onboarding');
+          window.location.replace('/onboarding?step=5&wix_connected=true');
+        }
       } catch (e: any) {
         setError(e?.message || 'OAuth callback failed');
         try {

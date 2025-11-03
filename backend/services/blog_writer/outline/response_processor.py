@@ -18,8 +18,21 @@ class ResponseProcessor:
         """Initialize the response processor."""
         pass
     
-    async def generate_with_retry(self, prompt: str, schema: Dict[str, Any], task_id: str = None) -> Dict[str, Any]:
-        """Generate outline with retry logic for API failures."""
+    async def generate_with_retry(self, prompt: str, schema: Dict[str, Any], user_id: str, task_id: str = None) -> Dict[str, Any]:
+        """Generate outline with retry logic for API failures.
+        
+        Args:
+            prompt: The prompt for outline generation
+            schema: JSON schema for structured response
+            user_id: User ID (required for subscription checks and usage tracking)
+            task_id: Optional task ID for progress updates
+            
+        Raises:
+            ValueError: If user_id is not provided
+        """
+        if not user_id:
+            raise ValueError("user_id is required for outline generation (subscription checks and usage tracking)")
+        
         from services.llm_providers.main_text_generation import llm_text_gen
         from api.blog_writer.task_manager import task_manager
         
@@ -34,7 +47,8 @@ class ResponseProcessor:
                 outline_data = llm_text_gen(
                     prompt=prompt,
                     json_struct=schema,
-                    system_prompt=None
+                    system_prompt=None,
+                    user_id=user_id
                 )
                 
                 # Log response for debugging

@@ -29,11 +29,21 @@ class OutlineService:
         self.outline_optimizer = OutlineOptimizer()
         self.section_enhancer = SectionEnhancer()
     
-    async def generate_outline(self, request: BlogOutlineRequest) -> BlogOutlineResponse:
+    async def generate_outline(self, request: BlogOutlineRequest, user_id: str) -> BlogOutlineResponse:
         """
-        Stage 2: Content Planning with AI-generated outline using research results
-        Uses Gemini with research data to create comprehensive, SEO-optimized outline
+        Stage 2: Content Planning with AI-generated outline using research results.
+        Uses Gemini with research data to create comprehensive, SEO-optimized outline.
+        
+        Args:
+            request: Outline generation request with research data
+            user_id: User ID (required for subscription checks and usage tracking)
+            
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if not user_id:
+            raise ValueError("user_id is required for outline generation (subscription checks and usage tracking)")
+        
         # Extract cache parameters - use original user keywords for consistent caching
         keywords = request.research.original_keywords or request.research.keyword_analysis.get('primary', [])
         industry = getattr(request.persona, 'industry', 'general') if request.persona else 'general'
@@ -56,9 +66,9 @@ class OutlineService:
             logger.info(f"Using cached outline for keywords: {keywords}")
             return BlogOutlineResponse(**cached_result)
         
-        # Generate new outline if not cached
+        # Generate new outline if not cached (user_id required)
         logger.info(f"Generating new outline for keywords: {keywords}")
-        result = await self.outline_generator.generate(request)
+        result = await self.outline_generator.generate(request, user_id)
         
         # Cache the result
         persistent_outline_cache.cache_outline(
@@ -73,7 +83,7 @@ class OutlineService:
         
         return result
     
-    async def generate_outline_with_progress(self, request: BlogOutlineRequest, task_id: str) -> BlogOutlineResponse:
+    async def generate_outline_with_progress(self, request: BlogOutlineRequest, task_id: str, user_id: str) -> BlogOutlineResponse:
         """
         Outline generation method with progress updates for real-time feedback.
         """
@@ -104,7 +114,7 @@ class OutlineService:
         
         # Generate new outline if not cached
         logger.info(f"Generating new outline for keywords: {keywords} (with progress updates)")
-        result = await self.outline_generator.generate_with_progress(request, task_id)
+        result = await self.outline_generator.generate_with_progress(request, task_id, user_id)
         
         # Cache the result
         persistent_outline_cache.cache_outline(

@@ -1,6 +1,7 @@
 import React, { forwardRef, useImperativeHandle } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { blogWriterApi, BlogResearchResponse } from '../../services/blogWriterApi';
+import { blogWriterCache } from '../../services/blogWriterCache';
 
 interface OutlineGeneratorProps {
   research: BlogResearchResponse | null;
@@ -23,6 +24,22 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
       if (!research) {
         return { success: false, message: 'No research yet. Please research a topic first.' };
       }
+      
+      // Check cache first (shared utility)
+      const researchKeywords = research.original_keywords || research.keyword_analysis?.primary || [];
+      const cachedOutline = blogWriterCache.getCachedOutline(researchKeywords);
+      
+      if (cachedOutline) {
+        console.log('[OutlineGenerator] Using cached outline', { sections: cachedOutline.outline.length });
+        // Return cached result - caller should handle setting outline state
+        return { 
+          success: true, 
+          cached: true,
+          outline: cachedOutline.outline,
+          title_options: cachedOutline.title_options
+        };
+      }
+      
       try {
         onModalShow?.();
         const { task_id } = await blogWriterApi.startOutlineGeneration({ research });
@@ -42,6 +59,21 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
     handler: async () => {
       if (!research) {
         return { success: false, message: 'No research yet. Please research a topic first.' };
+      }
+      
+      // Check cache first (shared utility)
+      const researchKeywords = research.original_keywords || research.keyword_analysis?.primary || [];
+      const cachedOutline = blogWriterCache.getCachedOutline(researchKeywords);
+      
+      if (cachedOutline) {
+        console.log('[OutlineGenerator] Using cached outline from CopilotKit action', { sections: cachedOutline.outline.length });
+        return {
+          success: true,
+          message: `✅ Outline already exists! ${cachedOutline.outline.length} sections loaded from cache.`,
+          cached: true,
+          outline: cachedOutline.outline,
+          title_options: cachedOutline.title_options
+        };
       }
       
       try {

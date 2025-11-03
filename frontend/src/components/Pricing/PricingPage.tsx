@@ -51,6 +51,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
+import { restoreNavigationState, saveCurrentPhaseForTool } from '../../utils/navigationState';
 
 interface SubscriptionPlan {
   id: number;
@@ -114,8 +115,15 @@ const PricingPage: React.FC = () => {
   };
 
   const handleSubscribe = async (planId: number) => {
+    console.log('[PricingPage] handleSubscribe called', { planId });
+    
     const plan = plans.find(p => p.id === planId);
-    if (!plan) return;
+    if (!plan) {
+      console.error('[PricingPage] ❌ Plan not found for ID:', planId);
+      return;
+    }
+
+    console.log('[PricingPage] Selected plan:', { id: plan.id, name: plan.name, tier: plan.tier });
 
     // Get user_id from localStorage (set by Clerk auth)
     const userId = localStorage.getItem('user_id');
@@ -123,18 +131,20 @@ const PricingPage: React.FC = () => {
     // Check if user is signed in
     if (!userId || userId === 'anonymous' || userId === '') {
       // User not signed in, show sign-in prompt
-      console.warn('PricingPage: User not signed in, showing prompt');
+      console.warn('[PricingPage] User not signed in, showing prompt');
       setShowSignInPrompt(true);
       return;
     }
 
     // For alpha testing, only allow Free and Basic plans (Pro features not ready)
     if (plan.tier !== 'free' && plan.tier !== 'basic') {
+      console.error('[PricingPage] Plan tier not available:', plan.tier);
       setError('This plan is not available for alpha testing');
       return;
     }
 
     if (plan.tier === 'free') {
+      console.log('[PricingPage] Processing Free plan subscription directly');
       // For free plan, just create subscription
       try {
         setSubscribing(true);
@@ -164,23 +174,38 @@ const PricingPage: React.FC = () => {
       }
     } else {
       // For Basic plan, show payment modal
+      console.log('[PricingPage] Opening payment modal for Basic plan', { planId, planName: plan.name });
+      setSelectedPlan(planId);  // ✅ Set selected plan before opening modal
       setPaymentModalOpen(true);
     }
   };
 
   const handlePaymentConfirm = async () => {
-    if (!selectedPlan) return;
+    console.log('[PricingPage] handlePaymentConfirm called', { selectedPlan, yearlyBilling });
+    
+    if (!selectedPlan) {
+      console.error('[PricingPage] ❌ No selectedPlan set - cannot proceed with subscription');
+      setError('No plan selected. Please select a plan and try again.');
+      return;
+    }
 
     try {
       setSubscribing(true);
       const userId = localStorage.getItem('user_id') || 'anonymous';
+
+      console.log('[PricingPage] Making subscription API call:', {
+        url: `/api/subscription/subscribe/${userId}`,
+        plan_id: selectedPlan,
+        billing_cycle: yearlyBilling ? 'yearly' : 'monthly',
+        userId
+      });
 
       const response = await apiClient.post(`/api/subscription/subscribe/${userId}`, {
         plan_id: selectedPlan,
         billing_cycle: yearlyBilling ? 'yearly' : 'monthly'
       });
 
-      console.log('Subscription renewed successfully:', response.data);
+      console.log('[PricingPage] ✅ Subscription renewed successfully:', response.data);
 
       // Refresh subscription status immediately
       window.dispatchEvent(new CustomEvent('subscription-updated'));
@@ -223,13 +248,26 @@ const PricingPage: React.FC = () => {
         // If not complete, redirect to onboarding; otherwise to dashboard
         const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
         if (onboardingComplete) {
-          // Try to go back to where the user was (e.g., blog writer)
-          // If no history, go to dashboard
-          const referrer = sessionStorage.getItem('subscription_referrer');
-          if (referrer && referrer !== '/pricing') {
-            navigate(referrer);
+          // Restore navigation state (path, phase, tool) if available
+          const navState = restoreNavigationState();
+          
+          if (navState && navState.path && navState.path !== '/pricing') {
+            // Restore phase if applicable (e.g., Blog Writer)
+            if (navState.tool === 'blog-writer' && navState.phase) {
+              saveCurrentPhaseForTool('blog-writer', navState.phase);
+              console.log('[PricingPage] Restored Blog Writer phase:', navState.phase);
+            }
+            
+            console.log('[PricingPage] Redirecting to saved navigation state:', navState);
+            navigate(navState.path);
           } else {
-            navigate('/dashboard');
+            // Fallback: try legacy referrer
+            const referrer = sessionStorage.getItem('subscription_referrer');
+            if (referrer && referrer !== '/pricing') {
+              navigate(referrer);
+            } else {
+              navigate('/dashboard');
+            }
           }
         } else {
           navigate('/onboarding');

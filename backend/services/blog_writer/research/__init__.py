@@ -13,11 +13,17 @@ from .keyword_analyzer import KeywordAnalyzer
 from .competitor_analyzer import CompetitorAnalyzer
 from .content_angle_generator import ContentAngleGenerator
 from .data_filter import ResearchDataFilter
+from .base_provider import ResearchProvider as BaseResearchProvider
+from .google_provider import GoogleResearchProvider
+from .exa_provider import ExaResearchProvider
 
 __all__ = [
     'ResearchService',
     'KeywordAnalyzer', 
     'CompetitorAnalyzer',
     'ContentAngleGenerator',
-    'ResearchDataFilter'
+    'ResearchDataFilter',
+    'BaseResearchProvider',
+    'GoogleResearchProvider',
+    'ExaResearchProvider',
 ]

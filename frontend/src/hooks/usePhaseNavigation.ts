@@ -170,8 +170,8 @@ export const usePhaseNavigation = (
         // User is NOT in SEO phase - can progress to publish
         // This handles cases where user navigates away and comes back
         // Only auto-progress if user is already in a different phase (not actively in SEO)
-        if (currentPhase !== 'publish') {
-          setCurrentPhase('publish');
+      if (currentPhase !== 'publish') {
+        setCurrentPhase('publish');
         }
       }
     }

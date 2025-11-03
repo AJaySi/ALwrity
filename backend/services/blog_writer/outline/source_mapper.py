@@ -52,7 +52,8 @@ class SourceToSectionMapper:
     def map_sources_to_sections(
         self, 
         sections: List[BlogOutlineSection], 
-        research_data: BlogResearchResponse
+        research_data: BlogResearchResponse,
+        user_id: str
     ) -> List[BlogOutlineSection]:
         """
         Map research sources to outline sections using intelligent algorithms.
@@ -60,10 +61,17 @@ class SourceToSectionMapper:
         Args:
             sections: List of outline sections to map sources to
             research_data: Research data containing sources and metadata
+            user_id: User ID (required for subscription checks and usage tracking)
             
         Returns:
             List of outline sections with intelligently mapped sources
+            
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if not user_id:
+            raise ValueError("user_id is required for source mapping (subscription checks and usage tracking)")
+        
         if not sections or not research_data.sources:
             logger.warning("No sections or sources to map")
             return sections
@@ -73,8 +81,8 @@ class SourceToSectionMapper:
         # Step 1: Algorithmic mapping
         mapping_results = self._algorithmic_source_mapping(sections, research_data)
         
-        # Step 2: AI validation and improvement (single prompt)
-        validated_mapping = self._ai_validate_mapping(mapping_results, research_data)
+        # Step 2: AI validation and improvement (single prompt, user_id required for subscription checks)
+        validated_mapping = self._ai_validate_mapping(mapping_results, research_data, user_id)
         
         # Step 3: Apply validated mapping to sections
         mapped_sections = self._apply_mapping_to_sections(sections, validated_mapping)
@@ -261,7 +269,8 @@ class SourceToSectionMapper:
     def _ai_validate_mapping(
         self, 
         mapping_results: Dict[str, List[Tuple[ResearchSource, float]]], 
-        research_data: BlogResearchResponse
+        research_data: BlogResearchResponse,
+        user_id: str
     ) -> Dict[str, List[Tuple[ResearchSource, float]]]:
         """
         Use AI to validate and improve the algorithmic mapping results.
@@ -269,18 +278,25 @@ class SourceToSectionMapper:
         Args:
             mapping_results: Algorithmic mapping results
             research_data: Research data for context
+            user_id: User ID (required for subscription checks and usage tracking)
             
         Returns:
             AI-validated and improved mapping results
+            
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if not user_id:
+            raise ValueError("user_id is required for AI validation (subscription checks and usage tracking)")
+        
         try:
             logger.info("Starting AI validation of source-to-section mapping...")
             
             # Build AI validation prompt
             validation_prompt = self._build_validation_prompt(mapping_results, research_data)
             
-            # Get AI validation response
-            validation_response = self._get_ai_validation_response(validation_prompt)
+            # Get AI validation response (user_id required for subscription checks)
+            validation_response = self._get_ai_validation_response(validation_prompt, user_id)
             
             # Parse and apply AI validation results
             validated_mapping = self._parse_validation_response(validation_response, mapping_results, research_data)
@@ -548,23 +564,31 @@ Analyze the mapping and provide your recommendations.
         
         return prompt
     
-    def _get_ai_validation_response(self, prompt: str) -> str:
+    def _get_ai_validation_response(self, prompt: str, user_id: str) -> str:
         """
         Get AI validation response using LLM provider.
         
         Args:
             prompt: Validation prompt
+            user_id: User ID (required for subscription checks and usage tracking)
             
         Returns:
             AI validation response
+            
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if not user_id:
+            raise ValueError("user_id is required for AI validation response (subscription checks and usage tracking)")
+        
         try:
             from services.llm_providers.main_text_generation import llm_text_gen
             
             response = llm_text_gen(
                 prompt=prompt,
                 json_struct=None,
-                system_prompt=None
+                system_prompt=None,
+                user_id=user_id
             )
             
             return response

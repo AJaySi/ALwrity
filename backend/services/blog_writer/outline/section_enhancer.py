@@ -12,8 +12,23 @@ from models.blog_models import BlogOutlineSection
 class SectionEnhancer:
     """Enhances individual outline sections using AI."""
     
-    async def enhance(self, section: BlogOutlineSection, focus: str = "general improvement") -> BlogOutlineSection:
-        """Enhance a section using AI with research context."""
+    async def enhance(self, section: BlogOutlineSection, focus: str, user_id: str) -> BlogOutlineSection:
+        """Enhance a section using AI with research context.
+        
+        Args:
+            section: Outline section to enhance
+            focus: Enhancement focus (e.g., "general improvement")
+            user_id: User ID (required for subscription checks and usage tracking)
+            
+        Returns:
+            Enhanced outline section
+            
+        Raises:
+            ValueError: If user_id is not provided
+        """
+        if not user_id:
+            raise ValueError("user_id is required for section enhancement (subscription checks and usage tracking)")
+        
         enhancement_prompt = f"""
         Enhance the following blog section to make it more engaging, comprehensive, and valuable:
         
@@ -61,7 +76,8 @@ class SectionEnhancer:
             enhanced_data = llm_text_gen(
                 prompt=enhancement_prompt,
                 json_struct=enhancement_schema,
-                system_prompt=None
+                system_prompt=None,
+                user_id=user_id
             )
             
             if isinstance(enhanced_data, dict) and 'error' not in enhanced_data:

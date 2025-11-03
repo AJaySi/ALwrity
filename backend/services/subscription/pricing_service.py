@@ -258,6 +258,12 @@ class PricingService:
                 "model_name": "stable-diffusion",
                 "cost_per_image": 0.04,  # $0.04 per image
                 "description": "Stability AI Image Generation"
+            },
+            {
+                "provider": APIProvider.EXA,
+                "model_name": "exa-search",
+                "cost_per_request": 0.005,  # $0.005 per search (1-25 results)
+                "description": "Exa Neural Search API"
             }
         ]
         
@@ -296,6 +302,7 @@ class PricingService:
                 "metaphor_calls_limit": 10,
                 "firecrawl_calls_limit": 10,
                 "stability_calls_limit": 5,
+                "exa_calls_limit": 100,
                 "gemini_tokens_limit": 100000,
                 "monthly_cost_limit": 0.0,
                 "features": ["basic_content_generation", "limited_research"],
@@ -316,10 +323,11 @@ class PricingService:
                 "metaphor_calls_limit": 100,
                 "firecrawl_calls_limit": 100,
                 "stability_calls_limit": 5,
-                "gemini_tokens_limit": 2000,
-                "openai_tokens_limit": 2000,
-                "anthropic_tokens_limit": 2000,
-                "mistral_tokens_limit": 2000,
+                "exa_calls_limit": 500,
+                "gemini_tokens_limit": 20000,  # Increased from 5000 for better stability
+                "openai_tokens_limit": 20000,  # Increased from 5000 for better stability
+                "anthropic_tokens_limit": 20000,  # Increased from 5000 for better stability
+                "mistral_tokens_limit": 20000,  # Increased from 5000 for better stability
                 "monthly_cost_limit": 50.0,
                 "features": ["full_content_generation", "advanced_research", "basic_analytics"],
                 "description": "Great for individuals and small teams"
@@ -338,6 +346,7 @@ class PricingService:
                 "metaphor_calls_limit": 500,
                 "firecrawl_calls_limit": 500,
                 "stability_calls_limit": 200,
+                "exa_calls_limit": 2000,
                 "gemini_tokens_limit": 5000000,
                 "openai_tokens_limit": 2500000,
                 "anthropic_tokens_limit": 1000000,
@@ -360,6 +369,7 @@ class PricingService:
                 "metaphor_calls_limit": 0,
                 "firecrawl_calls_limit": 0,
                 "stability_calls_limit": 0,
+                "exa_calls_limit": 0,  # Unlimited
                 "gemini_tokens_limit": 0,
                 "openai_tokens_limit": 0,
                 "anthropic_tokens_limit": 0,
@@ -423,11 +433,14 @@ class PricingService:
     def get_user_limits(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get usage limits for a user based on their subscription."""
         
+        # CRITICAL: Expire all objects first to ensure fresh data after renewal
+        self.db.expire_all()
+        
         subscription = self.db.query(UserSubscription).filter(
             UserSubscription.user_id == user_id,
             UserSubscription.is_active == True
         ).first()
-        
+
         if not subscription:
             # Return free tier limits
             free_plan = self.db.query(SubscriptionPlan).filter(
@@ -439,7 +452,23 @@ class PricingService:
 
         # Ensure current period before returning limits
         self._ensure_subscription_current(subscription)
-        return self._plan_to_limits_dict(subscription.plan)
+        
+        # CRITICAL: Refresh subscription to get latest plan_id, then refresh plan relationship
+        self.db.refresh(subscription)
+        
+        # Re-query plan directly to ensure fresh data (bypass relationship cache)
+        plan = self.db.query(SubscriptionPlan).filter(
+            SubscriptionPlan.id == subscription.plan_id
+        ).first()
+        
+        if not plan:
+            logger.error(f"Plan not found for subscription plan_id={subscription.plan_id}")
+            return None
+        
+        # Refresh plan to ensure fresh limits
+        self.db.refresh(plan)
+        
+        return self._plan_to_limits_dict(plan)
     
     def _ensure_ai_text_gen_column_detection(self) -> None:
         """Detect at runtime whether ai_text_generation_calls_limit column exists and cache the result."""
@@ -508,290 +537,20 @@ class PricingService:
                           tokens_requested: int = 0, actual_provider_name: Optional[str] = None) -> Tuple[bool, str, Dict[str, Any]]:
         """Check if user can make an API call within their limits.
         
+        Delegates to LimitValidator for actual validation logic.
+        
         Args:
             user_id: User ID
             provider: APIProvider enum (may be MISTRAL for HuggingFace)
             tokens_requested: Estimated tokens for the request
             actual_provider_name: Optional actual provider name (e.g., "huggingface" when provider is MISTRAL)
-        """
-        try:
-            # Use actual_provider_name if provided, otherwise use enum value
-            # This fixes cases where HuggingFace maps to MISTRAL enum but should show as "huggingface" in errors
-            display_provider_name = actual_provider_name or provider.value
-            
-            logger.debug(f"[Subscription Check] Starting limit check for user {user_id}, provider {display_provider_name}, tokens {tokens_requested}")
-            
-            # Short TTL cache to reduce DB reads under sustained traffic
-            cache_key = f"{user_id}:{provider.value}"
-            now = datetime.utcnow()
-            cached = self._limits_cache.get(cache_key)
-            if cached and cached.get('expires_at') and cached['expires_at'] > now:
-                logger.debug(f"[Subscription Check] Using cached result for {user_id}:{provider.value}")
-                return tuple(cached['result'])  # type: ignore
-
-            # Get user subscription first to check expiration
-            subscription = self.db.query(UserSubscription).filter(
-                UserSubscription.user_id == user_id,
-                UserSubscription.is_active == True
-            ).first()
-            
-            if subscription:
-                logger.debug(f"[Subscription Check] Found subscription for user {user_id}: plan_id={subscription.plan_id}, period_end={subscription.current_period_end}")
-            else:
-                logger.debug(f"[Subscription Check] No active subscription found for user {user_id}")
-            
-            # Check subscription expiration (STRICT: deny if expired)
-            if subscription:
-                if subscription.current_period_end < now:
-                    logger.warning(f"[Subscription Check] Subscription expired for user {user_id}: period_end={subscription.current_period_end}, now={now}")
-                    # Subscription expired - check if auto_renew is enabled
-                    if not getattr(subscription, 'auto_renew', False):
-                        # Expired and no auto-renew - deny access
-                        logger.warning(f"[Subscription Check] Subscription expired for user {user_id}, auto_renew=False, denying access")
-                        result = (False, "Subscription expired. Please renew your subscription to continue using the service.", {
-                            'expired': True,
-                            'period_end': subscription.current_period_end.isoformat()
-                        })
-                        self._limits_cache[cache_key] = {
-                            'result': result,
-                            'expires_at': now + timedelta(seconds=30)
-                        }
-                        return result
-                    else:
-                        # Try to auto-renew
-                        if not self._ensure_subscription_current(subscription):
-                            # Auto-renew failed - deny access
-                            result = (False, "Subscription expired and auto-renewal failed. Please renew manually.", {
-                                'expired': True,
-                                'auto_renew_failed': True
-                            })
-                            self._limits_cache[cache_key] = {
-                                'result': result,
-                                'expires_at': now + timedelta(seconds=30)
-                            }
-                            return result
-
-            # Get user limits with error handling (STRICT: fail on errors)
-            try:
-                limits = self.get_user_limits(user_id)
-                if limits:
-                    logger.debug(f"[Subscription Check] Retrieved limits for user {user_id}: plan={limits.get('plan_name')}, tier={limits.get('tier')}")
-                else:
-                    logger.debug(f"[Subscription Check] No limits found for user {user_id}, checking free tier")
-            except Exception as e:
-                logger.error(f"[Subscription Check] Error getting user limits for {user_id}: {e}", exc_info=True)
-                # STRICT: Fail closed - deny request if we can't check limits
-                return False, f"Failed to retrieve subscription limits: {str(e)}", {}
-            
-            if not limits:
-                # No subscription found - check for free tier
-                free_plan = self.db.query(SubscriptionPlan).filter(
-                    SubscriptionPlan.tier == SubscriptionTier.FREE,
-                    SubscriptionPlan.is_active == True
-                ).first()
-                if free_plan:
-                    logger.info(f"[Subscription Check] Assigning free tier to user {user_id}")
-                    limits = self._plan_to_limits_dict(free_plan)
-                else:
-                    # No subscription and no free tier - deny access
-                    logger.warning(f"[Subscription Check] No subscription or free tier found for user {user_id}, denying access")
-                    return False, "No subscription plan found. Please subscribe to a plan.", {}
-            
-            # Get current usage for this billing period with error handling
-            try:
-                current_period = self.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
-                usage = self.db.query(UsageSummary).filter(
-                    UsageSummary.user_id == user_id,
-                    UsageSummary.billing_period == current_period
-                ).first()
-                
-                if not usage:
-                    # First usage this period, create summary
-                    try:
-                        usage = UsageSummary(
-                            user_id=user_id,
-                            billing_period=current_period
-                        )
-                        self.db.add(usage)
-                        self.db.commit()
-                    except Exception as create_error:
-                        logger.error(f"Error creating usage summary: {create_error}")
-                        self.db.rollback()
-                        # STRICT: Fail closed on DB error
-                        return False, f"Failed to create usage summary: {str(create_error)}", {}
-            except Exception as e:
-                logger.error(f"Error getting usage summary for {user_id}: {e}")
-                self.db.rollback()
-                # STRICT: Fail closed on DB error
-                return False, f"Failed to retrieve usage summary: {str(e)}", {}
-            
-            # Check call limits with error handling
-            # NOTE: call_limit = 0 means UNLIMITED (Enterprise plans)
-            try:
-                # Use display_provider_name for error messages, but provider.value for DB queries
-                provider_name = provider.value  # For DB field names (e.g., "mistral_calls", "mistral_tokens")
-                
-                # For LLM text generation providers, check against unified total_calls limit
-                llm_providers = ['gemini', 'openai', 'anthropic', 'mistral']
-                is_llm_provider = provider_name in llm_providers
-                
-                if is_llm_provider:
-                    # Use unified AI text generation limit (total_calls across all LLM providers)
-                    ai_text_gen_limit = limits['limits'].get('ai_text_generation_calls', 0) or 0
-                    
-                    # If unified limit not set, fall back to provider-specific limit for backwards compatibility
-                    if ai_text_gen_limit == 0:
-                        ai_text_gen_limit = limits['limits'].get(f"{provider_name}_calls", 0) or 0
-                    
-                    # Calculate total LLM provider calls (sum of gemini + openai + anthropic + mistral)
-                    current_total_llm_calls = (
-                        (usage.gemini_calls or 0) +
-                        (usage.openai_calls or 0) +
-                        (usage.anthropic_calls or 0) +
-                        (usage.mistral_calls or 0)
-                    )
-                    
-                    # Only enforce limit if limit > 0 (0 means unlimited for Enterprise)
-                    if ai_text_gen_limit > 0 and current_total_llm_calls >= ai_text_gen_limit:
-                        logger.error(f"[Subscription Check] AI text generation call limit exceeded for user {user_id}: {current_total_llm_calls}/{ai_text_gen_limit} (provider: {display_provider_name})")
-                        result = (False, f"AI text generation call limit reached. Used {current_total_llm_calls} of {ai_text_gen_limit} total AI text generation calls this billing period.", {
-                            'current_calls': current_total_llm_calls,
-                            'limit': ai_text_gen_limit,
-                            'usage_percentage': (current_total_llm_calls / ai_text_gen_limit) * 100 if ai_text_gen_limit > 0 else 0,
-                            'provider': display_provider_name,  # Use display name for consistency
-                            'usage_info': {
-                                'provider': display_provider_name,  # Use display name for user-facing info
-                                'current_calls': current_total_llm_calls,
-                                'limit': ai_text_gen_limit,
-                                'type': 'ai_text_generation',
-                                'breakdown': {
-                                    'gemini': usage.gemini_calls or 0,
-                                    'openai': usage.openai_calls or 0,
-                                    'anthropic': usage.anthropic_calls or 0,
-                                    'mistral': usage.mistral_calls or 0  # DB field name (not display name)
-                                }
-                            }
-                        })
-                        self._limits_cache[cache_key] = {
-                            'result': result,
-                            'expires_at': now + timedelta(seconds=30)
-                        }
-                        return result
-                    else:
-                        logger.debug(f"[Subscription Check] AI text generation limit check passed for user {user_id}: {current_total_llm_calls}/{ai_text_gen_limit if ai_text_gen_limit > 0 else 'unlimited'} (provider: {display_provider_name})")
-                else:
-                    # For non-LLM providers, check provider-specific limit
-                    current_calls = getattr(usage, f"{provider_name}_calls", 0) or 0
-                    call_limit = limits['limits'].get(f"{provider_name}_calls", 0) or 0
-                    
-                    # Only enforce limit if limit > 0 (0 means unlimited for Enterprise)
-                    if call_limit > 0 and current_calls >= call_limit:
-                        logger.error(f"[Subscription Check] Call limit exceeded for user {user_id}, provider {display_provider_name}: {current_calls}/{call_limit}")
-                        result = (False, f"API call limit reached for {display_provider_name}. Used {current_calls} of {call_limit} calls this billing period.", {
-                            'current_calls': current_calls,
-                            'limit': call_limit,
-                            'usage_percentage': 100.0,
-                            'provider': display_provider_name  # Use display name for consistency
-                        })
-                        self._limits_cache[cache_key] = {
-                            'result': result,
-                            'expires_at': now + timedelta(seconds=30)
-                        }
-                        return result
-                    else:
-                        logger.debug(f"[Subscription Check] Call limit check passed for user {user_id}, provider {display_provider_name}: {current_calls}/{call_limit if call_limit > 0 else 'unlimited'}")
-            except Exception as e:
-                logger.error(f"Error checking call limits: {e}")
-                # Continue to next check
-            
-            # Check token limits for LLM providers with error handling
-            # NOTE: token_limit = 0 means UNLIMITED (Enterprise plans)
-            try:
-                if provider in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL]:
-                    current_tokens = getattr(usage, f"{provider_name}_tokens", 0) or 0
-                    token_limit = limits['limits'].get(f"{provider_name}_tokens", 0) or 0
-                    
-                    # Only enforce limit if limit > 0 (0 means unlimited for Enterprise)
-                    if token_limit > 0 and (current_tokens + tokens_requested) > token_limit:
-                        result = (False, f"Token limit would be exceeded for {display_provider_name}. Current: {current_tokens}, Requested: {tokens_requested}, Limit: {token_limit}", {
-                            'current_tokens': current_tokens,
-                            'requested_tokens': tokens_requested,
-                            'limit': token_limit,
-                            'usage_percentage': ((current_tokens + tokens_requested) / token_limit) * 100,
-                            'provider': display_provider_name,  # Use display name in error details
-                            'usage_info': {
-                                'provider': display_provider_name,
-                                'current_tokens': current_tokens,
-                                'requested_tokens': tokens_requested,
-                                'limit': token_limit,
-                                'type': 'tokens'
-                            }
-                        })
-                        self._limits_cache[cache_key] = {
-                            'result': result,
-                            'expires_at': now + timedelta(seconds=30)
-                        }
-                        return result
-            except Exception as e:
-                logger.error(f"Error checking token limits: {e}")
-                # Continue to next check
-            
-            # Check cost limits with error handling
-            # NOTE: cost_limit = 0 means UNLIMITED (Enterprise plans)
-            try:
-                cost_limit = limits['limits'].get('monthly_cost', 0) or 0
-                # Only enforce limit if limit > 0 (0 means unlimited for Enterprise)
-                if cost_limit > 0 and usage.total_cost >= cost_limit:
-                    result = (False, f"Monthly cost limit reached. Current cost: ${usage.total_cost:.2f}, Limit: ${cost_limit:.2f}", {
-                        'current_cost': usage.total_cost,
-                        'limit': cost_limit,
-                        'usage_percentage': 100.0
-                    })
-                    self._limits_cache[cache_key] = {
-                        'result': result,
-                        'expires_at': now + timedelta(seconds=30)
-                    }
-                    return result
-            except Exception as e:
-                logger.error(f"Error checking cost limits: {e}")
-                # Continue to success case
-            
-            # Calculate usage percentages for warnings
-            try:
-                # Determine which call variables to use based on provider type
-                if is_llm_provider:
-                    # Use unified LLM call tracking
-                    current_call_count = current_total_llm_calls
-                    call_limit_value = ai_text_gen_limit
-                else:
-                    # Use provider-specific call tracking
-                    current_call_count = current_calls
-                    call_limit_value = call_limit
-                
-                call_usage_pct = (current_call_count / max(call_limit_value, 1)) * 100 if call_limit_value > 0 else 0
-                cost_usage_pct = (usage.total_cost / max(cost_limit, 1)) * 100 if cost_limit > 0 else 0
-                result = (True, "Within limits", {
-                    'current_calls': current_call_count,
-                    'call_limit': call_limit_value,
-                    'call_usage_percentage': call_usage_pct,
-                    'current_cost': usage.total_cost,
-                    'cost_limit': cost_limit,
-                    'cost_usage_percentage': cost_usage_pct
-                })
-                self._limits_cache[cache_key] = {
-                    'result': result,
-                    'expires_at': now + timedelta(seconds=30)
-                }
-                return result
-            except Exception as e:
-                logger.error(f"Error calculating usage percentages: {e}")
-                # Return basic success
-                return True, "Within limits", {}
         
-        except Exception as e:
-            logger.error(f"Unexpected error in check_usage_limits for {user_id}: {e}")
-            # STRICT: Fail closed - deny requests if subscription system fails
-            return False, f"Subscription check error: {str(e)}", {}
+        Returns:
+            (can_proceed, error_message, usage_info)
+        """
+        from .limit_validation import LimitValidator
+        validator = LimitValidator(self)
+        return validator.check_usage_limits(user_id, provider, tokens_requested, actual_provider_name)
     
     def estimate_tokens(self, text: str, provider: APIProvider) -> int:
         """Estimate token count for text based on provider."""
@@ -827,6 +586,16 @@ class PricingService:
         if not pricing:
             return None
         
+        # Return pricing info as dict
+        return {
+            'provider': pricing.provider.value,
+            'model_name': pricing.model_name,
+            'cost_per_input_token': pricing.cost_per_input_token,
+            'cost_per_output_token': pricing.cost_per_output_token,
+            'cost_per_request': pricing.cost_per_request,
+            'description': pricing.description
+        }
+    
     def check_comprehensive_limits(
         self, 
         user_id: str, 
@@ -835,6 +604,7 @@ class PricingService:
         """
         Comprehensive pre-flight validation that checks ALL limits before making ANY API calls.
         
+        Delegates to LimitValidator for actual validation logic.
         This prevents wasteful API calls by validating that ALL subsequent operations will succeed
         before making the first external API call.
         
@@ -850,202 +620,9 @@ class PricingService:
             (can_proceed, error_message, error_details)
             If can_proceed is False, error_message explains which limit would be exceeded
         """
-        try:
-            logger.info(f"[Pre-flight Check] 🔍 Starting comprehensive validation for user {user_id}")
-            logger.info(f"[Pre-flight Check] 📋 Validating {len(operations)} operation(s) before making any API calls")
-            
-            # Get current usage and limits once
-            current_period = self.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
-            usage = self.db.query(UsageSummary).filter(
-                UsageSummary.user_id == user_id,
-                UsageSummary.billing_period == current_period
-            ).first()
-            
-            if not usage:
-                # First usage this period, create summary
-                try:
-                    usage = UsageSummary(
-                        user_id=user_id,
-                        billing_period=current_period
-                    )
-                    self.db.add(usage)
-                    self.db.commit()
-                except Exception as create_error:
-                    logger.error(f"Error creating usage summary: {create_error}")
-                    self.db.rollback()
-                    return False, f"Failed to create usage summary: {str(create_error)}", {}
-            
-            # Get user limits
-            limits_dict = self.get_user_limits(user_id)
-            if not limits_dict:
-                # No subscription found - check for free tier
-                free_plan = self.db.query(SubscriptionPlan).filter(
-                    SubscriptionPlan.tier == SubscriptionTier.FREE,
-                    SubscriptionPlan.is_active == True
-                ).first()
-                if free_plan:
-                    limits_dict = self._plan_to_limits_dict(free_plan)
-                else:
-                    return False, "No subscription plan found. Please subscribe to a plan.", {}
-            
-            limits = limits_dict.get('limits', {})
-            
-            # Track cumulative usage across all operations
-            total_llm_calls = (
-                (usage.gemini_calls or 0) +
-                (usage.openai_calls or 0) +
-                (usage.anthropic_calls or 0) +
-                (usage.mistral_calls or 0)
-            )
-            total_llm_tokens = {}
-            total_images = usage.stability_calls or 0
-            
-            # Log current usage summary
-            logger.info(f"[Pre-flight Check] 📊 Current Usage Summary:")
-            logger.info(f"   └─ Total LLM Calls: {total_llm_calls}")
-            logger.info(f"   └─ Gemini Tokens: {usage.gemini_tokens or 0}, Mistral/HF Tokens: {usage.mistral_tokens or 0}")
-            logger.info(f"   └─ Image Calls: {total_images}")
-            
-            # Validate each operation
-            for op_idx, operation in enumerate(operations):
-                provider = operation.get('provider')
-                provider_name = provider.value if hasattr(provider, 'value') else str(provider)
-                tokens_requested = operation.get('tokens_requested', 0)
-                actual_provider_name = operation.get('actual_provider_name')
-                operation_type = operation.get('operation_type', 'unknown')
-                
-                display_provider_name = actual_provider_name or provider_name
-                
-                logger.info(f"[Pre-flight Check] ✅ Operation {op_idx + 1}/{len(operations)}: {operation_type}")
-                logger.info(f"   ├─ Provider: {display_provider_name} (enum: {provider_name})")
-                logger.info(f"   └─ Estimated Tokens: {tokens_requested}")
-                
-                # Check if this is an LLM provider
-                llm_providers = ['gemini', 'openai', 'anthropic', 'mistral']
-                is_llm_provider = provider_name in llm_providers
-                
-                # Check unified AI text generation limit for LLM providers
-                if is_llm_provider:
-                    ai_text_gen_limit = limits.get('ai_text_generation_calls', 0) or 0
-                    if ai_text_gen_limit == 0:
-                        # Fallback to provider-specific limit
-                        ai_text_gen_limit = limits.get(f"{provider_name}_calls", 0) or 0
-                    
-                    # Count this operation as an LLM call
-                    projected_total_llm_calls = total_llm_calls + 1
-                    
-                    if ai_text_gen_limit > 0 and projected_total_llm_calls > ai_text_gen_limit:
-                        error_info = {
-                            'current_calls': total_llm_calls,
-                            'limit': ai_text_gen_limit,
-                            'provider': display_provider_name,
-                            'operation_type': operation_type,
-                            'operation_index': op_idx
-                        }
-                        return False, f"AI text generation call limit would be exceeded. Would use {projected_total_llm_calls} of {ai_text_gen_limit} total AI text generation calls.", {
-                            'error_type': 'call_limit',
-                            'usage_info': error_info
-                        }
-                    
-                    # Check token limits for this provider
-                    # Use cumulative projected tokens from previous operations, or current from DB if first operation
-                    provider_tokens_key = f"{provider_name}_tokens"
-                    if provider_tokens_key in total_llm_tokens:
-                        # Use cumulative projected tokens from previous operations
-                        current_provider_tokens = total_llm_tokens[provider_tokens_key]
-                        logger.info(f"   └─ Using cumulative projected tokens: {current_provider_tokens}")
-                    else:
-                        # First operation for this provider - get current from database
-                        current_provider_tokens = getattr(usage, provider_tokens_key, 0) or 0
-                        total_llm_tokens[provider_tokens_key] = current_provider_tokens
-                        logger.info(f"   └─ Current tokens from DB: {current_provider_tokens}")
-                    
-                    token_limit = limits.get(provider_tokens_key, 0) or 0
-                    
-                    if token_limit > 0 and tokens_requested > 0:
-                        projected_tokens = current_provider_tokens + tokens_requested
-                        logger.info(f"   └─ Token Check: {current_provider_tokens} (current) + {tokens_requested} (requested) = {projected_tokens} (total) / {token_limit} (limit)")
-                        
-                        if projected_tokens > token_limit:
-                            usage_percentage = (projected_tokens / token_limit) * 100 if token_limit > 0 else 0
-                            error_info = {
-                                'current_tokens': current_provider_tokens,
-                                'requested_tokens': tokens_requested,
-                                'limit': token_limit,
-                                'provider': display_provider_name,
-                                'operation_type': operation_type,
-                                'operation_index': op_idx
-                            }
-                            error_msg = (
-                                f"Token limit exceeded for {display_provider_name} "
-                                f"({operation_type}). "
-                                f"Current: {current_provider_tokens}/{token_limit}, "
-                                f"Requested: {tokens_requested}, "
-                                f"Would exceed by: {projected_tokens - token_limit} tokens "
-                                f"({usage_percentage:.1f}% of limit)"
-                            )
-                            logger.error(f"[Pre-flight Check] ❌ BLOCKED: {error_msg}")
-                            return False, error_msg, {
-                                'error_type': 'token_limit',
-                                'usage_info': error_info
-                            }
-                        else:
-                            logger.info(f"   └─ ✅ Token limit check passed: {projected_tokens} <= {token_limit}")
-                    
-                    # Update cumulative counts for next operation
-                    total_llm_calls = projected_total_llm_calls
-                    total_llm_tokens[provider_tokens_key] += tokens_requested
-                    logger.info(f"   └─ Updated cumulative tokens for {display_provider_name}: {total_llm_tokens[provider_tokens_key]}")
-                
-                # Check image generation limits
-                elif provider == APIProvider.STABILITY:
-                    image_limit = limits.get('stability_calls', 0) or 0
-                    projected_images = total_images + 1
-                    
-                    if image_limit > 0 and projected_images > image_limit:
-                        error_info = {
-                            'current_images': total_images,
-                            'limit': image_limit,
-                            'provider': 'stability',
-                            'operation_type': operation_type,
-                            'operation_index': op_idx
-                        }
-                        return False, f"Image generation limit would be exceeded. Would use {projected_images} of {image_limit} images this billing period.", {
-                            'error_type': 'image_limit',
-                            'usage_info': error_info
-                        }
-                    
-                    total_images = projected_images
-                
-                # Check other provider-specific limits
-                else:
-                    provider_calls_key = f"{provider_name}_calls"
-                    current_provider_calls = getattr(usage, provider_calls_key, 0) or 0
-                    call_limit = limits.get(provider_calls_key, 0) or 0
-                    
-                    if call_limit > 0:
-                        projected_calls = current_provider_calls + 1
-                        if projected_calls > call_limit:
-                            error_info = {
-                                'current_calls': current_provider_calls,
-                                'limit': call_limit,
-                                'provider': display_provider_name,
-                                'operation_type': operation_type,
-                                'operation_index': op_idx
-                            }
-                            return False, f"API call limit would be exceeded for {display_provider_name}. Would use {projected_calls} of {call_limit} calls this billing period.", {
-                                'error_type': 'call_limit',
-                                'usage_info': error_info
-                            }
-            
-            # All checks passed
-            logger.info(f"[Pre-flight Check] ✅ All {len(operations)} operation(s) validated successfully")
-            logger.info(f"[Pre-flight Check] ✅ User {user_id} is cleared to proceed with API calls")
-            return True, None, None
-            
-        except Exception as e:
-            logger.error(f"[Pre-flight Check] Error during comprehensive limit check: {e}", exc_info=True)
-            return False, f"Failed to validate limits: {str(e)}", {}
+        from .limit_validation import LimitValidator
+        validator = LimitValidator(self)
+        return validator.check_comprehensive_limits(user_id, operations)
     
     def get_pricing_for_provider_model(self, provider: APIProvider, model_name: str) -> Optional[Dict[str, Any]]:
         """Get pricing configuration for a specific provider and model."""

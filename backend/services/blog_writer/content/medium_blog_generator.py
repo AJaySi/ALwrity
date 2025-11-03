@@ -8,6 +8,7 @@ import time
 import json
 from typing import Dict, Any, List
 from loguru import logger
+from fastapi import HTTPException
 
 from models.blog_models import (
     MediumBlogGenerateRequest,
@@ -25,8 +26,20 @@ class MediumBlogGenerator:
     def __init__(self):
         self.cache = persistent_content_cache
     
-    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str) -> MediumBlogGenerateResult:
-        """Use Gemini structured JSON to generate a medium-length blog in one call."""
+    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str, user_id: str) -> MediumBlogGenerateResult:
+        """Use Gemini structured JSON to generate a medium-length blog in one call.
+        
+        Args:
+            req: Medium blog generation request
+            task_id: Task ID for progress updates
+            user_id: User ID (required for subscription checks and usage tracking)
+            
+        Raises:
+            ValueError: If user_id is not provided
+        """
+        if not user_id:
+            raise ValueError("user_id is required for medium blog generation (subscription checks and usage tracking)")
+        
         import time
         start = time.time()
 
@@ -156,7 +169,7 @@ class MediumBlogGenerator:
             - Use language that resonates with {audience}
             - Maintain consistent voice that reflects this persona's expertise
             """
-        
+
         prompt = (
             f"Write blog content for the following sections. Each section should be {req.globalTargetWords or 1000} words total, distributed across all sections.\n\n"
             f"Blog Title: {req.title}\n\n"
@@ -176,11 +189,20 @@ class MediumBlogGenerator:
             f"Sections to write:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )
 
-        ai_resp = llm_text_gen(
-            prompt=prompt,
-            json_struct=schema,
-            system_prompt=system,
-        )
+        try:
+            ai_resp = llm_text_gen(
+                prompt=prompt,
+                json_struct=schema,
+                system_prompt=system,
+                user_id=user_id
+            )
+        except HTTPException:
+            # Re-raise HTTPExceptions (e.g., 429 subscription limit) to preserve error details
+            raise
+        except Exception as llm_error:
+            # Wrap other errors
+            logger.error(f"AI generation failed: {llm_error}")
+            raise Exception(f"AI generation failed: {str(llm_error)}")
 
         # Check for errors in AI response
         if not ai_resp or ai_resp.get("error"):

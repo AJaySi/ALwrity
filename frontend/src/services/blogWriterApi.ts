@@ -17,6 +17,23 @@ export interface ResearchSource {
   source_type?: string;
 }
 
+export type ResearchMode = 'basic' | 'comprehensive' | 'targeted';
+export type ResearchProvider = 'google' | 'exa';
+export type SourceType = 'web' | 'academic' | 'news' | 'industry' | 'expert';
+export type DateRange = 'last_week' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'all_time';
+
+export interface ResearchConfig {
+  mode?: ResearchMode;
+  provider?: ResearchProvider;
+  date_range?: DateRange;
+  source_types?: SourceType[];
+  max_sources?: number;
+  include_statistics?: boolean;
+  include_expert_quotes?: boolean;
+  include_competitors?: boolean;
+  include_trends?: boolean;
+}
+
 export interface BlogResearchRequest {
   keywords: string[];
   topic?: string;
@@ -25,6 +42,8 @@ export interface BlogResearchRequest {
   tone?: string;
   word_count_target?: number;
   persona?: PersonaInfo;
+  research_mode?: ResearchMode;
+  config?: ResearchConfig;
 }
 
 export interface GroundingChunk {

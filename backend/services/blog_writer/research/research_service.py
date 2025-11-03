@@ -16,6 +16,9 @@ from models.blog_models import (
     GroundingChunk,
     GroundingSupport,
     Citation,
+    ResearchConfig,
+    ResearchMode,
+    ResearchProvider,
 )
 from services.blog_writer.logger_config import blog_writer_logger, log_function_call
 from fastapi import HTTPException
@@ -24,6 +27,7 @@ from .keyword_analyzer import KeywordAnalyzer
 from .competitor_analyzer import CompetitorAnalyzer
 from .content_angle_generator import ContentAngleGenerator
 from .data_filter import ResearchDataFilter
+from .research_strategies import get_strategy_for_mode
 
 
 class ResearchService:
@@ -44,7 +48,6 @@ class ResearchService:
         Includes intelligent caching for exact keyword matches.
         """
         try:
-            from services.llm_providers.gemini_grounded_provider import GeminiGroundedProvider
             from services.cache.research_cache import research_cache
             
             topic = request.topic or ", ".join(request.keywords)
@@ -79,62 +82,104 @@ class ResearchService:
             
             # Cache miss - proceed with API call
             logger.info(f"Cache miss - making API call for keywords: {request.keywords}")
-            blog_writer_logger.log_operation_start("gemini_api_call", api_name="gemini_grounded", operation="research")
-            gemini = GeminiGroundedProvider()
+            blog_writer_logger.log_operation_start("research_api_call", api_name="research", operation="research")
 
-            # Single comprehensive research prompt - Gemini handles Google Search automatically
-            research_prompt = f"""
-            Research the topic "{topic}" in the {industry} industry for {target_audience} audience. Provide a comprehensive analysis including:
-
-            1. Current trends and insights (2024-2025)
-            2. Key statistics and data points with sources
-            3. Industry expert opinions and quotes
-            4. Recent developments and news
-            5. Market analysis and forecasts
-            6. Best practices and case studies
-            7. Keyword analysis: primary, secondary, and long-tail opportunities
-            8. Competitor analysis: top players and content gaps
-            9. Content angle suggestions: 5 compelling angles for blog posts
-
-            Focus on factual, up-to-date information from credible sources.
-            Include specific data points, percentages, and recent developments.
-            Structure your response with clear sections for each analysis area.
-            """
+            # Determine research mode and get appropriate strategy
+            research_mode = request.research_mode or ResearchMode.BASIC
+            config = request.config or ResearchConfig(mode=research_mode, provider=ResearchProvider.GOOGLE)
+            strategy = get_strategy_for_mode(research_mode)
             
-            # Single Gemini call with native Google Search grounding - no fallbacks
-            # Validation is handled inside generate_grounded_content when validate_subsequent_operations=True
-            import time
-            api_start_time = time.time()
-            gemini_result = await gemini.generate_grounded_content(
-                prompt=research_prompt,
-                content_type="research",
-                max_tokens=2000,
-                user_id=user_id,
-                validate_subsequent_operations=True  # Validates Google Grounding + 3 LLM calls
-            )
-            api_duration_ms = (time.time() - api_start_time) * 1000
+            logger.info(f"Research: mode={research_mode.value}, provider={config.provider.value}")
             
-            # Log API call performance
-            blog_writer_logger.log_api_call(
-                "gemini_grounded",
-                "generate_grounded_content",
-                api_duration_ms,
-                token_usage=gemini_result.get("token_usage", {}),
-                content_length=len(gemini_result.get("content", ""))
-            )
+            # Build research prompt based on strategy
+            research_prompt = strategy.build_research_prompt(topic, industry, target_audience, config)
             
-            # Extract sources from grounding metadata
-            sources = self._extract_sources_from_grounding(gemini_result)
+            # Route to appropriate provider
+            if config.provider == ResearchProvider.EXA:
+                # Exa research workflow
+                from .exa_provider import ExaResearchProvider
+                from services.subscription.preflight_validator import validate_exa_research_operations
+                from services.database import get_db
+                from services.subscription import PricingService
+                import os
+                import time
+                
+                # Pre-flight validation
+                db_val = next(get_db())
+                try:
+                    pricing_service = PricingService(db_val)
+                    gpt_provider = os.getenv("GPT_PROVIDER", "google")
+                    validate_exa_research_operations(pricing_service, user_id, gpt_provider)
+                finally:
+                    db_val.close()
+                
+                # Execute Exa search
+                api_start_time = time.time()
+                try:
+                    exa_provider = ExaResearchProvider()
+                    raw_result = await exa_provider.search(
+                        research_prompt, topic, industry, target_audience, config, user_id
+                    )
+                    api_duration_ms = (time.time() - api_start_time) * 1000
+                    
+                    # Track usage
+                    cost = raw_result.get('cost', {}).get('total', 0.005) if isinstance(raw_result.get('cost'), dict) else 0.005
+                    exa_provider.track_exa_usage(user_id, cost)
+                    
+                    # Log API call performance
+                    blog_writer_logger.log_api_call(
+                        "exa_search",
+                        "search_and_contents",
+                        api_duration_ms,
+                        token_usage={},
+                        content_length=len(raw_result.get('content', ''))
+                    )
+                    
+                    # Extract content for downstream analysis
+                    content = raw_result.get('content', '')
+                    sources = raw_result.get('sources', [])
+                    search_widget = ""  # Exa doesn't provide search widgets
+                    search_queries = raw_result.get('search_queries', [])
+                    grounding_metadata = None  # Exa doesn't provide grounding metadata
+                    
+                except RuntimeError as e:
+                    if "EXA_API_KEY not configured" in str(e):
+                        logger.warning("Exa not configured, falling back to Google")
+                        config.provider = ResearchProvider.GOOGLE
+                        # Continue to Google flow below
+                        raw_result = None
+                    else:
+                        raise
+                
+            if config.provider != ResearchProvider.EXA:
+                # Google research (existing flow) or fallback from Exa
+                from .google_provider import GoogleResearchProvider
+                import time
+                
+                api_start_time = time.time()
+                google_provider = GoogleResearchProvider()
+                gemini_result = await google_provider.search(
+                    research_prompt, topic, industry, target_audience, config, user_id
+                )
+                api_duration_ms = (time.time() - api_start_time) * 1000
+                
+                # Log API call performance
+                blog_writer_logger.log_api_call(
+                    "gemini_grounded",
+                    "generate_grounded_content",
+                    api_duration_ms,
+                    token_usage=gemini_result.get("token_usage", {}),
+                    content_length=len(gemini_result.get("content", ""))
+                )
+                
+                # Extract sources and content
+                sources = self._extract_sources_from_grounding(gemini_result)
+                content = gemini_result.get("content", "")
+                search_widget = gemini_result.get("search_widget", "") or ""
+                search_queries = gemini_result.get("search_queries", []) or []
+                grounding_metadata = self._extract_grounding_metadata(gemini_result)
             
-            # Extract grounding metadata for detailed UI display
-            grounding_metadata = self._extract_grounding_metadata(gemini_result)
-            
-            # Extract search widget and queries for UI display
-            search_widget = gemini_result.get("search_widget", "") or ""
-            search_queries = gemini_result.get("search_queries", []) or []
-            
-            # Parse the comprehensive response for different analysis components
-            content = gemini_result.get("content", "")
+            # Continue with common analysis (same for both providers)
             keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords, user_id=user_id)
             competitor_analysis = self.competitor_analyzer.analyze(content, user_id=user_id)
             suggested_angles = self.content_angle_generator.generate(content, topic, industry, user_id=user_id)
@@ -261,7 +306,6 @@ class ResearchService:
         Research method with progress updates for real-time feedback.
         """
         try:
-            from services.llm_providers.gemini_grounded_provider import GeminiGroundedProvider
             from services.cache.research_cache import research_cache
             from services.cache.persistent_research_cache import persistent_research_cache
             from api.blog_writer.task_manager import task_manager
@@ -293,66 +337,100 @@ class ResearchService:
                 logger.info(f"Returning cached research result for keywords: {request.keywords}")
                 return BlogResearchResponse(**cached_result)
             
-            # User ID validation (validation logic is now in Google Grounding provider)
+            # User ID validation
             if not user_id:
                 await task_manager.update_progress(task_id, "❌ Error: User ID is required for research operation")
                 raise ValueError("user_id is required for research operation. Please provide Clerk user ID.")
             
-            # Cache miss - proceed with API call
-            await task_manager.update_progress(task_id, "🌐 Cache miss - connecting to Google Search grounding...")
-            logger.info(f"Cache miss - making API call for keywords: {request.keywords}")
-            gemini = GeminiGroundedProvider()
-
-            # Single comprehensive research prompt - Gemini handles Google Search automatically
-            research_prompt = f"""
-            Research the topic "{topic}" in the {industry} industry for {target_audience} audience. Provide a comprehensive analysis including:
-
-            1. Current trends and insights (2024-2025)
-            2. Key statistics and data points with sources
-            3. Industry expert opinions and quotes
-            4. Recent developments and news
-            5. Market analysis and forecasts
-            6. Best practices and case studies
-            7. Keyword analysis: primary, secondary, and long-tail opportunities
-            8. Competitor analysis: top players and content gaps
-            9. Content angle suggestions: 5 compelling angles for blog posts
-
-            Focus on factual, up-to-date information from credible sources.
-            Include specific data points, percentages, and recent developments.
-            Structure your response with clear sections for each analysis area.
-            """
+            # Determine research mode and get appropriate strategy
+            research_mode = request.research_mode or ResearchMode.BASIC
+            config = request.config or ResearchConfig(mode=research_mode, provider=ResearchProvider.GOOGLE)
+            strategy = get_strategy_for_mode(research_mode)
             
-            await task_manager.update_progress(task_id, "🤖 Making AI request to Gemini with Google Search grounding...")
-            # Single Gemini call with native Google Search grounding - no fallbacks
-            # Validation is handled inside generate_grounded_content when validate_subsequent_operations=True
-            try:
-                gemini_result = await gemini.generate_grounded_content(
-                    prompt=research_prompt,
-                    content_type="research",
-                    max_tokens=2000,
-                    user_id=user_id,
-                    validate_subsequent_operations=True  # Validates Google Grounding + 3 LLM calls
-                )
-            except HTTPException as http_error:
-                # Re-raise HTTPException so it can be properly handled by task manager
-                logger.error(f"Subscription limit exceeded for research: {http_error.detail}")
-                await task_manager.update_progress(task_id, f"❌ Subscription limit exceeded: {http_error.detail.get('message', str(http_error.detail)) if isinstance(http_error.detail, dict) else str(http_error.detail)}")
-                raise  # Re-raise HTTPException to preserve status code and error details
+            logger.info(f"Research: mode={research_mode.value}, provider={config.provider.value}")
             
-            await task_manager.update_progress(task_id, "📊 Processing research results and extracting insights...")
-            # Extract sources from grounding metadata
-            sources = self._extract_sources_from_grounding(gemini_result)
+            # Build research prompt based on strategy
+            research_prompt = strategy.build_research_prompt(topic, industry, target_audience, config)
             
-            # Extract grounding metadata for detailed UI display
-            grounding_metadata = self._extract_grounding_metadata(gemini_result)
+            # Route to appropriate provider
+            if config.provider == ResearchProvider.EXA:
+                # Exa research workflow
+                from .exa_provider import ExaResearchProvider
+                from services.subscription.preflight_validator import validate_exa_research_operations
+                from services.database import get_db
+                from services.subscription import PricingService
+                import os
+                
+                await task_manager.update_progress(task_id, "🌐 Connecting to Exa neural search...")
+                
+                # Pre-flight validation
+                db_val = next(get_db())
+                try:
+                    pricing_service = PricingService(db_val)
+                    gpt_provider = os.getenv("GPT_PROVIDER", "google")
+                    validate_exa_research_operations(pricing_service, user_id, gpt_provider)
+                except HTTPException as http_error:
+                    logger.error(f"Subscription limit exceeded for Exa research: {http_error.detail}")
+                    await task_manager.update_progress(task_id, f"❌ Subscription limit exceeded: {http_error.detail.get('message', str(http_error.detail)) if isinstance(http_error.detail, dict) else str(http_error.detail)}")
+                    raise
+                finally:
+                    db_val.close()
+                
+                # Execute Exa search
+                await task_manager.update_progress(task_id, "🤖 Executing Exa neural search...")
+                try:
+                    exa_provider = ExaResearchProvider()
+                    raw_result = await exa_provider.search(
+                        research_prompt, topic, industry, target_audience, config, user_id
+                    )
+                    
+                    # Track usage
+                    cost = raw_result.get('cost', {}).get('total', 0.005) if isinstance(raw_result.get('cost'), dict) else 0.005
+                    exa_provider.track_exa_usage(user_id, cost)
+                    
+                    # Extract content for downstream analysis
+                    content = raw_result.get('content', '')
+                    sources = raw_result.get('sources', [])
+                    search_widget = ""  # Exa doesn't provide search widgets
+                    search_queries = raw_result.get('search_queries', [])
+                    grounding_metadata = None  # Exa doesn't provide grounding metadata
+                    
+                except RuntimeError as e:
+                    if "EXA_API_KEY not configured" in str(e):
+                        logger.warning("Exa not configured, falling back to Google")
+                        await task_manager.update_progress(task_id, "⚠️ Exa not configured, falling back to Google Search")
+                        config.provider = ResearchProvider.GOOGLE
+                        # Continue to Google flow below
+                    else:
+                        raise
+                
+            if config.provider != ResearchProvider.EXA:
+                # Google research (existing flow)
+                from .google_provider import GoogleResearchProvider
+                
+                await task_manager.update_progress(task_id, "🌐 Connecting to Google Search grounding...")
+                google_provider = GoogleResearchProvider()
+                
+                await task_manager.update_progress(task_id, "🤖 Making AI request to Gemini with Google Search grounding...")
+                try:
+                    gemini_result = await google_provider.search(
+                        research_prompt, topic, industry, target_audience, config, user_id
+                    )
+                except HTTPException as http_error:
+                    logger.error(f"Subscription limit exceeded for Google research: {http_error.detail}")
+                    await task_manager.update_progress(task_id, f"❌ Subscription limit exceeded: {http_error.detail.get('message', str(http_error.detail)) if isinstance(http_error.detail, dict) else str(http_error.detail)}")
+                    raise
+                
+                await task_manager.update_progress(task_id, "📊 Processing research results and extracting insights...")
+                # Extract sources and content
+                sources = self._extract_sources_from_grounding(gemini_result)
+                content = gemini_result.get("content", "")
+                search_widget = gemini_result.get("search_widget", "") or ""
+                search_queries = gemini_result.get("search_queries", []) or []
+                grounding_metadata = self._extract_grounding_metadata(gemini_result)
             
-            # Extract search widget and queries for UI display
-            search_widget = gemini_result.get("search_widget", "") or ""
-            search_queries = gemini_result.get("search_queries", []) or []
-            
+            # Continue with common analysis (same for both providers)
             await task_manager.update_progress(task_id, "🔍 Analyzing keywords and content angles...")
-            # Parse the comprehensive response for different analysis components
-            content = gemini_result.get("content", "")
             keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords, user_id=user_id)
             competitor_analysis = self.competitor_analyzer.analyze(content, user_id=user_id)
             suggested_angles = self.content_angle_generator.generate(content, topic, industry, user_id=user_id)

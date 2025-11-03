@@ -12,6 +12,7 @@ from functools import lru_cache
 
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
+from services.subscription.schema_utils import ensure_subscription_plan_columns
 from middleware.auth_middleware import get_current_user
 from models.subscription_models import (
     APIProvider, SubscriptionPlan, UserSubscription, UsageSummary,
@@ -79,6 +80,8 @@ async def get_subscription_plans(
     """Get all available subscription plans."""
     
     try:
+        # Ensure required columns exist (handles environments without migrations applied yet)
+        ensure_subscription_plan_columns(db)
         plans = db.query(SubscriptionPlan).filter(
             SubscriptionPlan.is_active == True
         ).order_by(SubscriptionPlan.price_monthly).all()
@@ -137,6 +140,7 @@ async def get_user_subscription(
         raise HTTPException(status_code=403, detail="Access denied")
     
     try:
+        ensure_subscription_plan_columns(db)
         subscription = db.query(UserSubscription).filter(
             UserSubscription.user_id == user_id,
             UserSubscription.is_active == True
@@ -234,6 +238,7 @@ async def get_subscription_status(
         raise HTTPException(status_code=403, detail="Access denied")
 
     try:
+        ensure_subscription_plan_columns(db)
         subscription = db.query(UserSubscription).filter(
             UserSubscription.user_id == user_id,
             UserSubscription.is_active == True
@@ -346,6 +351,7 @@ async def subscribe_to_plan(
         raise HTTPException(status_code=403, detail="Access denied")
 
     try:
+        ensure_subscription_plan_columns(db)
         plan_id = subscription_data.get('plan_id')
         billing_cycle = subscription_data.get('billing_cycle', 'monthly')
 
@@ -427,11 +433,16 @@ async def subscribe_to_plan(
             logger.info(f"   📊 No usage summary found for period {current_period} (will be created on reset)")
 
         # Clear subscription limits cache to force refresh on next check
+        # IMPORTANT: Do this BEFORE resetting usage to ensure cache is cleared first
         try:
             from services.subscription import PricingService
             # Clear cache for this specific user (class-level cache shared across all instances)
             cleared_count = PricingService.clear_user_cache(user_id)
             logger.info(f"   🗑️  Cleared {cleared_count} subscription cache entries for user {user_id}")
+            
+            # Also expire all SQLAlchemy objects to force fresh reads
+            db.expire_all()
+            logger.info(f"   🔄 Expired all SQLAlchemy objects to force fresh reads")
         except Exception as cache_err:
             logger.error(f"   ❌ Failed to clear cache after subscribe: {cache_err}")
 
@@ -441,11 +452,21 @@ async def subscribe_to_plan(
             usage_service = UsageTrackingService(db)
             reset_result = await usage_service.reset_current_billing_period(user_id)
             
-            # Re-query usage summary from DB after reset to get fresh data
+            # Force commit to ensure reset is persisted
+            db.commit()
+            
+            # Expire all SQLAlchemy objects to force fresh reads
+            db.expire_all()
+            
+            # Re-query usage summary from DB after reset to get fresh data (fresh query)
             usage_after = db.query(UsageSummary).filter(
                 UsageSummary.user_id == user_id,
                 UsageSummary.billing_period == current_period
             ).first()
+            
+            # Refresh the usage object if found to ensure we have latest data
+            if usage_after:
+                db.refresh(usage_after)
             
             if reset_result.get('reset'):
                 logger.info(f"   ✅ Usage counters RESET successfully")
@@ -635,6 +656,7 @@ async def get_dashboard_data(
     """Get comprehensive dashboard data for usage monitoring."""
     
     try:
+        ensure_subscription_plan_columns(db)
         # Serve from short TTL cache to avoid hammering DB on bursts
         import time
         now = time.time()

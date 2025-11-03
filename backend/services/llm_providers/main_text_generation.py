@@ -9,6 +9,7 @@ import json
 from typing import Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
+from fastapi import HTTPException
 from ..onboarding.api_key_manager import APIKeyManager
 
 from .gemini_provider import gemini_text_response, gemini_structured_json_response
@@ -129,11 +130,16 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                 pricing_service = PricingService(db)
                 
                 # Estimate tokens from prompt (input tokens)
-                # Note: We estimate output tokens conservatively (assume response is similar length to prompt)
-                # This prevents underestimating total token usage
+                # CRITICAL: Use worst-case scenario (input + max_tokens) for validation to prevent abuse
+                # This ensures we block requests that would exceed limits even if response is longer than expected
                 input_tokens = int(len(prompt.split()) * 1.3)
-                # Conservative estimate: assume output tokens ≈ input tokens * 1.0 (can be up to max_tokens)
-                estimated_output_tokens = min(input_tokens, max_tokens) if max_tokens else int(input_tokens * 0.8)
+                # Worst-case estimate: assume maximum possible output tokens (max_tokens if specified)
+                # This prevents abuse where actual response tokens exceed the estimate
+                if max_tokens:
+                    estimated_output_tokens = max_tokens  # Use maximum allowed output tokens
+                else:
+                    # If max_tokens not specified, use conservative estimate (input * 1.5)
+                    estimated_output_tokens = int(input_tokens * 1.5)
                 estimated_total_tokens = input_tokens + estimated_output_tokens
                 
                 # Check limits using sync method from pricing service (strict enforcement)
@@ -146,7 +152,14 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                 
                 if not can_proceed:
                     logger.warning(f"[llm_text_gen] Subscription limit exceeded for user {user_id}: {message}")
-                    raise RuntimeError(f"Subscription limit exceeded: {message}")
+                    # Raise HTTPException(429) with usage info so frontend can display subscription modal
+                    error_detail = {
+                        'error': message,
+                        'message': message,
+                        'provider': actual_provider_name or provider_enum.value,
+                        'usage_info': usage_info if usage_info else {}
+                    }
+                    raise HTTPException(status_code=429, detail=error_detail)
                 
                 # Get current usage for limit checking only
                 current_period = pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
@@ -159,6 +172,9 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                 
             finally:
                 db.close()
+        except HTTPException:
+            # Re-raise HTTPExceptions (e.g., 429 subscription limit) - preserve error details
+            raise
         except RuntimeError:
             # Re-raise subscription limit errors
             raise
@@ -244,7 +260,8 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                     db_track = next(get_db())
                     try:
                         # Estimate tokens from prompt and response
-                        tokens_input = estimated_tokens  # Already calculated above
+                        # Recalculate input tokens from prompt (consistent with pre-flight estimation)
+                        tokens_input = int(len(prompt.split()) * 1.3)
                         tokens_output = int(len(str(response_text).split()) * 1.3)  # Estimate output tokens
                         tokens_total = tokens_input + tokens_output
                         
@@ -259,45 +276,186 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         
                         logger.debug(f"[llm_text_gen] Looking for usage summary: user_id={user_id}, period={current_period}")
                         
+                        # Get limits once for safety check (to prevent exceeding limits even if actual usage > estimate)
+                        provider_name = provider_enum.value
+                        limits = pricing.get_user_limits(user_id)
+                        token_limit = 0
+                        if limits and limits.get('limits'):
+                            token_limit = limits['limits'].get(f"{provider_name}_tokens", 0) or 0
+                        
+                        # CRITICAL: Use raw SQL to read current values directly from DB, bypassing SQLAlchemy cache
+                        # This ensures we always get the absolute latest committed values, even across different sessions
+                        from sqlalchemy import text
+                        current_calls_before = 0
+                        current_tokens_before = 0
+                        record_count = 0  # Initialize to ensure it's always defined
+                        
+                        # CRITICAL: First check if record exists using COUNT query
+                        try:
+                            check_query = text("SELECT COUNT(*) FROM usage_summaries WHERE user_id = :user_id AND billing_period = :period")
+                            record_count = db_track.execute(check_query, {'user_id': user_id, 'period': current_period}).scalar()
+                            logger.debug(f"[llm_text_gen] 🔍 DEBUG: Record count check - found {record_count} record(s) for user={user_id}, period={current_period}")
+                        except Exception as count_error:
+                            logger.error(f"[llm_text_gen] ❌ COUNT query failed: {count_error}", exc_info=True)
+                            record_count = 0
+                        
+                        if record_count and record_count > 0:
+                            # Record exists - read current values with raw SQL
+                            try:
+                                # Validate provider_name to prevent SQL injection (whitelist approach)
+                                valid_providers = ['gemini', 'openai', 'anthropic', 'mistral']
+                                if provider_name not in valid_providers:
+                                    raise ValueError(f"Invalid provider_name for SQL query: {provider_name}")
+                                
+                                # Read current values directly from database using raw SQL
+                                # CRITICAL: This bypasses SQLAlchemy's session cache and gets absolute latest values
+                                sql_query = text(f"""
+                                    SELECT {provider_name}_calls, {provider_name}_tokens 
+                                    FROM usage_summaries 
+                                    WHERE user_id = :user_id AND billing_period = :period 
+                                    LIMIT 1
+                                """)
+                                logger.debug(f"[llm_text_gen] 🔍 Executing raw SQL for EXISTING record: SELECT {provider_name}_calls, {provider_name}_tokens WHERE user_id={user_id}, period={current_period}")
+                                result = db_track.execute(sql_query, {'user_id': user_id, 'period': current_period}).first()
+                                if result:
+                                    raw_calls = result[0] if result[0] is not None else 0
+                                    raw_tokens = result[1] if result[1] is not None else 0
+                                    current_calls_before = raw_calls
+                                    current_tokens_before = raw_tokens
+                                    logger.debug(f"[llm_text_gen] ✅ Raw SQL SUCCESS: Found EXISTING record - calls={current_calls_before}, tokens={current_tokens_before} (provider={provider_name}, column={provider_name}_calls/{provider_name}_tokens)")
+                                    logger.debug(f"[llm_text_gen] 🔍 Raw SQL returned row: {result}, extracted calls={raw_calls}, tokens={raw_tokens}")
+                                else:
+                                    logger.error(f"[llm_text_gen] ❌ CRITICAL BUG: Record EXISTS (count={record_count}) but SELECT query returned None! Query: {sql_query}")
+                                    # Fallback: Use ORM to get values
+                                    summary_fallback = db_track.query(UsageSummary).filter(
+                                        UsageSummary.user_id == user_id,
+                                        UsageSummary.billing_period == current_period
+                                    ).first()
+                                    if summary_fallback:
+                                        db_track.refresh(summary_fallback)
+                                        current_calls_before = getattr(summary_fallback, f"{provider_name}_calls", 0) or 0
+                                        current_tokens_before = getattr(summary_fallback, f"{provider_name}_tokens", 0) or 0
+                                        logger.warning(f"[llm_text_gen] ⚠️ Using ORM fallback: calls={current_calls_before}, tokens={current_tokens_before}")
+                            except Exception as sql_error:
+                                logger.error(f"[llm_text_gen] ❌ Raw SQL query failed: {sql_error}", exc_info=True)
+                                # Fallback: Use ORM to get values
+                                summary_fallback = db_track.query(UsageSummary).filter(
+                                    UsageSummary.user_id == user_id,
+                                    UsageSummary.billing_period == current_period
+                                ).first()
+                                if summary_fallback:
+                                    db_track.refresh(summary_fallback)
+                                    current_calls_before = getattr(summary_fallback, f"{provider_name}_calls", 0) or 0
+                                    current_tokens_before = getattr(summary_fallback, f"{provider_name}_tokens", 0) or 0
+                        else:
+                            logger.debug(f"[llm_text_gen] ℹ️ No record exists yet (will create new) - user={user_id}, period={current_period}")
+                        
+                        # Get or create usage summary object (needed for ORM update)
                         summary = db_track.query(UsageSummary).filter(
                             UsageSummary.user_id == user_id,
                             UsageSummary.billing_period == current_period
                         ).first()
                         
                         if not summary:
-                            logger.info(f"[llm_text_gen] Creating new usage summary for user {user_id}, period {current_period}")
+                            logger.debug(f"[llm_text_gen] Creating NEW usage summary for user {user_id}, period {current_period}")
                             summary = UsageSummary(
                                 user_id=user_id,
                                 billing_period=current_period
                             )
                             db_track.add(summary)
                             db_track.flush()  # Ensure summary is persisted before updating
+                            # New record - values are already 0, no need to set
+                            logger.debug(f"[llm_text_gen] ✅ New summary created - starting from 0")
+                        else:
+                            # CRITICAL: Update the ORM object with values from raw SQL query
+                            # This ensures the ORM object reflects the actual database state before we increment
+                            logger.debug(f"[llm_text_gen] 🔄 Existing summary found - syncing with raw SQL values: calls={current_calls_before}, tokens={current_tokens_before}")
+                            setattr(summary, f"{provider_name}_calls", current_calls_before)
+                            if provider_enum in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL]:
+                                setattr(summary, f"{provider_name}_tokens", current_tokens_before)
+                            logger.debug(f"[llm_text_gen] ✅ Synchronized ORM object: {provider_name}_calls={current_calls_before}, {provider_name}_tokens={current_tokens_before}")
                         
-                        # Get "before" state for unified log
-                        provider_name = provider_enum.value
-                        current_calls_before = getattr(summary, f"{provider_name}_calls", 0) or 0
+                        logger.debug(f"[llm_text_gen] Current {provider_name}_calls from DB (raw SQL): {current_calls_before}")
                         
                         # Update provider-specific counters (sync operation)
                         new_calls = current_calls_before + 1
-                        setattr(summary, f"{provider_name}_calls", new_calls)
-                        logger.debug(f"[llm_text_gen] Updated {provider_name}_calls: {current_calls_before} -> {new_calls}")
                         
-                        # Update token usage for LLM providers
+                        # CRITICAL: Use direct SQL UPDATE instead of ORM setattr for dynamic attributes
+                        # SQLAlchemy doesn't detect changes when using setattr() on dynamic attributes
+                        # Using raw SQL UPDATE ensures the change is persisted
+                        from sqlalchemy import text
+                        update_calls_query = text(f"""
+                            UPDATE usage_summaries 
+                            SET {provider_name}_calls = :new_calls 
+                            WHERE user_id = :user_id AND billing_period = :period
+                        """)
+                        db_track.execute(update_calls_query, {
+                            'new_calls': new_calls,
+                            'user_id': user_id,
+                            'period': current_period
+                        })
+                        logger.debug(f"[llm_text_gen] Updated {provider_name}_calls via SQL: {current_calls_before} -> {new_calls}")
+                        
+                        # Update token usage for LLM providers with safety check
+                        # CRITICAL: Use current_tokens_before from raw SQL query (NOT from ORM object)
+                        # The ORM object may have stale values, but raw SQL always has the latest committed values
                         if provider_enum in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL]:
-                            current_tokens_before = getattr(summary, f"{provider_name}_tokens", 0) or 0
-                            new_tokens = current_tokens_before + tokens_total
-                            setattr(summary, f"{provider_name}_tokens", new_tokens)
-                            logger.debug(f"[llm_text_gen] Updated {provider_name}_tokens: {current_tokens_before} -> {new_tokens}")
+                            logger.debug(f"[llm_text_gen] Current {provider_name}_tokens from DB (raw SQL): {current_tokens_before}")
+                            
+                            # SAFETY CHECK: Prevent exceeding token limit even if actual usage exceeds estimate
+                            # This prevents abuse where actual response tokens exceed pre-flight validation estimate
+                            projected_new_tokens = current_tokens_before + tokens_total
+                            
+                            # If limit is set (> 0) and would be exceeded, cap at limit
+                            if token_limit > 0 and projected_new_tokens > token_limit:
+                                logger.warning(
+                                    f"[llm_text_gen] ⚠️ ACTUAL token usage ({tokens_total}) exceeded estimate. "
+                                    f"Would exceed limit: {projected_new_tokens} > {token_limit}. "
+                                    f"Capping tracked tokens at limit to prevent abuse."
+                                )
+                                # Cap at limit to prevent abuse
+                                new_tokens = token_limit
+                                # Adjust tokens_total for accurate total tracking
+                                tokens_total = token_limit - current_tokens_before
+                                if tokens_total < 0:
+                                    tokens_total = 0
+                            else:
+                                new_tokens = projected_new_tokens
+                            
+                            # CRITICAL: Use direct SQL UPDATE instead of ORM setattr for dynamic attributes
+                            update_tokens_query = text(f"""
+                                UPDATE usage_summaries 
+                                SET {provider_name}_tokens = :new_tokens 
+                                WHERE user_id = :user_id AND billing_period = :period
+                            """)
+                            db_track.execute(update_tokens_query, {
+                                'new_tokens': new_tokens,
+                                'user_id': user_id,
+                                'period': current_period
+                            })
+                            logger.debug(f"[llm_text_gen] Updated {provider_name}_tokens via SQL: {current_tokens_before} -> {new_tokens}")
                         else:
                             current_tokens_before = 0
                             new_tokens = 0
                         
-                        # Update totals
+                        # Update totals using SQL UPDATE
                         old_total_calls = summary.total_calls or 0
                         old_total_tokens = summary.total_tokens or 0
-                        summary.total_calls = old_total_calls + 1
-                        summary.total_tokens = old_total_tokens + tokens_total
-                        logger.debug(f"[llm_text_gen] Updated totals: calls {old_total_calls} -> {summary.total_calls}, tokens {old_total_tokens} -> {summary.total_tokens}")
+                        new_total_calls = old_total_calls + 1
+                        new_total_tokens = old_total_tokens + tokens_total
+                        
+                        update_totals_query = text("""
+                            UPDATE usage_summaries 
+                            SET total_calls = :total_calls, total_tokens = :total_tokens 
+                            WHERE user_id = :user_id AND billing_period = :period
+                        """)
+                        db_track.execute(update_totals_query, {
+                            'total_calls': new_total_calls,
+                            'total_tokens': new_total_tokens,
+                            'user_id': user_id,
+                            'period': current_period
+                        })
+                        logger.debug(f"[llm_text_gen] Updated totals via SQL: calls {old_total_calls} -> {new_total_calls}, tokens {old_total_tokens} -> {new_total_tokens}")
                         
                         # Get plan details for unified log
                         limits = pricing.get_user_limits(user_id)
@@ -310,12 +468,52 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         current_images_before = getattr(summary, "stability_calls", 0) or 0
                         image_limit = limits['limits'].get("stability_calls", 0) if limits else 0
                         
-                        db_track.commit()
-                        logger.info(f"[llm_text_gen] ✅ Successfully tracked usage: user {user_id} -> provider {provider_name} -> {new_calls} calls, {new_tokens} tokens")
+                        # CRITICAL DEBUG: Print diagnostic info BEFORE commit (always visible, flushed immediately)
+                        import sys
+                        debug_msg = f"[DEBUG] BEFORE COMMIT - Record count: {record_count}, Raw SQL values: calls={current_calls_before}, tokens={current_tokens_before}, Provider: {provider_name}, Period: {current_period}, New calls will be: {new_calls}, New tokens will be: {new_tokens}"
+                        print(debug_msg, flush=True)
+                        sys.stdout.flush()
+                        logger.debug(f"[llm_text_gen] {debug_msg}")
+                        
+                        # CRITICAL: Flush before commit to ensure changes are immediately visible to other sessions
+                        db_track.flush()  # Flush to ensure changes are in DB (not just in transaction)
+                        db_track.commit()  # Commit transaction to make changes visible to other sessions
+                        logger.debug(f"[llm_text_gen] ✅ Successfully tracked usage: user {user_id} -> provider {provider_name} -> {new_calls} calls, {new_tokens} tokens (COMMITTED to DB)")
+                        logger.debug(f"[llm_text_gen] Database state after commit: {provider_name}_calls={new_calls}, {provider_name}_tokens={new_tokens} (should be visible to next session)")
+                        
+                        # CRITICAL: Verify commit worked by reading back from DB immediately after commit
+                        try:
+                            verify_query = text(f"SELECT {provider_name}_calls, {provider_name}_tokens FROM usage_summaries WHERE user_id = :user_id AND billing_period = :period LIMIT 1")
+                            verify_result = db_track.execute(verify_query, {'user_id': user_id, 'period': current_period}).first()
+                            if verify_result:
+                                verified_calls = verify_result[0] if verify_result[0] is not None else 0
+                                verified_tokens = verify_result[1] if verify_result[1] is not None else 0
+                                logger.debug(f"[llm_text_gen] ✅ VERIFICATION AFTER COMMIT: Read back calls={verified_calls}, tokens={verified_tokens} (expected: calls={new_calls}, tokens={new_tokens})")
+                                if verified_calls != new_calls or verified_tokens != new_tokens:
+                                    logger.error(f"[llm_text_gen] ❌ CRITICAL: COMMIT VERIFICATION FAILED! Expected calls={new_calls}, tokens={new_tokens}, but DB has calls={verified_calls}, tokens={verified_tokens}")
+                                    # Force another commit attempt
+                                    db_track.commit()
+                                    verify_result2 = db_track.execute(verify_query, {'user_id': user_id, 'period': current_period}).first()
+                                    if verify_result2:
+                                        verified_calls2 = verify_result2[0] if verify_result2[0] is not None else 0
+                                        verified_tokens2 = verify_result2[1] if verify_result2[1] is not None else 0
+                                        logger.debug(f"[llm_text_gen] 🔄 After second commit attempt: calls={verified_calls2}, tokens={verified_tokens2}")
+                                else:
+                                    logger.debug(f"[llm_text_gen] ✅ COMMIT VERIFICATION PASSED: Values match expected values")
+                            else:
+                                logger.error(f"[llm_text_gen] ❌ CRITICAL: COMMIT VERIFICATION FAILED! Record not found after commit!")
+                        except Exception as verify_error:
+                            logger.error(f"[llm_text_gen] ❌ Error verifying commit: {verify_error}", exc_info=True)
                         
                         # UNIFIED SUBSCRIPTION LOG - Shows before/after state in one message
                         # Use actual_provider_name (e.g., "huggingface") instead of enum value (e.g., "mistral")
                         # Include image stats in the log
+                        # DEBUG: Log the actual values being used
+                        logger.debug(f"[llm_text_gen] 📊 FINAL VALUES FOR LOG: calls_before={current_calls_before}, calls_after={new_calls}, tokens_before={current_tokens_before}, tokens_after={new_tokens}, provider={provider_name}, enum={provider_enum}")
+                        
+                        # CRITICAL DEBUG: Print diagnostic info to stdout (always visible)
+                        print(f"[DEBUG] Record count: {record_count}, Raw SQL values: calls={current_calls_before}, tokens={current_tokens_before}, Provider: {provider_name}")
+                        
                         print(f"""
 [SUBSCRIPTION] LLM Text Generation
 ├─ User: {user_id}
@@ -407,7 +605,8 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                             db_track = next(get_db())
                             try:
                                 # Estimate tokens from prompt and response
-                                tokens_input = estimated_tokens
+                                # Recalculate input tokens from prompt (consistent with pre-flight estimation)
+                                tokens_input = int(len(prompt.split()) * 1.3)
                                 tokens_output = int(len(str(response_text).split()) * 1.3)
                                 tokens_total = tokens_input + tokens_output
                                 
@@ -418,6 +617,49 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                                 pricing = PricingService(db_track)
                                 current_period = pricing.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
                                 
+                                # Get limits once for safety check (to prevent exceeding limits even if actual usage > estimate)
+                                provider_name = provider_enum.value
+                                limits = pricing.get_user_limits(user_id)
+                                token_limit = 0
+                                if limits and limits.get('limits'):
+                                    token_limit = limits['limits'].get(f"{provider_name}_tokens", 0) or 0
+                                
+                                # CRITICAL: Use raw SQL to read current values directly from DB, bypassing SQLAlchemy cache
+                                from sqlalchemy import text
+                                current_calls_before = 0
+                                current_tokens_before = 0
+                                
+                                try:
+                                    # Validate provider_name to prevent SQL injection
+                                    valid_providers = ['gemini', 'openai', 'anthropic', 'mistral']
+                                    if provider_name not in valid_providers:
+                                        raise ValueError(f"Invalid provider_name for SQL query: {provider_name}")
+                                    
+                                    # Read current values directly from database using raw SQL
+                                    sql_query = text(f"""
+                                        SELECT {provider_name}_calls, {provider_name}_tokens 
+                                        FROM usage_summaries 
+                                        WHERE user_id = :user_id AND billing_period = :period 
+                                        LIMIT 1
+                                    """)
+                                    result = db_track.execute(sql_query, {'user_id': user_id, 'period': current_period}).first()
+                                    if result:
+                                        current_calls_before = result[0] if result[0] is not None else 0
+                                        current_tokens_before = result[1] if result[1] is not None else 0
+                                        logger.debug(f"[llm_text_gen] Raw SQL read current values (fallback): calls={current_calls_before}, tokens={current_tokens_before}")
+                                except Exception as sql_error:
+                                    logger.warning(f"[llm_text_gen] Raw SQL query failed (fallback), falling back to ORM: {sql_error}")
+                                    # Fallback to ORM query if raw SQL fails
+                                    summary = db_track.query(UsageSummary).filter(
+                                        UsageSummary.user_id == user_id,
+                                        UsageSummary.billing_period == current_period
+                                    ).first()
+                                    if summary:
+                                        db_track.refresh(summary)
+                                        current_calls_before = getattr(summary, f"{provider_name}_calls", 0) or 0
+                                        current_tokens_before = getattr(summary, f"{provider_name}_tokens", 0) or 0
+                                
+                                # Get or create usage summary object (needed for ORM update)
                                 summary = db_track.query(UsageSummary).filter(
                                     UsageSummary.user_id == user_id,
                                     UsageSummary.billing_period == current_period
@@ -430,41 +672,68 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                                     )
                                     db_track.add(summary)
                                     db_track.flush()  # Ensure summary is persisted before updating
+                                else:
+                                    # CRITICAL: Update the ORM object with values from raw SQL query
+                                    # This ensures the ORM object reflects the actual database state before we increment
+                                    setattr(summary, f"{provider_name}_calls", current_calls_before)
+                                    if provider_enum in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL]:
+                                        setattr(summary, f"{provider_name}_tokens", current_tokens_before)
+                                    logger.debug(f"[llm_text_gen] Synchronized summary object with raw SQL values (fallback): calls={current_calls_before}, tokens={current_tokens_before}")
                                 
-                                # Get "before" state for unified log
-                                provider_name = provider_enum.value
-                                current_calls_before = getattr(summary, f"{provider_name}_calls", 0) or 0
+                                # Get "before" state for unified log (from raw SQL query)
+                                logger.debug(f"[llm_text_gen] Current {provider_name}_calls from DB (fallback, raw SQL): {current_calls_before}")
                                 
                                 # Update provider-specific counters (sync operation)
                                 new_calls = current_calls_before + 1
                                 setattr(summary, f"{provider_name}_calls", new_calls)
                                 
-                                # Update token usage for LLM providers
+                                # Update token usage for LLM providers with safety check
+                                # Use current_tokens_before from raw SQL query (most reliable)
                                 if provider_enum in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL]:
-                                    current_tokens_before = getattr(summary, f"{provider_name}_tokens", 0) or 0
-                                    new_tokens = current_tokens_before + tokens_total
+                                    logger.debug(f"[llm_text_gen] Current {provider_name}_tokens from DB (fallback, raw SQL): {current_tokens_before}")
+                                    
+                                    # SAFETY CHECK: Prevent exceeding token limit even if actual usage exceeds estimate
+                                    # This prevents abuse where actual response tokens exceed pre-flight validation estimate
+                                    projected_new_tokens = current_tokens_before + tokens_total
+                                    
+                                    # If limit is set (> 0) and would be exceeded, cap at limit
+                                    if token_limit > 0 and projected_new_tokens > token_limit:
+                                        logger.warning(
+                                            f"[llm_text_gen] ⚠️ ACTUAL token usage ({tokens_total}) exceeded estimate in fallback provider. "
+                                            f"Would exceed limit: {projected_new_tokens} > {token_limit}. "
+                                            f"Capping tracked tokens at limit to prevent abuse."
+                                        )
+                                        # Cap at limit to prevent abuse
+                                        new_tokens = token_limit
+                                        # Adjust tokens_total for accurate total tracking
+                                        tokens_total = token_limit - current_tokens_before
+                                        if tokens_total < 0:
+                                            tokens_total = 0
+                                    else:
+                                        new_tokens = projected_new_tokens
+                                    
                                     setattr(summary, f"{provider_name}_tokens", new_tokens)
                                 else:
                                     current_tokens_before = 0
                                     new_tokens = 0
                                 
-                                # Update totals
+                                # Update totals (using potentially capped tokens_total from safety check)
                                 summary.total_calls = (summary.total_calls or 0) + 1
                                 summary.total_tokens = (summary.total_tokens or 0) + tokens_total
                                 
-                                # Get plan details for unified log
-                                limits = pricing.get_user_limits(user_id)
+                                # Get plan details for unified log (limits already retrieved above)
                                 plan_name = limits.get('plan_name', 'unknown') if limits else 'unknown'
                                 tier = limits.get('tier', 'unknown') if limits else 'unknown'
                                 call_limit = limits['limits'].get(f"{provider_name}_calls", 0) if limits else 0
-                                token_limit = limits['limits'].get(f"{provider_name}_tokens", 0) if limits else 0
                                 
                                 # Get image stats for unified log
                                 current_images_before = getattr(summary, "stability_calls", 0) or 0
                                 image_limit = limits['limits'].get("stability_calls", 0) if limits else 0
                                 
-                                db_track.commit()
-                                logger.info(f"[llm_text_gen] ✅ Successfully tracked fallback usage: user {user_id} -> provider {provider_name} -> {new_calls} calls, {new_tokens} tokens")
+                                # CRITICAL: Flush before commit to ensure changes are immediately visible to other sessions
+                                db_track.flush()  # Flush to ensure changes are in DB (not just in transaction)
+                                db_track.commit()  # Commit transaction to make changes visible to other sessions
+                                logger.info(f"[llm_text_gen] ✅ Successfully tracked fallback usage: user {user_id} -> provider {provider_name} -> {new_calls} calls, {new_tokens} tokens (committed)")
                                 
                                 # UNIFIED SUBSCRIPTION LOG for fallback
                                 # Use actual_provider_name (e.g., "huggingface") instead of enum value (e.g., "mistral")

@@ -13,8 +13,23 @@ from models.blog_models import BlogOutlineSection
 class OutlineOptimizer:
     """Optimizes outlines for better flow, SEO, and engagement."""
     
-    async def optimize(self, outline: List[BlogOutlineSection], focus: str = "general optimization") -> List[BlogOutlineSection]:
-        """Optimize entire outline for better flow, SEO, and engagement."""
+    async def optimize(self, outline: List[BlogOutlineSection], focus: str, user_id: str) -> List[BlogOutlineSection]:
+        """Optimize entire outline for better flow, SEO, and engagement.
+        
+        Args:
+            outline: List of outline sections to optimize
+            focus: Optimization focus (e.g., "general optimization")
+            user_id: User ID (required for subscription checks and usage tracking)
+            
+        Returns:
+            List of optimized outline sections
+            
+        Raises:
+            ValueError: If user_id is not provided
+        """
+        if not user_id:
+            raise ValueError("user_id is required for outline optimization (subscription checks and usage tracking)")
+        
         outline_text = "\n".join([f"{i+1}. {s.heading}" for i, s in enumerate(outline)])
         
         optimization_prompt = f"""Optimize this blog outline for better flow, engagement, and SEO:
@@ -67,7 +82,8 @@ Return JSON format:
             optimized_data = llm_text_gen(
                 prompt=optimization_prompt,
                 json_struct=optimization_schema,
-                system_prompt=None
+                system_prompt=None,
+                user_id=user_id
             )
             
             # Handle the new schema format with "outline" wrapper

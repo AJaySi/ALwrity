@@ -27,7 +27,7 @@ import {
   Avatar,
   CircularProgress
 } from '@mui/material';
-import { apiClient } from '../../api/client';
+import { apiClient, triggerSubscriptionError } from '../../api/client';
 import { 
   CheckCircle, 
   Cancel, 
@@ -308,7 +308,28 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
         onAnalysisComplete(convertedResult);
       }
 
-    } catch (err) {
+    } catch (err: any) {
+      console.error('SEO analysis failed:', err);
+      
+      // Check if this is a subscription error (429/402) and trigger global subscription modal
+      const status = err?.response?.status;
+      if (status === 429 || status === 402) {
+        console.log('SEOAnalysisModal: Detected subscription error, triggering global handler', {
+          status,
+          data: err?.response?.data
+        });
+        const handled = triggerSubscriptionError(err);
+        if (handled) {
+          console.log('SEOAnalysisModal: Global subscription error handler triggered successfully');
+          // Don't set local error - let the global modal handle it
+          setIsAnalyzing(false);
+          return;
+        } else {
+          console.warn('SEOAnalysisModal: Global subscription error handler did not handle the error');
+        }
+      }
+      
+      // For non-subscription errors, show local error message
       setError(err instanceof Error ? err.message : 'Analysis failed');
       setIsAnalyzing(false);
     }

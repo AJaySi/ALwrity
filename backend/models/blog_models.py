@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from enum import Enum
 
 
 class PersonaInfo(BaseModel):
@@ -50,6 +51,51 @@ class GroundingMetadata(BaseModel):
     web_search_queries: List[str] = []
 
 
+class ResearchMode(str, Enum):
+    """Research modes for different depth levels."""
+    BASIC = "basic"
+    COMPREHENSIVE = "comprehensive"
+    TARGETED = "targeted"
+
+
+class SourceType(str, Enum):
+    """Types of sources to include in research."""
+    WEB = "web"
+    ACADEMIC = "academic"
+    NEWS = "news"
+    INDUSTRY = "industry"
+    EXPERT = "expert"
+
+
+class DateRange(str, Enum):
+    """Date range filters for research."""
+    LAST_WEEK = "last_week"
+    LAST_MONTH = "last_month"
+    LAST_3_MONTHS = "last_3_months"
+    LAST_6_MONTHS = "last_6_months"
+    LAST_YEAR = "last_year"
+    ALL_TIME = "all_time"
+
+
+class ResearchProvider(str, Enum):
+    """Research provider options."""
+    GOOGLE = "google"  # Gemini native grounding
+    EXA = "exa"        # Exa neural search
+
+
+class ResearchConfig(BaseModel):
+    """Configuration for research execution."""
+    mode: ResearchMode = ResearchMode.BASIC
+    provider: ResearchProvider = ResearchProvider.GOOGLE
+    date_range: Optional[DateRange] = None
+    source_types: List[SourceType] = []
+    max_sources: int = 10
+    include_statistics: bool = True
+    include_expert_quotes: bool = True
+    include_competitors: bool = True
+    include_trends: bool = True
+
+
 class BlogResearchRequest(BaseModel):
     keywords: List[str]
     topic: Optional[str] = None
@@ -58,6 +104,8 @@ class BlogResearchRequest(BaseModel):
     tone: Optional[str] = None
     word_count_target: Optional[int] = 1500
     persona: Optional[PersonaInfo] = None
+    research_mode: Optional[ResearchMode] = ResearchMode.BASIC
+    config: Optional[ResearchConfig] = None
 
 
 class BlogResearchResponse(BaseModel):

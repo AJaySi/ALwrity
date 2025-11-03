@@ -5,7 +5,7 @@ Provides API endpoint for analyzing blog content SEO with parallel processing
 and CopilotKit integration for real-time progress updates.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 from loguru import logger
@@ -13,6 +13,7 @@ from datetime import datetime
 
 from services.blog_writer.seo.blog_content_seo_analyzer import BlogContentSEOAnalyzer
 from services.blog_writer.core.blog_writer_service import BlogWriterService
+from middleware.auth_middleware import get_current_user
 
 
 router = APIRouter(prefix="/api/blog-writer/seo", tags=["Blog SEO Analysis"])
@@ -56,7 +57,10 @@ blog_writer_service = BlogWriterService()
 
 
 @router.post("/analyze", response_model=SEOAnalysisResponse)
-async def analyze_blog_seo(request: SEOAnalysisRequest):
+async def analyze_blog_seo(
+    request: SEOAnalysisRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Analyze blog content for SEO optimization
     
@@ -69,12 +73,21 @@ async def analyze_blog_seo(request: SEOAnalysisRequest):
     
     Args:
         request: SEOAnalysisRequest containing blog content and research data
+        current_user: Authenticated user from middleware
         
     Returns:
         SEOAnalysisResponse with comprehensive analysis results
     """
     try:
         logger.info(f"Starting SEO analysis for blog content")
+        
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
         
         # Validate request
         if not request.blog_content or not request.blog_content.strip():
@@ -91,7 +104,8 @@ async def analyze_blog_seo(request: SEOAnalysisRequest):
         analysis_results = await seo_analyzer.analyze_blog_content(
             blog_content=request.blog_content,
             research_data=request.research_data,
-            blog_title=request.blog_title
+            blog_title=request.blog_title,
+            user_id=user_id
         )
         
         # Check for errors
@@ -131,7 +145,10 @@ async def analyze_blog_seo(request: SEOAnalysisRequest):
 
 
 @router.post("/analyze-with-progress")
-async def analyze_blog_seo_with_progress(request: SEOAnalysisRequest):
+async def analyze_blog_seo_with_progress(
+    request: SEOAnalysisRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Analyze blog content for SEO with real-time progress updates
     
@@ -140,12 +157,21 @@ async def analyze_blog_seo_with_progress(request: SEOAnalysisRequest):
     
     Args:
         request: SEOAnalysisRequest containing blog content and research data
+        current_user: Authenticated user from middleware
         
     Returns:
         Generator yielding progress updates and final results
     """
     try:
         logger.info(f"Starting SEO analysis with progress for blog content")
+        
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
         
         # Validate request
         if not request.blog_content or not request.blog_content.strip():
@@ -209,7 +235,9 @@ async def analyze_blog_seo_with_progress(request: SEOAnalysisRequest):
                 # Perform actual analysis
                 analysis_results = await seo_analyzer.analyze_blog_content(
                     blog_content=request.blog_content,
-                    research_data=request.research_data
+                    research_data=request.research_data,
+                    blog_title=request.blog_title,
+                    user_id=user_id
                 )
                 
                 # Final result

@@ -105,19 +105,27 @@ export const Publisher: React.FC<PublisherProps> = ({
 
     try {
       // Publish using same endpoint as WixTestPage
-      // Note: Wix requires category/tag IDs (UUIDs), not names
-      // For now, skip categories/tags until we implement ID lookup/creation
+      // Backend will lookup/create category and tag IDs from names if needed
       const response = await apiClient.post('/api/wix/test/publish/real', {
         title: title,
         content: md, // Use markdown, backend converts it
         cover_image_url: coverImageUrl,
-        // TODO: Lookup/create category IDs from metadata?.blog_categories
-        // TODO: Lookup/create tag IDs from metadata?.blog_tags
-        category_ids: undefined,
-        tag_ids: undefined,
+        // Pass category/tag names - backend will lookup existing or create new ones
+        category_names: metadata?.blog_categories || [],
+        tag_names: metadata?.blog_tags || [],
         publish: true,
         access_token: accessToken,
-        member_id: undefined // Let backend derive from token
+        member_id: undefined, // Let backend derive from token
+        seo_metadata: metadata ? {
+          seo_title: metadata.seo_title,
+          meta_description: metadata.meta_description,
+          focus_keyword: metadata.focus_keyword,
+          blog_tags: metadata.blog_tags || [], // Used for SEO keywords
+          social_hashtags: metadata.social_hashtags || [],
+          open_graph: metadata.open_graph || {},
+          twitter_card: metadata.twitter_card || {},
+          canonical_url: metadata.canonical_url
+        } : undefined
       });
 
       if (response.data.success) {

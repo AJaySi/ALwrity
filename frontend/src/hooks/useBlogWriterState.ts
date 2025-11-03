@@ -116,10 +116,10 @@ export const useBlogWriterState = () => {
         }
       }
       
-      // Save to localStorage for persistence
+      // Save to localStorage for persistence (using shared cache utility)
       try {
-        localStorage.setItem('blog_outline', JSON.stringify(result.outline));
-        localStorage.setItem('blog_title_options', JSON.stringify(result.title_options || []));
+        const { blogWriterCache } = require('../services/blogWriterCache');
+        blogWriterCache.cacheOutline(result.outline, result.title_options);
         localStorage.setItem('blog_selected_title', result.title_options?.[0] || '');
         console.log('Saved outline data to localStorage');
       } catch (error) {

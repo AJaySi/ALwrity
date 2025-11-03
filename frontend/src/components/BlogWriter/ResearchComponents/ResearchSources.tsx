@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { BlogResearchResponse } from '../../../services/blogWriterApi';
 
 interface ResearchSourcesProps {
@@ -187,24 +187,6 @@ const KeywordChipGroup: React.FC<KeywordChipGroupProps> = ({
 };
 
 export const ResearchSources: React.FC<ResearchSourcesProps> = ({ research }) => {
-  const [showWebSearchHelp, setShowWebSearchHelp] = useState(false);
-
-  // Fix search widget overflow after render
-  useEffect(() => {
-    if (research.search_widget) {
-      const searchWidget = document.querySelector('[data-search-widget]');
-      if (searchWidget) {
-        const allElements = searchWidget.querySelectorAll('*');
-        allElements.forEach((el: any) => {
-          el.style.maxWidth = '100%';
-          el.style.overflow = 'hidden';
-          el.style.wordWrap = 'break-word';
-          el.style.whiteSpace = 'normal';
-          el.style.boxSizing = 'border-box';
-        });
-      }
-    }
-  }, [research.search_widget]);
 
   const renderCredibilityScore = (score: number | undefined) => {
     const safeScore = score ?? 0.8; // Default to 0.8 if undefined
@@ -454,135 +436,17 @@ export const ResearchSources: React.FC<ResearchSourcesProps> = ({ research }) =>
         </div>
       )}
         
-        {/* Interactive Web Search - Moved from Header */}
+        {/* Google Search Suggestions - Per Google Display Requirements */}
         {research.search_widget && (
-          <div style={{ marginBottom: '20px', width: '100%', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', position: 'relative' }}>
-              <h4 style={{ margin: 0, color: '#555', fontSize: '16px' }}>
-                🔍 Explore More Research Topics
-              </h4>
-              {/* Help Icon for Web Search */}
-              <span 
-                onClick={() => setShowWebSearchHelp(!showWebSearchHelp)}
-                style={{
-                  fontSize: '14px',
-                  color: '#9ca3af',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  borderRadius: '50%',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minWidth: '24px',
-                  minHeight: '24px'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#6b7280';
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = '#9ca3af';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                ❓
-              </span>
-              
-              {/* Help Tooltip for Web Search */}
-              {showWebSearchHelp && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: '0',
-                  marginTop: '8px',
-                  backgroundColor: '#1f2937',
-                  color: '#f9fafb',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  lineHeight: '1.5',
-                  maxWidth: '300px',
-                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                  zIndex: 1000,
-                  border: '1px solid #374151'
-                }}>
-                  <div style={{ fontWeight: '600', marginBottom: '4px', color: '#f3f4f6' }}>
-                    Research Enhancement
-                  </div>
-                  <div style={{ color: '#d1d5db' }}>
-                    Click on any search suggestion below to explore additional research topics and gather more insights for your blog. These searches will open in a new tab to help you discover trending topics, expert opinions, and current statistics.
-                  </div>
-                  {/* Tooltip arrow */}
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: '20px',
-                    width: 0,
-                    height: 0,
-                    borderLeft: '6px solid transparent',
-                    borderRight: '6px solid transparent',
-                    borderBottom: '6px solid #1f2937'
-                  }} />
-                </div>
-              )}
-            </div>
-            <div style={{
-              border: '1px solid #e0e0e0',
-              borderRadius: '8px',
-              padding: '16px',
-              backgroundColor: '#fafafa',
-              maxHeight: '400px',
-              overflow: 'auto',
-              width: '100%',
-              maxWidth: '100%',
-              boxSizing: 'border-box',
-              overflowX: 'hidden',
-              position: 'relative'
-            }}
-            onClick={(e) => {
-              // Make all links open in new tabs
-              const target = e.target as HTMLElement;
-              if (target.tagName === 'A' || target.closest('a')) {
-                const link = target.tagName === 'A' ? target as HTMLAnchorElement : target.closest('a') as HTMLAnchorElement;
-                if (link && link.href) {
-                  link.target = '_blank';
-                  link.rel = 'noopener noreferrer';
-                }
-              }
-            }}>
-              <div 
-                data-search-widget
-                dangerouslySetInnerHTML={{ __html: research.search_widget }}
-                style={{ 
-                  fontSize: '14px',
-                  width: '100%',
-                  maxWidth: '100%',
-                  overflow: 'hidden',
-                  overflowX: 'hidden',
-                  wordWrap: 'break-word',
-                  overflowWrap: 'break-word',
-                  whiteSpace: 'normal',
-                  display: 'block',
-                  position: 'relative'
-                }}
-              />
-              
-              {/* Custom CSS to make Google icon larger */}
-              <style>
-                {`
-                  [data-search-widget] svg {
-                    width: 24px !important;
-                    height: 24px !important;
-                  }
-                  [data-search-widget] .logo-light,
-                  [data-search-widget] .logo-dark {
-                    width: 24px !important;
-                    height: 24px !important;
-                  }
-                `}
-              </style>
-            </div>
+          <div style={{ 
+            marginBottom: '24px', 
+            width: '100%',
+            position: 'relative'
+          }}>
+            {/* Google Search Widget - Display exactly as provided without modifications */}
+            <div 
+              dangerouslySetInnerHTML={{ __html: research.search_widget }}
+            />
           </div>
         )}
         

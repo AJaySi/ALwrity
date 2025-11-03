@@ -36,7 +36,7 @@ import {
   Tag as TagIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { apiClient } from '../../api/client';
+import { apiClient, triggerSubscriptionError } from '../../api/client';
 
 // Import metadata display components
 import { CoreMetadataTab } from './SEO/MetadataDisplay/CoreMetadataTab';
@@ -219,8 +219,28 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
       setEditableMetadata(result);
       console.log('📊 Metadata result set:', result);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ SEO metadata generation failed:', err);
+      
+      // Check if this is a subscription error (429/402) and trigger global subscription modal
+      const status = err?.response?.status;
+      if (status === 429 || status === 402) {
+        console.log('SEOMetadataModal: Detected subscription error, triggering global handler', {
+          status,
+          data: err?.response?.data
+        });
+        const handled = triggerSubscriptionError(err);
+        if (handled) {
+          console.log('SEOMetadataModal: Global subscription error handler triggered successfully');
+          // Don't set local error - let the global modal handle it
+          setIsGenerating(false);
+          return;
+        } else {
+          console.warn('SEOMetadataModal: Global subscription error handler did not handle the error');
+        }
+      }
+      
+      // For non-subscription errors, show local error message
       setError(err instanceof Error ? err.message : 'Failed to generate SEO metadata');
     } finally {
       setIsGenerating(false);

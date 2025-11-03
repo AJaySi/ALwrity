@@ -20,6 +20,40 @@ class WixBlogService:
         return h
 
     def create_draft_post(self, access_token: str, payload: Dict[str, Any], extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        # Log the exact payload being sent for debugging
+        import json
+        logger.warning(f"📤 Sending to Wix Blog API:")
+        logger.warning(f"  Endpoint: {self.base_url}/blog/v3/draft-posts")
+        logger.warning(f"  Payload top-level keys: {list(payload.keys())}")
+        if 'draftPost' in payload:
+            dp = payload['draftPost']
+            logger.warning(f"  draftPost keys: {list(dp.keys())}")
+            if 'richContent' in dp:
+                rc = dp['richContent']
+                logger.warning(f"  richContent keys: {list(rc.keys()) if isinstance(rc, dict) else 'N/A'}")
+                if isinstance(rc, dict) and 'nodes' in rc:
+                    nodes = rc['nodes']
+                    logger.warning(f"  richContent.nodes count: {len(nodes) if isinstance(nodes, list) else 'N/A'}")
+                    # Inspect first LIST_ITEM node if any
+                    for i, node in enumerate(nodes[:10]):
+                        if isinstance(node, dict) and node.get('type') == 'LIST_ITEM':
+                            logger.warning(f"  Found LIST_ITEM at index {i}:")
+                            logger.warning(f"    Keys: {list(node.keys())}")
+                            logger.warning(f"    Has listItemData: {'listItemData' in node}")
+                            if 'listItemData' in node:
+                                logger.warning(f"    listItemData type: {type(node['listItemData'])}, value: {node['listItemData']}")
+                            if 'nodes' in node:
+                                nested = node['nodes']
+                                logger.warning(f"    Nested nodes count: {len(nested) if isinstance(nested, list) else 'N/A'}")
+                                for j, n_node in enumerate(nested[:3]):
+                                    if isinstance(n_node, dict):
+                                        logger.warning(f"      Nested node {j}: type={n_node.get('type')}, keys={list(n_node.keys())}")
+                                        if n_node.get('type') == 'PARAGRAPH' and 'paragraphData' in n_node:
+                                            logger.warning(f"        paragraphData type: {type(n_node['paragraphData'])}, value: {n_node['paragraphData']}")
+                            break  # Only inspect first LIST_ITEM
+        
+        logger.warning(f"  Full Payload JSON (first 8000 chars):\n{json.dumps(payload, indent=2, ensure_ascii=False)[:8000]}...")
+        
         response = requests.post(f"{self.base_url}/blog/v3/draft-posts", headers=self.headers(access_token, extra_headers), json=payload)
         response.raise_for_status()
         return response.json()

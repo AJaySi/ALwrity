@@ -363,6 +363,21 @@ export const OutlineFeedbackForm: React.FC<OutlineFeedbackFormProps> = ({
         );
         
         if (target && target <= 1000) {
+          // Check cache first (shared utility)
+          const { blogWriterCache } = await import('../../services/blogWriterCache');
+          const outlineIds = outline.map(s => String(s.id));
+          const cachedContent = blogWriterCache.getCachedContent(outlineIds);
+          
+          if (cachedContent) {
+            console.log('[OutlineFeedbackForm] Using cached content', { sections: Object.keys(cachedContent).length });
+            // Content is already cached, skip API call
+            return {
+              success: true,
+              message: 'Content is already available from cache.',
+              cached: true
+            };
+          }
+          
           // Show modal immediately when medium generation is triggered
           onMediumGenerationTriggered?.();
           // Build payload for medium generation
@@ -386,13 +401,61 @@ export const OutlineFeedbackForm: React.FC<OutlineFeedbackFormProps> = ({
           // Notify parent to start polling for the medium generation task
           onMediumGenerationStarted?.(task_id);
 
-          // Return message so the copilot shows feedback; UI will display modal via BlogWriter
-          return {
-            success: true,
-            message: `✅ Outline confirmed. Medium generation started (Task: ${task_id}). You can monitor progress in the modal.`,
-            task_id,
-            action_taken: 'outline_confirmed_medium_generation_started'
-          };
+          // Poll once immediately to check for immediate failures (e.g., subscription errors)
+          try {
+            const initialStatus = await mediumBlogApi.pollMediumGeneration(task_id);
+            
+            // Check if task already failed with subscription error
+            if (initialStatus.status === 'failed' && (initialStatus.error_status === 429 || initialStatus.error_status === 402)) {
+              const errorData = initialStatus.error_data || {};
+              const errorMessage = errorData.message || errorData.error || initialStatus.error || 'Subscription limit exceeded';
+              
+              // Return error to CopilotKit so it shows in chat
+              return {
+                success: false,
+                message: `❌ Medium generation failed: ${errorMessage}`,
+                error: errorMessage,
+                error_type: 'subscription_limit',
+                provider: errorData.provider || 'unknown',
+                suggestion: 'Please renew your subscription to continue generating content.',
+                action_taken: 'outline_confirmed_medium_generation_failed'
+              };
+            }
+            
+            // Task started successfully, continue polling in background
+            return {
+              success: true,
+              message: `✅ Outline confirmed. Medium generation started (Task: ${task_id}). You can monitor progress in the modal.`,
+              task_id,
+              action_taken: 'outline_confirmed_medium_generation_started'
+            };
+          } catch (pollError: any) {
+            // Check if polling error is a subscription error (HTTP 429/402)
+            if (pollError?.response?.status === 429 || pollError?.response?.status === 402) {
+              const errorData = pollError.response?.data || {};
+              const errorMessage = errorData.message || errorData.error || 'Subscription limit exceeded';
+              
+              return {
+                success: false,
+                message: `❌ Medium generation failed: ${errorMessage}`,
+                error: errorMessage,
+                error_type: 'subscription_limit',
+                provider: errorData.provider || 'unknown',
+                suggestion: 'Please renew your subscription to continue generating content.',
+                action_taken: 'outline_confirmed_medium_generation_failed'
+              };
+            }
+            
+            // Other polling errors - still return success since task was started
+            // The polling will handle the error in the background
+            console.warn('Initial poll check failed, but task was started:', pollError);
+            return {
+              success: true,
+              message: `✅ Outline confirmed. Medium generation started (Task: ${task_id}). You can monitor progress in the modal.`,
+              task_id,
+              action_taken: 'outline_confirmed_medium_generation_started'
+            };
+          }
         }
 
         return {

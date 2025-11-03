@@ -535,15 +535,33 @@ async def test_publish_real(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not member_id:
             raise HTTPException(status_code=400, detail="Unable to resolve member_id from token")
 
+        # Extract SEO metadata if provided
+        seo_metadata = payload.get("seo_metadata")
+        
+        # Extract category/tag IDs or names
+        # Can be either:
+        # - IDs: List of UUID strings
+        # - Names: List of name strings (will be looked up/created)
+        category_ids = payload.get("category_ids") or payload.get("category_names")
+        tag_ids = payload.get("tag_ids") or payload.get("tag_names")
+        
+        # If SEO metadata has categories/tags but they weren't explicitly provided, use them
+        if seo_metadata:
+            if not category_ids and seo_metadata.get("blog_categories"):
+                category_ids = seo_metadata.get("blog_categories")
+            if not tag_ids and seo_metadata.get("blog_tags"):
+                tag_ids = seo_metadata.get("blog_tags")
+        
         result = wix_service.create_blog_post(
             access_token=access_token,
             title=payload.get("title") or "Untitled",
             content=payload.get("content") or "",
             cover_image_url=payload.get("cover_image_url"),
-            category_ids=payload.get("category_ids") or None,
-            tag_ids=payload.get("tag_ids") or None,
+            category_ids=category_ids,
+            tag_ids=tag_ids,
             publish=bool(payload.get("publish", True)),
             member_id=member_id,
+            seo_metadata=seo_metadata,
         )
 
         return {

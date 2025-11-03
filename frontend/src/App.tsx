@@ -17,13 +17,16 @@ import WixCallbackPage from './components/WixCallbackPage/WixCallbackPage';
 import WordPressCallbackPage from './components/WordPressCallbackPage/WordPressCallbackPage';
 import BingCallbackPage from './components/BingCallbackPage/BingCallbackPage';
 import BingAnalyticsStorage from './components/BingAnalyticsStorage/BingAnalyticsStorage';
+import ResearchTest from './pages/ResearchTest';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
 import Landing from './components/Landing/Landing';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import ErrorBoundaryTest from './components/shared/ErrorBoundaryTest';
+import CopilotKitDegradedBanner from './components/shared/CopilotKitDegradedBanner';
 import { OnboardingProvider } from './contexts/OnboardingContext';
 import { SubscriptionProvider, useSubscription } from './contexts/SubscriptionContext';
+import { CopilotKitHealthProvider } from './contexts/CopilotKitHealthContext';
 
 import { setAuthTokenGetter } from './api/client';
 import { useOnboarding } from './contexts/OnboardingContext';
@@ -397,6 +400,7 @@ const App: React.FC = () => {
                 <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                 <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/research-test" element={<ResearchTest />} />
                 <Route path="/wix-test" element={<WixTestPage />} />
                 <Route path="/wix-test-direct" element={<WixTestPage />} />
                 <Route path="/wix/callback" element={<WixCallbackPage />} />
@@ -411,14 +415,57 @@ const App: React.FC = () => {
 
     // Only wrap with CopilotKit if we have a valid key
     if (copilotApiKey && copilotApiKey.trim()) {
+      // Enhanced error handler that updates health context
+      const handleCopilotKitError = (e: any) => {
+        console.error("CopilotKit Error:", e);
+        
+        // Try to get health context if available
+        // We'll use a custom event to notify health context since we can't access it directly here
+        const errorMessage = e?.error?.message || e?.message || 'CopilotKit error occurred';
+        const errorType = errorMessage.toLowerCase();
+        
+        // Differentiate between fatal and transient errors
+        const isFatalError = 
+          errorType.includes('cors') ||
+          errorType.includes('ssl') ||
+          errorType.includes('certificate') ||
+          errorType.includes('403') ||
+          errorType.includes('forbidden') ||
+          errorType.includes('ERR_CERT_COMMON_NAME_INVALID');
+        
+        // Dispatch event for health context to listen to
+        window.dispatchEvent(new CustomEvent('copilotkit-error', {
+          detail: {
+            error: e,
+            errorMessage,
+            isFatal: isFatalError,
+          }
+        }));
+      };
+
       return (
-        <CopilotKit 
-          publicApiKey={copilotApiKey}
-          showDevConsole={false}
-          onError={(e) => console.error("CopilotKit Error:", e)}
+        <ErrorBoundary 
+          context="CopilotKit" 
+          showDetails={process.env.NODE_ENV === 'development'}
+          fallback={
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6" color="warning" gutterBottom>
+                Chat Unavailable
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                CopilotKit encountered an error. The app continues to work with manual controls.
+              </Typography>
+            </Box>
+          }
         >
-          {appContent}
-        </CopilotKit>
+          <CopilotKit 
+            publicApiKey={copilotApiKey}
+            showDevConsole={false}
+            onError={handleCopilotKitError}
+          >
+            {appContent}
+          </CopilotKit>
+        </ErrorBoundary>
       );
     }
 
@@ -426,6 +473,9 @@ const App: React.FC = () => {
     return appContent;
   };
 
+  // Determine initial health status based on whether CopilotKit key is available
+  const hasCopilotKitKey = copilotApiKey && copilotApiKey.trim();
+  
   return (
     <ErrorBoundary 
       context="Application Root"
@@ -439,7 +489,10 @@ const App: React.FC = () => {
       <ClerkProvider publishableKey={clerkPublishableKey}>
         <SubscriptionProvider>
           <OnboardingProvider>
-            {renderApp()}
+            <CopilotKitHealthProvider initialHealthStatus={!!hasCopilotKitKey}>
+              <CopilotKitDegradedBanner />
+              {renderApp()}
+            </CopilotKitHealthProvider>
           </OnboardingProvider>
         </SubscriptionProvider>
       </ClerkProvider>

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { apiClient, setGlobalSubscriptionErrorHandler } from '../api/client';
 import SubscriptionExpiredModal from '../components/SubscriptionExpiredModal';
+import { saveNavigationState, getCurrentPhaseForTool } from '../utils/navigationState';
 
 export interface SubscriptionLimits {
   gemini_calls: number;
@@ -221,11 +222,29 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   }, []);
 
   const handleRenewSubscription = useCallback(() => {
-    // Save current location so we can return after renewal
+    // Save current location and phase so we can return after renewal
     const currentPath = window.location.pathname;
-    sessionStorage.setItem('subscription_referrer', currentPath);
     
-    console.log('SubscriptionContext: Navigating to pricing page, saved referrer:', currentPath);
+    // Detect tool from path
+    let tool: string | undefined;
+    if (currentPath.includes('/blog-writer') || currentPath.includes('/blogwriter')) {
+      tool = 'blog-writer';
+    }
+    
+    // Get current phase for the tool if applicable
+    let phase: string | null = null;
+    if (tool) {
+      phase = getCurrentPhaseForTool(tool);
+    }
+    
+    // Save navigation state (path, phase, tool)
+    saveNavigationState(currentPath, phase || undefined, tool);
+    
+    console.log('SubscriptionContext: Navigating to pricing page, saved navigation state:', {
+      path: currentPath,
+      phase,
+      tool
+    });
     window.location.href = '/pricing';
   }, []);
 
@@ -258,13 +277,30 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         errorData = errorData[0] || {};
       }
       
-      // Check for usage_info in various possible locations
+      // CRITICAL: FastAPI wraps HTTPException detail in a 'detail' field
+      // If errorData has a 'detail' field, extract it (this is the actual error data)
+      if (errorData.detail && typeof errorData.detail === 'object') {
+        console.log('SubscriptionContext: Found FastAPI detail wrapper, extracting detail field');
+        errorData = errorData.detail;
+      }
+      
+      // Check for usage_info in various possible locations (now that we've unwrapped FastAPI detail)
       const usageInfo = errorData.usage_info || 
                        (errorData.current_calls !== undefined ? errorData : null) ||
+                       (errorData.requested_tokens !== undefined ? errorData : null) ||
+                       (errorData.current_tokens !== undefined ? errorData : null) ||
                        null;
       
-      // Usage limit error: 429 status with usage info OR 429 status without explicit expiration
-      const isUsageLimitError = status === 429 && (usageInfo || errorData.provider || errorData.message);
+      // Usage limit error: 429 status with usage info OR provider OR message indicating token/call limits
+      const hasUsageIndicators = usageInfo || 
+                                 errorData.provider || 
+                                 errorData.message?.includes('limit') ||
+                                 errorData.error?.includes('limit') ||
+                                 errorData.requested_tokens !== undefined ||
+                                 errorData.current_tokens !== undefined ||
+                                 errorData.current_calls !== undefined;
+      
+      const isUsageLimitError = status === 429 && hasUsageIndicators;
       const isSubscriptionExpired = status === 402 || (status === 429 && !isUsageLimitError);
       
       console.log('SubscriptionContext: Error analysis', {
@@ -280,16 +316,30 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       // For usage limit errors (429 with usage_info), always show modal - even for active subscriptions
       // Ignore grace window and cooldown for usage limit errors (user needs to know immediately)
       if (isUsageLimitError) {
+        // Build usage_info from various possible locations
+        const finalUsageInfo = usageInfo || 
+                              (errorData.requested_tokens !== undefined ? {
+                                provider: errorData.provider,
+                                current_tokens: errorData.current_tokens,
+                                requested_tokens: errorData.requested_tokens,
+                                limit: errorData.limit,
+                                type: 'tokens',
+                                ...errorData
+                              } : null) ||
+                              errorData;
+        
         const modalData = {
           provider: errorData.provider || usageInfo?.provider || 'unknown',
-          usage_info: usageInfo || errorData,
+          usage_info: finalUsageInfo || errorData,
           message: errorData.message || errorData.error || 'You have reached your usage limit.'
         };
         
         console.log('SubscriptionContext: Usage limit exceeded, showing modal (ignoring grace window/cooldown)', {
           modalData,
           errorData: Object.keys(errorData),
-          usageInfo: usageInfo ? Object.keys(usageInfo) : null
+          usageInfo: usageInfo ? Object.keys(usageInfo) : null,
+          currentShowModal: showModal,
+          currentModalErrorData: modalErrorData
         });
         
         // Set flag to mark this as a usage limit modal (should never be auto-closed)
@@ -298,7 +348,17 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         setShowModal(true);
         setLastModalShowTime(now);
         
-        console.log('SubscriptionContext: Modal state updated - showModal should be true, isUsageLimitModal = true');
+        console.log('SubscriptionContext: Modal state updated - showModal should be true, isUsageLimitModal = true', {
+          showModal: true,
+          isUsageLimitModal: true,
+          modalErrorData: modalData
+        });
+        
+        // Force a re-render check
+        setTimeout(() => {
+          console.log('SubscriptionContext: State check after timeout - showModal:', showModal, 'modalErrorData:', modalErrorData);
+        }, 100);
+        
         return true;
       }
       

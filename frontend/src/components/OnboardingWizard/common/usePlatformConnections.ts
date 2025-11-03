@@ -53,6 +53,21 @@ export const usePlatformConnections = () => {
 
   const handleWixConnect = async () => {
     try {
+      // Store current page URL BEFORE redirecting (critical for proper redirect back)
+      // This ensures we can redirect back to the correct page (e.g., Blog Writer) after OAuth
+      const currentUrl = window.location.href;
+      try {
+        // Only store if not already set (allows WixConnectModal to override if needed)
+        if (!sessionStorage.getItem('wix_oauth_redirect')) {
+          sessionStorage.setItem('wix_oauth_redirect', currentUrl);
+          console.log('[Wix OAuth] Stored redirect URL:', currentUrl);
+        } else {
+          console.log('[Wix OAuth] Redirect URL already set, keeping existing:', sessionStorage.getItem('wix_oauth_redirect'));
+        }
+      } catch (e) {
+        console.warn('[Wix OAuth] Failed to store redirect URL:', e);
+      }
+
       // Use the working Wix OAuth flow from WixTestPage
       const wixClient = createClient({
         auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' })

@@ -81,6 +81,16 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
     try {
       setIsConnecting(true);
       setError(null);
+      // Store current page URL so we can redirect back after OAuth completes
+      // This MUST be stored before calling handleConnect to ensure it's available after redirect
+      // We ALWAYS override any existing redirect URL since we know the exact page we're on (Blog Writer)
+      const currentUrl = window.location.href;
+      try {
+        sessionStorage.setItem('wix_oauth_redirect', currentUrl);
+        console.log('[WixConnectModal] Stored redirect URL (overriding any existing):', currentUrl);
+      } catch (e) {
+        console.warn('[WixConnectModal] Failed to store redirect URL:', e);
+      }
       await handleConnect('wix');
       // OAuth will redirect, so we don't need to do anything else here
       // The postMessage handler or URL param handler will close the modal

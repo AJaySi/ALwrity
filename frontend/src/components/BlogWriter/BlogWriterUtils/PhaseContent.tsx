@@ -4,6 +4,9 @@ import EnhancedTitleSelector from '../EnhancedTitleSelector';
 import EnhancedOutlineEditor from '../EnhancedOutlineEditor';
 import { BlogEditor } from '../WYSIWYG';
 import OutlineCtaBanner from './OutlineCtaBanner';
+import ManualResearchForm from '../ManualResearchForm';
+import ManualOutlineButton from '../ManualOutlineButton';
+import ManualContentButton from '../ManualContentButton';
 
 interface PhaseContentProps {
   currentPhase: string;
@@ -33,6 +36,10 @@ interface PhaseContentProps {
   onCustomTitle: any;
   sectionImages?: Record<string, string>;
   setSectionImages?: (images: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
+  copilotKitAvailable?: boolean; // Whether CopilotKit is available
+  onResearchComplete?: (research: any) => void; // Callback when research completes (for manual form)
+  onOutlineGenerationStart?: (taskId: string) => void; // Callback when outline generation starts
+  onContentGenerationStart?: (taskId: string) => void; // Callback when content generation starts
 }
 
 export const PhaseContent: React.FC<PhaseContentProps> = ({
@@ -62,7 +69,11 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   onTitleSelect,
   onCustomTitle,
   sectionImages,
-  setSectionImages
+  setSectionImages,
+  copilotKitAvailable = true,
+  onResearchComplete,
+  onOutlineGenerationStart,
+  onContentGenerationStart,
 }) => {
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -72,10 +83,16 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
             {research ? (
               <ResearchResults research={research} />
             ) : (
-              <div style={{ padding: '20px', textAlign: 'center' }}>
-                <h3>Start Your Research</h3>
-                <p>Use the copilot to begin researching your blog topic.</p>
-              </div>
+              <>
+                {copilotKitAvailable ? (
+                  <div style={{ padding: '20px', textAlign: 'center' }}>
+                    <h3>Start Your Research</h3>
+                    <p>Use the copilot to begin researching your blog topic.</p>
+                  </div>
+                ) : (
+                  <ManualResearchForm onResearchComplete={onResearchComplete} />
+                )}
+              </>
             )}
           </>
         )}
@@ -83,7 +100,17 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
         {currentPhase === 'outline' && research && (
           <>
             {outline.length === 0 && (
-              <OutlineCtaBanner onGenerate={() => outlineGenRef.current?.generateNow()} />
+              <>
+                {copilotKitAvailable ? (
+                  <OutlineCtaBanner onGenerate={() => outlineGenRef.current?.generateNow()} />
+                ) : (
+                  <ManualOutlineButton
+                    outlineGenRef={outlineGenRef}
+                    hasResearch={!!research}
+                    onGenerationStart={onOutlineGenerationStart}
+                  />
+                )}
+              </>
             )}
             {outline.length > 0 ? (
               <>
@@ -108,6 +135,12 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                   setSectionImages={setSectionImages}
                 />
               </>
+            ) : !copilotKitAvailable ? (
+              <ManualOutlineButton
+                outlineGenRef={outlineGenRef}
+                hasResearch={!!research}
+                onGenerationStart={onOutlineGenerationStart}
+              />
             ) : (
               <div style={{ padding: '20px', textAlign: 'center' }}>
                 <h3>Create Your Outline</h3>
@@ -135,10 +168,22 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                 sectionImages={sectionImages}
               />
             ) : (
-              <div style={{ padding: '20px', textAlign: 'center' }}>
-                <h3>Confirm Your Outline</h3>
-                <p>Review and confirm your outline before generating content.</p>
-              </div>
+              <>
+                {copilotKitAvailable ? (
+                  <div style={{ padding: '20px', textAlign: 'center' }}>
+                    <h3>Confirm Your Outline</h3>
+                    <p>Review and confirm your outline before generating content.</p>
+                  </div>
+                ) : (
+                  <ManualContentButton
+                    outline={outline}
+                    research={research}
+                    blogTitle={selectedTitle || undefined}
+                    sections={sections}
+                    onGenerationStart={onContentGenerationStart}
+                  />
+                )}
+              </>
             )}
           </>
         )}

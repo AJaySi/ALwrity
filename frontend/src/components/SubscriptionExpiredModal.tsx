@@ -41,12 +41,20 @@ const SubscriptionExpiredModal: React.FC<SubscriptionExpiredModalProps> = ({
 }) => {
   // Debug logging to verify modal state
   React.useEffect(() => {
+    console.log('SubscriptionExpiredModal: State update', {
+      open,
+      errorData,
+      hasUsageInfo: !!errorData?.usage_info,
+      errorDataKeys: errorData ? Object.keys(errorData) : null
+    });
     if (open) {
-      console.log('SubscriptionExpiredModal: Modal opened', {
+      console.log('SubscriptionExpiredModal: Modal should be visible now', {
         open,
         errorData,
         hasUsageInfo: !!errorData?.usage_info
       });
+    } else {
+      console.log('SubscriptionExpiredModal: Modal is closed');
     }
   }, [open, errorData]);
   

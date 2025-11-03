@@ -42,10 +42,20 @@ class OutlineGenerator:
         self.response_processor = ResponseProcessor()
         self.parallel_processor = ParallelProcessor(self.source_mapper, self.grounding_engine)
     
-    async def generate(self, request: BlogOutlineRequest) -> BlogOutlineResponse:
+    async def generate(self, request: BlogOutlineRequest, user_id: str) -> BlogOutlineResponse:
         """
-        Generate AI-powered outline using research results
+        Generate AI-powered outline using research results.
+        
+        Args:
+            request: Outline generation request with research data
+            user_id: User ID (required for subscription checks and usage tracking)
+            
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if not user_id:
+            raise ValueError("user_id is required for outline generation (subscription checks and usage tracking)")
+        
         # Extract research insights
         research = request.research
         primary_keywords = research.keyword_analysis.get('primary', [])
@@ -68,15 +78,15 @@ class OutlineGenerator:
         # Define schema with proper property ordering (critical for Gemini API)
         outline_schema = self.prompt_builder.get_outline_schema()
         
-        # Generate outline using structured JSON response with retry logic
-        outline_data = await self.response_processor.generate_with_retry(outline_prompt, outline_schema)
+        # Generate outline using structured JSON response with retry logic (user_id required)
+        outline_data = await self.response_processor.generate_with_retry(outline_prompt, outline_schema, user_id)
         
         # Convert to BlogOutlineSection objects
         outline_sections = self.response_processor.convert_to_sections(outline_data, sources)
         
-        # Run parallel processing for speed optimization
+        # Run parallel processing for speed optimization (user_id required)
         mapped_sections, grounding_insights = await self.parallel_processor.run_parallel_processing_async(
-            outline_sections, research
+            outline_sections, research, user_id
         )
         
         # Enhance sections with grounding insights
@@ -85,9 +95,9 @@ class OutlineGenerator:
             mapped_sections, research.grounding_metadata, grounding_insights
         )
         
-        # Optimize outline for better flow, SEO, and engagement
+        # Optimize outline for better flow, SEO, and engagement (user_id required)
         logger.info("Optimizing outline for better flow and engagement...")
-        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization")
+        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization", user_id)
         
         # Rebalance word counts for optimal distribution
         target_words = request.word_count or 1500
@@ -118,10 +128,21 @@ class OutlineGenerator:
             research_coverage=research_coverage
         )
     
-    async def generate_with_progress(self, request: BlogOutlineRequest, task_id: str) -> BlogOutlineResponse:
+    async def generate_with_progress(self, request: BlogOutlineRequest, task_id: str, user_id: str) -> BlogOutlineResponse:
         """
         Outline generation method with progress updates for real-time feedback.
+        
+        Args:
+            request: Outline generation request with research data
+            task_id: Task ID for progress updates
+            user_id: User ID (required for subscription checks and usage tracking)
+            
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if not user_id:
+            raise ValueError("user_id is required for outline generation (subscription checks and usage tracking)")
+        
         from api.blog_writer.task_manager import task_manager
         
         # Extract research insights
@@ -150,17 +171,17 @@ class OutlineGenerator:
         
         await task_manager.update_progress(task_id, "🔄 Making AI request to generate structured outline...")
         
-        # Generate outline using structured JSON response with retry logic
-        outline_data = await self.response_processor.generate_with_retry(outline_prompt, outline_schema, task_id)
+        # Generate outline using structured JSON response with retry logic (user_id required for subscription checks)
+        outline_data = await self.response_processor.generate_with_retry(outline_prompt, outline_schema, user_id, task_id)
         
         await task_manager.update_progress(task_id, "📝 Processing outline structure and validating sections...")
         
         # Convert to BlogOutlineSection objects
         outline_sections = self.response_processor.convert_to_sections(outline_data, sources)
         
-        # Run parallel processing for speed optimization
+        # Run parallel processing for speed optimization (user_id required for subscription checks)
         mapped_sections, grounding_insights = await self.parallel_processor.run_parallel_processing(
-            outline_sections, research, task_id
+            outline_sections, research, user_id, task_id
         )
         
         # Enhance sections with grounding insights (depends on both previous tasks)
@@ -169,9 +190,9 @@ class OutlineGenerator:
             mapped_sections, research.grounding_metadata, grounding_insights
         )
         
-        # Optimize outline for better flow, SEO, and engagement
+        # Optimize outline for better flow, SEO, and engagement (user_id required for subscription checks)
         await task_manager.update_progress(task_id, "🎯 Optimizing outline for better flow and engagement...")
-        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization")
+        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization", user_id)
         
         # Rebalance word counts for optimal distribution
         await task_manager.update_progress(task_id, "⚖️ Rebalancing word count distribution...")

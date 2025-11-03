@@ -185,10 +185,20 @@ async def get_research_status(task_id: str) -> Dict[str, Any]:
 
 # Outline Endpoints
 @router.post("/outline/start")
-async def start_outline_generation(request: BlogOutlineRequest) -> Dict[str, Any]:
+async def start_outline_generation(
+    request: BlogOutlineRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Start an outline generation operation and return a task ID for polling."""
     try:
-        task_id = task_manager.start_outline_task(request)
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get('id'))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in authentication token")
+        
+        task_id = task_manager.start_outline_task(request, user_id)
         return {"task_id": task_id, "status": "started"}
     except Exception as e:
         logger.error(f"Failed to start outline generation: {e}")
@@ -272,12 +282,22 @@ async def generate_section(request: BlogSectionRequest) -> BlogSectionResponse:
 
 
 @router.post("/content/start")
-async def start_content_generation(request: Dict[str, Any]) -> Dict[str, Any]:
+async def start_content_generation(
+    request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Start full content generation and return a task id for polling.
 
     Accepts a payload compatible with MediumBlogGenerateRequest to minimize duplication.
     """
     try:
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get('id'))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in authentication token")
+        
         # Map dict to MediumBlogGenerateRequest for reuse
         from models.blog_models import MediumBlogGenerateRequest, MediumSectionOutline, PersonaInfo
         sections = [MediumSectionOutline(**s) for s in request.get("sections", [])]
@@ -293,7 +313,7 @@ async def start_content_generation(request: Dict[str, Any]) -> Dict[str, Any]:
             globalTargetWords=request.get("globalTargetWords", 1000),
             researchKeywords=request.get("researchKeywords") or request.get("keywords"),
         )
-        task_id = task_manager.start_content_generation_task(req)
+        task_id = task_manager.start_content_generation_task(req, user_id)
         return {"task_id": task_id, "status": "started"}
     except Exception as e:
         logger.error(f"Failed to start content generation: {e}")
@@ -307,6 +327,51 @@ async def content_generation_status(task_id: str) -> Dict[str, Any]:
         status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # If task failed with subscription error, return HTTP error so frontend interceptor can catch it
+        if status.get('status') == 'failed' and status.get('error_status') in [429, 402]:
+            error_data = status.get('error_data', {}) or {}
+            error_status = status.get('error_status', 429)
+            
+            if not isinstance(error_data, dict):
+                logger.warning(f"Content generation task {task_id} error_data not dict: {error_data}")
+                error_data = {'error': str(error_data)}
+            
+            # Determine provider and usage info
+            stored_error_message = status.get('error', error_data.get('error'))
+            provider = error_data.get('provider', 'unknown')
+            usage_info = error_data.get('usage_info')
+            
+            if not usage_info:
+                usage_info = {
+                    'provider': provider,
+                    'message': stored_error_message,
+                    'error_type': error_data.get('error_type', 'unknown')
+                }
+                # Include any known fields from error_data
+                for key in ['current_tokens', 'requested_tokens', 'limit', 'current_calls']:
+                    if key in error_data:
+                        usage_info[key] = error_data[key]
+            
+            # Build error message for detail
+            error_msg = error_data.get('message', stored_error_message or 'Subscription limit exceeded')
+            
+            # Log the subscription error with all context
+            logger.warning(f"Content generation task {task_id} failed with subscription error {error_status}: {error_msg}")
+            logger.warning(f"   Provider: {provider}, Usage Info: {usage_info}")
+            
+            # Use JSONResponse to ensure detail is returned as-is, not wrapped in an array
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=error_status,
+                content={
+                    'error': error_data.get('error', stored_error_message or 'Subscription limit exceeded'),
+                    'message': error_msg,
+                    'provider': provider,
+                    'usage_info': usage_info
+                }
+            )
+        
         return status
     except HTTPException:
         raise
@@ -499,14 +564,24 @@ async def get_outline_cache_entries(limit: int = 20):
 # ---------------------------
 
 @router.post("/generate/medium/start")
-async def start_medium_generation(request: MediumBlogGenerateRequest):
+async def start_medium_generation(
+    request: MediumBlogGenerateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Start medium-length blog generation (≤1000 words) and return a task id."""
     try:
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get('id'))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in authentication token")
+        
         # Simple server-side guard
         if (request.globalTargetWords or 1000) > 1000:
             raise HTTPException(status_code=400, detail="Global target words exceed 1000; use per-section generation")
 
-        task_id = task_manager.start_medium_generation_task(request)
+        task_id = task_manager.start_medium_generation_task(request, user_id)
         return {"task_id": task_id, "status": "started"}
     except HTTPException:
         raise
@@ -522,6 +597,51 @@ async def medium_generation_status(task_id: str):
         status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # If task failed with subscription error, return HTTP error so frontend interceptor can catch it
+        if status.get('status') == 'failed' and status.get('error_status') in [429, 402]:
+            error_data = status.get('error_data', {}) or {}
+            error_status = status.get('error_status', 429)
+            
+            if not isinstance(error_data, dict):
+                logger.warning(f"Medium generation task {task_id} error_data not dict: {error_data}")
+                error_data = {'error': str(error_data)}
+            
+            # Determine provider and usage info
+            stored_error_message = status.get('error', error_data.get('error'))
+            provider = error_data.get('provider', 'unknown')
+            usage_info = error_data.get('usage_info')
+            
+            if not usage_info:
+                usage_info = {
+                    'provider': provider,
+                    'message': stored_error_message,
+                    'error_type': error_data.get('error_type', 'unknown')
+                }
+                # Include any known fields from error_data
+                for key in ['current_tokens', 'requested_tokens', 'limit', 'current_calls']:
+                    if key in error_data:
+                        usage_info[key] = error_data[key]
+            
+            # Build error message for detail
+            error_msg = error_data.get('message', stored_error_message or 'Subscription limit exceeded')
+            
+            # Log the subscription error with all context
+            logger.warning(f"Medium generation task {task_id} failed with subscription error {error_status}: {error_msg}")
+            logger.warning(f"   Provider: {provider}, Usage Info: {usage_info}")
+            
+            # Use JSONResponse to ensure detail is returned as-is, not wrapped in an array
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=error_status,
+                content={
+                    'error': error_data.get('error', stored_error_message or 'Subscription limit exceeded'),
+                    'message': error_msg,
+                    'provider': provider,
+                    'usage_info': usage_info
+                }
+            )
+        
         return status
     except HTTPException:
         raise

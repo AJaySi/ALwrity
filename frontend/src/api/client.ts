@@ -357,13 +357,23 @@ pollingApiClient.interceptors.response.use(
     }
     // Check if it's a subscription-related error and handle it globally
     if (error.response?.status === 429 || error.response?.status === 402) {
-      console.log('Polling API Client: Detected subscription error, triggering global handler');
+      console.log('Polling API Client: Detected subscription error, triggering global handler', {
+        status: error.response?.status,
+        data: error.response?.data,
+        hasHandler: !!globalSubscriptionErrorHandler
+      });
       if (globalSubscriptionErrorHandler) {
         const wasHandled = globalSubscriptionErrorHandler(error);
+        console.log('Polling API Client: Global handler returned', wasHandled);
         if (wasHandled) {
-          console.log('Polling API Client: Subscription error handled by global handler');
-          return Promise.reject(error);
+          console.log('Polling API Client: Subscription error handled by global handler - modal should be showing');
+        } else {
+          console.warn('Polling API Client: Global handler did not handle subscription error');
         }
+        // Always reject so the polling hook can also handle it
+        return Promise.reject(error);
+      } else {
+        console.warn('Polling API Client: No global subscription error handler registered');
       }
     }
 

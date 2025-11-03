@@ -38,6 +38,7 @@ aiohttp>=3.9.0
 # Data processing
 pandas>=2.0.0
 numpy>=1.24.0
+markdown>=3.5.0
 
 # SEO Analysis dependencies
 advertools>=0.14.0

@@ -88,8 +88,12 @@ class TaskManager:
                 response["error"] = task["error"]
                 if "error_status" in task:
                     response["error_status"] = task["error_status"]
+                    logger.info(f"[TaskManager] get_task_status for {task_id}: Including error_status={task['error_status']} in response")
                 if "error_data" in task:
                     response["error_data"] = task["error_data"]
+                    logger.info(f"[TaskManager] get_task_status for {task_id}: Including error_data with keys: {list(task['error_data'].keys()) if isinstance(task['error_data'], dict) else 'not-dict'}")
+                else:
+                    logger.warning(f"[TaskManager] get_task_status for {task_id}: Task failed but no error_data found. Task keys: {list(task.keys())}")
             
             return response
     
@@ -127,29 +131,33 @@ class TaskManager:
             asyncio.create_task(self._run_research_task(task_id, request, user_id))
             return task_id
     
-    def start_outline_task(self, request: BlogOutlineRequest) -> str:
+    def start_outline_task(self, request: BlogOutlineRequest, user_id: str) -> str:
         """Start an outline generation operation and return a task ID."""
         task_id = self.create_task("outline")
         
         # Start the outline generation operation in the background
-        asyncio.create_task(self._run_outline_generation_task(task_id, request))
+        asyncio.create_task(self._run_outline_generation_task(task_id, request, user_id))
         
         return task_id
 
-    def start_medium_generation_task(self, request: MediumBlogGenerateRequest) -> str:
+    def start_medium_generation_task(self, request: MediumBlogGenerateRequest, user_id: str) -> str:
         """Start a medium (≤1000 words) full-blog generation task."""
         task_id = self.create_task("medium_generation")
-        asyncio.create_task(self._run_medium_generation_task(task_id, request))
+        asyncio.create_task(self._run_medium_generation_task(task_id, request, user_id))
         return task_id
 
-    def start_content_generation_task(self, request: MediumBlogGenerateRequest) -> str:
+    def start_content_generation_task(self, request: MediumBlogGenerateRequest, user_id: str) -> str:
         """Start content generation (full blog via sections) with provider parity.
 
         Internally reuses medium generator pipeline for now but tracked under
         distinct task_type 'content_generation' and same polling contract.
+        
+        Args:
+            request: Content generation request
+            user_id: User ID (required for subscription checks and usage tracking)
         """
         task_id = self.create_task("content_generation")
-        asyncio.create_task(self._run_medium_generation_task(task_id, request))
+        asyncio.create_task(self._run_medium_generation_task(task_id, request, user_id))
         return task_id
     
     async def _run_research_task(self, task_id: str, request: BlogResearchRequest, user_id: str):
@@ -205,7 +213,7 @@ class TaskManager:
                     self.task_storage[task_id]["status"] = "failed"
                     self.task_storage[task_id]["error"] = "Research completed with unknown status"
     
-    async def _run_outline_generation_task(self, task_id: str, request: BlogOutlineRequest):
+    async def _run_outline_generation_task(self, task_id: str, request: BlogOutlineRequest, user_id: str):
         """Background task to run outline generation and update status with progress messages."""
         try:
             # Update status to running
@@ -215,21 +223,31 @@ class TaskManager:
             # Send initial progress message
             await self.update_progress(task_id, "🧩 Starting outline generation...")
             
-            # Run the actual outline generation with progress updates
-            result = await self.service.generate_outline_with_progress(request, task_id)
+            # Run the actual outline generation with progress updates (pass user_id for subscription checks)
+            result = await self.service.generate_outline_with_progress(request, task_id, user_id)
             
             # Update status to completed
             await self.update_progress(task_id, f"✅ Outline generated successfully! Created {len(result.outline)} sections with {len(result.title_options)} title options.")
             self.task_storage[task_id]["status"] = "completed"
             self.task_storage[task_id]["result"] = result.dict()
             
+        except HTTPException as http_error:
+            # Handle HTTPException (e.g., 429 subscription limit) - preserve error details for frontend
+            error_detail = http_error.detail
+            error_message = error_detail.get('message', str(error_detail)) if isinstance(error_detail, dict) else str(error_detail)
+            await self.update_progress(task_id, f"❌ {error_message}")
+            self.task_storage[task_id]["status"] = "failed"
+            self.task_storage[task_id]["error"] = error_message
+            # Store HTTP error details for frontend modal
+            self.task_storage[task_id]["error_status"] = http_error.status_code
+            self.task_storage[task_id]["error_data"] = error_detail if isinstance(error_detail, dict) else {"error": str(error_detail)}
         except Exception as e:
             await self.update_progress(task_id, f"❌ Outline generation failed: {str(e)}")
             # Update status to failed
             self.task_storage[task_id]["status"] = "failed"
             self.task_storage[task_id]["error"] = str(e)
 
-    async def _run_medium_generation_task(self, task_id: str, request: MediumBlogGenerateRequest):
+    async def _run_medium_generation_task(self, task_id: str, request: MediumBlogGenerateRequest, user_id: str):
         """Background task to generate a medium blog using a single structured JSON call."""
         try:
             self.task_storage[task_id]["status"] = "running"
@@ -245,6 +263,7 @@ class TaskManager:
             result: MediumBlogGenerateResult = await self.service.generate_medium_blog_with_progress(
                 request,
                 task_id,
+                user_id
             )
 
             if not result or not getattr(result, "sections", None):
@@ -263,10 +282,38 @@ class TaskManager:
             self.task_storage[task_id]["result"] = result.dict()
             await self.update_progress(task_id, f"✅ Generated {len(result.sections)} sections successfully.")
 
-        except Exception as e:
-            await self.update_progress(task_id, f"❌ Medium generation failed: {str(e)}")
+        except HTTPException as http_error:
+            # Handle HTTPException (e.g., 429 subscription limit) - preserve error details for frontend
+            logger.info(f"[TaskManager] Caught HTTPException in medium generation task {task_id}: status={http_error.status_code}, detail={http_error.detail}")
+            error_detail = http_error.detail
+            error_message = error_detail.get('message', str(error_detail)) if isinstance(error_detail, dict) else str(error_detail)
+            await self.update_progress(task_id, f"❌ {error_message}")
             self.task_storage[task_id]["status"] = "failed"
-            self.task_storage[task_id]["error"] = str(e)
+            self.task_storage[task_id]["error"] = error_message
+            # Store HTTP error details for frontend modal
+            self.task_storage[task_id]["error_status"] = http_error.status_code
+            self.task_storage[task_id]["error_data"] = error_detail if isinstance(error_detail, dict) else {"error": str(error_detail)}
+            logger.info(f"[TaskManager] Stored error_status={http_error.status_code} and error_data keys: {list(error_detail.keys()) if isinstance(error_detail, dict) else 'not-dict'}")
+        except Exception as e:
+            # Check if this is an HTTPException that got wrapped (can happen in async tasks)
+            # HTTPException has status_code and detail attributes
+            logger.info(f"[TaskManager] Caught Exception in medium generation task {task_id}: type={type(e).__name__}, has_status_code={hasattr(e, 'status_code')}, has_detail={hasattr(e, 'detail')}")
+            if hasattr(e, 'status_code') and hasattr(e, 'detail'):
+                # This is an HTTPException that was caught as generic Exception
+                logger.info(f"[TaskManager] Detected HTTPException in Exception handler: status={e.status_code}, detail={e.detail}")
+                error_detail = e.detail
+                error_message = error_detail.get('message', str(error_detail)) if isinstance(error_detail, dict) else str(error_detail)
+                await self.update_progress(task_id, f"❌ {error_message}")
+                self.task_storage[task_id]["status"] = "failed"
+                self.task_storage[task_id]["error"] = error_message
+                # Store HTTP error details for frontend modal
+                self.task_storage[task_id]["error_status"] = e.status_code
+                self.task_storage[task_id]["error_data"] = error_detail if isinstance(error_detail, dict) else {"error": str(error_detail)}
+                logger.info(f"[TaskManager] Stored error_status={e.status_code} and error_data keys: {list(error_detail.keys()) if isinstance(error_detail, dict) else 'not-dict'}")
+            else:
+                await self.update_progress(task_id, f"❌ Medium generation failed: {str(e)}")
+                self.task_storage[task_id]["status"] = "failed"
+                self.task_storage[task_id]["error"] = str(e)
 
 
 # Global task manager instance

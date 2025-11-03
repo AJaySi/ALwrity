@@ -3,7 +3,7 @@ Script to update Basic plan subscription limits for testing rate limits and rene
 
 Updates:
 - LLM Calls (all providers): 10 calls (was 500-1000)
-- LLM Tokens (all providers): 2000 tokens (was 200k-1M)
+- LLM Tokens (all providers): 5000 tokens (increased from 2000 to support research workflow)
 - Images: 5 images (was 50)
 
 This script updates the SubscriptionPlan table, which automatically applies to all users
@@ -69,11 +69,11 @@ def update_basic_plan_limits():
             basic_plan.anthropic_calls_limit = 200
             basic_plan.mistral_calls_limit = 500
             
-            # Update all LLM provider token limits to 2000
-            basic_plan.gemini_tokens_limit = 2000
-            basic_plan.openai_tokens_limit = 2000
-            basic_plan.anthropic_tokens_limit = 2000
-            basic_plan.mistral_tokens_limit = 2000
+            # Update all LLM provider token limits to 20000 (increased from 5000 for better stability)
+            basic_plan.gemini_tokens_limit = 20000
+            basic_plan.openai_tokens_limit = 20000
+            basic_plan.anthropic_tokens_limit = 20000
+            basic_plan.mistral_tokens_limit = 20000
             
             # Update image generation limit to 5
             basic_plan.stability_calls_limit = 5
@@ -83,7 +83,7 @@ def update_basic_plan_limits():
             
             logger.info("\n📝 New Basic plan limits:")
             logger.info(f"  LLM Calls (all providers): 10")
-            logger.info(f"  LLM Tokens (all providers): 2000")
+            logger.info(f"  LLM Tokens (all providers): 20000 (increased from 5000)")
             logger.info(f"  Images: 5")
             
             # Count and get affected users
@@ -118,7 +118,7 @@ def update_basic_plan_limits():
             
             # New limits - use unified AI text generation limit if available
             new_call_limit = getattr(basic_plan, 'ai_text_generation_calls_limit', None) or basic_plan.gemini_calls_limit
-            new_token_limit = basic_plan.gemini_tokens_limit  # 2000
+            new_token_limit = basic_plan.gemini_tokens_limit  # 5000 (increased from 2000)
             new_image_limit = basic_plan.stability_calls_limit  # 5
             
             for sub in user_subscriptions:
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     logger.info("="*60)
     logger.info("This will update Basic plan limits for testing rate limits:")
     logger.info("  - LLM Calls: 10 (all providers)")
-    logger.info("  - LLM Tokens: 2000 (all providers)")
+    logger.info("  - LLM Tokens: 20000 (all providers, increased from 5000)")
     logger.info("  - Images: 5")
     logger.info("="*60)
     
