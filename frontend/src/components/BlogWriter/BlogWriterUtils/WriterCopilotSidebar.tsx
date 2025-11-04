@@ -25,28 +25,28 @@ export const WriterCopilotSidebar: React.FC<WriterCopilotSidebarProps> = ({
       }}
       suggestions={suggestions}
       makeSystemMessage={(context: string, additional?: string) => {
-        const hasResearch = research !== null;
-        const hasOutline = outline.length > 0;
+        const hasResearch = research !== null && research !== undefined;
+        const hasOutline = outline && outline.length > 0;
         const isOutlineConfirmed = outlineConfirmed;
-        const researchInfo = hasResearch
+        const researchInfo = hasResearch && research
           ? {
-              sources: research.sources?.length || 0,
-              queries: research.search_queries?.length || 0,
-              angles: research.suggested_angles?.length || 0,
-              primaryKeywords: research.keyword_analysis?.primary || [],
-              searchIntent: research.keyword_analysis?.search_intent || 'informational',
+              sources: research?.sources?.length || 0,
+              queries: research?.search_queries?.length || 0,
+              angles: research?.suggested_angles?.length || 0,
+              primaryKeywords: research?.keyword_analysis?.primary || [],
+              searchIntent: research?.keyword_analysis?.search_intent || 'informational',
             }
           : null;
 
-        const outlineContext = hasOutline
+        const outlineContext = hasOutline && outline
           ? `
 OUTLINE DETAILS:
 - Total sections: ${outline.length}
-- Section headings: ${outline.map((s: any) => s.heading).join(', ')}
-- Total target words: ${outline.reduce((sum: number, s: any) => sum + (s.target_words || 0), 0)}
-- Section breakdown: ${outline
+- Section headings: ${(outline || []).map((s: any) => s?.heading || 'Untitled').join(', ')}
+- Total target words: ${(outline || []).reduce((sum: number, s: any) => sum + (s?.target_words || 0), 0)}
+- Section breakdown: ${(outline || [])
               .map(
-                (s: any) => `${s.heading} (${s.target_words || 0} words, ${s.subheadings?.length || 0} subheadings, ${s.key_points?.length || 0} key points)`
+                (s: any) => `${s?.heading || 'Untitled'} (${s?.target_words || 0} words, ${s?.subheadings?.length || 0} subheadings, ${s?.key_points?.length || 0} key points)`
               )
               .join('; ')}
 `
@@ -65,7 +65,7 @@ ${hasResearch && researchInfo ? `
 - Search intent: ${researchInfo.searchIntent}
 ` : '❌ No research completed yet'}
 
-${hasOutline ? `✅ OUTLINE GENERATED: ${outline.length} sections created${isOutlineConfirmed ? ' (CONFIRMED)' : ' (PENDING CONFIRMATION)'}` : '❌ No outline generated yet'}
+${hasOutline && outline ? `✅ OUTLINE GENERATED: ${outline.length} sections created${isOutlineConfirmed ? ' (CONFIRMED)' : ' (PENDING CONFIRMATION)'}` : '❌ No outline generated yet'}
 ${outlineContext}
 
 Available tools:

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BlogResearchResponse } from '../../services/blogWriterApi';
-import { ResearchSources, ResearchGrounding } from './ResearchComponents';
+import { ResearchSources, ResearchGrounding, GoogleSearchModal } from './ResearchComponents';
 
 interface ResearchResultsProps {
   research: BlogResearchResponse;
@@ -10,6 +10,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({ research }) =>
   const [showAnglesModal, setShowAnglesModal] = useState(false);
   const [showCompetitorModal, setShowCompetitorModal] = useState(false);
   const [showGroundingModal, setShowGroundingModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
   // Show toast message on component mount
@@ -501,6 +502,38 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({ research }) =>
             >
               📝 Use Research Blog Topics
             </div>
+
+            {/* Google Search Suggestions Chip - Only show when we have search data */}
+            {(research.search_widget || (research.search_queries && research.search_queries.length > 0)) && (
+              <div 
+                onClick={() => setShowSearchModal(true)}
+                style={{
+                  backgroundColor: '#fff8e1',
+                  color: '#f57c00',
+                  border: '1px solid #ffb74d',
+                  borderRadius: '20px',
+                  padding: '6px 16px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#ffe082';
+                  e.currentTarget.style.transform = 'scale(1.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#fff8e1';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                🔍 Google Search
+              </div>
+            )}
           </div>
         </div>
         
@@ -539,6 +572,14 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({ research }) =>
       {renderAnglesModal()}
       {renderCompetitorModal()}
       {renderGroundingModal()}
+      
+      {/* Google Search Modal */}
+      {showSearchModal && (
+        <GoogleSearchModal 
+          research={research} 
+          onClose={() => setShowSearchModal(false)} 
+        />
+      )}
       </div>
     </>
   );

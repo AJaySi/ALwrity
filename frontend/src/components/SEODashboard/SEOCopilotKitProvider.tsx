@@ -26,8 +26,22 @@ const SEOCopilotKitProvider: React.FC<SEOCopilotKitProviderProps> = ({
   } = useSEOCopilotStore();
   const { analysisData } = useSEOCopilotStore();
 
-  // Get the CopilotKit API key from environment variables
-  const publicApiKey = process.env.REACT_APP_COPILOTKIT_API_KEY;
+  // Get the CopilotKit API key from the same sources as App.tsx
+  // Check localStorage first, then fall back to environment variable
+  const publicApiKey = useMemo(() => {
+    const savedKey = typeof window !== 'undefined' 
+      ? localStorage.getItem('copilotkit_api_key') 
+      : null;
+    const envKey = process.env.REACT_APP_COPILOTKIT_API_KEY || '';
+    const key = (savedKey || envKey).trim();
+    
+    // Validate key format if present
+    if (key && !key.startsWith('ck_pub_')) {
+      console.warn('SEOCopilotKitProvider: CopilotKit API key format invalid - must start with ck_pub_');
+    }
+    
+    return key;
+  }, []);
 
   // Derive a friendly site/brand name from the URL for personalization
   const domainRootName = useMemo(() => {

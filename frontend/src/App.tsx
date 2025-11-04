@@ -310,7 +310,15 @@ const App: React.FC = () => {
   // Get CopilotKit key from localStorage or .env
   const [copilotApiKey, setCopilotApiKey] = useState(() => {
     const savedKey = localStorage.getItem('copilotkit_api_key');
-    return savedKey || process.env.REACT_APP_COPILOTKIT_API_KEY || '';
+    const envKey = process.env.REACT_APP_COPILOTKIT_API_KEY || '';
+    const key = (savedKey || envKey).trim();
+    
+    // Validate key format if present
+    if (key && !key.startsWith('ck_pub_')) {
+      console.warn('CopilotKit API key format invalid - must start with ck_pub_');
+    }
+    
+    return key;
   });
 
   // Initialize app - loading state will be managed by InitialRouteHandler

@@ -340,12 +340,8 @@ def create_blog_post(
             logger.warning("All tag IDs were invalid, not including tagIds in payload")
     
     # Build SEO data from metadata if provided
-    # TESTING: Skip SEO data temporarily to confirm richContent fix
-    test_skip_seo = True
-    if test_skip_seo:
-        logger.warning("🧪 TESTING: Skipping SEO data to isolate richContent vs seoData issue")
-        seo_data = None
-    elif seo_metadata:
+    seo_data = None
+    if seo_metadata:
         logger.warning(f"📊 Building SEO data from metadata. Keys: {list(seo_metadata.keys())}")
         seo_data = build_seo_data(seo_metadata, title)
         if seo_data:
@@ -371,13 +367,10 @@ def create_blog_post(
             logger.warning("⚠️ SEO data was empty after building - check build_seo_data function")
         
         # Add SEO slug if provided (separate field from seoData)
-        if seo_metadata and seo_metadata.get('url_slug'):
+        if seo_metadata.get('url_slug'):
             blog_data['draftPost']['seoSlug'] = str(seo_metadata.get('url_slug')).strip()
             logger.warning(f"✅ Added SEO slug: {blog_data['draftPost']['seoSlug']}")
-    
-    if test_skip_seo:
-        logger.warning("⚠️ SEO data skipped for testing - will add back once richContent is confirmed working")
-    elif not seo_metadata:
+    else:
         logger.warning("⚠️ No SEO metadata provided to create_blog_post")
     
     # Log the payload structure for debugging (without sensitive data)

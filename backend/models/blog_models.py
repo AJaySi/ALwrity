@@ -94,6 +94,12 @@ class ResearchConfig(BaseModel):
     include_expert_quotes: bool = True
     include_competitors: bool = True
     include_trends: bool = True
+    
+    # Exa-specific options
+    exa_category: Optional[str] = None  # company, research paper, news, linkedin profile, github, tweet, movie, song, personal site, pdf, financial report
+    exa_include_domains: List[str] = []  # Domain whitelist
+    exa_exclude_domains: List[str] = []  # Domain blacklist
+    exa_search_type: Optional[str] = "auto"  # "auto", "keyword", "neural"
 
 
 class BlogResearchRequest(BaseModel):

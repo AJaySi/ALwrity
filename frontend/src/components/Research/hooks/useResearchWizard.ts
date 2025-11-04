@@ -3,7 +3,7 @@ import { WizardState, WizardStepProps } from '../types/research.types';
 import { ResearchMode, ResearchConfig, BlogResearchResponse } from '../../../services/blogWriterApi';
 
 const WIZARD_STATE_KEY = 'alwrity_research_wizard_state';
-const MAX_STEPS = 4;
+const MAX_STEPS = 3; // Input (combined) -> Progress -> Results
 
 const defaultState: WizardState = {
   currentStep: 1,
@@ -88,11 +88,9 @@ export const useResearchWizard = (initialKeywords?: string[], initialIndustry?: 
       case 1:
         return state.keywords.length > 0 && state.keywords.every(k => k.trim().length > 0);
       case 2:
-        return true; // Mode selection always allowed
+        return !!state.results; // Can proceed if we have results
       case 3:
-        return false; // Progress can't be skipped
-      case 4:
-        return false; // Results can't be skipped
+        return false; // Results is the last step
       default:
         return false;
     }

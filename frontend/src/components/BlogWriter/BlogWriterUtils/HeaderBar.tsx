@@ -13,6 +13,7 @@ interface HeaderBarProps {
   hasContent?: boolean;
   contentConfirmed?: boolean;
   hasSEOAnalysis?: boolean;
+  seoRecommendationsApplied?: boolean;
   hasSEOMetadata?: boolean;
 }
 
@@ -28,6 +29,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   hasContent = false,
   contentConfirmed = false,
   hasSEOAnalysis = false,
+  seoRecommendationsApplied = false,
   hasSEOMetadata = false,
 }) => {
   return (
@@ -61,6 +63,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         hasContent={hasContent}
         contentConfirmed={contentConfirmed}
         hasSEOAnalysis={hasSEOAnalysis}
+        seoRecommendationsApplied={seoRecommendationsApplied}
         hasSEOMetadata={hasSEOMetadata}
       />
     </div>

@@ -32,6 +32,11 @@ export interface ResearchConfig {
   include_expert_quotes?: boolean;
   include_competitors?: boolean;
   include_trends?: boolean;
+  // Exa-specific options
+  exa_category?: string;
+  exa_include_domains?: string[];
+  exa_exclude_domains?: string[];
+  exa_search_type?: 'auto' | 'keyword' | 'neural';
 }
 
 export interface BlogResearchRequest {

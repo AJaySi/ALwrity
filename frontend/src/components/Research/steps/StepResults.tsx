@@ -3,7 +3,7 @@ import { WizardStepProps } from '../types/research.types';
 import { ResearchResults } from '../../BlogWriter/ResearchResults';
 import { BlogResearchResponse } from '../../../services/blogWriterApi';
 
-export const StepResults: React.FC<WizardStepProps> = ({ state, onBack }) => {
+export const StepResults: React.FC<WizardStepProps> = ({ state, onUpdate, onBack }) => {
   if (!state.results) {
     return (
       <div style={{ padding: '24px', textAlign: 'center' }}>
@@ -23,6 +23,14 @@ export const StepResults: React.FC<WizardStepProps> = ({ state, onBack }) => {
     URL.revokeObjectURL(url);
   };
 
+  const handleStartNew = () => {
+    // Reset to step 1 and clear results
+    onUpdate({ 
+      currentStep: 1, 
+      results: null 
+    });
+  };
+
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
       <div style={{
@@ -36,6 +44,21 @@ export const StepResults: React.FC<WizardStepProps> = ({ state, onBack }) => {
         <h2 style={{ margin: 0, color: '#333' }}>Research Results</h2>
         
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={onBack}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#f5f5f5',
+              color: '#333',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            ← Back
+          </button>
+          
           <button
             onClick={handleExport}
             style={{
@@ -55,7 +78,7 @@ export const StepResults: React.FC<WizardStepProps> = ({ state, onBack }) => {
           </button>
           
           <button
-            onClick={onBack}
+            onClick={handleStartNew}
             style={{
               padding: '8px 16px',
               backgroundColor: '#f5f5f5',
@@ -66,7 +89,7 @@ export const StepResults: React.FC<WizardStepProps> = ({ state, onBack }) => {
               fontSize: '14px',
             }}
           >
-            ← Start New Research
+            🔄 Start New Research
           </button>
         </div>
       </div>

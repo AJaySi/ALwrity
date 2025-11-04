@@ -13,6 +13,7 @@ from functools import lru_cache
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
 from services.subscription.schema_utils import ensure_subscription_plan_columns
+import sqlite3
 from middleware.auth_middleware import get_current_user
 from models.subscription_models import (
     APIProvider, SubscriptionPlan, UserSubscription, UsageSummary,
@@ -80,8 +81,11 @@ async def get_subscription_plans(
     """Get all available subscription plans."""
     
     try:
-        # Ensure required columns exist (handles environments without migrations applied yet)
         ensure_subscription_plan_columns(db)
+    except Exception as schema_err:
+        logger.warning(f"Schema check failed, will retry on query: {schema_err}")
+    
+    try:
         plans = db.query(SubscriptionPlan).filter(
             SubscriptionPlan.is_active == True
         ).order_by(SubscriptionPlan.price_monthly).all()
@@ -123,7 +127,60 @@ async def get_subscription_plans(
             }
         }
     
-    except Exception as e:
+    except (sqlite3.OperationalError, Exception) as e:
+        error_str = str(e).lower()
+        if 'no such column' in error_str and 'exa_calls_limit' in error_str:
+            logger.warning("Missing column detected in subscription plans query, attempting schema fix...")
+            try:
+                import services.subscription.schema_utils as schema_utils
+                schema_utils._checked_subscription_plan_columns = False
+                ensure_subscription_plan_columns(db)
+                db.expire_all()
+                # Retry the query
+                plans = db.query(SubscriptionPlan).filter(
+                    SubscriptionPlan.is_active == True
+                ).order_by(SubscriptionPlan.price_monthly).all()
+                
+                plans_data = []
+                for plan in plans:
+                    plans_data.append({
+                        "id": plan.id,
+                        "name": plan.name,
+                        "tier": plan.tier.value,
+                        "price_monthly": plan.price_monthly,
+                        "price_yearly": plan.price_yearly,
+                        "description": plan.description,
+                        "features": plan.features or [],
+                        "limits": {
+                            "ai_text_generation_calls": getattr(plan, 'ai_text_generation_calls_limit', None) or 0,
+                            "gemini_calls": plan.gemini_calls_limit,
+                            "openai_calls": plan.openai_calls_limit,
+                            "anthropic_calls": plan.anthropic_calls_limit,
+                            "mistral_calls": plan.mistral_calls_limit,
+                            "tavily_calls": plan.tavily_calls_limit,
+                            "serper_calls": plan.serper_calls_limit,
+                            "metaphor_calls": plan.metaphor_calls_limit,
+                            "firecrawl_calls": plan.firecrawl_calls_limit,
+                            "stability_calls": plan.stability_calls_limit,
+                            "gemini_tokens": plan.gemini_tokens_limit,
+                            "openai_tokens": plan.openai_tokens_limit,
+                            "anthropic_tokens": plan.anthropic_tokens_limit,
+                            "mistral_tokens": plan.mistral_tokens_limit,
+                            "monthly_cost": plan.monthly_cost_limit
+                        }
+                    })
+                
+                return {
+                    "success": True,
+                    "data": {
+                        "plans": plans_data,
+                        "total": len(plans_data)
+                    }
+                }
+            except Exception as retry_err:
+                logger.error(f"Schema fix and retry failed: {retry_err}")
+                raise HTTPException(status_code=500, detail=f"Database schema error: {str(e)}")
+        
         logger.error(f"Error getting subscription plans: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -239,6 +296,10 @@ async def get_subscription_status(
 
     try:
         ensure_subscription_plan_columns(db)
+    except Exception as schema_err:
+        logger.warning(f"Schema check failed, will retry on query: {schema_err}")
+
+    try:
         subscription = db.query(UserSubscription).filter(
             UserSubscription.user_id == user_id,
             UserSubscription.is_active == True
@@ -333,7 +394,97 @@ async def get_subscription_status(
             }
         }
 
-    except Exception as e:
+    except (sqlite3.OperationalError, Exception) as e:
+        error_str = str(e).lower()
+        if 'no such column' in error_str and 'exa_calls_limit' in error_str:
+            # Try to fix schema and retry once
+            logger.warning("Missing column detected in subscription status query, attempting schema fix...")
+            try:
+                import services.subscription.schema_utils as schema_utils
+                schema_utils._checked_subscription_plan_columns = False
+                ensure_subscription_plan_columns(db)
+                db.expire_all()
+                # Retry the query
+                subscription = db.query(UserSubscription).filter(
+                    UserSubscription.user_id == user_id,
+                    UserSubscription.is_active == True
+                ).first()
+                
+                if not subscription:
+                    free_plan = db.query(SubscriptionPlan).filter(
+                        SubscriptionPlan.tier == SubscriptionTier.FREE,
+                        SubscriptionPlan.is_active == True
+                    ).first()
+                    if free_plan:
+                        return {
+                            "success": True,
+                            "data": {
+                                "active": True,
+                                "plan": "free",
+                                "tier": "free",
+                                "can_use_api": True,
+                                "limits": {
+                                    "ai_text_generation_calls": getattr(free_plan, 'ai_text_generation_calls_limit', None) or 0,
+                                    "gemini_calls": free_plan.gemini_calls_limit,
+                                    "openai_calls": free_plan.openai_calls_limit,
+                                    "anthropic_calls": free_plan.anthropic_calls_limit,
+                                    "mistral_calls": free_plan.mistral_calls_limit,
+                                    "tavily_calls": free_plan.tavily_calls_limit,
+                                    "serper_calls": free_plan.serper_calls_limit,
+                                    "metaphor_calls": free_plan.metaphor_calls_limit,
+                                    "firecrawl_calls": free_plan.firecrawl_calls_limit,
+                                    "stability_calls": free_plan.stability_calls_limit,
+                                    "monthly_cost": free_plan.monthly_cost_limit
+                                }
+                            }
+                        }
+                elif subscription:
+                    now = datetime.utcnow()
+                    if subscription.current_period_end < now:
+                        if getattr(subscription, 'auto_renew', False):
+                            try:
+                                from services.pricing_service import PricingService
+                                pricing = PricingService(db)
+                                pricing._ensure_subscription_current(subscription)
+                            except Exception as e2:
+                                logger.error(f"Failed to auto-advance subscription: {e2}")
+                        else:
+                            return {
+                                "success": True,
+                                "data": {
+                                    "active": False,
+                                    "plan": subscription.plan.tier.value,
+                                    "tier": subscription.plan.tier.value,
+                                    "can_use_api": False,
+                                    "reason": "Subscription expired"
+                                }
+                            }
+                    return {
+                        "success": True,
+                        "data": {
+                            "active": True,
+                            "plan": subscription.plan.tier.value,
+                            "tier": subscription.plan.tier.value,
+                            "can_use_api": True,
+                            "limits": {
+                                "ai_text_generation_calls": getattr(subscription.plan, 'ai_text_generation_calls_limit', None) or 0,
+                                "gemini_calls": subscription.plan.gemini_calls_limit,
+                                "openai_calls": subscription.plan.openai_calls_limit,
+                                "anthropic_calls": subscription.plan.anthropic_calls_limit,
+                                "mistral_calls": subscription.plan.mistral_calls_limit,
+                                "tavily_calls": subscription.plan.tavily_calls_limit,
+                                "serper_calls": subscription.plan.serper_calls_limit,
+                                "metaphor_calls": subscription.plan.metaphor_calls_limit,
+                                "firecrawl_calls": subscription.plan.firecrawl_calls_limit,
+                                "stability_calls": subscription.plan.stability_calls_limit,
+                                "monthly_cost": subscription.plan.monthly_cost_limit
+                            }
+                        }
+                    }
+            except Exception as retry_err:
+                logger.error(f"Schema fix and retry failed: {retry_err}")
+                raise HTTPException(status_code=500, detail=f"Database schema error: {str(e)}")
+        
         logger.error(f"Error getting subscription status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -26,18 +26,14 @@ class ExaResearchProvider(BaseProvider):
         # Build Exa query
         query = f"{topic} {industry} {target_audience}"
         
-        # Map source types to Exa categories
-        category = self._map_source_type_to_category(config.source_types)
+        # Determine category: use exa_category if set, otherwise map from source_types
+        category = config.exa_category if config.exa_category else self._map_source_type_to_category(config.source_types)
         
-        logger.info(f"[Exa Research] Executing search: {query}")
-        
-        # Execute Exa search
-        results = self.exa.search_and_contents(
-            query,
-            type="auto",
-            category=category,
-            num_results=min(config.max_sources, 25),
-            contents={
+        # Build search kwargs
+        search_kwargs = {
+            'type': config.exa_search_type or "auto",
+            'num_results': min(config.max_sources, 25),
+            'contents': {
                 'text': {'max_characters': 1000},
                 'summary': {'query': f"Key insights about {topic}"},
                 'highlights': {
@@ -45,7 +41,20 @@ class ExaResearchProvider(BaseProvider):
                     'highlights_per_url': 3
                 }
             }
-        )
+        }
+        
+        # Add optional filters
+        if category:
+            search_kwargs['category'] = category
+        if config.exa_include_domains:
+            search_kwargs['include_domains'] = config.exa_include_domains
+        if config.exa_exclude_domains:
+            search_kwargs['exclude_domains'] = config.exa_exclude_domains
+        
+        logger.info(f"[Exa Research] Executing search: {query}")
+        
+        # Execute Exa search
+        results = self.exa.search_and_contents(query, **search_kwargs)
         
         # Transform to standardized format
         sources = self._transform_sources(results.results)

@@ -390,17 +390,44 @@ class LimitValidator:
             
             logger.info(f"[Pre-flight Check] 📅 Billing Period: {current_period} (for user {user_id})")
             
+            # Ensure schema columns exist before querying
+            try:
+                from services.subscription.schema_utils import ensure_usage_summaries_columns
+                ensure_usage_summaries_columns(self.db)
+            except Exception as schema_err:
+                logger.warning(f"Schema check failed, will retry on query error: {schema_err}")
+            
             # Explicitly expire any cached objects and refresh from DB to ensure fresh data
             self.db.expire_all()
             
-            usage = self.db.query(UsageSummary).filter(
-                UsageSummary.user_id == user_id,
-                UsageSummary.billing_period == current_period
-            ).first()
+            try:
+                usage = self.db.query(UsageSummary).filter(
+                    UsageSummary.user_id == user_id,
+                    UsageSummary.billing_period == current_period
+                ).first()
             
-            # CRITICAL: Explicitly refresh from database to get latest values (clears SQLAlchemy cache)
-            if usage:
-                self.db.refresh(usage)
+                # CRITICAL: Explicitly refresh from database to get latest values (clears SQLAlchemy cache)
+                if usage:
+                    self.db.refresh(usage)
+            except Exception as query_err:
+                error_str = str(query_err).lower()
+                if 'no such column' in error_str and 'exa_calls' in error_str:
+                    logger.warning("Missing column detected in usage query, fixing schema and retrying...")
+                    import sqlite3
+                    import services.subscription.schema_utils as schema_utils
+                    schema_utils._checked_usage_summaries_columns = False
+                    from services.subscription.schema_utils import ensure_usage_summaries_columns
+                    ensure_usage_summaries_columns(self.db)
+                    self.db.expire_all()
+                    # Retry the query
+                    usage = self.db.query(UsageSummary).filter(
+                        UsageSummary.user_id == user_id,
+                        UsageSummary.billing_period == current_period
+                    ).first()
+                    if usage:
+                        self.db.refresh(usage)
+                else:
+                    raise
             
             # Log what we actually read from database
             if usage:
@@ -718,8 +745,40 @@ class LimitValidator:
             
         except Exception as e:
             error_type = type(e).__name__
-            error_message = str(e)
-            logger.error(f"[Pre-flight Check] ❌ Error during comprehensive limit check: {error_type}: {error_message}", exc_info=True)
+            error_message = str(e).lower()
+            
+            # Handle missing column errors with schema fix and retry
+            if 'operationalerror' in error_type.lower() or 'operationalerror' in error_message:
+                if 'no such column' in error_message and 'exa_calls' in error_message:
+                    logger.warning("Missing column detected in limit check, attempting schema fix...")
+                    try:
+                        import sqlite3
+                        import services.subscription.schema_utils as schema_utils
+                        schema_utils._checked_usage_summaries_columns = False
+                        from services.subscription.schema_utils import ensure_usage_summaries_columns
+                        ensure_usage_summaries_columns(self.db)
+                        self.db.expire_all()
+                        
+                        # Retry the query
+                        usage = self.db.query(UsageSummary).filter(
+                            UsageSummary.user_id == user_id,
+                            UsageSummary.billing_period == current_period
+                        ).first()
+                        
+                        if usage:
+                            self.db.refresh(usage)
+                        
+                        # Continue with the rest of the validation using the retried usage
+                        # (The rest of the function logic continues from here)
+                        # For now, we'll let it fall through to return the error since we'd need to duplicate the entire validation logic
+                        # Instead, we'll just log and return, but the next call should succeed
+                        logger.info(f"[Pre-flight Check] Schema fixed, but need to retry validation on next call")
+                        return False, f"Schema updated, please retry: Database schema was updated. Please try again.", {'error_type': 'schema_update', 'retry': True}
+                    except Exception as retry_err:
+                        logger.error(f"Schema fix and retry failed: {retry_err}")
+                        return False, f"Failed to validate limits: {error_type}: {str(e)}", {}
+            
+            logger.error(f"[Pre-flight Check] ❌ Error during comprehensive limit check: {error_type}: {str(e)}", exc_info=True)
             logger.error(f"[Pre-flight Check] ❌ User: {user_id}, Operations count: {len(operations) if operations else 0}")
-            return False, f"Failed to validate limits: {error_type}: {error_message}", {}
+            return False, f"Failed to validate limits: {error_type}: {str(e)}", {}
 

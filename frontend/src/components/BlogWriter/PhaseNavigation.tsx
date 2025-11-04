@@ -15,6 +15,7 @@ export interface PhaseActionHandlers {
   onOutlineAction?: () => void;       // Generate outline
   onContentAction?: () => void;       // Confirm outline + generate content
   onSEOAction?: () => void;           // Run SEO analysis
+  onApplySEORecommendations?: () => void;  // Apply SEO recommendations
   onPublishAction?: () => void;       // Generate SEO metadata or publish
 }
 
@@ -31,6 +32,7 @@ interface PhaseNavigationProps {
   hasContent?: boolean;
   contentConfirmed?: boolean;
   hasSEOAnalysis?: boolean;
+  seoRecommendationsApplied?: boolean;
   hasSEOMetadata?: boolean;
 }
 
@@ -46,6 +48,7 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
   hasContent = false,
   contentConfirmed = false,
   hasSEOAnalysis = false,
+  seoRecommendationsApplied = false,
   hasSEOMetadata = false,
 }) => {
   // Determine which action to show for each phase when CopilotKit is unavailable
@@ -61,7 +64,10 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
         }
         break;
       case 'outline':
-        if (hasResearch && !hasOutline) {
+        // Show "Create Outline" if research exists and outline is not yet confirmed
+        // This ensures users can create/regenerate outline after research, even if cached one exists
+        // Once outline is confirmed, we hide the button to avoid confusion during content generation
+        if (hasResearch && !outlineConfirmed) {
           return { label: 'Create Outline', handler: actionHandlers.onOutlineAction || null };
         }
         break;
@@ -71,13 +77,26 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
         }
         break;
       case 'seo':
-        if (hasContent && contentConfirmed && !hasSEOAnalysis) {
+        // Priority order matching CopilotKit suggestions:
+        // 1. No SEO analysis yet - Run SEO Analysis
+        // Note: We check hasContent (sections exist) - contentConfirmed is checked but not strictly required
+        // This allows users to run SEO analysis even if contentConfirmed hasn't been explicitly set
+        if (hasContent && !hasSEOAnalysis) {
           return { label: 'Run SEO Analysis', handler: actionHandlers.onSEOAction || null };
+        }
+        // 2. SEO analysis exists but recommendations not applied - Apply SEO Recommendations
+        if (hasSEOAnalysis && !seoRecommendationsApplied) {
+          return { label: 'Apply SEO Recommendations', handler: actionHandlers.onApplySEORecommendations || null };
+        }
+        // 3. SEO analysis exists and recommendations applied but no metadata - Generate SEO Metadata
+        if (hasSEOAnalysis && seoRecommendationsApplied && !hasSEOMetadata) {
+          return { label: 'Generate SEO Metadata', handler: actionHandlers.onPublishAction || null };
         }
         break;
       case 'publish':
-        if (hasSEOAnalysis && !hasSEOMetadata) {
-          return { label: 'Generate SEO Metadata', handler: actionHandlers.onPublishAction || null };
+        // Only show if SEO metadata exists (ready to publish)
+        if (hasSEOAnalysis && seoRecommendationsApplied && hasSEOMetadata) {
+          return { label: 'Ready to Publish', handler: null }; // Publish handled separately
         }
         break;
     }
@@ -97,17 +116,59 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
         const isCompleted = phase.completed;
         const isDisabled = phase.disabled;
         const action = getActionForPhase(phase.id);
+        
         // Show action button when:
         // 1. CopilotKit is unavailable
         // 2. Action handler exists
         // 3. Phase is not disabled
-        // 4. Show for current phase OR next actionable phase (not completed)
-        //    For research phase specifically, always show if no research exists
+        // 4. Show for current phase OR next actionable phase (not completed) OR phases with available actions
+        //    For research phase: always show if no research exists
+        //    For outline phase: always show if research exists but no outline (like research phase)
+        //    For SEO phase: always show if action handler exists (prerequisites are met)
         const isResearchPhase = phase.id === 'research' && !hasResearch;
-        const showAction = !copilotKitAvailable && action.handler && !isDisabled && (
+        // Outline phase: show action whenever research exists and action handler is available
+        // This allows users to create/regenerate outline after research, even if cached one exists
+        const isOutlinePhase = phase.id === 'outline' && hasResearch && action.handler;
+        // SEO phase: show action whenever prerequisites are met (action handler exists)
+        // Similar to research/outline, show SEO actions whenever handler exists and phase is enabled
+        const isSEOPhase = phase.id === 'seo' && action.handler;
+        
+        // Debug logging for SEO phase (temporary - for troubleshooting)
+        if (phase.id === 'seo' && !copilotKitAvailable && process.env.NODE_ENV === 'development') {
+          console.log('[PhaseNavigation] SEO phase debug:', {
+            phaseId: phase.id,
+            isCurrent,
+            isCompleted,
+            isDisabled,
+            hasContent,
+            contentConfirmed,
+            hasSEOAnalysis,
+            seoRecommendationsApplied,
+            hasSEOMetadata,
+            actionLabel: action.label,
+            actionHandler: !!action.handler,
+            copilotKitAvailable,
+            isSEOPhase,
+            showActionWillBe: !copilotKitAvailable && action.handler && !isDisabled && (
+              isCurrent || 
+              (!isCompleted && !isDisabled) ||
+              isResearchPhase ||
+              isOutlinePhase ||
+              isSEOPhase
+            )
+          });
+        }
+        
+        // Show action if: current phase, or phase is not completed and not disabled, or it's research/outline/SEO with available action
+        // For SEO: show whenever action handler exists (prerequisites are met), even if phase is marked as disabled/completed
+        // This is critical because SEO prerequisites (hasContent && contentConfirmed) are validated in getActionForPhase,
+        // so if action.handler exists, we should show it regardless of phase navigation's disabled state
+        const showAction = !copilotKitAvailable && action.handler && (
           isCurrent || 
           (!isCompleted && !isDisabled) ||
-          isResearchPhase
+          isResearchPhase ||
+          isOutlinePhase ||
+          isSEOPhase // Show SEO actions when handler exists - handler existence means prerequisites are met, so ignore isDisabled
         );
         
         return (

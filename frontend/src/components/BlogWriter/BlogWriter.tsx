@@ -270,6 +270,7 @@ export const BlogWriter: React.FC = () => {
     handleOutlineAction,
     handleContentAction,
     handleSEOAction,
+    handleApplySEORecommendations,
     handlePublishAction,
   } = usePhaseActionHandlers({
     research,
@@ -284,6 +285,7 @@ export const BlogWriter: React.FC = () => {
     outlineGenRef,
     setOutline,
     setContentConfirmed,
+    setIsSEOAnalysisModalOpen,
     setIsSEOMetadataModalOpen,
     runSEOAnalysisDirect,
     onOutlineComplete: handleCachedOutlineComplete,
@@ -391,6 +393,7 @@ export const BlogWriter: React.FC = () => {
             onOutlineAction: handleOutlineAction,
             onContentAction: handleContentAction,
             onSEOAction: handleSEOAction,
+            onApplySEORecommendations: handleApplySEORecommendations,
             onPublishAction: handlePublishAction,
           }}
           hasResearch={!!research}
@@ -399,6 +402,7 @@ export const BlogWriter: React.FC = () => {
           hasContent={Object.keys(sections).length > 0}
           contentConfirmed={contentConfirmed}
           hasSEOAnalysis={!!seoAnalysis}
+          seoRecommendationsApplied={seoRecommendationsApplied}
           hasSEOMetadata={!!seoMetadata}
         />
       )}

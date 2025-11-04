@@ -1,11 +1,20 @@
 import React, { useEffect } from 'react';
 import { WizardStepProps } from '../types/research.types';
-import { useResearchExecution } from '../hooks/useResearchExecution';
 
-export const StepProgress: React.FC<WizardStepProps> = ({ state, onNext, onUpdate }) => {
-  const { executeResearch, stopExecution, isExecuting, error, progressMessages, currentStatus } = useResearchExecution();
+export const StepProgress: React.FC<WizardStepProps> = ({ state, onNext, onUpdate, execution }) => {
+  const { executeResearch, stopExecution, isExecuting, error, progressMessages, currentStatus } = execution || {
+    executeResearch: async () => null,
+    stopExecution: () => {},
+    isExecuting: false,
+    error: 'No execution provided',
+    progressMessages: [],
+    currentStatus: 'idle'
+  };
 
   useEffect(() => {
+    // Only start research if execution is available
+    if (!execution) return;
+
     // Start research when this step is reached
     const startResearch = async () => {
       const taskId = await executeResearch(state);
@@ -22,18 +31,19 @@ export const StepProgress: React.FC<WizardStepProps> = ({ state, onNext, onUpdat
         stopExecution();
       }
     };
-  }, []); // Run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount - stable references
 
-  // Move to next step when research completes
-  useEffect(() => {
-    if (!isExecuting && progressMessages.length > 0) {
-      // Small delay to show final message
-      const timer = setTimeout(() => {
-        onNext();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [isExecuting, progressMessages.length, onNext]);
+  // Note: Navigation to next step is handled by ResearchWizard when results are received
+
+  // Handle missing execution gracefully
+  if (!execution) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center' }}>
+        <p style={{ color: '#666' }}>Loading execution...</p>
+      </div>
+    );
+  }
 
   const getStatusIcon = () => {
     if (error) return '❌';
@@ -48,11 +58,14 @@ export const StepProgress: React.FC<WizardStepProps> = ({ state, onNext, onUpdat
     return '#1976d2';
   };
 
+  const providerName = state.config.provider === 'exa' ? 'Exa Neural' : 'Google Search';
+  const modeName = state.researchMode === 'basic' ? 'Basic' : state.researchMode === 'comprehensive' ? 'Comprehensive' : 'Targeted';
+
   return (
     <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
       <h2 style={{ marginBottom: '8px', color: '#333' }}>Researching...</h2>
       <p style={{ marginBottom: '24px', color: '#666', fontSize: '15px' }}>
-        Gathering insights from Google Search grounding
+        {modeName} research with {providerName}
       </p>
 
       {/* Status Display */}

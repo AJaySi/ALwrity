@@ -10,11 +10,22 @@ export interface WizardState {
   results: BlogResearchResponse | null;
 }
 
+export interface ResearchExecution {
+  executeResearch: (state: WizardState) => Promise<string | null>;
+  stopExecution: () => void;
+  isExecuting: boolean;
+  error: string | null;
+  progressMessages: Array<{ timestamp: string; message: string }>;
+  currentStatus: string;
+  result: any;
+}
+
 export interface WizardStepProps {
   state: WizardState;
   onUpdate: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
+  execution?: ResearchExecution;
 }
 
 export interface ResearchWizardProps {

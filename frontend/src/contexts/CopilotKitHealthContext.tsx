@@ -91,12 +91,31 @@ export const CopilotKitHealthProvider: React.FC<CopilotKitHealthProviderProps> =
     setState((prev) => ({ ...prev, isChecking: true }));
 
     try {
+      // Get CopilotKit API key from the same sources as App.tsx
+      // Check localStorage first, then fall back to environment variable
+      const savedKey = typeof window !== 'undefined' 
+        ? localStorage.getItem('copilotkit_api_key') 
+        : null;
+      const apiKey = savedKey || process.env.REACT_APP_COPILOTKIT_API_KEY || '';
+      
+      // If no API key is available, mark as unhealthy and skip the check
+      if (!apiKey || !apiKey.trim()) {
+        markUnhealthy('CopilotKit API key not configured');
+        return;
+      }
+
+      // Validate key format (must start with ck_pub_)
+      if (!apiKey.startsWith('ck_pub_')) {
+        markUnhealthy('CopilotKit API key format invalid (must start with ck_pub_)');
+        return;
+      }
+
       // Try to check CopilotKit status endpoint
       // This is a lightweight check that doesn't require full CopilotKit initialization
       const response = await fetch('https://api.cloud.copilotkit.ai/ciu', {
         method: 'GET',
         headers: {
-          'x-copilotcloud-public-api-key': process.env.REACT_APP_COPILOTKIT_PUBLIC_API_KEY || '',
+          'x-copilotcloud-public-api-key': apiKey.trim(),
         },
         // Use a short timeout to avoid blocking
         signal: AbortSignal.timeout(3000),
@@ -105,7 +124,12 @@ export const CopilotKitHealthProvider: React.FC<CopilotKitHealthProviderProps> =
       if (response.ok) {
         markHealthy();
       } else {
-        markUnhealthy(`CopilotKit status check failed: ${response.status}`);
+        // Provide more specific error messages based on status code
+        if (response.status === 401) {
+          markUnhealthy('CopilotKit API key is invalid or unauthorized');
+        } else {
+          markUnhealthy(`CopilotKit status check failed: ${response.status}`);
+        }
       }
     } catch (error: any) {
       // Handle various error types

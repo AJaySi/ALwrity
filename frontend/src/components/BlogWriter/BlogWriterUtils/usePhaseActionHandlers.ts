@@ -17,6 +17,7 @@ interface UsePhaseActionHandlersProps {
   outlineGenRef: React.RefObject<any>;
   setOutline: (outline: any[]) => void;
   setContentConfirmed: (confirmed: boolean) => void;
+  setIsSEOAnalysisModalOpen: (open: boolean) => void;
   setIsSEOMetadataModalOpen: (open: boolean) => void;
   runSEOAnalysisDirect: () => string;
   onOutlineComplete?: (outline: any) => void;
@@ -36,6 +37,7 @@ export const usePhaseActionHandlers = ({
   outlineGenRef,
   setOutline,
   setContentConfirmed,
+  setIsSEOAnalysisModalOpen,
   setIsSEOMetadataModalOpen,
   runSEOAnalysisDirect,
   onOutlineComplete,
@@ -162,13 +164,20 @@ export const usePhaseActionHandlers = ({
     }
     navigateToPhase('seo');
     runSEOAnalysisDirect();
-    debug.log('[BlogWriter] SEO action triggered');
+    debug.log('[BlogWriter] SEO action triggered - running SEO analysis');
   }, [contentConfirmed, setContentConfirmed, navigateToPhase, runSEOAnalysisDirect]);
 
+  const handleApplySEORecommendations = useCallback(() => {
+    navigateToPhase('seo');
+    setIsSEOAnalysisModalOpen(true);
+    debug.log('[BlogWriter] Apply SEO Recommendations action triggered - opening SEO analysis modal');
+  }, [navigateToPhase, setIsSEOAnalysisModalOpen]);
+
   const handlePublishAction = useCallback(() => {
-    navigateToPhase('publish');
+    // Can be called from SEO phase (after recommendations applied) or publish phase
+    navigateToPhase('seo'); // Stay in SEO phase if called from there
     setIsSEOMetadataModalOpen(true);
-    debug.log('[BlogWriter] Publish action triggered - opening SEO metadata modal');
+    debug.log('[BlogWriter] Generate SEO Metadata action triggered - opening SEO metadata modal');
   }, [navigateToPhase, setIsSEOMetadataModalOpen]);
 
   return {
@@ -176,6 +185,7 @@ export const usePhaseActionHandlers = ({
     handleOutlineAction,
     handleContentAction,
     handleSEOAction,
+    handleApplySEORecommendations,
     handlePublishAction,
   };
 };

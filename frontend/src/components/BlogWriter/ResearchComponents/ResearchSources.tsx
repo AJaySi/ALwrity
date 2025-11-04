@@ -436,20 +436,7 @@ export const ResearchSources: React.FC<ResearchSourcesProps> = ({ research }) =>
         </div>
       )}
         
-        {/* Google Search Suggestions - Per Google Display Requirements */}
-        {research.search_widget && (
-          <div style={{ 
-            marginBottom: '24px', 
-            width: '100%',
-            position: 'relative'
-          }}>
-            {/* Google Search Widget - Display exactly as provided without modifications */}
-            <div 
-              dangerouslySetInnerHTML={{ __html: research.search_widget }}
-            />
-          </div>
-        )}
-        
+      {/* Note: Google Search Widget is shown in GoogleSearchModal instead */}
       <div style={{ 
         display: 'grid', 
         gap: '12px',
