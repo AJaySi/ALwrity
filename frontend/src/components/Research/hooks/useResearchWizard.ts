@@ -23,9 +23,28 @@ const defaultState: WizardState = {
   results: null,
 };
 
-export const useResearchWizard = (initialKeywords?: string[], initialIndustry?: string) => {
+export const useResearchWizard = (
+  initialKeywords?: string[], 
+  initialIndustry?: string,
+  initialTargetAudience?: string,
+  initialResearchMode?: ResearchMode,
+  initialConfig?: ResearchConfig
+) => {
   const [state, setState] = useState<WizardState>(() => {
-    // Try to load from localStorage first
+    // If initial values are provided (preset clicked), clear localStorage and use them
+    if (initialKeywords || initialIndustry || initialTargetAudience || initialResearchMode || initialConfig) {
+      localStorage.removeItem(WIZARD_STATE_KEY);
+      return {
+        ...defaultState,
+        keywords: initialKeywords || [],
+        industry: initialIndustry || defaultState.industry,
+        targetAudience: initialTargetAudience || defaultState.targetAudience,
+        researchMode: initialResearchMode || defaultState.researchMode,
+        config: initialConfig || defaultState.config,
+      };
+    }
+    
+    // Try to load from localStorage only if no initial values
     const saved = localStorage.getItem(WIZARD_STATE_KEY);
     if (saved) {
       try {
@@ -36,13 +55,25 @@ export const useResearchWizard = (initialKeywords?: string[], initialIndustry?: 
       }
     }
     
-    // Use defaults or initial values
-    return {
-      ...defaultState,
-      keywords: initialKeywords || [],
-      industry: initialIndustry || defaultState.industry,
-    };
+    // Use defaults
+    return defaultState;
   });
+
+  // Update state when initial values change (preset clicked)
+  useEffect(() => {
+    if (initialKeywords || initialIndustry || initialTargetAudience || initialResearchMode || initialConfig) {
+      localStorage.removeItem(WIZARD_STATE_KEY);
+      setState({
+        ...defaultState,
+        keywords: initialKeywords || [],
+        industry: initialIndustry || defaultState.industry,
+        targetAudience: initialTargetAudience || defaultState.targetAudience,
+        researchMode: initialResearchMode || defaultState.researchMode,
+        config: initialConfig || defaultState.config,
+        results: null, // Clear any previous results
+      });
+    }
+  }, [initialKeywords, initialIndustry, initialTargetAudience, initialResearchMode, initialConfig]);
 
   // Persist state to localStorage
   useEffect(() => {
@@ -74,10 +105,13 @@ export const useResearchWizard = (initialKeywords?: string[], initialIndustry?: 
       ...defaultState,
       keywords: initialKeywords || [],
       industry: initialIndustry || defaultState.industry,
+      targetAudience: initialTargetAudience || defaultState.targetAudience,
+      researchMode: initialResearchMode || defaultState.researchMode,
+      config: initialConfig || defaultState.config,
     };
     setState(resetState);
     localStorage.removeItem(WIZARD_STATE_KEY);
-  }, [initialKeywords, initialIndustry]);
+  }, [initialKeywords, initialIndustry, initialTargetAudience, initialResearchMode, initialConfig]);
 
   const clearResults = useCallback(() => {
     setState(prev => ({ ...prev, results: null }));

@@ -3,8 +3,12 @@ const testAIIntegration = async () => {
   try {
     console.log('Testing AI Integration...');
     
+    // Get API URL from environment variables (consistent with other services)
+    const apiUrl = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+    const baseUrl = apiUrl || 'http://localhost:8000'; // Fallback only for test utility
+    
     // Test the AI analytics endpoint
-    const response = await fetch('http://localhost:8000/api/content-planning/ai-analytics/');
+    const response = await fetch(`${baseUrl}/api/content-planning/ai-analytics/`);
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

@@ -8,7 +8,8 @@ import RegisterFacebookActions from './RegisterFacebookActions';
 import RegisterFacebookEditActions from './RegisterFacebookEditActions';
 import RegisterFacebookActionsEnhanced from './RegisterFacebookActionsEnhanced';
 import { PlatformPersonaProvider, usePlatformPersonaContext } from '../shared/PersonaContext/PlatformPersonaProvider';
-import { generatePlatformPersona } from '../../api/persona';
+import { generatePlatformPersona, checkFacebookPersona } from '../../api/persona';
+import { FacebookPersonaModal } from './FacebookPersonaModal';
 
 const useCopilotActionTyped = useCopilotAction as any;
 
@@ -168,6 +169,36 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
   // State for generating persona
   const [isGeneratingPersona, setIsGeneratingPersona] = React.useState<boolean>(false);
   const [personaError, setPersonaError] = React.useState<string | null>(null);
+  const [showPersonaModal, setShowPersonaModal] = React.useState<boolean>(false);
+  const [personaChecked, setPersonaChecked] = React.useState<boolean>(false);
+
+  // Check for Facebook persona on component mount
+  React.useEffect(() => {
+    const checkPersona = async () => {
+      if (personaChecked) return; // Already checked
+      
+      try {
+        const userId = localStorage.getItem('user_id');
+        if (!userId) {
+          setPersonaChecked(true);
+          return;
+        }
+        
+        const personaStatus = await checkFacebookPersona(userId);
+        
+        // Show modal if onboarding completed but persona missing
+        if (personaStatus.onboarding_completed && !personaStatus.has_persona && personaStatus.has_core_persona) {
+          setShowPersonaModal(true);
+        }
+      } catch (error) {
+        console.error('Error checking Facebook persona:', error);
+      } finally {
+        setPersonaChecked(true);
+      }
+    };
+    
+    checkPersona();
+  }, [personaChecked]);
 
   // Handler to generate Facebook persona on-demand
   const handleGeneratePersona = async () => {
@@ -190,6 +221,36 @@ const FacebookWriterContent: React.FC<FacebookWriterProps> = ({ className = '' }
     } finally {
       setIsGeneratingPersona(false);
     }
+  };
+
+  // Handler for modal generation
+  const handleGenerateFacebookPersona = async () => {
+    setIsGeneratingPersona(true);
+    setPersonaError(null);
+    
+    try {
+      const result = await generatePlatformPersona('facebook');
+      
+      if (result.success) {
+        // Refresh the persona context to load the newly generated persona
+        await refreshPersonas();
+        console.log('✅ Facebook persona generated successfully');
+        setShowPersonaModal(false);
+      } else {
+        throw new Error('Failed to generate persona');
+      }
+    } catch (error: any) {
+      console.error('Error generating persona:', error);
+      throw error; // Let modal handle error display
+    } finally {
+      setIsGeneratingPersona(false);
+    }
+  };
+
+  // Handler for modal cancel
+  const handleCancelPersona = () => {
+    setShowPersonaModal(false);
+    // Continue with generic persona
   };
 
   React.useEffect(() => {
@@ -790,6 +851,16 @@ Instead of generic content, you get:
           )}
         </Container>
       </Box>
+      
+      {/* Facebook Persona Modal */}
+      {showPersonaModal && (
+        <FacebookPersonaModal
+          open={showPersonaModal}
+          onClose={() => setShowPersonaModal(false)}
+          onGenerate={handleGenerateFacebookPersona}
+          onCancel={handleCancelPersona}
+        />
+      )}
     </CopilotSidebar>
   );
 };

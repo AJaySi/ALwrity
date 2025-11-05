@@ -1,14 +1,15 @@
 import axios from 'axios';
 
 // Global subscription error handler - will be set by the app
-let globalSubscriptionErrorHandler: ((error: any) => boolean) | null = null;
+// Can be async to support subscription status refresh
+let globalSubscriptionErrorHandler: ((error: any) => boolean | Promise<boolean>) | null = null;
 
-export const setGlobalSubscriptionErrorHandler = (handler: (error: any) => boolean) => {
+export const setGlobalSubscriptionErrorHandler = (handler: (error: any) => boolean | Promise<boolean>) => {
   globalSubscriptionErrorHandler = handler;
 };
 
 // Export a function to trigger subscription error handler from outside axios interceptors
-export const triggerSubscriptionError = (error: any) => {
+export const triggerSubscriptionError = async (error: any) => {
   const status = error?.response?.status;
   console.log('triggerSubscriptionError: Received error', {
     hasHandler: !!globalSubscriptionErrorHandler,
@@ -18,7 +19,9 @@ export const triggerSubscriptionError = (error: any) => {
 
   if (globalSubscriptionErrorHandler) {
     console.log('triggerSubscriptionError: Calling global subscription error handler');
-    return globalSubscriptionErrorHandler(error);
+    const result = globalSubscriptionErrorHandler(error);
+    // Handle both sync and async handlers
+    return result instanceof Promise ? await result : result;
   }
 
   console.warn('triggerSubscriptionError: No global subscription error handler registered');
@@ -27,6 +30,13 @@ export const triggerSubscriptionError = (error: any) => {
 
 // Optional token getter installed from within the app after Clerk is available
 let authTokenGetter: (() => Promise<string | null>) | null = null;
+
+// Optional Clerk sign-out function - set by App.tsx when Clerk is available
+let clerkSignOut: (() => Promise<void>) | null = null;
+
+export const setClerkSignOut = (signOutFn: () => Promise<void>) => {
+  clerkSignOut = signOutFn;
+};
 
 export const setAuthTokenGetter = (getter: () => Promise<string | null>) => {
   authTokenGetter = getter;
@@ -170,17 +180,58 @@ apiClient.interceptors.response.use(
         console.error('Token refresh failed:', retryError);
       }
 
-      // If retry failed, don't redirect during app initialization (root route)
-      // Only redirect if we're on a protected route and definitely authenticated
+      // If retry failed, token is expired - sign out user and redirect to sign in
       const isOnboardingRoute = window.location.pathname.includes('/onboarding');
       const isRootRoute = window.location.pathname === '/';
       
       // Don't redirect from root route during app initialization - allow InitialRouteHandler to work
       if (!isRootRoute && !isOnboardingRoute) {
-        // Only redirect if we're definitely not just initializing
-        try { window.location.assign('/'); } catch {}
+        // Token expired - sign out user and redirect to landing/sign-in
+        console.warn('401 Unauthorized - token expired, signing out user');
+        
+        // Clear any cached auth data
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('auth_token');
+        
+        // Use Clerk signOut if available, otherwise just redirect
+        if (clerkSignOut) {
+          clerkSignOut()
+            .then(() => {
+              // Redirect to landing page after sign out
+              window.location.assign('/');
+            })
+            .catch((err) => {
+              console.error('Error during Clerk sign out:', err);
+              // Fallback: redirect anyway
+              window.location.assign('/');
+            });
+        } else {
+          // Fallback: redirect to landing (will show sign-in if Clerk handles it)
+          window.location.assign('/');
+        }
       } else {
         console.warn('401 Unauthorized - token refresh failed (during initialization, not redirecting)');
+      }
+    }
+
+    // Handle 401 errors that weren't retried (e.g., no authTokenGetter, already retried, etc.)
+    if (error?.response?.status === 401 && (originalRequest._retry || !authTokenGetter)) {
+      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
+      const isRootRoute = window.location.pathname === '/';
+      
+      if (!isRootRoute && !isOnboardingRoute) {
+        // Token expired - sign out user and redirect
+        console.warn('401 Unauthorized - token expired (not retried), signing out user');
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('auth_token');
+        
+        if (clerkSignOut) {
+          clerkSignOut()
+            .then(() => window.location.assign('/'))
+            .catch(() => window.location.assign('/'));
+        } else {
+          window.location.assign('/');
+        }
       }
     }
 
@@ -188,7 +239,8 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 429 || error.response?.status === 402) {
       console.log('API Client: Detected subscription error, triggering global handler');
       if (globalSubscriptionErrorHandler) {
-        const wasHandled = globalSubscriptionErrorHandler(error);
+        const result = globalSubscriptionErrorHandler(error);
+        const wasHandled = result instanceof Promise ? await result : result;
         if (wasHandled) {
           console.log('API Client: Subscription error handled by global handler');
           return Promise.reject(error);
@@ -245,7 +297,18 @@ aiApiClient.interceptors.response.use(
       
       // Don't redirect from root route during app initialization
       if (!isRootRoute && !isOnboardingRoute) {
-        try { window.location.assign('/'); } catch {}
+        // Token expired - sign out user and redirect
+        console.warn('401 Unauthorized - token expired, signing out user');
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('auth_token');
+        
+        if (clerkSignOut) {
+          clerkSignOut()
+            .then(() => window.location.assign('/'))
+            .catch(() => window.location.assign('/'));
+        } else {
+          window.location.assign('/');
+        }
       } else {
         console.warn('401 Unauthorized - token refresh failed (during initialization, not redirecting)');
       }
@@ -255,7 +318,8 @@ aiApiClient.interceptors.response.use(
     if (error.response?.status === 429 || error.response?.status === 402) {
       console.log('AI API Client: Detected subscription error, triggering global handler');
       if (globalSubscriptionErrorHandler) {
-        const wasHandled = globalSubscriptionErrorHandler(error);
+        const result = globalSubscriptionErrorHandler(error);
+        const wasHandled = result instanceof Promise ? await result : result;
         if (wasHandled) {
           console.log('AI API Client: Subscription error handled by global handler');
           return Promise.reject(error);
@@ -290,7 +354,7 @@ longRunningApiClient.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
+  async (error) => {
     if (error?.response?.status === 401) {
       // Only redirect on 401 if we're not in onboarding flow or root route
       const isOnboardingRoute = window.location.pathname.includes('/onboarding');
@@ -307,7 +371,8 @@ longRunningApiClient.interceptors.response.use(
     if (error.response?.status === 429 || error.response?.status === 402) {
       console.log('Long-running API Client: Detected subscription error, triggering global handler');
       if (globalSubscriptionErrorHandler) {
-        const wasHandled = globalSubscriptionErrorHandler(error);
+        const result = globalSubscriptionErrorHandler(error);
+        const wasHandled = result instanceof Promise ? await result : result;
         if (wasHandled) {
           console.log('Long-running API Client: Subscription error handled by global handler');
           return Promise.reject(error);
@@ -342,7 +407,7 @@ pollingApiClient.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
+  async (error) => {
     if (error?.response?.status === 401) {
       // Only redirect on 401 if we're not in onboarding flow or root route
       const isOnboardingRoute = window.location.pathname.includes('/onboarding');
@@ -357,18 +422,11 @@ pollingApiClient.interceptors.response.use(
     }
     // Check if it's a subscription-related error and handle it globally
     if (error.response?.status === 429 || error.response?.status === 402) {
-      console.log('Polling API Client: Detected subscription error, triggering global handler', {
-        status: error.response?.status,
-        data: error.response?.data,
-        hasHandler: !!globalSubscriptionErrorHandler
-      });
       if (globalSubscriptionErrorHandler) {
-        const wasHandled = globalSubscriptionErrorHandler(error);
-        console.log('Polling API Client: Global handler returned', wasHandled);
-        if (wasHandled) {
-          console.log('Polling API Client: Subscription error handled by global handler - modal should be showing');
-        } else {
-          console.warn('Polling API Client: Global handler did not handle subscription error');
+        const result = globalSubscriptionErrorHandler(error);
+        const wasHandled = result instanceof Promise ? await result : result;
+        if (!wasHandled) {
+          console.warn('Polling API Client: Subscription error not handled by global handler');
         }
         // Always reject so the polling hook can also handle it
         return Promise.reject(error);

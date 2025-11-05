@@ -8,12 +8,14 @@ interface ResearchDataActionsProps {
   research: BlogResearchResponse | null;
   onOutlineCreated: (outline: BlogOutlineSection[]) => void;
   onTitleOptionsSet: (titles: string[]) => void;
+  navigateToPhase?: (phase: string) => void;
 }
 
 export const ResearchDataActions: React.FC<ResearchDataActionsProps> = ({
   research,
   onOutlineCreated,
-  onTitleOptionsSet
+  onTitleOptionsSet,
+  navigateToPhase
 }) => {
   // Chat with Research Data
   useCopilotActionTyped({
@@ -110,6 +112,9 @@ export const ResearchDataActions: React.FC<ResearchDataActionsProps> = ({
       }
 
       try {
+        // Navigate to outline phase when outline generation starts
+        navigateToPhase?.('outline');
+        
         // Create a custom outline request with user instructions
         const customOutlineRequest = {
           research: research,

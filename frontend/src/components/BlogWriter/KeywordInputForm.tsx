@@ -13,27 +13,15 @@ interface KeywordInputFormProps {
 }
 
 export const KeywordInputForm: React.FC<KeywordInputFormProps> = ({ onKeywordsReceived, onResearchComplete, onTaskStart }) => {
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
-
-  // This component now only provides polling functionality
-  // The keyword input form is handled by ResearchAction component
-
-  return (
-    <>
-      {/* Polling handler for research progress */}
-      <ResearchPollingHandler
-        taskId={currentTaskId}
-        onResearchComplete={(result) => {
-          onResearchComplete?.(result);
-          setCurrentTaskId(null);
-        }}
-        onError={(error) => {
-          console.error('Research error:', error);
-          setCurrentTaskId(null);
-        }}
-      />
-    </>
-  );
+  // This component is now a lightweight wrapper
+  // The actual keyword input form is handled by ResearchAction component
+  // Polling is handled by ResearchPollingHandler in ResearchAction
+  // This component exists for backward compatibility but doesn't create unnecessary polling hooks
+  
+  // Note: If onTaskStart is called, it should use the researchPolling from parent
+  // (passed via CopilotKitComponents), not create a new polling instance here
+  
+  return null; // No UI needed - ResearchAction handles everything
 };
 
 export default KeywordInputForm;

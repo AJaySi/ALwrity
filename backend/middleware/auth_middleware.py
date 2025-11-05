@@ -156,7 +156,12 @@ class ClerkAuthMiddleware:
                         logger.warning("No user ID found in verified token")
                         return None
                 except Exception as e:
-                    logger.warning(f"fastapi-clerk-auth verification error: {e}")
+                    # Expired tokens are expected - log at debug level to reduce noise
+                    error_msg = str(e).lower()
+                    if 'expired' in error_msg or 'signature has expired' in error_msg:
+                        logger.debug(f"Token expired (expected): {e}")
+                    else:
+                        logger.warning(f"fastapi-clerk-auth verification error: {e}")
                     return None
             else:
                 # Fallback to custom implementation (not secure for production)
@@ -218,7 +223,9 @@ async def get_current_user(
         token = credentials.credentials
         user = await clerk_auth.verify_token(token)
         if not user:
-            logger.warning("Token verification failed")
+            # Token verification failed (likely expired) - log at debug level to reduce noise
+            # The HTTPException will still be raised, but we don't need to spam logs
+            logger.debug("Token verification failed (likely expired token)")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication failed",

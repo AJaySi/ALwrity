@@ -389,10 +389,19 @@ class ResearchService:
                     exa_provider.track_exa_usage(user_id, cost)
                     
                     # Extract content for downstream analysis
+                    # Handle None result case
+                    if raw_result is None:
+                        logger.error("raw_result is None after Exa search - this should not happen if HTTPException was raised")
+                        raise ValueError("Exa research result is None - search operation failed unexpectedly")
+                    
+                    if not isinstance(raw_result, dict):
+                        logger.warning(f"raw_result is not a dict (type: {type(raw_result)}), using defaults")
+                        raw_result = {}
+                    
                     content = raw_result.get('content', '')
-                    sources = raw_result.get('sources', [])
+                    sources = raw_result.get('sources', []) or []
                     search_widget = ""  # Exa doesn't provide search widgets
-                    search_queries = raw_result.get('search_queries', [])
+                    search_queries = raw_result.get('search_queries', []) or []
                     grounding_metadata = None  # Exa doesn't provide grounding metadata
                     
                 except RuntimeError as e:
@@ -423,10 +432,15 @@ class ResearchService:
                 
                 await task_manager.update_progress(task_id, "📊 Processing research results and extracting insights...")
                 # Extract sources and content
+                # Handle None result case
+                if gemini_result is None:
+                    logger.error("gemini_result is None after search - this should not happen if HTTPException was raised")
+                    raise ValueError("Research result is None - search operation failed unexpectedly")
+                
                 sources = self._extract_sources_from_grounding(gemini_result)
-                content = gemini_result.get("content", "")
-                search_widget = gemini_result.get("search_widget", "") or ""
-                search_queries = gemini_result.get("search_queries", []) or []
+                content = gemini_result.get("content", "") if isinstance(gemini_result, dict) else ""
+                search_widget = gemini_result.get("search_widget", "") or "" if isinstance(gemini_result, dict) else ""
+                search_queries = gemini_result.get("search_queries", []) or [] if isinstance(gemini_result, dict) else []
                 grounding_metadata = self._extract_grounding_metadata(gemini_result)
             
             # Continue with common analysis (same for both providers)
@@ -548,8 +562,17 @@ class ResearchService:
         """Extract sources from Gemini grounding metadata."""
         sources = []
         
+        # Handle None or invalid gemini_result
+        if not gemini_result or not isinstance(gemini_result, dict):
+            logger.warning("gemini_result is None or not a dict, returning empty sources")
+            return sources
+        
         # The Gemini grounded provider already extracts sources and puts them in the 'sources' field
         raw_sources = gemini_result.get("sources", [])
+        # Ensure raw_sources is a list (handle None case)
+        if raw_sources is None:
+            raw_sources = []
+        
         for src in raw_sources:
             source = ResearchSource(
                 title=src.get("title", "Untitled"),
@@ -570,6 +593,15 @@ class ResearchService:
         grounding_supports = []
         citations = []
         
+        # Handle None or invalid gemini_result
+        if not gemini_result or not isinstance(gemini_result, dict):
+            logger.warning("gemini_result is None or not a dict, returning empty grounding metadata")
+            return GroundingMetadata(
+                grounding_chunks=grounding_chunks,
+                grounding_supports=grounding_supports,
+                citations=citations
+            )
+        
         # Extract grounding chunks from the raw grounding metadata
         raw_grounding = gemini_result.get("grounding_metadata", {})
         
@@ -577,7 +609,11 @@ class ResearchService:
         if hasattr(raw_grounding, 'grounding_chunks'):
             raw_chunks = raw_grounding.grounding_chunks
         else:
-            raw_chunks = raw_grounding.get("grounding_chunks", [])
+            raw_chunks = raw_grounding.get("grounding_chunks", []) if isinstance(raw_grounding, dict) else []
+        
+        # Ensure raw_chunks is a list (handle None case)
+        if raw_chunks is None:
+            raw_chunks = []
         
         for chunk in raw_chunks:
             if "web" in chunk:

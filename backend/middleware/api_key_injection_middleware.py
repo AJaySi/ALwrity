@@ -49,7 +49,8 @@ class APIKeyInjectionMiddleware:
                     else:
                         logger.warning(f"[API Key Injection] User object missing ID: {user}")
                 else:
-                    logger.warning("[API Key Injection] Token verification failed")
+                    # Token verification failed (likely expired) - log at debug level to reduce noise
+                    logger.debug("[API Key Injection] Token verification failed (likely expired token)")
             except Exception as e:
                 logger.error(f"[API Key Injection] Could not extract user from token: {e}")
         

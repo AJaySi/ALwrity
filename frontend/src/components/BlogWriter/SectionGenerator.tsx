@@ -8,6 +8,7 @@ interface SectionGeneratorProps {
   genMode: 'draft' | 'polished';
   onSectionGenerated: (sectionId: string, markdown: string) => void;
   onContinuityRefresh: () => void;
+  navigateToPhase?: (phase: string) => void;
 }
 
 const useCopilotActionTyped = useCopilotAction as any;
@@ -17,7 +18,8 @@ export const SectionGenerator: React.FC<SectionGeneratorProps> = ({
   research,
   genMode,
   onSectionGenerated,
-  onContinuityRefresh
+  onContinuityRefresh,
+  navigateToPhase
 }) => {
   useCopilotActionTyped({
     name: 'generateSection',
@@ -26,6 +28,9 @@ export const SectionGenerator: React.FC<SectionGeneratorProps> = ({
     handler: async ({ sectionId }: { sectionId: string }) => {
       const section = outline.find(s => s.id === sectionId);
       if (!section) return { success: false, message: 'Section not found. Please generate an outline first.' };
+      
+      // Navigate to content phase when content generation starts
+      navigateToPhase?.('content');
       
       try {
         const res = await blogWriterApi.generateSection({ section, mode: genMode });
@@ -98,6 +103,9 @@ export const SectionGenerator: React.FC<SectionGeneratorProps> = ({
     description: 'Generate content for every section in the outline',
     parameters: [],
     handler: async () => {
+      // Navigate to content phase when content generation starts
+      navigateToPhase?.('content');
+      
       for (const s of outline) {
         const res = await blogWriterApi.generateSection({ section: s, mode: genMode });
         onSectionGenerated(s.id, res.markdown);

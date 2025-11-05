@@ -494,10 +494,8 @@ class LimitValidator:
                 
                 display_provider_name = actual_provider_name or provider_name
                 
-                logger.error(f"[Pre-flight Check] ✅ Operation {op_idx + 1}/{len(operations)}: {operation_type}")
-                logger.error(f"   ├─ Provider: {display_provider_name} (enum: {provider_name})")
-                logger.error(f"   ├─ Operation Index: {op_idx}")
-                logger.error(f"   └─ Estimated Tokens Requested: {tokens_requested}")
+                # Log operation details at debug level (only when needed)
+                logger.debug(f"[Pre-flight] Operation {op_idx + 1}/{len(operations)}: {operation_type} ({display_provider_name}, {tokens_requested} tokens)")
                 
                 # Check if this is an LLM provider
                 llm_providers = ['gemini', 'openai', 'anthropic', 'mistral']
@@ -563,13 +561,11 @@ class LimitValidator:
                                 
                                 if result:
                                     base_current_tokens = result[0] if result[0] is not None else 0
-                                    logger.error(f"[Pre-flight Check] ✅ Raw SQL query returned result: {result[0]} -> {base_current_tokens}")
                                 else:
                                     base_current_tokens = 0
-                                    logger.error(f"[Pre-flight Check] ⚠️  Raw SQL query returned None (no rows found)")
                                 
                                 query_succeeded = True
-                                logger.error(f"[Pre-flight Check] ✅ Raw SQL query succeeded for {provider_tokens_key}: {base_current_tokens}")
+                                logger.debug(f"[Pre-flight] Raw SQL query for {provider_tokens_key}: {base_current_tokens}")
                                 
                             except Exception as sql_error:
                                 logger.error(f"   └─ Raw SQL query failed for {provider_tokens_key}: {type(sql_error).__name__}: {sql_error}", exc_info=True)
@@ -606,14 +602,8 @@ class LimitValidator:
                     if not query_succeeded:
                         logger.warning(f"   └─ Both query methods failed, using 0 as fallback")
                     
-                    # CRITICAL LOG: Always log what we got from DB - this helps debug renewal issues
-                    # Use ERROR level to ensure it shows even if INFO is filtered
-                    logger.error(f"[Pre-flight Check] 🔍 Fresh DB Query for {display_provider_name}:")
-                    logger.error(f"   ├─ Column: {provider_tokens_key}")
-                    logger.error(f"   ├─ Billing Period: {current_period}")
-                    logger.error(f"   ├─ User ID: {user_id}")
-                    logger.error(f"   ├─ Method: {'Raw SQL' if query_succeeded and base_current_tokens >= 0 else 'ORM' if query_succeeded else 'Failed - using 0'}")
-                    logger.error(f"   └─ Value from DB: {base_current_tokens}")
+                    # Log DB query result at debug level (only when needed for troubleshooting)
+                    logger.debug(f"[Pre-flight] DB query for {display_provider_name} ({provider_tokens_key}): {base_current_tokens} (period: {current_period})")
                     
                     # Add any projected tokens from previous operations in this validation run
                     # Note: total_llm_tokens tracks ONLY projected tokens from this run, not base DB value
@@ -622,16 +612,8 @@ class LimitValidator:
                     # Current tokens = base from DB + projected from previous operations in this run
                     current_provider_tokens = base_current_tokens + projected_from_previous
                     
-                    # Use ERROR level to ensure visibility
-                    logger.error(f"[Pre-flight Check] 📊 Token Calculation for {display_provider_name}:")
-                    logger.error(f"   ├─ Base from DB (fresh query): {base_current_tokens}")
-                    logger.error(f"   ├─ Projected from previous ops in this run: {projected_from_previous}")
-                    logger.error(f"   └─ Total current tokens (base + projected): {current_provider_tokens}")
-                    
-                    # Also check the initial usage object to see if it's being used incorrectly
-                    if usage and hasattr(usage, provider_tokens_key):
-                        initial_usage_value = getattr(usage, provider_tokens_key, 0) or 0
-                        logger.error(f"   ⚠️  Initial usage object value: {initial_usage_value} (this should NOT be used for fresh query)")
+                    # Log token calculation at debug level
+                    logger.debug(f"[Pre-flight] Token calc for {display_provider_name}: base={base_current_tokens}, projected={projected_from_previous}, total={current_provider_tokens}")
                     
                     token_limit = limits.get(provider_tokens_key, 0) or 0
                     
@@ -687,15 +669,10 @@ class LimitValidator:
                     if tokens_requested > 0:
                         # Add this operation's tokens to cumulative projected tokens
                         total_llm_tokens[provider_tokens_key] = projected_from_previous + tokens_requested
-                        logger.error(f"[Pre-flight Check] 📝 Updated cumulative projected tokens for {display_provider_name}:")
-                        logger.error(f"   ├─ Previous projected: {projected_from_previous}")
-                        logger.error(f"   ├─ This operation requested: {tokens_requested}")
-                        logger.error(f"   ├─ New cumulative projected: {total_llm_tokens[provider_tokens_key]}")
-                        logger.error(f"   └─ Old value in dict was: {old_projected}")
+                        logger.debug(f"[Pre-flight] Updated projected tokens for {display_provider_name}: {projected_from_previous} + {tokens_requested} = {total_llm_tokens[provider_tokens_key]}")
                     else:
                         # No tokens requested, keep existing projected tokens (or 0 if first operation)
                         total_llm_tokens[provider_tokens_key] = projected_from_previous
-                        logger.error(f"[Pre-flight Check] 📝 No tokens requested, keeping projected at: {projected_from_previous}")
                 
                 # Check image generation limits
                 elif provider == APIProvider.STABILITY:

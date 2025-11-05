@@ -37,9 +37,20 @@ export function usePolling(
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Debug state changes
+  // Debug state changes only in development and when state actually changes meaningfully
+  const prevStateRef = useRef({ isPolling: false, currentStatus: 'idle', progressCount: 0 });
   useEffect(() => {
-    console.log('Polling state changed:', { isPolling, currentStatus, progressCount: progressMessages.length });
+    const currentState = { isPolling, currentStatus, progressCount: progressMessages.length };
+    const prevState = prevStateRef.current;
+    
+    // Only log if state meaningfully changed (not just a re-render)
+    if (process.env.NODE_ENV === 'development' && 
+        (prevState.isPolling !== currentState.isPolling || 
+         prevState.currentStatus !== currentState.currentStatus ||
+         (prevState.isPolling && currentState.progressCount !== prevState.progressCount))) {
+      console.log('Polling state changed:', currentState);
+      prevStateRef.current = currentState;
+    }
   }, [isPolling, currentStatus, progressMessages.length]);
 
 
@@ -48,26 +59,34 @@ export function usePolling(
   const currentTaskIdRef = useRef<string | null>(null);
 
   const stopPolling = useCallback(() => {
-    console.log('stopPolling called');
+    // Only log and clear if actually polling (not just cleanup on unmount when idle)
+    const wasPolling = intervalRef.current !== null || isPolling;
+    
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    console.log('Setting isPolling to false');
-    setIsPolling(false);
-    attemptsRef.current = 0;
-    currentTaskIdRef.current = null;
-  }, []);
+    
+    // Only update state if actually was polling (prevents unnecessary state updates)
+    if (wasPolling) {
+      setIsPolling(false);
+      attemptsRef.current = 0;
+      currentTaskIdRef.current = null;
+      
+      // Only log meaningful stops (when actually stopping active polling)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('stopPolling: Stopped active polling');
+      }
+    }
+    // Silently handle cleanup when not polling (common on unmount/re-render)
+  }, [isPolling]);
 
   const startPolling = useCallback((taskId: string) => {
-    console.log('startPolling called with taskId:', taskId);
     if (isPolling) {
-      console.log('Already polling, stopping first');
       stopPolling();
     }
 
     currentTaskIdRef.current = taskId;
-    console.log('Setting isPolling to true');
     setIsPolling(true);
     setCurrentStatus('pending');
     setProgressMessages([]);
@@ -83,30 +102,25 @@ export function usePolling(
 
       try {
         const status = await pollFunction(currentTaskIdRef.current);
-        console.log('Polling status update:', status);
         setCurrentStatus(status.status);
 
         // Update progress messages
         if (status.progress_messages && status.progress_messages.length > 0) {
-          console.log('Progress messages received:', status.progress_messages);
-          console.log('Previous progress messages count:', progressMessages.length);
           setProgressMessages(status.progress_messages);
-          console.log('Progress messages state updated to:', status.progress_messages.length, 'messages');
           
           // Call onProgress with the latest message for backward compatibility
           const latestMessage = status.progress_messages[status.progress_messages.length - 1];
-          console.log('Latest progress message:', latestMessage.message);
           onProgress?.(latestMessage.message);
         }
 
         if (status.status === 'completed') {
-          console.log('✅ Task completed - stopping polling immediately');
+          console.info('[usePolling] ✅ Task completed', { taskId: currentTaskIdRef.current });
           setResult(status.result);
           onComplete?.(status.result);
           stopPolling();
           return; // Exit early to prevent further processing
         } else if (status.status === 'failed') {
-          console.log('❌ Task failed - stopping polling immediately');
+          console.error('[usePolling] ❌ Task failed:', status.error);
           setError(status.error || 'Task failed');
           onError?.(status.error || 'Task failed');
           
@@ -139,7 +153,7 @@ export function usePolling(
             };
             
             console.log('usePolling: Triggering subscription error handler with:', mockError);
-            const handled = triggerSubscriptionError(mockError);
+            const handled = await triggerSubscriptionError(mockError);
             
             if (!handled) {
               console.warn('usePolling: Subscription error handler did not handle the error');
@@ -159,19 +173,11 @@ export function usePolling(
         // This is a fallback in case the interceptor doesn't catch it
         const axiosError = err as any;
         if (axiosError?.response?.status === 429 || axiosError?.response?.status === 402) {
-          console.log('usePolling: Detected subscription error in axios error response', {
-            status: axiosError.response.status,
-            data: axiosError.response.data,
-            errorDataKeys: axiosError.response.data ? Object.keys(axiosError.response.data) : null
-          });
-          
           // Trigger subscription error handler (modal will show)
           // Note: The interceptor may have already called this, but we call it again to be safe
-          const handled = triggerSubscriptionError(axiosError);
-          console.log('usePolling: triggerSubscriptionError returned', handled);
+          const handled = await triggerSubscriptionError(axiosError);
           
           if (handled) {
-            console.log('usePolling: Subscription error handled, stopping polling - modal should be visible');
             const errorMsg = axiosError.response?.data?.message || 
                            axiosError.response?.data?.error || 
                            'Subscription limit exceeded';
@@ -180,7 +186,7 @@ export function usePolling(
             stopPolling();
             return; // Exit early - don't continue processing
           } else {
-            console.warn('usePolling: Subscription error not handled by global handler, dispatching fallback event');
+            console.warn('[usePolling] Subscription error not handled by global handler');
             try {
               window.dispatchEvent(new CustomEvent('subscription-error', { detail: axiosError }));
             } catch (eventError) {
@@ -210,10 +216,14 @@ export function usePolling(
     intervalRef.current = setInterval(poll, interval);
   }, [isPolling, interval, onProgress, onComplete, onError, pollFunction, stopPolling, progressMessages.length]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - only if actually polling
   useEffect(() => {
     return () => {
-      stopPolling();
+      // Only call stopPolling if we have an active interval (actually polling)
+      // This prevents unnecessary cleanup calls when component unmounts while idle
+      if (intervalRef.current) {
+        stopPolling();
+      }
     };
   }, [stopPolling]);
 

@@ -51,7 +51,8 @@ export interface StyleDetectionResponse {
   timestamp: string;
 }
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Consistent API URL pattern - no hardcoded localhost fallback
+const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
 
 /**
  * Analyze content style using AI

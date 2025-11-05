@@ -49,11 +49,22 @@ export const useRealTimeData = (options: RealTimeDataOptions) => {
     setState(prev => ({ ...prev, isConnecting: true, error: null }));
 
     try {
-      // For development, use a mock WebSocket connection
-      // In production, this would be the actual WebSocket URL
-      const wsUrl = process.env.NODE_ENV === 'development' 
-        ? `ws://localhost:8000/ws/strategy/${strategyId}/live`
-        : `wss://api.alwrity.com/ws/strategy/${strategyId}/live`;
+      // Build WebSocket URL from environment variables
+      // Consistent with API URL pattern - no hardcoded localhost
+      const apiUrl = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+      
+      // In development, use proxy (empty string means use same origin)
+      // In production, derive WebSocket URL from API URL
+      let wsUrl: string;
+      if (!apiUrl || apiUrl === '') {
+        // Development: use proxy (same origin WebSocket)
+        wsUrl = `ws://${window.location.host}/ws/strategy/${strategyId}/live`;
+      } else {
+        // Production: derive from API URL
+        const wsProtocol = apiUrl.startsWith('https://') ? 'wss://' : 'ws://';
+        const wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        wsUrl = `${wsProtocol}${wsHost}/ws/strategy/${strategyId}/live`;
+      }
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

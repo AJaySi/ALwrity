@@ -36,7 +36,7 @@ from api.persona import (
 )
 
 from services.persona_replication_engine import PersonaReplicationEngine
-from api.persona import update_platform_persona, generate_platform_persona
+from api.persona import update_platform_persona, generate_platform_persona, check_facebook_persona
 
 # Create router
 router = APIRouter(prefix="/api/personas", tags=["personas"])
@@ -249,3 +249,11 @@ async def update_platform_persona_endpoint(
     """
     # Beta testing: Force user_id=1 for all requests
     return await update_platform_persona(1, platform, update_data)
+
+@router.get("/facebook-persona/check/{user_id}")
+async def check_facebook_persona_endpoint(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """Check if Facebook persona exists for user."""
+    return await check_facebook_persona(user_id, db)

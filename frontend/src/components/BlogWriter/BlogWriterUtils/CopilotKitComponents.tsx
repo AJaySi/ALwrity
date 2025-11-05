@@ -27,6 +27,7 @@ interface CopilotKitComponentsProps {
   setFlowAnalysisResults: (results: any) => void;
   setContinuityRefresh: (refresh: number | ((prev: number) => number)) => void;
   researchPolling: any;
+  navigateToPhase?: (phase: string) => void;
 }
 
 export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
@@ -49,6 +50,7 @@ export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
   setFlowAnalysisResults,
   setContinuityRefresh,
   researchPolling,
+  navigateToPhase,
 }) => {
   return (
     <>
@@ -57,12 +59,13 @@ export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
         onTaskStart={(taskId) => researchPolling.startPolling(taskId)}
       />
       <CustomOutlineForm onOutlineCreated={onOutlineCreated} />
-      <ResearchAction onResearchComplete={onResearchComplete} />
+      <ResearchAction onResearchComplete={onResearchComplete} navigateToPhase={navigateToPhase} />
       
       <ResearchDataActions 
         research={research} 
         onOutlineCreated={onOutlineCreated} 
-        onTitleOptionsSet={onTitleOptionsSet} 
+        onTitleOptionsSet={onTitleOptionsSet}
+        navigateToPhase={navigateToPhase}
       />
       <EnhancedOutlineActions 
         outline={outline} 
@@ -77,6 +80,7 @@ export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
         onMediumGenerationTriggered={onMediumGenerationTriggered}
         sections={sections}
         blogTitle={selectedTitle ?? undefined}
+        navigateToPhase={navigateToPhase}
         onFlowAnalysisComplete={(analysis) => {
           console.log('Flow analysis completed:', analysis);
           setFlowAnalysisCompleted(true);

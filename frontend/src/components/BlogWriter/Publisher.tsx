@@ -62,8 +62,12 @@ export const Publisher: React.FC<PublisherProps> = ({
     try {
       const status = await wordpressAPI.getStatus();
       setWordpressSites(status.sites || []);
-    } catch (error) {
-      console.error('Failed to check WordPress connection status:', error);
+    } catch (error: any) {
+      // getStatus now handles 404 gracefully, so we should rarely hit this
+      // Only log non-404 errors
+      if (error?.response?.status !== 404) {
+        console.error('Failed to check WordPress connection status:', error);
+      }
       setWordpressSites([]);
     } finally {
       setCheckingWordPressStatus(false);

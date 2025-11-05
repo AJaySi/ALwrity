@@ -10,7 +10,9 @@ from .core.exception_handler import (
     TaskExecutionError, DatabaseError, TaskLoaderError, SchedulerConfigError
 )
 from .executors.monitoring_task_executor import MonitoringTaskExecutor
+from .executors.oauth_token_monitoring_executor import OAuthTokenMonitoringExecutor
 from .utils.task_loader import load_due_monitoring_tasks
+from .utils.oauth_token_task_loader import load_due_oauth_token_monitoring_tasks
 
 # Global scheduler instance (initialized on first access)
 _scheduler_instance: TaskScheduler = None
@@ -37,6 +39,14 @@ def get_scheduler() -> TaskScheduler:
             monitoring_executor,
             load_due_monitoring_tasks
         )
+        
+        # Register OAuth token monitoring executor
+        oauth_token_executor = OAuthTokenMonitoringExecutor()
+        _scheduler_instance.register_executor(
+            'oauth_token_monitoring',
+            oauth_token_executor,
+            load_due_oauth_token_monitoring_tasks
+        )
     
     return _scheduler_instance
 
@@ -46,6 +56,7 @@ __all__ = [
     'TaskExecutor',
     'TaskExecutionResult',
     'MonitoringTaskExecutor',
+    'OAuthTokenMonitoringExecutor',
     'get_scheduler',
     # Exception handling
     'SchedulerExceptionHandler',

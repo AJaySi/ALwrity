@@ -308,9 +308,7 @@ export const blogWriterApi = {
   },
 
   async pollResearchStatus(taskId: string): Promise<TaskStatusResponse> {
-    console.log('Polling research status for task:', taskId);
     const { data } = await pollingApiClient.get(`/api/blog/research/status/${taskId}`);
-    console.log('Research status response:', data);
     return data;
   },
 

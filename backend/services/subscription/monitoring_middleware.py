@@ -237,9 +237,10 @@ async def monitoring_middleware(request: Request, call_next):
         # Check for authorization header with user info
         elif 'authorization' in request.headers:
             # Auth middleware should have set request.state.user_id
-            # If not, this indicates an authentication failure that should be logged
+            # If not, this indicates an authentication failure (likely expired token)
+            # Log at debug level to reduce noise - expired tokens are expected
             user_id = None
-            logger.warning("Monitoring: Auth header present but no user_id in state - authentication may have failed")
+            logger.debug("Monitoring: Auth header present but no user_id in state - token likely expired")
         
         # Final fallback: None (skip usage limits for truly anonymous/unauthenticated)
         else:

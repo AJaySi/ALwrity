@@ -50,6 +50,7 @@ interface OutlineFeedbackFormProps {
   sections?: Record<string, string>;
   blogTitle?: string;
   onFlowAnalysisComplete?: (analysis: any) => void;
+  navigateToPhase?: (phase: string) => void;
 }
 
 
@@ -225,7 +226,8 @@ const FeedbackForm: React.FC<{
 
 export const OutlineFeedbackForm: React.FC<OutlineFeedbackFormProps> = ({ 
   outline, 
-  research, 
+  research,
+  navigateToPhase, 
   onOutlineConfirmed, 
   onOutlineRefined,
   onMediumGenerationStarted,
@@ -352,6 +354,9 @@ export const OutlineFeedbackForm: React.FC<OutlineFeedbackFormProps> = ({
       }
 
       try {
+        // Navigate to content phase when outline is confirmed
+        navigateToPhase?.('content');
+        
         onOutlineConfirmed();
 
         // If research specifies a short/medium blog (<=1000), kick off medium generation

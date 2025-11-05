@@ -217,6 +217,42 @@ export const generatePlatformPersona = async (platform: string): Promise<any> =>
 };
 
 /**
+ * Check if Facebook persona exists for user
+ * Note: user_id is extracted from Clerk JWT token or passed as parameter
+ */
+export const checkFacebookPersona = async (userId?: string): Promise<{
+  has_persona: boolean;
+  has_core_persona: boolean;
+  persona: any;
+  onboarding_completed: boolean;
+}> => {
+  try {
+    // Get user_id from parameter or localStorage
+    const user_id = userId || localStorage.getItem('user_id');
+    if (!user_id) {
+      return {
+        has_persona: false,
+        has_core_persona: false,
+        persona: null,
+        onboarding_completed: false
+      };
+    }
+    
+    const response = await apiClient.get(`/api/personas/facebook-persona/check/${user_id}`);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error checking Facebook persona:', error);
+    // Return safe defaults on error
+    return {
+      has_persona: false,
+      has_core_persona: false,
+      persona: null,
+      onboarding_completed: false
+    };
+  }
+};
+
+/**
  * Delete a persona
  */
 export const deletePersona = async (userId: number, personaId: number): Promise<any> => {

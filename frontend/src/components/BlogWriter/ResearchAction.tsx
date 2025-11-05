@@ -9,9 +9,10 @@ const useCopilotActionTyped = useCopilotAction as any;
 
 interface ResearchActionProps {
   onResearchComplete?: (research: BlogResearchResponse) => void;
+  navigateToPhase?: (phase: string) => void;
 }
 
-export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComplete }) => {
+export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComplete, navigateToPhase }) => {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [currentMessage, setCurrentMessage] = useState<string>('');
   const [showProgressModal, setShowProgressModal] = useState<boolean>(false);
@@ -20,28 +21,36 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
   // Refs for form inputs (uncontrolled, avoids typing issues inside Copilot render)
   const keywordsRef = useRef<HTMLInputElement | null>(null);
   const blogLengthRef = useRef<HTMLSelectElement | null>(null);
+  
+  // Track if we've navigated to research phase for this form display
+  const hasNavigatedRef = useRef<boolean>(false);
 
   const polling = useResearchPolling({
     onProgress: (message) => {
       setCurrentMessage(message);
       setForceUpdate(prev => prev + 1); // Force re-render
     },
-    onComplete: (result) => {
-      if (result && result.keywords) {
-        researchCache.cacheResult(
-          result.keywords,
-          result.industry || 'General',
-          result.target_audience || 'General',
-          result
-        );
-      }
-      
-      onResearchComplete?.(result);
-      setCurrentTaskId(null);
-      setCurrentMessage('');
-      setShowProgressModal(false);
-      setForceUpdate(prev => prev + 1);
-    },
+      onComplete: (result) => {
+        console.info('[ResearchAction] ✅ Research completed', { hasResult: !!result });
+        
+        if (result && result.keywords) {
+          researchCache.cacheResult(
+            result.keywords,
+            result.industry || 'General',
+            result.target_audience || 'General',
+            result
+          );
+        }
+        
+        // Reset navigation tracking when research completes
+        hasNavigatedRef.current = false;
+        
+        onResearchComplete?.(result);
+        setCurrentTaskId(null);
+        setCurrentMessage('');
+        setShowProgressModal(false);
+        setForceUpdate(prev => prev + 1);
+      },
     onError: (error) => {
       console.error('Research polling error:', error);
       setCurrentTaskId(null);
@@ -55,13 +64,39 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
     name: 'showResearchForm',
     description: 'Show keyword input form for blog research',
     parameters: [],
-    handler: async () => ({
-      success: true,
-      message: "🔍 Let's Research Your Blog Topic\n\nWhat keywords and information would you like to use for your research? Please also specify the desired length of the blog post.\n\nKeywords or Topic *\ne.g., artificial intelligence, machine learning, AI trends\n\nBlog Length (words)\n\n1000 words (Medium blog)\n\n🚀 Start Research",
-      showForm: true
-    }),
+    handler: async () => {
+      // Navigate to research phase when research form is shown
+      // Reset navigation tracking so form render can navigate again if needed
+      hasNavigatedRef.current = false;
+      // Navigate immediately when handler is called
+      if (navigateToPhase) {
+        navigateToPhase('research');
+      }
+      return {
+        success: true,
+        message: "🔍 Let's Research Your Blog Topic\n\nWhat keywords and information would you like to use for your research? Please also specify the desired length of the blog post.\n\nKeywords or Topic *\ne.g., artificial intelligence, machine learning, AI trends\n\nBlog Length (words)\n\n1000 words (Medium blog)\n\n🚀 Start Research",
+        showForm: true
+      };
+    },
     render: ({ status }: any) => {
       const _ = forceUpdate;
+      
+      // Navigate to research phase when form is rendered (if not already navigated and form is shown)
+      // This ensures phase navigation updates when CopilotKit shows the research form
+      // Only navigate when showing the form (not progress or completion states)
+      const isShowingForm = polling.currentStatus !== 'completed' && 
+                           polling.currentStatus !== 'in_progress' && 
+                           polling.currentStatus !== 'running';
+      
+      if (isShowingForm && !hasNavigatedRef.current && navigateToPhase) {
+        // Use setTimeout to avoid calling during render
+        setTimeout(() => {
+          if (!hasNavigatedRef.current) {
+            navigateToPhase('research');
+            hasNavigatedRef.current = true;
+          }
+        }, 0);
+      }
       
       if (polling.currentStatus === 'completed' && polling.progressMessages.length > 0) {
         const latestMessage = polling.progressMessages[polling.progressMessages.length - 1];
@@ -135,6 +170,8 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
                     target_audience: 'General',
                     word_count_target: parseInt(blogLength)
                   };
+                  // Navigate to research phase when research starts
+                  navigateToPhase?.('research');
                   const { task_id } = await blogWriterApi.startResearch(payload);
                   setCurrentTaskId(task_id);
                   setShowProgressModal(true);
@@ -173,6 +210,8 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
         const keywordList = trimmed.includes(',')
           ? trimmed.split(',').map((k: string) => k.trim()).filter(Boolean)
           : [trimmed];
+        // Navigate to research phase when research starts
+        navigateToPhase?.('research');
         const payload: BlogResearchRequest = { 
           keywords: keywordList, 
           industry, 
@@ -190,6 +229,7 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
       }
     }
   });
+
 
   return (
     <>

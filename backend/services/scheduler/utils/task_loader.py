@@ -4,7 +4,7 @@ Functions to load due tasks from database.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 
@@ -14,7 +14,7 @@ from models.enhanced_strategy_models import EnhancedContentStrategy
 
 def load_due_monitoring_tasks(
     db: Session,
-    user_id: Optional[int] = None
+    user_id: Optional[Union[str, int]] = None
 ) -> List[MonitoringTask]:
     """
     Load all monitoring tasks that are due for execution.
@@ -22,14 +22,17 @@ def load_due_monitoring_tasks(
     Criteria:
     - status == 'active'
     - next_execution <= now (or is None for first execution)
-    - Optional: user_id filter for specific user (for future admin features)
+    - Optional: user_id filter for specific user (for user isolation)
     
     Note: Strategy relationship is eagerly loaded to ensure user_id is accessible
     during task execution for user isolation.
     
+    User isolation is enforced through filtering by user_id when provided.
+    If no user_id is provided, loads tasks for all users (for system-wide monitoring).
+    
     Args:
         db: Database session
-        user_id: Optional user ID to filter tasks (if None, loads all users' tasks)
+        user_id: Optional user ID (Clerk string or int) to filter tasks (if None, loads all users' tasks)
         
     Returns:
         List of due MonitoringTask instances with strategy relationship loaded

@@ -66,7 +66,7 @@ export interface WordPressHealthResponse {
 }
 
 class WordPressAPI {
-  private baseUrl = '/wordpress';
+  private baseUrl = '/api/wordpress';
   private getAuthToken: (() => Promise<string | null>) | null = null;
 
   /**
@@ -102,7 +102,17 @@ class WordPressAPI {
       const client = await this.getAuthenticatedClient();
       const response = await client.get(`${this.baseUrl}/status`);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
+      // Handle 404 gracefully - endpoint may not exist yet
+      if (error?.response?.status === 404) {
+        // Return empty status instead of throwing
+        return {
+          connected: false,
+          sites: [],
+          total_sites: 0
+        };
+      }
+      // Only log non-404 errors
       console.error('WordPress API: Error getting status:', error);
       throw error;
     }

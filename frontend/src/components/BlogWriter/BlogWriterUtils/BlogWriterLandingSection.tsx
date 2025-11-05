@@ -17,27 +17,24 @@ export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> =
   navigateToPhase,
   onResearchComplete,
 }) => {
+  // Only show landing/initial content when no research exists
+  // Phase navigation header is always visible, so this is just the initial content
   if (!research) {
     return (
       <>
+        {/* Show manual research form when on research phase and CopilotKit unavailable */}
         {!copilotKitAvailable && currentPhase === 'research' && (
           <ManualResearchForm onResearchComplete={onResearchComplete} />
         )}
-        {copilotKitAvailable && (
+        {/* Show landing page for CopilotKit flow or when not on research phase */}
+        {(!copilotKitAvailable && currentPhase !== 'research') || copilotKitAvailable ? (
           <BlogWriterLanding 
             onStartWriting={() => {
-              // Trigger the copilot to start the research process
-            }}
-          />
-        )}
-        {!copilotKitAvailable && currentPhase !== 'research' && (
-          <BlogWriterLanding 
-            onStartWriting={() => {
-              // Navigate to research phase when CopilotKit unavailable
+              // Navigate to research phase to start the workflow
               navigateToPhase('research');
             }}
           />
-        )}
+        ) : null}
       </>
     );
   }

@@ -51,16 +51,13 @@ export const ResearchPollingHandler: React.FC<ResearchPollingHandlerProps> = ({
     if (taskId) {
       polling.startPolling(taskId);
     } else {
-      polling.stopPolling();
+      // Only stop if actually polling (not on every render when taskId is null)
+      if (polling.isPolling) {
+        polling.stopPolling();
+      }
     }
-  }, [taskId, polling]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      polling.stopPolling();
-    };
-  }, [polling]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]); // Removed polling from dependencies - usePolling already handles cleanup
 
   // Only log on meaningful changes
   useEffect(() => {

@@ -125,15 +125,17 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
     return unsub;
   }, [metadataResult]);
 
-  // Debug logging
+  // Debug logging only in development and when modal state changes meaningfully
   useEffect(() => {
-    console.log('🔍 SEOMetadataModal render:', {
-      isOpen,
-      blogContent: blogContent?.length,
-      blogTitle,
-      researchData: !!researchData
-    });
-  }, [isOpen, blogContent, blogTitle, researchData]);
+    if (process.env.NODE_ENV === 'development' && isOpen) {
+      console.log('🔍 SEOMetadataModal render:', {
+        isOpen,
+        blogContent: blogContent?.length,
+        blogTitle,
+        researchData: !!researchData
+      });
+    }
+  }, [isOpen, blogContent?.length, blogTitle, researchData]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -229,7 +231,7 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
           status,
           data: err?.response?.data
         });
-        const handled = triggerSubscriptionError(err);
+        const handled = await triggerSubscriptionError(err);
         if (handled) {
           console.log('SEOMetadataModal: Global subscription error handler triggered successfully');
           // Don't set local error - let the global modal handle it

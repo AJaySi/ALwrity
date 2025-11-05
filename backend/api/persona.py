@@ -380,6 +380,41 @@ async def generate_platform_persona(user_id: str, platform: str, db_session):
         logger.error(f"Error generating {platform} persona: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate {platform} persona: {str(e)}")
 
+async def check_facebook_persona(user_id: str, db: Session):
+    """Check if Facebook persona exists for user."""
+    try:
+        from services.persona_data_service import PersonaDataService
+        
+        persona_data_service = PersonaDataService(db_session=db)
+        persona_data = persona_data_service.get_user_persona_data(user_id)
+        
+        if not persona_data:
+            return {
+                "has_persona": False,
+                "has_core_persona": False,
+                "message": "No persona data found",
+                "onboarding_completed": False
+            }
+        
+        platform_personas = persona_data.get('platform_personas', {})
+        facebook_persona = platform_personas.get('facebook') if platform_personas else None
+        
+        # Check if core persona exists
+        has_core_persona = bool(persona_data.get('core_persona'))
+        
+        # Assume onboarding is completed if persona data exists
+        onboarding_completed = True
+        
+        return {
+            "has_persona": bool(facebook_persona),
+            "has_core_persona": has_core_persona,
+            "persona": facebook_persona,
+            "onboarding_completed": onboarding_completed
+        }
+    except Exception as e:
+        logger.error(f"Error checking Facebook persona for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 async def validate_persona_generation_readiness(user_id: int):
     """Check if user has sufficient onboarding data for persona generation."""
     try:

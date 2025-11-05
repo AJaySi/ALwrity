@@ -14,6 +14,7 @@ interface UseBlogWriterCopilotActionsParams {
   sections: Record<string, string>;
   research: any;
   openSEOMetadata: OpenMetadataCb;
+  navigateToPhase?: (phase: string) => void;
 }
 
 // Consolidates all Copilot actions used by BlogWriter
@@ -25,6 +26,7 @@ export function useBlogWriterCopilotActions({
   sections,
   research,
   openSEOMetadata,
+  navigateToPhase,
 }: UseBlogWriterCopilotActionsParams) {
   // Maintain the same any-cast pattern for parity with component
   const useCopilotActionTyped = useCopilotAction as any;
@@ -35,6 +37,8 @@ export function useBlogWriterCopilotActions({
     description: 'Confirm that the blog content is ready and move to the next stage (SEO analysis)',
     parameters: [],
     handler: async () => {
+      // Navigate to SEO phase when content is confirmed
+      navigateToPhase?.('seo');
       const msg = await confirmBlogContent();
       return msg;
     },
@@ -46,6 +50,9 @@ export function useBlogWriterCopilotActions({
     description: 'Analyze the blog content for SEO optimization and provide detailed recommendations',
     parameters: [],
     handler: async () => {
+      // Navigate to SEO phase when SEO analysis starts
+      navigateToPhase?.('seo');
+      
       debug.log('[BlogWriter] SEO analysis action', {
         modalOpen: isSEOAnalysisModalOpen,
         hasSections: !!sections && Object.keys(sections).length > 0,
@@ -73,6 +80,9 @@ export function useBlogWriterCopilotActions({
       },
     ],
     handler: async ({ title }: { title?: string }) => {
+      // Navigate to SEO phase when SEO metadata generation starts
+      navigateToPhase?.('seo');
+      
       if (!sections || Object.keys(sections).length === 0) {
         return 'Please generate blog content first before creating SEO metadata. Use the content generation features to create your blog post.';
       }

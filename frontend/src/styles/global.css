@@ -373,4 +373,48 @@ a:hover {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Blog Writer - Light Theme Override for High Readability */
+body.blog-writer-page,
+html.blog-writer-page {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* Blog Writer Container - Light Background */
+.blog-writer-container {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* Override MUI dark theme for blog writer components */
+.blog-writer-container .MuiPaper-root,
+.blog-writer-container .MuiCard-root,
+.blog-writer-container .MuiDialog-root .MuiPaper-root,
+.blog-writer-container .MuiModal-root .MuiPaper-root {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* Ensure text is readable on light background */
+.blog-writer-container .MuiTypography-root,
+.blog-writer-container .MuiButton-root,
+.blog-writer-container .MuiInputBase-root {
+  color: #1a1a1a !important;
+}
+
+/* Ensure buttons and inputs are visible on light background */
+.blog-writer-container .MuiButton-outlined {
+  border-color: rgba(26, 26, 26, 0.23) !important;
+  color: #1a1a1a !important;
+}
+
+.blog-writer-container .MuiTextField-root .MuiOutlinedInput-root {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+.blog-writer-container .MuiTextField-root .MuiOutlinedInput-root fieldset {
+  border-color: rgba(26, 26, 26, 0.23) !important;
 } 

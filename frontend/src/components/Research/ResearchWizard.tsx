@@ -5,14 +5,24 @@ import { ResearchInput } from './steps/ResearchInput';
 import { StepProgress } from './steps/StepProgress';
 import { StepResults } from './steps/StepResults';
 import { ResearchWizardProps } from './types/research.types';
+import { addResearchHistory } from '../../utils/researchHistory';
 
 export const ResearchWizard: React.FC<ResearchWizardProps> = ({ 
   onComplete,
   onCancel,
   initialKeywords,
   initialIndustry,
+  initialTargetAudience,
+  initialResearchMode,
+  initialConfig,
 }) => {
-  const wizard = useResearchWizard(initialKeywords, initialIndustry);
+  const wizard = useResearchWizard(
+    initialKeywords, 
+    initialIndustry,
+    initialTargetAudience,
+    initialResearchMode,
+    initialConfig
+  );
   const execution = useResearchExecution();
 
   // Handle results from execution
@@ -30,12 +40,28 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
     }
   }, [execution.result, execution.isExecuting]); // Don't depend on currentStep to avoid loops
 
-  // Handle completion callback
+  // Handle completion callback and track history
   useEffect(() => {
     if (wizard.state.results && onComplete) {
+      // Track in research history when results are available
+      if (wizard.state.keywords.length > 0) {
+        // Extract a summary from results if available
+        const resultSummary = wizard.state.results.suggested_angles?.[0] || 
+                             wizard.state.results.keyword_analysis?.primary_keywords?.[0] ||
+                             wizard.state.results.sources?.[0]?.title;
+        
+        addResearchHistory({
+          keywords: wizard.state.keywords,
+          industry: wizard.state.industry,
+          targetAudience: wizard.state.targetAudience,
+          researchMode: wizard.state.researchMode,
+          resultSummary,
+        });
+      }
+      
       onComplete(wizard.state.results);
     }
-  }, [wizard.state.results, onComplete]);
+  }, [wizard.state.results, wizard.state.keywords, wizard.state.industry, wizard.state.targetAudience, wizard.state.researchMode, onComplete]);
 
   const renderStep = () => {
     const stepProps = {

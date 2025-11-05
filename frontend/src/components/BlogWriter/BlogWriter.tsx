@@ -29,6 +29,16 @@ import { BlogWriterLandingSection } from './BlogWriterUtils/BlogWriterLandingSec
 import { CopilotKitComponents } from './BlogWriterUtils/CopilotKitComponents';
 
 export const BlogWriter: React.FC = () => {
+  // Add light theme class to body/html on mount, remove on unmount
+  React.useEffect(() => {
+    document.body.classList.add('blog-writer-page');
+    document.documentElement.classList.add('blog-writer-page');
+    return () => {
+      document.body.classList.remove('blog-writer-page');
+      document.documentElement.classList.remove('blog-writer-page');
+    };
+  }, []);
+
   // Check CopilotKit health status
   const { isAvailable: copilotKitAvailable } = useCopilotKitHealth({
     enabled: true, // Enable health checking
@@ -313,6 +323,7 @@ export const BlogWriter: React.FC = () => {
     sections,
     research,
     openSEOMetadata: () => setIsSEOMetadataModalOpen(true),
+    navigateToPhase,
   });
 
 
@@ -320,7 +331,14 @@ export const BlogWriter: React.FC = () => {
 
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ 
+      height: '100vh', 
+      display: 'flex', 
+      flexDirection: 'column',
+      backgroundColor: '#ffffff',
+      color: '#1a1a1a',
+      overflow: 'auto'
+    }} className="blog-writer-container">
       {/* CopilotKit-dependent components - extracted to CopilotKitComponents */}
       {copilotKitAvailable && (
         <CopilotKitComponents
@@ -349,6 +367,7 @@ export const BlogWriter: React.FC = () => {
           setFlowAnalysisResults={setFlowAnalysisResults}
           setContinuityRefresh={setContinuityRefresh}
           researchPolling={researchPolling}
+          navigateToPhase={navigateToPhase}
         />
       )}
       
@@ -359,6 +378,14 @@ export const BlogWriter: React.FC = () => {
         onTaskStart={(taskId) => setOutlineTaskId(taskId)}
         onPollingStart={(taskId) => outlinePolling.startPolling(taskId)}
         onModalShow={() => setShowOutlineModal(true)}
+        navigateToPhase={navigateToPhase}
+        onOutlineCreated={(outline, titleOptions) => {
+          // Handle cached outline from CopilotKit action (same as header button)
+          setOutline(outline);
+          if (titleOptions) {
+            setTitleOptions(titleOptions);
+          }
+        }}
       />
       <OutlineRefiner
         outline={outline}
@@ -381,31 +408,29 @@ export const BlogWriter: React.FC = () => {
         seoMetadata={seoMetadata}
       />
       
-      {/* Always show HeaderBar when CopilotKit is unavailable, or when research exists */}
-      {(!copilotKitAvailable || research) && (
-        <HeaderBar
-          phases={phases}
-          currentPhase={currentPhase}
-          onPhaseClick={handlePhaseClick}
-          copilotKitAvailable={copilotKitAvailable}
-          actionHandlers={{
-            onResearchAction: handleResearchAction,
-            onOutlineAction: handleOutlineAction,
-            onContentAction: handleContentAction,
-            onSEOAction: handleSEOAction,
-            onApplySEORecommendations: handleApplySEORecommendations,
-            onPublishAction: handlePublishAction,
-          }}
-          hasResearch={!!research}
-          hasOutline={outline.length > 0}
-          outlineConfirmed={outlineConfirmed}
-          hasContent={Object.keys(sections).length > 0}
-          contentConfirmed={contentConfirmed}
-          hasSEOAnalysis={!!seoAnalysis}
-          seoRecommendationsApplied={seoRecommendationsApplied}
-          hasSEOMetadata={!!seoMetadata}
-        />
-      )}
+      {/* Phase navigation header - always visible as default interface */}
+      <HeaderBar
+        phases={phases}
+        currentPhase={currentPhase}
+        onPhaseClick={handlePhaseClick}
+        copilotKitAvailable={copilotKitAvailable}
+        actionHandlers={{
+          onResearchAction: handleResearchAction,
+          onOutlineAction: handleOutlineAction,
+          onContentAction: handleContentAction,
+          onSEOAction: handleSEOAction,
+          onApplySEORecommendations: handleApplySEORecommendations,
+          onPublishAction: handlePublishAction,
+        }}
+        hasResearch={!!research}
+        hasOutline={outline.length > 0}
+        outlineConfirmed={outlineConfirmed}
+        hasContent={Object.keys(sections).length > 0}
+        contentConfirmed={contentConfirmed}
+        hasSEOAnalysis={!!seoAnalysis}
+        seoRecommendationsApplied={seoRecommendationsApplied}
+        hasSEOMetadata={!!seoMetadata}
+      />
 
       {/* Landing section - extracted to BlogWriterLandingSection */}
       <BlogWriterLandingSection

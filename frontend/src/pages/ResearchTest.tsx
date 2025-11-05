@@ -1,44 +1,368 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ResearchWizard } from '../components/Research';
 import { BlogResearchResponse } from '../services/blogWriterApi';
+import { getResearchConfig, PersonaDefaults, refreshResearchPersona, ResearchPersona } from '../api/researchConfig';
+import { ResearchPersonaModal } from '../components/Research/ResearchPersonaModal';
 
 const samplePresets = [
   {
     name: 'AI Marketing Tools',
-    keywords: 'AI in marketing, automation tools, customer engagement',
+    keywords: 'Research latest AI-powered marketing automation tools and customer engagement platforms',
     industry: 'Technology',
+    targetAudience: 'Marketing professionals and SaaS founders',
+    researchMode: 'comprehensive' as const,
     icon: '🤖',
     gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'google' as const,
+      max_sources: 15,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: true,
+      include_trends: true,
+    }
   },
   {
     name: 'Small Business SEO',
-    keywords: 'local SEO, small business, Google My Business',
+    keywords: 'Write a blog on local SEO strategies for small businesses and Google My Business optimization',
     industry: 'Marketing',
+    targetAudience: 'Small business owners and local entrepreneurs',
+    researchMode: 'targeted' as const,
     icon: '📈',
     gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    config: {
+      mode: 'targeted' as const,
+      provider: 'google' as const,
+      max_sources: 12,
+      include_statistics: true,
+      include_expert_quotes: false,
+      include_competitors: true,
+      include_trends: true,
+    }
   },
   {
     name: 'Content Strategy',
-    keywords: 'content planning, editorial calendar, content creation',
+    keywords: 'Analyze content planning frameworks and editorial calendar best practices for B2B marketing',
     industry: 'Marketing',
+    targetAudience: 'Content marketers and marketing managers',
+    researchMode: 'comprehensive' as const,
     icon: '✍️',
     gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'exa' as const,
+      max_sources: 20,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: false,
+      include_trends: true,
+      exa_category: 'research paper',
+      exa_search_type: 'neural' as const,
+    }
+  },
+  {
+    name: 'Crypto Trends',
+    keywords: 'Explore cryptocurrency market trends and blockchain adoption in enterprise',
+    industry: 'Finance',
+    targetAudience: 'Investors and blockchain developers',
+    researchMode: 'comprehensive' as const,
+    icon: '₿',
+    gradient: 'linear-gradient(135deg, #f7931a 0%, #ffa94d 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'exa' as const,
+      max_sources: 25,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: true,
+      include_trends: true,
+      exa_category: 'news',
+      exa_search_type: 'neural' as const,
+    }
+  },
+  {
+    name: 'Healthcare Tech',
+    keywords: 'Research telemedicine platforms and remote patient monitoring technologies',
+    industry: 'Healthcare',
+    targetAudience: 'Healthcare administrators and medical professionals',
+    researchMode: 'comprehensive' as const,
+    icon: '⚕️',
+    gradient: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'exa' as const,
+      max_sources: 20,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: false,
+      include_trends: true,
+      exa_category: 'research paper',
+      exa_search_type: 'neural' as const,
+      exa_include_domains: ['pubmed.gov', 'nejm.org', 'thelancet.com'],
+    }
   },
 ];
+
+// Generate persona-specific presets dynamically
+const generatePersonaPresets = (persona: PersonaDefaults | null): typeof samplePresets => {
+  if (!persona || !persona.industry || persona.industry === 'General') {
+    return samplePresets;
+  }
+  
+  const industry = persona.industry;
+  const audience = persona.target_audience || 'professionals';
+  const exaCategory = persona.suggested_exa_category || '';
+  const exaDomains = persona.suggested_domains || [];
+  
+  // Build config objects conditionally based on whether we have Exa options
+  const baseConfig1: any = {
+    mode: 'comprehensive' as const,
+    provider: 'exa' as const,
+    max_sources: 20,
+    include_statistics: true,
+    include_expert_quotes: true,
+    include_competitors: true,
+    include_trends: true,
+    exa_search_type: 'neural' as const,
+    ...(exaCategory ? { exa_category: exaCategory } : {}),
+    ...(exaDomains.length > 0 ? { exa_include_domains: exaDomains } : {}),
+  };
+  
+  const baseConfig2: any = {
+    mode: 'targeted' as const,
+    provider: 'exa' as const,
+    max_sources: 15,
+    include_statistics: true,
+    include_expert_quotes: true,
+    include_competitors: false,
+    include_trends: true,
+    exa_search_type: 'neural' as const,
+    ...(exaCategory ? { exa_category: exaCategory } : {}),
+    ...(exaDomains.length > 0 ? { exa_include_domains: exaDomains } : {}),
+  };
+  
+  const baseConfig3: any = {
+    mode: 'comprehensive' as const,
+    provider: 'exa' as const,
+    max_sources: 18,
+    include_statistics: true,
+    include_expert_quotes: true,
+    include_competitors: true,
+    include_trends: false,
+    exa_search_type: 'neural' as const,
+    ...(exaCategory ? { exa_category: exaCategory } : {}),
+    ...(exaDomains.length > 0 ? { exa_include_domains: exaDomains } : {}),
+  };
+  
+  const generatedPresets = [
+    {
+      name: `${industry} Trends`,
+      keywords: `Research latest trends and innovations in ${industry}`,
+      industry,
+      targetAudience: audience,
+      researchMode: 'comprehensive' as const,
+      icon: '📊',
+      gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      config: baseConfig1,
+    },
+    {
+      name: `${audience} Insights`,
+      keywords: `Analyze ${audience} pain points and preferences in ${industry}`,
+      industry,
+      targetAudience: audience,
+      researchMode: 'targeted' as const,
+      icon: '🎯',
+      gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+      config: baseConfig2,
+    },
+    {
+      name: `${industry} Best Practices`,
+      keywords: `Investigate best practices and success stories in ${industry}`,
+      industry,
+      targetAudience: audience,
+      researchMode: 'comprehensive' as const,
+      icon: '⭐',
+      gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+      config: baseConfig3,
+    }
+  ];
+  
+  return [...generatedPresets, ...samplePresets.slice(0, 2)] as typeof samplePresets;
+};
 
 export const ResearchTest: React.FC = () => {
   const [results, setResults] = useState<BlogResearchResponse | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [presetKeywords, setPresetKeywords] = useState<string[] | undefined>();
   const [presetIndustry, setPresetIndustry] = useState<string | undefined>();
+  const [presetTargetAudience, setPresetTargetAudience] = useState<string | undefined>();
+  const [presetMode, setPresetMode] = useState<any>();
+  const [presetConfig, setPresetConfig] = useState<any>();
+  const [personaData, setPersonaData] = useState<PersonaDefaults | null>(null);
+  const [displayPresets, setDisplayPresets] = useState(samplePresets);
+  const [showPersonaModal, setShowPersonaModal] = useState(false);
+  const [personaChecked, setPersonaChecked] = useState(false);
+  const [researchPersona, setResearchPersona] = useState<ResearchPersona | null>(null);
+  
+  // Debug: Track modal state changes
+  useEffect(() => {
+    console.log('[ResearchTest] 🔍 Modal state changed:', showPersonaModal);
+  }, [showPersonaModal]);
+  
+  // Check for research persona and load persona data
+  useEffect(() => {
+    const loadPersonaPresets = async () => {
+      console.log('[ResearchTest] Starting persona check...');
+      try {
+        const config = await getResearchConfig();
+        console.log('[ResearchTest] Config received:', {
+          hasResearchPersona: !!config.research_persona,
+          onboardingCompleted: config.onboarding_completed,
+          personaScheduled: config.persona_scheduled,
+          personaDefaults: config.persona_defaults
+        });
+        
+        setPersonaData(config.persona_defaults || null);
+        
+        // CASE 1: Research persona exists in database
+        if (config.research_persona) {
+          console.log('[ResearchTest] ✅ CASE 1: Research persona found in database');
+          console.log('[ResearchTest] Persona details:', {
+            defaultIndustry: config.research_persona.default_industry,
+            defaultTargetAudience: config.research_persona.default_target_audience,
+            hasRecommendedPresets: !!config.research_persona.recommended_presets,
+            presetCount: config.research_persona.recommended_presets?.length || 0
+          });
+          
+          setResearchPersona(config.research_persona);
+          
+          // Use AI-generated presets if persona exists
+          if (config.research_persona.recommended_presets && config.research_persona.recommended_presets.length > 0) {
+            console.log('[ResearchTest] Using AI-generated presets from persona');
+            // Convert AI presets to display format
+            const aiPresets = config.research_persona.recommended_presets.map((preset: any) => ({
+              name: preset.name,
+              keywords: preset.keywords.join(', '),
+              industry: config.persona_defaults?.industry || 'General',
+              targetAudience: config.persona_defaults?.target_audience || 'General',
+              researchMode: preset.config?.mode || 'comprehensive',
+              icon: preset.icon || '🔍',
+              gradient: preset.gradient || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              config: preset.config || {}
+            }));
+            setDisplayPresets([...aiPresets, ...samplePresets.slice(0, 2)]);
+          } else {
+            console.log('[ResearchTest] Persona exists but no recommended presets, using rule-based presets');
+            const dynamicPresets = generatePersonaPresets(config.persona_defaults || null);
+            setDisplayPresets(dynamicPresets);
+          }
+        } else {
+          // CASE 2 & 3: No research persona found
+          console.log('[ResearchTest] ⚠️ CASE 2/3: Research persona NOT found in database');
+          console.log('[ResearchTest] Onboarding status:', {
+            onboardingCompleted: config.onboarding_completed,
+            personaScheduled: config.persona_scheduled
+          });
+          
+          const dynamicPresets = generatePersonaPresets(config.persona_defaults || null);
+          setDisplayPresets(dynamicPresets);
+          
+          // Show modal only if onboarding is completed
+          if (config.onboarding_completed) {
+            console.log('[ResearchTest] ✅ CASE 2: Onboarding completed but persona missing - SHOWING MODAL');
+            console.log('[ResearchTest] Setting showPersonaModal to true');
+            setShowPersonaModal(true);
+            
+            // Log if persona was scheduled
+            if (config.persona_scheduled) {
+              console.log('[ResearchTest] ℹ️ Research persona generation scheduled for 20 minutes from now');
+            } else {
+              console.log('[ResearchTest] ⚠️ Persona was not scheduled (may have failed or already scheduled)');
+            }
+          } else {
+            console.log('[ResearchTest] ✅ CASE 3: Onboarding not completed yet - SKIPPING modal');
+            console.log('[ResearchTest] User has not completed onboarding, will use rule-based suggestions');
+          }
+        }
+        
+        setPersonaChecked(true);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[ResearchTest] ❌ ERROR: Failed to load persona data:', error);
+        console.error('[ResearchTest] Error details:', errorMessage);
+        
+        // Use fallback presets on error
+        setDisplayPresets(samplePresets);
+        setPersonaChecked(true);
+        
+        // Don't show modal on error - user can still use default presets
+        // Error is already logged to console for debugging
+      }
+    };
+    
+    loadPersonaPresets();
+  }, []);
+  
+  // Handle research persona generation
+  const handleGeneratePersona = async () => {
+    console.log('[ResearchTest] 🔄 User clicked "Generate Persona" - starting generation...');
+    try {
+      // Force refresh to generate new persona
+      console.log('[ResearchTest] Calling refreshResearchPersona with force_refresh=true');
+      const persona = await refreshResearchPersona(true);
+      console.log('[ResearchTest] ✅ Persona generated successfully:', {
+        defaultIndustry: persona.default_industry,
+        hasRecommendedPresets: !!persona.recommended_presets
+      });
+      
+      setResearchPersona(persona);
+      
+      // Reload config to get updated presets
+      const config = await getResearchConfig();
+      if (config.research_persona?.recommended_presets && config.research_persona.recommended_presets.length > 0) {
+        console.log('[ResearchTest] Updating presets with AI-generated presets');
+        const aiPresets = config.research_persona.recommended_presets.map((preset: any) => ({
+          name: preset.name,
+          keywords: preset.keywords.join(', '),
+          industry: config.persona_defaults.industry || 'General',
+          targetAudience: config.persona_defaults.target_audience || 'General',
+          researchMode: preset.config?.mode || 'comprehensive',
+          icon: preset.icon || '🔍',
+          gradient: preset.gradient || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          config: preset.config || {}
+        }));
+        setDisplayPresets([...aiPresets, ...samplePresets.slice(0, 2)]);
+      }
+      
+      console.log('[ResearchTest] ✅ Persona generation complete - closing modal');
+      setShowPersonaModal(false);
+    } catch (error) {
+      console.error('[ResearchTest] ❌ Failed to generate research persona:', error);
+      console.error('[ResearchTest] Error details:', error instanceof Error ? error.message : String(error));
+      throw error; // Let modal handle the error display
+    }
+  };
+  
+  // Handle cancel - user chooses to skip persona generation
+  const handleCancelPersona = () => {
+    console.log('[ResearchTest] ✅ CASE 3: User cancelled persona generation');
+    console.log('[ResearchTest] Continuing with rule-based suggestions');
+    setShowPersonaModal(false);
+    // Continue with rule-based suggestions (already set as displayPresets)
+  };
 
   const handleComplete = (researchResults: BlogResearchResponse) => {
     setResults(researchResults);
   };
 
   const handlePresetClick = (preset: typeof samplePresets[0]) => {
-    setPresetKeywords(preset.keywords.split(',').map(k => k.trim()));
+    // Pass full research query as single keyword for intelligent parsing
+    setPresetKeywords([preset.keywords]);
     setPresetIndustry(preset.industry);
+    setPresetTargetAudience(preset.targetAudience);
+    setPresetMode(preset.researchMode);
+    setPresetConfig(preset.config);
     setResults(null);
   };
 
@@ -212,7 +536,7 @@ export const ResearchTest: React.FC = () => {
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {samplePresets.map((preset, idx) => (
+              {displayPresets.map((preset, idx) => (
                 <button
                   key={idx}
                   onClick={() => handlePresetClick(preset)}
@@ -374,6 +698,9 @@ export const ResearchTest: React.FC = () => {
           <ResearchWizard
             initialKeywords={presetKeywords}
             initialIndustry={presetIndustry}
+            initialTargetAudience={presetTargetAudience}
+            initialResearchMode={presetMode}
+            initialConfig={presetConfig}
             onComplete={handleComplete}
           />
         </div>
@@ -521,6 +848,17 @@ export const ResearchTest: React.FC = () => {
           </div>
         </div>
       )}
+      
+      {/* Research Persona Generation Modal */}
+      <ResearchPersonaModal
+        open={showPersonaModal}
+        onClose={() => {
+          console.log('[ResearchTest] Modal onClose called');
+          setShowPersonaModal(false);
+        }}
+        onGenerate={handleGeneratePersona}
+        onCancel={handleCancelPersona}
+      />
     </div>
   );
 };

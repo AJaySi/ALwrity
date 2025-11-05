@@ -26,11 +26,62 @@ class OnboardingDatabaseService:
         # Cache for schema feature detection
         self._brand_cols_checked: bool = False
         self._brand_cols_available: bool = False
+        self._research_persona_cols_checked: bool = False
+        self._research_persona_cols_available: bool = False
 
     # --- Feature flags and schema detection helpers ---
     def _brand_feature_enabled(self) -> bool:
         """Check if writing brand-related columns is enabled via env flag."""
         return os.getenv('ENABLE_WEBSITE_BRAND_COLUMNS', 'true').lower() in {'1', 'true', 'yes', 'on'}
+
+    def _ensure_research_persona_columns(self, session_db: Session) -> None:
+        """Ensure research_persona columns exist in persona_data table (runtime migration)."""
+        if self._research_persona_cols_checked:
+            return
+        
+        try:
+            # Check if columns exist using PRAGMA (SQLite) or information_schema (PostgreSQL)
+            db_url = str(session_db.bind.url) if session_db.bind else ""
+            
+            if 'sqlite' in db_url.lower():
+                # SQLite: Use PRAGMA to check columns
+                result = session_db.execute(text("PRAGMA table_info(persona_data)"))
+                cols = {row[1] for row in result}  # Column name is at index 1
+                
+                if 'research_persona' not in cols:
+                    logger.info("Adding missing column research_persona to persona_data table")
+                    session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona JSON"))
+                    session_db.commit()
+                
+                if 'research_persona_generated_at' not in cols:
+                    logger.info("Adding missing column research_persona_generated_at to persona_data table")
+                    session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona_generated_at TIMESTAMP"))
+                    session_db.commit()
+                
+                self._research_persona_cols_available = True
+            else:
+                # PostgreSQL: Try to query the columns (will fail if they don't exist)
+                try:
+                    session_db.execute(text("SELECT research_persona, research_persona_generated_at FROM persona_data LIMIT 0"))
+                    self._research_persona_cols_available = True
+                except Exception:
+                    # Columns don't exist, add them
+                    logger.info("Adding missing columns research_persona and research_persona_generated_at to persona_data table")
+                    try:
+                        session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona JSONB"))
+                        session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona_generated_at TIMESTAMP"))
+                        session_db.commit()
+                        self._research_persona_cols_available = True
+                    except Exception as alter_err:
+                        logger.error(f"Failed to add research_persona columns: {alter_err}")
+                        session_db.rollback()
+                        raise
+        except Exception as e:
+            logger.error(f"Error ensuring research_persona columns: {e}")
+            session_db.rollback()
+            raise
+        finally:
+            self._research_persona_cols_checked = True
 
     def _ensure_brand_column_detection(self, session_db: Session) -> None:
         """Detect at runtime whether brand columns exist and cache the result."""
@@ -476,6 +527,9 @@ class OnboardingDatabaseService:
         session_db = db or self.db
         if not session_db:
             raise ValueError("Database session required")
+        
+        # Ensure research_persona columns exist before querying
+        self._ensure_research_persona_columns(session_db)
         
         try:
             session = self.get_session_by_user(user_id, session_db)

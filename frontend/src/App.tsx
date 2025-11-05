@@ -18,6 +18,7 @@ import WordPressCallbackPage from './components/WordPressCallbackPage/WordPressC
 import BingCallbackPage from './components/BingCallbackPage/BingCallbackPage';
 import BingAnalyticsStorage from './components/BingAnalyticsStorage/BingAnalyticsStorage';
 import ResearchTest from './pages/ResearchTest';
+import SchedulerDashboard from './pages/SchedulerDashboard';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
 import Landing from './components/Landing/Landing';
@@ -27,8 +28,9 @@ import CopilotKitDegradedBanner from './components/shared/CopilotKitDegradedBann
 import { OnboardingProvider } from './contexts/OnboardingContext';
 import { SubscriptionProvider, useSubscription } from './contexts/SubscriptionContext';
 import { CopilotKitHealthProvider } from './contexts/CopilotKitHealthContext';
+import { useOAuthTokenAlerts } from './hooks/useOAuthTokenAlerts';
 
-import { setAuthTokenGetter } from './api/client';
+import { setAuthTokenGetter, setClerkSignOut } from './api/client';
 import { useOnboarding } from './contexts/OnboardingContext';
 import { useState, useEffect } from 'react';
 import ConnectionErrorPage from './components/shared/ConnectionErrorPage';
@@ -59,6 +61,13 @@ const InitialRouteHandler: React.FC = () => {
   }>({
     hasError: false,
     error: null,
+  });
+  
+  // Poll for OAuth token alerts and show toast notifications
+  // Only enabled when user is authenticated (has subscription)
+  useOAuthTokenAlerts({
+    enabled: subscription?.active === true,
+    interval: 60000, // Poll every 1 minute
   });
 
   // Check subscription on mount (non-blocking - don't wait for it to route)
@@ -266,7 +275,7 @@ const RootRoute: React.FC = () => {
 // Installs Clerk auth token getter into axios clients and stores user_id
 // Must render under ClerkProvider
 const TokenInstaller: React.FC = () => {
-  const { getToken, userId, isSignedIn } = useAuth();
+  const { getToken, userId, isSignedIn, signOut } = useAuth();
   
   // Store user_id in localStorage when user signs in
   useEffect(() => {
@@ -299,6 +308,15 @@ const TokenInstaller: React.FC = () => {
       }
     });
   }, [getToken]);
+  
+  // Install Clerk signOut function for handling expired tokens
+  useEffect(() => {
+    if (signOut) {
+      setClerkSignOut(async () => {
+        await signOut();
+      });
+    }
+  }, [signOut]);
   
   return null;
 };
@@ -407,6 +425,7 @@ const App: React.FC = () => {
                 <Route path="/facebook-writer" element={<ProtectedRoute><FacebookWriter /></ProtectedRoute>} />
                 <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                 <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
+                <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/research-test" element={<ResearchTest />} />
                 <Route path="/wix-test" element={<WixTestPage />} />

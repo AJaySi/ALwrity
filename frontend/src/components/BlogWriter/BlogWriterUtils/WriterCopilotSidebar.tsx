@@ -16,14 +16,242 @@ export const WriterCopilotSidebar: React.FC<WriterCopilotSidebarProps> = ({
   outlineConfirmed,
 }) => {
   return (
-    <CopilotSidebar
-      labels={{
-        title: 'ALwrity Co-Pilot',
-        initial: !research
-          ? 'Hi! I can help you research, outline, and draft your blog. Just tell me what topic you want to write about and I\'ll get started!'
-          : 'Great! I can see you have research data. Let me help you create an outline and generate content for your blog.',
-      }}
-      suggestions={suggestions}
+    <>
+      <style>{`
+        /* Enterprise CopilotKit Suggestion Styling */
+        
+        /* All suggestion chips - base styling */
+        .copilotkit-suggestions button,
+        .copilot-suggestions button,
+        [class*="suggestion"] button,
+        [class*="Suggestion"] button {
+          position: relative;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          border-radius: 12px;
+          border: 1px solid rgba(99, 102, 241, 0.2);
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          overflow: hidden;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.98) 100%);
+          color: #4b5563;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+          letter-spacing: 0.01em;
+        }
+        
+        /* Shine effect on hover */
+        .copilotkit-suggestions button::before,
+        .copilot-suggestions button::before,
+        [class*="suggestion"] button::before,
+        [class*="Suggestion"] button::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+          transition: left 0.6s ease;
+        }
+        
+        .copilotkit-suggestions button:hover::before,
+        .copilot-suggestions button:hover::before,
+        [class*="suggestion"] button:hover::before,
+        [class*="Suggestion"] button:hover::before {
+          left: 100%;
+        }
+        
+        /* Regular suggestions - hover effects */
+        .copilotkit-suggestions button:hover,
+        .copilot-suggestions button:hover,
+        [class*="suggestion"] button:hover:not([class*="next-suggestion"]),
+        [class*="Suggestion"] button:hover:not([class*="next-suggestion"]) {
+          transform: translateY(-2px) scale(1.02);
+          box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+          border-color: rgba(99, 102, 241, 0.3);
+          background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(249, 250, 251, 1) 100%);
+        }
+        
+        /* "Next:" Suggestions - Premium Enterprise Style */
+        .copilotkit-suggestions button[data-is-next="true"],
+        .copilot-suggestions button[data-is-next="true"],
+        .copilotkit-suggestions button.next-suggestion,
+        .copilot-suggestions button.next-suggestion,
+        .copilotkit-suggestions button[aria-label*="Next:"],
+        .copilot-suggestions button[aria-label*="Next:"] {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%) !important;
+          color: white !important;
+          border: 1px solid rgba(255, 255, 255, 0.3) !important;
+          box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4),
+                      0 0 0 1px rgba(255, 255, 255, 0.2) inset,
+                      0 2px 4px rgba(0, 0, 0, 0.1) inset,
+                      0 0 20px rgba(102, 126, 234, 0.3) !important;
+          font-weight: 700 !important;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          position: relative;
+          animation: nextSuggestionPulse 3s ease-in-out infinite;
+        }
+        
+        /* Pulse animation for Next suggestions */
+        @keyframes nextSuggestionPulse {
+          0%, 100% {
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4),
+                        0 0 0 1px rgba(255, 255, 255, 0.2) inset,
+                        0 2px 4px rgba(0, 0, 0, 0.1) inset,
+                        0 0 20px rgba(102, 126, 234, 0.3);
+          }
+          50% {
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.5),
+                        0 0 0 1px rgba(255, 255, 255, 0.25) inset,
+                        0 2px 4px rgba(0, 0, 0, 0.1) inset,
+                        0 0 30px rgba(102, 126, 234, 0.5);
+          }
+        }
+        
+        /* Next suggestion hover - enhanced */
+        .copilotkit-suggestions button[data-is-next="true"]:hover,
+        .copilot-suggestions button[data-is-next="true"]:hover,
+        .copilotkit-suggestions button.next-suggestion:hover,
+        .copilot-suggestions button.next-suggestion:hover,
+        .copilotkit-suggestions button[aria-label*="Next:"]:hover,
+        .copilot-suggestions button[aria-label*="Next:"]:hover {
+          transform: translateY(-3px) scale(1.05) !important;
+          box-shadow: 0 8px 24px rgba(102, 126, 234, 0.6),
+                      0 0 0 1px rgba(255, 255, 255, 0.3) inset,
+                      0 3px 6px rgba(0, 0, 0, 0.15) inset,
+                      0 0 40px rgba(102, 126, 234, 0.6) !important;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 40%, #f093fb 60%, #4facfe 100%) !important;
+          animation: none;
+        }
+        
+        /* Next suggestion active */
+        .copilotkit-suggestions button[data-is-next="true"]:active,
+        .copilot-suggestions button[data-is-next="true"]:active,
+        .copilotkit-suggestions button.next-suggestion:active,
+        .copilot-suggestions button.next-suggestion:active,
+        .copilotkit-suggestions button[aria-label*="Next:"]:active,
+        .copilot-suggestions button[aria-label*="Next:"]:active {
+          transform: translateY(-1px) scale(1.02) !important;
+          box-shadow: 0 3px 12px rgba(102, 126, 234, 0.5),
+                      0 0 0 1px rgba(255, 255, 255, 0.25) inset,
+                      0 1px 3px rgba(0, 0, 0, 0.1) inset !important;
+        }
+        
+        /* Next suggestion focus */
+        .copilotkit-suggestions button[data-is-next="true"]:focus-visible,
+        .copilot-suggestions button[data-is-next="true"]:focus-visible,
+        .copilotkit-suggestions button.next-suggestion:focus-visible,
+        .copilot-suggestions button.next-suggestion:focus-visible,
+        .copilotkit-suggestions button[aria-label*="Next:"]:focus-visible,
+        .copilot-suggestions button[aria-label*="Next:"]:focus-visible {
+          outline: none !important;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4),
+                      0 4px 16px rgba(102, 126, 234, 0.4),
+                      0 0 0 1px rgba(255, 255, 255, 0.2) inset,
+                      0 0 30px rgba(102, 126, 234, 0.5) !important;
+        }
+        
+        /* Match buttons by text content using data attributes or class */
+        /* We'll inject a data attribute via JS to identify Next suggestions */
+        
+        /* Regular suggestion active state */
+        .copilotkit-suggestions button:active:not([data-is-next="true"]):not(.next-suggestion),
+        .copilot-suggestions button:active:not([data-is-next="true"]):not(.next-suggestion) {
+          transform: translateY(0) scale(0.98);
+          box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+        }
+        
+        /* Focus states for regular suggestions */
+        .copilotkit-suggestions button:focus-visible:not([data-is-next="true"]):not(.next-suggestion),
+        .copilot-suggestions button:focus-visible:not([data-is-next="true"]):not(.next-suggestion) {
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3), 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+        
+        /* Enhanced suggestion container */
+        .copilotkit-suggestions,
+        .copilot-suggestions {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 10px;
+          margin: 16px 0;
+          padding: 12px;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(249, 250, 251, 0.6) 100%);
+          border-radius: 12px;
+          backdrop-filter: blur(8px);
+        }
+        
+        @media (min-width: 420px) {
+          .copilotkit-suggestions,
+          .copilot-suggestions {
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+          }
+        }
+        
+        /* Smooth transitions */
+        * {
+          transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+      `}</style>
+      
+      {/* Inject data attributes to identify Next suggestions */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              const observer = new MutationObserver(() => {
+                const suggestionButtons = document.querySelectorAll(
+                  '.copilotkit-suggestions button, .copilot-suggestions button, [class*="suggestion"] button'
+                );
+                suggestionButtons.forEach(btn => {
+                  const text = btn.textContent || btn.innerText || '';
+                  if (text.includes('Next:')) {
+                    btn.setAttribute('data-is-next', 'true');
+                    btn.classList.add('next-suggestion');
+                  } else {
+                    btn.removeAttribute('data-is-next');
+                    btn.classList.remove('next-suggestion');
+                  }
+                });
+              });
+              
+              observer.observe(document.body, {
+                childList: true,
+                subtree: true
+              });
+              
+              // Initial run
+              setTimeout(() => {
+                const suggestionButtons = document.querySelectorAll(
+                  '.copilotkit-suggestions button, .copilot-suggestions button, [class*="suggestion"] button'
+                );
+                suggestionButtons.forEach(btn => {
+                  const text = btn.textContent || btn.innerText || '';
+                  if (text.includes('Next:')) {
+                    btn.setAttribute('data-is-next', 'true');
+                    btn.classList.add('next-suggestion');
+                  }
+                });
+              }, 100);
+            })();
+          `
+        }}
+      />
+      
+      <CopilotSidebar
+        labels={{
+          title: 'ALwrity Co-Pilot',
+          initial: !research
+            ? 'Hi! I can help you research, outline, and draft your blog. Just tell me what topic you want to write about and I\'ll get started!'
+            : 'Great! I can see you have research data. Let me help you create an outline and generate content for your blog.',
+        }}
+        suggestions={suggestions}
       makeSystemMessage={(context: string, additional?: string) => {
         const hasResearch = research !== null && research !== undefined;
         const hasOutline = outline && outline.length > 0;
@@ -132,6 +360,7 @@ Available tools:
         return [toolGuide, additional].filter(Boolean).join('\n\n');
       }}
     />
+    </>
   );
 };
 

@@ -12,6 +12,9 @@ from services.onboarding.progress_service import get_onboarding_progress_service
 from services.onboarding.database_service import OnboardingDatabaseService
 from services.database import get_db
 from services.persona_analysis_service import PersonaAnalysisService
+from services.research.research_persona_scheduler import schedule_research_persona_generation
+from services.persona.facebook.facebook_persona_scheduler import schedule_facebook_persona_generation
+from services.oauth_token_monitoring_service import create_oauth_monitoring_tasks
 
 class OnboardingCompletionService:
     """Service for handling onboarding completion logic."""
@@ -45,6 +48,38 @@ class OnboardingCompletionService:
             success = progress_service.complete_onboarding(user_id)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to mark onboarding as complete")
+            
+            # Schedule research persona generation 20 minutes after onboarding completion
+            try:
+                schedule_research_persona_generation(user_id, delay_minutes=20)
+                logger.info(f"Scheduled research persona generation for user {user_id} (20 minutes after onboarding)")
+            except Exception as e:
+                # Non-critical: log but don't fail onboarding completion
+                logger.warning(f"Failed to schedule research persona generation for user {user_id}: {e}")
+            
+            # Schedule Facebook persona generation 20 minutes after onboarding completion
+            try:
+                schedule_facebook_persona_generation(user_id, delay_minutes=20)
+                logger.info(f"Scheduled Facebook persona generation for user {user_id} (20 minutes after onboarding)")
+            except Exception as e:
+                # Non-critical: log but don't fail onboarding completion
+                logger.warning(f"Failed to schedule Facebook persona generation for user {user_id}: {e}")
+            
+            # Create OAuth token monitoring tasks for connected platforms
+            try:
+                from services.database import SessionLocal
+                db = SessionLocal()
+                try:
+                    monitoring_tasks = create_oauth_monitoring_tasks(user_id, db)
+                    logger.info(
+                        f"Created {len(monitoring_tasks)} OAuth token monitoring tasks for user {user_id} "
+                        f"on onboarding completion"
+                    )
+                finally:
+                    db.close()
+            except Exception as e:
+                # Non-critical: log but don't fail onboarding completion
+                logger.warning(f"Failed to create OAuth token monitoring tasks for user {user_id}: {e}")
             
             return {
                 "message": "Onboarding completed successfully",

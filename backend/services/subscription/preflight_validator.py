@@ -93,11 +93,7 @@ def validate_research_operations(
             provider = usage_info.get('provider', llm_provider_name) if usage_info else llm_provider_name
             operation_type = usage_info.get('operation_type', 'unknown')
             
-            logger.error(f"[Pre-flight Validator] ❌ RESEARCH WORKFLOW BLOCKED")
-            logger.error(f"   ├─ User: {user_id}")
-            logger.error(f"   ├─ Blocked at: {operation_type}")
-            logger.error(f"   ├─ Provider: {provider}")
-            logger.error(f"   └─ Reason: {message}")
+            logger.warning(f"[Pre-flight] Research blocked for user {user_id}: {operation_type} ({provider}) - {message}")
             
             # Raise HTTPException immediately - frontend gets immediate response, no API calls made
             raise HTTPException(

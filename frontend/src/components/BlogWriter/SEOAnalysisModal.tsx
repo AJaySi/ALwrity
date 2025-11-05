@@ -183,7 +183,12 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
   const [isApplying, setIsApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
-  console.log('SEOAnalysisModal render:', { isOpen, blogContent: blogContent?.length, researchData: !!researchData });
+  // Debug logging only in development and when modal state changes meaningfully
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && isOpen) {
+      console.log('SEOAnalysisModal render:', { isOpen, blogContent: blogContent?.length, researchData: !!researchData });
+    }
+  }, [isOpen, blogContent?.length, researchData]);
 
   const runSEOAnalysis = useCallback(async (forceRefresh = false) => {
     try {
@@ -318,7 +323,7 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
           status,
           data: err?.response?.data
         });
-        const handled = triggerSubscriptionError(err);
+        const handled = await triggerSubscriptionError(err);
         if (handled) {
           console.log('SEOAnalysisModal: Global subscription error handler triggered successfully');
           // Don't set local error - let the global modal handle it

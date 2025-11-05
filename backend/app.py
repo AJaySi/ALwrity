@@ -49,6 +49,9 @@ from api.images import router as images_router
 from api.hallucination_detector import router as hallucination_detector_router
 from api.writing_assistant import router as writing_assistant_router
 
+# Import research configuration router
+from api.research_config import router as research_config_router
+
 # Import user data endpoints
 # Import content planning endpoints
 from api.content_planning.api.router import router as content_planning_router
@@ -62,6 +65,9 @@ from api.content_planning.strategy_copilot import router as strategy_copilot_rou
 
 # Import database service
 from services.database import init_database, close_database
+
+# Import OAuth token monitoring routes
+from api.oauth_token_monitoring_routes import router as oauth_token_monitoring_router
 
 # Import SEO Dashboard endpoints
 from api.seo_dashboard import (
@@ -282,6 +288,14 @@ async def batch_analyze_urls_endpoint(urls: list[str]):
 from routers.platform_analytics import router as platform_analytics_router
 app.include_router(platform_analytics_router)
 app.include_router(images_router)
+
+# Include research configuration router
+app.include_router(research_config_router, prefix="/api/research", tags=["research"])
+
+# Scheduler dashboard routes
+from api.scheduler_dashboard import router as scheduler_dashboard_router
+app.include_router(scheduler_dashboard_router)
+app.include_router(oauth_token_monitoring_router)
 
 # Setup frontend serving using modular utilities
 frontend_serving.setup_frontend_serving()

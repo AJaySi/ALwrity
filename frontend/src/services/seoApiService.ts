@@ -12,7 +12,8 @@ import {
   CopilotSuggestion
 } from '../types/seoCopilotTypes';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+// Consistent API URL pattern - use same env vars as other services
+const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
 
 class SEOApiService {
   private baseUrl: string;

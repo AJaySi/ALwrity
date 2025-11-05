@@ -157,12 +157,14 @@ class PersonaData(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey('onboarding_sessions.id', ondelete='CASCADE'), nullable=False)
     
-    # Persona generation results
+        # Persona generation results
     core_persona = Column(JSON)  # Core persona data (demographics, psychographics, etc.)
     platform_personas = Column(JSON)  # Platform-specific personas (LinkedIn, Twitter, etc.)
     quality_metrics = Column(JSON)  # Quality assessment metrics
     selected_platforms = Column(JSON)  # Array of selected platforms
-    
+    research_persona = Column(JSON, nullable=True)  # AI-generated research persona with personalized defaults
+    research_persona_generated_at = Column(DateTime, nullable=True)  # Timestamp for 7-day TTL cache validation
+
     # Metadata
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -182,6 +184,8 @@ class PersonaData(Base):
             'platform_personas': self.platform_personas,
             'quality_metrics': self.quality_metrics,
             'selected_platforms': self.selected_platforms,
+            'research_persona': self.research_persona,
+            'research_persona_generated_at': self.research_persona_generated_at.isoformat() if self.research_persona_generated_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

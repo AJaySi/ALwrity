@@ -33,6 +33,9 @@ export interface ResearchWizardProps {
   onCancel?: () => void;
   initialKeywords?: string[];
   initialIndustry?: string;
+  initialTargetAudience?: string;
+  initialResearchMode?: ResearchMode;
+  initialConfig?: ResearchConfig;
 }
 
 export interface ModeCardInfo {

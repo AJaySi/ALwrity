@@ -8,6 +8,8 @@ interface OutlineGeneratorProps {
   onTaskStart: (taskId: string) => void;
   onPollingStart: (taskId: string) => void;
   onModalShow?: () => void; // Callback to show progress modal immediately
+  navigateToPhase?: (phase: string) => void;
+  onOutlineCreated?: (outline: any[], titleOptions?: any[]) => void; // Callback when outline is created/found (for cached outlines)
 }
 
 const useCopilotActionTyped = useCopilotAction as any;
@@ -16,7 +18,9 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
   research,
   onTaskStart,
   onPollingStart,
-  onModalShow
+  onModalShow,
+  navigateToPhase,
+  onOutlineCreated
 }, ref) => {
   // Expose an imperative method to trigger outline generation directly (bypass LLM)
   useImperativeHandle(ref, () => ({
@@ -67,6 +71,15 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
       
       if (cachedOutline) {
         console.log('[OutlineGenerator] Using cached outline from CopilotKit action', { sections: cachedOutline.outline.length });
+        
+        // Navigate to outline phase when cached outline is found
+        navigateToPhase?.('outline');
+        
+        // Update parent state with cached outline (same as header button does)
+        if (onOutlineCreated) {
+          onOutlineCreated(cachedOutline.outline, cachedOutline.title_options);
+        }
+        
         return {
           success: true,
           message: `✅ Outline already exists! ${cachedOutline.outline.length} sections loaded from cache.`,
@@ -77,6 +90,9 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
       }
       
       try {
+        // Navigate to outline phase when outline generation starts
+        navigateToPhase?.('outline');
+        
         // Show progress modal immediately when user clicks "Create outline"
         onModalShow?.();
         

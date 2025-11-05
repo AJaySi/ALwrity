@@ -4,6 +4,13 @@ __pycache__/
 *.db
 *.sqlite*
 
+# Onboarding progress files
+.onboarding_progress.json
+backend/.onboarding_progress.json
+backend/database/migrations/*
+
+.cursorignore
+
 # Environment
 .env
 .env.*

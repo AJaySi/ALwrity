@@ -16,8 +16,8 @@ import {
   UsageStatsSchema,
 } from '../types/billing';
 
-// API base configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// API base configuration - consistent with client.ts pattern
+const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
 
 // Create axios instance with default config
 const billingAPI = axios.create({

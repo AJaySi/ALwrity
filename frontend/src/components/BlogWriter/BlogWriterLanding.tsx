@@ -70,21 +70,12 @@ const BlogWriterLanding: React.FC<BlogWriterLandingProps> = ({ onStartWriting })
         backgroundSize: '56% auto',
         backgroundPosition: 'left center',
         backgroundRepeat: 'no-repeat',
-        backgroundColor: 'transparent',
+        backgroundColor: '#ffffff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden'
       }}>
-        {/* Animated overlay for subtle movement */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'linear-gradient(135deg, rgba(25, 118, 210, 0.05) 0%, rgba(156, 39, 176, 0.05) 100%)'
-        }} />
 
         {/* Main content container */}
         <div style={{
@@ -109,7 +100,7 @@ const BlogWriterLanding: React.FC<BlogWriterLandingProps> = ({ onStartWriting })
               textShadow: '0 4px 8px rgba(0,0,0,0.1)',
               lineHeight: '1.2'
             }}>
-              Step1- Research Your Blog Topic
+              AI-First, Contextual, Click through Blog Writer
             </h1>
           </div>
 

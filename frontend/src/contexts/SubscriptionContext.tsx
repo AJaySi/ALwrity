@@ -63,6 +63,12 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   const [planSignature, setPlanSignature] = useState<string>("");
   // Flag to track if current modal is a usage limit modal (should never be auto-closed)
   const [isUsageLimitModal, setIsUsageLimitModal] = useState<boolean>(false);
+  
+  // Use ref to access latest subscription value in callbacks (avoid closure issues)
+  const subscriptionRef = useRef<SubscriptionStatus | null>(null);
+  useEffect(() => {
+    subscriptionRef.current = subscription;
+  }, [subscription]);
 
   const checkSubscription = useCallback(async () => {
     // Throttle subscription checks to prevent excessive API calls
@@ -99,6 +105,8 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
 
       console.log('SubscriptionContext: Received subscription data from backend:', subscriptionData);
       setSubscription(subscriptionData);
+      // Update ref immediately so callbacks can access latest value
+      subscriptionRef.current = subscriptionData;
 
       // Detect plan/tier change and start a grace window (5 minutes)
       try {
@@ -249,38 +257,24 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   }, []);
 
   // Global subscription error handler for API client
-  const globalSubscriptionErrorHandler = useCallback((error: any) => {
-    console.log('SubscriptionContext: Global error handler triggered', error);
-    
+  const globalSubscriptionErrorHandler = useCallback(async (error: any): Promise<boolean> => {
     // Check if it's a subscription-related error
     const status = error.response?.status;
     
     if (status === 429 || status === 402) {
-      console.log('SubscriptionContext: Subscription error detected');
-      
       const now = Date.now();
 
       // Check if this is a usage limit error (status 429) vs subscription expired (402)
       let errorData = error.response?.data || {};
       
-      // DEBUG: Log the raw error data structure
-      console.log('SubscriptionContext: Raw error data', {
-        type: typeof errorData,
-        isArray: Array.isArray(errorData),
-        data: errorData,
-        stringified: JSON.stringify(errorData)
-      });
-      
       // If errorData is an array, extract the first element (common FastAPI response format)
       if (Array.isArray(errorData)) {
-        console.log('SubscriptionContext: errorData is array, extracting first element');
         errorData = errorData[0] || {};
       }
       
       // CRITICAL: FastAPI wraps HTTPException detail in a 'detail' field
       // If errorData has a 'detail' field, extract it (this is the actual error data)
       if (errorData.detail && typeof errorData.detail === 'object') {
-        console.log('SubscriptionContext: Found FastAPI detail wrapper, extracting detail field');
         errorData = errorData.detail;
       }
       
@@ -303,83 +297,82 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       const isUsageLimitError = status === 429 && hasUsageIndicators;
       const isSubscriptionExpired = status === 402 || (status === 429 && !isUsageLimitError);
       
-      console.log('SubscriptionContext: Error analysis', {
-        status,
-        isUsageLimitError,
-        isSubscriptionExpired,
-        hasUsageInfo: !!usageInfo,
-        errorDataType: typeof errorData,
-        errorDataKeys: typeof errorData === 'object' && !Array.isArray(errorData) ? Object.keys(errorData) : 'not-an-object',
-        errorData: errorData
-      });
-      
-      // For usage limit errors (429 with usage_info), always show modal - even for active subscriptions
-      // Ignore grace window and cooldown for usage limit errors (user needs to know immediately)
+      // For usage limit errors (429 with usage_info), check subscription status first
+      // User may have just renewed, so we need fresh subscription data
       if (isUsageLimitError) {
-        // Build usage_info from various possible locations
-        const finalUsageInfo = usageInfo || 
-                              (errorData.requested_tokens !== undefined ? {
-                                provider: errorData.provider,
-                                current_tokens: errorData.current_tokens,
-                                requested_tokens: errorData.requested_tokens,
-                                limit: errorData.limit,
-                                type: 'tokens',
-                                ...errorData
-                              } : null) ||
-                              errorData;
+        // CRITICAL: Check if subscription status is stale (older than 5 seconds)
+        // If stale or if we don't have subscription data, refresh it before deciding
+        const timeSinceLastCheck = now - lastCheckTime;
+        const shouldRefresh = !subscription || timeSinceLastCheck > 5000;
         
-        const modalData = {
-          provider: errorData.provider || usageInfo?.provider || 'unknown',
-          usage_info: finalUsageInfo || errorData,
-          message: errorData.message || errorData.error || 'You have reached your usage limit.'
-        };
+        if (shouldRefresh) {
+          try {
+            await checkSubscription();
+            // Wait for state update (checkSubscription updates subscription state)
+            await new Promise(resolve => setTimeout(resolve, 150));
+          } catch (refreshError) {
+            console.warn('SubscriptionContext: Failed to refresh subscription status:', refreshError);
+          }
+        }
         
-        console.log('SubscriptionContext: Usage limit exceeded, showing modal (ignoring grace window/cooldown)', {
-          modalData,
-          errorData: Object.keys(errorData),
-          usageInfo: usageInfo ? Object.keys(usageInfo) : null,
-          currentShowModal: showModal,
-          currentModalErrorData: modalErrorData
-        });
+        // Re-read subscription state after potential refresh using ref (to avoid closure issues)
+        const currentSubscription = subscriptionRef.current;
         
-        // Set flag to mark this as a usage limit modal (should never be auto-closed)
-        setIsUsageLimitModal(true);
-        setModalErrorData(modalData);
-        setShowModal(true);
-        setLastModalShowTime(now);
-        
-        console.log('SubscriptionContext: Modal state updated - showModal should be true, isUsageLimitModal = true', {
-          showModal: true,
-          isUsageLimitModal: true,
-          modalErrorData: modalData
-        });
-        
-        // Force a re-render check
-        setTimeout(() => {
-          console.log('SubscriptionContext: State check after timeout - showModal:', showModal, 'modalErrorData:', modalErrorData);
-        }, 100);
-        
-        return true;
+        // If subscription is inactive, treat as expired and fall through to expired handling
+        if (!currentSubscription || !currentSubscription.active) {
+          // Fall through to subscription expired handling below
+        } else {
+          // Subscription is active but usage limit exceeded - show usage limit modal
+          
+          // Build usage_info from various possible locations
+          const finalUsageInfo = usageInfo || 
+                                (errorData.requested_tokens !== undefined ? {
+                                  provider: errorData.provider,
+                                  current_tokens: errorData.current_tokens,
+                                  requested_tokens: errorData.requested_tokens,
+                                  limit: errorData.limit,
+                                  type: 'tokens',
+                                  ...errorData
+                                } : null) ||
+                                errorData;
+          
+          const modalData = {
+            provider: errorData.provider || usageInfo?.provider || 'unknown',
+            usage_info: finalUsageInfo || errorData,
+            message: errorData.message || errorData.error || 'You have reached your usage limit.'
+          };
+          
+          // Set flag to mark this as a usage limit modal (should never be auto-closed)
+          setIsUsageLimitModal(true);
+          setModalErrorData(modalData);
+          setShowModal(true);
+          setLastModalShowTime(now);
+          
+          console.log('SubscriptionContext: Showing usage limit modal', {
+            provider: modalData.provider,
+            message: modalData.message?.substring(0, 50)
+          });
+          
+          return true;
+        }
       }
       
       // For subscription expired errors, handle based on subscription status
       if (isSubscriptionExpired) {
         // If we have subscription data and it's active, this shouldn't happen but suppress anyway
         if (subscription && subscription.active) {
-          console.log('SubscriptionContext: Active subscription but got expired error, suppressing modal');
           return true;
         }
 
         // If we don't have subscription data yet, defer the decision
         if (!subscription) {
-          console.log('SubscriptionContext: No subscription data yet, deferring modal decision');
           setDeferredError(error);
           return true; // Handle the error but don't show modal yet
         }
 
         // If subscription is not active, show modal immediately
         if (!subscription.active) {
-          console.log('SubscriptionContext: Inactive subscription, showing modal immediately');
+          console.log('SubscriptionContext: Showing subscription expired modal');
           setIsUsageLimitModal(false);
           setModalErrorData({
             provider: errorData.provider,
@@ -394,7 +387,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     }
     
     return false; // Not a subscription error
-  }, [subscription]);
+  }, [subscription, lastCheckTime, checkSubscription]);
 
   // Register the global error handler with the API client
   // Use a ref to ensure the latest handler is always used
