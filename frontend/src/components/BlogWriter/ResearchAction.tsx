@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { blogWriterApi, BlogResearchRequest, BlogResearchResponse } from '../../services/blogWriterApi';
 import { useResearchPolling } from '../../hooks/usePolling';
@@ -59,6 +59,27 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
       setForceUpdate(prev => prev + 1);
     }
   });
+
+  // Close modal when research completes (status becomes 'completed' or polling stops with result)
+  useEffect(() => {
+    if (showProgressModal && (
+      polling.currentStatus === 'completed' || 
+      (!polling.isPolling && polling.result && polling.currentStatus !== 'failed')
+    )) {
+      console.info('[ResearchAction] Closing modal - research completed', {
+        status: polling.currentStatus,
+        isPolling: polling.isPolling,
+        hasResult: !!polling.result
+      });
+      // Small delay to show completion message before closing
+      const timer = setTimeout(() => {
+        setShowProgressModal(false);
+        setCurrentTaskId(null);
+        setCurrentMessage('');
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [polling.currentStatus, polling.isPolling, polling.result, showProgressModal]);
 
   useCopilotActionTyped({
     name: 'showResearchForm',
@@ -235,12 +256,16 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
     <>
       {showProgressModal && (
         <ResearchProgressModal
-          open={showProgressModal}
+          open={showProgressModal && polling.currentStatus !== 'completed'}
           title={"Research in progress"}
           status={polling.currentStatus}
           messages={polling.progressMessages}
           error={polling.error}
-          onClose={() => setShowProgressModal(false)}
+          onClose={() => {
+            console.info('[ResearchAction] Modal closed manually');
+            setShowProgressModal(false);
+            setCurrentTaskId(null);
+          }}
         />
       )}
     </>

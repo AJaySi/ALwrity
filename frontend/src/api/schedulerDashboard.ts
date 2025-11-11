@@ -38,10 +38,14 @@ export interface SchedulerJob {
   job_store: string;
   user_job_store: string;
   function_name?: string | null;
-  platform?: string; // For OAuth token monitoring tasks
-  task_id?: number; // For OAuth token monitoring tasks
+  platform?: string; // For OAuth token monitoring tasks and platform insights
+  task_id?: number; // For OAuth token monitoring tasks, website analysis, and platform insights
   is_database_task?: boolean; // Flag to indicate DB task vs APScheduler job
   frequency?: string; // For OAuth tasks (e.g., 'Weekly')
+  task_type?: string; // For website analysis tasks ('user_website' or 'competitor')
+  task_category?: string; // 'website_analysis', 'platform_insights', 'oauth_token_monitoring'
+  website_url?: string | null; // For website analysis tasks
+  competitor_id?: number | null; // For competitor website analysis tasks
 }
 
 export interface UserIsolation {
@@ -128,6 +132,11 @@ export interface SchedulerEventHistoryResponse {
   limit: number;
   offset: number;
   has_more: boolean;
+  date_filter?: {
+    days: number;
+    cutoff_date: string;
+    showing_events_since: string;
+  };
 }
 
 /**
@@ -199,17 +208,19 @@ export const getSchedulerJobs = async (): Promise<SchedulerJobsResponse> => {
 /**
  * Get scheduler event history from database.
  * 
- * @param limit - Number of events to return (1-1000, default: 100)
+ * @param limit - Number of events to return (1-500, default: 5 for initial load, expand to 50 on hover)
  * @param offset - Pagination offset (default: 0)
  * @param eventType - Filter by event type (check_cycle, interval_adjustment, start, stop, etc.)
+ * @param days - Number of days to look back (1-90, default: 7 days)
  */
 export const getSchedulerEventHistory = async (
-  limit: number = 100,
+  limit: number = 5,
   offset: number = 0,
-  eventType?: 'check_cycle' | 'interval_adjustment' | 'start' | 'stop' | 'job_scheduled' | 'job_cancelled' | 'job_completed' | 'job_failed'
+  eventType?: 'check_cycle' | 'interval_adjustment' | 'start' | 'stop' | 'job_scheduled' | 'job_cancelled' | 'job_completed' | 'job_failed',
+  days: number = 7
 ): Promise<SchedulerEventHistoryResponse> => {
   try {
-    const params: any = { limit, offset };
+    const params: any = { limit, offset, days };
     if (eventType) {
       params.event_type = eventType;
     }

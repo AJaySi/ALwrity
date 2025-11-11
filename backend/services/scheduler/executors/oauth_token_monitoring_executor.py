@@ -197,7 +197,7 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         - GSC: gsc_credentials table (via GSCService)
         - Bing: bing_oauth_tokens table (via BingOAuthService)
         - WordPress: wordpress_oauth_tokens table (via WordPressOAuthService)
-        - Wix: Currently in frontend sessionStorage (backend storage TODO)
+        - Wix: wix_oauth_tokens table (via WixOAuthService)
         
         Args:
             task: OAuthTokenMonitoringTask instance

@@ -336,8 +336,13 @@ class OnboardingDatabaseService:
             ).first()
             
             if existing:
-                # Update existing
-                existing.website_url = normalized.get('website_url', existing.website_url)
+                # Update existing - only update website_url if normalized value is not empty
+                # This prevents overwriting a valid URL with an empty string when step.data
+                # doesn't include the website field
+                normalized_url = normalized.get('website_url', '').strip() if normalized.get('website_url') else ''
+                if normalized_url:
+                    existing.website_url = normalized_url
+                # If normalized_url is empty, keep existing.website_url unchanged
                 existing.writing_style = normalized.get('writing_style')
                 existing.content_characteristics = normalized.get('content_characteristics')
                 existing.target_audience = normalized.get('target_audience')
@@ -520,6 +525,52 @@ class OnboardingDatabaseService:
             
         except SQLAlchemyError as e:
             logger.error(f"Error getting research preferences: {e}")
+            return None
+    
+    def get_competitor_analysis(self, user_id: str, db: Session = None) -> Optional[List[Dict[str, Any]]]:
+        """Get competitor analysis data for user from onboarding."""
+        session_db = db or self.db
+        if not session_db:
+            raise ValueError("Database session required")
+        
+        try:
+            from models.onboarding import CompetitorAnalysis
+            
+            session = self.get_session_by_user(user_id, session_db)
+            if not session:
+                return None
+            
+            # Query CompetitorAnalysis table
+            competitor_records = session_db.query(CompetitorAnalysis).filter(
+                CompetitorAnalysis.session_id == session.id
+            ).all()
+            
+            if not competitor_records:
+                return None
+                
+            # Convert to list of dicts
+            competitors = []
+            for record in competitor_records:
+                analysis_data = record.analysis_data or {}
+                competitors.append({
+                    "url": record.competitor_url,
+                    "domain": record.competitor_domain or record.competitor_url,
+                    "title": analysis_data.get("title", record.competitor_domain or ""),
+                    "summary": analysis_data.get("summary", ""),
+                    "relevance_score": analysis_data.get("relevance_score", 0.5),
+                    "highlights": analysis_data.get("highlights", []),
+                    "favicon": analysis_data.get("favicon"),
+                    "image": analysis_data.get("image"),
+                    "published_date": analysis_data.get("published_date"),
+                    "author": analysis_data.get("author"),
+                    "competitive_insights": analysis_data.get("competitive_analysis", {}),
+                    "content_insights": analysis_data.get("content_insights", {})
+                })
+            
+            return competitors
+            
+        except SQLAlchemyError as e:
+            logger.error(f"Error getting competitor analysis: {e}")
             return None
     
     def get_persona_data(self, user_id: str, db: Session = None) -> Optional[Dict[str, Any]]:

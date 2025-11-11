@@ -218,6 +218,87 @@ class WordPressOAuthService:
             logger.error(f"Error getting WordPress tokens for user {user_id}: {e}")
             return []
     
+    def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
+        """Get detailed token status for a user including expired tokens."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get all tokens (active and expired)
+                cursor.execute('''
+                    SELECT id, access_token, refresh_token, token_type, expires_at, scope, blog_id, blog_url, created_at, is_active
+                    FROM wordpress_oauth_tokens
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                ''', (user_id,))
+                
+                all_tokens = []
+                active_tokens = []
+                expired_tokens = []
+                
+                for row in cursor.fetchall():
+                    token_data = {
+                        "id": row[0],
+                        "access_token": row[1],
+                        "refresh_token": row[2],
+                        "token_type": row[3],
+                        "expires_at": row[4],
+                        "scope": row[5],
+                        "blog_id": row[6],
+                        "blog_url": row[7],
+                        "created_at": row[8],
+                        "is_active": bool(row[9])
+                    }
+                    all_tokens.append(token_data)
+                    
+                    # Determine expiry using robust parsing and is_active flag
+                    is_active_flag = bool(row[9])
+                    not_expired = False
+                    try:
+                        expires_at_val = row[4]
+                        if expires_at_val:
+                            # First try Python parsing
+                            try:
+                                dt = datetime.fromisoformat(expires_at_val) if isinstance(expires_at_val, str) else expires_at_val
+                                not_expired = dt > datetime.now()
+                            except Exception:
+                                # Fallback to SQLite comparison
+                                cursor.execute("SELECT datetime('now') < ?", (expires_at_val,))
+                                not_expired = cursor.fetchone()[0] == 1
+                        else:
+                            # No expiry stored => consider not expired
+                            not_expired = True
+                    except Exception:
+                        not_expired = False
+
+                    if is_active_flag and not_expired:
+                        active_tokens.append(token_data)
+                    else:
+                        expired_tokens.append(token_data)
+                
+                return {
+                    "has_tokens": len(all_tokens) > 0,
+                    "has_active_tokens": len(active_tokens) > 0,
+                    "has_expired_tokens": len(expired_tokens) > 0,
+                    "active_tokens": active_tokens,
+                    "expired_tokens": expired_tokens,
+                    "total_tokens": len(all_tokens),
+                    "last_token_date": all_tokens[0]["created_at"] if all_tokens else None
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting WordPress token status for user {user_id}: {e}")
+            return {
+                "has_tokens": False,
+                "has_active_tokens": False,
+                "has_expired_tokens": False,
+                "active_tokens": [],
+                "expired_tokens": [],
+                "total_tokens": 0,
+                "last_token_date": None,
+                "error": str(e)
+            }
+    
     def test_token(self, access_token: str) -> bool:
         """Test if a WordPress access token is valid."""
         try:

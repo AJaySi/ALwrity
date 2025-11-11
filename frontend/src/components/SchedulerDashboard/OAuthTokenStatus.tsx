@@ -1,6 +1,7 @@
 /**
  * OAuth Token Status Component
  * Compact terminal-themed component for displaying OAuth token monitoring status
+ * with platform-specific execution logs in expanded sections
  */
 
 import React, { useState, useEffect } from 'react';
@@ -16,6 +17,8 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Chip,
+  Divider,
 } from '@mui/material';
 import {
   RefreshCw,
@@ -30,8 +33,11 @@ import { useAuth } from '@clerk/clerk-react';
 import {
   getOAuthTokenStatus,
   manualRefreshToken,
+  getOAuthTokenExecutionLogs,
   OAuthTokenStatusResponse,
   ManualRefreshResponse,
+  ExecutionLog,
+  ExecutionLogsResponse,
 } from '../../api/oauthTokenMonitoring';
 import {
   TerminalPaper,
@@ -41,11 +47,21 @@ import {
   TerminalChipError,
   TerminalChipWarning,
   TerminalAlert,
+  TerminalTableCell,
+  TerminalTableRow,
   terminalColors,
 } from './terminalTheme';
 
 interface OAuthTokenStatusProps {
   compact?: boolean;
+}
+
+interface PlatformLogs {
+  [platform: string]: {
+    logs: ExecutionLog[];
+    loading: boolean;
+    error: string | null;
+  };
 }
 
 const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) => {
@@ -55,6 +71,8 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
+  const [platformLogs, setPlatformLogs] = useState<PlatformLogs>({});
+  const [hoveredLogId, setHoveredLogId] = useState<number | null>(null);
   
   const fetchStatus = async () => {
     if (!userId) return;
@@ -72,6 +90,48 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
     }
   };
   
+  const fetchPlatformLogs = async (platform: string) => {
+    if (!userId) return;
+    
+    // Initialize platform logs state if not exists
+    if (!platformLogs[platform]) {
+      setPlatformLogs(prev => ({
+        ...prev,
+        [platform]: { logs: [], loading: false, error: null }
+      }));
+    }
+    
+    setPlatformLogs(prev => ({
+      ...prev,
+      [platform]: { ...prev[platform], loading: true, error: null }
+    }));
+    
+    try {
+      const response = await getOAuthTokenExecutionLogs(userId, platform, 10, 0); // Get latest 10 logs
+      
+      if (response.success && response.data) {
+        setPlatformLogs(prev => ({
+          ...prev,
+          [platform]: {
+            logs: response.data.logs || [],
+            loading: false,
+            error: null
+          }
+        }));
+      }
+    } catch (err: any) {
+      setPlatformLogs(prev => ({
+        ...prev,
+        [platform]: {
+          ...prev[platform],
+          loading: false,
+          error: err.message || 'Failed to fetch logs'
+        }
+      }));
+      console.error(`Error fetching logs for ${platform}:`, err);
+    }
+  };
+  
   useEffect(() => {
     fetchStatus();
     
@@ -79,6 +139,13 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
     const interval = setInterval(fetchStatus, 120000);
     return () => clearInterval(interval);
   }, [userId]);
+
+  // Fetch logs when platform is expanded
+  useEffect(() => {
+    if (expandedPlatform && userId) {
+      fetchPlatformLogs(expandedPlatform);
+    }
+  }, [expandedPlatform, userId]);
   
   const handleRefresh = async (platform: string) => {
     if (!userId) return;
@@ -91,6 +158,11 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
       // Refresh status after manual refresh
       await fetchStatus();
       
+      // Refresh logs if platform is expanded
+      if (expandedPlatform === platform) {
+        await fetchPlatformLogs(platform);
+      }
+      
       if (response.success) {
         console.log(`Token refresh successful for ${platform}`);
       } else {
@@ -101,6 +173,14 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
       console.error(`Error refreshing ${platform} token:`, err);
     } finally {
       setRefreshing(null);
+    }
+  };
+
+  const handleExpandPlatform = (platform: string) => {
+    if (expandedPlatform === platform) {
+      setExpandedPlatform(null);
+    } else {
+      setExpandedPlatform(platform);
     }
   };
   
@@ -164,6 +244,39 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
       wix: 'Wix',
     };
     return names[platform] || platform.toUpperCase();
+  };
+
+  const getLogStatusChip = (logStatus: string) => {
+    switch (logStatus) {
+      case 'success':
+        return <TerminalChipSuccess label="Success" size="small" />;
+      case 'failed':
+        return <TerminalChipError label="Failed" size="small" />;
+      case 'running':
+        return <TerminalChipWarning label="Running" size="small" />;
+      default:
+        return <Chip label={logStatus} size="small" />;
+    }
+  };
+
+  const formatLogResult = (resultData: any): string => {
+    if (!resultData) return 'N/A';
+    if (typeof resultData === 'string') {
+      try {
+        resultData = JSON.parse(resultData);
+      } catch {
+        return resultData.substring(0, 50);
+      }
+    }
+    
+    if (resultData.token_status) {
+      return `Token: ${resultData.token_status}`;
+    }
+    if (resultData.platform) {
+      return `Platform: ${resultData.platform}`;
+    }
+    const str = JSON.stringify(resultData);
+    return str.length > 60 ? str.substring(0, 60) + '...' : str;
   };
   
   if (loading && !status) {
@@ -231,6 +344,7 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
               const platformStatus = status.data.platform_status[platform];
               const task = platformStatus?.monitoring_task;
               const isExpanded = expandedPlatform === platform;
+              const logs = platformLogs[platform];
               
               return (
                 <React.Fragment key={platform}>
@@ -251,7 +365,47 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
                       </Box>
                     </TableCell>
                     <TableCell>
-                      {getStatusChip(task?.status || null, platformStatus?.connected || false)}
+                      <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                        {getStatusChip(task?.status || null, platformStatus?.connected || false)}
+                        {task?.last_success && (
+                          <Tooltip title={`Last successful: ${formatDate(task.last_success)}`}>
+                            <Chip
+                              label={`✓ ${formatDate(task.last_success).split(',')[0].trim()}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: terminalColors.success + '40',
+                                color: terminalColors.success,
+                                fontFamily: 'monospace',
+                                fontSize: '0.65rem',
+                                height: '20px',
+                                border: `1px solid ${terminalColors.success}40`,
+                                '& .MuiChip-label': {
+                                  padding: '0 6px'
+                                }
+                              }}
+                            />
+                          </Tooltip>
+                        )}
+                        {task?.next_check && (
+                          <Tooltip title={`Next check: ${formatDate(task.next_check)}`}>
+                            <Chip
+                              label={`⏱ ${formatDate(task.next_check).split(',')[0].trim()}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: terminalColors.info + '40',
+                                color: terminalColors.info,
+                                fontFamily: 'monospace',
+                                fontSize: '0.65rem',
+                                height: '20px',
+                                border: `1px solid ${terminalColors.info}40`,
+                                '& .MuiChip-label': {
+                                  padding: '0 6px'
+                                }
+                              }}
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <TerminalTypography variant="caption" color={terminalColors.textSecondary}>
@@ -263,7 +417,7 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
                         <Tooltip title={isExpanded ? "Hide details" : "Show details"}>
                           <IconButton
                             size="small"
-                            onClick={() => setExpandedPlatform(isExpanded ? null : platform)}
+                            onClick={() => handleExpandPlatform(platform)}
                             sx={{
                               color: terminalColors.primary,
                               '&:hover': {
@@ -318,20 +472,162 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
                               </TerminalTypography>
                             </TerminalAlert>
                           )}
-                          {task?.last_success && (
-                            <TerminalAlert severity="success" sx={{ mb: 1 }}>
-                              <TerminalTypography variant="body2">
-                                Last successful: {formatDate(task.last_success)}
+                          {/* OAuth Monitoring Logs Section */}
+                          {platformStatus?.connected && (
+                            <>
+                              <Divider sx={{ my: 1.5, borderColor: terminalColors.primary + '40' }} />
+                              <TerminalTypography variant="subtitle2" fontWeight="bold" mb={1}>
+                                🔐 Monitoring Logs
                               </TerminalTypography>
-                            </TerminalAlert>
+                              
+                              {logs?.loading ? (
+                                <Box display="flex" alignItems="center" gap={1} p={1}>
+                                  <CircularProgress size={16} sx={{ color: terminalColors.primary }} />
+                                  <TerminalTypography variant="caption" color={terminalColors.textSecondary}>
+                                    Loading logs...
+                                  </TerminalTypography>
+                                </Box>
+                              ) : logs?.error ? (
+                                <TerminalAlert severity="error" sx={{ mb: 1 }}>
+                                  <TerminalTypography variant="caption">
+                                    {logs.error}
+                                  </TerminalTypography>
+                                </TerminalAlert>
+                              ) : logs?.logs && logs.logs.length > 0 ? (
+                                <Box sx={{ 
+                                  maxHeight: '300px', 
+                                  overflowY: 'auto',
+                                  overflowX: 'hidden',
+                                  '&::-webkit-scrollbar': {
+                                    width: '8px',
+                                  },
+                                  '&::-webkit-scrollbar-track': {
+                                    backgroundColor: 'rgba(0, 255, 0, 0.05)',
+                                  },
+                                  '&::-webkit-scrollbar-thumb': {
+                                    backgroundColor: terminalColors.primary + '80',
+                                    borderRadius: '4px',
+                                    '&:hover': {
+                                      backgroundColor: terminalColors.primary,
+                                    }
+                                  }
+                                }}>
+                                  <Table size="small" sx={{ 
+                                    '& .MuiTableCell-root': { 
+                                      color: terminalColors.primary, 
+                                      borderColor: terminalColors.primary + '30',
+                                      fontSize: '0.7rem',
+                                      py: 0.5
+                                    } 
+                                  }}>
+                                    <TableHead sx={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)' }}>
+                                      <TableRow>
+                                        <TerminalTableCell>Date</TerminalTableCell>
+                                        <TerminalTableCell>Status</TerminalTableCell>
+                                        <TerminalTableCell>Result</TerminalTableCell>
+                                        <TerminalTableCell>Duration</TerminalTableCell>
+                                      </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                      {logs.logs.map((log) => (
+                                        <React.Fragment key={log.id}>
+                                          <TerminalTableRow
+                                            onMouseEnter={() => setHoveredLogId(log.id)}
+                                            onMouseLeave={() => setHoveredLogId(null)}
+                                            sx={{
+                                              cursor: 'pointer',
+                                              '&:hover': {
+                                                backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                                              }
+                                            }}
+                                          >
+                                            <TerminalTableCell>
+                                              <TerminalTypography variant="caption" fontSize="0.65rem">
+                                                {formatDate(log.execution_date)}
+                                              </TerminalTypography>
+                                            </TerminalTableCell>
+                                            <TerminalTableCell>
+                                              {getLogStatusChip(log.status)}
+                                            </TerminalTableCell>
+                                            <TerminalTableCell>
+                                              <TerminalTypography variant="caption" fontSize="0.65rem" sx={{
+                                                fontFamily: 'monospace',
+                                                color: terminalColors.info,
+                                                maxWidth: '200px',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
+                                              }}>
+                                                {formatLogResult(log.result_data)}
+                                              </TerminalTypography>
+                                            </TerminalTableCell>
+                                            <TerminalTableCell>
+                                              <TerminalTypography variant="caption" fontSize="0.65rem">
+                                                {log.execution_time_ms ? `${log.execution_time_ms}ms` : 'N/A'}
+                                              </TerminalTypography>
+                                            </TerminalTableCell>
+                                          </TerminalTableRow>
+                                          {hoveredLogId === log.id && (
+                                            <TableRow>
+                                              <TableCell colSpan={4} sx={{ py: 1, backgroundColor: 'rgba(0, 255, 0, 0.08)', borderLeft: `3px solid ${terminalColors.primary}` }}>
+                                                <Box pl={2}>
+                                                  <TerminalTypography variant="caption" fontWeight="bold" mb={0.5} display="block">
+                                                    Full Details:
+                                                  </TerminalTypography>
+                                                  {log.error_message && (
+                                                    <Box mb={1}>
+                                                      <TerminalTypography variant="caption" fontWeight="bold" color={terminalColors.error} display="block" mb={0.5}>
+                                                        Error:
+                                                      </TerminalTypography>
+                                                      <TerminalTypography variant="caption" fontSize="0.6rem" sx={{
+                                                        fontFamily: 'monospace',
+                                                        color: terminalColors.error,
+                                                        wordBreak: 'break-word'
+                                                      }}>
+                                                        {log.error_message}
+                                                      </TerminalTypography>
+                                                    </Box>
+                                                  )}
+                                                  {log.result_data && (
+                                                    <Box>
+                                                      <TerminalTypography variant="caption" fontWeight="bold" color={terminalColors.info} display="block" mb={0.5}>
+                                                        Result Data:
+                                                      </TerminalTypography>
+                                                      <TerminalTypography variant="caption" fontSize="0.6rem" sx={{
+                                                        fontFamily: 'monospace',
+                                                        color: terminalColors.info,
+                                                        wordBreak: 'break-word',
+                                                        whiteSpace: 'pre-wrap'
+                                                      }}>
+                                                        {typeof log.result_data === 'string' ? log.result_data : JSON.stringify(log.result_data, null, 2)}
+                                                      </TerminalTypography>
+                                                    </Box>
+                                                  )}
+                                                </Box>
+                                              </TableCell>
+                                            </TableRow>
+                                          )}
+                                        </React.Fragment>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                  {logs.logs.length >= 10 && (
+                                    <Box mt={1} textAlign="center">
+                                      <TerminalTypography variant="caption" color={terminalColors.textSecondary} sx={{ fontStyle: 'italic' }}>
+                                        Showing latest 10 logs. View all logs in OAuth Monitoring section.
+                                      </TerminalTypography>
+                                    </Box>
+                                  )}
+                                </Box>
+                              ) : (
+                                <TerminalTypography variant="caption" color={terminalColors.textSecondary} sx={{ fontStyle: 'italic' }}>
+                                  No monitoring logs available yet. Logs will appear after the first scheduled check.
+                                </TerminalTypography>
+                              )}
+                            </>
                           )}
-                          {task?.next_check && (
-                            <Box mt={1}>
-                              <TerminalTypography variant="caption" color={terminalColors.textSecondary}>
-                                Next check: {formatDate(task.next_check)}
-                              </TerminalTypography>
-                            </Box>
-                          )}
+
+                          {/* Existing connection status messages */}
                           {!task && platformStatus?.connected && (
                             <TerminalAlert severity="info">
                               <TerminalTypography variant="body2">

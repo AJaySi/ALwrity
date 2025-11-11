@@ -144,6 +144,11 @@ def get_exa_key(user_id: Optional[str] = None) -> Optional[str]:
     return UserAPIKeyContext.get_user_key(user_id, 'exa')
 
 
+def get_tavily_key(user_id: Optional[str] = None) -> Optional[str]:
+    """Get Tavily API key for user."""
+    return UserAPIKeyContext.get_user_key(user_id, 'tavily')
+
+
 def get_copilotkit_key(user_id: Optional[str] = None) -> Optional[str]:
     """Get CopilotKit API key for user."""
     return UserAPIKeyContext.get_user_key(user_id, 'copilotkit')

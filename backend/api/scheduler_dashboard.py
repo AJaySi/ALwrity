@@ -18,9 +18,66 @@ from middleware.auth_middleware import get_current_user
 from models.monitoring_models import TaskExecutionLog, MonitoringTask
 from models.scheduler_models import SchedulerEventLog
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
-from sqlalchemy import func
+from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
+from models.website_analysis_monitoring_models import WebsiteAnalysisTask, WebsiteAnalysisExecutionLog
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler-dashboard"])
+
+
+def _rebuild_cumulative_stats_from_events(db: Session) -> Dict[str, int]:
+    """
+    Rebuild cumulative stats by aggregating all check_cycle events from event logs.
+    This is used as a fallback when the cumulative stats table doesn't exist or is invalid.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        Dictionary with cumulative stats
+    """
+    try:
+        # Aggregate check cycle events for cumulative totals
+        result = db.query(
+            func.count(SchedulerEventLog.id),
+            func.sum(SchedulerEventLog.tasks_found),
+            func.sum(SchedulerEventLog.tasks_executed),
+            func.sum(SchedulerEventLog.tasks_failed)
+        ).filter(
+            SchedulerEventLog.event_type == 'check_cycle'
+        ).first()
+        
+        if result:
+            # SQLAlchemy returns tuple for multi-column queries
+            # SUM returns NULL when no rows, handle that
+            total_cycles = result[0] if result[0] is not None else 0
+            total_found = result[1] if result[1] is not None else 0
+            total_executed = result[2] if result[2] is not None else 0
+            total_failed = result[3] if result[3] is not None else 0
+            
+            return {
+                'total_check_cycles': int(total_cycles),
+                'cumulative_tasks_found': int(total_found),
+                'cumulative_tasks_executed': int(total_executed),
+                'cumulative_tasks_failed': int(total_failed),
+                'cumulative_tasks_skipped': 0  # Not tracked in event logs currently
+            }
+        else:
+            return {
+                'total_check_cycles': 0,
+                'cumulative_tasks_found': 0,
+                'cumulative_tasks_executed': 0,
+                'cumulative_tasks_failed': 0,
+                'cumulative_tasks_skipped': 0
+            }
+    except Exception as e:
+        logger.error(f"[Dashboard] Error rebuilding cumulative stats from events: {e}", exc_info=True)
+        return {
+            'total_check_cycles': 0,
+            'cumulative_tasks_found': 0,
+            'cumulative_tasks_executed': 0,
+            'cumulative_tasks_failed': 0,
+            'cumulative_tasks_skipped': 0
+        }
 
 
 @router.get("/dashboard")
@@ -139,98 +196,172 @@ async def get_scheduler_dashboard(
         except Exception as e:
             logger.error(f"Error loading OAuth token monitoring tasks: {e}", exc_info=True)
         
+        # Load website analysis tasks
+        try:
+            website_analysis_tasks = db.query(WebsiteAnalysisTask).filter(
+                WebsiteAnalysisTask.status == 'active'
+            ).all()
+            
+            # Filter by user if user_id_str is provided
+            if user_id_str:
+                website_analysis_tasks = [t for t in website_analysis_tasks if t.user_id == user_id_str]
+            
+            for task in website_analysis_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception as e:
+                    user_job_store = 'default'
+                    logger.debug(f"Could not get job store for user {task.user_id}: {e}")
+                
+                # Format as recurring job
+                job_info = {
+                    'id': f"website_analysis_{task.task_type}_{task.user_id}_{task.id}",
+                    'trigger_type': 'CronTrigger',  # Recurring based on frequency_days
+                    'next_run_time': task.next_check.isoformat() if task.next_check else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': 'website_analysis_executor.execute_task',
+                    'task_type': task.task_type,  # 'user_website' or 'competitor'
+                    'website_url': task.website_url,
+                    'competitor_id': task.competitor_id,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': f'Every {task.frequency_days} days',
+                    'task_category': 'website_analysis'
+                }
+                
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading website analysis tasks: {e}", exc_info=True)
+        
+        # Load platform insights tasks (GSC and Bing)
+        try:
+            insights_tasks = db.query(PlatformInsightsTask).filter(
+                PlatformInsightsTask.status == 'active'
+            ).all()
+            
+            # Filter by user if user_id_str is provided
+            if user_id_str:
+                insights_tasks = [t for t in insights_tasks if t.user_id == user_id_str]
+            
+            for task in insights_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception as e:
+                    user_job_store = 'default'
+                    logger.debug(f"Could not get job store for user {task.user_id}: {e}")
+                
+                # Format as recurring weekly job
+                job_info = {
+                    'id': f"platform_insights_{task.platform}_{task.user_id}",
+                    'trigger_type': 'CronTrigger',  # Weekly recurring
+                    'next_run_time': task.next_check.isoformat() if task.next_check else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': f'{task.platform}_insights_executor.execute_task',
+                    'platform': task.platform,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': 'Weekly',
+                    'task_category': 'platform_insights'
+                }
+                
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading platform insights tasks: {e}", exc_info=True)
+        
         # Get active strategies count
         active_strategies = stats.get('active_strategies_count', 0)
         
         # Get last_update from stats (added by scheduler for frontend polling)
         last_update = stats.get('last_update')
         
-        # Calculate cumulative/historical values from scheduler_event_logs
+        # Calculate cumulative/historical values from persistent cumulative stats table
+        # Fallback to event logs aggregation if cumulative stats table doesn't exist or is invalid
         cumulative_stats = {}
         try:
-            # First, check total events in database for debugging
-            total_events = db.query(func.count(SchedulerEventLog.id)).scalar() or 0
+            from models.scheduler_cumulative_stats_model import SchedulerCumulativeStats
             
-            # Check for check_cycle events specifically
-            check_cycle_count = db.query(func.count(SchedulerEventLog.id)).filter(
-                SchedulerEventLog.event_type == 'check_cycle'
-            ).scalar() or 0
+            # Try to get cumulative stats from dedicated table (persistent across restarts)
+            cumulative_stats_row = db.query(SchedulerCumulativeStats).filter(
+                SchedulerCumulativeStats.id == 1
+            ).first()
             
-            # Also check for other event types that might have task counts
-            job_failed_count = db.query(func.count(SchedulerEventLog.id)).filter(
-                SchedulerEventLog.event_type == 'job_failed'
-            ).scalar() or 0
-            job_completed_count = db.query(func.count(SchedulerEventLog.id)).filter(
-                SchedulerEventLog.event_type == 'job_completed'
-            ).scalar() or 0
-            
-            logger.warning(
-                f"[Dashboard] Database stats: {total_events} total events, "
-                f"{check_cycle_count} check_cycles, {job_failed_count} job_failed, "
-                f"{job_completed_count} job_completed"
-            )
-            
-            if check_cycle_count > 0:
-                logger.warning(f"[Dashboard] Found {check_cycle_count} check cycle events in database")
-                # Aggregate check cycle events for cumulative totals
-                result = db.query(
-                    func.count(SchedulerEventLog.id),
-                    func.sum(SchedulerEventLog.tasks_found),
-                    func.sum(SchedulerEventLog.tasks_executed),
-                    func.sum(SchedulerEventLog.tasks_failed)
-                ).filter(
-                    SchedulerEventLog.event_type == 'check_cycle'
-                ).first()
+            if cumulative_stats_row:
+                # Use persistent cumulative stats
+                cumulative_stats = {
+                    'total_check_cycles': int(cumulative_stats_row.total_check_cycles or 0),
+                    'cumulative_tasks_found': int(cumulative_stats_row.cumulative_tasks_found or 0),
+                    'cumulative_tasks_executed': int(cumulative_stats_row.cumulative_tasks_executed or 0),
+                    'cumulative_tasks_failed': int(cumulative_stats_row.cumulative_tasks_failed or 0),
+                    'cumulative_tasks_skipped': int(cumulative_stats_row.cumulative_tasks_skipped or 0),
+                    'cumulative_job_completed': int(cumulative_stats_row.cumulative_job_completed or 0),
+                    'cumulative_job_failed': int(cumulative_stats_row.cumulative_job_failed or 0)
+                }
                 
-                if result:
-                    # SQLAlchemy returns tuple for multi-column queries
-                    # SUM returns NULL when no rows, handle that
-                    total_cycles = result[0] if result[0] is not None else 0
-                    total_found = result[1] if result[1] is not None else 0
-                    total_executed = result[2] if result[2] is not None else 0
-                    total_failed = result[3] if result[3] is not None else 0
-                    
-                    cumulative_stats = {
-                        'total_check_cycles': int(total_cycles),
-                        'cumulative_tasks_found': int(total_found),
-                        'cumulative_tasks_executed': int(total_executed),
-                        'cumulative_tasks_failed': int(total_failed)
-                    }
-                    
-                    logger.warning(f"[Dashboard] Cumulative stats from check_cycles: {cumulative_stats}")
-                else:
-                    # No results (shouldn't happen with COUNT, but handle it)
-                    cumulative_stats = {
-                        'total_check_cycles': 0,
-                        'cumulative_tasks_found': 0,
-                        'cumulative_tasks_executed': 0,
-                        'cumulative_tasks_failed': 0
-                    }
-                    logger.warning("[Dashboard] Query returned None (no check cycle events)")
+                logger.debug(
+                    f"[Dashboard] Using persistent cumulative stats: "
+                    f"cycles={cumulative_stats['total_check_cycles']}, "
+                    f"found={cumulative_stats['cumulative_tasks_found']}, "
+                    f"executed={cumulative_stats['cumulative_tasks_executed']}, "
+                    f"failed={cumulative_stats['cumulative_tasks_failed']}"
+                )
+                
+                # Validate cumulative stats by comparing with event logs (for verification)
+                check_cycle_count = db.query(func.count(SchedulerEventLog.id)).filter(
+                    SchedulerEventLog.event_type == 'check_cycle'
+                ).scalar() or 0
+                
+                if cumulative_stats['total_check_cycles'] != check_cycle_count:
+                    logger.warning(
+                        f"[Dashboard] ⚠️ Cumulative stats validation mismatch: "
+                        f"cumulative_stats.total_check_cycles={cumulative_stats['total_check_cycles']} "
+                        f"vs event_logs.count={check_cycle_count}. "
+                        f"Rebuilding cumulative stats from event logs..."
+                    )
+                    # Rebuild cumulative stats from event logs
+                    cumulative_stats = _rebuild_cumulative_stats_from_events(db)
+                    # Update the persistent table
+                    if cumulative_stats_row:
+                        cumulative_stats_row.total_check_cycles = cumulative_stats['total_check_cycles']
+                        cumulative_stats_row.cumulative_tasks_found = cumulative_stats['cumulative_tasks_found']
+                        cumulative_stats_row.cumulative_tasks_executed = cumulative_stats['cumulative_tasks_executed']
+                        cumulative_stats_row.cumulative_tasks_failed = cumulative_stats['cumulative_tasks_failed']
+                        cumulative_stats_row.cumulative_tasks_skipped = cumulative_stats.get('cumulative_tasks_skipped', 0)
+                        db.commit()
+                    logger.warning(f"[Dashboard] ✅ Rebuilt cumulative stats: {cumulative_stats}")
             else:
-                # No check cycles yet, but we can still show job counts
-                # Log detailed info about why cumulative stats are 0
-                if stats.get('total_checks', 0) > 0:
-                    logger.warning(
-                        f"[Dashboard] ⚠️ Scheduler shows {stats.get('total_checks', 0)} checks in memory, "
-                        f"but NO check_cycle events found in database. "
-                        f"This suggests check_cycle events are not being saved properly."
-                    )
-                else:
-                    logger.warning(
-                        f"[Dashboard] No check_cycle events yet. "
-                        f"Scheduler interval: {stats.get('check_interval_minutes', 60)}min. "
-                        f"First check cycle will run after interval expires. "
-                        f"One-time jobs: {job_completed_count} completed, {job_failed_count} failed"
-                    )
+                # Cumulative stats table doesn't exist or is empty, rebuild from event logs
+                logger.warning(
+                    "[Dashboard] Cumulative stats table not found or empty. "
+                    "Rebuilding from event logs..."
+                )
+                cumulative_stats = _rebuild_cumulative_stats_from_events(db)
+                
+                # Create/update the persistent table
+                cumulative_stats_row = SchedulerCumulativeStats.get_or_create(db)
+                cumulative_stats_row.total_check_cycles = cumulative_stats['total_check_cycles']
+                cumulative_stats_row.cumulative_tasks_found = cumulative_stats['cumulative_tasks_found']
+                cumulative_stats_row.cumulative_tasks_executed = cumulative_stats['cumulative_tasks_executed']
+                cumulative_stats_row.cumulative_tasks_failed = cumulative_stats['cumulative_tasks_failed']
+                cumulative_stats_row.cumulative_tasks_skipped = cumulative_stats.get('cumulative_tasks_skipped', 0)
+                db.commit()
+                logger.warning(f"[Dashboard] ✅ Created/updated cumulative stats: {cumulative_stats}")
+                
+        except ImportError:
+            # Cumulative stats model doesn't exist yet (migration not run)
+            logger.warning(
+                "[Dashboard] Cumulative stats model not found. "
+                "Falling back to event logs aggregation. "
+                "Run migration: create_scheduler_cumulative_stats.sql"
+            )
+            cumulative_stats = _rebuild_cumulative_stats_from_events(db)
         except Exception as e:
-            logger.error(f"Error calculating cumulative stats: {e}", exc_info=True)
-            cumulative_stats = {
-                'total_check_cycles': 0,
-                'cumulative_tasks_found': 0,
-                'cumulative_tasks_executed': 0,
-                'cumulative_tasks_failed': 0
-            }
+            logger.error(f"[Dashboard] Error getting cumulative stats: {e}", exc_info=True)
+            # Fallback to event logs aggregation
+            cumulative_stats = _rebuild_cumulative_stats_from_events(db)
         
         return {
             'stats': {
@@ -259,8 +390,9 @@ async def get_scheduler_dashboard(
             },
             'jobs': formatted_jobs,
             'job_count': len(formatted_jobs),
-            'recurring_jobs': 1 + len([j for j in formatted_jobs if j.get('is_database_task')]),  # check_due_tasks + OAuth tasks
+            'recurring_jobs': 1 + len([j for j in formatted_jobs if j.get('is_database_task')]),  # check_due_tasks + all DB tasks
             'one_time_jobs': len([j for j in formatted_jobs if not j.get('is_database_task') and j.get('trigger_type') == 'DateTrigger']),
+            'registered_task_types': stats.get('registered_types', []),  # Include registered task types
             'user_isolation': {
                 'enabled': True,
                 'current_user_id': user_id_str
@@ -703,4 +835,382 @@ async def get_recent_scheduler_logs(
     except Exception as e:
         logger.error(f"Error getting recent scheduler logs: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get recent scheduler logs: {str(e)}")
+
+
+@router.get("/platform-insights/status/{user_id}")
+async def get_platform_insights_status(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get platform insights task status for a user.
+    
+    Returns:
+        - GSC insights tasks
+        - Bing insights tasks
+        - Task details and execution logs
+    """
+    try:
+        # Verify user can only access their own data
+        if str(current_user.get('id')) != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        logger.debug(f"[Platform Insights Status] Getting status for user: {user_id}")
+        
+        # Get all insights tasks for user
+        tasks = db.query(PlatformInsightsTask).filter(
+            PlatformInsightsTask.user_id == user_id
+        ).order_by(PlatformInsightsTask.platform, PlatformInsightsTask.created_at).all()
+        
+        # Check if user has connected platforms but missing insights tasks
+        # Auto-create missing tasks for connected platforms
+        from services.oauth_token_monitoring_service import get_connected_platforms
+        from services.platform_insights_monitoring_service import create_platform_insights_task
+        
+        connected_platforms = get_connected_platforms(user_id)
+        insights_platforms = ['gsc', 'bing']
+        connected_insights = [p for p in connected_platforms if p in insights_platforms]
+        
+        existing_platforms = {task.platform for task in tasks}
+        missing_platforms = [p for p in connected_insights if p not in existing_platforms]
+        
+        if missing_platforms:
+            logger.info(
+                f"[Platform Insights Status] User {user_id} has connected platforms {missing_platforms} "
+                f"but missing insights tasks. Creating tasks..."
+            )
+            
+            for platform in missing_platforms:
+                try:
+                    # Don't fetch site_url here - it requires API calls
+                    # The executor will fetch it when the task runs
+                    # Create task without site_url to avoid API calls during status checks
+                    result = create_platform_insights_task(
+                        user_id=user_id,
+                        platform=platform,
+                        site_url=None,  # Will be fetched by executor when task runs
+                        db=db
+                    )
+                    
+                    if result.get('success'):
+                        logger.info(f"[Platform Insights Status] Created {platform.upper()} insights task for user {user_id}")
+                    else:
+                        logger.warning(f"[Platform Insights Status] Failed to create {platform} task: {result.get('error')}")
+                except Exception as e:
+                    logger.warning(f"[Platform Insights Status] Error creating {platform} task: {e}", exc_info=True)
+            
+            # Re-query tasks after creation
+            tasks = db.query(PlatformInsightsTask).filter(
+                PlatformInsightsTask.user_id == user_id
+            ).order_by(PlatformInsightsTask.platform, PlatformInsightsTask.created_at).all()
+        
+        # Group tasks by platform
+        gsc_tasks = [t for t in tasks if t.platform == 'gsc']
+        bing_tasks = [t for t in tasks if t.platform == 'bing']
+        
+        logger.debug(
+            f"[Platform Insights Status] Found {len(tasks)} total tasks: "
+            f"{len(gsc_tasks)} GSC, {len(bing_tasks)} Bing"
+        )
+        
+        # Format tasks
+        def format_task(task: PlatformInsightsTask) -> Dict[str, Any]:
+            return {
+                'id': task.id,
+                'platform': task.platform,
+                'site_url': task.site_url,
+                'status': task.status,
+                'last_check': task.last_check.isoformat() if task.last_check else None,
+                'last_success': task.last_success.isoformat() if task.last_success else None,
+                'last_failure': task.last_failure.isoformat() if task.last_failure else None,
+                'failure_reason': task.failure_reason,
+                'next_check': task.next_check.isoformat() if task.next_check else None,
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'updated_at': task.updated_at.isoformat() if task.updated_at else None
+            }
+        
+        return {
+            'success': True,
+            'user_id': user_id,
+            'gsc_tasks': [format_task(t) for t in gsc_tasks],
+            'bing_tasks': [format_task(t) for t in bing_tasks],
+            'total_tasks': len(tasks)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting platform insights status for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get platform insights status: {str(e)}")
+
+
+@router.get("/website-analysis/status/{user_id}")
+async def get_website_analysis_status(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get website analysis task status for a user.
+    
+    Returns:
+        - User website tasks
+        - Competitor website tasks
+        - Task details and execution logs
+    """
+    try:
+        # Verify user can only access their own data
+        if str(current_user.get('id')) != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        logger.debug(f"[Website Analysis Status] Getting status for user: {user_id}")
+        
+        # Get all website analysis tasks for user
+        tasks = db.query(WebsiteAnalysisTask).filter(
+            WebsiteAnalysisTask.user_id == user_id
+        ).order_by(WebsiteAnalysisTask.task_type, WebsiteAnalysisTask.created_at).all()
+        
+        # Separate user website and competitor tasks
+        user_website_tasks = [t for t in tasks if t.task_type == 'user_website']
+        competitor_tasks = [t for t in tasks if t.task_type == 'competitor']
+        
+        logger.debug(
+            f"[Website Analysis Status] Found {len(tasks)} tasks for user {user_id}: "
+            f"{len(user_website_tasks)} user website, {len(competitor_tasks)} competitors"
+        )
+        
+        # Format tasks
+        def format_task(task: WebsiteAnalysisTask) -> Dict[str, Any]:
+            return {
+                'id': task.id,
+                'website_url': task.website_url,
+                'task_type': task.task_type,
+                'competitor_id': task.competitor_id,
+                'status': task.status,
+                'last_check': task.last_check.isoformat() if task.last_check else None,
+                'last_success': task.last_success.isoformat() if task.last_success else None,
+                'last_failure': task.last_failure.isoformat() if task.last_failure else None,
+                'failure_reason': task.failure_reason,
+                'next_check': task.next_check.isoformat() if task.next_check else None,
+                'frequency_days': task.frequency_days,
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'updated_at': task.updated_at.isoformat() if task.updated_at else None
+            }
+        
+        active_tasks = len([t for t in tasks if t.status == 'active'])
+        failed_tasks = len([t for t in tasks if t.status == 'failed'])
+        
+        return {
+            'success': True,
+            'data': {
+                'user_id': user_id,
+                'user_website_tasks': [format_task(t) for t in user_website_tasks],
+                'competitor_tasks': [format_task(t) for t in competitor_tasks],
+                'total_tasks': len(tasks),
+                'active_tasks': active_tasks,
+                'failed_tasks': failed_tasks
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting website analysis status for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get website analysis status: {str(e)}")
+
+
+@router.get("/website-analysis/logs/{user_id}")
+async def get_website_analysis_logs(
+    user_id: str,
+    task_id: Optional[int] = Query(None),
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get execution logs for website analysis tasks.
+    
+    Args:
+        user_id: User ID
+        task_id: Optional task ID to filter logs
+        limit: Maximum number of logs to return
+        offset: Pagination offset
+        
+    Returns:
+        List of execution logs
+    """
+    try:
+        # Verify user can only access their own data
+        if str(current_user.get('id')) != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        query = db.query(WebsiteAnalysisExecutionLog).join(
+            WebsiteAnalysisTask,
+            WebsiteAnalysisExecutionLog.task_id == WebsiteAnalysisTask.id
+        ).filter(
+            WebsiteAnalysisTask.user_id == user_id
+        )
+        
+        if task_id:
+            query = query.filter(WebsiteAnalysisExecutionLog.task_id == task_id)
+        
+        # Get total count
+        total_count = query.count()
+        
+        logs = query.order_by(
+            desc(WebsiteAnalysisExecutionLog.execution_date)
+        ).offset(offset).limit(limit).all()
+        
+        # Format logs
+        formatted_logs = []
+        for log in logs:
+            # Get task details
+            task = db.query(WebsiteAnalysisTask).filter(WebsiteAnalysisTask.id == log.task_id).first()
+            
+            formatted_logs.append({
+                'id': log.id,
+                'task_id': log.task_id,
+                'website_url': task.website_url if task else None,
+                'task_type': task.task_type if task else None,
+                'execution_date': log.execution_date.isoformat() if log.execution_date else None,
+                'status': log.status,
+                'result_data': log.result_data,
+                'error_message': log.error_message,
+                'execution_time_ms': log.execution_time_ms,
+                'created_at': log.created_at.isoformat() if log.created_at else None
+            })
+        
+        return {
+            'logs': formatted_logs,
+            'total_count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'has_more': (offset + limit) < total_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting website analysis logs for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get website analysis logs: {str(e)}")
+
+
+@router.post("/website-analysis/retry/{task_id}")
+async def retry_website_analysis(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Manually retry a failed website analysis task.
+    
+    Args:
+        task_id: Task ID to retry
+        
+    Returns:
+        Success status and updated task details
+    """
+    try:
+        # Get task
+        task = db.query(WebsiteAnalysisTask).filter(WebsiteAnalysisTask.id == task_id).first()
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Verify user can only access their own tasks
+        if str(current_user.get('id')) != task.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Reset task status and schedule immediate execution
+        task.status = 'active'
+        task.failure_reason = None
+        task.next_check = datetime.utcnow()  # Schedule immediately
+        task.updated_at = datetime.utcnow()
+        
+        db.commit()
+        
+        logger.info(f"Manually retried website analysis task {task_id} for user {task.user_id}")
+        
+        return {
+            'success': True,
+            'message': f'Website analysis task {task_id} scheduled for immediate execution',
+            'task': {
+                'id': task.id,
+                'website_url': task.website_url,
+                'status': task.status,
+                'next_check': task.next_check.isoformat() if task.next_check else None
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrying website analysis task {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retry website analysis: {str(e)}")
+
+
+@router.get("/platform-insights/logs/{user_id}")
+async def get_platform_insights_logs(
+    user_id: str,
+    task_id: Optional[int] = Query(None),
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get execution logs for platform insights tasks.
+    
+    Args:
+        user_id: User ID
+        task_id: Optional task ID to filter logs
+        limit: Maximum number of logs to return
+        
+    Returns:
+        List of execution logs
+    """
+    try:
+        # Verify user can only access their own data
+        if str(current_user.get('id')) != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        query = db.query(PlatformInsightsExecutionLog).join(
+            PlatformInsightsTask,
+            PlatformInsightsExecutionLog.task_id == PlatformInsightsTask.id
+        ).filter(
+            PlatformInsightsTask.user_id == user_id
+        )
+        
+        if task_id:
+            query = query.filter(PlatformInsightsExecutionLog.task_id == task_id)
+        
+        logs = query.order_by(
+            desc(PlatformInsightsExecutionLog.execution_date)
+        ).limit(limit).all()
+        
+        def format_log(log: PlatformInsightsExecutionLog) -> Dict[str, Any]:
+            return {
+                'id': log.id,
+                'task_id': log.task_id,
+                'execution_date': log.execution_date.isoformat() if log.execution_date else None,
+                'status': log.status,
+                'result_data': log.result_data,
+                'error_message': log.error_message,
+                'execution_time_ms': log.execution_time_ms,
+                'data_source': log.data_source,
+                'created_at': log.created_at.isoformat() if log.created_at else None
+            }
+        
+        return {
+            'success': True,
+            'logs': [format_log(log) for log in logs],
+            'total_count': len(logs)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting platform insights logs for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get platform insights logs: {str(e)}")
 

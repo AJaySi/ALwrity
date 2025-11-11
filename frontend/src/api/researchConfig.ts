@@ -9,8 +9,10 @@ import { apiClient } from './client';
 export interface ProviderAvailability {
   google_available: boolean;
   exa_available: boolean;
+  tavily_available: boolean;
   gemini_key_status: 'configured' | 'missing';
   exa_key_status: 'configured' | 'missing';
+  tavily_key_status: 'configured' | 'missing';
 }
 
 export interface PersonaDefaults {
@@ -140,18 +142,85 @@ export const getResearchConfig = async (): Promise<ResearchConfigResponse> => {
 
 /**
  * Get or refresh research persona
- * @param forceRefresh - If true, regenerate persona even if cache is valid
+ * @param forceRefresh - If true, regenerate persona even if cache is valid     
  */
-export const refreshResearchPersona = async (forceRefresh: boolean = false): Promise<ResearchPersona> => {
+export const refreshResearchPersona = async (forceRefresh: boolean = false): Promise<ResearchPersona> => {                                                      
   try {
-    const url = `/api/research/research-persona${forceRefresh ? '?force_refresh=true' : ''}`;
+    const url = `/api/research/research-persona${forceRefresh ? '?force_refresh=true' : ''}`;                                                                   
     const response = await apiClient.get(url);
     return response.data;
   } catch (error: any) {
-    console.error('[researchConfig] Error refreshing research persona:', error?.response?.status || error?.message);
-    // Preserve the original error so subscription errors can be detected
-    // The apiClient interceptor should handle 429 errors, but we preserve the error structure
+    console.error('[researchConfig] Error refreshing research persona:', error?.response?.status || error?.message);                                            
+    // Preserve the original error so subscription errors can be detected       
+    // The apiClient interceptor should handle 429 errors, but we preserve the error structure                                                                  
     throw error;
+  }
+};
+
+/**
+ * Competitor Analysis Response Interface
+ */
+export interface CompetitorAnalysisResponse {
+  success: boolean;
+  competitors?: Array<{
+    name?: string;
+    url?: string;
+    domain?: string;
+    description?: string;
+    similarity_score?: number;
+    [key: string]: any;
+  }>;
+  social_media_accounts?: Record<string, string>;
+  social_media_citations?: Array<{
+    platform?: string;
+    account?: string;
+    url?: string;
+    [key: string]: any;
+  }>;
+  research_summary?: {
+    total_competitors?: number;
+    industry_insights?: string;
+    [key: string]: any;
+  };
+  analysis_timestamp?: string;
+  error?: string;
+}
+
+/**
+ * Get competitor analysis data from onboarding
+ */
+export const getCompetitorAnalysis = async (): Promise<CompetitorAnalysisResponse> => {
+  console.log('[getCompetitorAnalysis] ===== START: Fetching competitor analysis =====');
+  try {
+    console.log('[getCompetitorAnalysis] Making GET request to /api/research/competitor-analysis');
+    const response = await apiClient.get('/api/research/competitor-analysis');
+    console.log('[getCompetitorAnalysis] ✅ Response received:', {
+      success: response.data?.success,
+      competitorsCount: response.data?.competitors?.length || 0,
+      error: response.data?.error,
+      fullResponse: response.data
+    });
+    return response.data;
+  } catch (error: any) {
+    const statusCode = error?.response?.status;
+    const errorMessage = error?.response?.data?.detail || error?.response?.data?.error || error?.message || 'Unknown error';
+    
+    console.error('[getCompetitorAnalysis] ❌ ERROR:', {
+      status: statusCode,
+      message: errorMessage,
+      fullError: error,
+      responseData: error?.response?.data
+    });
+    
+    // Return error response instead of throwing
+    const errorResponse = {
+      success: false,
+      error: errorMessage
+    };
+    console.log('[getCompetitorAnalysis] Returning error response:', errorResponse);
+    return errorResponse;
+  } finally {
+    console.log('[getCompetitorAnalysis] ===== END: Fetching competitor analysis =====');
   }
 };
 

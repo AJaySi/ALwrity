@@ -34,7 +34,7 @@ import ExecutionLogsTable from '../components/SchedulerDashboard/ExecutionLogsTa
 import FailuresInsights from '../components/SchedulerDashboard/FailuresInsights';
 import SchedulerEventHistory from '../components/SchedulerDashboard/SchedulerEventHistory';
 import SchedulerCharts from '../components/SchedulerDashboard/SchedulerCharts';
-import OAuthTokenStatus from '../components/SchedulerDashboard/OAuthTokenStatus';
+import TaskMonitoringTabs from '../components/SchedulerDashboard/TaskMonitoringTabs';
 import { TerminalTypography, terminalColors } from '../components/SchedulerDashboard/terminalTheme';
 
 // Terminal-themed styled components
@@ -658,9 +658,9 @@ const SchedulerDashboard: React.FC = () => {
             </Box>
           </Box>
 
-          {/* OAuth Token Status */}
+          {/* Task Monitoring Tabs */}
           <Box mb={4}>
-            <OAuthTokenStatus compact={true} />
+            <TaskMonitoringTabs />
           </Box>
 
           {/* Execution Logs */}
@@ -670,7 +670,7 @@ const SchedulerDashboard: React.FC = () => {
 
           {/* Scheduler Event History */}
           <Box mb={4}>
-            <SchedulerEventHistory limit={50} />
+            <SchedulerEventHistory />
           </Box>
 
           {/* Scheduler Charts Visualization */}

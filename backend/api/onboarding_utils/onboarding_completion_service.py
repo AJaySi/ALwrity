@@ -81,6 +81,30 @@ class OnboardingCompletionService:
                 # Non-critical: log but don't fail onboarding completion
                 logger.warning(f"Failed to create OAuth token monitoring tasks for user {user_id}: {e}")
             
+            # Create website analysis tasks for user's website and competitors
+            try:
+                from services.database import SessionLocal
+                from services.website_analysis_monitoring_service import create_website_analysis_tasks
+                db = SessionLocal()
+                try:
+                    result = create_website_analysis_tasks(user_id=user_id, db=db)
+                    if result.get('success'):
+                        tasks_count = result.get('tasks_created', 0)
+                        logger.info(
+                            f"Created {tasks_count} website analysis tasks for user {user_id} "
+                            f"on onboarding completion"
+                        )
+                    else:
+                        error = result.get('error', 'Unknown error')
+                        logger.warning(
+                            f"Failed to create website analysis tasks for user {user_id}: {error}"
+                        )
+                finally:
+                    db.close()
+            except Exception as e:
+                # Non-critical: log but don't fail onboarding completion
+                logger.warning(f"Failed to create website analysis tasks for user {user_id}: {e}")
+            
             return {
                 "message": "Onboarding completed successfully",
                 "completed_at": datetime.now().isoformat(),

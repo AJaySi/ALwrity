@@ -4,12 +4,12 @@ Provides provider availability and persona-aware defaults for research.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from loguru import logger
 from pydantic import BaseModel
 
 from middleware.auth_middleware import get_current_user
-from services.user_api_key_context import get_exa_key, get_gemini_key
+from services.user_api_key_context import get_exa_key, get_gemini_key, get_tavily_key
 from services.onboarding.database_service import OnboardingDatabaseService
 from services.onboarding.progress_service import get_onboarding_progress_service
 from services.database import get_db
@@ -26,8 +26,10 @@ class ProviderAvailability(BaseModel):
     """Provider availability status."""
     google_available: bool
     exa_available: bool
+    tavily_available: bool
     gemini_key_status: str  # 'configured' | 'missing'
     exa_key_status: str  # 'configured' | 'missing'
+    tavily_key_status: str  # 'configured' | 'missing'
 
 
 class PersonaDefaults(BaseModel):
@@ -47,6 +49,17 @@ class ResearchConfigResponse(BaseModel):
     persona_scheduled: bool = False
 
 
+class CompetitorAnalysisResponse(BaseModel):
+    """Response model for competitor analysis data."""
+    success: bool
+    competitors: Optional[List[Dict[str, Any]]] = None
+    social_media_accounts: Optional[Dict[str, str]] = None
+    social_media_citations: Optional[List[Dict[str, Any]]] = None
+    research_summary: Optional[Dict[str, Any]] = None
+    analysis_timestamp: Optional[str] = None
+    error: Optional[str] = None
+
+
 @router.get("/provider-availability", response_model=ProviderAvailability)
 async def get_provider_availability(
     current_user: Dict = Depends(get_current_user)
@@ -57,6 +70,7 @@ async def get_provider_availability(
     Returns:
         - google_available: True if Gemini key is configured
         - exa_available: True if Exa key is configured
+        - tavily_available: True if Tavily key is configured
         - Key status for each provider
     """
     try:
@@ -65,15 +79,19 @@ async def get_provider_availability(
         # Check API key availability
         gemini_key = get_gemini_key(user_id)
         exa_key = get_exa_key(user_id)
+        tavily_key = get_tavily_key(user_id)
         
         google_available = bool(gemini_key and gemini_key.strip())
         exa_available = bool(exa_key and exa_key.strip())
+        tavily_available = bool(tavily_key and tavily_key.strip())
         
         return ProviderAvailability(
             google_available=google_available,
             exa_available=exa_available,
+            tavily_available=tavily_available,
             gemini_key_status='configured' if google_available else 'missing',
-            exa_key_status='configured' if exa_available else 'missing'
+            exa_key_status='configured' if exa_available else 'missing',
+            tavily_key_status='configured' if tavily_available else 'missing'
         )
     except Exception as e:
         logger.error(f"[ResearchConfig] Error checking provider availability for user {user_id if 'user_id' in locals() else 'unknown'}: {e}", exc_info=True)
@@ -211,15 +229,19 @@ async def get_research_config(
         logger.debug(f"[ResearchConfig] Getting provider availability for user {user_id}")
         gemini_key = get_gemini_key(user_id)
         exa_key = get_exa_key(user_id)
+        tavily_key = get_tavily_key(user_id)
         
         google_available = bool(gemini_key and gemini_key.strip())
         exa_available = bool(exa_key and exa_key.strip())
+        tavily_available = bool(tavily_key and tavily_key.strip())
         
         provider_availability = ProviderAvailability(
             google_available=google_available,
             exa_available=exa_available,
+            tavily_available=tavily_available,
             gemini_key_status='configured' if google_available else 'missing',
-            exa_key_status='configured' if exa_available else 'missing'
+            exa_key_status='configured' if exa_available else 'missing',
+            tavily_key_status='configured' if tavily_available else 'missing'
         )
         
         # Get persona defaults
@@ -355,9 +377,188 @@ async def get_research_config(
         import traceback
         logger.error(f"[ResearchConfig] Full traceback:\n{traceback.format_exc()}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Failed to get research config: {str(e)}"
         )
+
+
+@router.get("/competitor-analysis", response_model=CompetitorAnalysisResponse)
+async def get_competitor_analysis(
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get competitor analysis data from onboarding for the current user.
+    
+    Returns competitor data including competitors list, social media accounts,
+    social media citations, and research summary that was collected during onboarding step 3.
+    """
+    user_id = None
+    try:
+        user_id = str(current_user.get('id'))
+        print(f"\n[COMPETITOR_ANALYSIS] ===== START: Getting competitor analysis for user_id={user_id} =====")
+        print(f"[COMPETITOR_ANALYSIS] Current user dict keys: {list(current_user.keys())}")
+        logger.info(f"[ResearchConfig] Getting competitor analysis for user {user_id}")
+
+        if not db:
+            print(f"[COMPETITOR_ANALYSIS] ❌ ERROR: Database session is None for user {user_id}")
+            logger.error(f"[ResearchConfig] Database session is None for user {user_id}")
+            raise HTTPException(status_code=500, detail="Database session not available")
+
+        db_service = OnboardingDatabaseService(db=db)
+
+        # Get onboarding session - using same pattern as onboarding completion check
+        print(f"[COMPETITOR_ANALYSIS] Looking up onboarding session for user_id={user_id} (Clerk ID)")
+        session = db_service.get_session_by_user(user_id, db)
+        if not session:
+            print(f"[COMPETITOR_ANALYSIS] ❌ WARNING: No onboarding session found for user_id={user_id}")
+            logger.warning(f"[ResearchConfig] No onboarding session found for user {user_id}")
+            return CompetitorAnalysisResponse(
+                success=False,
+                error="No onboarding session found. Please complete onboarding first."
+            )
+        
+        print(f"[COMPETITOR_ANALYSIS] ✅ Found onboarding session: id={session.id}, user_id={session.user_id}, current_step={session.current_step}")
+
+        # Check if step 3 is completed - same pattern as elsewhere (check current_step >= 3 or research_preferences exists)
+        research_preferences = db_service.get_research_preferences(user_id, db)
+        print(f"[COMPETITOR_ANALYSIS] Step check: current_step={session.current_step}, research_preferences exists={research_preferences is not None}")
+        if not research_preferences and session.current_step < 3:
+            print(f"[COMPETITOR_ANALYSIS] ❌ Step 3 not completed for user_id={user_id} (current_step={session.current_step})")
+            logger.info(f"[ResearchConfig] Step 3 not completed for user {user_id} (current_step={session.current_step})")
+            return CompetitorAnalysisResponse(
+                success=False,
+                error="Onboarding step 3 (Competitor Analysis) is not completed. Please complete onboarding step 3 first."
+            )
+        
+        print(f"[COMPETITOR_ANALYSIS] ✅ Step 3 is completed (current_step={session.current_step} or research_preferences exists)")
+
+        # Try Method 1: Get competitor data from CompetitorAnalysis table using OnboardingDatabaseService
+        # This follows the same pattern as get_website_analysis()
+        print(f"[COMPETITOR_ANALYSIS] 🔍 Method 1: Querying CompetitorAnalysis table using OnboardingDatabaseService...")
+        try:
+            competitors = db_service.get_competitor_analysis(user_id, db)
+            
+            if competitors:
+                print(f"[COMPETITOR_ANALYSIS] ✅ Found {len(competitors)} competitor records from CompetitorAnalysis table")
+                logger.info(f"[ResearchConfig] Found {len(competitors)} competitors from CompetitorAnalysis table for user {user_id}")
+                
+                # Map competitor fields to match frontend expectations
+                mapped_competitors = []
+                for comp in competitors:
+                    mapped_comp = {
+                        **comp,  # Keep all original fields
+                        "name": comp.get("title") or comp.get("name") or comp.get("domain", ""),
+                        "description": comp.get("summary") or comp.get("description", ""),
+                        "similarity_score": comp.get("relevance_score") or comp.get("similarity_score", 0.5)
+                    }
+                    mapped_competitors.append(mapped_comp)
+                
+                print(f"[COMPETITOR_ANALYSIS] ✅ SUCCESS: Returning {len(mapped_competitors)} competitors for user_id={user_id}")
+                return CompetitorAnalysisResponse(
+                    success=True,
+                    competitors=mapped_competitors,
+                    social_media_accounts={},
+                    social_media_citations=[],
+                    research_summary={
+                        "total_competitors": len(mapped_competitors),
+                        "market_insights": f"Found {len(mapped_competitors)} competitors analyzed during onboarding"
+                    },
+                    analysis_timestamp=None
+                )
+            else:
+                print(f"[COMPETITOR_ANALYSIS] ⚠️ No competitor records found in CompetitorAnalysis table for user_id={user_id}")
+                
+        except Exception as e:
+            print(f"[COMPETITOR_ANALYSIS] ❌ EXCEPTION in Method 1: {e}")
+            import traceback
+            print(f"[COMPETITOR_ANALYSIS] Traceback:\n{traceback.format_exc()}")
+            logger.warning(f"[ResearchConfig] Could not retrieve competitor data from CompetitorAnalysis table: {e}", exc_info=True)
+
+        # Try Method 2: Get data from Step3ResearchService (which accesses step_data)
+        # This is where step3_research_service._store_research_data() saves the data
+        print(f"[COMPETITOR_ANALYSIS] 🔄 Method 2: Trying Step3ResearchService.get_research_data()...")
+        try:
+            from api.onboarding_utils.step3_research_service import Step3ResearchService
+            
+            # Step3ResearchService.get_research_data() expects session_id (integer), but we have user_id (string)
+            # The service uses session.id internally, so we need to pass the session.id
+            step3_service = Step3ResearchService()
+            research_data_result = await step3_service.get_research_data(str(session.id))
+            
+            print(f"[COMPETITOR_ANALYSIS] Step3ResearchService.get_research_data() result: success={research_data_result.get('success')}")
+            
+            if research_data_result.get('success'):
+                # Handle both 'research_data' and 'step3_research_data' keys
+                research_data = research_data_result.get('step3_research_data') or research_data_result.get('research_data', {})
+                print(f"[COMPETITOR_ANALYSIS] Research data keys: {list(research_data.keys()) if isinstance(research_data, dict) else 'Not a dict'}")
+                
+                if isinstance(research_data, dict) and research_data.get('competitors'):
+                    competitors_list = research_data.get('competitors', [])
+                    print(f"[COMPETITOR_ANALYSIS] ✅ Found {len(competitors_list)} competitors in step_data via Step3ResearchService")
+                    
+                    if competitors_list:
+                        analysis_metadata = research_data.get('analysis_metadata', {})
+                        social_media_data = analysis_metadata.get('social_media_data', {})
+                        
+                        # Map competitor fields to match frontend expectations
+                        mapped_competitors = []
+                        for comp in competitors_list:
+                            mapped_comp = {
+                                **comp,  # Keep all original fields
+                                "name": comp.get("title") or comp.get("name") or comp.get("domain", ""),
+                                "description": comp.get("summary") or comp.get("description", ""),
+                                "similarity_score": comp.get("relevance_score") or comp.get("similarity_score", 0.5)
+                            }
+                            mapped_competitors.append(mapped_comp)
+                        
+                        print(f"[COMPETITOR_ANALYSIS] ✅ SUCCESS: Returning {len(mapped_competitors)} competitors from step_data for user_id={user_id}")
+                        logger.info(f"[ResearchConfig] Found {len(mapped_competitors)} competitors from step_data via Step3ResearchService for user {user_id}")
+                        return CompetitorAnalysisResponse(
+                            success=True,
+                            competitors=mapped_competitors,
+                            social_media_accounts=social_media_data.get('social_media_accounts', {}),
+                            social_media_citations=social_media_data.get('citations', []),
+                            research_summary=research_data.get('research_summary'),
+                            analysis_timestamp=research_data.get('completed_at')
+                        )
+                    else:
+                        print(f"[COMPETITOR_ANALYSIS] ⚠️ Step3ResearchService returned competitors list but it's empty")
+                else:
+                    print(f"[COMPETITOR_ANALYSIS] ⚠️ Step3ResearchService returned success=True but no competitors in data")
+            else:
+                error_msg = research_data_result.get('error', 'Unknown error')
+                print(f"[COMPETITOR_ANALYSIS] ⚠️ Step3ResearchService returned success=False, error: {error_msg}")
+                
+        except Exception as e:
+            print(f"[COMPETITOR_ANALYSIS] ❌ EXCEPTION in Method 2: {e}")
+            import traceback
+            print(f"[COMPETITOR_ANALYSIS] Traceback:\n{traceback.format_exc()}")
+            logger.warning(f"[ResearchConfig] Could not retrieve competitor data from Step3ResearchService: {e}", exc_info=True)
+
+        # Fallback: Return empty response with helpful message
+        print(f"[COMPETITOR_ANALYSIS] ❌ FALLBACK: No competitor analysis data found for user_id={user_id}")
+        print(f"[COMPETITOR_ANALYSIS] Step 3 is completed (current_step={session.current_step}) but no data found in either source")
+        logger.info(f"[ResearchConfig] No competitor analysis data found for user {user_id} (step 3 completed but no data found)")
+        return CompetitorAnalysisResponse(
+            success=False,
+            error="Competitor analysis data was not found in the database. Please re-run competitor discovery in Step 3 of onboarding to generate and save competitor data."
+        )
+        
+    except HTTPException:
+        print(f"[COMPETITOR_ANALYSIS] ❌ HTTPException raised (will be re-raised)")
+        raise
+    except Exception as e:
+        print(f"[COMPETITOR_ANALYSIS] ❌ CRITICAL ERROR: {e}")
+        import traceback
+        print(f"[COMPETITOR_ANALYSIS] Traceback:\n{traceback.format_exc()}")
+        logger.error(f"[ResearchConfig] Error getting competitor analysis for user {user_id if user_id else 'unknown'}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get competitor analysis: {str(e)}"
+        )
+    finally:
+        print(f"[COMPETITOR_ANALYSIS] ===== END: Getting competitor analysis for user_id={user_id} =====\n")
 
 
 # Helper functions from RESEARCH_AI_HYPERPERSONALIZATION.md

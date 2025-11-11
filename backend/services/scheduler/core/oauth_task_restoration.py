@@ -104,19 +104,16 @@ async def restore_oauth_monitoring_tasks(scheduler):
                 # Fallback to users with existing tasks only
             
             total_created = 0
+            restoration_summary = []  # Collect summary for single log
+            
             for user_id in users_to_check:
                 try:
-                    # Get connected platforms for this user
+                    # Get connected platforms for this user (silent - no logging)
                     connected_platforms = get_connected_platforms(user_id)
-                    
-                    logger.warning(
-                        f"[OAuth Task Restoration] User {user_id}: "
-                        f"Connected platforms: {connected_platforms}"
-                    )
                     
                     if not connected_platforms:
                         logger.debug(
-                            f"[OAuth Task Restoration] No connected platforms for user {user_id}, skipping"
+                            f"[OAuth Task Restoration] No connected platforms for user {user_id[:20]}..., skipping"
                         )
                         continue
                     
@@ -134,11 +131,6 @@ async def restore_oauth_monitoring_tasks(scheduler):
                     ]
                     
                     if missing_platforms:
-                        logger.warning(
-                            f"[OAuth Task Restoration] ⚠️ User {user_id} has connected platforms "
-                            f"{connected_platforms} but missing tasks for: {missing_platforms}"
-                        )
-                        
                         # Create missing tasks
                         created = create_oauth_monitoring_tasks(
                             user_id=user_id,
@@ -147,15 +139,10 @@ async def restore_oauth_monitoring_tasks(scheduler):
                         )
                         
                         total_created += len(created)
-                        
-                        logger.warning(
-                            f"[OAuth Task Restoration] ✅ Created {len(created)} missing OAuth tasks "
-                            f"for user {user_id}, platforms: {missing_platforms}"
-                        )
-                    else:
-                        logger.warning(
-                            f"[OAuth Task Restoration] ✅ User {user_id} has all required tasks "
-                            f"for connected platforms: {connected_platforms}"
+                        # Collect summary info instead of logging immediately
+                        platforms_str = ", ".join([p.upper() for p in missing_platforms])
+                        restoration_summary.append(
+                            f"  ├─ User {user_id[:20]}...: {len(created)} tasks ({platforms_str})"
                         )
                         
                 except Exception as e:
@@ -173,16 +160,23 @@ async def restore_oauth_monitoring_tasks(scheduler):
             
             final_platform_summary = ", ".join([f"{p}: {c}" for p, c in sorted(final_by_platform.items())])
             
+            # Single formatted summary log (similar to scheduler startup)
             if total_created > 0:
+                summary_lines = "\n".join(restoration_summary[:5])  # Show first 5 users
+                if len(restoration_summary) > 5:
+                    summary_lines += f"\n  └─ ... and {len(restoration_summary) - 5} more users"
+                
                 logger.warning(
-                    f"[OAuth Task Restoration] ✅ Created {total_created} missing OAuth monitoring tasks. "
-                    f"Final platform breakdown: {final_platform_summary}"
+                    f"[OAuth Task Restoration] ✅ OAuth Monitoring Tasks Restored\n"
+                    f"   ├─ Tasks Created: {total_created}\n"
+                    f"   ├─ Users Processed: {len(users_to_check)}\n"
+                    f"   ├─ Platform Breakdown: {final_platform_summary}\n"
+                    + summary_lines
                 )
             else:
                 logger.warning(
                     f"[OAuth Task Restoration] ✅ All users have required OAuth monitoring tasks. "
-                    f"Checked {len(users_to_check)} users, found {len(existing_tasks)} existing tasks. "
-                    f"Platform breakdown: {final_platform_summary}"
+                    f"Checked {len(users_to_check)} users. Platform breakdown: {final_platform_summary}"
                 )
                 
         finally:

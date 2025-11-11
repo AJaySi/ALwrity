@@ -37,14 +37,16 @@ interface SchedulerEventHistoryProps {
   limit?: number;
 }
 
-const SchedulerEventHistory: React.FC<SchedulerEventHistoryProps> = ({ limit = 50 }) => {
+const SchedulerEventHistory: React.FC<SchedulerEventHistoryProps> = () => {
   const [events, setEvents] = useState<SchedulerEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(limit);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [rowsPerPage, setRowsPerPage] = useState(5); // Start with 5, expand to 50 on hover
   const [totalCount, setTotalCount] = useState(0);
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
+  const [daysFilter, setDaysFilter] = useState<number>(7);
 
   const fetchEvents = async () => {
     try {
@@ -54,7 +56,8 @@ const SchedulerEventHistory: React.FC<SchedulerEventHistoryProps> = ({ limit = 5
       const response = await getSchedulerEventHistory(
         rowsPerPage,
         page * rowsPerPage,
-        eventTypeFilter !== 'all' ? eventTypeFilter as any : undefined
+        eventTypeFilter !== 'all' ? eventTypeFilter as any : undefined,
+        daysFilter
       );
       
       setEvents(response.events);
@@ -70,7 +73,16 @@ const SchedulerEventHistory: React.FC<SchedulerEventHistoryProps> = ({ limit = 5
   useEffect(() => {
     fetchEvents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, rowsPerPage, eventTypeFilter]); // fetchEvents is stable, no need to include
+  }, [page, rowsPerPage, eventTypeFilter, daysFilter]); // fetchEvents is stable, no need to include
+
+  // Expand to 50 rows on hover
+  const handleMouseEnter = () => {
+    if (!isExpanded) {
+      setIsExpanded(true);
+      setRowsPerPage(50);
+      setPage(0); // Reset to first page when expanding
+    }
+  };
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -169,40 +181,92 @@ const SchedulerEventHistory: React.FC<SchedulerEventHistoryProps> = ({ limit = 5
   }
 
   return (
-    <TerminalPaper>
+    <TerminalPaper
+      onMouseEnter={handleMouseEnter}
+      sx={{
+        cursor: isExpanded ? 'default' : 'pointer',
+        transition: 'all 0.2s ease-in-out',
+        '&:hover': {
+          boxShadow: isExpanded ? undefined : '0 4px 8px rgba(0,0,0,0.2)',
+        }
+      }}
+    >
       <Box p={2}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={2}>
           <TerminalTypography variant="h6">
             📜 Scheduler Event History
+            {!isExpanded && (
+              <Tooltip title="Hover to expand and see more events with pagination">
+                <Typography
+                  component="span"
+                  sx={{
+                    fontSize: '0.7rem',
+                    color: terminalColors.info,
+                    ml: 1,
+                    fontStyle: 'italic'
+                  }}
+                >
+                  (Hover to expand)
+                </Typography>
+              </Tooltip>
+            )}
           </TerminalTypography>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel sx={{ color: terminalColors.primary }}>Event Type</InputLabel>
-            <Select
-              value={eventTypeFilter}
-              onChange={(e) => {
-                setEventTypeFilter(e.target.value);
-                setPage(0);
-              }}
-              sx={{
-                color: terminalColors.primary,
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: terminalColors.primary,
-                },
-                '& .MuiSvgIcon-root': {
+          <Box display="flex" gap={2} flexWrap="wrap">
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel sx={{ color: terminalColors.primary }}>Days</InputLabel>
+              <Select
+                value={daysFilter}
+                onChange={(e) => {
+                  setDaysFilter(e.target.value as number);
+                  setPage(0);
+                }}
+                sx={{
                   color: terminalColors.primary,
-                }
-              }}
-            >
-              <MenuItem value="all">All Events</MenuItem>
-              <MenuItem value="check_cycle">Check Cycles</MenuItem>
-              <MenuItem value="interval_adjustment">Interval Adjustments</MenuItem>
-              <MenuItem value="start">Scheduler Start</MenuItem>
-              <MenuItem value="stop">Scheduler Stop</MenuItem>
-              <MenuItem value="job_scheduled">Job Scheduled</MenuItem>
-              <MenuItem value="job_completed">Job Completed</MenuItem>
-              <MenuItem value="job_failed">Job Failed</MenuItem>
-            </Select>
-          </FormControl>
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: terminalColors.primary,
+                  },
+                  '& .MuiSvgIcon-root': {
+                    color: terminalColors.primary,
+                  }
+                }}
+              >
+                <MenuItem value={1}>Last 1 day</MenuItem>
+                <MenuItem value={3}>Last 3 days</MenuItem>
+                <MenuItem value={7}>Last 7 days</MenuItem>
+                <MenuItem value={14}>Last 14 days</MenuItem>
+                <MenuItem value={30}>Last 30 days</MenuItem>
+                <MenuItem value={90}>Last 90 days</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel sx={{ color: terminalColors.primary }}>Event Type</InputLabel>
+              <Select
+                value={eventTypeFilter}
+                onChange={(e) => {
+                  setEventTypeFilter(e.target.value);
+                  setPage(0);
+                }}
+                sx={{
+                  color: terminalColors.primary,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: terminalColors.primary,
+                  },
+                  '& .MuiSvgIcon-root': {
+                    color: terminalColors.primary,
+                  }
+                }}
+              >
+                <MenuItem value="all">All Events</MenuItem>
+                <MenuItem value="check_cycle">Check Cycles</MenuItem>
+                <MenuItem value="interval_adjustment">Interval Adjustments</MenuItem>
+                <MenuItem value="start">Scheduler Start</MenuItem>
+                <MenuItem value="stop">Scheduler Stop</MenuItem>
+                <MenuItem value="job_scheduled">Job Scheduled</MenuItem>
+                <MenuItem value="job_completed">Job Completed</MenuItem>
+                <MenuItem value="job_failed">Job Failed</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
         </Box>
 
         {events.length === 0 ? (
@@ -284,24 +348,33 @@ const SchedulerEventHistory: React.FC<SchedulerEventHistoryProps> = ({ limit = 5
               </Table>
             </TableContainer>
 
-            <TablePagination
-              component="div"
-              count={totalCount}
-              page={page}
-              onPageChange={handleChangePage}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              rowsPerPageOptions={[10, 25, 50, 100]}
-              sx={{
-                color: terminalColors.primary,
-                '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+            {isExpanded && (
+              <TablePagination
+                component="div"
+                count={totalCount}
+                page={page}
+                onPageChange={handleChangePage}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                rowsPerPageOptions={[10, 25, 50, 100]}
+                sx={{
                   color: terminalColors.primary,
-                },
-                '& .MuiIconButton-root': {
-                  color: terminalColors.primary,
-                }
-              }}
-            />
+                  '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+                    color: terminalColors.primary,
+                  },
+                  '& .MuiIconButton-root': {
+                    color: terminalColors.primary,
+                  }
+                }}
+              />
+            )}
+            {!isExpanded && totalCount > events.length && (
+              <Box p={2} textAlign="center">
+                <TerminalTypography variant="body2" sx={{ color: terminalColors.info, fontStyle: 'italic' }}>
+                  Showing {events.length} of {totalCount} events. Hover to expand and see more with pagination.
+                </TerminalTypography>
+              </Box>
+            )}
           </>
         )}
       </Box>

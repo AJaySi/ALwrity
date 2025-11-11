@@ -150,8 +150,94 @@ class ResearchService:
                         raw_result = None
                     else:
                         raise
+            
+            elif config.provider == ResearchProvider.TAVILY:
+                # Tavily research workflow
+                from .tavily_provider import TavilyResearchProvider
+                from services.database import get_db
+                from services.subscription import PricingService
+                import os
+                import time
                 
-            if config.provider != ResearchProvider.EXA:
+                # Pre-flight validation (similar to Exa)
+                db_val = next(get_db())
+                try:
+                    pricing_service = PricingService(db_val)
+                    # Check Tavily usage limits
+                    limits = pricing_service.get_user_limits(user_id)
+                    tavily_limit = limits.get('limits', {}).get('tavily_calls', 0) if limits else 0
+                    
+                    # Get current usage
+                    from models.subscription_models import UsageSummary
+                    from datetime import datetime
+                    current_period = pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
+                    usage = db_val.query(UsageSummary).filter(
+                        UsageSummary.user_id == user_id,
+                        UsageSummary.billing_period == current_period
+                    ).first()
+                    
+                    current_calls = getattr(usage, 'tavily_calls', 0) or 0 if usage else 0
+                    
+                    if tavily_limit > 0 and current_calls >= tavily_limit:
+                        raise HTTPException(
+                            status_code=429,
+                            detail={
+                                'error': 'Tavily API call limit exceeded',
+                                'message': f'You have reached your Tavily API call limit ({tavily_limit} calls). Please upgrade your plan or wait for the next billing period.',
+                                'provider': 'tavily',
+                                'usage_info': {
+                                    'current': current_calls,
+                                    'limit': tavily_limit
+                                }
+                            }
+                        )
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Error checking Tavily limits: {e}")
+                finally:
+                    db_val.close()
+                
+                # Execute Tavily search
+                api_start_time = time.time()
+                try:
+                    tavily_provider = TavilyResearchProvider()
+                    raw_result = await tavily_provider.search(
+                        research_prompt, topic, industry, target_audience, config, user_id
+                    )
+                    api_duration_ms = (time.time() - api_start_time) * 1000
+                    
+                    # Track usage
+                    cost = raw_result.get('cost', {}).get('total', 0.001) if isinstance(raw_result.get('cost'), dict) else 0.001
+                    search_depth = config.tavily_search_depth or "basic"
+                    tavily_provider.track_tavily_usage(user_id, cost, search_depth)
+                    
+                    # Log API call performance
+                    blog_writer_logger.log_api_call(
+                        "tavily_search",
+                        "search",
+                        api_duration_ms,
+                        token_usage={},
+                        content_length=len(raw_result.get('content', ''))
+                    )
+                    
+                    # Extract content for downstream analysis
+                    content = raw_result.get('content', '')
+                    sources = raw_result.get('sources', [])
+                    search_widget = ""  # Tavily doesn't provide search widgets
+                    search_queries = raw_result.get('search_queries', [])
+                    grounding_metadata = None  # Tavily doesn't provide grounding metadata
+                    
+                except RuntimeError as e:
+                    if "TAVILY_API_KEY not configured" in str(e):
+                        logger.warning("Tavily not configured, falling back to Google")
+                        config.provider = ResearchProvider.GOOGLE
+                        # Continue to Google flow below
+                        raw_result = None
+                    else:
+                        raise
+                
+            if config.provider not in [ResearchProvider.EXA, ResearchProvider.TAVILY]:
                 # Google research (existing flow) or fallback from Exa
                 from .google_provider import GoogleResearchProvider
                 import time
@@ -412,8 +498,94 @@ class ResearchService:
                         # Continue to Google flow below
                     else:
                         raise
+            
+            elif config.provider == ResearchProvider.TAVILY:
+                # Tavily research workflow
+                from .tavily_provider import TavilyResearchProvider
+                from services.database import get_db
+                from services.subscription import PricingService
+                import os
                 
-            if config.provider != ResearchProvider.EXA:
+                await task_manager.update_progress(task_id, "🌐 Connecting to Tavily AI search...")
+                
+                # Pre-flight validation
+                db_val = next(get_db())
+                try:
+                    pricing_service = PricingService(db_val)
+                    # Check Tavily usage limits
+                    limits = pricing_service.get_user_limits(user_id)
+                    tavily_limit = limits.get('limits', {}).get('tavily_calls', 0) if limits else 0
+                    
+                    # Get current usage
+                    from models.subscription_models import UsageSummary
+                    from datetime import datetime
+                    current_period = pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
+                    usage = db_val.query(UsageSummary).filter(
+                        UsageSummary.user_id == user_id,
+                        UsageSummary.billing_period == current_period
+                    ).first()
+                    
+                    current_calls = getattr(usage, 'tavily_calls', 0) or 0 if usage else 0
+                    
+                    if tavily_limit > 0 and current_calls >= tavily_limit:
+                        await task_manager.update_progress(task_id, f"❌ Tavily API call limit exceeded ({current_calls}/{tavily_limit})")
+                        raise HTTPException(
+                            status_code=429,
+                            detail={
+                                'error': 'Tavily API call limit exceeded',
+                                'message': f'You have reached your Tavily API call limit ({tavily_limit} calls). Please upgrade your plan or wait for the next billing period.',
+                                'provider': 'tavily',
+                                'usage_info': {
+                                    'current': current_calls,
+                                    'limit': tavily_limit
+                                }
+                            }
+                        )
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Error checking Tavily limits: {e}")
+                finally:
+                    db_val.close()
+                
+                # Execute Tavily search
+                await task_manager.update_progress(task_id, "🤖 Executing Tavily AI search...")
+                try:
+                    tavily_provider = TavilyResearchProvider()
+                    raw_result = await tavily_provider.search(
+                        research_prompt, topic, industry, target_audience, config, user_id
+                    )
+                    
+                    # Track usage
+                    cost = raw_result.get('cost', {}).get('total', 0.001) if isinstance(raw_result.get('cost'), dict) else 0.001
+                    search_depth = config.tavily_search_depth or "basic"
+                    tavily_provider.track_tavily_usage(user_id, cost, search_depth)
+                    
+                    # Extract content for downstream analysis
+                    if raw_result is None:
+                        logger.error("raw_result is None after Tavily search")
+                        raise ValueError("Tavily research result is None - search operation failed unexpectedly")
+                    
+                    if not isinstance(raw_result, dict):
+                        logger.warning(f"raw_result is not a dict (type: {type(raw_result)}), using defaults")
+                        raw_result = {}
+                    
+                    content = raw_result.get('content', '')
+                    sources = raw_result.get('sources', []) or []
+                    search_widget = ""  # Tavily doesn't provide search widgets
+                    search_queries = raw_result.get('search_queries', []) or []
+                    grounding_metadata = None  # Tavily doesn't provide grounding metadata
+                    
+                except RuntimeError as e:
+                    if "TAVILY_API_KEY not configured" in str(e):
+                        logger.warning("Tavily not configured, falling back to Google")
+                        await task_manager.update_progress(task_id, "⚠️ Tavily not configured, falling back to Google Search")
+                        config.provider = ResearchProvider.GOOGLE
+                        # Continue to Google flow below
+                    else:
+                        raise
+                
+            if config.provider not in [ResearchProvider.EXA, ResearchProvider.TAVILY]:
                 # Google research (existing flow)
                 from .google_provider import GoogleResearchProvider
                 

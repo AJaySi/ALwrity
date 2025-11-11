@@ -17,8 +17,10 @@ Last Updated: January 2025
 
 from .google_search_service import GoogleSearchService
 from .exa_service import ExaService
+from .tavily_service import TavilyService
 
 __all__ = [
     "GoogleSearchService",
-    "ExaService"
+    "ExaService",
+    "TavilyService"
 ]

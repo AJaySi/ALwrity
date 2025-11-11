@@ -160,6 +160,11 @@ export const BlogWriter: React.FC = () => {
     seoRecommendationsApplied
   );
 
+  // Update ref when navigateToPhase changes
+  React.useEffect(() => {
+    navigateToPhaseRef.current = navigateToPhase;
+  }, [navigateToPhase]);
+
   // Phase restoration logic
   usePhaseRestoration({
     copilotKitAvailable,
@@ -184,6 +189,9 @@ export const BlogWriter: React.FC = () => {
     sections
   );
 
+  // Store navigateToPhase in a ref for use in polling callbacks
+  const navigateToPhaseRef = React.useRef<((phase: string) => void) | null>(null);
+
   // Polling hooks - extracted to useBlogWriterPolling
   const {
     researchPolling,
@@ -198,6 +206,19 @@ export const BlogWriter: React.FC = () => {
     onOutlineComplete: handleOutlineComplete,
     onOutlineError: handleOutlineError,
     onSectionsUpdate: setSections,
+    onContentConfirmed: () => {
+      debug.log('[BlogWriter] Content generation completed - auto-confirming content');
+      setContentConfirmed(true);
+    },
+    navigateToPhase: (phase) => {
+      debug.log('[BlogWriter] Navigating to phase after content generation', { phase });
+      // Use ref to access navigateToPhase (defined later in component)
+      if (navigateToPhaseRef.current) {
+        setTimeout(() => {
+          navigateToPhaseRef.current?.(phase);
+        }, 0);
+      }
+    },
   });
 
   // Modal visibility management - extracted to useModalVisibility

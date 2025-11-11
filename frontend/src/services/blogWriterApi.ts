@@ -18,7 +18,7 @@ export interface ResearchSource {
 }
 
 export type ResearchMode = 'basic' | 'comprehensive' | 'targeted';
-export type ResearchProvider = 'google' | 'exa';
+export type ResearchProvider = 'google' | 'exa' | 'tavily';
 export type SourceType = 'web' | 'academic' | 'news' | 'industry' | 'expert';
 export type DateRange = 'last_week' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'all_time';
 
@@ -37,6 +37,22 @@ export interface ResearchConfig {
   exa_include_domains?: string[];
   exa_exclude_domains?: string[];
   exa_search_type?: 'auto' | 'keyword' | 'neural';
+  // Tavily-specific options
+  tavily_topic?: 'general' | 'news' | 'finance';
+  tavily_search_depth?: 'basic' | 'advanced';
+  tavily_include_domains?: string[];
+  tavily_exclude_domains?: string[];
+  tavily_include_answer?: boolean | 'basic' | 'advanced';
+  tavily_include_raw_content?: boolean | 'markdown' | 'text';
+  tavily_include_images?: boolean;
+  tavily_include_image_descriptions?: boolean;
+  tavily_include_favicon?: boolean;
+  tavily_time_range?: 'day' | 'week' | 'month' | 'year' | 'd' | 'w' | 'm' | 'y';
+  tavily_start_date?: string; // YYYY-MM-DD
+  tavily_end_date?: string; // YYYY-MM-DD
+  tavily_country?: string;
+  tavily_chunks_per_source?: number; // 1-3
+  tavily_auto_parameters?: boolean;
 }
 
 export interface BlogResearchRequest {

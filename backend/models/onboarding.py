@@ -17,6 +17,7 @@ class OnboardingSession(Base):
     website_analyses = relationship('WebsiteAnalysis', back_populates='session', cascade="all, delete-orphan")
     research_preferences = relationship('ResearchPreferences', back_populates='session', cascade="all, delete-orphan", uselist=False)
     persona_data = relationship('PersonaData', back_populates='session', cascade="all, delete-orphan", uselist=False)
+    competitor_analyses = relationship('CompetitorAnalysis', back_populates='session', cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<OnboardingSession(id={self.id}, user_id={self.user_id}, step={self.current_step}, progress={self.progress})>"
@@ -186,6 +187,48 @@ class PersonaData(Base):
             'selected_platforms': self.selected_platforms,
             'research_persona': self.research_persona,
             'research_persona_generated_at': self.research_persona_generated_at.isoformat() if self.research_persona_generated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class CompetitorAnalysis(Base):
+    """Stores competitor website analysis results from scheduled analysis tasks."""
+    __tablename__ = 'competitor_analyses'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey('onboarding_sessions.id', ondelete='CASCADE'), nullable=False)
+    competitor_url = Column(String(500), nullable=False)
+    competitor_domain = Column(String(255), nullable=True)  # Extracted domain for easier queries
+    analysis_date = Column(DateTime, default=func.now())
+    
+    # Complete analysis data (same structure as WebsiteAnalysis)
+    analysis_data = Column(JSON)  # Contains style_analysis, crawl_result, style_patterns, style_guidelines
+    
+    # Metadata
+    status = Column(String(50), default='completed')  # completed, failed, in_progress
+    error_message = Column(Text, nullable=True)
+    warning_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    session = relationship('OnboardingSession', back_populates='competitor_analyses')
+    
+    def __repr__(self):
+        return f"<CompetitorAnalysis(id={self.id}, url={self.competitor_url}, status={self.status})>"
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'competitor_url': self.competitor_url,
+            'competitor_domain': self.competitor_domain,
+            'analysis_date': self.analysis_date.isoformat() if self.analysis_date else None,
+            'analysis_data': self.analysis_data,
+            'status': self.status,
+            'error_message': self.error_message,
+            'warning_message': self.warning_message,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

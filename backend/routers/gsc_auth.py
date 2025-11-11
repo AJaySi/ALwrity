@@ -66,6 +66,45 @@ async def handle_gsc_callback(
         
         if success:
             logger.info("GSC OAuth callback handled successfully")
+            
+            # Create GSC insights task immediately after successful connection
+            try:
+                from services.database import SessionLocal
+                from services.platform_insights_monitoring_service import create_platform_insights_task
+                
+                # Get user_id from state (stored during OAuth flow)
+                # Note: handle_oauth_callback already deleted state, so we need to get user_id from recent credentials
+                db = SessionLocal()
+                try:
+                    # Get user_id from most recent GSC credentials (since state was deleted)
+                    import sqlite3
+                    with sqlite3.connect(gsc_service.db_path) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute('SELECT user_id FROM gsc_credentials ORDER BY updated_at DESC LIMIT 1')
+                        result = cursor.fetchone()
+                        if result:
+                            user_id = result[0]
+                            
+                            # Don't fetch site_url here - it requires API calls
+                            # The executor will fetch it when the task runs (weekly)
+                            # Create insights task without site_url to avoid API calls
+                            task_result = create_platform_insights_task(
+                                user_id=user_id,
+                                platform='gsc',
+                                site_url=None,  # Will be fetched by executor when task runs
+                                db=db
+                            )
+                            
+                            if task_result.get('success'):
+                                logger.info(f"Created GSC insights task for user {user_id}")
+                            else:
+                                logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
+                finally:
+                    db.close()
+            except Exception as e:
+                # Non-critical: log but don't fail OAuth callback
+                logger.warning(f"Failed to create GSC insights task after OAuth: {e}", exc_info=True)
+            
             html = """
 <!doctype html>
 <html>

@@ -3,7 +3,7 @@
  * Displays scheduled jobs in tree structure matching log format.
  */
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Box } from '@mui/material';
 import {
   Schedule as ScheduleIcon,
@@ -26,6 +26,34 @@ const SchedulerJobsTree: React.FC<SchedulerJobsTreeProps> = ({
   recurringJobs, 
   oneTimeJobs 
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const DEFAULT_DISPLAY_COUNT = 3; // Show only 3 jobs by default
+  const COLLAPSE_DELAY = 2000; // 2 seconds delay before collapsing
+
+  const handleMouseEnter = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    setIsExpanded(true);
+  };
+
+  const handleMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsExpanded(false);
+    }, COLLAPSE_DELAY);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const displayedJobs = isExpanded ? jobs : jobs.slice(0, DEFAULT_DISPLAY_COUNT);
+  const hasMoreJobs = jobs.length > DEFAULT_DISPLAY_COUNT;
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Not scheduled';
     try {
@@ -66,6 +94,26 @@ const SchedulerJobsTree: React.FC<SchedulerJobsTreeProps> = ({
       };
       return `OAuth ${platformNames[platform] || platform.toUpperCase()}`;
     }
+    if (jobId.includes('website_analysis')) {
+      // Extract task type from job
+      const taskType = job?.task_type || 'Website';
+      const taskTypeNames: { [key: string]: string } = {
+        'user_website': 'User Website',
+        'competitor': 'Competitor'
+      };
+      return `Website Analysis - ${taskTypeNames[taskType] || taskType}`;
+    }
+    if (jobId.includes('platform_insights')) {
+      // Extract platform from job ID or use platform field
+      const platform = job?.platform || 
+                      jobId.split('_')[2] || 
+                      'Platform';
+      const platformNames: { [key: string]: string } = {
+        'gsc': 'GSC Insights',
+        'bing': 'Bing Insights'
+      };
+      return platformNames[platform] || `${platform.toUpperCase()} Insights`;
+    }
     return 'One-Time';
   };
 
@@ -93,19 +141,38 @@ const SchedulerJobsTree: React.FC<SchedulerJobsTreeProps> = ({
         />
       </Box>
 
-      <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem', color: terminalColors.text, flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <Box 
+        sx={{ 
+          fontFamily: 'monospace', 
+          fontSize: '0.875rem', 
+          color: terminalColors.text, 
+          flex: 1, 
+          overflow: 'auto', 
+          minHeight: 0 
+        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
         {/* Header */}
         <Box mb={2} sx={{ flexShrink: 0 }}>
           <TerminalTypography variant="body2" sx={{ mb: 1, color: terminalColors.textSecondary }}>
             Recurring Jobs: {recurringJobs} | One-Time Jobs: {oneTimeJobs}
+            {hasMoreJobs && !isExpanded && (
+              <TerminalTypography 
+                component="span" 
+                sx={{ ml: 1, color: terminalColors.primary, fontStyle: 'italic', fontSize: '0.75rem' }}
+              >
+                (Hover to see all {jobs.length} jobs)
+              </TerminalTypography>
+            )}
           </TerminalTypography>
         </Box>
 
         {/* Jobs Tree */}
-        {jobs.length > 0 ? (
+        {displayedJobs.length > 0 ? (
           <Box sx={{ flex: 1 }}>
-            {jobs.map((job, index) => {
-              const isLast = index === jobs.length - 1;
+            {displayedJobs.map((job, index) => {
+              const isLast = index === displayedJobs.length - 1 && (!hasMoreJobs || isExpanded);
               const prefix = isLast ? '└─' : '├─';
               const isRecurring = job.id === 'check_due_tasks';
 

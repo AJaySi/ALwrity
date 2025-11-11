@@ -432,13 +432,13 @@ class Step3ResearchService:
             logger.error(f"Error storing research data: {str(e)}")
             return False
     
-    async def get_research_data(self, session_id: str) -> Dict[str, Any]:
+    async def get_research_data(self, session_id: str) -> Dict[str, Any]:       
         """
         Retrieve research data for a session.
-        
+
         Args:
             session_id: Onboarding session ID
-            
+
         Returns:
             Dictionary containing research data
         """
@@ -447,25 +447,76 @@ class Step3ResearchService:
                 session = db.query(OnboardingSession).filter(
                     OnboardingSession.id == session_id
                 ).first()
-                
+
                 if not session:
                     return {
                         "success": False,
                         "error": "Session not found"
                     }
-                
-                research_data = session.step_data.get("step3_research_data") if session.step_data else None
-                
+
+                # Check if step_data attribute exists (it may not be in the model)
+                # If it doesn't exist, try to get data from CompetitorAnalysis table
+                research_data = None
+                if hasattr(session, 'step_data') and session.step_data:
+                    research_data = session.step_data.get("step3_research_data") if isinstance(session.step_data, dict) else None
+
+                # If not found in step_data, try CompetitorAnalysis table
+                if not research_data:
+                    try:
+                        from models.onboarding import CompetitorAnalysis
+                        competitor_records = db.query(CompetitorAnalysis).filter(
+                            CompetitorAnalysis.session_id == session.id
+                        ).all()
+
+                        if competitor_records:
+                            competitors = []
+                            for record in competitor_records:
+                                analysis_data = record.analysis_data or {}
+                                competitor_info = {
+                                    "url": record.competitor_url,
+                                    "domain": record.competitor_domain or record.competitor_url,
+                                    "title": analysis_data.get("title", record.competitor_domain or ""),
+                                    "summary": analysis_data.get("summary", ""),
+                                    "relevance_score": analysis_data.get("relevance_score", 0.5),
+                                    "highlights": analysis_data.get("highlights", []),
+                                    "favicon": analysis_data.get("favicon"),
+                                    "image": analysis_data.get("image"),
+                                    "published_date": analysis_data.get("published_date"),
+                                    "author": analysis_data.get("author"),
+                                    "competitive_insights": analysis_data.get("competitive_analysis", {}),
+                                    "content_insights": analysis_data.get("content_insights", {})
+                                }
+                                competitors.append(competitor_info)
+
+                            if competitors:
+                                # Map competitor fields to match frontend expectations
+                                mapped_competitors = []
+                                for comp in competitors:
+                                    mapped_comp = {
+                                        **comp,  # Keep all original fields
+                                        "name": comp.get("title") or comp.get("name") or comp.get("domain", ""),
+                                        "description": comp.get("summary") or comp.get("description", ""),
+                                        "similarity_score": comp.get("relevance_score") or comp.get("similarity_score", 0.5)
+                                    }
+                                    mapped_competitors.append(mapped_comp)
+                                
+                                research_data = {
+                                    "competitors": mapped_competitors,
+                                    "completed_at": competitor_records[0].created_at.isoformat() if competitor_records[0].created_at else None
+                                }
+                    except Exception as e:
+                        logger.warning(f"Could not retrieve competitors from CompetitorAnalysis table: {e}")
+
                 if not research_data:
                     return {
                         "success": False,
-                        "error": "No research data found for this session"
+                        "error": "No research data found for this session"      
                     }
                 
                 return {
                     "success": True,
-                    "research_data": research_data,
-                    "session_id": session_id
+                    "step3_research_data": research_data,
+                    "research_data": research_data  # Keep for backward compatibility
                 }
                 
         except Exception as e:

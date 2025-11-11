@@ -180,6 +180,8 @@ export const terminalColors = {
   success: '#00ff00',
   background: '#0a0a0a',
   backgroundLight: '#1a1a1a',
+  backgroundHover: 'rgba(0, 255, 0, 0.05)',
+  backgroundSecondary: 'rgba(0, 255, 0, 0.05)',
   text: '#00ff00',
   textSecondary: '#00ff88',
   border: '#00ff00',

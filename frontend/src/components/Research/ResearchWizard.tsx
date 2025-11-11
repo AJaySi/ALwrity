@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useResearchWizard } from './hooks/useResearchWizard';
 import { useResearchExecution } from './hooks/useResearchExecution';
 import { ResearchInput } from './steps/ResearchInput';
@@ -6,6 +6,9 @@ import { StepProgress } from './steps/StepProgress';
 import { StepResults } from './steps/StepResults';
 import { ResearchWizardProps } from './types/research.types';
 import { addResearchHistory } from '../../utils/researchHistory';
+import { getResearchConfig, ProviderAvailability } from '../../api/researchConfig';
+import { ProviderChips } from './steps/components/ProviderChips';
+import { AdvancedChip } from './steps/components/AdvancedChip';
 
 export const ResearchWizard: React.FC<ResearchWizardProps> = ({ 
   onComplete,
@@ -24,6 +27,30 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
     initialConfig
   );
   const execution = useResearchExecution();
+  const [providerAvailability, setProviderAvailability] = useState<ProviderAvailability | null>(null);
+  const [advanced, setAdvanced] = useState<boolean>(false);
+
+  // Load provider availability on mount
+  useEffect(() => {
+    const loadProviderAvailability = async () => {
+      try {
+        const config = await getResearchConfig();
+        setProviderAvailability(config?.provider_availability || null);
+      } catch (error) {
+        console.error('[ResearchWizard] Failed to load provider availability:', error);
+        // Set default availability on error
+        setProviderAvailability({
+          google_available: true,
+          exa_available: false,
+          tavily_available: false,
+          gemini_key_status: 'missing',
+          exa_key_status: 'missing',
+          tavily_key_status: 'missing',
+        });
+      }
+    };
+    loadProviderAvailability();
+  }, []);
 
   // Handle results from execution
   useEffect(() => {
@@ -73,13 +100,13 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
 
     switch (wizard.state.currentStep) {
       case 1:
-        return <ResearchInput {...stepProps} />;
+        return <ResearchInput {...stepProps} advanced={advanced} onAdvancedChange={setAdvanced} />;
       case 2:
         return <StepProgress {...stepProps} execution={execution} />;
       case 3:
         return <StepResults {...stepProps} />;
       default:
-        return <ResearchInput {...stepProps} />;
+        return <ResearchInput {...stepProps} advanced={advanced} onAdvancedChange={setAdvanced} />;
     }
   };
 
@@ -96,31 +123,124 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
         boxShadow: '0 4px 16px rgba(14, 165, 233, 0.1)',
         overflow: 'hidden',
       }}>
-        {/* Header */}
+        {/* Header with Compact Steps */}
         <div style={{
           background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(56, 189, 248, 0.08) 100%)',
           borderBottom: '1px solid rgba(14, 165, 233, 0.15)',
-          padding: '20px 28px',
+          padding: '14px 24px',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h1 style={{ 
-                margin: 0, 
-                fontSize: '24px',
-                fontWeight: '700',
-                color: '#0c4a6e',
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '24px' }}>
+            {/* Title Section */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: '1', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <h1 style={{ 
+                  margin: 0, 
+                  fontSize: '20px',
+                  fontWeight: '700',
+                  color: '#0c4a6e',
+                  letterSpacing: '-0.01em',
+                }}>
+                  Research Wizard
+                </h1>
+                
+                {/* Provider Status Chips */}
+                <ProviderChips providerAvailability={providerAvailability} advanced={advanced} />
+                
+                {/* Advanced Chip */}
+                <AdvancedChip advanced={advanced} />
+              </div>
+              
+              {/* Compact Step Indicators */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginLeft: '8px',
               }}>
-                Research Wizard
-              </h1>
-              <p style={{ 
-                margin: '4px 0 0 0', 
-                fontSize: '13px', 
-                color: '#0369a1',
-                fontWeight: '400',
-              }}>
-                Phase {wizard.state.currentStep} of {wizard.maxSteps} • AI-Powered Intelligence
-              </p>
+                {[1, 2, 3].map((step, index) => {
+                  const isActive = step === wizard.state.currentStep;
+                  const isCompleted = step < wizard.state.currentStep;
+                  const isClickable = step <= wizard.state.currentStep;
+                  
+                  return (
+                    <React.Fragment key={step}>
+                      {index > 0 && (
+                        <div style={{
+                          width: '20px',
+                          height: '2px',
+                          background: isCompleted || (step === wizard.state.currentStep)
+                            ? 'linear-gradient(90deg, #22c55e 0%, #16a34a 100%)'
+                            : 'rgba(14, 165, 233, 0.2)',
+                          transition: 'all 0.3s ease',
+                        }} />
+                      )}
+                      <div 
+                        style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          alignItems: 'center', 
+                          gap: '4px',
+                          cursor: isClickable ? 'pointer' : 'default',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onClick={() => {
+                          if (isClickable) {
+                            wizard.updateState({ currentStep: step });
+                          }
+                        }}
+                        onMouseEnter={(e) => {
+                          if (isClickable) {
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                      >
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          background: isActive 
+                            ? 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)'
+                            : isCompleted
+                            ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
+                            : 'rgba(14, 165, 233, 0.1)',
+                          color: (isActive || isCompleted) ? 'white' : '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: '700',
+                          fontSize: '13px',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          border: isActive ? '2px solid rgba(14, 165, 233, 0.3)' : '2px solid rgba(14, 165, 233, 0.1)',
+                          boxShadow: isActive 
+                            ? '0 2px 8px rgba(14, 165, 233, 0.25)' 
+                            : isCompleted 
+                            ? '0 1px 4px rgba(34, 197, 94, 0.2)'
+                            : 'none',
+                        }}>
+                          {isCompleted ? '✓' : step}
+                        </div>
+                        <span style={{
+                          fontSize: '11px',
+                          color: (isActive || isCompleted) ? '#0c4a6e' : '#64748b',
+                          fontWeight: isActive ? '600' : '400',
+                          letterSpacing: '0.01em',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {step === 1 && 'Configure'}
+                          {step === 2 && 'Execute'}
+                          {step === 3 && 'Analyze'}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
             </div>
+
+            {/* Cancel Button */}
             {onCancel && (
               <button
                 onClick={() => {
@@ -128,13 +248,13 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
                   onCancel();
                 }}
                 style={{
-                  padding: '8px 16px',
+                  padding: '6px 12px',
                   background: 'rgba(239, 68, 68, 0.1)',
                   color: '#dc2626',
                   border: '1px solid rgba(239, 68, 68, 0.25)',
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   cursor: 'pointer',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   fontWeight: '500',
                   transition: 'all 0.2s ease',
                 }}
@@ -154,7 +274,7 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
         {/* Progress Bar */}
         <div style={{
           background: 'rgba(14, 165, 233, 0.1)',
-          height: '5px',
+          height: '3px',
           position: 'relative',
           overflow: 'hidden',
         }}>
@@ -164,88 +284,9 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
               height: '100%',
               width: `${(wizard.state.currentStep / wizard.maxSteps) * 100}%`,
               transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-              boxShadow: '0 0 8px rgba(14, 165, 233, 0.4)',
+              boxShadow: '0 0 6px rgba(14, 165, 233, 0.4)',
             }}
           />
-        </div>
-
-        {/* Step Indicators */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-around',
-          padding: '24px 40px',
-          borderBottom: '1px solid rgba(14, 165, 233, 0.15)',
-          background: 'rgba(14, 165, 233, 0.03)',
-        }}>
-          {[1, 2, 3].map(step => {
-            const isActive = step === wizard.state.currentStep;
-            const isCompleted = step < wizard.state.currentStep;
-            const isClickable = step <= wizard.state.currentStep;
-            
-            return (
-              <div 
-                key={step} 
-                style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  position: 'relative',
-                  cursor: isClickable ? 'pointer' : 'default',
-                  transition: 'all 0.2s ease',
-                }}
-                onClick={() => {
-                  if (isClickable) {
-                    wizard.updateState({ currentStep: step });
-                  }
-                }}
-                onMouseEnter={(e) => {
-                  if (isClickable) {
-                    e.currentTarget.style.transform = 'scale(1.05)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                <div style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '50%',
-                  background: isActive 
-                    ? 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)'
-                    : isCompleted
-                    ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
-                    : 'rgba(14, 165, 233, 0.1)',
-                  color: (isActive || isCompleted) ? 'white' : '#64748b',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: '700',
-                  fontSize: '18px',
-                  marginBottom: '10px',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  border: isActive ? '2px solid rgba(14, 165, 233, 0.3)' : '2px solid rgba(14, 165, 233, 0.1)',
-                  boxShadow: isActive 
-                    ? '0 4px 16px rgba(14, 165, 233, 0.3)' 
-                    : isCompleted 
-                    ? '0 2px 8px rgba(34, 197, 94, 0.2)'
-                    : 'none',
-                }}>
-                  {isCompleted ? '✓' : step}
-                </div>
-                <span style={{
-                  fontSize: '13px',
-                  color: (isActive || isCompleted) ? '#0c4a6e' : '#64748b',
-                  fontWeight: isActive ? '600' : '400',
-                  letterSpacing: '0.01em',
-                }}>
-                  {step === 1 && 'Configure'}
-                  {step === 2 && 'Execute'}
-                  {step === 3 && 'Analyze'}
-                </span>
-              </div>
-            );
-          })}
         </div>
 
         {/* Content */}

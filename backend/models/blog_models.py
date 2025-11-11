@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from enum import Enum
 
 
@@ -81,6 +81,7 @@ class ResearchProvider(str, Enum):
     """Research provider options."""
     GOOGLE = "google"  # Gemini native grounding
     EXA = "exa"        # Exa neural search
+    TAVILY = "tavily"  # Tavily AI-powered search
 
 
 class ResearchConfig(BaseModel):
@@ -100,6 +101,23 @@ class ResearchConfig(BaseModel):
     exa_include_domains: List[str] = []  # Domain whitelist
     exa_exclude_domains: List[str] = []  # Domain blacklist
     exa_search_type: Optional[str] = "auto"  # "auto", "keyword", "neural"
+    
+    # Tavily-specific options
+    tavily_topic: Optional[str] = "general"  # general, news, finance
+    tavily_search_depth: Optional[str] = "basic"  # basic (1 credit), advanced (2 credits)
+    tavily_include_domains: List[str] = []  # Domain whitelist (max 300)
+    tavily_exclude_domains: List[str] = []  # Domain blacklist (max 150)
+    tavily_include_answer: Union[bool, str] = False  # basic, advanced, true, false
+    tavily_include_raw_content: Union[bool, str] = False  # markdown, text, true, false
+    tavily_include_images: bool = False
+    tavily_include_image_descriptions: bool = False
+    tavily_include_favicon: bool = False
+    tavily_time_range: Optional[str] = None  # day, week, month, year, d, w, m, y
+    tavily_start_date: Optional[str] = None  # YYYY-MM-DD
+    tavily_end_date: Optional[str] = None  # YYYY-MM-DD
+    tavily_country: Optional[str] = None  # Country code (only for general topic)
+    tavily_chunks_per_source: int = 3  # 1-3 (only for advanced search)
+    tavily_auto_parameters: bool = False  # Auto-configure parameters based on query
 
 
 class BlogResearchRequest(BaseModel):

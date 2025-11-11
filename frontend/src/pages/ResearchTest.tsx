@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ResearchWizard } from '../components/Research';
 import { BlogResearchResponse } from '../services/blogWriterApi';
-import { getResearchConfig, PersonaDefaults, refreshResearchPersona, ResearchPersona } from '../api/researchConfig';
+import { getResearchConfig, PersonaDefaults, refreshResearchPersona, ResearchPersona, getCompetitorAnalysis, CompetitorAnalysisResponse } from '../api/researchConfig';
 import { ResearchPersonaModal } from '../components/Research/ResearchPersonaModal';
+import { OnboardingCompetitorModal } from '../components/Research/OnboardingCompetitorModal';
 
 const samplePresets = [
   {
@@ -204,6 +205,13 @@ export const ResearchTest: React.FC = () => {
   const [showPersonaModal, setShowPersonaModal] = useState(false);
   const [personaChecked, setPersonaChecked] = useState(false);
   const [researchPersona, setResearchPersona] = useState<ResearchPersona | null>(null);
+  const [showCompetitorModal, setShowCompetitorModal] = useState(false);
+  const [competitorData, setCompetitorData] = useState<CompetitorAnalysisResponse | null>(null);
+  const [loadingCompetitors, setLoadingCompetitors] = useState(false);
+  const [competitorError, setCompetitorError] = useState<string | null>(null);
+  const [showPersonaDetailsModal, setShowPersonaDetailsModal] = useState(false);
+  const [personaExists, setPersonaExists] = useState(false);
+  const [loadingPersonaDetails, setLoadingPersonaDetails] = useState(false);
   
   // Debug: Track modal state changes
   useEffect(() => {
@@ -236,6 +244,7 @@ export const ResearchTest: React.FC = () => {
           });
           
           setResearchPersona(config.research_persona);
+          setPersonaExists(true);
           
           // Use AI-generated presets if persona exists
           if (config.research_persona.recommended_presets && config.research_persona.recommended_presets.length > 0) {
@@ -243,7 +252,11 @@ export const ResearchTest: React.FC = () => {
             // Convert AI presets to display format
             const aiPresets = config.research_persona.recommended_presets.map((preset: any) => ({
               name: preset.name,
-              keywords: preset.keywords.join(', '),
+              keywords: typeof preset.keywords === 'string' 
+                ? preset.keywords 
+                : Array.isArray(preset.keywords) 
+                  ? preset.keywords.join(', ')
+                  : 'N/A',
               industry: config.persona_defaults?.industry || 'General',
               targetAudience: config.persona_defaults?.target_audience || 'General',
               researchMode: preset.config?.mode || 'comprehensive',
@@ -268,21 +281,23 @@ export const ResearchTest: React.FC = () => {
           const dynamicPresets = generatePersonaPresets(config.persona_defaults || null);
           setDisplayPresets(dynamicPresets);
           
-          // Show modal only if onboarding is completed
+                     // Show modal when research persona is missing
+           // This allows users to generate a research persona even if onboarding isn't completed yet
+           // or if the cached persona has expired
+           console.log('[ResearchTest] ✅ Research persona missing - SHOWING MODAL');
+           console.log('[ResearchTest] Setting showPersonaModal to true');
+           setShowPersonaModal(true);
+           setPersonaExists(false);
+
+          // Log onboarding and scheduling status for context
           if (config.onboarding_completed) {
-            console.log('[ResearchTest] ✅ CASE 2: Onboarding completed but persona missing - SHOWING MODAL');
-            console.log('[ResearchTest] Setting showPersonaModal to true');
-            setShowPersonaModal(true);
-            
-            // Log if persona was scheduled
             if (config.persona_scheduled) {
               console.log('[ResearchTest] ℹ️ Research persona generation scheduled for 20 minutes from now');
             } else {
-              console.log('[ResearchTest] ⚠️ Persona was not scheduled (may have failed or already scheduled)');
+              console.log('[ResearchTest] ℹ️ Onboarding completed - user can generate persona now or wait for scheduled generation');
             }
           } else {
-            console.log('[ResearchTest] ✅ CASE 3: Onboarding not completed yet - SKIPPING modal');
-            console.log('[ResearchTest] User has not completed onboarding, will use rule-based suggestions');
+            console.log('[ResearchTest] ℹ️ Onboarding not completed yet - user can still generate research persona');
           }
         }
         
@@ -317,6 +332,7 @@ export const ResearchTest: React.FC = () => {
       });
       
       setResearchPersona(persona);
+      setPersonaExists(true);
       
       // Reload config to get updated presets
       const config = await getResearchConfig();
@@ -324,7 +340,11 @@ export const ResearchTest: React.FC = () => {
         console.log('[ResearchTest] Updating presets with AI-generated presets');
         const aiPresets = config.research_persona.recommended_presets.map((preset: any) => ({
           name: preset.name,
-          keywords: preset.keywords.join(', '),
+          keywords: typeof preset.keywords === 'string' 
+            ? preset.keywords 
+            : Array.isArray(preset.keywords) 
+              ? preset.keywords.join(', ')
+              : 'N/A',
           industry: config.persona_defaults.industry || 'General',
           targetAudience: config.persona_defaults.target_audience || 'General',
           researchMode: preset.config?.mode || 'comprehensive',
@@ -372,6 +392,58 @@ export const ResearchTest: React.FC = () => {
     setResults(null);
   };
 
+  const handleOpenCompetitorModal = async () => {
+    console.log('[handleOpenCompetitorModal] ===== START: Opening competitor analysis modal =====');
+    setShowCompetitorModal(true);
+    setLoadingCompetitors(true);
+    setCompetitorError(null);
+    
+    try {
+      console.log('[handleOpenCompetitorModal] Calling getCompetitorAnalysis()...');
+      const data = await getCompetitorAnalysis();
+      console.log('[handleOpenCompetitorModal] Received data:', {
+        success: data.success,
+        competitorsCount: data.competitors?.length || 0,
+        error: data.error,
+        hasCompetitors: !!data.competitors && data.competitors.length > 0
+      });
+      
+      setCompetitorData(data);
+      if (!data.success) {
+        const errorMsg = data.error || 'Failed to load competitor data';
+        console.error('[handleOpenCompetitorModal] ❌ Failed to load competitor data:', errorMsg);
+        setCompetitorError(errorMsg);
+      } else {
+        console.log('[handleOpenCompetitorModal] ✅ Successfully loaded competitor data');
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to load competitor data';
+      console.error('[handleOpenCompetitorModal] ❌ EXCEPTION:', error);
+      setCompetitorError(errorMsg);
+      setCompetitorData(null);
+    } finally {
+      setLoadingCompetitors(false);
+      console.log('[handleOpenCompetitorModal] ===== END: Opening competitor analysis modal =====');
+    }
+  };
+
+  const handleOpenPersonaDetails = async () => {
+    setShowPersonaDetailsModal(true);
+    setLoadingPersonaDetails(true);
+    
+    try {
+      // Fetch fresh persona data
+      const config = await getResearchConfig();
+      if (config.research_persona) {
+        setResearchPersona(config.research_persona);
+      }
+    } catch (error) {
+      console.error('[ResearchTest] Error loading persona details:', error);
+    } finally {
+      setLoadingPersonaDetails(false);
+    }
+  };
+
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -403,33 +475,45 @@ export const ResearchTest: React.FC = () => {
         animation: 'float 15s ease-in-out infinite reverse',
       }} />
       
-      <style>{`
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0); }
-          50% { transform: translate(20px, 20px); }
-        }
-        @keyframes shimmer {
-          0% { background-position: -1000px 0; }
-          100% { background-position: 1000px 0; }
-        }
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .card-hover {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .card-hover:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-        }
-      `}</style>
+             <style>{`
+         @keyframes float {
+           0%, 100% { transform: translate(0, 0); }
+           50% { transform: translate(20px, 20px); }
+         }
+         @keyframes shimmer {
+           0% { background-position: -1000px 0; }
+           100% { background-position: 1000px 0; }
+         }
+         @keyframes fadeInUp {
+           from {
+             opacity: 0;
+             transform: translateY(20px);
+           }
+           to {
+             opacity: 1;
+             transform: translateY(0);
+           }
+         }
+         @keyframes glow-green {
+           0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.5), 0 2px 8px rgba(34, 197, 94, 0.3); }
+           50% { box-shadow: 0 0 30px rgba(34, 197, 94, 0.8), 0 2px 12px rgba(34, 197, 94, 0.5); }
+         }
+         @keyframes glow-red {
+           0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.5), 0 2px 8px rgba(239, 68, 68, 0.3); }
+           50% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8), 0 2px 12px rgba(239, 68, 68, 0.5); }
+         }
+         @keyframes pulse {
+           0%, 100% { opacity: 1; }
+           50% { opacity: 0.5; }
+         }
+         .card-hover {
+           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+         }
+         .card-hover:hover {
+           transform: translateY(-4px);
+           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+         }
+       `}</style>
       {/* Header */}
       <div style={{
         background: 'rgba(255, 255, 255, 0.7)',
@@ -456,25 +540,105 @@ export const ResearchTest: React.FC = () => {
             }}>
               🔬
             </div>
-            <div>
-              <h1 style={{ 
-                margin: 0, 
-                fontSize: '24px', 
-                fontWeight: '700',
-                color: '#0c4a6e',
-                letterSpacing: '-0.01em',
-              }}>
-                AI-Powered Research Lab
-              </h1>
-              <p style={{ 
-                margin: '2px 0 0 0', 
-                fontSize: '13px', 
-                color: '#0369a1',
-                fontWeight: '400',
-              }}>
-                Enterprise-grade research intelligence at your fingertips
-              </p>
-            </div>
+                          <div style={{ flex: 1 }}>
+                <h1 style={{
+                  margin: 0,
+                  fontSize: '24px',
+                  fontWeight: '700',
+                  color: '#0c4a6e',
+                  letterSpacing: '-0.01em',
+                }}>
+                  AI-Powered Research Lab
+                </h1>
+                <p style={{
+                  margin: '2px 0 0 0',
+                  fontSize: '13px',
+                  color: '#0369a1',
+                  fontWeight: '400',
+                }}>
+                  Enterprise-grade research intelligence at your fingertips     
+                </p>
+              </div>
+                             <button
+                 onClick={handleOpenCompetitorModal}
+                 style={{
+                   padding: '10px 20px',
+                   backgroundColor: '#0284c7',
+                   color: 'white',
+                   border: 'none',
+                   borderRadius: '8px',
+                   cursor: 'pointer',
+                   fontSize: '14px',
+                   fontWeight: '500',
+                   display: 'flex',
+                   alignItems: 'center',
+                   gap: '8px',
+                   boxShadow: '0 2px 8px rgba(2, 132, 199, 0.2)',
+                   transition: 'all 0.2s ease',
+                 }}
+                 onMouseEnter={(e) => {
+                   e.currentTarget.style.backgroundColor = '#0369a1';
+                   e.currentTarget.style.transform = 'translateY(-1px)';
+                   e.currentTarget.style.boxShadow = '0 4px 12px rgba(2, 132, 199, 0.3)';
+                 }}
+                 onMouseLeave={(e) => {
+                   e.currentTarget.style.backgroundColor = '#0284c7';
+                   e.currentTarget.style.transform = 'translateY(0)';
+                   e.currentTarget.style.boxShadow = '0 2px 8px rgba(2, 132, 199, 0.2)';
+                 }}
+               >
+                 <span>📊</span>
+                 <span>View Competitor Analysis</span>
+               </button>
+               <button
+                 onClick={handleOpenPersonaDetails}
+                 style={{
+                   padding: '10px 20px',
+                   backgroundColor: personaExists ? '#22c55e' : '#ef4444',
+                   color: 'white',
+                   border: 'none',
+                   borderRadius: '8px',
+                   cursor: 'pointer',
+                   fontSize: '14px',
+                   fontWeight: '500',
+                   display: 'flex',
+                   alignItems: 'center',
+                   gap: '8px',
+                   boxShadow: personaExists 
+                     ? '0 0 20px rgba(34, 197, 94, 0.5), 0 2px 8px rgba(34, 197, 94, 0.3)'
+                     : '0 0 20px rgba(239, 68, 68, 0.5), 0 2px 8px rgba(239, 68, 68, 0.3)',
+                   transition: 'all 0.2s ease',
+                   animation: personaExists ? 'glow-green 2s ease-in-out infinite' : 'glow-red 2s ease-in-out infinite',
+                 }}
+                 onMouseEnter={(e) => {
+                   e.currentTarget.style.transform = 'translateY(-1px)';
+                   if (personaExists) {
+                     e.currentTarget.style.boxShadow = '0 0 30px rgba(34, 197, 94, 0.7), 0 4px 12px rgba(34, 197, 94, 0.4)';
+                   } else {
+                     e.currentTarget.style.boxShadow = '0 0 30px rgba(239, 68, 68, 0.7), 0 4px 12px rgba(239, 68, 68, 0.4)';
+                   }
+                 }}
+                 onMouseLeave={(e) => {
+                   e.currentTarget.style.transform = 'translateY(0)';
+                   if (personaExists) {
+                     e.currentTarget.style.boxShadow = '0 0 20px rgba(34, 197, 94, 0.5), 0 2px 8px rgba(34, 197, 94, 0.3)';
+                   } else {
+                     e.currentTarget.style.boxShadow = '0 0 20px rgba(239, 68, 68, 0.5), 0 2px 8px rgba(239, 68, 68, 0.3)';
+                   }
+                 }}
+               >
+                 <span style={{
+                   width: '8px',
+                   height: '8px',
+                   borderRadius: '50%',
+                   background: 'white',
+                   boxShadow: personaExists 
+                     ? '0 0 8px rgba(255, 255, 255, 0.8)'
+                     : '0 0 8px rgba(255, 255, 255, 0.8)',
+                   animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                 }} />
+                 <span>{personaExists ? '✓ Research Persona' : '✗ No Persona'}</span>
+               </button>
           </div>
           
           {/* Status Badge - Moved to Header */}
@@ -859,9 +1023,284 @@ export const ResearchTest: React.FC = () => {
         onGenerate={handleGeneratePersona}
         onCancel={handleCancelPersona}
       />
-    </div>
-  );
-};
+
+             {/* Competitor Analysis Modal */}
+       <OnboardingCompetitorModal
+         open={showCompetitorModal}
+         onClose={() => setShowCompetitorModal(false)}
+         data={competitorData}
+         loading={loadingCompetitors}
+         error={competitorError}
+       />
+
+       {/* Research Persona Details Modal */}
+       {showPersonaDetailsModal && (
+         <div
+           style={{
+             position: 'fixed',
+             top: 0,
+             left: 0,
+             right: 0,
+             bottom: 0,
+             backgroundColor: 'rgba(0, 0, 0, 0.5)',
+             display: 'flex',
+             alignItems: 'center',
+             justifyContent: 'center',
+             zIndex: 9999,
+             padding: '20px',
+           }}
+           onClick={() => setShowPersonaDetailsModal(false)}
+         >
+           <div
+             style={{
+               background: 'linear-gradient(135deg, #fff 0%, #f8fafc 100%)',
+               borderRadius: '16px',
+               padding: '32px',
+               maxWidth: '800px',
+               width: '100%',
+               maxHeight: '90vh',
+               overflow: 'auto',
+               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+               position: 'relative',
+             }}
+             onClick={(e) => e.stopPropagation()}
+           >
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+               <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: '#0f172a' }}>
+                 Research Persona Details
+               </h2>
+               <button
+                 onClick={() => setShowPersonaDetailsModal(false)}
+                 style={{
+                   background: 'transparent',
+                   border: 'none',
+                   fontSize: '24px',
+                   cursor: 'pointer',
+                   color: '#64748b',
+                   padding: '4px 8px',
+                 }}
+               >
+                 ×
+               </button>
+             </div>
+
+             {loadingPersonaDetails ? (
+               <div style={{ textAlign: 'center', padding: '40px' }}>
+                 <div style={{ fontSize: '18px', color: '#64748b' }}>Loading persona details...</div>
+               </div>
+             ) : researchPersona ? (
+               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                 {/* Status Badge */}
+                 <div style={{
+                   display: 'inline-flex',
+                   alignItems: 'center',
+                   gap: '8px',
+                   padding: '8px 16px',
+                   background: 'rgba(34, 197, 94, 0.1)',
+                   border: '1px solid rgba(34, 197, 94, 0.25)',
+                   borderRadius: '20px',
+                   fontSize: '14px',
+                   color: '#16a34a',
+                   fontWeight: '600',
+                   width: 'fit-content',
+                 }}>
+                   <span style={{
+                     width: '8px',
+                     height: '8px',
+                     borderRadius: '50%',
+                     background: '#22c55e',
+                     boxShadow: '0 0 8px rgba(34, 197, 94, 0.6)',
+                   }} />
+                   Persona Active
+                 </div>
+
+                 {/* Basic Info */}
+                 <div style={{
+                   background: 'rgba(255, 255, 255, 0.9)',
+                   padding: '20px',
+                   borderRadius: '12px',
+                   border: '1px solid rgba(14, 165, 233, 0.2)',
+                 }}>
+                   <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                     Default Settings
+                   </h3>
+                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                     <div>
+                       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Industry</div>
+                       <div style={{ fontSize: '16px', fontWeight: '600', color: '#0f172a' }}>
+                         {researchPersona.default_industry || 'N/A'}
+                       </div>
+                     </div>
+                     <div>
+                       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Target Audience</div>
+                       <div style={{ fontSize: '16px', fontWeight: '600', color: '#0f172a' }}>
+                         {researchPersona.default_target_audience || 'N/A'}
+                       </div>
+                     </div>
+                     <div>
+                       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Research Mode</div>
+                       <div style={{ fontSize: '16px', fontWeight: '600', color: '#0f172a' }}>
+                         {researchPersona.default_research_mode || 'N/A'}
+                       </div>
+                     </div>
+                     <div>
+                       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Provider</div>
+                       <div style={{ fontSize: '16px', fontWeight: '600', color: '#0f172a' }}>
+                         {researchPersona.default_provider || 'N/A'}
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+
+                 {/* Suggested Keywords */}
+                 {researchPersona.suggested_keywords && researchPersona.suggested_keywords.length > 0 && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Suggested Keywords ({researchPersona.suggested_keywords.length})
+                     </h3>
+                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                       {researchPersona.suggested_keywords.map((keyword, idx) => (
+                         <span
+                           key={idx}
+                           style={{
+                             padding: '6px 12px',
+                             background: 'rgba(14, 165, 233, 0.1)',
+                             borderRadius: '16px',
+                             fontSize: '14px',
+                             color: '#0369a1',
+                             fontWeight: '500',
+                           }}
+                         >
+                           {keyword}
+                         </span>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Research Angles */}
+                 {researchPersona.research_angles && researchPersona.research_angles.length > 0 && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Research Angles ({researchPersona.research_angles.length})
+                     </h3>
+                     <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                       {researchPersona.research_angles.map((angle, idx) => (
+                         <li key={idx} style={{ fontSize: '14px', color: '#475569', lineHeight: '1.6' }}>
+                           {angle}
+                         </li>
+                       ))}
+                     </ul>
+                   </div>
+                 )}
+
+                 {/* Recommended Presets */}
+                 {researchPersona.recommended_presets && researchPersona.recommended_presets.length > 0 && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Recommended Presets ({researchPersona.recommended_presets.length})
+                     </h3>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                       {researchPersona.recommended_presets.map((preset, idx) => (
+                         <div
+                           key={idx}
+                           style={{
+                             padding: '12px',
+                             background: 'rgba(14, 165, 233, 0.05)',
+                             borderRadius: '8px',
+                             border: '1px solid rgba(14, 165, 233, 0.1)',
+                           }}
+                         >
+                           <div style={{ fontSize: '16px', fontWeight: '600', color: '#0f172a', marginBottom: '4px' }}>
+                             {preset.name || `Preset ${idx + 1}`}
+                           </div>
+                                                       <div style={{ fontSize: '14px', color: '#64748b' }}>
+                              {typeof preset.keywords === 'string' 
+                                ? preset.keywords 
+                                : Array.isArray(preset.keywords) 
+                                  ? (preset.keywords as string[]).join(', ')
+                                  : 'N/A'}
+                            </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Metadata */}
+                 <div style={{
+                   background: 'rgba(255, 255, 255, 0.9)',
+                   padding: '20px',
+                   borderRadius: '12px',
+                   border: '1px solid rgba(14, 165, 233, 0.2)',
+                 }}>
+                   <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                     Metadata
+                   </h3>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px' }}>
+                     {researchPersona.generated_at && (
+                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                         <span style={{ color: '#64748b' }}>Generated At:</span>
+                         <span style={{ color: '#0f172a', fontWeight: '500' }}>
+                           {new Date(researchPersona.generated_at).toLocaleString()}
+                         </span>
+                       </div>
+                     )}
+                     {researchPersona.confidence_score !== undefined && (
+                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                         <span style={{ color: '#64748b' }}>Confidence Score:</span>
+                         <span style={{ color: '#0f172a', fontWeight: '500' }}>
+                           {(researchPersona.confidence_score * 100).toFixed(1)}%
+                         </span>
+                       </div>
+                     )}
+                     {researchPersona.version && (
+                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                         <span style={{ color: '#64748b' }}>Version:</span>
+                         <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.version}</span>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               </div>
+             ) : (
+               <div style={{
+                 textAlign: 'center',
+                 padding: '40px',
+                 background: 'rgba(239, 68, 68, 0.1)',
+                 borderRadius: '12px',
+                 border: '1px solid rgba(239, 68, 68, 0.2)',
+               }}>
+                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+                 <div style={{ fontSize: '18px', fontWeight: '600', color: '#dc2626', marginBottom: '8px' }}>
+                   No Research Persona Found
+                 </div>
+                 <div style={{ fontSize: '14px', color: '#64748b' }}>
+                   Generate a research persona to get personalized research suggestions and presets.
+                 </div>
+               </div>
+             )}
+           </div>
+         </div>
+       )}
+     </div>
+   );
+ };
 
 export default ResearchTest;
 

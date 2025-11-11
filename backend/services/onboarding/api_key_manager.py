@@ -265,7 +265,27 @@ class OnboardingProgress:
                                     # Log database save confirmation
                                     logger.info(f"✅ DATABASE: API key for {provider} saved to database for user {self.user_id}")
                         elif step.step_number == 2:  # Website Analysis
-                            self.db_service.save_website_analysis(self.user_id, step.data, db)
+                            # Transform frontend data structure to match database schema
+                            # Frontend sends: { website: "url", analysis: {...} }
+                            # Database expects: { website_url: "url", ...analysis (flattened) }
+                            analysis_for_db = {}
+                            if step.data:
+                                # Extract website_url from 'website' or 'website_url' field
+                                website_url = step.data.get('website') or step.data.get('website_url')
+                                if website_url:
+                                    analysis_for_db['website_url'] = website_url
+                                # Flatten nested 'analysis' object if it exists
+                                if 'analysis' in step.data and isinstance(step.data['analysis'], dict):
+                                    analysis_for_db.update(step.data['analysis'])
+                                # Also include any other top-level fields (except 'website' and 'analysis')
+                                for key, value in step.data.items():
+                                    if key not in ['website', 'website_url', 'analysis']:
+                                        analysis_for_db[key] = value
+                                # Ensure status is set
+                                if 'status' not in analysis_for_db:
+                                    analysis_for_db['status'] = 'completed'
+                            
+                            self.db_service.save_website_analysis(self.user_id, analysis_for_db, db)
                             logger.info(f"✅ DATABASE: Website analysis saved to database for user {self.user_id}")
                         elif step.step_number == 3:  # Research Preferences
                             self.db_service.save_research_preferences(self.user_id, step.data, db)

@@ -16,6 +16,7 @@ from .data_filter import ResearchDataFilter
 from .base_provider import ResearchProvider as BaseResearchProvider
 from .google_provider import GoogleResearchProvider
 from .exa_provider import ExaResearchProvider
+from .tavily_provider import TavilyResearchProvider
 
 __all__ = [
     'ResearchService',
@@ -26,4 +27,5 @@ __all__ = [
     'BaseResearchProvider',
     'GoogleResearchProvider',
     'ExaResearchProvider',
+    'TavilyResearchProvider',
 ]

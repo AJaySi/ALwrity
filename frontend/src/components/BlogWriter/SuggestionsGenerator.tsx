@@ -190,8 +190,21 @@ export const useSuggestions = ({
           }
         }
       } else {
-        // No content yet, show generation option
-        items.push({ title: '📝 Generate all sections', message: 'Generate all sections of my blog post' });
+        // No content yet, but outline is confirmed - show content generation options
+        if (hasContent) {
+          // Content exists but not confirmed - show confirmation and SEO options
+          items.push({ 
+            title: 'Next: Run SEO Analysis', 
+            message: 'Please analyze the blog content for SEO. Run the analyzeSEO action right away and do not ask for confirmation.'
+          });
+          items.push({ 
+            title: '📊 Content Analysis', 
+            message: 'Analyze the flow and quality of my blog content to get improvement suggestions'
+          });
+        } else {
+          // No content at all - show generation option (only if no content exists)
+          items.push({ title: '📝 Generate all sections', message: 'Generate all sections of my blog post' });
+        }
       }
     }
     

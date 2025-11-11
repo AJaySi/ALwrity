@@ -12,6 +12,8 @@ interface UseBlogWriterPollingProps {
   onOutlineComplete: (outline: any) => void;
   onOutlineError: (error: any) => void;
   onSectionsUpdate: (sections: Record<string, string>) => void;
+  onContentConfirmed?: () => void; // Callback when content generation completes
+  navigateToPhase?: (phase: string) => void; // Phase navigation function
 }
 
 export const useBlogWriterPolling = ({
@@ -19,6 +21,8 @@ export const useBlogWriterPolling = ({
   onOutlineComplete,
   onOutlineError,
   onSectionsUpdate,
+  onContentConfirmed,
+  navigateToPhase,
 }: UseBlogWriterPollingProps) => {
   // Research polling hook (for context awareness)
   const researchPolling = useResearchPolling({
@@ -47,6 +51,15 @@ export const useBlogWriterPolling = ({
           if (Object.keys(newSections).length > 0) {
             const sectionIds = Object.keys(newSections);
             blogWriterCache.cacheContent(newSections, sectionIds);
+            
+            // Auto-confirm content and navigate to SEO phase when content generation completes
+            // This happens when user clicks "Next:Confirm and generate content"
+            if (onContentConfirmed) {
+              onContentConfirmed();
+            }
+            if (navigateToPhase) {
+              navigateToPhase('seo');
+            }
           }
         }
       } catch (e) {

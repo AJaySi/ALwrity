@@ -229,10 +229,15 @@ const SubscriptionExpiredModal: React.FC<SubscriptionExpiredModalProps> = ({
                           {errorData.usage_info.current_calls?.toLocaleString() || 0}
                         </Typography>
                         <Typography variant="body2" sx={{ color: '#7f1d1d' }}>
-                          / {errorData.usage_info.call_limit?.toLocaleString() || 0}
+                          / {(errorData.usage_info.limit || errorData.usage_info.call_limit || 0)?.toLocaleString()}
                         </Typography>
                         <Typography variant="caption" sx={{ color: '#7f1d1d', ml: 'auto' }}>
-                          ({((errorData.usage_info.current_calls / errorData.usage_info.call_limit) * 100).toFixed(1)}% used)
+                          {(() => {
+                            const limit = errorData.usage_info.limit || errorData.usage_info.call_limit || 0;
+                            const current = errorData.usage_info.current_calls || 0;
+                            const percentage = limit > 0 ? ((current / limit) * 100).toFixed(1) : '0.0';
+                            return `(${percentage}% used)`;
+                          })()}
                         </Typography>
                       </Box>
                     </>

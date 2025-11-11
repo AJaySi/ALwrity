@@ -16,7 +16,8 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
-import { Box, Paper, CircularProgress } from '@mui/material';
+import { Box, Paper, CircularProgress, Modal, IconButton } from '@mui/material';
+import { Close as CloseIcon, OpenInFull as MaximizeIcon } from '@mui/icons-material';
 import { TerminalTypography, TerminalPaper, terminalColors } from './terminalTheme';
 import { getSchedulerEventHistory, SchedulerEvent } from '../../api/schedulerDashboard';
 
@@ -25,10 +26,54 @@ interface SchedulerChartsProps {
   events?: SchedulerEvent[];
 }
 
+interface ChartModalProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}
+
+const ChartModal: React.FC<ChartModalProps> = ({ open, onClose, title, children }) => {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      }}
+    >
+      <TerminalPaper
+        sx={{
+          position: 'relative',
+          width: '90%',
+          maxWidth: '1200px',
+          maxHeight: '90vh',
+          overflow: 'auto',
+          p: 3,
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <TerminalTypography variant="h5" sx={{ color: terminalColors.primary }}>
+            {title}
+          </TerminalTypography>
+          <IconButton onClick={onClose} sx={{ color: terminalColors.primary }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+        {children}
+      </TerminalPaper>
+    </Modal>
+  );
+};
+
 const SchedulerCharts: React.FC<SchedulerChartsProps> = ({ events: propEvents }) => {
   const [events, setEvents] = useState<SchedulerEvent[]>(propEvents || []);
   const [loading, setLoading] = useState(!propEvents);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState<string | null>(null);
 
   // Fetch events if not provided as prop
   useEffect(() => {
@@ -37,10 +82,10 @@ const SchedulerCharts: React.FC<SchedulerChartsProps> = ({ events: propEvents })
         try {
           setLoading(true);
           setError(null);
-          // Fetch all events for visualization (no pagination limit)
-          // Pass undefined to get all event types
+          // Fetch events for visualization (max 500 per backend API limit)
+          // Pass undefined to get all event types, use 30 days for charts
           console.log('📊 Charts - Fetching event history...');
-          const response = await getSchedulerEventHistory(1000, 0, undefined);
+          const response = await getSchedulerEventHistory(500, 0, undefined, 30);
           console.log('📊 Charts - Fetched events:', {
             totalEvents: response.events?.length || 0,
             totalCount: response.total_count,
@@ -216,58 +261,172 @@ const SchedulerCharts: React.FC<SchedulerChartsProps> = ({ events: propEvents })
     );
   }
 
+  const handleChartClick = (chartId: string) => {
+    setModalOpen(chartId);
+  };
+
+  const handleModalClose = () => {
+    setModalOpen(null);
+  };
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {/* Summary Stats */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 2 }}>
-        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
-          <TerminalTypography variant="h6" sx={{ color: terminalColors.primary, fontSize: '1.5rem' }}>
-            {totals.check_cycles}
-          </TerminalTypography>
-          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
-            Check Cycles
-          </TerminalTypography>
-        </TerminalPaper>
-        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
-          <TerminalTypography variant="h6" sx={{ color: terminalColors.primary, fontSize: '1.5rem' }}>
-            {totals.tasks_executed}
-          </TerminalTypography>
-          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
-            Tasks Executed
-          </TerminalTypography>
-        </TerminalPaper>
-        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
-          <TerminalTypography variant="h6" sx={{ color: terminalColors.error, fontSize: '1.5rem' }}>
-            {totals.tasks_failed}
-          </TerminalTypography>
-          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
-            Tasks Failed
-          </TerminalTypography>
-        </TerminalPaper>
-        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
-          <TerminalTypography variant="h6" sx={{ color: terminalColors.primary, fontSize: '1.5rem' }}>
-            {totals.job_completed}
-          </TerminalTypography>
-          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
-            Jobs Completed
-          </TerminalTypography>
-        </TerminalPaper>
-        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
-          <TerminalTypography variant="h6" sx={{ color: terminalColors.error, fontSize: '1.5rem' }}>
-            {totals.job_failed}
-          </TerminalTypography>
-          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
-            Jobs Failed
-          </TerminalTypography>
-        </TerminalPaper>
+    <Box>
+      {/* Compact Charts in Single Row */}
+      <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 2 }}>
+        {/* Task Execution Trends - Compact */}
+        <Box
+          sx={{
+            flex: '0 0 300px',
+            cursor: 'pointer',
+            transition: 'transform 0.2s',
+            '&:hover': {
+              transform: 'scale(1.05)',
+            },
+          }}
+          onClick={() => handleChartClick('task-execution')}
+        >
+          <TerminalPaper sx={{ p: 2, position: 'relative' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <TerminalTypography variant="body2" sx={{ color: terminalColors.primary, fontSize: '0.875rem' }}>
+                Task Execution Trends
+              </TerminalTypography>
+              <MaximizeIcon sx={{ fontSize: 16, color: terminalColors.primary }} />
+            </Box>
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData.slice(-7)}>
+                <CartesianGrid strokeDasharray="3 3" stroke={terminalColors.border} />
+                <XAxis 
+                  dataKey="date" 
+                  stroke={terminalColors.primary}
+                  tick={{ fill: terminalColors.primary, fontSize: 10 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis 
+                  stroke={terminalColors.primary}
+                  tick={{ fill: terminalColors.primary, fontSize: 10 }}
+                  width={30}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Line 
+                  type="monotone" 
+                  dataKey="tasks_executed" 
+                  stroke={terminalColors.success}
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="tasks_failed" 
+                  stroke={terminalColors.error}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </TerminalPaper>
+        </Box>
+
+        {/* Job Status Distribution - Compact */}
+        <Box
+          sx={{
+            flex: '0 0 300px',
+            cursor: 'pointer',
+            transition: 'transform 0.2s',
+            '&:hover': {
+              transform: 'scale(1.05)',
+            },
+          }}
+          onClick={() => handleChartClick('job-status')}
+        >
+          <TerminalPaper sx={{ p: 2, position: 'relative' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <TerminalTypography variant="body2" sx={{ color: terminalColors.primary, fontSize: '0.875rem' }}>
+                Job Status Distribution
+              </TerminalTypography>
+              <MaximizeIcon sx={{ fontSize: 16, color: terminalColors.primary }} />
+            </Box>
+            <ResponsiveContainer width="100%" height={150}>
+              <BarChart data={chartData.slice(-7)}>
+                <CartesianGrid strokeDasharray="3 3" stroke={terminalColors.border} />
+                <XAxis 
+                  dataKey="date" 
+                  stroke={terminalColors.primary}
+                  tick={{ fill: terminalColors.primary, fontSize: 10 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis 
+                  stroke={terminalColors.primary}
+                  tick={{ fill: terminalColors.primary, fontSize: 10 }}
+                  width={30}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar 
+                  dataKey="job_completed" 
+                  fill={terminalColors.success}
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar 
+                  dataKey="job_failed" 
+                  fill={terminalColors.error}
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </TerminalPaper>
+        </Box>
+
+        {/* Check Cycles - Compact */}
+        <Box
+          sx={{
+            flex: '0 0 300px',
+            cursor: 'pointer',
+            transition: 'transform 0.2s',
+            '&:hover': {
+              transform: 'scale(1.05)',
+            },
+          }}
+          onClick={() => handleChartClick('check-cycles')}
+        >
+          <TerminalPaper sx={{ p: 2, position: 'relative' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <TerminalTypography variant="body2" sx={{ color: terminalColors.primary, fontSize: '0.875rem' }}>
+                Check Cycles Over Time
+              </TerminalTypography>
+              <MaximizeIcon sx={{ fontSize: 16, color: terminalColors.primary }} />
+            </Box>
+            <ResponsiveContainer width="100%" height={150}>
+              <BarChart data={chartData.slice(-7)}>
+                <CartesianGrid strokeDasharray="3 3" stroke={terminalColors.border} />
+                <XAxis 
+                  dataKey="date" 
+                  stroke={terminalColors.primary}
+                  tick={{ fill: terminalColors.primary, fontSize: 10 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis 
+                  stroke={terminalColors.primary}
+                  tick={{ fill: terminalColors.primary, fontSize: 10 }}
+                  width={30}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar 
+                  dataKey="check_cycles" 
+                  fill={terminalColors.primary}
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </TerminalPaper>
+        </Box>
       </Box>
 
-      {/* Task Execution Trends */}
-      <TerminalPaper sx={{ p: 3 }}>
-        <TerminalTypography variant="h6" sx={{ mb: 2, color: terminalColors.primary }}>
-          Task Execution Trends (Last 30 Days)
-        </TerminalTypography>
-        <ResponsiveContainer width="100%" height={300}>
+      {/* Modals for Expanded Charts */}
+      <ChartModal
+        open={modalOpen === 'task-execution'}
+        onClose={handleModalClose}
+        title="Task Execution Trends (Last 30 Days)"
+      >
+        <ResponsiveContainer width="100%" height={400}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke={terminalColors.border} />
             <XAxis 
@@ -309,14 +468,14 @@ const SchedulerCharts: React.FC<SchedulerChartsProps> = ({ events: propEvents })
             />
           </LineChart>
         </ResponsiveContainer>
-      </TerminalPaper>
+      </ChartModal>
 
-      {/* Job Status Distribution */}
-      <TerminalPaper sx={{ p: 3 }}>
-        <TerminalTypography variant="h6" sx={{ mb: 2, color: terminalColors.primary }}>
-          Job Status Distribution (Last 30 Days)
-        </TerminalTypography>
-        <ResponsiveContainer width="100%" height={300}>
+      <ChartModal
+        open={modalOpen === 'job-status'}
+        onClose={handleModalClose}
+        title="Job Status Distribution (Last 30 Days)"
+      >
+        <ResponsiveContainer width="100%" height={400}>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke={terminalColors.border} />
             <XAxis 
@@ -349,14 +508,14 @@ const SchedulerCharts: React.FC<SchedulerChartsProps> = ({ events: propEvents })
             />
           </BarChart>
         </ResponsiveContainer>
-      </TerminalPaper>
+      </ChartModal>
 
-      {/* Check Cycles Over Time */}
-      <TerminalPaper sx={{ p: 3 }}>
-        <TerminalTypography variant="h6" sx={{ mb: 2, color: terminalColors.primary }}>
-          Check Cycles Over Time (Last 30 Days)
-        </TerminalTypography>
-        <ResponsiveContainer width="100%" height={300}>
+      <ChartModal
+        open={modalOpen === 'check-cycles'}
+        onClose={handleModalClose}
+        title="Check Cycles Over Time (Last 30 Days)"
+      >
+        <ResponsiveContainer width="100%" height={400}>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke={terminalColors.border} />
             <XAxis 
@@ -376,7 +535,51 @@ const SchedulerCharts: React.FC<SchedulerChartsProps> = ({ events: propEvents })
             />
           </BarChart>
         </ResponsiveContainer>
-      </TerminalPaper>
+      </ChartModal>
+
+      {/* Summary Stats - Compact */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 2, mt: 2 }}>
+        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
+          <TerminalTypography variant="h6" sx={{ color: terminalColors.primary, fontSize: '1.5rem' }}>
+            {totals.check_cycles}
+          </TerminalTypography>
+          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
+            Check Cycles
+          </TerminalTypography>
+        </TerminalPaper>
+        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
+          <TerminalTypography variant="h6" sx={{ color: terminalColors.primary, fontSize: '1.5rem' }}>
+            {totals.tasks_executed}
+          </TerminalTypography>
+          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
+            Tasks Executed
+          </TerminalTypography>
+        </TerminalPaper>
+        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
+          <TerminalTypography variant="h6" sx={{ color: terminalColors.error, fontSize: '1.5rem' }}>
+            {totals.tasks_failed}
+          </TerminalTypography>
+          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
+            Tasks Failed
+          </TerminalTypography>
+        </TerminalPaper>
+        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
+          <TerminalTypography variant="h6" sx={{ color: terminalColors.primary, fontSize: '1.5rem' }}>
+            {totals.job_completed}
+          </TerminalTypography>
+          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
+            Jobs Completed
+          </TerminalTypography>
+        </TerminalPaper>
+        <TerminalPaper sx={{ p: 2, textAlign: 'center' }}>
+          <TerminalTypography variant="h6" sx={{ color: terminalColors.error, fontSize: '1.5rem' }}>
+            {totals.job_failed}
+          </TerminalTypography>
+          <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary, fontSize: '0.75rem' }}>
+            Jobs Failed
+          </TerminalTypography>
+        </TerminalPaper>
+      </Box>
     </Box>
   );
 };

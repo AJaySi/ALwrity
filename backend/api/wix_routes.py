@@ -5,17 +5,23 @@ Handles Wix authentication, connection status, and blog publishing.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import HTMLResponse
 from typing import Dict, Any, Optional
 from loguru import logger
 from pydantic import BaseModel
 
 from services.wix_service import WixService
+from services.integrations.wix_oauth import WixOAuthService
 from middleware.auth_middleware import get_current_user
+import os
 
 router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
 
 # Initialize Wix service
 wix_service = WixService()
+
+# Initialize Wix OAuth service for token storage
+wix_oauth_service = WixOAuthService(db_path=os.path.abspath("alwrity.db"))
 
 
 class WixAuthRequest(BaseModel):
@@ -88,17 +94,41 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
         Token information and connection status
     """
     try:
+        user_id = current_user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        
         # Exchange code for tokens
         tokens = wix_service.exchange_code_for_tokens(request.code)
         
-        # Get site information
+        # Get site information to extract site_id and member_id
         site_info = wix_service.get_site_info(tokens['access_token'])
+        site_id = site_info.get('siteId') or site_info.get('site_id')
+        
+        # Extract member_id from token if possible
+        member_id = None
+        try:
+            member_id = wix_service.extract_member_id_from_access_token(tokens['access_token'])
+        except Exception:
+            pass
         
         # Check permissions
         permissions = wix_service.check_blog_permissions(tokens['access_token'])
         
-        # TODO: Store tokens securely in database associated with current_user
-        # For now, we'll return them (in production, store in encrypted database)
+        # Store tokens securely in database
+        stored = wix_oauth_service.store_tokens(
+            user_id=user_id,
+            access_token=tokens['access_token'],
+            refresh_token=tokens.get('refresh_token'),
+            expires_in=tokens.get('expires_in'),
+            token_type=tokens.get('token_type', 'Bearer'),
+            scope=tokens.get('scope'),
+            site_id=site_id,
+            member_id=member_id
+        )
+        
+        if not stored:
+            logger.warning(f"Failed to store Wix tokens for user {user_id}, but OAuth succeeded")
         
         return {
             "success": True,
@@ -125,6 +155,29 @@ async def handle_oauth_callback_get(code: str, state: Optional[str] = None, requ
         tokens = wix_service.exchange_code_for_tokens(code)
         site_info = wix_service.get_site_info(tokens['access_token'])
         permissions = wix_service.check_blog_permissions(tokens['access_token'])
+        
+        # Store tokens in database if we have user_id
+        user_id = current_user.get('id') if current_user else None
+        if user_id:
+            site_id = site_info.get('siteId') or site_info.get('site_id')
+            member_id = None
+            try:
+                member_id = wix_service.extract_member_id_from_access_token(tokens['access_token'])
+            except Exception:
+                pass
+            
+            stored = wix_oauth_service.store_tokens(
+                user_id=user_id,
+                access_token=tokens['access_token'],
+                refresh_token=tokens.get('refresh_token'),
+                expires_in=tokens.get('expires_in'),
+                token_type=tokens.get('token_type', 'Bearer'),
+                scope=tokens.get('scope'),
+                site_id=site_id,
+                member_id=member_id
+            )
+            if not stored:
+                logger.warning(f"Failed to store Wix tokens for user {user_id} in GET callback")
 
         # Build success payload for postMessage
         payload = {
