@@ -324,3 +324,53 @@ class BillingHistory(Base):
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class SubscriptionRenewalHistory(Base):
+    """Historical record of subscription renewals and expiration events."""
+    
+    __tablename__ = "subscription_renewal_history"
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(100), nullable=False)
+    
+    # Subscription Details
+    plan_id = Column(Integer, ForeignKey('subscription_plans.id'), nullable=False)
+    plan_name = Column(String(50), nullable=False)
+    plan_tier = Column(String(20), nullable=False)  # e.g., "free", "basic", "pro", "enterprise"
+    
+    # Period Information
+    previous_period_start = Column(DateTime, nullable=True)  # Start of the previous period (if renewal)
+    previous_period_end = Column(DateTime, nullable=True)  # End of the previous period (when it expired)
+    new_period_start = Column(DateTime, nullable=False)  # Start of the new period (when renewed)
+    new_period_end = Column(DateTime, nullable=False)  # End of the new period
+    
+    # Billing Cycle
+    billing_cycle = Column(Enum(BillingCycle), nullable=False)  # "monthly" or "yearly"
+    
+    # Renewal Information
+    renewal_type = Column(String(20), nullable=False)  # "new", "renewal", "upgrade", "downgrade"
+    renewal_count = Column(Integer, default=0)  # Sequential renewal number (1st renewal, 2nd renewal, etc.)
+    
+    # Previous Subscription Snapshot (before renewal)
+    previous_plan_name = Column(String(50), nullable=True)
+    previous_plan_tier = Column(String(20), nullable=True)
+    
+    # Usage Summary Before Renewal (snapshot)
+    usage_before_renewal = Column(JSON, nullable=True)  # Snapshot of usage before renewal
+    
+    # Payment Information
+    payment_amount = Column(Float, default=0.0)
+    payment_status = Column(String(20), default="pending")  # "pending", "paid", "failed"
+    payment_date = Column(DateTime, nullable=True)
+    stripe_invoice_id = Column(String(100), nullable=True)
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    plan = relationship("SubscriptionPlan")
+    
+    # Indexes for performance
+    __table_args__ = (
+        {'mysql_engine': 'InnoDB'},
+    )

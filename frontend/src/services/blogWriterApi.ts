@@ -461,6 +461,31 @@ export const blogWriterApi = {
     return data;
   },
 
+  async generateSEOTitles(payload: {
+    research: BlogResearchResponse;
+    outline: BlogOutlineSection[];
+    primary_keywords: string[];
+    secondary_keywords: string[];
+    content_angles: string[];
+    search_intent?: string;
+    word_count?: number;
+  }): Promise<{ success: boolean; titles: string[] }> {
+    const { data } = await aiApiClient.post('/api/blog/titles/generate-seo', payload);
+    return data;
+  },
+
+  async generateIntroductions(payload: {
+    blog_title: string;
+    research: BlogResearchResponse;
+    outline: BlogOutlineSection[];
+    sections_content: Record<string, string>;
+    primary_keywords: string[];
+    search_intent?: string;
+  }): Promise<{ success: boolean; introductions: string[] }> {
+    const { data } = await aiApiClient.post('/api/blog/introductions/generate', payload);
+    return data;
+  },
+
   // Enhanced Outline Methods
   async enhanceSection(section: BlogOutlineSection, focus: string = 'general improvement'): Promise<BlogOutlineSection> {
     const { data } = await apiClient.post("/api/blog/outline/enhance-section", section, {

@@ -92,6 +92,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                 task.last_success = datetime.utcnow()
                 task.status = 'active'
                 task.failure_reason = None
+                # Reset failure tracking on success
+                task.consecutive_failures = 0
+                task.failure_pattern = None
                 # Schedule next check (7 days from now)
                 task.next_check = self.calculate_next_execution(
                     task=task,
@@ -99,14 +102,44 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                     last_execution=task.last_check
                 )
             else:
-                # Refresh failed - mark as failed and stop automatic retries
+                # Analyze failure pattern
+                from services.scheduler.core.failure_detection_service import FailureDetectionService
+                failure_detection = FailureDetectionService(db)
+                pattern = failure_detection.analyze_task_failures(
+                    task.id, "oauth_token_monitoring", task.user_id
+                )
+                
                 task.last_failure = datetime.utcnow()
                 task.failure_reason = result.error_message
-                task.status = 'failed'
-                # Do NOT update next_check - wait for manual trigger
+                
+                if pattern and pattern.should_cool_off:
+                    # Mark task for human intervention
+                    task.status = "needs_intervention"
+                    task.consecutive_failures = pattern.consecutive_failures
+                    task.failure_pattern = {
+                        "consecutive_failures": pattern.consecutive_failures,
+                        "recent_failures": pattern.recent_failures,
+                        "failure_reason": pattern.failure_reason.value,
+                        "error_patterns": pattern.error_patterns,
+                        "cool_off_until": (datetime.utcnow() + timedelta(days=7)).isoformat()
+                    }
+                    # Clear next_check - task won't run automatically
+                    task.next_check = None
+                    
+                    self.logger.warning(
+                        f"Task {task.id} marked for human intervention: "
+                        f"{pattern.consecutive_failures} consecutive failures, "
+                        f"reason: {pattern.failure_reason.value}"
+                    )
+                else:
+                    # Normal failure handling
+                    task.status = 'failed'
+                    task.consecutive_failures = (task.consecutive_failures or 0) + 1
+                    # Do NOT update next_check - wait for manual trigger
+                
                 self.logger.warning(
                     f"OAuth token refresh failed for user {user_id}, platform {platform}. "
-                    f"Task marked as failed. No automatic retry will be scheduled."
+                    f"{'Task marked for human intervention' if pattern and pattern.should_cool_off else 'Task marked as failed. No automatic retry will be scheduled.'}"
                 )
                 
                 # Create UsageAlert notification for the user

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BlogOutlineSection, SourceMappingStats, GroundingInsights, OptimizationResults, ResearchCoverage } from '../../services/blogWriterApi';
+import { BlogOutlineSection, SourceMappingStats, GroundingInsights, OptimizationResults, ResearchCoverage, blogWriterApi } from '../../services/blogWriterApi';
 import EnhancedOutlineInsights from './EnhancedOutlineInsights';
 import OutlineIntelligenceChips from './OutlineIntelligenceChips';
 import ImageGeneratorModal from '../ImageGen/ImageGeneratorModal';
@@ -38,6 +38,9 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
     key_points: '',
     target_words: 300
   });
+  const [showRefineModal, setShowRefineModal] = useState(false);
+  const [refineFeedback, setRefineFeedback] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
 
   const toggleExpanded = (sectionId: string) => {
     const newExpanded = new Set(expandedSections);
@@ -89,12 +92,53 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
     }
   };
 
+  const handleRefineOutline = async () => {
+    if (!refineFeedback.trim()) {
+      alert('Please provide feedback on how you would like to refine the outline.');
+      return;
+    }
+
+    setIsRefining(true);
+    try {
+      // Use the parent's onRefine callback which handles the API call and state update
+      // The callback expects: operation, sectionId, payload
+      await onRefine('refine', undefined, { feedback: refineFeedback.trim() });
+      
+      setRefineFeedback('');
+      setShowRefineModal(false);
+      
+      // Show success message
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 16px 24px;
+        border-radius: 8px;
+        background-color: #4caf50;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      `;
+      toast.textContent = '✅ Outline refined successfully!';
+      document.body.appendChild(toast);
+      setTimeout(() => document.body.removeChild(toast), 3000);
+    } catch (error) {
+      console.error('Failed to refine outline:', error);
+      alert('Failed to refine outline. Please try again.');
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
   const getTotalWords = () => {
     return outline.reduce((total, section) => total + (section.target_words || 0), 0);
   };
 
 
   return (
+    <>
     <div style={{ 
       backgroundColor: 'white', 
       borderRadius: '12px', 
@@ -153,24 +197,45 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
               />
             </div>
           </div>
-          <button
-            onClick={() => setShowAddSection(!showAddSection)}
-            style={{
-              backgroundColor: '#1976d2',
-              color: 'white',
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            ➕ Add Section
-          </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowRefineModal(true)}
+              style={{
+                backgroundColor: '#7b1fa2',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              title="Refine the outline structure based on your feedback"
+            >
+              🔧 Refine Outline
+            </button>
+            <button
+              onClick={() => setShowAddSection(!showAddSection)}
+              style={{
+                backgroundColor: '#1976d2',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              ➕ Add Section
+            </button>
+          </div>
         </div>
       </div>
 
@@ -656,6 +721,120 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
         </div>
       </div>
     </div>
+
+    {/* Refine Outline Modal */}
+    {showRefineModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            padding: '32px',
+            maxWidth: '600px',
+            width: '90%',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid #e5e7eb'
+          }}>
+            <div style={{ marginBottom: '24px' }}>
+              <h2 style={{ margin: '0 0 8px 0', color: '#1f2937', fontSize: '24px', fontWeight: '600' }}>
+                🔧 Refine Outline
+              </h2>
+              <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>
+                Provide feedback on how you'd like to improve the outline structure
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{
+                display: 'block',
+                marginBottom: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#333'
+              }}>
+                Your Feedback
+              </label>
+              <textarea
+                value={refineFeedback}
+                onChange={(e) => setRefineFeedback(e.target.value)}
+                placeholder="E.g., Add a section about best practices, merge sections 2 and 3, expand the introduction..."
+                style={{
+                  width: '100%',
+                  minHeight: '120px',
+                  padding: '12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowRefineModal(false);
+                  setRefineFeedback('');
+                }}
+                disabled={isRefining}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#f5f5f5',
+                  color: '#666',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: isRefining ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRefineOutline}
+                disabled={isRefining || !refineFeedback.trim()}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: isRefining || !refineFeedback.trim() ? '#9ca3af' : '#7b1fa2',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: isRefining || !refineFeedback.trim() ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {isRefining ? (
+                  <>
+                    <span>⏳</span>
+                    <span>Refining...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔧</span>
+                    <span>Refine Outline</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

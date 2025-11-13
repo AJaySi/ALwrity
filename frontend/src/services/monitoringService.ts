@@ -1,5 +1,6 @@
 import axios, { AxiosResponse } from 'axios';
 import { emitApiEvent } from '../utils/apiEvents';
+import { getApiUrl } from '../api/client';
 import {
   SystemHealth,
   APIStats,
@@ -16,11 +17,14 @@ import {
 } from '../types/monitoring';
 
 // API base configuration - consistent with client.ts pattern
-const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+const API_BASE_URL = getApiUrl();
+const MONITORING_BASE_URL = API_BASE_URL
+  ? `${API_BASE_URL.replace(/\/+$/, '')}/api/content-planning/monitoring`
+  : '/api/content-planning/monitoring';
 
 // Create axios instance for monitoring APIs
 const monitoringAPI = axios.create({
-  baseURL: `${API_BASE_URL}/api/content-planning/monitoring`,
+  baseURL: MONITORING_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

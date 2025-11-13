@@ -191,28 +191,71 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
   }, [isOpen, blogContent?.length, researchData]);
 
   const runSEOAnalysis = useCallback(async (forceRefresh = false) => {
+    // Prevent multiple simultaneous calls
+    if (isAnalyzing && !forceRefresh) {
+      console.log('⏸️ SEO analysis already in progress, skipping duplicate call');
+      return;
+    }
+
     try {
       setIsAnalyzing(true);
       setError(null);
       setProgress(0);
-      setProgressMessage('Starting SEO analysis...');
+      setProgressMessage('Checking cache for previous SEO analysis...');
 
-      // Cache check
-      const hash = contentHash || (await hashContent(`${blogTitle || ''}\n${blogContent}`));
+      // Cache check - always check cache first unless force refresh is requested
+      // Compute hash if not already available
+      let hash = contentHash;
+      if (!hash) {
+        hash = await hashContent(`${blogTitle || ''}\n${blogContent}`);
+        // Update state for future use
+        setContentHash(hash);
+      }
       const cacheKey = getSeoCacheKey(hash, blogTitle);
+      console.log('🔍 Checking SEO cache', { 
+        cacheKey, 
+        hasHash: !!hash, 
+        forceRefresh,
+        hashLength: hash?.length,
+        titleLength: blogTitle?.length,
+        contentLength: blogContent?.length
+      });
+      
       if (!forceRefresh) {
         const cached = typeof window !== 'undefined' ? window.localStorage.getItem(cacheKey) : null;
         if (cached) {
-          const parsed = JSON.parse(cached);
-          setAnalysisResult(parsed as SEOAnalysisResult);
-          setIsAnalyzing(false);
-          // Notify parent that analysis is complete (from cache)
-          if (onAnalysisComplete) {
-            onAnalysisComplete(parsed as SEOAnalysisResult);
+          try {
+            const parsed = JSON.parse(cached) as SEOAnalysisResult;
+            // Validate cached data has required fields
+            if (parsed && typeof parsed.overall_score === 'number' && parsed.category_scores) {
+              console.log('✅ Using cached SEO analysis', { cacheKey, overall_score: parsed.overall_score });
+              setAnalysisResult(parsed);
+              setIsAnalyzing(false);
+              setProgress(100);
+              setProgressMessage('SEO analysis loaded from cache');
+              // Notify parent that analysis is complete (from cache)
+              if (onAnalysisComplete) {
+                onAnalysisComplete(parsed);
+              }
+              return;
+            } else {
+              console.warn('⚠️ Cached SEO analysis data is invalid, will fetch fresh analysis');
+            }
+          } catch (parseError) {
+            console.warn('⚠️ Failed to parse cached SEO analysis, will fetch fresh analysis', parseError);
+            // Remove invalid cache entry
+            if (typeof window !== 'undefined') {
+              window.localStorage.removeItem(cacheKey);
+            }
           }
-          return;
+        } else {
+          console.log('ℹ️ No cached SEO analysis found, will fetch from API', { cacheKey });
         }
+      } else {
+        console.log('🔄 Force refresh requested, skipping cache check');
       }
+
+      setProgressMessage('Starting SEO analysis...');
 
       // Simulated progress
       const progressStages = [
@@ -297,14 +340,17 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
       
       setAnalysisResult(convertedResult);
 
-      // Save to cache
+      // Save to cache - use the same cacheKey that was used for checking
       try {
-        const h = hash || (await hashContent(`${blogTitle || ''}\n${blogContent}`));
-        const key = getSeoCacheKey(h, blogTitle);
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(key, JSON.stringify(convertedResult));
+        // Use the same hash and cacheKey from the cache check section
+        // This ensures consistency between cache check and save
+        if (typeof window !== 'undefined' && cacheKey) {
+          window.localStorage.setItem(cacheKey, JSON.stringify(convertedResult));
+          console.log('💾 SEO analysis cached', { cacheKey, overall_score: convertedResult.overall_score });
         }
-      } catch {}
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to cache SEO analysis', cacheError);
+      }
 
       setIsAnalyzing(false);
 
@@ -340,21 +386,37 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
     }
   }, [blogContent, blogTitle, researchData, contentHash, onAnalysisComplete]);
 
-  // Precompute hash when modal opens
+  // Precompute hash when modal opens and trigger cache check
+  // Use a ref to prevent multiple simultaneous calls
+  const hasRunAnalysisRef = React.useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !hasRunAnalysisRef.current) {
+      hasRunAnalysisRef.current = true;
       (async () => {
         const h = await hashContent(`${blogTitle || ''}\n${blogContent}`);
         setContentHash(h);
+        // After hash is computed, check cache if we don't have analysis result yet
+        if (!analysisResult) {
+          // Small delay to ensure hash is set in state
+          setTimeout(() => {
+            runSEOAnalysis();
+          }, 100);
+        }
       })();
+    } else if (!isOpen) {
+      // Reset hash and flag when modal closes
+      setContentHash('');
+      hasRunAnalysisRef.current = false;
     }
-  }, [isOpen, blogContent, blogTitle]);
+  }, [isOpen, blogContent, blogTitle, analysisResult, runSEOAnalysis]);
 
+  // Fallback: if modal opens and hash is already computed, check cache immediately
   useEffect(() => {
-    if (isOpen && !analysisResult) {
+    if (isOpen && !analysisResult && contentHash && !hasRunAnalysisRef.current) {
+      hasRunAnalysisRef.current = true;
       runSEOAnalysis();
     }
-  }, [isOpen, analysisResult, runSEOAnalysis]);
+  }, [isOpen, analysisResult, contentHash, runSEOAnalysis]);
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'success.main';

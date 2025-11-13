@@ -77,7 +77,17 @@ class WixService:
             
             # For now, return the direct OAuth URL as a fallback
             # In production, this should call the Wix Redirects API
-            redirect_url = f"https://www.wix.com/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&scope=BLOG.CREATE-DRAFT,BLOG.PUBLISH,MEDIA.MANAGE&code_challenge={code_challenge}&code_challenge_method=S256&state={state}"
+            scope = (
+                "BLOG.CREATE-DRAFT,BLOG.PUBLISH-POST,BLOG.READ-CATEGORY," \
+                "BLOG.CREATE-CATEGORY,BLOG.READ-TAG,BLOG.CREATE-TAG," \
+                "MEDIA.SITE_MEDIA_FILES_IMPORT"
+            )
+            redirect_url = (
+                "https://www.wix.com/oauth/authorize?client_id="
+                f"{client_id}&redirect_uri={redirect_uri}&response_type=code"
+                f"&scope={scope}&code_challenge={code_challenge}"
+                f"&code_challenge_method=S256&state={state}"
+            )
             
             logger.info(f"Generated Wix Headless OAuth redirect URL: {redirect_url}")
             logger.warning("Using direct OAuth URL - should implement Redirects API for production")
@@ -293,9 +303,20 @@ class WixService:
         Returns:
             Created blog post information
         """
+        # Normalize access token to string to avoid type issues (can be dict/int from storage)
+        from services.integrations.wix.utils import normalize_token_string
+        normalized_token = normalize_token_string(access_token)
+        if normalized_token:
+            token_to_use = normalized_token.strip()
+        else:
+            token_to_use = str(access_token).strip() if access_token is not None else ""
+        
+        if not token_to_use:
+            raise ValueError("access_token is required to create a blog post")
+
         return publish_blog_post(
             blog_service=self.blog_service,
-            access_token=access_token,
+            access_token=token_to_use,
             title=title,
             content=content,
             member_id=member_id,

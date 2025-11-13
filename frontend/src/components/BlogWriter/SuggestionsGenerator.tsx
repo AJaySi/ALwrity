@@ -123,7 +123,10 @@ export const useSuggestions = ({
       });
     } else if (outline.length > 0 && outlineConfirmed) {
       // Outline confirmed, focus on content generation and optimization
-      if (hasContent && !contentConfirmed) {
+      // Follow the same pattern as research/outline phases - show suggestions based on state
+      // Don't block on hasContent check - let the actions handle validation
+      if (!contentConfirmed) {
+        // Content exists but not confirmed yet - show options to work with content
         items.push({ 
           title: '🔄 ReWrite Blog', 
           message: 'I want to rewrite my blog with different approach, tone, or focus'
@@ -136,7 +139,8 @@ export const useSuggestions = ({
           title: 'Next: Run SEO Analysis', 
           message: 'Please analyze the blog content for SEO. Run the analyzeSEO action right away and do not ask for confirmation.'
         });
-      } else if (hasContent && contentConfirmed) {
+      } else {
+        // Content confirmed - show SEO workflow suggestions
         if (!seoAnalysis) {
           // Prompt to run SEO analysis first
           items.push({
@@ -188,22 +192,6 @@ export const useSuggestions = ({
               priority: 'high'
             });
           }
-        }
-      } else {
-        // No content yet, but outline is confirmed - show content generation options
-        if (hasContent) {
-          // Content exists but not confirmed - show confirmation and SEO options
-          items.push({ 
-            title: 'Next: Run SEO Analysis', 
-            message: 'Please analyze the blog content for SEO. Run the analyzeSEO action right away and do not ask for confirmation.'
-          });
-          items.push({ 
-            title: '📊 Content Analysis', 
-            message: 'Analyze the flow and quality of my blog content to get improvement suggestions'
-          });
-        } else {
-          // No content at all - show generation option (only if no content exists)
-          items.push({ title: '📝 Generate all sections', message: 'Generate all sections of my blog post' });
         }
       }
     }

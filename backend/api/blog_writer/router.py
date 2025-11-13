@@ -672,3 +672,121 @@ async def rewrite_status(task_id: str):
     except Exception as e:
         logger.error(f"Failed to get rewrite status for {task_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/titles/generate-seo")
+async def generate_seo_titles(
+    request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Generate 5 SEO-optimized blog titles using research and outline data."""
+    try:
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+        
+        # Import here to avoid circular dependencies
+        from services.blog_writer.outline.seo_title_generator import SEOTitleGenerator
+        from models.blog_models import BlogResearchResponse, BlogOutlineSection
+        
+        # Parse request data
+        research_data = request.get('research')
+        outline_data = request.get('outline', [])
+        primary_keywords = request.get('primary_keywords', [])
+        secondary_keywords = request.get('secondary_keywords', [])
+        content_angles = request.get('content_angles', [])
+        search_intent = request.get('search_intent', 'informational')
+        word_count = request.get('word_count', 1500)
+        
+        if not research_data:
+            raise HTTPException(status_code=400, detail="Research data is required")
+        
+        # Convert to models
+        research = BlogResearchResponse(**research_data)
+        outline = [BlogOutlineSection(**section) for section in outline_data]
+        
+        # Generate titles
+        title_generator = SEOTitleGenerator()
+        titles = await title_generator.generate_seo_titles(
+            research=research,
+            outline=outline,
+            primary_keywords=primary_keywords,
+            secondary_keywords=secondary_keywords,
+            content_angles=content_angles,
+            search_intent=search_intent,
+            word_count=word_count,
+            user_id=user_id
+        )
+        
+        return {
+            "success": True,
+            "titles": titles
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate SEO titles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/introductions/generate")
+async def generate_introductions(
+    request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Generate 3 varied blog introductions using research, outline, and content."""
+    try:
+        # Extract Clerk user ID (required)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+        
+        # Import here to avoid circular dependencies
+        from services.blog_writer.content.introduction_generator import IntroductionGenerator
+        from models.blog_models import BlogResearchResponse, BlogOutlineSection
+        
+        # Parse request data
+        blog_title = request.get('blog_title', '')
+        research_data = request.get('research')
+        outline_data = request.get('outline', [])
+        sections_content = request.get('sections_content', {})
+        primary_keywords = request.get('primary_keywords', [])
+        search_intent = request.get('search_intent', 'informational')
+        
+        if not research_data:
+            raise HTTPException(status_code=400, detail="Research data is required")
+        if not blog_title:
+            raise HTTPException(status_code=400, detail="Blog title is required")
+        
+        # Convert to models
+        research = BlogResearchResponse(**research_data)
+        outline = [BlogOutlineSection(**section) for section in outline_data]
+        
+        # Generate introductions
+        intro_generator = IntroductionGenerator()
+        introductions = await intro_generator.generate_introductions(
+            blog_title=blog_title,
+            research=research,
+            outline=outline,
+            sections_content=sections_content,
+            primary_keywords=primary_keywords,
+            search_intent=search_intent,
+            user_id=user_id
+        )
+        
+        return {
+            "success": True,
+            "introductions": introductions
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate introductions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -10,9 +10,39 @@ class WixBlogService:
 
     def headers(self, access_token: str, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         h: Dict[str, str] = {
-            'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
         }
+        
+        # Support both OAuth tokens and API keys
+        # API keys don't use 'Bearer' prefix
+        # Ensure access_token is a string (defensive check)
+        if access_token:
+            # Normalize token to string if needed
+            if not isinstance(access_token, str):
+                from .utils import normalize_token_string
+                normalized = normalize_token_string(access_token)
+                if normalized:
+                    access_token = normalized
+                else:
+                    access_token = str(access_token)
+            
+            token = access_token.strip()
+            if token:
+                # CRITICAL: Wix OAuth tokens can have format "OauthNG.JWS.xxx.yyy.zzz"
+                # These should use "Bearer" prefix even though they have more than 2 dots
+                if token.startswith('OauthNG.JWS.'):
+                    # Wix OAuth token - use Bearer prefix
+                    h['Authorization'] = f'Bearer {token}'
+                    logger.debug("Using Wix OAuth token with Bearer prefix (OauthNG.JWS. format detected)")
+                elif '.' not in token or len(token) > 500:
+                    # Likely an API key - use directly without Bearer prefix
+                    h['Authorization'] = token
+                    logger.debug("Using API key for authorization")
+                else:
+                    # Standard JWT OAuth token (xxx.yyy.zzz format) - use Bearer prefix
+                    h['Authorization'] = f'Bearer {token}'
+                    logger.debug("Using OAuth Bearer token for authorization")
+        
         if self.client_id:
             h['wix-client-id'] = self.client_id
         if extra:
@@ -20,41 +50,38 @@ class WixBlogService:
         return h
 
     def create_draft_post(self, access_token: str, payload: Dict[str, Any], extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-        # Log the exact payload being sent for debugging
+        """Create draft post with consolidated logging"""
+        from .logger import wix_logger
         import json
-        logger.warning(f"📤 Sending to Wix Blog API:")
-        logger.warning(f"  Endpoint: {self.base_url}/blog/v3/draft-posts")
-        logger.warning(f"  Payload top-level keys: {list(payload.keys())}")
+        
+        # Build payload summary for logging
+        payload_summary = {}
         if 'draftPost' in payload:
             dp = payload['draftPost']
-            logger.warning(f"  draftPost keys: {list(dp.keys())}")
-            if 'richContent' in dp:
-                rc = dp['richContent']
-                logger.warning(f"  richContent keys: {list(rc.keys()) if isinstance(rc, dict) else 'N/A'}")
-                if isinstance(rc, dict) and 'nodes' in rc:
-                    nodes = rc['nodes']
-                    logger.warning(f"  richContent.nodes count: {len(nodes) if isinstance(nodes, list) else 'N/A'}")
-                    # Inspect first LIST_ITEM node if any
-                    for i, node in enumerate(nodes[:10]):
-                        if isinstance(node, dict) and node.get('type') == 'LIST_ITEM':
-                            logger.warning(f"  Found LIST_ITEM at index {i}:")
-                            logger.warning(f"    Keys: {list(node.keys())}")
-                            logger.warning(f"    Has listItemData: {'listItemData' in node}")
-                            if 'listItemData' in node:
-                                logger.warning(f"    listItemData type: {type(node['listItemData'])}, value: {node['listItemData']}")
-                            if 'nodes' in node:
-                                nested = node['nodes']
-                                logger.warning(f"    Nested nodes count: {len(nested) if isinstance(nested, list) else 'N/A'}")
-                                for j, n_node in enumerate(nested[:3]):
-                                    if isinstance(n_node, dict):
-                                        logger.warning(f"      Nested node {j}: type={n_node.get('type')}, keys={list(n_node.keys())}")
-                                        if n_node.get('type') == 'PARAGRAPH' and 'paragraphData' in n_node:
-                                            logger.warning(f"        paragraphData type: {type(n_node['paragraphData'])}, value: {n_node['paragraphData']}")
-                            break  # Only inspect first LIST_ITEM
+            payload_summary['draftPost'] = {
+                'title': dp.get('title'),
+                'richContent': {'nodes': len(dp.get('richContent', {}).get('nodes', []))} if 'richContent' in dp else None,
+                'seoData': 'seoData' in dp
+            }
         
-        logger.warning(f"  Full Payload JSON (first 8000 chars):\n{json.dumps(payload, indent=2, ensure_ascii=False)[:8000]}...")
+        request_headers = self.headers(access_token, extra_headers)
+        response = requests.post(f"{self.base_url}/blog/v3/draft-posts", headers=request_headers, json=payload)
         
-        response = requests.post(f"{self.base_url}/blog/v3/draft-posts", headers=self.headers(access_token, extra_headers), json=payload)
+        # Consolidated error logging
+        error_body = None
+        if response.status_code >= 400:
+            try:
+                error_body = response.json()
+            except:
+                error_body = {'message': response.text[:200]}
+        
+        wix_logger.log_api_call("POST", "/blog/v3/draft-posts", response.status_code, payload_summary, error_body)
+        
+        if response.status_code >= 400:
+            # Only show detailed error info for debugging
+            if response.status_code == 500:
+                logger.debug(f"   Full error: {json.dumps(error_body, indent=2) if isinstance(error_body, dict) else error_body}")
+        
         response.raise_for_status()
         return response.json()
 

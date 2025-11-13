@@ -27,14 +27,7 @@ export interface UsageStats {
 
 export interface ProviderBreakdown {
   gemini: ProviderUsage;
-  openai: ProviderUsage;
-  anthropic: ProviderUsage;
-  mistral: ProviderUsage;
-  tavily: ProviderUsage;
-  serper: ProviderUsage;
-  metaphor: ProviderUsage;
-  firecrawl: ProviderUsage;
-  stability: ProviderUsage;
+  huggingface: ProviderUsage;
 }
 
 export interface ProviderUsage {
@@ -108,6 +101,36 @@ export interface UsageSummary {
   unread_alerts: number;
 }
 
+export interface UsageLog {
+  id: number;
+  timestamp: string;
+  provider: string;
+  model_used: string | null;
+  endpoint: string;
+  method: string;
+  tokens_input: number;
+  tokens_output: number;
+  tokens_total: number;
+  cost_input: number;
+  cost_output: number;
+  cost_total: number;
+  response_time: number;
+  status_code: number;
+  status: 'success' | 'failed';
+  error_message: string | null;
+  billing_period: string;
+  retry_count: number;
+  is_aggregated?: boolean; // Flag indicating this is an aggregated log entry
+}
+
+export interface UsageLogsResponse {
+  logs: UsageLog[];
+  total_count: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
 export interface SubscriptionPlan {
   id: number;
   name: string;
@@ -149,28 +172,14 @@ export interface APIPricing {
 
 export interface UsagePercentages {
   gemini_calls: number;
-  openai_calls: number;
-  anthropic_calls: number;
-  mistral_calls: number;
-  tavily_calls: number;
-  serper_calls: number;
-  metaphor_calls: number;
-  firecrawl_calls: number;
-  stability_calls: number;
+  huggingface_calls: number; // HuggingFace uses mistral_calls in backend
   cost: number;
 }
 
 // Zod validation schemas
 export const UsagePercentagesSchema = z.object({
   gemini_calls: z.number(),
-  openai_calls: z.number(),
-  anthropic_calls: z.number(),
-  mistral_calls: z.number(),
-  tavily_calls: z.number(),
-  serper_calls: z.number(),
-  metaphor_calls: z.number(),
-  firecrawl_calls: z.number(),
-  stability_calls: z.number(),
+  huggingface_calls: z.number(), // Backend sends mistral_calls, we map to huggingface_calls
   cost: z.number(),
 });
 
@@ -182,14 +191,7 @@ export const ProviderUsageSchema = z.object({
 
 export const ProviderBreakdownSchema = z.object({
   gemini: ProviderUsageSchema,
-  openai: ProviderUsageSchema,
-  anthropic: ProviderUsageSchema,
-  mistral: ProviderUsageSchema,
-  tavily: ProviderUsageSchema,
-  serper: ProviderUsageSchema,
-  metaphor: ProviderUsageSchema,
-  firecrawl: ProviderUsageSchema,
-  stability: ProviderUsageSchema,
+  huggingface: ProviderUsageSchema,
 });
 
 export const SubscriptionLimitsSchema = z.object({
@@ -285,3 +287,41 @@ export interface DashboardAPIResponse extends BillingAPIResponse<DashboardData> 
 export interface PlansAPIResponse extends BillingAPIResponse<{ plans: SubscriptionPlan[]; total: number }> {}
 export interface PricingAPIResponse extends BillingAPIResponse<{ pricing: APIPricing[]; total: number }> {}
 export interface AlertsAPIResponse extends BillingAPIResponse<{ alerts: UsageAlert[]; total: number; unread_count: number }> {}
+
+// Subscription Renewal History
+export interface SubscriptionRenewal {
+  id: number;
+  plan_name: string;
+  plan_tier: string;
+  previous_period_start: string | null;
+  previous_period_end: string | null;
+  new_period_start: string;
+  new_period_end: string;
+  billing_cycle: 'monthly' | 'yearly';
+  renewal_type: 'new' | 'renewal' | 'upgrade' | 'downgrade';
+  renewal_count: number;
+  previous_plan_name: string | null;
+  previous_plan_tier: string | null;
+  usage_before_renewal: {
+    total_calls?: number;
+    total_tokens?: number;
+    total_cost?: number;
+    gemini_calls?: number;
+    mistral_calls?: number;
+    usage_status?: string;
+  } | null;
+  payment_amount: number;
+  payment_status: string;
+  payment_date: string | null;
+  created_at: string;
+}
+
+export interface RenewalHistoryResponse {
+  renewals: SubscriptionRenewal[];
+  total_count: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface RenewalHistoryAPIResponse extends BillingAPIResponse<RenewalHistoryResponse> {}

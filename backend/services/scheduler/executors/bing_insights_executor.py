@@ -86,6 +86,9 @@ class BingInsightsExecutor(TaskExecutor):
                 task.last_success = datetime.utcnow()
                 task.status = 'active'
                 task.failure_reason = None
+                # Reset failure tracking on success
+                task.consecutive_failures = 0
+                task.failure_pattern = None
                 # Schedule next check (7 days from now)
                 task.next_check = self.calculate_next_execution(
                     task=task,
@@ -93,11 +96,41 @@ class BingInsightsExecutor(TaskExecutor):
                     last_execution=task.last_check
                 )
             else:
+                # Analyze failure pattern
+                from services.scheduler.core.failure_detection_service import FailureDetectionService
+                failure_detection = FailureDetectionService(db)
+                pattern = failure_detection.analyze_task_failures(
+                    task.id, "bing_insights", task.user_id
+                )
+                
                 task.last_failure = datetime.utcnow()
                 task.failure_reason = result.error_message
-                task.status = 'failed'
-                # Schedule retry in 1 day
-                task.next_check = datetime.utcnow() + timedelta(days=1)
+                
+                if pattern and pattern.should_cool_off:
+                    # Mark task for human intervention
+                    task.status = "needs_intervention"
+                    task.consecutive_failures = pattern.consecutive_failures
+                    task.failure_pattern = {
+                        "consecutive_failures": pattern.consecutive_failures,
+                        "recent_failures": pattern.recent_failures,
+                        "failure_reason": pattern.failure_reason.value,
+                        "error_patterns": pattern.error_patterns,
+                        "cool_off_until": (datetime.utcnow() + timedelta(days=7)).isoformat()
+                    }
+                    # Clear next_check - task won't run automatically
+                    task.next_check = None
+                    
+                    self.logger.warning(
+                        f"Task {task.id} marked for human intervention: "
+                        f"{pattern.consecutive_failures} consecutive failures, "
+                        f"reason: {pattern.failure_reason.value}"
+                    )
+                else:
+                    # Normal failure handling
+                    task.status = 'failed'
+                    task.consecutive_failures = (task.consecutive_failures or 0) + 1
+                    # Schedule retry in 1 day
+                    task.next_check = datetime.utcnow() + timedelta(days=1)
             
             task.updated_at = datetime.utcnow()
             db.commit()
@@ -117,12 +150,35 @@ class BingInsightsExecutor(TaskExecutor):
                 context="Bing insights fetch"
             )
             
+            # Analyze failure pattern
+            from services.scheduler.core.failure_detection_service import FailureDetectionService
+            failure_detection = FailureDetectionService(db)
+            pattern = failure_detection.analyze_task_failures(
+                task.id, "bing_insights", task.user_id
+            )
+            
             # Update task
             task.last_check = datetime.utcnow()
             task.last_failure = datetime.utcnow()
             task.failure_reason = str(e)
-            task.status = 'failed'
-            task.next_check = datetime.utcnow() + timedelta(days=1)
+            
+            if pattern and pattern.should_cool_off:
+                # Mark task for human intervention
+                task.status = "needs_intervention"
+                task.consecutive_failures = pattern.consecutive_failures
+                task.failure_pattern = {
+                    "consecutive_failures": pattern.consecutive_failures,
+                    "recent_failures": pattern.recent_failures,
+                    "failure_reason": pattern.failure_reason.value,
+                    "error_patterns": pattern.error_patterns,
+                    "cool_off_until": (datetime.utcnow() + timedelta(days=7)).isoformat()
+                }
+                task.next_check = None
+            else:
+                task.status = 'failed'
+                task.consecutive_failures = (task.consecutive_failures or 0) + 1
+                task.next_check = datetime.utcnow() + timedelta(days=1)
+            
             task.updated_at = datetime.utcnow()
             db.commit()
             

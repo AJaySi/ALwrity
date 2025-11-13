@@ -235,7 +235,14 @@ export const BlogWriter: React.FC = () => {
   });
 
   // CopilotKit suggestions management - extracted to useCopilotSuggestions
-  const hasContent = React.useMemo(() => Object.keys(sections).length > 0, [sections]);
+  // Check if sections exist AND have actual content (not just empty strings)
+  const hasContent = React.useMemo(() => {
+    const sectionKeys = Object.keys(sections);
+    if (sectionKeys.length === 0) return false;
+    // Check if at least one section has actual content
+    const sectionsWithContent = Object.values(sections).filter(c => c && c.trim().length > 0);
+    return sectionsWithContent.length > 0;
+  }, [sections]);
   const {
     suggestions,
     setSuggestionsRef,

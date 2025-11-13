@@ -24,6 +24,7 @@ import {
 import { billingService } from '../../services/billingService';
 import { monitoringService } from '../../services/monitoringService';
 import { onApiEvent } from '../../utils/apiEvents';
+import { showToastNotification } from '../../utils/toastNotifications';
 
 // Types
 import { DashboardData } from '../../types/billing';
@@ -38,20 +39,31 @@ import UsageTrends from './UsageTrends';
 import UsageAlerts from './UsageAlerts';
 import ComprehensiveAPIBreakdown from './ComprehensiveAPIBreakdown';
 
+// Terminal Theme
+import {
+  TerminalTypography,
+  TerminalAlert,
+  terminalColors
+} from '../SchedulerDashboard/terminalTheme';
+
 interface EnhancedBillingDashboardProps {
   userId?: string;
+  terminalTheme?: boolean;
 }
 
 type ViewMode = 'compact' | 'detailed';
 
-const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ userId }) => {
+const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ userId, terminalTheme = false }) => {
+  // Conditional component selection based on terminal theme
+  const TypographyComponent = terminalTheme ? TerminalTypography : Typography;
+  const AlertComponent = terminalTheme ? TerminalAlert : Alert;
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('compact');
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (showSuccessToast: boolean = false) => {
     try {
       const [billingData, healthData] = await Promise.all([
         billingService.getDashboardData(),
@@ -59,8 +71,21 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
       ]);
       setDashboardData(billingData);
       setSystemHealth(healthData);
+      
+      // Show success toast only if explicitly requested (user-initiated refresh)
+      if (showSuccessToast && billingData && healthData) {
+        showToastNotification(
+          'Billing data refreshed successfully',
+          'success',
+          { duration: 3000 }
+        );
+      }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to fetch dashboard data');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch dashboard data';
+      setError(errorMessage);
+      
+      // Always show error toast for failures
+      showToastNotification(errorMessage, 'error', { duration: 5000 });
     } finally {
       setLoading(false);
     }
@@ -95,6 +120,29 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
+  // Listen for billing refresh requests (e.g., when subscription limits are exceeded)
+  useEffect(() => {
+    const handleBillingRefresh = () => {
+      console.log('EnhancedBillingDashboard: Billing refresh requested, refreshing data...');
+      // Use a fresh call to fetchDashboardData to ensure we get latest data
+      Promise.all([billingService.getDashboardData(), monitoringService.getSystemHealth()])
+        .then(([billingData, healthData]) => {
+          setDashboardData(billingData);
+          setSystemHealth(healthData);
+        })
+        .catch((error) => {
+          const errorMessage = error instanceof Error ? error.message : 'Failed to refresh billing data';
+          setError(errorMessage);
+          console.error('Error refreshing billing data:', error);
+        });
+    };
+    
+    window.addEventListener('billing-refresh-requested', handleBillingRefresh);
+    return () => {
+      window.removeEventListener('billing-refresh-requested', handleBillingRefresh);
+    };
+  }, []); // Empty deps - handler doesn't depend on component state
+
   const handleViewModeChange = (
     event: React.MouseEvent<HTMLElement>,
     newViewMode: ViewMode | null,
@@ -117,9 +165,9 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
   if (error) {
     return (
       <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <AlertComponent severity="error" sx={{ mb: 3 }}>
           {error}
-        </Alert>
+        </AlertComponent>
       </Container>
     );
   }
@@ -127,9 +175,9 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
   if (!dashboardData) {
     return (
       <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Alert severity="warning">
+        <AlertComponent severity="warning">
           No billing data available. Please check your subscription status.
-        </Alert>
+        </AlertComponent>
       </Container>
     );
   }
@@ -146,17 +194,17 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography
+                      <TypographyComponent
                         variant="h4"
                         sx={{
                           fontWeight: 800,
                           mb: 1.5,
                           fontSize: '1.1rem',
-                          color: 'rgba(255,255,255,0.95)',
+                          color: terminalTheme ? terminalColors.text : 'rgba(255,255,255,0.95)',
                         }}
                       >
                         Billing & Usage Dashboard
-                      </Typography>
+                      </TypographyComponent>
                       <Tooltip 
                         title={
                           <Box>
@@ -231,7 +279,7 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
               <Tooltip title="Refresh billing data">
                 <IconButton 
                   size="small" 
-                  onClick={fetchDashboardData}
+                  onClick={() => fetchDashboardData(true)}
                   disabled={loading}
                   sx={{ 
                     color: 'rgba(255,255,255,0.7)',
@@ -305,7 +353,7 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.3 }}
           >
-            <CompactBillingDashboard userId={userId} />
+            <CompactBillingDashboard userId={userId} terminalTheme={terminalTheme} />
           </motion.div>
         ) : (
           <motion.div
@@ -321,6 +369,7 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
                 <BillingOverview 
                   usageStats={dashboardData.current_usage}
                   onRefresh={fetchDashboardData}
+                  terminalTheme={terminalTheme}
                 />
               </Grid>
               

@@ -55,9 +55,10 @@ export const usePlatformConnections = () => {
     try {
       // Store current page URL BEFORE redirecting (critical for proper redirect back)
       // This ensures we can redirect back to the correct page (e.g., Blog Writer) after OAuth
+      // Only store if not already set (allows WixConnectModal to override if needed)
+      // WixConnectModal will always override when connecting from Blog Writer
       const currentUrl = window.location.href;
       try {
-        // Only store if not already set (allows WixConnectModal to override if needed)
         if (!sessionStorage.getItem('wix_oauth_redirect')) {
           sessionStorage.setItem('wix_oauth_redirect', currentUrl);
           console.log('[Wix OAuth] Stored redirect URL:', currentUrl);

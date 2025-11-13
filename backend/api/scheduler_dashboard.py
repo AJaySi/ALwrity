@@ -1151,6 +1151,118 @@ async def retry_website_analysis(
         raise HTTPException(status_code=500, detail=f"Failed to retry website analysis: {str(e)}")
 
 
+@router.get("/tasks-needing-intervention/{user_id}")
+async def get_tasks_needing_intervention(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get all tasks that need human intervention.
+    
+    Args:
+        user_id: User ID
+        
+    Returns:
+        List of tasks needing intervention with failure pattern details
+    """
+    try:
+        # Verify user access
+        if str(current_user.get('id')) != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        from services.scheduler.core.failure_detection_service import FailureDetectionService
+        detection_service = FailureDetectionService(db)
+        
+        tasks = detection_service.get_tasks_needing_intervention(user_id=user_id)
+        
+        return {
+            "success": True,
+            "tasks": tasks,
+            "count": len(tasks)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting tasks needing intervention: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get tasks needing intervention: {str(e)}")
+
+
+@router.post("/tasks/{task_type}/{task_id}/manual-trigger")
+async def manual_trigger_task(
+    task_type: str,
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Manually trigger a task that is in cool-off or needs intervention.
+    This bypasses the cool-off check and executes the task immediately.
+    
+    Args:
+        task_type: Task type (oauth_token_monitoring, website_analysis, gsc_insights, bing_insights)
+        task_id: Task ID
+        
+    Returns:
+        Success status and execution result
+    """
+    try:
+        from services.scheduler.core.task_execution_handler import execute_task_async
+        scheduler = get_scheduler()
+        
+        # Load task based on type
+        task = None
+        if task_type == "oauth_token_monitoring":
+            task = db.query(OAuthTokenMonitoringTask).filter(
+                OAuthTokenMonitoringTask.id == task_id
+            ).first()
+        elif task_type == "website_analysis":
+            task = db.query(WebsiteAnalysisTask).filter(
+                WebsiteAnalysisTask.id == task_id
+            ).first()
+        elif task_type in ["gsc_insights", "bing_insights"]:
+            task = db.query(PlatformInsightsTask).filter(
+                PlatformInsightsTask.id == task_id
+            ).first()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown task type: {task_type}")
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Verify user access
+        if str(current_user.get('id')) != task.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Clear cool-off status and reset failure count
+        task.status = "active"
+        task.consecutive_failures = 0
+        task.failure_pattern = None
+        
+        # Execute task manually (bypasses cool-off check)
+        # Task types are registered as: oauth_token_monitoring, website_analysis, gsc_insights, bing_insights
+        await execute_task_async(scheduler, task_type, task, execution_source="manual")
+        
+        db.commit()
+        
+        logger.info(f"Manually triggered task {task_id} ({task_type}) for user {task.user_id}")
+        
+        return {
+            "success": True,
+            "message": "Task triggered successfully",
+            "task": {
+                "id": task.id,
+                "status": task.status,
+                "last_check": task.last_check.isoformat() if task.last_check else None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error manually triggering task {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to trigger task: {str(e)}")
+
+
 @router.get("/platform-insights/logs/{user_id}")
 async def get_platform_insights_logs(
     user_id: str,

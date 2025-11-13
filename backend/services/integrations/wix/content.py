@@ -13,6 +13,7 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
         return [{
             'id': str(uuid.uuid4()),
             'type': 'TEXT',
+            'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
             'textData': {'text': '', 'decorations': []}
         }]
     
@@ -32,6 +33,7 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
                 nodes.append({
                     'id': str(uuid.uuid4()),
                     'type': 'TEXT',
+                    'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
                     'textData': {
                         'text': current_text,
                         'decorations': current_decorations.copy()
@@ -46,11 +48,14 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
                 # Recursively parse the bold text for nested formatting
                 bold_nodes = parse_markdown_inline(bold_text)
                 # Add BOLD decoration to all text nodes within
+                # Per Wix API: decorations are objects with 'type' field, not strings
                 for node in bold_nodes:
                     if node['type'] == 'TEXT':
                         node_decorations = node['textData'].get('decorations', []).copy()
-                        if 'BOLD' not in node_decorations:
-                            node_decorations.append('BOLD')
+                        # Check if BOLD decoration already exists
+                        has_bold = any(d.get('type') == 'BOLD' for d in node_decorations if isinstance(d, dict))
+                        if not has_bold:
+                            node_decorations.append({'type': 'BOLD'})
                         node['textData']['decorations'] = node_decorations
                     nodes.append(node)
                 i = end_bold + 2
@@ -63,6 +68,7 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
                 nodes.append({
                     'id': str(uuid.uuid4()),
                     'type': 'TEXT',
+                    'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
                     'textData': {
                         'text': current_text,
                         'decorations': current_decorations.copy()
@@ -79,24 +85,23 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
                 url_end = text.find(')', url_start)
                 if url_end != -1:
                     url = text[url_start:url_end]
-                    # Create link node
-                    link_node_id = str(uuid.uuid4())
-                    text_node_id = str(uuid.uuid4())
-                    link_text_nodes = parse_markdown_inline(link_text)
-                    # Wrap link text in LINK node
+                    # Per Wix API: Links are decorations on TEXT nodes, not separate node types
+                    # Create TEXT node with LINK decoration
                     nodes.append({
-                        'id': link_node_id,
-                        'type': 'LINK',
-                        'nodes': link_text_nodes if link_text_nodes else [{
-                            'id': text_node_id,
-                            'type': 'TEXT',
-                            'textData': {'text': link_text, 'decorations': []}
-                        }],
-                        'linkData': {
-                            'link': {
-                                'url': url,
-                                'target': '_blank'
-                            }
+                        'id': str(uuid.uuid4()),
+                        'type': 'TEXT',
+                        'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
+                        'textData': {
+                            'text': link_text,
+                            'decorations': [{
+                                'type': 'LINK',
+                                'linkData': {
+                                    'link': {
+                                        'url': url,
+                                        'target': 'BLANK'  # Wix API uses 'BLANK', not '_blank'
+                                    }
+                                }
+                            }]
                         }
                     })
                     i = url_end + 1
@@ -109,6 +114,7 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
                 nodes.append({
                     'id': str(uuid.uuid4()),
                     'type': 'TEXT',
+                    'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
                     'textData': {
                         'text': current_text,
                         'decorations': current_decorations.copy()
@@ -121,12 +127,16 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
             code_end = text.find('`', i + 1)
             if code_end != -1:
                 code_text = text[i + 1:code_end]
+                # Per Wix API: CODE is not a valid decoration type, but we'll keep the structure
+                # Note: Wix uses CODE_BLOCK nodes for code, not CODE decorations
+                # For inline code, we'll just use plain text for now
                 nodes.append({
                     'id': str(uuid.uuid4()),
                     'type': 'TEXT',
+                    'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
                     'textData': {
                         'text': code_text,
-                        'decorations': ['CODE']
+                        'decorations': []  # CODE is not a valid decoration in Wix API
                     }
                 })
                 i = code_end + 1
@@ -139,6 +149,7 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
                 nodes.append({
                     'id': str(uuid.uuid4()),
                     'type': 'TEXT',
+                    'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
                     'textData': {
                         'text': current_text,
                         'decorations': current_decorations.copy()
@@ -155,11 +166,14 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
                     italic_text = text[i + 1:italic_end]
                     italic_nodes = parse_markdown_inline(italic_text)
                     # Add ITALIC decoration
+                    # Per Wix API: decorations are objects with 'type' field
                     for node in italic_nodes:
                         if node['type'] == 'TEXT':
                             node_decorations = node['textData'].get('decorations', []).copy()
-                            if 'ITALIC' not in node_decorations:
-                                node_decorations.append('ITALIC')
+                            # Check if ITALIC decoration already exists
+                            has_italic = any(d.get('type') == 'ITALIC' for d in node_decorations if isinstance(d, dict))
+                            if not has_italic:
+                                node_decorations.append({'type': 'ITALIC'})
                             node['textData']['decorations'] = node_decorations
                         nodes.append(node)
                     i = italic_end + 1
@@ -174,6 +188,7 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
         nodes.append({
             'id': str(uuid.uuid4()),
             'type': 'TEXT',
+            'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
             'textData': {
                 'text': current_text,
                 'decorations': current_decorations.copy()
@@ -185,6 +200,7 @@ def parse_markdown_inline(text: str) -> List[Dict[str, Any]]:
         nodes.append({
             'id': str(uuid.uuid4()),
             'type': 'TEXT',
+            'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
             'textData': {
                 'text': text,
                 'decorations': []
@@ -439,6 +455,7 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
             'nodes': [{
                 'id': str(uuid.uuid4()),
                 'type': 'TEXT',
+                'nodes': [],  # TEXT nodes must have empty nodes array per Wix API
                 'textData': {
                     'text': content[:500] if content else "This is a post from ALwrity.",
                     'decorations': []
@@ -448,14 +465,11 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
         }
         nodes.append(fallback_paragraph)
     
+    # Per Wix Blog API documentation: richContent should ONLY contain 'nodes'
+    # Do NOT include 'type', 'id', 'metadata', or 'documentStyle' at root level
+    # These fields are for Ricos Document format, but Blog API expects just the nodes structure
     return {
-        'type': 'DOCUMENT',
-        'id': str(uuid.uuid4()),
-        'nodes': nodes,
-        'metadata': {'version': 1, 'id': str(uuid.uuid4())},
-        'documentStyle': {
-            'paragraph': {'decorations': [], 'nodeStyle': {}, 'lineHeight': '1.5'}
-        }
+        'nodes': nodes
     }
 
 

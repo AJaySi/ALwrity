@@ -148,6 +148,9 @@ def convert_via_wix_api(markdown_content: str, access_token: str, base_url: str 
     Convert markdown to Ricos using Wix's official Ricos Documents API.
     Uses HTML format for better reliability (per Wix documentation, HTML is fully supported).
     
+    Wix API Limitation: HTML content must be 10,000 characters or less.
+    If content exceeds this limit, it will be truncated with an ellipsis.
+    
     Reference: https://dev.wix.com/docs/api-reference/assets/rich-content/ricos-documents/convert-to-ricos-document
     
     Args:
@@ -181,6 +184,28 @@ def convert_via_wix_api(markdown_content: str, access_token: str, base_url: str 
         logger.warning("Using fallback HTML due to empty conversion result")
     else:
         html_content = html_stripped
+    
+    # CRITICAL: Wix API has a 10,000 character limit for HTML content
+    # If content exceeds this limit, truncate intelligently at paragraph boundaries
+    MAX_HTML_LENGTH = 10000
+    if len(html_content) > MAX_HTML_LENGTH:
+        logger.warning(f"⚠️ HTML content ({len(html_content)} chars) exceeds Wix API limit of {MAX_HTML_LENGTH} chars")
+        
+        # Try to truncate at a paragraph boundary to avoid breaking HTML tags
+        truncate_at = MAX_HTML_LENGTH - 100  # Leave room for closing tags and ellipsis
+        
+        # Look for the last </p> tag before the truncation point
+        last_p_close = html_content.rfind('</p>', 0, truncate_at)
+        if last_p_close > 0:
+            html_content = html_content[:last_p_close + 4]  # Include the </p> tag
+        else:
+            # If no paragraph boundary found, just truncate
+            html_content = html_content[:truncate_at]
+        
+        # Add an ellipsis paragraph to indicate truncation
+        html_content += '<p><em>... (Content truncated due to length constraints)</em></p>'
+        
+        logger.warning(f"✅ Truncated HTML to {len(html_content)} chars (at paragraph boundary)")
     
     logger.debug(f"✅ Converted markdown to HTML: {len(html_content)} chars, preview: {html_content[:200]}...")
     

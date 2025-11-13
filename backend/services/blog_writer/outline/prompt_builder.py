@@ -5,7 +5,6 @@ Constructs comprehensive prompts with research data, keywords, and strategic req
 """
 
 from typing import Dict, Any, List
-from loguru import logger
 
 
 class PromptBuilder:
@@ -23,7 +22,18 @@ class PromptBuilder:
         # Use the filtered research data (already cleaned by ResearchDataFilter)
         research = request.research
         
-        return f"""Create a comprehensive blog outline for: {', '.join(primary_keywords)}
+        primary_kw_text = ', '.join(primary_keywords) if primary_keywords else (request.topic or ', '.join(getattr(request.research, 'original_keywords', []) or ['the target topic']))
+        secondary_kw_text = ', '.join(secondary_keywords) if secondary_keywords else "None provided"
+        long_tail_text = ', '.join(research.keyword_analysis.get('long_tail', [])) if research and research.keyword_analysis else "None discovered"
+        semantic_text = ', '.join(research.keyword_analysis.get('semantic_keywords', [])) if research and research.keyword_analysis else "None discovered"
+        trending_text = ', '.join(research.keyword_analysis.get('trending_terms', [])) if research and research.keyword_analysis else "None discovered"
+        content_gap_text = ', '.join(research.keyword_analysis.get('content_gaps', [])) if research and research.keyword_analysis else "None identified"
+        content_angle_text = ', '.join(content_angles) if content_angles else "No explicit angles provided; infer compelling angles from research insights."
+        competitor_text = ', '.join(research.competitor_analysis.get('top_competitors', [])) if research and research.competitor_analysis else "Not available"
+        opportunity_text = ', '.join(research.competitor_analysis.get('opportunities', [])) if research and research.competitor_analysis else "Not available"
+        advantages_text = ', '.join(research.competitor_analysis.get('competitive_advantages', [])) if research and research.competitor_analysis else "Not available"
+
+        return f"""Create a comprehensive blog outline for: {primary_kw_text}
 
 CONTEXT:
 Search Intent: {search_intent}
@@ -32,19 +42,19 @@ Industry: {getattr(request.persona, 'industry', 'General') if request.persona el
 Audience: {getattr(request.persona, 'target_audience', 'General') if request.persona else 'General'}
 
 KEYWORDS:
-Primary: {', '.join(primary_keywords)}
-Secondary: {', '.join(secondary_keywords)}
-Long-tail: {', '.join(research.keyword_analysis.get('long_tail', []))}
-Semantic: {', '.join(research.keyword_analysis.get('semantic_keywords', []))}
-Trending: {', '.join(research.keyword_analysis.get('trending_terms', []))}
-Content Gaps: {', '.join(research.keyword_analysis.get('content_gaps', []))}
+Primary: {primary_kw_text}
+Secondary: {secondary_kw_text}
+Long-tail: {long_tail_text}
+Semantic: {semantic_text}
+Trending: {trending_text}
+Content Gaps: {content_gap_text}
 
-CONTENT ANGLES: {', '.join(content_angles)}
+CONTENT ANGLES / STORYLINES: {content_angle_text}
 
 COMPETITIVE INTELLIGENCE:
-Top Competitors: {', '.join(research.competitor_analysis.get('top_competitors', []))}
-Market Opportunities: {', '.join(research.competitor_analysis.get('opportunities', []))}
-Competitive Advantages: {', '.join(research.competitor_analysis.get('competitive_advantages', []))}
+Top Competitors: {competitor_text}
+Market Opportunities: {opportunity_text}
+Competitive Advantages: {advantages_text}
 
 RESEARCH SOURCES: {len(sources)} authoritative sources available
 
@@ -52,6 +62,7 @@ RESEARCH SOURCES: {len(sources)} authoritative sources available
 
 STRATEGIC REQUIREMENTS:
 - Create SEO-optimized headings with natural keyword integration
+- Surface the strongest research-backed angles within the outline
 - Build logical narrative flow from problem to solution
 - Include data-driven insights from research sources
 - Address content gaps and market opportunities
@@ -59,23 +70,34 @@ STRATEGIC REQUIREMENTS:
 - Ensure engaging, actionable content throughout
 
 Return JSON format:
-{{
-            "outline": [
-                {{
-                    "heading": "Section heading with primary keyword",
-                    "subheadings": ["Subheading 1", "Subheading 2", "Subheading 3"],
-                    "key_points": ["Key point 1", "Key point 2", "Key point 3"],
+{
+    "title_options": [
+        "Title option 1",
+        "Title option 2",
+        "Title option 3"
+    ],
+    "outline": [
+        {
+            "heading": "Section heading with primary keyword",
+            "subheadings": ["Subheading 1", "Subheading 2", "Subheading 3"],
+            "key_points": ["Key point 1", "Key point 2", "Key point 3"],
             "target_words": 300,
-                    "keywords": ["primary keyword", "secondary keyword"]
-                }}
-            ]
-}}"""
+            "keywords": ["primary keyword", "secondary keyword"]
+        }
+    ]
+}"""
     
     def get_outline_schema(self) -> Dict[str, Any]:
         """Get the structured JSON schema for outline generation."""
         return {
             "type": "object",
             "properties": {
+                "title_options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "outline": {
                     "type": "array",
                     "items": {
@@ -100,6 +122,6 @@ Return JSON format:
                     }
                 }
             },
-            "required": ["outline"],
-            "propertyOrdering": ["outline"]
+            "required": ["title_options", "outline"],
+            "propertyOrdering": ["title_options", "outline"]
         }

@@ -14,6 +14,8 @@ from services.integrations.wix.blog import WixBlogService
 from services.integrations.wix.content import convert_content_to_ricos
 from services.integrations.wix.ricos_converter import convert_via_wix_api
 from services.integrations.wix.seo import build_seo_data
+from services.integrations.wix.logger import wix_logger
+from services.integrations.wix.utils import normalize_token_string
 
 
 def validate_ricos_content(ricos_content: Dict[str, Any]) -> Dict[str, Any]:
@@ -220,10 +222,96 @@ def create_blog_post(
     if not member_id:
         raise ValueError("memberId is required for third-party apps creating blog posts")
     
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
+    # Ensure access_token is a string (handle cases where it might be int, dict, or other type)
+    # Use normalize_token_string to handle various token formats (dict with accessToken.value, etc.)
+    normalized_token = normalize_token_string(access_token)
+    if not normalized_token:
+        raise ValueError("access_token is required and must be a valid string or token object")
+    access_token = normalized_token.strip()
+    if not access_token:
+        raise ValueError("access_token cannot be empty")
+    
+    # BACK TO BASICS MODE: Try simplest possible structure FIRST
+    # Since posting worked before Ricos/SEO, let's test with absolute minimum
+    BACK_TO_BASICS_MODE = True  # Set to True to test with simplest structure
+    
+    wix_logger.reset()
+    wix_logger.log_operation_start("Blog Post Creation", title=title[:50] if title else None, member_id=member_id[:20] if member_id else None)
+    
+    if BACK_TO_BASICS_MODE:
+        logger.info("🔧 Wix: BACK TO BASICS MODE - Testing minimal structure")
+        
+        # Import auth utilities for proper token handling
+        from .auth_utils import get_wix_headers
+        
+        # Create absolute minimal Ricos structure
+        minimal_ricos = {
+            'nodes': [{
+                'id': str(uuid.uuid4()),
+                'type': 'PARAGRAPH',
+                'nodes': [{
+                    'id': str(uuid.uuid4()),
+                    'type': 'TEXT',
+                    'nodes': [],
+                    'textData': {
+                        'text': (content[:500] if content else "This is a post from ALwrity.").strip(),
+                        'decorations': []
+                    }
+                }],
+                'paragraphData': {}
+            }]
+        }
+        
+        # Extract wix-site-id from token if possible
+        extra_headers = {}
+        try:
+            token_str = str(access_token)
+            if token_str and token_str.startswith('OauthNG.JWS.'):
+                import jwt
+                import json
+                jwt_part = token_str[12:]
+                payload = jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
+                data_payload = payload.get('data', {})
+                if isinstance(data_payload, str):
+                    try:
+                        data_payload = json.loads(data_payload)
+                    except:
+                        pass
+                instance_data = data_payload.get('instance', {})
+                meta_site_id = instance_data.get('metaSiteId')
+                if isinstance(meta_site_id, str) and meta_site_id:
+                    extra_headers['wix-site-id'] = meta_site_id
+        except Exception:
+            pass
+        
+        # Build minimal payload
+        minimal_blog_data = {
+            'draftPost': {
+                'title': str(title).strip() if title else "Untitled",
+                'memberId': str(member_id).strip(),
+                'richContent': minimal_ricos
+            },
+            'publish': False,
+            'fieldsets': ['URL']
+        }
+        
+        try:
+            from .blog import WixBlogService
+            blog_service_test = WixBlogService('https://www.wixapis.com', None)
+            result = blog_service_test.create_draft_post(access_token, minimal_blog_data, extra_headers if extra_headers else None)
+            logger.success("✅✅✅ Wix: BACK TO BASICS SUCCEEDED! Issue is with Ricos/SEO structure")
+            wix_logger.log_operation_result("Back to Basics Test", True, result)
+            return result
+        except Exception as e:
+            logger.error(f"❌ Wix: BACK TO BASICS FAILED - {str(e)[:100]}")
+            logger.error("   ⚠️ Issue is NOT with Ricos/SEO - likely permissions/token")
+            wix_logger.add_error(f"Back to Basics: {str(e)[:100]}")
+    
+    # Import auth utilities for proper token handling
+    from .auth_utils import get_wix_headers
+    
+    # Headers for blog post creation (use user's OAuth token)
+    headers = get_wix_headers(access_token)
     
     # Build valid Ricos rich content
     # Ensure content is not empty
@@ -231,20 +319,87 @@ def create_blog_post(
         content = "This is a post from ALwrity."
         logger.warning("⚠️ Content was empty, using default text")
     
-    # Try Wix API first (more reliable), fall back to custom parser
-    ricos_content = None
+    # Quick token/permission check (only log if issues found)
+    has_blog_scope = None
+    meta_site_id = None
     try:
-        logger.warning("🔄 Attempting to convert markdown to Ricos via Wix API...")
-        ricos_content = convert_via_wix_api(content, access_token, base_url)
-        logger.warning(f"✅ Wix API conversion successful. Ricos document has {len(ricos_content.get('nodes', []))} nodes")
-    except Exception as e:
-        logger.warning(f"⚠️ Wix Ricos API conversion failed: {e}. Falling back to custom parser...")
-        # Fall back to custom parser
-        ricos_content = convert_content_to_ricos(content, None)
-        logger.warning(f"✅ Custom parser conversion complete. Ricos document has {len(ricos_content.get('nodes', []))} nodes")
+        from .utils import decode_wix_token
+        import json
+        token_data = decode_wix_token(access_token)
+        if 'scope' in token_data:
+            scopes = token_data.get('scope')
+            if isinstance(scopes, str):
+                scope_list = scopes.split(',') if ',' in scopes else [scopes]
+                has_blog_scope = any('BLOG' in s.upper() for s in scope_list)
+                if not has_blog_scope:
+                    logger.error("❌ Wix: Token missing BLOG scopes - verify OAuth app permissions")
+        if 'data' in token_data:
+            data = token_data.get('data')
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except:
+                    pass
+            if isinstance(data, dict) and 'instance' in data:
+                instance = data.get('instance', {})
+                meta_site_id = instance.get('metaSiteId')
+    except Exception:
+        pass
     
-    # Validate Ricos content
-    ricos_content = validate_ricos_content(ricos_content)
+    # Quick permission test (only log failures)
+    try:
+        test_headers = get_wix_headers(access_token)
+        import requests
+        test_response = requests.get(f"{base_url}/blog/v3/categories", headers=test_headers, timeout=5)
+        if test_response.status_code == 403:
+            logger.error("❌ Wix: Permission denied - OAuth app missing BLOG.CREATE-DRAFT")
+        elif test_response.status_code == 401:
+            logger.error("❌ Wix: Unauthorized - token may be expired")
+    except Exception:
+        pass
+    
+    # Safely get token length (access_token is already validated as string above)
+    token_length = len(access_token) if access_token else 0
+    wix_logger.log_token_info(token_length, has_blog_scope, meta_site_id)
+    
+    # Convert markdown to Ricos
+    ricos_content = convert_content_to_ricos(content, None)
+    nodes_count = len(ricos_content.get('nodes', []))
+    wix_logger.log_ricos_conversion(nodes_count)
+    
+    # Validate Ricos content structure
+    # Per Wix Blog API documentation: richContent should ONLY contain 'nodes'
+    # The example in docs shows: { nodes: [...] } - no type, id, metadata, or documentStyle
+    if not isinstance(ricos_content, dict):
+        logger.error(f"❌ richContent is not a dict: {type(ricos_content)}")
+        raise ValueError("richContent must be a dictionary object")
+    
+    if 'nodes' not in ricos_content or not isinstance(ricos_content['nodes'], list):
+        logger.error(f"❌ richContent.nodes is missing or not a list: {ricos_content.get('nodes', 'MISSING')}")
+        raise ValueError("richContent must contain a 'nodes' array")
+    
+    # Remove type and id fields (not expected by Blog API)
+    # NOTE: metadata is optional - Wix UPDATE endpoint example shows it, but CREATE example doesn't
+    # We'll keep it minimal (nodes only) for CREATE to match the recipe example
+    fields_to_remove = ['type', 'id']
+    for field in fields_to_remove:
+        if field in ricos_content:
+            logger.debug(f"Removing '{field}' field from richContent (Blog API doesn't expect this)")
+            del ricos_content[field]
+    
+    # Remove metadata and documentStyle - Blog API CREATE endpoint example shows only 'nodes'
+    # (UPDATE endpoint shows metadata, but we're using CREATE)
+    if 'metadata' in ricos_content:
+        logger.debug("Removing 'metadata' from richContent (CREATE endpoint expects only 'nodes')")
+        del ricos_content['metadata']
+    if 'documentStyle' in ricos_content:
+        logger.debug("Removing 'documentStyle' from richContent (CREATE endpoint expects only 'nodes')")
+        del ricos_content['documentStyle']
+    
+    # Ensure we only have 'nodes' in richContent for CREATE endpoint
+    ricos_content = {'nodes': ricos_content['nodes']}
+    
+    logger.debug(f"✅ richContent structure validated: {len(ricos_content['nodes'])} nodes, keys: {list(ricos_content.keys())}")
     
     # Minimal payload per Wix docs: title, memberId, and richContent
     # CRITICAL: Only include fields that have valid values (no None, no empty strings for required fields)
@@ -252,7 +407,7 @@ def create_blog_post(
         'draftPost': {
             'title': str(title).strip() if title else "Untitled",
             'memberId': str(member_id).strip(),  # Required for third-party apps (validated above)
-            'richContent': ricos_content,  # Must be a valid Ricos document object
+            'richContent': ricos_content,  # Must be a valid Ricos object with ONLY 'nodes'
         },
         'publish': bool(publish),
         'fieldsets': ['URL']  # Simplified fieldsets
@@ -340,76 +495,34 @@ def create_blog_post(
             logger.warning("All tag IDs were invalid, not including tagIds in payload")
     
     # Build SEO data from metadata if provided
+    # NOTE: seoData is optional - if it causes issues, we can create post without it
     seo_data = None
     if seo_metadata:
-        logger.warning(f"📊 Building SEO data from metadata. Keys: {list(seo_metadata.keys())}")
-        seo_data = build_seo_data(seo_metadata, title)
-        if seo_data:
-            # Log detailed SEO structure
-            logger.warning(f"📋 SEO data built: {len(seo_data.get('tags', []))} tags, {len(seo_data.get('settings', {}).get('keywords', []))} keywords")
-            
-            # Log each SEO tag for debugging (key ones only to avoid too much output)
-            if seo_data.get('tags'):
-                for idx, tag in enumerate(seo_data['tags'][:3]):  # First 3 tags only
-                    tag_type = tag.get('type')
-                    if tag_type == 'title':
-                        logger.warning(f"  SEO tag {idx+1}: type={tag_type}, children={str(tag.get('children', ''))[:50]}...")
-                    else:
-                        props = tag.get('props', {})
-                        content_preview = str(props.get('content', props.get('href', props.get('name', ''))))[:50]
-                        logger.warning(f"  SEO tag {idx+1}: type={tag_type}, props={list(props.keys())}, content={content_preview}...")
-                if len(seo_data['tags']) > 3:
-                    logger.warning(f"  ... and {len(seo_data['tags']) - 3} more SEO tags")
-            
-            blog_data['draftPost']['seoData'] = seo_data
-            logger.warning(f"✅ Added seoData to blog post with {len(seo_data.get('tags', []))} tags")
-        else:
-            logger.warning("⚠️ SEO data was empty after building - check build_seo_data function")
+        try:
+            seo_data = build_seo_data(seo_metadata, title)
+            if seo_data:
+                tags_count = len(seo_data.get('tags', []))
+                keywords_count = len(seo_data.get('settings', {}).get('keywords', []))
+                wix_logger.log_seo_data(tags_count, keywords_count)
+                blog_data['draftPost']['seoData'] = seo_data
+        except Exception as e:
+            logger.warning(f"⚠️ Wix: SEO data build failed - {str(e)[:50]}")
+            wix_logger.add_warning(f"SEO build: {str(e)[:50]}")
         
-        # Add SEO slug if provided (separate field from seoData)
+        # Add SEO slug if provided
         if seo_metadata.get('url_slug'):
             blog_data['draftPost']['seoSlug'] = str(seo_metadata.get('url_slug')).strip()
-            logger.warning(f"✅ Added SEO slug: {blog_data['draftPost']['seoSlug']}")
     else:
         logger.warning("⚠️ No SEO metadata provided to create_blog_post")
     
-    # Log the payload structure for debugging (without sensitive data)
-    logger.warning(f"📝 Creating blog post with title: '{title}'")
-    logger.warning(f"📋 Draft post fields: {list(blog_data['draftPost'].keys())}")
-    
-    # Detailed SEO logging
-    if 'seoData' in blog_data['draftPost']:
-        seo_data_debug = blog_data['draftPost']['seoData']
-        logger.warning(f"📊 SEO data in payload: {len(seo_data_debug.get('tags', []))} tags, {len(seo_data_debug.get('settings', {}).get('keywords', []))} keywords")
-        
-        # Log sample SEO tags (first 2 only to avoid too much output)
-        if seo_data_debug.get('tags'):
-            logger.warning("📋 SEO Tags sample:")
-            for i, tag in enumerate(seo_data_debug['tags'][:2]):  # First 2 tags
-                logger.warning(f"  Tag {i+1}: type={tag.get('type')}, custom={tag.get('custom')}, disabled={tag.get('disabled')}")
-            if len(seo_data_debug['tags']) > 2:
-                logger.warning(f"  ... and {len(seo_data_debug['tags']) - 2} more tags")
-        
-        if seo_data_debug.get('settings', {}).get('keywords'):
-            keywords_list = [k.get('term') for k in seo_data_debug['settings']['keywords'][:3]]
-            logger.warning(f"🔑 Keywords: {keywords_list}")
-        
-        # Log FULL seoData structure for debugging
-        import json
-        try:
-            seo_json = json.dumps(seo_data_debug, indent=2, ensure_ascii=False)
-            logger.warning(f"📄 FULL seoData JSON:\n{seo_json[:2000]}...")  # First 2000 chars
-        except Exception as e:
-            logger.error(f"Failed to serialize seoData: {e}")
-    else:
-        logger.warning("⚠️ No seoData in draft post payload!")
-    
     try:
-        # Add wix-site-id header if we can extract it from token
+        # Extract wix-site-id from token if possible
         extra_headers = {}
         try:
             token_str = str(access_token)
             if token_str and token_str.startswith('OauthNG.JWS.'):
+                import jwt
+                import json
                 jwt_part = token_str[12:]
                 payload = jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
                 data_payload = payload.get('data', {})
@@ -423,12 +536,8 @@ def create_blog_post(
                 if isinstance(meta_site_id, str) and meta_site_id:
                     extra_headers['wix-site-id'] = meta_site_id
                     headers['wix-site-id'] = meta_site_id
-        except Exception as e:
-            logger.debug(f"Could not extract site ID from token: {e}")
-        
-        # Make the API call
-        logger.warning(f"🚀 Calling Wix API: POST /blog/v3/draft-posts")
-        logger.warning(f"📦 Payload: title='{blog_data['draftPost'].get('title')}', has_seoData={'seoData' in blog_data['draftPost']}, has_richContent={'richContent' in blog_data['draftPost']}")
+        except Exception:
+            pass
         
         # Validate payload structure before sending
         draft_post = blog_data.get('draftPost', {})
@@ -617,88 +726,13 @@ def create_blog_post(
         logger.warning(f"📤 RichContent has metadata: {bool(blog_data['draftPost']['richContent'].get('metadata'))}")
         logger.warning(f"📤 RichContent has documentStyle: {bool(blog_data['draftPost']['richContent'].get('documentStyle'))}")
         
-        # Try sending WITHOUT SEO data first to isolate the issue
-        test_without_seo = False  # Disabled - listItemData issue fixed
-        if test_without_seo and 'seoData' in blog_data['draftPost']:
-            logger.warning("🧪 TESTING WITHOUT SEO DATA to isolate issue...")
-            # Clone the payload without SEO data
-            test_payload_no_seo = {
-                'draftPost': {
-                    'title': blog_data['draftPost']['title'],
-                    'memberId': blog_data['draftPost']['memberId'],
-                    'richContent': blog_data['draftPost']['richContent'],
-                    'excerpt': blog_data['draftPost'].get('excerpt', '')
-                },
-                'publish': False,
-                'fieldsets': ['URL']
-            }
-            try:
-                logger.warning("🧪 Attempting without SEO data...")
-                test_result = blog_service.create_draft_post(access_token, test_payload_no_seo, extra_headers or None)
-                logger.warning(f"✅ WITHOUT SEO DATA SUCCEEDED! Post ID: {test_result.get('draftPost', {}).get('id')}")
-                logger.error("⚠️⚠️⚠️ ISSUE IS WITH SEO DATA STRUCTURE!")
-                # If this succeeds, don't send the full payload, just return this result
-                return test_result
-            except Exception as e:
-                logger.warning(f"❌ WITHOUT SEO DATA ALSO FAILED: {e}")
-                logger.warning("⚠️ Issue is NOT with SEO data, continuing with full payload...")
-        
-        # Try sending with minimal structure first to isolate the issue
-        # Create a test payload with just required fields
-        minimal_test = False  # Set to True to test with minimal payload
-        if minimal_test:
-            logger.warning("🧪 TESTING WITH MINIMAL PAYLOAD (title + memberId + simple richContent)")
-            test_payload = {
-                'draftPost': {
-                    'title': blog_data['draftPost']['title'],
-                    'memberId': blog_data['draftPost']['memberId'],
-                    'richContent': {
-                        'nodes': [
-                            {
-                                'id': str(uuid.uuid4()),
-                                'type': 'PARAGRAPH',
-                                'nodes': [
-                                    {
-                                        'id': str(uuid.uuid4()),
-                                        'type': 'TEXT',
-                                        'textData': {
-                                            'text': 'Test paragraph',
-                                            'decorations': []
-                                        }
-                                    }
-                                ],
-                                'paragraphData': {}
-                            }
-                        ],
-                        'metadata': {'version': 1, 'id': str(uuid.uuid4())},
-                        'documentStyle': {}
-                    }
-                },
-                'publish': False,
-                'fieldsets': ['URL']
-            }
-            logger.warning("🧪 Attempting minimal payload first...")
-            try:
-                test_result = blog_service.create_draft_post(access_token, test_payload, extra_headers or None)
-                logger.warning(f"✅ MINIMAL PAYLOAD SUCCEEDED! Post ID: {test_result.get('draftPost', {}).get('id')}")
-                logger.warning("⚠️ Issue is with complex content, not basic structure")
-            except Exception as e:
-                logger.error(f"❌ MINIMAL PAYLOAD ALSO FAILED: {e}")
-                logger.error("⚠️ Issue is with basic structure or permissions")
-        
         result = blog_service.create_draft_post(access_token, blog_data, extra_headers or None)
         
-        # Log response
+        # Log success
         draft_post = result.get('draftPost', {})
-        logger.warning(f"✅ Blog post created successfully! Post ID: {draft_post.get('id', 'N/A')}")
-        
-        # Check if SEO data was preserved in response
-        if 'seoData' in draft_post:
-            seo_response = draft_post['seoData']
-            logger.warning(f"✅ SEO data confirmed in response: {len(seo_response.get('tags', []))} tags, {len(seo_response.get('settings', {}).get('keywords', []))} keywords")
-        else:
-            logger.warning("⚠️ No seoData in response - it may have been filtered out by Wix API")
-            logger.warning(f"📋 Response fields: {list(draft_post.keys())}")
+        post_id = draft_post.get('id', 'N/A')
+        wix_logger.log_operation_result("Create Draft Post", True, result)
+        logger.success(f"✅ Wix: Blog post created - ID: {post_id}")
         
         return result
     except requests.RequestException as e:

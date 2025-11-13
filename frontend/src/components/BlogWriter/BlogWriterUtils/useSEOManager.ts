@@ -1,6 +1,180 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { debug } from '../../../utils/debug';
 import { blogWriterApi, BlogSEOActionableRecommendation } from '../../../services/blogWriterApi';
+import { blogWriterCache } from '../../../services/blogWriterCache';
+
+const registerContentKey = (map: Map<string, string>, key: any, content?: string) => {
+  if (key === undefined || key === null) {
+    return;
+  }
+  const trimmed = String(key).trim();
+  if (!trimmed) {
+    return;
+  }
+  const safeContent = content !== undefined && content !== null ? String(content) : '';
+  map.set(trimmed, safeContent);
+  map.set(trimmed.toLowerCase(), safeContent);
+};
+
+const getIdCandidatesForSection = (section: any, index: number): string[] => {
+  const rawCandidates = [
+    section?.id,
+    section?.section_id,
+    section?.sectionId,
+    section?.sectionID,
+    section?.heading_id,
+    `section_${index + 1}`,
+    `Section ${index + 1}`,
+    `section${index + 1}`,
+    `s${index + 1}`,
+    `S${index + 1}`,
+    `${index + 1}`,
+  ];
+
+  const normalized = rawCandidates
+    .map((value) => (value === undefined || value === null ? '' : String(value).trim()))
+    .filter(Boolean);
+
+  return Array.from(new Set(normalized));
+};
+
+const buildExistingContentMap = (sectionsRecord: Record<string, string>): Map<string, string> => {
+  const map = new Map<string, string>();
+  if (!sectionsRecord) {
+    return map;
+  }
+  Object.entries(sectionsRecord).forEach(([key, value]) => {
+    registerContentKey(map, key, value ?? '');
+  });
+  return map;
+};
+
+const buildResponseContentMaps = (responseSections: any[]): { byId: Map<string, string>; byHeading: Map<string, string> } => {
+  const byId = new Map<string, string>();
+  const byHeading = new Map<string, string>();
+
+  if (!responseSections) {
+    return { byId, byHeading };
+  }
+
+  responseSections.forEach((section, index) => {
+    if (!section) {
+      return;
+    }
+    const content = section?.content;
+    const normalizedContent = content !== undefined && content !== null ? String(content).trim() : '';
+    if (!normalizedContent) {
+      return;
+    }
+
+    registerContentKey(byId, section?.id, normalizedContent);
+    registerContentKey(byId, section?.section_id, normalizedContent);
+    registerContentKey(byId, section?.sectionId, normalizedContent);
+    registerContentKey(byId, section?.sectionID, normalizedContent);
+    registerContentKey(byId, `section_${index + 1}`, normalizedContent);
+    registerContentKey(byId, `Section ${index + 1}`, normalizedContent);
+    registerContentKey(byId, `section${index + 1}`, normalizedContent);
+    registerContentKey(byId, `s${index + 1}`, normalizedContent);
+    registerContentKey(byId, `S${index + 1}`, normalizedContent);
+    registerContentKey(byId, `${index + 1}`, normalizedContent);
+
+    const heading = section?.heading || section?.title;
+    if (heading) {
+      registerContentKey(byHeading, heading, normalizedContent);
+    }
+  });
+
+  return { byId, byHeading };
+};
+
+const getPrimaryKeyForOutlineSection = (outlineSection: any, index: number): string => {
+  const candidates = getIdCandidatesForSection(outlineSection, index);
+  if (candidates.length > 0) {
+    return candidates[0];
+  }
+  const fallbackHeading = outlineSection?.heading || outlineSection?.title;
+  if (fallbackHeading) {
+    const trimmed = String(fallbackHeading).trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return `section_${index + 1}`;
+};
+
+const resolveContentForOutlineSection = (
+  outlineSection: any,
+  index: number,
+  responseSections: any[],
+  responseById: Map<string, string>,
+  responseByHeading: Map<string, string>,
+  existingContentMap: Map<string, string>
+): { content: string; matchedKey: string } => {
+  const idCandidates = getIdCandidatesForSection(outlineSection, index);
+
+  for (const candidate of idCandidates) {
+    if (responseById.has(candidate)) {
+      return { content: responseById.get(candidate) || '', matchedKey: candidate };
+    }
+    const lower = candidate.toLowerCase();
+    if (responseById.has(lower)) {
+      return { content: responseById.get(lower) || '', matchedKey: candidate };
+    }
+  }
+
+  const heading = outlineSection?.heading || outlineSection?.title;
+  if (heading) {
+    const headingKey = String(heading).trim();
+    if (headingKey) {
+      const lowerHeading = headingKey.toLowerCase();
+      if (responseByHeading.has(lowerHeading)) {
+        return { content: responseByHeading.get(lowerHeading) || '', matchedKey: headingKey };
+      }
+      if (responseByHeading.has(headingKey)) {
+        return { content: responseByHeading.get(headingKey) || '', matchedKey: headingKey };
+      }
+    }
+  }
+
+  const responseSection = responseSections?.[index];
+  if (responseSection?.content) {
+    const normalizedContent = String(responseSection.content).trim();
+    if (normalizedContent) {
+      return {
+        content: normalizedContent,
+        matchedKey: idCandidates[0] || getPrimaryKeyForOutlineSection(outlineSection, index),
+      };
+    }
+  }
+
+  for (const candidate of idCandidates) {
+    if (existingContentMap.has(candidate)) {
+      return { content: existingContentMap.get(candidate) || '', matchedKey: candidate };
+    }
+    const lower = candidate.toLowerCase();
+    if (existingContentMap.has(lower)) {
+      return { content: existingContentMap.get(lower) || '', matchedKey: candidate };
+    }
+  }
+
+  if (heading) {
+    const headingKey = String(heading).trim();
+    if (headingKey) {
+      const lowerHeading = headingKey.toLowerCase();
+      if (existingContentMap.has(lowerHeading)) {
+        return { content: existingContentMap.get(lowerHeading) || '', matchedKey: headingKey };
+      }
+      if (existingContentMap.has(headingKey)) {
+        return { content: existingContentMap.get(headingKey) || '', matchedKey: headingKey };
+      }
+    }
+  }
+
+  return {
+    content: '',
+    matchedKey: idCandidates[0] || getPrimaryKeyForOutlineSection(outlineSection, index),
+  };
+};
 
 interface UseSEOManagerProps {
   sections: Record<string, string>;
@@ -47,8 +221,34 @@ export const useSEOManager = ({
   // Helper: run same checks as analyzeSEO and open modal
   const runSEOAnalysisDirect = useCallback((): string => {
     const hasSections = !!sections && Object.keys(sections).length > 0;
+    // Check if sections have actual content (not just empty strings)
+    let sectionsWithContent = hasSections ? Object.values(sections).filter(c => c && c.trim().length > 0) : [];
+    let hasValidContent = sectionsWithContent.length > 0;
+    
+    // If sections don't exist in state, check cache (similar to how content generation checks cache)
+    if (!hasValidContent && outline && outline.length > 0) {
+      try {
+        const outlineIds = outline.map(s => String(s.id));
+        const cachedContent = blogWriterCache.getCachedContent(outlineIds);
+        if (cachedContent && Object.keys(cachedContent).length > 0) {
+          sectionsWithContent = Object.values(cachedContent).filter(c => c && c.trim().length > 0);
+          hasValidContent = sectionsWithContent.length > 0;
+          if (hasValidContent) {
+            debug.log('[BlogWriter] Using cached content for SEO analysis', { sections: Object.keys(cachedContent).length });
+            // Update sections state with cached content
+            setSections(cachedContent);
+          }
+        }
+      } catch (e) {
+        debug.log('[BlogWriter] Error checking cache for SEO analysis', e);
+      }
+    }
+    
     const hasResearch = !!research && !!(research as any).keyword_analysis;
-    if (!hasSections) return "No blog content available for SEO analysis. Please generate content first.";
+    
+    if (!hasValidContent) {
+      return "No blog content available for SEO analysis. Please generate content first. Content generation may still be in progress - please wait for it to complete.";
+    }
     if (!hasResearch) return "Research data is required for SEO analysis. Please run research first.";
     // Prevent rapid re-opens
     const now = Date.now();
@@ -69,7 +269,7 @@ export const useSEOManager = ({
       debug.log('[BlogWriter] SEO modal opened (direct)');
     }
     return "Running SEO analysis of your blog content. This will analyze content structure, keyword optimization, readability, and provide actionable recommendations.";
-  }, [sections, research, isSEOAnalysisModalOpen, contentConfirmed, setContentConfirmed]);
+  }, [sections, research, outline, isSEOAnalysisModalOpen, contentConfirmed, setContentConfirmed, setSections]);
 
   const handleApplySeoRecommendations = useCallback(async (
     recommendations: BlogSEOActionableRecommendation[]
@@ -78,11 +278,29 @@ export const useSEOManager = ({
       throw new Error('An outline is required before applying recommendations.');
     }
 
-    const sectionPayload = outline.map((section) => ({
-      id: section.id,
-      heading: section.heading,
-      content: sections[section.id] ?? '',
-    }));
+    const existingContentMap = buildExistingContentMap(sections || {});
+    const emptyMap = new Map<string, string>();
+
+    const sectionPayload = outline.map((section, index) => {
+      const existingMatch = resolveContentForOutlineSection(
+        section,
+        index,
+        [],
+        emptyMap,
+        emptyMap,
+        existingContentMap
+      );
+      const payloadContentRaw = existingMatch.content ?? sections?.[section?.id] ?? '';
+      const payloadContent = payloadContentRaw !== undefined && payloadContentRaw !== null ? String(payloadContentRaw) : '';
+      const rawIdentifier = section?.id || section?.section_id || section?.sectionId || section?.sectionID || `section_${index + 1}`;
+      const identifier = String(rawIdentifier).trim();
+
+      return {
+        id: identifier,
+        heading: section.heading,
+        content: payloadContent,
+      };
+    });
 
     const response = await blogWriterApi.applySeoRecommendations({
       title: selectedTitle || outline[0]?.heading || 'Untitled Blog',
@@ -100,43 +318,59 @@ export const useSEOManager = ({
       throw new Error('Recommendation response did not include updated sections.');
     }
 
-    // Update sections - create new object reference to trigger React re-render
-    const newSections: Record<string, string> = {};
-    response.sections.forEach((section) => {
-      if (section.id && section.content) {
-        newSections[section.id] = section.content;
-      }
+    const { byId: responseById, byHeading: responseByHeading } = buildResponseContentMaps(response.sections);
+
+    const normalizedSections: Record<string, string> = {};
+    const sectionKeysForCache: string[] = [];
+
+    outline.forEach((section, index) => {
+      const { content: resolvedContent, matchedKey } = resolveContentForOutlineSection(
+        section,
+        index,
+        response.sections,
+        responseById,
+        responseByHeading,
+        existingContentMap
+      );
+
+      const finalContent = (resolvedContent ?? '').trim();
+      const contentToUse = finalContent || '';
+      const primaryKey = getPrimaryKeyForOutlineSection(section, index);
+
+      normalizedSections[primaryKey] = contentToUse;
+      sectionKeysForCache.push(primaryKey);
     });
-    
-    // Validate we have sections before updating
-    if (Object.keys(newSections).length === 0) {
+
+    const uniqueSectionKeys = Array.from(new Set(sectionKeysForCache));
+
+    if (uniqueSectionKeys.length === 0) {
       throw new Error('No valid sections received from SEO recommendations application.');
     }
-    
-    // Validate sections have actual content
-    const sectionsWithContent = Object.values(newSections).filter(c => c && c.trim().length > 0);
+
+    const sectionsWithContent = Object.values(normalizedSections).filter(c => c && c.trim().length > 0);
     if (sectionsWithContent.length === 0) {
       throw new Error('SEO recommendations resulted in empty sections. Please try again.');
     }
-    
-    // Log detailed section info for debugging
-    const sectionIds = Object.keys(newSections);
-    const sectionSizes = sectionIds.map(id => ({ id, length: newSections[id]?.length || 0 }));
-    debug.log('[BlogWriter] Applied SEO recommendations: sections updated', { 
-      sectionCount: sectionIds.length,
+
+    debug.log('[BlogWriter] Applied SEO recommendations: sections normalized', {
+      sectionCount: uniqueSectionKeys.length,
       sectionsWithContent: sectionsWithContent.length,
-      sectionIds: sectionIds,
-      sectionSizes: sectionSizes,
-      totalContentLength: Object.values(newSections).reduce((sum, c) => sum + (c?.length || 0), 0)
+      sectionKeys: uniqueSectionKeys,
+      totalContentLength: Object.values(normalizedSections).reduce((sum, c) => sum + (c?.length || 0), 0)
     });
-    
-    // Update sections state
-    setSections(newSections);
-    
+
+    setSections(normalizedSections);
+
+    try {
+      blogWriterCache.cacheContent(normalizedSections, uniqueSectionKeys);
+    } catch (cacheError) {
+      debug.log('[BlogWriter] Failed to cache SEO-applied content', cacheError);
+    }
+
     // Force a delay to ensure React processes the state update before proceeding
     // This gives React time to re-render with new sections before phase navigation checks
     await new Promise(resolve => setTimeout(resolve, 200));
-    
+
     setContinuityRefresh(Date.now());
     setFlowAnalysisCompleted(false);
     setFlowAnalysisResults(null);
@@ -154,7 +388,7 @@ export const useSEOManager = ({
     // But we'll stay in SEO phase to show updated content
     setSeoRecommendationsApplied(true);
     debug.log('[BlogWriter] seoRecommendationsApplied set to true');
-    
+
     // Ensure we stay in SEO phase to show updated content
     // Force navigation to SEO phase if we're not already there (safeguard)
     if (currentPhase !== 'seo') {
@@ -163,7 +397,7 @@ export const useSEOManager = ({
     } else {
       debug.log('[BlogWriter] Already in SEO phase, staying to show updated content');
     }
-  }, [outline, sections, selectedTitle, research, setSections, setSelectedTitle, setContinuityRefresh, setFlowAnalysisCompleted, setFlowAnalysisResults, setSeoAnalysis, currentPhase, navigateToPhase]);
+  }, [outline, research, sections, selectedTitle, setSections, setContinuityRefresh, setFlowAnalysisCompleted, setFlowAnalysisResults, setSelectedTitle, setSeoAnalysis, setSeoRecommendationsApplied, currentPhase, navigateToPhase]);
 
   // Handle SEO analysis completion
   const handleSEOAnalysisComplete = useCallback((analysis: any) => {

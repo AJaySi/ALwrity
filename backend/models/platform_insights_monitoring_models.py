@@ -27,13 +27,17 @@ class PlatformInsightsTask(Base):
     site_url = Column(String(500), nullable=True)  # Optional: specific site URL
     
     # Task Status
-    status = Column(String(50), default='active')  # 'active', 'failed', 'paused'
+    status = Column(String(50), default='active')  # 'active', 'failed', 'paused', 'needs_intervention'
     
     # Execution Tracking
     last_check = Column(DateTime, nullable=True)
     last_success = Column(DateTime, nullable=True)
     last_failure = Column(DateTime, nullable=True)
     failure_reason = Column(Text, nullable=True)
+    
+    # Failure Pattern Tracking
+    consecutive_failures = Column(Integer, default=0)  # Count of consecutive failures
+    failure_pattern = Column(JSON, nullable=True)  # JSON storing failure analysis
     
     # Scheduling
     next_check = Column(DateTime, nullable=True, index=True)  # Next scheduled check time

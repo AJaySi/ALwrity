@@ -58,16 +58,49 @@ const WixCallbackPage: React.FC = () => {
           }
         } catch {}
         // Fallback redirect for same-tab flow - check if we have a stored redirect URL
-        const redirectUrl = sessionStorage.getItem('wix_oauth_redirect');
+        let redirectUrl = sessionStorage.getItem('wix_oauth_redirect');
         console.log('[Wix Callback] Checking redirect URL:', redirectUrl);
+        
         if (redirectUrl) {
+          // Normalize the redirect URL to use the current origin if it's different
+          // This handles cases where localhost redirect URL is used but callback is on ngrok (or vice versa)
+          try {
+            const urlObj = new URL(redirectUrl);
+            const currentOrigin = window.location.origin;
+            
+            // If the stored redirect URL has a different origin, update it to current origin
+            // This ensures the redirect works regardless of localhost vs ngrok
+            if (urlObj.origin !== currentOrigin) {
+              redirectUrl = `${currentOrigin}${urlObj.pathname}${urlObj.hash}${urlObj.search}`;
+              console.log('[Wix Callback] Normalized redirect URL to current origin:', {
+                original: sessionStorage.getItem('wix_oauth_redirect'),
+                normalized: redirectUrl,
+                currentOrigin
+              });
+            }
+          } catch (e) {
+            console.warn('[Wix Callback] Failed to normalize redirect URL, using as-is:', e);
+          }
+          
           console.log('[Wix Callback] Redirecting to stored URL:', redirectUrl);
           sessionStorage.removeItem('wix_oauth_redirect');
+          // Use replace to avoid adding to history
           window.location.replace(redirectUrl);
         } else {
-          // Default to onboarding if no redirect URL stored
-          console.warn('[Wix Callback] No redirect URL found, defaulting to onboarding');
-          window.location.replace('/onboarding?step=5&wix_connected=true');
+          // Check if we're coming from blog writer by checking referrer or other indicators
+          // If we can't determine the source, default to blog writer publish phase
+          const referrer = document.referrer;
+          const isFromBlogWriter = referrer.includes('/blog-writer') || 
+                                   window.location.search.includes('from=blog-writer');
+          
+          if (isFromBlogWriter) {
+            console.log('[Wix Callback] Detected blog writer context, redirecting to blog writer publish phase');
+            window.location.replace('/blog-writer#publish');
+          } else {
+            // Default to onboarding if no redirect URL stored and not from blog writer
+            console.warn('[Wix Callback] No redirect URL found, defaulting to onboarding');
+            window.location.replace('/onboarding?step=5&wix_connected=true');
+          }
         }
       } catch (e: any) {
         setError(e?.message || 'OAuth callback failed');

@@ -170,6 +170,13 @@ class RouterManager:
             except Exception as e:
                 logger.warning(f"AI Blog Writer router not mounted: {e}")
             
+            # Story Writer router
+            try:
+                from api.story_writer.router import router as story_writer_router
+                self.include_router_safely(story_writer_router, "story_writer")
+            except Exception as e:
+                logger.warning(f"Story Writer router not mounted: {e}")
+            
             # Wix Integration router
             try:
                 from api.wix_routes import router as wix_router

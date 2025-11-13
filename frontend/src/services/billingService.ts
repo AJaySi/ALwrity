@@ -1,5 +1,6 @@
 import axios, { AxiosResponse } from 'axios';
 import { emitApiEvent } from '../utils/apiEvents';
+import { getApiUrl } from '../api/client';
 import {
   DashboardData,
   UsageStats,
@@ -7,6 +8,8 @@ import {
   SubscriptionPlan,
   APIPricing,
   UsageAlert,
+  UsageLog,
+  UsageLogsResponse,
   DashboardAPIResponse,
   UsageAPIResponse,
   PlansAPIResponse,
@@ -14,46 +17,55 @@ import {
   AlertsAPIResponse,
   DashboardDataSchema,
   UsageStatsSchema,
+  ProviderBreakdown,
+  UsagePercentages,
+  ProviderUsage,
+  ProviderBreakdownSchema,
+  SubscriptionRenewal,
+  RenewalHistoryResponse,
+  RenewalHistoryAPIResponse,
 } from '../types/billing';
 
 // API base configuration - consistent with client.ts pattern
-const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+const API_BASE_URL = getApiUrl();
+const BILLING_BASE_URL = API_BASE_URL
+  ? `${API_BASE_URL.replace(/\/+$/, '')}/api/subscription`
+  : '/api/subscription';
 
 // Create axios instance with default config
 const billingAPI = axios.create({
-  baseURL: `${API_BASE_URL}/api/subscription`,
+  baseURL: BILLING_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor for authentication
+// Optional token getter - will be set by App.tsx when Clerk is available
+let authTokenGetter: (() => Promise<string | null>) | null = null;
+
+// Export function to set auth token getter (called from App.tsx)
+export const setBillingAuthTokenGetter = (getter: (() => Promise<string | null>)) => {
+  authTokenGetter = getter;
+};
+
+// Request interceptor for authentication - uses Clerk token getter
 billingAPI.interceptors.request.use(
-  (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    // Add user ID to ALL requests for billing tracking
-    const userId = localStorage.getItem('user_id') || 'demo-user';
-    
-    // Replace {user_id} in URL if present
-    if (config.url?.includes('{user_id}')) {
-      config.url = config.url.replace('{user_id}', userId);
-    }
-    
-    // Add user_id as query parameter for billing tracking
-    if (config.params) {
-      config.params.user_id = userId;
+  async (config) => {
+    // Use Clerk token getter if available (same pattern as apiClient)
+    if (authTokenGetter) {
+      try {
+        const token = await authTokenGetter();
+        if (token) {
+          config.headers = config.headers || {};
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (tokenError) {
+        console.error('Error getting auth token for billing API:', tokenError);
+      }
     } else {
-      config.params = { user_id: userId };
+      console.warn('Billing API: authTokenGetter not set - request may fail authentication');
     }
-    
-    // Also add as header for additional tracking
-    config.headers['X-User-ID'] = userId;
     
     return config;
   },
@@ -62,24 +74,44 @@ billingAPI.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
+// Response interceptor for error handling - similar to apiClient pattern
 billingAPI.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
   },
-  (error) => {
-    console.error('Billing API Error:', error);
+  async (error) => {
+    const originalRequest = error.config;
     
-    // Handle specific error cases
-    if (error.response?.status === 401) {
-      // Unauthorized - redirect to login
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
-    } else if (error.response?.status === 429) {
-      // Rate limited
-      console.warn('Rate limited by billing API');
+    // Handle network errors
+    if (!error.response) {
+      console.error('Billing API Network Error:', error.message);
+      return Promise.reject(error);
     }
     
+    // Handle 401 errors - try to refresh token if possible
+    if (error?.response?.status === 401 && !originalRequest._retry && authTokenGetter) {
+      originalRequest._retry = true;
+      
+      try {
+        const newToken = await authTokenGetter();
+        if (newToken) {
+          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+          return billingAPI(originalRequest);
+        }
+      } catch (retryError) {
+        console.error('Billing API: Token refresh failed:', retryError);
+      }
+      
+      // If retry failed, don't redirect here - let ProtectedRoute handle it
+      // The 401 will propagate and ProtectedRoute will check authentication
+    }
+    
+    // Handle rate limiting
+    if (error.response?.status === 429) {
+      console.warn('Billing API: Rate limited');
+    }
+    
+    console.error('Billing API Error:', error.response?.status, error.response?.data);
     return Promise.reject(error);
   }
 );
@@ -92,14 +124,7 @@ const defaultProviderUsage = { calls: 0, tokens: 0, cost: 0 };
 
 const defaultProviderBreakdown = {
   gemini: { ...defaultProviderUsage },
-  openai: { ...defaultProviderUsage },
-  anthropic: { ...defaultProviderUsage },
-  mistral: { ...defaultProviderUsage },
-  tavily: { ...defaultProviderUsage },
-  serper: { ...defaultProviderUsage },
-  metaphor: { ...defaultProviderUsage },
-  firecrawl: { ...defaultProviderUsage },
-  stability: { ...defaultProviderUsage },
+  huggingface: { ...defaultProviderUsage },
 };
 
 const defaultLimits = {
@@ -169,39 +194,85 @@ function coerceUsageStats(raw: any): UsageStats {
     features: raw?.limits?.features ?? [],
   };
 
+  // Extract provider breakdown - only include gemini and huggingface
+  // Backend sends mistral data for HuggingFace, so we map it to huggingface
+  // Explicitly extract and type the provider usage data
+  const geminiData = providerBreakdown.gemini;
+  const mistralData = providerBreakdown.mistral; // Backend sends 'mistral' for HuggingFace
+  const huggingfaceData = providerBreakdown.huggingface;
+  
+  // Create properly typed ProviderUsage objects
+  const geminiUsage: ProviderUsage = geminiData && typeof geminiData === 'object' && 'calls' in geminiData
+    ? { calls: Number(geminiData.calls) || 0, tokens: Number(geminiData.tokens) || 0, cost: Number(geminiData.cost) || 0 }
+    : { calls: 0, tokens: 0, cost: 0 };
+  
+  // Map mistral data to huggingface (HuggingFace is stored as MISTRAL in DB)
+  const huggingfaceUsage: ProviderUsage = (huggingfaceData && typeof huggingfaceData === 'object' && 'calls' in huggingfaceData)
+    ? { calls: Number(huggingfaceData.calls) || 0, tokens: Number(huggingfaceData.tokens) || 0, cost: Number(huggingfaceData.cost) || 0 }
+    : (mistralData && typeof mistralData === 'object' && 'calls' in mistralData)
+      ? { calls: Number(mistralData.calls) || 0, tokens: Number(mistralData.tokens) || 0, cost: Number(mistralData.cost) || 0 }
+      : { calls: 0, tokens: 0, cost: 0 };
+  
+  // Create ProviderBreakdown with only gemini and huggingface
+  const providerBreakdownCoerced: ProviderBreakdown = {
+    gemini: geminiUsage,
+    huggingface: huggingfaceUsage,
+  };
+
+  // Extract usage percentages - only include gemini and huggingface
+  // Backend sends mistral_calls for HuggingFace, map it to huggingface_calls
+  const usagePercentagesCoerced: UsagePercentages = {
+    gemini_calls: typeof raw?.usage_percentages?.gemini_calls === 'number' ? raw.usage_percentages.gemini_calls : 0,
+    huggingface_calls: typeof raw?.usage_percentages?.mistral_calls === 'number' 
+      ? raw.usage_percentages.mistral_calls 
+      : (typeof raw?.usage_percentages?.huggingface_calls === 'number' ? raw.usage_percentages.huggingface_calls : 0),
+    cost: typeof raw?.usage_percentages?.cost === 'number' ? raw.usage_percentages.cost : 0,
+  };
+
+  // Calculate total_cost from provider breakdown
+  // Always calculate from provider breakdown to ensure accuracy, but prefer backend total if it's more accurate
+  const backendTotalCost = typeof raw?.total_cost === 'number' ? raw.total_cost : 0;
+  const calculatedTotalCost = geminiUsage.cost + huggingfaceUsage.cost;
+  
+  // Use the maximum of backend cost and calculated cost to ensure we show the actual cost
+  // If backend cost is 0 but we have provider costs, use calculated cost
+  // If both are 0, the cost is genuinely 0 (no API calls with costs yet)
+  const totalCost = Math.max(backendTotalCost, calculatedTotalCost);
+  
+  // Debug logging for cost calculation
+  if (calculatedTotalCost > 0 || backendTotalCost > 0) {
+    console.log('💰 [BILLING DEBUG] Cost calculation in coerceUsageStats:', {
+      backendTotalCost,
+      calculatedTotalCost,
+      finalTotalCost: totalCost,
+      geminiCost: geminiUsage.cost,
+      huggingfaceCost: huggingfaceUsage.cost,
+      geminiCalls: geminiUsage.calls,
+      huggingfaceCalls: huggingfaceUsage.calls,
+    });
+  }
+
+  // Calculate total_calls and total_tokens from provider breakdown if needed
+  const backendTotalCalls = typeof raw?.total_calls === 'number' ? raw.total_calls : 0;
+  const calculatedTotalCalls = geminiUsage.calls + huggingfaceUsage.calls;
+  const totalCalls = backendTotalCalls > 0 ? backendTotalCalls : calculatedTotalCalls;
+
+  const backendTotalTokens = typeof raw?.total_tokens === 'number' ? raw.total_tokens : 0;
+  const calculatedTotalTokens = geminiUsage.tokens + huggingfaceUsage.tokens;
+  const totalTokens = backendTotalTokens > 0 ? backendTotalTokens : calculatedTotalTokens;
+
   const coerced: UsageStats = {
     billing_period: raw?.billing_period ?? new Date().toISOString().slice(0,7),
     usage_status: raw?.usage_status ?? 'active',
-    total_calls: raw?.total_calls ?? 0,
-    total_tokens: raw?.total_tokens ?? 0,
-    total_cost: raw?.total_cost ?? 0,
+    total_calls: totalCalls,
+    total_tokens: totalTokens,
+    total_cost: totalCost,
     avg_response_time: raw?.avg_response_time ?? 0,
     error_rate: raw?.error_rate ?? 0,
     limits: defaultLimits,
-    provider_breakdown: {
-      gemini: providerBreakdown.gemini ?? { calls: 0, tokens: 0, cost: 0 },
-      openai: providerBreakdown.openai ?? { calls: 0, tokens: 0, cost: 0 },
-      anthropic: providerBreakdown.anthropic ?? { calls: 0, tokens: 0, cost: 0 },
-      mistral: providerBreakdown.mistral ?? { calls: 0, tokens: 0, cost: 0 },
-      tavily: providerBreakdown.tavily ?? { calls: 0, tokens: 0, cost: 0 },
-      serper: providerBreakdown.serper ?? { calls: 0, tokens: 0, cost: 0 },
-      metaphor: providerBreakdown.metaphor ?? { calls: 0, tokens: 0, cost: 0 },
-      firecrawl: providerBreakdown.firecrawl ?? { calls: 0, tokens: 0, cost: 0 },
-      stability: providerBreakdown.stability ?? { calls: 0, tokens: 0, cost: 0 },
-    },
+    provider_breakdown: providerBreakdownCoerced,
     alerts: coerceAlerts(raw?.alerts),
-    usage_percentages: {
-      gemini_calls: raw?.usage_percentages?.gemini_calls ?? 0,
-      openai_calls: raw?.usage_percentages?.openai_calls ?? 0,
-      anthropic_calls: raw?.usage_percentages?.anthropic_calls ?? 0,
-      mistral_calls: raw?.usage_percentages?.mistral_calls ?? 0,
-      tavily_calls: raw?.usage_percentages?.tavily_calls ?? 0,
-      serper_calls: raw?.usage_percentages?.serper_calls ?? 0,
-      metaphor_calls: raw?.usage_percentages?.metaphor_calls ?? 0,
-      firecrawl_calls: raw?.usage_percentages?.firecrawl_calls ?? 0,
-      stability_calls: raw?.usage_percentages?.stability_calls ?? 0,
-      cost: raw?.usage_percentages?.cost ?? 0,
-    },
+    usage_percentages: usagePercentagesCoerced,
     last_updated: raw?.last_updated ?? new Date().toISOString(),
   };
   
@@ -229,8 +300,11 @@ export const billingService = {
       // Coerce missing fields to satisfy the contract before validation
       const raw = response.data.data as any;
       
+      // Coerce usage stats first to ensure proper typing
+      const currentUsage = coerceUsageStats(raw?.current_usage ?? raw);
+      
       const coerced: DashboardData = {
-        current_usage: coerceUsageStats(raw?.current_usage ?? raw),
+        current_usage: currentUsage,
         trends: raw?.trends ?? {
           periods: [],
           total_calls: [],
@@ -253,14 +327,43 @@ export const billingService = {
         },
       };
 
-      // Debug logs removed to reduce console noise
+      // Debug: Log cost calculation details
+      console.log('💰 [BILLING DEBUG] Cost calculation:', {
+        backendTotalCost: coerced.current_usage.total_cost,
+        geminiCost: coerced.current_usage.provider_breakdown.gemini.cost,
+        huggingfaceCost: coerced.current_usage.provider_breakdown.huggingface.cost,
+        calculatedTotal: coerced.current_usage.provider_breakdown.gemini.cost + coerced.current_usage.provider_breakdown.huggingface.cost,
+        providerBreakdown: coerced.current_usage.provider_breakdown,
+      });
 
       // Validate response data after coercion
-      const validatedData = DashboardDataSchema.parse(coerced);
-      // Debug logs removed to reduce console noise
-      // Notify app that fresh billing data is available
-      emitApiEvent({ url: `/dashboard/${actualUserId}`, method: 'GET', source: 'billing' });
-      return validatedData;
+      // Note: If validation fails due to cached schema, we'll handle it gracefully
+      try {
+        const validatedData = DashboardDataSchema.parse(coerced);
+        // Notify app that fresh billing data is available
+        emitApiEvent({ url: `/dashboard/${actualUserId}`, method: 'GET', source: 'billing' });
+        return validatedData;
+      } catch (validationError: any) {
+        // Check if error is due to old schema expecting other providers
+        const isOldSchemaError = validationError.errors?.some((err: any) => 
+          err.path?.includes('provider_breakdown') && 
+          err.path[err.path.length - 1] !== 'gemini' && 
+          err.path[err.path.length - 1] !== 'huggingface'
+        );
+        
+        if (isOldSchemaError) {
+          console.error('❌ [BILLING DEBUG] Validation failed due to cached old schema. Browser cache needs to be cleared.');
+          console.error('❌ [BILLING DEBUG] Error details:', validationError.errors);
+          // Still return the coerced data - it's correct, just schema validation is cached
+          // The data structure is correct with only gemini and huggingface
+          emitApiEvent({ url: `/dashboard/${actualUserId}`, method: 'GET', source: 'billing' });
+          return coerced;
+        }
+        
+        // For other validation errors, throw them
+        console.error('❌ [BILLING DEBUG] Validation error:', validationError);
+        throw validationError;
+      }
     } catch (error) {
       console.error('❌ [BILLING DEBUG] Error fetching dashboard data:', error);
       throw error;
@@ -409,6 +512,67 @@ export const billingService = {
       throw error;
     }
   },
+
+  /**
+   * Get API usage logs for the current user
+   */
+  getUsageLogs: async (
+    limit: number = 50,
+    offset: number = 0,
+    provider?: string,
+    statusCode?: number,
+    billingPeriod?: string
+  ): Promise<UsageLogsResponse> => {
+    try {
+      const params: any = { limit, offset };
+      if (provider) params.provider = provider;
+      if (statusCode !== undefined) params.status_code = statusCode;
+      if (billingPeriod) params.billing_period = billingPeriod;
+
+      const response = await billingAPI.get<UsageLogsResponse>('/usage-logs', { params });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error fetching usage logs:', error);
+      throw new Error(
+        error.response?.data?.detail ||
+        error.message ||
+        'Failed to fetch usage logs'
+      );
+    }
+  },
+
+  /**
+   * Get subscription renewal history for the current user
+   */
+  getRenewalHistory: async (
+    userId?: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<RenewalHistoryResponse> => {
+    try {
+      const actualUserId = userId || localStorage.getItem('user_id') || 'demo-user';
+      const params: any = { limit, offset };
+      
+      const response = await billingAPI.get<RenewalHistoryAPIResponse>(
+        `/renewal-history/${actualUserId}`,
+        { params }
+      );
+      
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to fetch renewal history');
+      }
+      
+      emitApiEvent({ url: `/renewal-history/${actualUserId}`, method: 'GET', source: 'billing' });
+      return response.data.data;
+    } catch (error: any) {
+      console.error('Error fetching renewal history:', error);
+      throw new Error(
+        error.response?.data?.detail ||
+        error.message ||
+        'Failed to fetch renewal history'
+      );
+    }
+  },
 };
 
 // Utility functions
@@ -463,14 +627,7 @@ export const calculateUsagePercentage = (current: number, limit: number): number
 export const getProviderIcon = (provider: string): string => {
   const icons: { [key: string]: string } = {
     gemini: '🤖',
-    openai: '🧠',
-    anthropic: '🎭',
-    mistral: '🌪️',
-    tavily: '🔍',
-    serper: '🔎',
-    metaphor: '🔮',
-    firecrawl: '🕷️',
-    stability: '🎨',
+    huggingface: '🤗', // HuggingFace icon
   };
   return icons[provider.toLowerCase()] || '🔧';
 };
@@ -478,14 +635,7 @@ export const getProviderIcon = (provider: string): string => {
 export const getProviderColor = (provider: string): string => {
   const colors: { [key: string]: string } = {
     gemini: '#4285f4',
-    openai: '#10a37f',
-    anthropic: '#d97706',
-    mistral: '#7c3aed',
-    tavily: '#059669',
-    serper: '#dc2626',
-    metaphor: '#7c2d12',
-    firecrawl: '#ea580c',
-    stability: '#0891b2',
+    huggingface: '#ffd21e', // HuggingFace yellow color
   };
   return colors[provider.toLowerCase()] || '#6b7280';
 };

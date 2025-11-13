@@ -498,7 +498,15 @@ async def get_test_authorization_url(state: Optional[str] = None) -> Dict[str, s
         if not wix_service.client_id:
             logger.warning("TEST: Wix Client ID not configured, returning mock URL")
             return {
-                "url": "https://www.wix.com/oauth/access?client_id=YOUR_CLIENT_ID&redirect_uri=http://localhost:3000/wix/callback&response_type=code&scope=BLOG.CREATE-DRAFT,BLOG.PUBLISH,MEDIA.MANAGE&code_challenge=test&code_challenge_method=S256",
+                "url": (
+                    "https://www.wix.com/oauth/access?client_id=YOUR_CLIENT_ID"
+                    "&redirect_uri=http://localhost:3000/wix/callback"
+                    "&response_type=code&scope="
+                    "BLOG.CREATE-DRAFT,BLOG.PUBLISH-POST,BLOG.READ-CATEGORY,"
+                    "BLOG.CREATE-CATEGORY,BLOG.READ-TAG,BLOG.CREATE-TAG,"
+                    "MEDIA.SITE_MEDIA_FILES_IMPORT"
+                    "&code_challenge=test&code_challenge_method=S256"
+                ),
                 "state": state or "test_state",
                 "message": "WIX_CLIENT_ID not configured. Please set it in your .env file to get a real authorization URL."
             }
@@ -573,9 +581,19 @@ async def test_publish_real(payload: Dict[str, Any]) -> Dict[str, Any]:
       - Derives member_id server-side (required by Wix for third-party apps)
     """
     try:
-        access_token = payload.get("access_token")
-        if not access_token:
+        # Normalize access_token from payload (could be string, dict, or other format)
+        from services.integrations.wix.utils import normalize_token_string
+        raw_access_token = payload.get("access_token")
+        if not raw_access_token:
             raise HTTPException(status_code=400, detail="Missing access_token")
+        
+        # Normalize token to string (handles dict with accessToken.value, int, etc.)
+        access_token = normalize_token_string(raw_access_token)
+        if not access_token:
+            # Fallback: try to convert to string directly
+            access_token = str(raw_access_token).strip()
+            if not access_token or access_token == "None":
+                raise HTTPException(status_code=400, detail="Invalid access_token format")
 
         # Derive current member id from token (try local decode first, then API fallback)
         member_id = wix_service.extract_member_id_from_access_token(access_token)

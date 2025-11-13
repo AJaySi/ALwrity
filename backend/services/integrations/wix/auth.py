@@ -25,7 +25,11 @@ class WixAuthService:
             'client_id': self.client_id,
             'redirect_uri': self.redirect_uri,
             'response_type': 'code',
-            'scope': 'BLOG.CREATE-DRAFT,BLOG.PUBLISH,MEDIA.MANAGE',
+            'scope': (
+                'BLOG.CREATE-DRAFT,BLOG.PUBLISH-POST,BLOG.READ-CATEGORY,'
+                'BLOG.CREATE-CATEGORY,BLOG.READ-TAG,BLOG.CREATE-TAG,'
+                'MEDIA.SITE_MEDIA_FILES_IMPORT'
+            ),
             'code_challenge': code_challenge,
             'code_challenge_method': 'S256'
         }

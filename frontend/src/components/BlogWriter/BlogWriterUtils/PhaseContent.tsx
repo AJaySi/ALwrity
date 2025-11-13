@@ -122,6 +122,7 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                   aiGeneratedTitles={aiGeneratedTitles}
                   onTitleSelect={onTitleSelect}
                   onCustomTitle={onCustomTitle}
+                  research={research}
                 />
                 <EnhancedOutlineEditor 
                   outline={outline} 

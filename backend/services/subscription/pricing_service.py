@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from loguru import logger
+import os
 
 from models.subscription_models import (
     APIProviderPricing, SubscriptionPlan, UserSubscription, 
@@ -227,6 +228,36 @@ class PricingService:
             }
         ]
         
+        # HuggingFace/Mistral Pricing (for GPT-OSS-120B via Groq)
+        # Default pricing from environment variables or fallback to estimated values
+        # Based on Groq pricing: ~$1 per 1M input tokens, ~$3 per 1M output tokens
+        hf_input_cost = float(os.getenv('HUGGINGFACE_INPUT_TOKEN_COST', '0.000001'))  # $1 per 1M tokens default
+        hf_output_cost = float(os.getenv('HUGGINGFACE_OUTPUT_TOKEN_COST', '0.000003'))  # $3 per 1M tokens default
+        
+        mistral_pricing = [
+            {
+                "provider": APIProvider.MISTRAL,
+                "model_name": "openai/gpt-oss-120b:groq",
+                "cost_per_input_token": hf_input_cost,
+                "cost_per_output_token": hf_output_cost,
+                "description": f"GPT-OSS-120B via HuggingFace/Groq (configurable via HUGGINGFACE_INPUT_TOKEN_COST and HUGGINGFACE_OUTPUT_TOKEN_COST env vars)"
+            },
+            {
+                "provider": APIProvider.MISTRAL,
+                "model_name": "gpt-oss-120b",
+                "cost_per_input_token": hf_input_cost,
+                "cost_per_output_token": hf_output_cost,
+                "description": f"GPT-OSS-120B via HuggingFace/Groq (configurable via HUGGINGFACE_INPUT_TOKEN_COST and HUGGINGFACE_OUTPUT_TOKEN_COST env vars)"
+            },
+            {
+                "provider": APIProvider.MISTRAL,
+                "model_name": "default",
+                "cost_per_input_token": hf_input_cost,
+                "cost_per_output_token": hf_output_cost,
+                "description": f"HuggingFace default model pricing (configurable via HUGGINGFACE_INPUT_TOKEN_COST and HUGGINGFACE_OUTPUT_TOKEN_COST env vars)"
+            }
+        ]
+        
         # Search API Pricing (estimated)
         search_pricing = [
             {
@@ -268,21 +299,31 @@ class PricingService:
         ]
         
         # Combine all pricing data
-        all_pricing = gemini_pricing + openai_pricing + anthropic_pricing + search_pricing
+        all_pricing = gemini_pricing + openai_pricing + anthropic_pricing + mistral_pricing + search_pricing
         
-        # Insert pricing data
+        # Insert or update pricing data
         for pricing_data in all_pricing:
             existing = self.db.query(APIProviderPricing).filter(
                 APIProviderPricing.provider == pricing_data["provider"],
                 APIProviderPricing.model_name == pricing_data["model_name"]
             ).first()
             
-            if not existing:
+            if existing:
+                # Update existing pricing (especially for HuggingFace if env vars changed)
+                if pricing_data["provider"] == APIProvider.MISTRAL:
+                    # Update HuggingFace pricing from env vars
+                    existing.cost_per_input_token = pricing_data["cost_per_input_token"]
+                    existing.cost_per_output_token = pricing_data["cost_per_output_token"]
+                    existing.description = pricing_data["description"]
+                    existing.updated_at = datetime.utcnow()
+                    logger.debug(f"Updated pricing for {pricing_data['provider'].value}:{pricing_data['model_name']}")
+            else:
                 pricing = APIProviderPricing(**pricing_data)
                 self.db.add(pricing)
+                logger.debug(f"Added new pricing for {pricing_data['provider'].value}:{pricing_data['model_name']}")
         
         self.db.commit()
-        logger.debug("Default API pricing initialized")
+        logger.info("Default API pricing initialized/updated. HuggingFace pricing loaded from env vars if available.")
     
     def initialize_default_plans(self):
         """Initialize default subscription plans."""
@@ -395,31 +436,82 @@ class PricingService:
     def calculate_api_cost(self, provider: APIProvider, model_name: str, 
                           tokens_input: int = 0, tokens_output: int = 0, 
                           request_count: int = 1, **kwargs) -> Dict[str, float]:
-        """Calculate cost for an API call."""
+        """Calculate cost for an API call.
+        
+        Args:
+            provider: APIProvider enum (e.g., APIProvider.MISTRAL for HuggingFace)
+            model_name: Model name (e.g., "openai/gpt-oss-120b:groq")
+            tokens_input: Number of input tokens
+            tokens_output: Number of output tokens
+            request_count: Number of requests (default: 1)
+            **kwargs: Additional parameters (search_count, image_count, page_count, etc.)
+        
+        Returns:
+            Dict with cost_input, cost_output, and cost_total
+        """
         
         # Get pricing for the provider and model
+        # Try exact match first
         pricing = self.db.query(APIProviderPricing).filter(
             APIProviderPricing.provider == provider,
             APIProviderPricing.model_name == model_name,
             APIProviderPricing.is_active == True
         ).first()
         
+        # If not found, try "default" model name for the provider
         if not pricing:
-            logger.warning(f"No pricing found for {provider.value}:{model_name}, using default estimates")
-            # Use default estimates
-            cost_input = tokens_input * 0.000001  # $1 per 1M tokens default
-            cost_output = tokens_output * 0.000001
-            cost_total = (cost_input + cost_output) * request_count
+            pricing = self.db.query(APIProviderPricing).filter(
+                APIProviderPricing.provider == provider,
+                APIProviderPricing.model_name == "default",
+                APIProviderPricing.is_active == True
+            ).first()
+        
+        # If still not found, check for HuggingFace models (provider is MISTRAL)
+        # Try alternative model name variations
+        if not pricing and provider == APIProvider.MISTRAL:
+            # Try with "gpt-oss-120b" (without full path) if model contains it
+            if "gpt-oss-120b" in model_name.lower():
+                pricing = self.db.query(APIProviderPricing).filter(
+                    APIProviderPricing.provider == provider,
+                    APIProviderPricing.model_name == "gpt-oss-120b",
+                    APIProviderPricing.is_active == True
+                ).first()
+            
+            # Also try with full model path
+            if not pricing:
+                pricing = self.db.query(APIProviderPricing).filter(
+                    APIProviderPricing.provider == provider,
+                    APIProviderPricing.model_name == "openai/gpt-oss-120b:groq",
+                    APIProviderPricing.is_active == True
+                ).first()
+        
+        if not pricing:
+            # Check if we should use env vars for HuggingFace/Mistral
+            if provider == APIProvider.MISTRAL:
+                # Use environment variables for HuggingFace pricing if available
+                hf_input_cost = float(os.getenv('HUGGINGFACE_INPUT_TOKEN_COST', '0.000001'))
+                hf_output_cost = float(os.getenv('HUGGINGFACE_OUTPUT_TOKEN_COST', '0.000003'))
+                logger.info(f"Using HuggingFace pricing from env vars: input={hf_input_cost}, output={hf_output_cost} for model {model_name}")
+                cost_input = tokens_input * hf_input_cost
+                cost_output = tokens_output * hf_output_cost
+                cost_total = cost_input + cost_output
+            else:
+                logger.warning(f"No pricing found for {provider.value}:{model_name}, using default estimates")
+                # Use default estimates
+                cost_input = tokens_input * 0.000001  # $1 per 1M tokens default
+                cost_output = tokens_output * 0.000001
+                cost_total = cost_input + cost_output
         else:
-            # Calculate based on actual pricing
-            cost_input = tokens_input * pricing.cost_per_input_token
-            cost_output = tokens_output * pricing.cost_per_output_token
-            cost_request = request_count * pricing.cost_per_request
+            # Calculate based on actual pricing from database
+            logger.debug(f"Using pricing from DB for {provider.value}:{model_name} - input: {pricing.cost_per_input_token}, output: {pricing.cost_per_output_token}")
+            cost_input = tokens_input * (pricing.cost_per_input_token or 0.0)
+            cost_output = tokens_output * (pricing.cost_per_output_token or 0.0)
+            cost_request = request_count * (pricing.cost_per_request or 0.0)
             
             # Handle special cases for non-LLM APIs
-            cost_search = kwargs.get('search_count', 0) * pricing.cost_per_search
-            cost_image = kwargs.get('image_count', 0) * pricing.cost_per_image
-            cost_page = kwargs.get('page_count', 0) * pricing.cost_per_page
+            cost_search = kwargs.get('search_count', 0) * (pricing.cost_per_search or 0.0)
+            cost_image = kwargs.get('image_count', 0) * (pricing.cost_per_image or 0.0)
+            cost_page = kwargs.get('page_count', 0) * (pricing.cost_per_page or 0.0)
             
             cost_total = cost_input + cost_output + cost_request + cost_search + cost_image + cost_page
         

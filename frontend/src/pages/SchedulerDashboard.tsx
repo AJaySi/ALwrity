@@ -36,6 +36,8 @@ import SchedulerEventHistory from '../components/SchedulerDashboard/SchedulerEve
 import SchedulerCharts from '../components/SchedulerDashboard/SchedulerCharts';
 import TaskMonitoringTabs from '../components/SchedulerDashboard/TaskMonitoringTabs';
 import { TerminalTypography, terminalColors } from '../components/SchedulerDashboard/terminalTheme';
+import { useSchedulerTaskAlerts } from '../hooks/useSchedulerTaskAlerts';
+import TasksNeedingIntervention from '../components/SchedulerDashboard/TasksNeedingIntervention';
 
 // Terminal-themed styled components
 const TerminalContainer = styled(Container)(({ theme }) => ({
@@ -188,7 +190,7 @@ const TerminalLoading = styled(Box)({
 });
 
 const SchedulerDashboard: React.FC = () => {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, userId } = useAuth();
   const [dashboardData, setDashboardData] = useState<SchedulerDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -196,6 +198,12 @@ const SchedulerDashboard: React.FC = () => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
   const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
+  
+  // Poll for tasks needing intervention and show toast notifications
+  useSchedulerTaskAlerts({
+    enabled: isSignedIn && isLoaded,
+    interval: 60000 // Poll every minute
+  });
   
   // Use refs to track loading state without causing re-renders
   const loadingRef = useRef(false);
@@ -657,6 +665,13 @@ const SchedulerDashboard: React.FC = () => {
               <FailuresInsights stats={dashboardData.stats} />
             </Box>
           </Box>
+
+          {/* Tasks Needing Intervention - Show prominently but only when needed */}
+          {userId && (
+            <Box mb={4}>
+              <TasksNeedingIntervention userId={userId} />
+            </Box>
+          )}
 
           {/* Task Monitoring Tabs */}
           <Box mb={4}>

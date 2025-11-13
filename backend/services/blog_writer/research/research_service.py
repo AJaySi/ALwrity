@@ -74,7 +74,9 @@ class ResearchService:
             if cached_result:
                 logger.info(f"Returning cached research result for keywords: {request.keywords}")
                 blog_writer_logger.log_operation_end("research", 0, success=True, cache_hit=True)
-                return BlogResearchResponse(**cached_result)
+                # Normalize cached data to fix None values in confidence_scores
+                normalized_result = self._normalize_cached_research_data(cached_result)
+                return BlogResearchResponse(**normalized_result)
             
             # User ID validation (validation logic is now in Google Grounding provider)
             if not user_id:
@@ -421,7 +423,9 @@ class ResearchService:
             if cached_result:
                 await task_manager.update_progress(task_id, "✅ Found cached research results! Returning instantly...")
                 logger.info(f"Returning cached research result for keywords: {request.keywords}")
-                return BlogResearchResponse(**cached_result)
+                # Normalize cached data to fix None values in confidence_scores
+                normalized_result = self._normalize_cached_research_data(cached_result)
+                return BlogResearchResponse(**normalized_result)
             
             # User ID validation
             if not user_id:
@@ -758,6 +762,49 @@ class ResearchService:
             sources.append(source)
         
         return sources
+
+    def _normalize_cached_research_data(self, cached_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize cached research data to fix None values in confidence_scores.
+        Ensures all GroundingSupport objects have confidence_scores as a list.
+        """
+        if not isinstance(cached_data, dict):
+            return cached_data
+        
+        normalized = cached_data.copy()
+        
+        # Normalize grounding_metadata if present
+        if "grounding_metadata" in normalized and normalized["grounding_metadata"]:
+            grounding_metadata = normalized["grounding_metadata"].copy() if isinstance(normalized["grounding_metadata"], dict) else {}
+            
+            # Normalize grounding_supports
+            if "grounding_supports" in grounding_metadata and isinstance(grounding_metadata["grounding_supports"], list):
+                normalized_supports = []
+                for support in grounding_metadata["grounding_supports"]:
+                    if isinstance(support, dict):
+                        normalized_support = support.copy()
+                        # Fix confidence_scores: ensure it's a list, not None
+                        if normalized_support.get("confidence_scores") is None:
+                            normalized_support["confidence_scores"] = []
+                        elif not isinstance(normalized_support.get("confidence_scores"), list):
+                            # If it's not a list, try to convert or default to empty list
+                            normalized_support["confidence_scores"] = []
+                        # Fix grounding_chunk_indices: ensure it's a list, not None
+                        if normalized_support.get("grounding_chunk_indices") is None:
+                            normalized_support["grounding_chunk_indices"] = []
+                        elif not isinstance(normalized_support.get("grounding_chunk_indices"), list):
+                            normalized_support["grounding_chunk_indices"] = []
+                        # Ensure segment_text is a string
+                        if normalized_support.get("segment_text") is None:
+                            normalized_support["segment_text"] = ""
+                        normalized_supports.append(normalized_support)
+                    else:
+                        normalized_supports.append(support)
+                grounding_metadata["grounding_supports"] = normalized_supports
+            
+            normalized["grounding_metadata"] = grounding_metadata
+        
+        return normalized
 
     def _extract_grounding_metadata(self, gemini_result: Dict[str, Any]) -> GroundingMetadata:
         """Extract detailed grounding metadata from Gemini result."""

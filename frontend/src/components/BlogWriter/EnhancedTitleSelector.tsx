@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BlogOutlineSection } from '../../services/blogWriterApi';
+import { BlogOutlineSection, BlogResearchResponse, blogWriterApi } from '../../services/blogWriterApi';
 
 interface EnhancedTitleSelectorProps {
   titleOptions: string[];
@@ -9,6 +9,8 @@ interface EnhancedTitleSelectorProps {
   sections: BlogOutlineSection[];
   researchTitles?: string[];
   aiGeneratedTitles?: string[];
+  research?: BlogResearchResponse;
+  onTitlesGenerated?: (titles: string[]) => void;
 }
 
 const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({ 
@@ -18,10 +20,15 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
   onCustomTitle,
   sections,
   researchTitles = [],
-  aiGeneratedTitles = []
+  aiGeneratedTitles = [],
+  research,
+  onTitlesGenerated
 }) => {
   const [showModal, setShowModal] = useState(false);
   const [customTitle, setCustomTitle] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedTitles, setGeneratedTitles] = useState<string[]>([]);
+  const [generationProgress, setGenerationProgress] = useState<string>('');
 
   const handleTitleSelect = (title: string) => {
     onTitleSelect(title);
@@ -33,6 +40,57 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
       onCustomTitle(customTitle.trim());
       setCustomTitle('');
       setShowModal(false);
+    }
+  };
+
+  const handleGenerateSEOTitles = async () => {
+    if (!research || !sections.length || isGenerating) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationProgress('Analyzing research data and outline structure...');
+    
+    try {
+      const keywordAnalysis = research.keyword_analysis || {};
+      const primaryKeywords = keywordAnalysis.primary || [];
+      const secondaryKeywords = keywordAnalysis.secondary || [];
+      const contentAngles = research.suggested_angles || [];
+      const searchIntent = keywordAnalysis.search_intent || 'informational';
+
+      // Simulate progress updates
+      setTimeout(() => setGenerationProgress('Extracting keywords and content angles...'), 500);
+      setTimeout(() => setGenerationProgress('Generating SEO-optimized titles with AI...'), 1500);
+
+      const result = await blogWriterApi.generateSEOTitles({
+        research,
+        outline: sections,
+        primary_keywords: primaryKeywords,
+        secondary_keywords: secondaryKeywords,
+        content_angles: contentAngles,
+        search_intent: searchIntent,
+        word_count: sections.reduce((sum, s) => sum + (s.target_words || 0), 0)
+      });
+
+      setGenerationProgress('Finalizing titles...');
+      
+      if (result.success && result.titles) {
+        setTimeout(() => {
+          setGeneratedTitles(result.titles);
+          setGenerationProgress('');
+          if (onTitlesGenerated) {
+            onTitlesGenerated(result.titles);
+          }
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Failed to generate SEO titles:', error);
+      setGenerationProgress('');
+      alert('Failed to generate SEO titles. Please try again.');
+    } finally {
+      setTimeout(() => {
+        setIsGenerating(false);
+      }, 1000);
     }
   };
 
@@ -66,35 +124,39 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
               margin: '0', 
               color: '#666', 
               fontSize: '14px',
-              wordBreak: 'break-word',
               lineHeight: '1.4',
-              maxHeight: '60px',
+              whiteSpace: 'nowrap',
               overflow: 'hidden',
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical'
+              textOverflow: 'ellipsis',
+              maxWidth: '600px'
             }}>
-              {selectedTitle || 'No title selected'}
+              {(selectedTitle || 'No title selected').length > 150 
+                ? (selectedTitle || 'No title selected').substring(0, 150) + '...' 
+                : (selectedTitle || 'No title selected')}
             </p>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              backgroundColor: '#1976d2',
-              color: 'white',
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            ✨ ALwrity it
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{
+                backgroundColor: '#1976d2',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                position: 'relative'
+              }}
+              title="Open title suggestions. Click 'Generate 5 SEO-Optimized Titles' in the modal to create premium titles (50-65 characters) optimized for search engines using your research data and outline."
+            >
+              ✨ ALwrity it
+            </button>
+          </div>
         </div>
       </div>
 
@@ -165,63 +227,163 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
               </button>
             </div>
 
-            {/* Section Information */}
-            <div style={{ 
-              backgroundColor: '#f8f9fa', 
-              borderRadius: '8px', 
-              padding: '16px', 
-              marginBottom: '24px' 
-            }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#333' }}>
-                📋 Current Outline Summary
-              </h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                <div>
-                  <div style={{ fontSize: '14px', color: '#666' }}>Total Sections</div>
-                  <div style={{ fontSize: '18px', fontWeight: '600', color: '#333' }}>{sections.length}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '14px', color: '#666' }}>Total Words</div>
-                  <div style={{ fontSize: '18px', fontWeight: '600', color: '#333' }}>
-                    {sections.reduce((sum, section) => sum + (section.target_words || 0), 0)}
+            {/* Generate SEO Titles Button */}
+            {research && sections.length > 0 && (
+              <div style={{ marginBottom: '24px' }}>
+                <button
+                  onClick={handleGenerateSEOTitles}
+                  disabled={isGenerating}
+                  style={{
+                    width: '100%',
+                    padding: '14px 24px',
+                    backgroundColor: isGenerating ? '#9ca3af' : '#1976d2',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: isGenerating ? 'not-allowed' : 'pointer',
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isGenerating) {
+                      e.currentTarget.style.backgroundColor = '#1565c0';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isGenerating) {
+                      e.currentTarget.style.backgroundColor = '#1976d2';
+                    }
+                  }}
+                >
+                  {isGenerating ? (
+                    <>
+                      <span>⏳</span>
+                      <span>{generationProgress || 'Generating SEO Titles...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>✨</span>
+                      <span>Generate 5 SEO-Optimized Titles</span>
+                    </>
+                  )}
+                </button>
+                {isGenerating && (
+                  <div style={{
+                    width: '100%',
+                    height: '4px',
+                    backgroundColor: '#e5e7eb',
+                    borderRadius: '2px',
+                    marginTop: '12px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      backgroundColor: '#1976d2',
+                      borderRadius: '2px',
+                      animation: 'pulse 1.5s ease-in-out infinite',
+                      width: '100%'
+                    }} />
                   </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '14px', color: '#666' }}>Subheadings</div>
-                  <div style={{ fontSize: '18px', fontWeight: '600', color: '#333' }}>
-                    {sections.reduce((sum, section) => sum + section.subheadings.length, 0)}
-                  </div>
-                </div>
+                )}
+                {isGenerating && generationProgress && (
+                  <p style={{
+                    margin: '8px 0 0 0',
+                    color: '#6b7280',
+                    fontSize: '13px',
+                    textAlign: 'center'
+                  }}>
+                    {generationProgress}
+                  </p>
+                )}
               </div>
-              
-              {/* Section Details */}
-              <div style={{ marginTop: '16px' }}>
-                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#333' }}>Section Details:</h5>
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  {sectionSummary.map((section, index) => (
-                    <div key={index} style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      padding: '8px 12px',
-                      backgroundColor: 'white',
-                      borderRadius: '6px',
-                      border: '1px solid #e0e0e0'
-                    }}>
-                      <span style={{ fontSize: '14px', fontWeight: '500' }}>{section.title}</span>
-                      <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666' }}>
-                        <span>{section.wordCount} words</span>
-                        <span>{section.subheadings} subheadings</span>
-                        <span>{section.keyPoints} key points</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            )}
 
             {/* Title Options */}
             <div style={{ display: 'grid', gap: '24px' }}>
+              {/* Generated SEO Titles */}
+              {generatedTitles.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                    <div style={{ 
+                      width: '40px', 
+                      height: '40px', 
+                      backgroundColor: '#dcfce7', 
+                      borderRadius: '10px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      fontSize: '18px'
+                    }}>
+                      🎯
+                    </div>
+                    <div>
+                      <h4 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#1f2937', fontWeight: '600' }}>
+                        SEO-Optimized Titles
+                      </h4>
+                      <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>
+                        Premium titles optimized for search engines (50-65 characters)
+                      </p>
+                    </div>
+                    <span style={{ 
+                      fontSize: '12px', 
+                      backgroundColor: '#16a34a', 
+                      color: 'white', 
+                      padding: '4px 12px', 
+                      borderRadius: '16px',
+                      fontWeight: '500'
+                    }}>
+                      {generatedTitles.length}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    {generatedTitles.map((title, index) => (
+                      <button
+                        key={`seo-${index}`}
+                        onClick={() => handleTitleSelect(title)}
+                        style={{
+                          width: '100%',
+                          padding: '16px 20px',
+                          border: selectedTitle === title ? '2px solid #16a34a' : '1px solid #e5e7eb',
+                          borderRadius: '12px',
+                          backgroundColor: selectedTitle === title ? '#f0fdf4' : 'white',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          fontSize: '15px',
+                          color: '#1f2937',
+                          transition: 'all 0.2s ease',
+                          lineHeight: '1.4',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedTitle !== title) {
+                            e.currentTarget.style.backgroundColor = '#f9fafb';
+                            e.currentTarget.style.borderColor = '#d1d5db';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedTitle !== title) {
+                            e.currentTarget.style.backgroundColor = 'white';
+                            e.currentTarget.style.borderColor = '#e5e7eb';
+                          }
+                        }}
+                        title={title}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Research Content Angles */}
               {researchTitles.length > 0 && (
                 <div>
@@ -274,7 +436,9 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                           color: '#1f2937',
                           transition: 'all 0.2s ease',
                           lineHeight: '1.4',
-                          wordBreak: 'break-word'
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
                         }}
                         onMouseEnter={(e) => {
                           if (selectedTitle !== title) {
@@ -348,7 +512,9 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                           color: '#1f2937',
                           transition: 'all 0.2s ease',
                           lineHeight: '1.4',
-                          wordBreak: 'break-word'
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
                         }}
                         onMouseEnter={(e) => {
                           if (selectedTitle !== title) {
@@ -448,6 +614,61 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                   >
                     Use Title
                   </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Section Information */}
+            <div style={{ 
+              backgroundColor: '#f8f9fa', 
+              borderRadius: '8px', 
+              padding: '16px', 
+              marginTop: '24px' 
+            }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#333' }}>
+                📋 Current Outline Summary
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                <div>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Total Sections</div>
+                  <div style={{ fontSize: '18px', fontWeight: '600', color: '#333' }}>{sections.length}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Total Words</div>
+                  <div style={{ fontSize: '18px', fontWeight: '600', color: '#333' }}>
+                    {sections.reduce((sum, section) => sum + (section.target_words || 0), 0)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Subheadings</div>
+                  <div style={{ fontSize: '18px', fontWeight: '600', color: '#333' }}>
+                    {sections.reduce((sum, section) => sum + section.subheadings.length, 0)}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Section Details */}
+              <div style={{ marginTop: '16px' }}>
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#333' }}>Section Details:</h5>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {sectionSummary.map((section, index) => (
+                    <div key={index} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      backgroundColor: 'white',
+                      borderRadius: '6px',
+                      border: '1px solid #e0e0e0'
+                    }}>
+                      <span style={{ fontSize: '14px', fontWeight: '500' }}>{section.title}</span>
+                      <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666' }}>
+                        <span>{section.wordCount} words</span>
+                        <span>{section.subheadings} subheadings</span>
+                        <span>{section.keyPoints} key points</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

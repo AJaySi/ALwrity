@@ -27,7 +27,8 @@ def build_seo_data(seo_metadata: Dict[str, Any], default_title: str = None) -> O
     """
     seo_data = {
         'settings': {
-            'keywords': []
+            'keywords': [],
+            'preventAutoRedirect': False  # Required by Wix API schema
         },
         'tags': []
     }
@@ -40,7 +41,8 @@ def build_seo_data(seo_metadata: Dict[str, Any], default_title: str = None) -> O
     if focus_keyword:
         keywords_list.append({
             'term': str(focus_keyword),
-            'isMain': True
+            'isMain': True,
+            'origin': 'USER'  # Required by Wix API
         })
     
     # Add additional keywords from blog_tags or other sources
@@ -51,7 +53,8 @@ def build_seo_data(seo_metadata: Dict[str, Any], default_title: str = None) -> O
             if tag_str and tag_str != focus_keyword:  # Don't duplicate main keyword
                 keywords_list.append({
                     'term': tag_str,
-                    'isMain': False
+                    'isMain': False,
+                    'origin': 'USER'  # Required by Wix API
                 })
     
     # Add social hashtags as keywords if available
@@ -63,8 +66,16 @@ def build_seo_data(seo_metadata: Dict[str, Any], default_title: str = None) -> O
             if hashtag_str and hashtag_str != focus_keyword:
                 keywords_list.append({
                     'term': hashtag_str,
-                    'isMain': False
+                    'isMain': False,
+                    'origin': 'USER'  # Required by Wix API
                 })
+    
+    # CRITICAL: Wix Blog API limits keywords to maximum 5
+    # Prioritize: main keyword first, then most important additional keywords
+    if len(keywords_list) > 5:
+        logger.warning(f"Truncating keywords from {len(keywords_list)} to 5 (Wix API limit)")
+        # Keep main keyword + next 4 most important
+        keywords_list = keywords_list[:5]
     
     seo_data['settings']['keywords'] = keywords_list
     
@@ -89,13 +100,13 @@ def build_seo_data(seo_metadata: Dict[str, Any], default_title: str = None) -> O
         })
     
     # SEO title - 'title' type uses 'children' field, not 'props.content'
+    # Per Wix API example: title tags don't need 'custom' or 'disabled' fields
     seo_title = seo_metadata.get('seo_title') or default_title
     if seo_title:
         tags_list.append({
             'type': 'title',
-            'children': str(seo_title),  # Title tags use 'children', not 'props.content'
-            'custom': True,
-            'disabled': False
+            'children': str(seo_title)  # Title tags use 'children', not 'props.content'
+            # Note: Wix example doesn't show 'custom' or 'disabled' for title tags
         })
     
     # Open Graph tags

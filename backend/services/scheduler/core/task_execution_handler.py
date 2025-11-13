@@ -22,7 +22,8 @@ async def execute_task_async(
     scheduler: 'TaskScheduler',
     task_type: str,
     task: Any,
-    summary: Optional[Dict[str, Any]] = None
+    summary: Optional[Dict[str, Any]] = None,
+    execution_source: str = "scheduler"  # "scheduler" or "manual"
 ):
     """
     Execute a single task asynchronously with user isolation.
@@ -97,6 +98,19 @@ async def execute_task_async(
                         user_id = strategy.user_id
             except Exception as e:
                 logger.debug(f"Could not extract user_id after merge for task {task_id}: {e}")
+        
+        # Check if task is in cool-off (skip if scheduler-triggered, allow if manual)
+        if execution_source == "scheduler":
+            if hasattr(task, 'status') and task.status == "needs_intervention":
+                logger.warning(
+                    f"[Scheduler] ⏸️ Skipping task {task_id} - marked for human intervention. "
+                    f"Use manual trigger to retry."
+                )
+                scheduler.stats['tasks_skipped'] += 1
+                if summary:
+                    summary.setdefault('skipped', 0)
+                    summary['skipped'] += 1
+                return
         
         # Get executor for this task type
         try:

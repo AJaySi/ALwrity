@@ -1,0 +1,428 @@
+"""Story content generation helpers."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from fastapi import HTTPException
+from loguru import logger
+
+from services.story_writer.image_generation_service import StoryImageGenerationService
+
+from .base import StoryServiceBase
+from .outline import StoryOutlineMixin
+
+
+class StoryContentMixin(StoryOutlineMixin):
+    """Provides story drafting and continuation behaviour."""
+
+    # ------------------------------------------------------------------ #
+    # Story start
+    # ------------------------------------------------------------------ #
+
+    def generate_story_start(
+        self,
+        *,
+        premise: str,
+        outline: Any,
+        persona: str,
+        story_setting: str,
+        character_input: str,
+        plot_elements: str,
+        writing_style: str,
+        story_tone: str,
+        narrative_pov: str,
+        audience_age_group: str,
+        content_rating: str,
+        ending_preference: str,
+        story_length: str = "Medium",
+        user_id: str,
+    ) -> str:
+        """Generate the starting section (or full short story)."""
+        persona_prompt = self.build_persona_prompt(
+            persona,
+            story_setting,
+            character_input,
+            plot_elements,
+            writing_style,
+            story_tone,
+            narrative_pov,
+            audience_age_group,
+            content_rating,
+            ending_preference,
+        )
+
+        outline_text = self._format_outline_for_prompt(outline)
+        story_length_lower = story_length.lower()
+        is_short_story = "short" in story_length_lower or "1000" in story_length_lower
+
+        if is_short_story:
+            logger.info(f"[StoryWriter] Generating complete short story (~1000 words) in single call for user {user_id}")
+            short_story_prompt = f"""\
+{persona_prompt}
+
+You have a gripping premise in mind:
+
+{premise}
+
+Your imagination has crafted a rich narrative outline:
+
+{outline_text}
+
+**YOUR TASK:**
+Write the COMPLETE story from beginning to end. This is a SHORT story, so you need to write the entire narrative in a single response.
+
+**STORY LENGTH TARGET:**
+- Target: Approximately 1000 words (900-1100 words acceptable)
+- This is a SHORT story, so be concise but complete
+- Cover all key scenes from your outline
+- Provide a satisfying conclusion that addresses all plot elements
+- Ensure the story makes sense as a complete narrative
+
+**STORY STRUCTURE:**
+1. **Opening**: Establish setting, characters, and initial situation
+2. **Development**: Develop the plot, introduce conflicts, build tension
+3. **Climax**: Reach the story's peak moment
+4. **Resolution**: Resolve conflicts and provide closure
+
+**IMPORTANT INSTRUCTIONS:**
+- Write the COMPLETE story in this single response
+- Aim for approximately 1000 words (900-1100 words)
+- Ensure the story is complete and makes sense as a standalone narrative
+- Include all essential elements from your outline
+- Provide a satisfying ending that matches the ending preference: {ending_preference}
+- Do NOT leave the story incomplete - this is the only generation call for short stories
+- Once you've finished the complete story, conclude naturally - do NOT write IAMDONE
+
+**WRITING STYLE:**
+{self.guidelines}
+
+**REMEMBER:**
+- This is a SHORT story - be concise but complete
+- Write the ENTIRE story in this response
+- Aim for ~1000 words
+- Ensure the story is complete and satisfying
+- Cover all key elements from your outline
+"""
+            try:
+                complete_story = self.generate_with_retry(short_story_prompt, user_id=user_id)
+                complete_story = complete_story.replace("IAMDONE", "").strip()
+                logger.info(
+                    f"[StoryWriter] Generated complete short story ({len(complete_story.split())} words) for user {user_id}"
+                )
+                return complete_story
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.error(f"Short Story Generation Error: {exc}")
+                raise RuntimeError(f"Failed to generate short story: {exc}") from exc
+
+        initial_word_count, _ = self._get_story_length_guidance(story_length)
+
+        starting_prompt = f"""\
+{persona_prompt}
+
+You have a gripping premise in mind:
+
+{premise}
+
+Your imagination has crafted a rich narrative outline:
+
+{outline_text}
+
+First, silently review the outline and the premise. Consider how to start the story.
+
+Start to write the very beginning of the story. You are not expected to finish
+the whole story now. Your writing should be detailed enough that you are only
+scratching the surface of the first bullet of your outline. Try to write AT
+MINIMUM {initial_word_count} WORDS.
+
+**STORY LENGTH TARGET:**
+This story is targeted to be {story_length}. Write with appropriate detail and pacing
+to reach this target length across the entire story. For this initial section, focus
+on establishing the setting, characters, and beginning of the plot in {initial_word_count} words.
+
+{self.guidelines}
+"""
+
+        try:
+            starting_draft = self.generate_with_retry(starting_prompt, user_id=user_id)
+            return starting_draft.strip()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(f"Story Start Generation Error: {exc}")
+            raise RuntimeError(f"Failed to generate story start: {exc}") from exc
+
+    # ------------------------------------------------------------------ #
+    # Continuation
+    # ------------------------------------------------------------------ #
+
+    def continue_story(
+        self,
+        *,
+        premise: str,
+        outline: Any,
+        story_text: str,
+        persona: str,
+        story_setting: str,
+        character_input: str,
+        plot_elements: str,
+        writing_style: str,
+        story_tone: str,
+        narrative_pov: str,
+        audience_age_group: str,
+        content_rating: str,
+        ending_preference: str,
+        story_length: str = "Medium",
+        user_id: str,
+    ) -> str:
+        """Continue writing the story."""
+        persona_prompt = self.build_persona_prompt(
+            persona,
+            story_setting,
+            character_input,
+            plot_elements,
+            writing_style,
+            story_tone,
+            narrative_pov,
+            audience_age_group,
+            content_rating,
+            ending_preference,
+        )
+
+        outline_text = self._format_outline_for_prompt(outline)
+        _, continuation_word_count = self._get_story_length_guidance(story_length)
+        current_word_count = len(story_text.split()) if story_text else 0
+
+        story_length_lower = story_length.lower()
+        if "short" in story_length_lower or "1000" in story_length_lower:
+            # Safety check: short stories shouldn't reach here
+            return "IAMDONE"
+
+        if "long" in story_length_lower or "10000" in story_length_lower:
+            target_total_words = 10000
+        else:
+            target_total_words = 4500
+
+        buffer_target = int(target_total_words * 1.05)
+
+        if current_word_count >= buffer_target:
+            logger.info(
+                f"[StoryWriter] Word count ({current_word_count}) at or past buffer target ({buffer_target}). Story is complete."
+            )
+            return "IAMDONE"
+
+        if current_word_count >= target_total_words and (current_word_count - target_total_words) < 50:
+            logger.info(
+                f"[StoryWriter] Word count ({current_word_count}) is very close to target ({target_total_words}). Story is complete."
+            )
+            return "IAMDONE"
+
+        remaining_words = max(0, buffer_target - current_word_count)
+        if remaining_words < 50:
+            logger.info(f"[StoryWriter] Remaining words ({remaining_words}) are minimal. Story is complete.")
+            return "IAMDONE"
+
+        continuation_prompt = f"""\
+{persona_prompt}
+
+You have a gripping premise in mind:
+
+{premise}
+
+Your imagination has crafted a rich narrative outline:
+
+{outline_text}
+
+You've begun to immerse yourself in this world, and the words are flowing.
+Here's what you've written so far:
+
+{story_text}
+
+=====
+
+First, silently review the outline and story so far. Identify what the single
+next part of your outline you should write.
+
+Your task is to continue where you left off and write the next part of the story.
+You are not expected to finish the whole story now. Your writing should be
+detailed enough that you are only scratching the surface of the next part of
+your outline. Try to write AT MINIMUM {continuation_word_count} WORDS.
+
+**STORY LENGTH TARGET:**
+This story is targeted to be {story_length} (target: {target_total_words} words total, with 5% buffer allowed).
+You have written approximately {current_word_count} words so far, leaving approximately
+{remaining_words} words remaining.
+
+**CRITICAL INSTRUCTIONS - READ CAREFULLY:**
+1. Write the next section with appropriate detail, aiming for approximately {min(continuation_word_count, remaining_words)} words.
+2. **STOP CONDITION:** If after writing this continuation, the total word count will reach or exceed {target_total_words} words, you MUST conclude the story immediately by writing IAMDONE.
+3. The story should reach a natural conclusion that addresses all plot elements and provides satisfying closure.
+4. Once you've written IAMDONE, do NOT write any more content - stop immediately.
+
+**WORD COUNT LIMIT:**
+- Target: {target_total_words} words total (with 5% buffer: {int(target_total_words * 1.05)} words maximum)
+- Current word count: {current_word_count} words
+- Remaining words: {remaining_words} words
+- **CRITICAL: If your continuation would bring the total to {target_total_words} words or more, conclude the story NOW and write IAMDONE.**
+- **Do NOT exceed {int(target_total_words * 1.05)} words. This is a hard limit.**
+- **Ensure the story is complete and makes sense when you write IAMDONE.**
+
+{self.guidelines}
+"""
+
+        try:
+            continuation = self.generate_with_retry(continuation_prompt, user_id=user_id)
+            return continuation.strip()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(f"Story Continuation Error: {exc}")
+            raise RuntimeError(f"Failed to continue story: {exc}") from exc
+
+    # ------------------------------------------------------------------ #
+    # Full generation orchestration
+    # ------------------------------------------------------------------ #
+
+    def generate_full_story(
+        self,
+        *,
+        persona: str,
+        story_setting: str,
+        character_input: str,
+        plot_elements: str,
+        writing_style: str,
+        story_tone: str,
+        narrative_pov: str,
+        audience_age_group: str,
+        content_rating: str,
+        ending_preference: str,
+        user_id: str,
+        max_iterations: int = 10,
+    ) -> Dict[str, Any]:
+        """Generate a complete story using prompt chaining."""
+        try:
+            logger.info(f"[StoryWriter] Generating premise for user {user_id}")
+            premise = self.generate_premise(
+                persona=persona,
+                story_setting=story_setting,
+                character_input=character_input,
+                plot_elements=plot_elements,
+                writing_style=writing_style,
+                story_tone=story_tone,
+                narrative_pov=narrative_pov,
+                audience_age_group=audience_age_group,
+                content_rating=content_rating,
+                ending_preference=ending_preference,
+                user_id=user_id,
+            )
+            if not premise:
+                raise RuntimeError("Failed to generate premise")
+
+            logger.info(f"[StoryWriter] Generating outline for user {user_id}")
+            outline = self.generate_outline(
+                premise=premise,
+                persona=persona,
+                story_setting=story_setting,
+                character_input=character_input,
+                plot_elements=plot_elements,
+                writing_style=writing_style,
+                story_tone=story_tone,
+                narrative_pov=narrative_pov,
+                audience_age_group=audience_age_group,
+                content_rating=content_rating,
+                ending_preference=ending_preference,
+                user_id=user_id,
+            )
+            if not outline:
+                raise RuntimeError("Failed to generate outline")
+
+            logger.info(f"[StoryWriter] Generating story start for user {user_id}")
+            draft = self.generate_story_start(
+                premise=premise,
+                outline=outline,
+                persona=persona,
+                story_setting=story_setting,
+                character_input=character_input,
+                plot_elements=plot_elements,
+                writing_style=writing_style,
+                story_tone=story_tone,
+                narrative_pov=narrative_pov,
+                audience_age_group=audience_age_group,
+                content_rating=content_rating,
+                ending_preference=ending_preference,
+                user_id=user_id,
+            )
+            if not draft:
+                raise RuntimeError("Failed to generate story start")
+
+            iteration = 0
+            while "IAMDONE" not in draft and iteration < max_iterations:
+                iteration += 1
+                logger.info(f"[StoryWriter] Continuation iteration {iteration}/{max_iterations}")
+                continuation = self.continue_story(
+                    premise=premise,
+                    outline=outline,
+                    story_text=draft,
+                    persona=persona,
+                    story_setting=story_setting,
+                    character_input=character_input,
+                    plot_elements=plot_elements,
+                    writing_style=writing_style,
+                    story_tone=story_tone,
+                    narrative_pov=narrative_pov,
+                    audience_age_group=audience_age_group,
+                    content_rating=content_rating,
+                    ending_preference=ending_preference,
+                    user_id=user_id,
+                )
+                if continuation:
+                    draft += "\n\n" + continuation
+                else:
+                    logger.warning(f"[StoryWriter] Empty continuation at iteration {iteration}")
+                    break
+
+            final_story = draft.replace("IAMDONE", "").strip()
+
+            outline_response = outline
+            if isinstance(outline, list):
+                outline_response = "\n".join(
+                    [
+                        f"Scene {scene.get('scene_number', idx + 1)}: {scene.get('title', 'Untitled')}\n"
+                        f"  {scene.get('description', '')}"
+                        for idx, scene in enumerate(outline)
+                    ]
+                )
+
+            return {
+                "premise": premise,
+                "outline": str(outline_response),
+                "story": final_story,
+                "iterations": iteration,
+                "is_complete": "IAMDONE" in draft or iteration >= max_iterations,
+            }
+        except Exception as exc:
+            logger.error(f"[StoryWriter] Error generating full story: {exc}")
+            raise RuntimeError(f"Failed to generate full story: {exc}") from exc
+
+    # ------------------------------------------------------------------ #
+    # Multimedia helpers
+    # ------------------------------------------------------------------ #
+
+    def generate_scene_images(
+        self,
+        *,
+        scenes: List[Dict[str, Any]],
+        user_id: str,
+        provider: Optional[str] = None,
+        width: int = 1024,
+        height: int = 1024,
+        model: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Generate images for story scenes."""
+        image_service = StoryImageGenerationService()
+        return image_service.generate_scene_images(
+            scenes=scenes, user_id=user_id, provider=provider, width=width, height=height, model=model
+        )
+

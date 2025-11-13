@@ -31,7 +31,11 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
       setForceUpdate(prev => prev + 1); // Force re-render
     },
       onComplete: (result) => {
-        console.info('[ResearchAction] ✅ Research completed', { hasResult: !!result });
+        console.info('[ResearchAction] ✅ Research completed (onComplete callback)', { 
+          hasResult: !!result,
+          resultKeys: result ? Object.keys(result) : [],
+          status: polling.currentStatus
+        });
         
         if (result && result.keywords) {
           researchCache.cacheResult(
@@ -45,7 +49,10 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
         // Reset navigation tracking when research completes
         hasNavigatedRef.current = false;
         
+        // Call parent callback first
         onResearchComplete?.(result);
+        
+        // Close modal immediately when research completes
         setCurrentTaskId(null);
         setCurrentMessage('');
         setShowProgressModal(false);
@@ -60,26 +67,47 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
     }
   });
 
-  // Close modal when research completes (status becomes 'completed' or polling stops with result)
+  // Set of statuses that indicate successful completion
+  const COMPLETED_STATUSES = React.useMemo(
+    () => new Set(['completed', 'success', 'succeeded', 'finished']),
+    []
+  );
+
+  // Close modal when research completes (status becomes a completed state or polling stops with a result)
   useEffect(() => {
-    if (showProgressModal && (
-      polling.currentStatus === 'completed' || 
-      (!polling.isPolling && polling.result && polling.currentStatus !== 'failed')
-    )) {
+    const normalizedStatus = (polling.currentStatus || '').toLowerCase();
+    const isCompleted = COMPLETED_STATUSES.has(normalizedStatus);
+    
+    // Check if we have a result (indicates completion even if status isn't updated yet)
+    const hasResult = !!polling.result;
+    
+    // Check if polling stopped and we have a result, or status indicates completion
+    const shouldClose = showProgressModal && (
+      isCompleted || 
+      (hasResult && normalizedStatus !== 'failed') ||
+      (!polling.isPolling && hasResult && normalizedStatus !== 'failed')
+    );
+
+    if (shouldClose) {
       console.info('[ResearchAction] Closing modal - research completed', {
         status: polling.currentStatus,
         isPolling: polling.isPolling,
-        hasResult: !!polling.result
+        hasResult: hasResult,
+        normalizedStatus: normalizedStatus,
+        isCompleted: isCompleted
       });
-      // Small delay to show completion message before closing
-      const timer = setTimeout(() => {
-        setShowProgressModal(false);
-        setCurrentTaskId(null);
-        setCurrentMessage('');
-      }, 500);
-      return () => clearTimeout(timer);
+      // Close modal immediately when research completes
+      setShowProgressModal(false);
+      setCurrentTaskId(null);
+      setCurrentMessage('');
     }
-  }, [polling.currentStatus, polling.isPolling, polling.result, showProgressModal]);
+  }, [
+    COMPLETED_STATUSES,
+    polling.currentStatus,
+    polling.isPolling,
+    polling.result,
+    showProgressModal
+  ]);
 
   useCopilotActionTyped({
     name: 'showResearchForm',
@@ -256,7 +284,7 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
     <>
       {showProgressModal && (
         <ResearchProgressModal
-          open={showProgressModal && polling.currentStatus !== 'completed'}
+          open={showProgressModal}
           title={"Research in progress"}
           status={polling.currentStatus}
           messages={polling.progressMessages}

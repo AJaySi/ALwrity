@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { apiClient, setGlobalSubscriptionErrorHandler } from '../api/client';
 import SubscriptionExpiredModal from '../components/SubscriptionExpiredModal';
 import { saveNavigationState, getCurrentPhaseForTool } from '../utils/navigationState';
+import { showSubscriptionExpiredToast, showUsageLimitToast, showSubscriptionToast } from '../utils/toastNotifications';
 
 export interface SubscriptionLimits {
   gemini_calls: number;
@@ -108,6 +109,32 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       // Update ref immediately so callbacks can access latest value
       subscriptionRef.current = subscriptionData;
 
+      // Check if subscription is expired/inactive and show modal
+      // Show modal if subscription is inactive on initial load (when subscription was null before)
+      // This ensures the modal shows when an end user navigates to the app
+      const wasSubscriptionNull = subscription === null;
+      const subscriptionJustBecameInactive = subscription?.active === true && !subscriptionData.active;
+      
+      if (subscriptionData && !subscriptionData.active) {
+        // Show modal on initial load (when subscription was null) or if subscription just became inactive
+        // This ensures the modal shows when an end user navigates to the app with an inactive subscription
+        if (wasSubscriptionNull || subscriptionJustBecameInactive) {
+          console.log('SubscriptionContext: Subscription is inactive, showing modal', {
+            wasSubscriptionNull,
+            subscriptionJustBecameInactive,
+            subscriptionActive: subscriptionData.active
+          });
+          setIsUsageLimitModal(false);
+          setModalErrorData({
+            message: 'To continue using Alwrity and access all features, you need to renew your subscription.'
+          });
+          setShowModal(true);
+          setLastModalShowTime(Date.now());
+          // Also show toast notification with message similar to modal
+          showSubscriptionExpiredToast();
+        }
+      }
+
       // Detect plan/tier change and start a grace window (5 minutes)
       try {
         const newSignature = `${subscriptionData?.plan || ''}:${subscriptionData?.tier || ''}`;
@@ -175,13 +202,29 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
           // For inactive subscriptions, show modal immediately
           console.log('SubscriptionContext: Showing deferred modal for inactive subscription');
           const errorData = error.response?.data || {};
+          
+          // If errorData is an array, extract the first element
+          let processedErrorData = errorData;
+          if (Array.isArray(errorData)) {
+            processedErrorData = errorData[0] || {};
+          }
+          
+          // If errorData has a 'detail' field, extract it (FastAPI format)
+          if (processedErrorData.detail && typeof processedErrorData.detail === 'object') {
+            processedErrorData = processedErrorData.detail;
+          }
+          
+          const modalMessage = processedErrorData.message || processedErrorData.error || 
+            'To continue using Alwrity and access all features, you need to renew your subscription.';
           setModalErrorData({
-            provider: errorData.provider,
-            usage_info: errorData.usage_info,
-            message: errorData.message || errorData.error
+            provider: processedErrorData.provider,
+            usage_info: processedErrorData.usage_info,
+            message: modalMessage
           });
           setShowModal(true);
           setLastModalShowTime(now);
+          // Also show toast notification
+          showSubscriptionExpiredToast();
         }
       }
     } catch (err: any) {
@@ -348,6 +391,21 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
           setShowModal(true);
           setLastModalShowTime(now);
           
+          // Show toast notification with usage limit message
+          const toastMessage = modalData.message || 
+            'You\'ve reached your monthly usage limit for this plan. Upgrade your plan to get higher limits.';
+          showUsageLimitToast(toastMessage);
+          
+          // Emit custom event for billing page and other listeners
+          window.dispatchEvent(new CustomEvent('subscription-limit-exceeded', {
+            detail: {
+              provider: modalData.provider,
+              usage_info: modalData.usage_info,
+              message: toastMessage,
+              error: errorData
+            }
+          }));
+          
           console.log('SubscriptionContext: Showing usage limit modal', {
             provider: modalData.provider,
             message: modalData.message?.substring(0, 50)
@@ -374,13 +432,17 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         if (!subscription.active) {
           console.log('SubscriptionContext: Showing subscription expired modal');
           setIsUsageLimitModal(false);
+          const modalMessage = errorData.message || errorData.error || 
+            'To continue using Alwrity and access all features, you need to renew your subscription.';
           setModalErrorData({
             provider: errorData.provider,
             usage_info: errorData.usage_info,
-            message: errorData.message || errorData.error
+            message: modalMessage
           });
           setShowModal(true);
           setLastModalShowTime(now);
+          // Also show toast notification
+          showSubscriptionExpiredToast();
           return true;
         }
       }

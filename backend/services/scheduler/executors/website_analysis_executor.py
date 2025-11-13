@@ -106,6 +106,9 @@ class WebsiteAnalysisExecutor(TaskExecutor):
                 task.last_success = datetime.utcnow()
                 task.status = 'active'
                 task.failure_reason = None
+                # Reset failure tracking on success
+                task.consecutive_failures = 0
+                task.failure_pattern = None
                 # Schedule next check based on frequency_days
                 task.next_check = self.calculate_next_execution(
                     task=task,
@@ -123,17 +126,48 @@ class WebsiteAnalysisExecutor(TaskExecutor):
                 )
                 return result
             else:
+                # Analyze failure pattern
+                from services.scheduler.core.failure_detection_service import FailureDetectionService
+                failure_detection = FailureDetectionService(db)
+                pattern = failure_detection.analyze_task_failures(
+                    task.id, "website_analysis", task.user_id
+                )
+                
                 task.last_failure = datetime.utcnow()
                 task.failure_reason = result.error_message
-                task.status = 'failed'
-                # Do NOT update next_check - wait for manual retry
+                
+                if pattern and pattern.should_cool_off:
+                    # Mark task for human intervention
+                    task.status = "needs_intervention"
+                    task.consecutive_failures = pattern.consecutive_failures
+                    task.failure_pattern = {
+                        "consecutive_failures": pattern.consecutive_failures,
+                        "recent_failures": pattern.recent_failures,
+                        "failure_reason": pattern.failure_reason.value,
+                        "error_patterns": pattern.error_patterns,
+                        "cool_off_until": (datetime.utcnow() + timedelta(days=7)).isoformat()
+                    }
+                    # Clear next_check - task won't run automatically
+                    task.next_check = None
+                    
+                    self.logger.warning(
+                        f"Task {task.id} marked for human intervention: "
+                        f"{pattern.consecutive_failures} consecutive failures, "
+                        f"reason: {pattern.failure_reason.value}"
+                    )
+                else:
+                    # Normal failure handling
+                    task.status = 'failed'
+                    task.consecutive_failures = (task.consecutive_failures or 0) + 1
+                    # Do NOT update next_check - wait for manual retry
                 
                 # Commit all changes to database
                 db.commit()
                 
                 self.logger.warning(
                     f"Website analysis failed for task {task.id}. "
-                    f"Error: {result.error_message}. Waiting for manual retry."
+                    f"Error: {result.error_message}. "
+                    f"{'Marked for human intervention' if pattern and pattern.should_cool_off else 'Waiting for manual retry'}."
                 )
                 return result
                 

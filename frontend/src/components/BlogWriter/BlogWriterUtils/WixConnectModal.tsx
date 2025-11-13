@@ -84,10 +84,31 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
       // Store current page URL so we can redirect back after OAuth completes
       // This MUST be stored before calling handleConnect to ensure it's available after redirect
       // We ALWAYS override any existing redirect URL since we know the exact page we're on (Blog Writer)
-      const currentUrl = window.location.href;
+      // Build the redirect URL to ensure it includes the phase (publish) and works with both localhost and ngrok
+      const currentPath = window.location.pathname;
+      const currentHash = window.location.hash || '#publish'; // Default to publish phase if no hash
+      const currentSearch = window.location.search;
+      
+      // Determine the correct origin - if using ngrok, use ngrok origin; otherwise use current origin
+      // This ensures consistency between where OAuth starts and where callback happens
+      const NGROK_ORIGIN = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+      const isUsingNgrok = window.location.origin.includes('localhost') || 
+                           window.location.origin.includes('127.0.0.1') ||
+                           window.location.origin === NGROK_ORIGIN;
+      const redirectOrigin = isUsingNgrok ? NGROK_ORIGIN : window.location.origin;
+      
+      // Build redirect URL with normalized origin
+      const redirectUrl = `${redirectOrigin}${currentPath}${currentHash}${currentSearch}`;
+      
       try {
-        sessionStorage.setItem('wix_oauth_redirect', currentUrl);
-        console.log('[WixConnectModal] Stored redirect URL (overriding any existing):', currentUrl);
+        // Always override any existing redirect URL when connecting from Blog Writer
+        sessionStorage.setItem('wix_oauth_redirect', redirectUrl);
+        console.log('[WixConnectModal] Stored redirect URL (overriding any existing):', {
+          redirectUrl,
+          currentOrigin: window.location.origin,
+          redirectOrigin,
+          isUsingNgrok
+        });
       } catch (e) {
         console.warn('[WixConnectModal] Failed to store redirect URL:', e);
       }

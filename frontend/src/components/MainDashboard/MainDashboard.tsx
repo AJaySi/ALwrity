@@ -340,7 +340,7 @@ const MainDashboard: React.FC = () => {
                 <AnalyticsInsights />
 
                 {/* Billing & Usage Dashboard */}
-                <EnhancedBillingDashboard />
+                <EnhancedBillingDashboard terminalTheme={true} />
               </Box>
             </Box>
 

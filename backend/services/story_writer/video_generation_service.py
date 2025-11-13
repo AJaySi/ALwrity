@@ -1,0 +1,294 @@
+"""
+Video Generation Service for Story Writer
+
+Combines images and audio into animated video clips using MoviePy.
+"""
+
+import os
+import uuid
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+from loguru import logger
+from fastapi import HTTPException
+
+
+class StoryVideoGenerationService:
+    """Service for generating videos from story scenes, images, and audio."""
+    
+    def __init__(self, output_dir: Optional[str] = None):
+        """
+        Initialize the video generation service.
+        
+        Parameters:
+            output_dir (str, optional): Directory to save generated videos.
+                                      Defaults to 'backend/story_videos' if not provided.
+        """
+        if output_dir:
+            self.output_dir = Path(output_dir)
+        else:
+            # Default to backend/story_videos directory
+            base_dir = Path(__file__).parent.parent.parent
+            self.output_dir = base_dir / "story_videos"
+        
+        # Create output directory if it doesn't exist
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"[StoryVideoGeneration] Initialized with output directory: {self.output_dir}")
+    
+    def _generate_video_filename(self, story_title: str = "story") -> str:
+        """Generate a unique filename for a story video."""
+        # Clean story title for filename
+        clean_title = "".join(c if c.isalnum() or c in ('-', '_') else '_' for c in story_title[:30])
+        unique_id = str(uuid.uuid4())[:8]
+        return f"story_{clean_title}_{unique_id}.mp4"
+    
+    def generate_scene_video(
+        self,
+        scene: Dict[str, Any],
+        image_path: str,
+        audio_path: str,
+        user_id: str,
+        duration: Optional[float] = None,
+        fps: int = 24
+    ) -> Dict[str, Any]:
+        """
+        Generate a video clip for a single story scene.
+        
+        Parameters:
+            scene (Dict[str, Any]): Scene data.
+            image_path (str): Path to the scene image file.
+            audio_path (str): Path to the scene audio file.
+            user_id (str): Clerk user ID for subscription checking (for future usage tracking).
+            duration (float, optional): Video duration in seconds. If None, uses audio duration.
+            fps (int): Frames per second for video (default: 24).
+        
+        Returns:
+            Dict[str, Any]: Video metadata including file path, URL, and scene info.
+        """
+        scene_number = scene.get("scene_number", 0)
+        scene_title = scene.get("title", "Untitled")
+        
+        try:
+            logger.info(f"[StoryVideoGeneration] Generating video for scene {scene_number}: {scene_title}")
+            
+            # Import MoviePy
+            try:
+                from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip
+            except ImportError:
+                logger.error("[StoryVideoGeneration] MoviePy not installed. Install with: pip install moviepy imageio imageio-ffmpeg")
+                raise RuntimeError("MoviePy is not installed. Please install it to generate videos.")
+            
+            # Load image and audio
+            image_file = Path(image_path)
+            audio_file = Path(audio_path)
+            
+            if not image_file.exists():
+                raise FileNotFoundError(f"Image not found: {image_path}")
+            if not audio_file.exists():
+                raise FileNotFoundError(f"Audio not found: {audio_path}")
+            
+            # Load audio to get duration
+            audio_clip = AudioFileClip(str(audio_file))
+            audio_duration = audio_clip.duration
+            
+            # Use provided duration or audio duration
+            video_duration = duration if duration is not None else audio_duration
+            
+            # Create image clip
+            image_clip = ImageClip(str(image_file)).set_duration(video_duration)
+            image_clip = image_clip.set_fps(fps)
+            
+            # Set audio to image clip
+            video_clip = image_clip.set_audio(audio_clip)
+            
+            # Generate video filename
+            video_filename = f"scene_{scene_number}_{scene_title.replace(' ', '_').replace('/', '_')[:50]}_{uuid.uuid4().hex[:8]}.mp4"
+            video_path = self.output_dir / video_filename
+            
+            # Write video file
+            video_clip.write_videofile(
+                str(video_path),
+                fps=fps,
+                codec='libx264',
+                audio_codec='aac',
+                preset='medium',
+                threads=4,
+                logger=None  # Disable MoviePy's default logger
+            )
+            
+            # Clean up clips
+            video_clip.close()
+            audio_clip.close()
+            image_clip.close()
+            
+            # Get file size
+            file_size = video_path.stat().st_size
+            
+            logger.info(f"[StoryVideoGeneration] Saved video to: {video_path} ({file_size} bytes)")
+            
+            # Return video metadata
+            return {
+                "scene_number": scene_number,
+                "scene_title": scene_title,
+                "video_path": str(video_path),
+                "video_filename": video_filename,
+                "video_url": f"/api/story/videos/{video_filename}",  # API endpoint to serve videos
+                "duration": video_duration,
+                "fps": fps,
+                "file_size": file_size,
+            }
+            
+        except HTTPException:
+            # Re-raise HTTPExceptions (e.g., 429 subscription limit)
+            raise
+        except Exception as e:
+            logger.error(f"[StoryVideoGeneration] Error generating video for scene {scene_number}: {e}")
+            raise RuntimeError(f"Failed to generate video for scene {scene_number}: {str(e)}") from e
+    
+    def generate_story_video(
+        self,
+        scenes: List[Dict[str, Any]],
+        image_paths: List[str],
+        audio_paths: List[str],
+        user_id: str,
+        story_title: str = "Story",
+        fps: int = 24,
+        transition_duration: float = 0.5,
+        progress_callback: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate a complete story video from multiple scenes.
+        
+        Parameters:
+            scenes (List[Dict[str, Any]]): List of scene data.
+            image_paths (List[str]): List of image file paths for each scene.
+            audio_paths (List[str]): List of audio file paths for each scene.
+            user_id (str): Clerk user ID for subscription checking.
+            story_title (str): Title of the story (default: "Story").
+            fps (int): Frames per second for video (default: 24).
+            transition_duration (float): Duration of transitions between scenes in seconds (default: 0.5).
+            progress_callback (callable, optional): Callback function for progress updates.
+        
+        Returns:
+            Dict[str, Any]: Video metadata including file path, URL, and story info.
+        """
+        if not scenes or not image_paths or not audio_paths:
+            raise ValueError("Scenes, image paths, and audio paths are required")
+        
+        if len(scenes) != len(image_paths) or len(scenes) != len(audio_paths):
+            raise ValueError("Number of scenes, image paths, and audio paths must match")
+        
+        try:
+            logger.info(f"[StoryVideoGeneration] Generating story video for {len(scenes)} scenes")
+            
+            # Import MoviePy
+            try:
+                from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip
+            except ImportError:
+                logger.error("[StoryVideoGeneration] MoviePy not installed. Install with: pip install moviepy imageio imageio-ffmpeg")
+                raise RuntimeError("MoviePy is not installed. Please install it to generate videos.")
+            
+            scene_clips = []
+            total_duration = 0.0
+            
+            for idx, (scene, image_path, audio_path) in enumerate(zip(scenes, image_paths, audio_paths)):
+                try:
+                    scene_number = scene.get("scene_number", idx + 1)
+                    scene_title = scene.get("title", "Untitled")
+                    
+                    logger.info(f"[StoryVideoGeneration] Processing scene {scene_number}/{len(scenes)}: {scene_title}")
+                    
+                    # Load image and audio
+                    image_file = Path(image_path)
+                    audio_file = Path(audio_path)
+                    
+                    if not image_file.exists():
+                        logger.warning(f"[StoryVideoGeneration] Image not found: {image_path}, skipping scene {scene_number}")
+                        continue
+                    if not audio_file.exists():
+                        logger.warning(f"[StoryVideoGeneration] Audio not found: {audio_path}, skipping scene {scene_number}")
+                        continue
+                    
+                    # Load audio to get duration
+                    audio_clip = AudioFileClip(str(audio_file))
+                    audio_duration = audio_clip.duration
+                    
+                    # Create image clip
+                    image_clip = ImageClip(str(image_file)).set_duration(audio_duration)
+                    image_clip = image_clip.set_fps(fps)
+                    
+                    # Set audio to image clip
+                    video_clip = image_clip.set_audio(audio_clip)
+                    scene_clips.append(video_clip)
+                    
+                    total_duration += audio_duration
+                    
+                    # Call progress callback if provided
+                    if progress_callback:
+                        progress = ((idx + 1) / len(scenes)) * 90  # Reserve 10% for final composition
+                        progress_callback(progress, f"Processed scene {scene_number}/{len(scenes)}")
+                    
+                    logger.info(f"[StoryVideoGeneration] Processed scene {idx + 1}/{len(scenes)}")
+                    
+                except Exception as e:
+                    logger.error(f"[StoryVideoGeneration] Failed to process scene {idx + 1}: {e}")
+                    # Continue with next scene instead of failing completely
+                    continue
+            
+            if not scene_clips:
+                raise RuntimeError("No valid scene clips were created")
+            
+            # Concatenate all scene clips
+            logger.info(f"[StoryVideoGeneration] Concatenating {len(scene_clips)} scene clips")
+            final_video = concatenate_videoclips(scene_clips, method="compose")
+            
+            # Generate video filename
+            video_filename = self._generate_video_filename(story_title)
+            video_path = self.output_dir / video_filename
+            
+            # Call progress callback
+            if progress_callback:
+                progress_callback(95, "Rendering final video...")
+            
+            # Write video file
+            final_video.write_videofile(
+                str(video_path),
+                fps=fps,
+                codec='libx264',
+                audio_codec='aac',
+                preset='medium',
+                threads=4,
+                logger=None  # Disable MoviePy's default logger
+            )
+            
+            # Get file size
+            file_size = video_path.stat().st_size
+            
+            # Clean up clips
+            final_video.close()
+            for clip in scene_clips:
+                clip.close()
+            
+            # Call progress callback
+            if progress_callback:
+                progress_callback(100, "Video generation complete!")
+            
+            logger.info(f"[StoryVideoGeneration] Saved story video to: {video_path} ({file_size} bytes)")
+            
+            # Return video metadata
+            return {
+                "video_path": str(video_path),
+                "video_filename": video_filename,
+                "video_url": f"/api/story/videos/{video_filename}",  # API endpoint to serve videos
+                "duration": total_duration,
+                "fps": fps,
+                "file_size": file_size,
+                "num_scenes": len(scene_clips),
+            }
+            
+        except HTTPException:
+            # Re-raise HTTPExceptions (e.g., 429 subscription limit)
+            raise
+        except Exception as e:
+            logger.error(f"[StoryVideoGeneration] Error generating story video: {e}")
+            raise RuntimeError(f"Failed to generate story video: {str(e)}") from e
+

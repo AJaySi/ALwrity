@@ -8,6 +8,7 @@
 import { useEffect, useRef } from 'react';
 import { billingService } from '../services/billingService';
 import { UsageAlert } from '../types/billing';
+import { showToastNotification } from '../utils/toastNotifications';
 
 interface UseOAuthTokenAlertsOptions {
   /**
@@ -135,58 +136,8 @@ export function useOAuthTokenAlerts(options: UseOAuthTokenAlertsOptions = {}) {
   };
 }
 
-/**
- * Show a toast notification using DOM-based approach
- * Works globally across the app, regardless of which component is mounted
- */
-function showToastNotification(message: string, type: 'error' | 'warning' | 'info' = 'info') {
-  const toast = document.createElement('div');
-  
-  // Determine background color based on type
-  const bgColors = {
-    error: '#f44336',
-    warning: '#ff9800',
-    info: '#2196f3',
-    success: '#4caf50'
-  };
-  
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 16px 24px;
-    border-radius: 8px;
-    color: white;
-    font-weight: 500;
-    font-size: 14px;
-    z-index: 10000;
-    max-width: 400px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-    background-color: ${bgColors[type] || bgColors.info};
-    word-wrap: break-word;
-  `;
-  
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  
-  // Animate in
-  setTimeout(() => {
-    toast.style.transform = 'translateX(0)';
-  }, 100);
-  
-  // Remove after 5 seconds (longer for important alerts)
-  const duration = type === 'error' ? 7000 : 5000;
-  setTimeout(() => {
-    toast.style.transform = 'translateX(100%)';
-    setTimeout(() => {
-      if (document.body.contains(toast)) {
-        document.body.removeChild(toast);
-      }
-    }, 300);
-  }, duration);
-}
+// Note: showToastNotification is now imported from utils/toastNotifications.ts
+// This ensures consistent toast notifications across the app
 
 /**
  * Extract platform name from alert title

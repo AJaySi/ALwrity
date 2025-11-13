@@ -5,6 +5,7 @@ Provides endpoints for subscription management and usage monitoring.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import desc, func
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from loguru import logger
@@ -12,12 +13,14 @@ from functools import lru_cache
 
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
+from services.subscription.log_wrapping_service import LogWrappingService
 from services.subscription.schema_utils import ensure_subscription_plan_columns
 import sqlite3
 from middleware.auth_middleware import get_current_user
 from models.subscription_models import (
     APIProvider, SubscriptionPlan, UserSubscription, UsageSummary,
-    APIProviderPricing, UsageAlert, SubscriptionTier, BillingCycle, UsageStatus
+    APIProviderPricing, UsageAlert, SubscriptionTier, BillingCycle, UsageStatus,
+    APIUsageLog, SubscriptionRenewalHistory
 )
 
 router = APIRouter(prefix="/api/subscription", tags=["subscription"])
@@ -525,8 +528,67 @@ async def subscribe_to_plan(
         ).first()
 
         now = datetime.utcnow()
-
+        
+        # Track renewal history - capture BEFORE updating subscription
+        previous_period_start = None
+        previous_period_end = None
+        previous_plan_name = None
+        previous_plan_tier = None
+        renewal_type = "new"
+        renewal_count = 0
+        
+        # Get usage snapshot BEFORE renewal (capture current state)
+        usage_before_snapshot = None
+        current_period = datetime.utcnow().strftime("%Y-%m")
+        usage_before = db.query(UsageSummary).filter(
+            UsageSummary.user_id == user_id,
+            UsageSummary.billing_period == current_period
+        ).first()
+        
+        if usage_before:
+            usage_before_snapshot = {
+                "total_calls": usage_before.total_calls or 0,
+                "total_tokens": usage_before.total_tokens or 0,
+                "total_cost": float(usage_before.total_cost) if usage_before.total_cost else 0.0,
+                "gemini_calls": usage_before.gemini_calls or 0,
+                "mistral_calls": usage_before.mistral_calls or 0,
+                "usage_status": usage_before.usage_status.value if hasattr(usage_before.usage_status, 'value') else str(usage_before.usage_status)
+            }
+        
         if existing_subscription:
+            # This is a renewal/update - capture previous subscription state BEFORE updating
+            previous_period_start = existing_subscription.current_period_start
+            previous_period_end = existing_subscription.current_period_end
+            previous_plan = existing_subscription.plan
+            previous_plan_name = previous_plan.name if previous_plan else None
+            previous_plan_tier = previous_plan.tier.value if previous_plan else None
+            
+            # Determine renewal type
+            if previous_plan and previous_plan.id == plan_id:
+                # Same plan - this is a renewal
+                renewal_type = "renewal"
+            elif previous_plan:
+                # Different plan - check if upgrade or downgrade
+                tier_order = {"free": 0, "basic": 1, "pro": 2, "enterprise": 3}
+                previous_tier_order = tier_order.get(previous_plan_tier or "free", 0)
+                new_tier_order = tier_order.get(plan.tier.value, 0)
+                if new_tier_order > previous_tier_order:
+                    renewal_type = "upgrade"
+                elif new_tier_order < previous_tier_order:
+                    renewal_type = "downgrade"
+                else:
+                    renewal_type = "renewal"  # Same tier, different plan name
+            
+            # Get renewal count (how many times this user has renewed)
+            last_renewal = db.query(SubscriptionRenewalHistory).filter(
+                SubscriptionRenewalHistory.user_id == user_id
+            ).order_by(SubscriptionRenewalHistory.created_at.desc()).first()
+            
+            if last_renewal:
+                renewal_count = last_renewal.renewal_count + 1
+            else:
+                renewal_count = 1  # First renewal
+            
             # Update existing subscription
             existing_subscription.plan_id = plan_id
             existing_subscription.billing_cycle = BillingCycle(billing_cycle)
@@ -552,7 +614,30 @@ async def subscribe_to_plan(
                 auto_renew=True
             )
             db.add(subscription)
-
+        
+        db.commit()
+        
+        # Create renewal history record AFTER subscription update (so we have the new period_end)
+        renewal_history = SubscriptionRenewalHistory(
+            user_id=user_id,
+            plan_id=plan_id,
+            plan_name=plan.name,
+            plan_tier=plan.tier.value,
+            previous_period_start=previous_period_start,
+            previous_period_end=previous_period_end,
+            new_period_start=now,
+            new_period_end=subscription.current_period_end,
+            billing_cycle=BillingCycle(billing_cycle),
+            renewal_type=renewal_type,
+            renewal_count=renewal_count,
+            previous_plan_name=previous_plan_name,
+            previous_plan_tier=previous_plan_tier,
+            usage_before_renewal=usage_before_snapshot,  # Usage snapshot captured BEFORE renewal
+            payment_amount=plan.price_yearly if billing_cycle == 'yearly' else plan.price_monthly,
+            payment_status="paid",  # Assume paid for now (can be updated if payment processing is added)
+            payment_date=now
+        )
+        db.add(renewal_history)
         db.commit()
 
         # Get current usage BEFORE reset for logging
@@ -884,3 +969,221 @@ async def get_dashboard_data(
     except Exception as e:
         logger.error(f"Error getting dashboard data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/renewal-history/{user_id}")
+async def get_renewal_history(
+    user_id: str,
+    limit: int = Query(50, ge=1, le=100, description="Number of records to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Get subscription renewal history for a user.
+    
+    Returns:
+        - List of renewal history records
+        - Total count for pagination
+    """
+    try:
+        # Verify user can only access their own data
+        if current_user.get('id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Get total count
+        total_count = db.query(SubscriptionRenewalHistory).filter(
+            SubscriptionRenewalHistory.user_id == user_id
+        ).count()
+        
+        # Get paginated results, ordered by created_at descending (most recent first)
+        renewals = db.query(SubscriptionRenewalHistory).filter(
+            SubscriptionRenewalHistory.user_id == user_id
+        ).order_by(SubscriptionRenewalHistory.created_at.desc()).offset(offset).limit(limit).all()
+        
+        # Format renewal history for response
+        renewal_history = []
+        for renewal in renewals:
+            renewal_history.append({
+                'id': renewal.id,
+                'plan_name': renewal.plan_name,
+                'plan_tier': renewal.plan_tier,
+                'previous_period_start': renewal.previous_period_start.isoformat() if renewal.previous_period_start else None,
+                'previous_period_end': renewal.previous_period_end.isoformat() if renewal.previous_period_end else None,
+                'new_period_start': renewal.new_period_start.isoformat() if renewal.new_period_start else None,
+                'new_period_end': renewal.new_period_end.isoformat() if renewal.new_period_end else None,
+                'billing_cycle': renewal.billing_cycle.value if renewal.billing_cycle else None,
+                'renewal_type': renewal.renewal_type,
+                'renewal_count': renewal.renewal_count,
+                'previous_plan_name': renewal.previous_plan_name,
+                'previous_plan_tier': renewal.previous_plan_tier,
+                'usage_before_renewal': renewal.usage_before_renewal,
+                'payment_amount': float(renewal.payment_amount) if renewal.payment_amount else 0.0,
+                'payment_status': renewal.payment_status,
+                'payment_date': renewal.payment_date.isoformat() if renewal.payment_date else None,
+                'created_at': renewal.created_at.isoformat() if renewal.created_at else None
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "renewals": renewal_history,
+                "total_count": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": (offset + limit) < total_count
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting renewal history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/usage-logs")
+async def get_usage_logs(
+    limit: int = Query(50, ge=1, le=5000, description="Number of logs to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    provider: Optional[str] = Query(None, description="Filter by provider"),
+    status_code: Optional[int] = Query(None, description="Filter by HTTP status code"),
+    billing_period: Optional[str] = Query(None, description="Filter by billing period (YYYY-MM)"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Get API usage logs for the current user.
+    
+    Query Params:
+        - limit: Number of logs to return (1-500, default: 50)
+        - offset: Pagination offset (default: 0)
+        - provider: Filter by provider (e.g., "gemini", "openai", "huggingface")
+        - status_code: Filter by HTTP status code (e.g., 200 for success, 400+ for errors)
+        - billing_period: Filter by billing period (YYYY-MM format)
+    
+    Returns:
+        - List of usage logs with API call details
+        - Total count for pagination
+    """
+    try:
+        # Get user_id from current_user
+        user_id = str(current_user.get('id', '')) if current_user else None
+        
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User not authenticated")
+        
+        # Build query
+        query = db.query(APIUsageLog).filter(
+            APIUsageLog.user_id == user_id
+        )
+        
+        # Apply filters
+        if provider:
+            provider_lower = provider.lower()
+            # Handle special case: huggingface maps to MISTRAL enum in database
+            if provider_lower == "huggingface":
+                provider_enum = APIProvider.MISTRAL
+            else:
+                try:
+                    provider_enum = APIProvider(provider_lower)
+                except ValueError:
+                    # Invalid provider, return empty results
+                    return {
+                        "logs": [],
+                        "total_count": 0,
+                        "limit": limit,
+                        "offset": offset,
+                        "has_more": False
+                    }
+            query = query.filter(APIUsageLog.provider == provider_enum)
+        
+        if status_code is not None:
+            query = query.filter(APIUsageLog.status_code == status_code)
+        
+        if billing_period:
+            query = query.filter(APIUsageLog.billing_period == billing_period)
+        
+        # Check and wrap logs if necessary (before getting count)
+        wrapping_service = LogWrappingService(db)
+        wrap_result = wrapping_service.check_and_wrap_logs(user_id)
+        if wrap_result.get('wrapped'):
+            logger.info(f"[UsageLogs] Log wrapping completed for user {user_id}: {wrap_result.get('message')}")
+            # Rebuild query after wrapping (in case filters changed)
+            query = db.query(APIUsageLog).filter(
+                APIUsageLog.user_id == user_id
+            )
+            # Reapply filters
+            if provider:
+                provider_lower = provider.lower()
+                if provider_lower == "huggingface":
+                    provider_enum = APIProvider.MISTRAL
+                else:
+                    try:
+                        provider_enum = APIProvider(provider_lower)
+                    except ValueError:
+                        return {
+                            "logs": [],
+                            "total_count": 0,
+                            "limit": limit,
+                            "offset": offset,
+                            "has_more": False
+                        }
+                query = query.filter(APIUsageLog.provider == provider_enum)
+            if status_code is not None:
+                query = query.filter(APIUsageLog.status_code == status_code)
+            if billing_period:
+                query = query.filter(APIUsageLog.billing_period == billing_period)
+        
+        # Get total count
+        total_count = query.count()
+        
+        # Get paginated results, ordered by timestamp descending (most recent first)
+        logs = query.order_by(desc(APIUsageLog.timestamp)).offset(offset).limit(limit).all()
+        
+        # Format logs for response
+        formatted_logs = []
+        for log in logs:
+            # Determine status based on status_code
+            status = 'success' if 200 <= log.status_code < 300 else 'failed'
+            
+            # Handle provider display name - ALL MISTRAL enum logs are actually HuggingFace
+            # (HuggingFace always maps to MISTRAL enum in the database)
+            provider_display = log.provider.value if log.provider else None
+            if provider_display == "mistral":
+                # All MISTRAL provider logs are HuggingFace calls
+                provider_display = "huggingface"
+            
+            formatted_logs.append({
+                'id': log.id,
+                'timestamp': log.timestamp.isoformat() if log.timestamp else None,
+                'provider': provider_display,
+                'model_used': log.model_used,
+                'endpoint': log.endpoint,
+                'method': log.method,
+                'tokens_input': log.tokens_input or 0,
+                'tokens_output': log.tokens_output or 0,
+                'tokens_total': log.tokens_total or 0,
+                'cost_input': float(log.cost_input) if log.cost_input else 0.0,
+                'cost_output': float(log.cost_output) if log.cost_output else 0.0,
+                'cost_total': float(log.cost_total) if log.cost_total else 0.0,
+                'response_time': float(log.response_time) if log.response_time else 0.0,
+                'status_code': log.status_code,
+                'status': status,
+                'error_message': log.error_message,
+                'billing_period': log.billing_period,
+                'retry_count': log.retry_count or 0,
+                'is_aggregated': log.endpoint == "[AGGREGATED]"  # Flag to indicate aggregated log
+            })
+        
+        return {
+            "logs": formatted_logs,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total_count
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting usage logs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get usage logs: {str(e)}")

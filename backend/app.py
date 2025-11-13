@@ -16,7 +16,15 @@ from services.subscription import monitoring_middleware
 from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager, OnboardingManager
 
 # Load environment variables
-load_dotenv()
+# Try multiple locations for .env file
+from pathlib import Path
+backend_dir = Path(__file__).parent
+project_root = backend_dir.parent
+
+# Load from backend/.env first (higher priority), then root .env
+load_dotenv(backend_dir / '.env')  # backend/.env
+load_dotenv(project_root / '.env')  # root .env (fallback)
+load_dotenv()  # CWD .env (fallback)
 
 # Set up clean logging for end users
 from logging_config import setup_clean_logging
@@ -317,6 +325,13 @@ async def startup_event():
         # Start task scheduler
         from services.scheduler import get_scheduler
         await get_scheduler().start()
+        
+        # Check Wix API key configuration
+        wix_api_key = os.getenv('WIX_API_KEY')
+        if wix_api_key:
+            logger.warning(f"✅ WIX_API_KEY loaded ({len(wix_api_key)} chars, starts with '{wix_api_key[:10]}...')")
+        else:
+            logger.warning("⚠️ WIX_API_KEY not found in environment - Wix publishing may fail")
         
         logger.info("ALwrity backend started successfully")
     except Exception as e:

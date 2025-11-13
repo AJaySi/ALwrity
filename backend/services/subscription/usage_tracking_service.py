@@ -42,10 +42,19 @@ class UsageTrackingService:
             default_models = {
                 "gemini": "gemini-2.5-flash",  # Use Flash as default (cost-effective)
                 "openai": "gpt-4o-mini",       # Use Mini as default (cost-effective)
-                "anthropic": "claude-3.5-sonnet"  # Use Sonnet as default
+                "anthropic": "claude-3.5-sonnet",  # Use Sonnet as default
+                "mistral": "openai/gpt-oss-120b:groq"  # HuggingFace default model
             }
             
-            model_name = model_used or default_models.get(provider.value, f"{provider.value}-default")
+            # For HuggingFace (stored as MISTRAL), use the actual model name or default
+            if provider == APIProvider.MISTRAL:
+                # HuggingFace models - try to match the actual model name from model_used
+                if model_used:
+                    model_name = model_used
+                else:
+                    model_name = default_models.get("mistral", "openai/gpt-oss-120b:groq")
+            else:
+                model_name = model_used or default_models.get(provider.value, f"{provider.value}-default")
             
             cost_data = self.pricing_service.calculate_api_cost(
                 provider=provider,
@@ -344,46 +353,106 @@ class UsageTrackingService:
                 'limits': limits,
                 'provider_breakdown': provider_breakdown,
                 'alerts': [],
-                'usage_percentages': usage_percentages
+                'usage_percentages': {}
             }
         
-        # Calculate usage percentages
+        # Provider breakdown - calculate costs first, then use for percentages
+        # Only include Gemini and HuggingFace (HuggingFace is stored under MISTRAL enum)
+        provider_breakdown = {}
+        
+        # Gemini
+        gemini_calls = getattr(summary, "gemini_calls", 0) or 0
+        gemini_tokens = getattr(summary, "gemini_tokens", 0) or 0
+        gemini_cost = getattr(summary, "gemini_cost", 0.0) or 0.0
+        
+        # If gemini cost is 0 but there are calls, calculate from usage logs
+        if gemini_calls > 0 and gemini_cost == 0.0:
+            gemini_logs = self.db.query(APIUsageLog).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.provider == APIProvider.GEMINI,
+                APIUsageLog.billing_period == billing_period
+            ).all()
+            if gemini_logs:
+                gemini_cost = sum(float(log.cost_total or 0.0) for log in gemini_logs)
+                logger.info(f"[UsageStats] Calculated gemini cost from {len(gemini_logs)} logs: ${gemini_cost:.6f}")
+        
+        provider_breakdown['gemini'] = {
+            'calls': gemini_calls,
+            'tokens': gemini_tokens,
+            'cost': gemini_cost
+        }
+        
+        # HuggingFace (stored as MISTRAL in database)
+        mistral_calls = getattr(summary, "mistral_calls", 0) or 0
+        mistral_tokens = getattr(summary, "mistral_tokens", 0) or 0
+        mistral_cost = getattr(summary, "mistral_cost", 0.0) or 0.0
+        
+        # If mistral (HuggingFace) cost is 0 but there are calls, calculate from usage logs
+        if mistral_calls > 0 and mistral_cost == 0.0:
+            mistral_logs = self.db.query(APIUsageLog).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.provider == APIProvider.MISTRAL,
+                APIUsageLog.billing_period == billing_period
+            ).all()
+            if mistral_logs:
+                mistral_cost = sum(float(log.cost_total or 0.0) for log in mistral_logs)
+                logger.info(f"[UsageStats] Calculated mistral (HuggingFace) cost from {len(mistral_logs)} logs: ${mistral_cost:.6f}")
+        
+        provider_breakdown['huggingface'] = {
+            'calls': mistral_calls,
+            'tokens': mistral_tokens,
+            'cost': mistral_cost
+        }
+        
+        # Calculate total cost from provider breakdown if summary total_cost is 0
+        calculated_total_cost = gemini_cost + mistral_cost
+        summary_total_cost = summary.total_cost or 0.0
+        # Use calculated cost if summary cost is 0, otherwise use summary cost (it's more accurate)
+        final_total_cost = summary_total_cost if summary_total_cost > 0 else calculated_total_cost
+        
+        # If we calculated costs from logs, update the summary for future requests
+        if calculated_total_cost > 0 and summary_total_cost == 0.0:
+            logger.info(f"[UsageStats] Updating summary costs: total_cost={final_total_cost:.6f}, gemini_cost={gemini_cost:.6f}, mistral_cost={mistral_cost:.6f}")
+            summary.total_cost = final_total_cost
+            summary.gemini_cost = gemini_cost
+            summary.mistral_cost = mistral_cost
+            try:
+                self.db.commit()
+            except Exception as e:
+                logger.error(f"[UsageStats] Error updating summary costs: {e}")
+                self.db.rollback()
+        
+        # Calculate usage percentages - only for Gemini and HuggingFace
+        # Use the calculated costs for accurate percentages
         usage_percentages = {}
         if limits:
-            for provider in APIProvider:
-                provider_name = provider.value
-                current_calls = getattr(summary, f"{provider_name}_calls", 0) or 0
-                call_limit = limits['limits'].get(f"{provider_name}_calls", 0) or 0
-                
-                if call_limit > 0:
-                    usage_percentages[f"{provider_name}_calls"] = (current_calls / call_limit) * 100
-                else:
-                    usage_percentages[f"{provider_name}_calls"] = 0
+            # Gemini
+            gemini_call_limit = limits['limits'].get("gemini_calls", 0) or 0
+            if gemini_call_limit > 0:
+                usage_percentages['gemini_calls'] = (gemini_calls / gemini_call_limit) * 100
+            else:
+                usage_percentages['gemini_calls'] = 0
             
-            # Cost usage percentage
+            # HuggingFace (stored as mistral in database)
+            mistral_call_limit = limits['limits'].get("mistral_calls", 0) or 0
+            if mistral_call_limit > 0:
+                usage_percentages['mistral_calls'] = (mistral_calls / mistral_call_limit) * 100
+            else:
+                usage_percentages['mistral_calls'] = 0
+            
+            # Cost usage percentage - use final_total_cost (calculated from logs if needed)
             cost_limit = limits['limits'].get('monthly_cost', 0) or 0
-            total_cost = summary.total_cost or 0
             if cost_limit > 0:
-                usage_percentages['cost'] = (total_cost / cost_limit) * 100
+                usage_percentages['cost'] = (final_total_cost / cost_limit) * 100
             else:
                 usage_percentages['cost'] = 0
-        
-        # Provider breakdown
-        provider_breakdown = {}
-        for provider in APIProvider:
-            provider_name = provider.value
-            provider_breakdown[provider_name] = {
-                'calls': getattr(summary, f"{provider_name}_calls", 0) or 0,
-                'tokens': getattr(summary, f"{provider_name}_tokens", 0) or 0,
-                'cost': getattr(summary, f"{provider_name}_cost", 0.0) or 0.0
-            }
         
         return {
             'billing_period': billing_period,
             'usage_status': summary.usage_status.value if hasattr(summary.usage_status, 'value') else str(summary.usage_status),
             'total_calls': summary.total_calls or 0,
             'total_tokens': summary.total_tokens or 0,
-            'total_cost': summary.total_cost or 0.0,
+            'total_cost': final_total_cost,
             'avg_response_time': summary.avg_response_time or 0.0,
             'error_rate': summary.error_rate or 0.0,
             'limits': limits,

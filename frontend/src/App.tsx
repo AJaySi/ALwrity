@@ -11,6 +11,7 @@ import ContentPlanningDashboard from './components/ContentPlanningDashboard/Cont
 import FacebookWriter from './components/FacebookWriter/FacebookWriter';
 import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
 import BlogWriter from './components/BlogWriter/BlogWriter';
+import StoryWriter from './components/StoryWriter/StoryWriter';
 import PricingPage from './components/Pricing/PricingPage';
 import WixTestPage from './components/WixTestPage/WixTestPage';
 import WixCallbackPage from './components/WixCallbackPage/WixCallbackPage';
@@ -19,6 +20,7 @@ import BingCallbackPage from './components/BingCallbackPage/BingCallbackPage';
 import BingAnalyticsStorage from './components/BingAnalyticsStorage/BingAnalyticsStorage';
 import ResearchTest from './pages/ResearchTest';
 import SchedulerDashboard from './pages/SchedulerDashboard';
+import BillingPage from './pages/BillingPage';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
 import Landing from './components/Landing/Landing';
@@ -31,6 +33,7 @@ import { CopilotKitHealthProvider } from './contexts/CopilotKitHealthContext';
 import { useOAuthTokenAlerts } from './hooks/useOAuthTokenAlerts';
 
 import { setAuthTokenGetter, setClerkSignOut } from './api/client';
+import { setBillingAuthTokenGetter } from './services/billingService';
 import { useOnboarding } from './contexts/OnboardingContext';
 import { useState, useEffect } from 'react';
 import ConnectionErrorPage from './components/shared/ConnectionErrorPage';
@@ -246,10 +249,25 @@ const InitialRouteHandler: React.FC = () => {
   // 3. Check subscription status first
   const isNewUser = !subscription || subscription.plan === 'none';
   
-  // No active subscription → Must subscribe first
+  // No active subscription → Show modal (SubscriptionContext handles this)
+  // Don't redirect immediately - let the modal show first
+  // User can click "Renew Subscription" button in modal to go to pricing
+  // Or click "Maybe Later" to dismiss (but they still can't use features)
   if (isNewUser || !subscription.active) {
-    console.log('InitialRouteHandler: No active subscription → Pricing page');
-    return <Navigate to="/pricing" replace />;
+    console.log('InitialRouteHandler: No active subscription - modal will be shown by SubscriptionContext');
+    // Note: SubscriptionContext will show the modal automatically when subscription is inactive
+    // We still redirect to pricing for new users, but allow existing users with expired subscriptions
+    // to see the modal first. The modal has a "Renew Subscription" button that navigates to pricing.
+    // For new users (no subscription at all), redirect to pricing immediately
+    if (isNewUser) {
+      console.log('InitialRouteHandler: New user (no subscription) → Pricing page');
+      return <Navigate to="/pricing" replace />;
+    }
+    // For existing users with inactive subscription, show modal but don't redirect immediately
+    // The modal will be shown by SubscriptionContext, and user can click "Renew Subscription"
+    // Allow access to dashboard (modal will be shown and block functionality)
+    console.log('InitialRouteHandler: Inactive subscription - allowing access to show modal');
+    // Continue to onboarding/dashboard flow - modal will be shown by SubscriptionContext
   }
 
   // 4. Has active subscription, check onboarding status
@@ -294,7 +312,7 @@ const TokenInstaller: React.FC = () => {
   
   // Install token getter for API calls
   useEffect(() => {
-    setAuthTokenGetter(async () => {
+    const tokenGetter = async () => {
       try {
         const template = process.env.REACT_APP_CLERK_JWT_TEMPLATE;
         // If a template is provided and it's not a placeholder, request a template-specific JWT
@@ -306,7 +324,13 @@ const TokenInstaller: React.FC = () => {
       } catch {
         return null;
       }
-    });
+    };
+    
+    // Set token getter for main API client
+    setAuthTokenGetter(tokenGetter);
+    
+    // Set token getter for billing API client (same function)
+    setBillingAuthTokenGetter(tokenGetter);
   }, [getToken]);
   
   // Install Clerk signOut function for handling expired tokens
@@ -425,7 +449,9 @@ const App: React.FC = () => {
                 <Route path="/facebook-writer" element={<ProtectedRoute><FacebookWriter /></ProtectedRoute>} />
                 <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                 <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
+                <Route path="/story-writer" element={<ProtectedRoute><StoryWriter /></ProtectedRoute>} />
                 <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
+                <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/research-test" element={<ResearchTest />} />
                 <Route path="/wix-test" element={<WixTestPage />} />
