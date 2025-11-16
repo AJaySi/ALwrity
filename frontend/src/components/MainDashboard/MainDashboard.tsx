@@ -13,7 +13,6 @@ import { SubscriptionGuard } from '../SubscriptionGuard';
 
 // Shared components
 import DashboardHeader from '../shared/DashboardHeader';
-import SystemStatusIndicator from '../ContentPlanningDashboard/components/SystemStatusIndicator';
 import LoadingSkeleton from '../shared/LoadingSkeleton';
 import ErrorDisplay from '../shared/ErrorDisplay';
 import ContentLifecyclePillars from './ContentLifecyclePillars';
@@ -285,7 +284,6 @@ const MainDashboard: React.FC = () => {
               title="Alwrity Content Hub"
               subtitle=""
               statusChips={[]}
-              rightContent={<SystemStatusIndicator />}
               customIcon={AskAlwrityIcon}
               workflowControls={{
                 onStartWorkflow: handleStartWorkflow,

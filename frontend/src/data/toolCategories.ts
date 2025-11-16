@@ -20,6 +20,7 @@ import {
   Audiotrack as AudioIcon,
   VideoLibrary as VideoIcon
 } from '@mui/icons-material';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import { ToolCategories } from '../components/shared/types';
 
 export const toolCategories: ToolCategories = {
@@ -35,6 +36,15 @@ export const toolCategories: ToolCategories = {
         status: 'beta',
         path: '/blog-writer',
         features: ['SEO Optimized', 'Multiple Formats', 'Custom Tone', 'Research Integration', 'Plagiarism Free'],
+        isHighlighted: true
+      },
+      {
+        name: 'Story Writer',
+        description: 'Create stories with AI: outline, images, narration, and video',
+        icon: React.createElement(MenuBookIcon),
+        status: 'beta',
+        path: '/story-writer',
+        features: ['Structured Outline', 'Image Generation', 'Audio Narration', 'Story Video'],
         isHighlighted: true
       },
       {

@@ -27,40 +27,64 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
   };
 
   return (
-    <Paper 
-      sx={{ 
-        p: 3,
-        backgroundColor: '#F7F3E9', // Warm cream/parchment color
-        color: '#2C2416', // Dark brown text for readability
-        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08)',
-      }}
-    >
+    <Box sx={{ position: 'relative' }}>
       {onReset && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Box sx={{ position: 'absolute', top: -8, right: -8, zIndex: 10 }}>
         <Tooltip title="Restart Story (Clear all data and start from beginning)">
           <IconButton
             onClick={handleReset}
             sx={{
-              color: '#5D4037',
+                color: 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
               '&:hover': {
-                backgroundColor: '#E8E5D3',
-                color: '#1A1611',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  color: 'white',
               },
             }}
             size="small"
           >
-            <RefreshIcon />
+              <RefreshIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         </Box>
       )}
-      <Stepper activeStep={activeStep} alternativeLabel>
+      <Stepper 
+        activeStep={activeStep} 
+        alternativeLabel
+        sx={{
+          backgroundColor: 'transparent',
+          '& .MuiStepLabel-label': {
+            color: 'rgba(255, 255, 255, 0.9)',
+            '&.Mui-active': {
+              color: 'white',
+            },
+            '&.Mui-completed': {
+              color: 'rgba(255, 255, 255, 0.7)',
+            },
+            '&.Mui-disabled': {
+              color: 'rgba(255, 255, 255, 0.4)',
+            },
+          },
+          '& .MuiStepLabel-iconContainer': {
+            '& .MuiSvgIcon-root': {
+              color: 'rgba(255, 255, 255, 0.3)',
+              '&.Mui-active': {
+                color: 'rgba(255, 255, 255, 0.6)',
+              },
+              '&.Mui-completed': {
+                color: 'rgba(255, 255, 255, 0.5)',
+              },
+            },
+          },
+        }}
+      >
         {phases.map((phase) => (
           <Step key={phase.id} completed={phase.completed} disabled={phase.disabled}>
             <StepButton
               onClick={() => !phase.disabled && onPhaseClick(phase.id)}
               disabled={phase.disabled}
               sx={{
+                padding: '8px 4px',
                 '& .MuiStepLabel-root': {
                   cursor: phase.disabled ? 'not-allowed' : 'pointer',
                 },
@@ -70,22 +94,33 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
                 StepIconComponent={() => (
                   <Box
                     sx={{
-                      width: 40,
-                      height: 40,
+                      width: 32,
+                      height: 32,
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       backgroundColor: phase.current
-                        ? 'primary.main'
+                        ? 'rgba(255, 255, 255, 0.9)'
                         : phase.completed
-                        ? 'success.main'
+                        ? 'rgba(76, 175, 80, 0.9)'
                         : phase.disabled
-                        ? 'grey.300'
-                        : 'grey.200',
-                      color: phase.current || phase.completed ? 'white' : 'text.secondary',
-                      fontSize: '1.2rem',
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'rgba(255, 255, 255, 0.3)',
+                      color: phase.current 
+                        ? '#667eea'
+                        : phase.completed 
+                        ? 'white' 
+                        : 'rgba(255, 255, 255, 0.7)',
+                      fontSize: '1rem',
                       fontWeight: phase.current ? 600 : 400,
+                      transition: 'all 0.2s ease',
+                      '&:hover': !phase.disabled ? {
+                        backgroundColor: phase.current
+                          ? 'rgba(255, 255, 255, 1)'
+                          : 'rgba(255, 255, 255, 0.4)',
+                        transform: 'scale(1.05)',
+                      } : {},
                     }}
                   >
                     {phase.icon}
@@ -93,29 +128,26 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
                 )}
               >
                 <Typography
-                  variant="body2"
+                  variant="caption"
                   sx={{
                     fontWeight: phase.current ? 600 : 400,
-                    color: phase.disabled ? '#9E9E9E' : '#2C2416', // Dark brown text
+                    fontSize: '0.75rem',
+                    color: phase.disabled 
+                      ? 'rgba(255, 255, 255, 0.4)' 
+                      : phase.current 
+                      ? 'white' 
+                      : 'rgba(255, 255, 255, 0.8)',
+                    mt: 0.5,
                   }}
                 >
                   {phase.name}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: phase.disabled ? '#9E9E9E' : '#5D4037', // Medium brown for secondary text
-                    fontSize: '0.7rem',
-                  }}
-                >
-                  {phase.description}
                 </Typography>
               </StepLabel>
             </StepButton>
           </Step>
         ))}
       </Stepper>
-    </Paper>
+    </Box>
   );
 };
 

@@ -72,11 +72,11 @@ class StoryAudioGenerationService:
             logger.info(f"[StoryAudioGeneration] Generated audio using gTTS: {output_path}")
             return True
             
-        except ImportError:
-            logger.error("[StoryAudioGeneration] gTTS not installed. Install with: pip install gtts")
+        except ImportError as e:
+            logger.error(f"[StoryAudioGeneration] gTTS not installed. ImportError: {e}. Install with: pip install gtts")
             return False
         except Exception as e:
-            logger.error(f"[StoryAudioGeneration] Error generating audio with gTTS: {e}")
+            logger.error(f"[StoryAudioGeneration] Error generating audio with gTTS: {type(e).__name__}: {e}")
             return False
     
     def _generate_audio_pyttsx3(

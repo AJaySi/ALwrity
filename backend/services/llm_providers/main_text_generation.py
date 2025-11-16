@@ -438,6 +438,45 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                             current_tokens_before = 0
                             new_tokens = 0
                         
+                        # Determine tracked tokens (after any safety capping)
+                        tracked_tokens_input = min(tokens_input, tokens_total)
+                        tracked_tokens_output = max(tokens_total - tracked_tokens_input, 0)
+                        
+                        # Calculate and persist cost for this call
+                        try:
+                            cost_info = pricing.calculate_api_cost(
+                                provider=provider_enum,
+                                model_name=model,
+                                tokens_input=tracked_tokens_input,
+                                tokens_output=tracked_tokens_output,
+                                request_count=1
+                            )
+                            cost_total = cost_info.get('cost_total', 0.0) or 0.0
+                        except Exception as cost_error:
+                            cost_total = 0.0
+                            logger.error(f"[llm_text_gen] ❌ Failed to calculate API cost: {cost_error}", exc_info=True)
+                        
+                        if cost_total > 0:
+                            logger.debug(f"[llm_text_gen] 💰 Calculated cost for {provider_name}: ${cost_total:.6f}")
+                            update_costs_query = text(f"""
+                                UPDATE usage_summaries 
+                                SET {provider_name}_cost = COALESCE({provider_name}_cost, 0) + :cost,
+                                    total_cost = COALESCE(total_cost, 0) + :cost
+                                WHERE user_id = :user_id AND billing_period = :period
+                            """)
+                            db_track.execute(update_costs_query, {
+                                'cost': cost_total,
+                                'user_id': user_id,
+                                'period': current_period
+                            })
+                            
+                            # Keep ORM object in sync for logging/debugging
+                            current_provider_cost = getattr(summary, f"{provider_name}_cost", 0.0) or 0.0
+                            setattr(summary, f"{provider_name}_cost", current_provider_cost + cost_total)
+                            summary.total_cost = (summary.total_cost or 0.0) + cost_total
+                        else:
+                            logger.debug(f"[llm_text_gen] 💰 Cost calculation returned $0 for {provider_name} (tokens_input={tracked_tokens_input}, tokens_output={tracked_tokens_output})")
+                        
                         # Update totals using SQL UPDATE
                         old_total_calls = summary.total_calls or 0
                         old_total_tokens = summary.total_tokens or 0
@@ -716,6 +755,39 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                                 else:
                                     current_tokens_before = 0
                                     new_tokens = 0
+                                
+                                # Determine tracked tokens after any safety capping
+                                tracked_tokens_input = min(tokens_input, tokens_total)
+                                tracked_tokens_output = max(tokens_total - tracked_tokens_input, 0)
+                                
+                                # Calculate and persist cost for this fallback call
+                                cost_total = 0.0
+                                try:
+                                    cost_info = pricing.calculate_api_cost(
+                                        provider=provider_enum,
+                                        model_name=fallback_model,
+                                        tokens_input=tracked_tokens_input,
+                                        tokens_output=tracked_tokens_output,
+                                        request_count=1
+                                    )
+                                    cost_total = cost_info.get('cost_total', 0.0) or 0.0
+                                except Exception as cost_error:
+                                    logger.error(f"[llm_text_gen] ❌ Failed to calculate fallback cost: {cost_error}", exc_info=True)
+                                
+                                if cost_total > 0:
+                                    update_costs_query = text(f"""
+                                        UPDATE usage_summaries 
+                                        SET {provider_name}_cost = COALESCE({provider_name}_cost, 0) + :cost,
+                                            total_cost = COALESCE(total_cost, 0) + :cost
+                                        WHERE user_id = :user_id AND billing_period = :period
+                                    """)
+                                    db_track.execute(update_costs_query, {
+                                        'cost': cost_total,
+                                        'user_id': user_id,
+                                        'period': current_period
+                                    })
+                                    setattr(summary, f"{provider_name}_cost", (getattr(summary, f"{provider_name}_cost", 0.0) or 0.0) + cost_total)
+                                    summary.total_cost = (summary.total_cost or 0.0) + cost_total
                                 
                                 # Update totals (using potentially capped tokens_total from safety check)
                                 summary.total_calls = (summary.total_calls or 0) + 1

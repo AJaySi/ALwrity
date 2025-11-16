@@ -27,6 +27,7 @@ import {
 import { styled } from '@mui/material/styles';
 import { apiClient } from '../../api/client';
 import { TerminalTypography, terminalColors } from './terminalTheme';
+import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../../api/schedulerDashboard';
 
 const InterventionContainer = styled(Box)({
   backgroundColor: 'rgba(26, 26, 26, 0.8)',
@@ -76,23 +77,6 @@ const StatusChip = styled(Chip)(({ severity }: { severity: 'error' | 'warning' }
   fontWeight: 'bold',
 }));
 
-interface TaskNeedingIntervention {
-  task_id: number;
-  task_type: string;
-  user_id: string;
-  platform?: string;
-  website_url?: string;
-  failure_pattern: {
-    consecutive_failures: number;
-    recent_failures: number;
-    failure_reason: string;
-    last_failure_time: string | null;
-    error_patterns: string[];
-  };
-  failure_reason: string | null;
-  last_failure: string | null;
-}
-
 interface TasksNeedingInterventionProps {
   userId: string;
 }
@@ -106,15 +90,8 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{
-        success: boolean;
-        tasks: TaskNeedingIntervention[];
-        count: number;
-      }>(`/api/scheduler/tasks-needing-intervention/${userId}`);
-      
-      if (response.data.success) {
-        setTasks(response.data.tasks || []);
-      }
+      const fetchedTasks = await getTasksNeedingIntervention(userId);
+      setTasks(fetchedTasks || []);
     } catch (error) {
       console.error('Error fetching tasks needing intervention:', error);
     } finally {

@@ -72,8 +72,40 @@ class StoryVideoGenerationService:
             
             # Import MoviePy
             try:
-                from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip
-            except ImportError:
+                # MoviePy v2.x exposes classes at top-level (moviepy.ImageClip, etc)
+                from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+            except Exception as _imp_err:
+                # Detailed diagnostics to help users fix environment issues
+                try:
+                    import sys as _sys
+                    import platform as _platform
+                    import importlib
+                    mv = None
+                    imv = None
+                    ff_path = "unresolved"
+                    try:
+                        mv = importlib.import_module("moviepy")
+                    except Exception:
+                        pass
+                    try:
+                        imv = importlib.import_module("imageio")
+                    except Exception:
+                        pass
+                    try:
+                        import imageio_ffmpeg as _iff
+                        ff_path = _iff.get_ffmpeg_exe()
+                    except Exception:
+                        pass
+                    logger.error(
+                        "[StoryVideoGeneration] MoviePy import failed. "
+                        f"py={_sys.executable} plat={_platform.platform()} "
+                        f"moviepy_ver={getattr(mv,'__version__', 'NA')} "
+                        f"imageio_ver={getattr(imv,'__version__', 'NA')} "
+                        f"ffmpeg_path={ff_path} err={_imp_err}"
+                    )
+                except Exception:
+                    # best-effort diagnostics
+                    pass
                 logger.error("[StoryVideoGeneration] MoviePy not installed. Install with: pip install moviepy imageio imageio-ffmpeg")
                 raise RuntimeError("MoviePy is not installed. Please install it to generate videos.")
             
@@ -182,8 +214,38 @@ class StoryVideoGenerationService:
             
             # Import MoviePy
             try:
-                from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip
-            except ImportError:
+                from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+            except Exception as _imp_err:
+                # Detailed diagnostics to help users fix environment issues
+                try:
+                    import sys as _sys
+                    import platform as _platform
+                    import importlib
+                    mv = None
+                    imv = None
+                    ff_path = "unresolved"
+                    try:
+                        mv = importlib.import_module("moviepy")
+                    except Exception:
+                        pass
+                    try:
+                        imv = importlib.import_module("imageio")
+                    except Exception:
+                        pass
+                    try:
+                        import imageio_ffmpeg as _iff
+                        ff_path = _iff.get_ffmpeg_exe()
+                    except Exception:
+                        pass
+                    logger.error(
+                        "[StoryVideoGeneration] MoviePy import failed. "
+                        f"py={_sys.executable} plat={_platform.platform()} "
+                        f"moviepy_ver={getattr(mv,'__version__', 'NA')} "
+                        f"imageio_ver={getattr(imv,'__version__', 'NA')} "
+                        f"ffmpeg_path={ff_path} err={_imp_err}"
+                    )
+                except Exception:
+                    pass
                 logger.error("[StoryVideoGeneration] MoviePy not installed. Install with: pip install moviepy imageio imageio-ffmpeg")
                 raise RuntimeError("MoviePy is not installed. Please install it to generate videos.")
             

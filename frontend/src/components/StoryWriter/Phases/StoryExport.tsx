@@ -45,6 +45,10 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
   };
 
   const handleGenerateVideo = async () => {
+    if (!state.enableVideoNarration) {
+      setError('Story video generation is disabled in Story Setup.');
+      return;
+    }
     if (!state.outlineScenes || state.outlineScenes.length === 0) {
       setError('Please generate a structured outline first');
       return;
@@ -270,6 +274,7 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
 
           {/* Video Generation */}
           {state.isOutlineStructured && state.outlineScenes && (
+            state.enableVideoNarration ? (
             <Box sx={{ mb: 4 }}>
               <Typography variant="h6" gutterBottom sx={{ color: '#1A1611' }}>
                 Video Generation
@@ -338,6 +343,11 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
                 )}
               </Box>
             </Box>
+            ) : (
+              <Alert severity="info" sx={{ mb: 4 }}>
+                Story video generation is disabled in Story Setup. Enable it to create narrated videos.
+              </Alert>
+            )
           )}
 
           <Divider sx={{ my: 3 }} />

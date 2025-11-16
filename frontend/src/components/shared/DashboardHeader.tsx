@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, Chip, Button, Tooltip } from '@mui/material';
 import { PlayArrow } from '@mui/icons-material';
 import { ShimmerHeader } from './styled';
-import UserBadge from './UserBadge';
-import UsageDashboard from './UsageDashboard';
+import HeaderControls from './HeaderControls';
 import { DashboardHeaderProps } from './types';
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
@@ -407,10 +406,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           )}
           {rightContent}
           
-          {/* Usage Dashboard - Show API usage statistics */}
-          <UsageDashboard compact={true} />
-          
-          <UserBadge colorMode="dark" />
+          <HeaderControls colorMode="dark" />
         </Box>
       </Box>
     </ShimmerHeader>

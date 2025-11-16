@@ -2,6 +2,12 @@
 
 ALwrity's Grounding UI feature provides AI-powered content verification and fact-checking capabilities, ensuring your content is accurate, reliable, and trustworthy. This advanced feature helps maintain content credibility by grounding AI-generated content in verified information sources.
 
+## Visuals
+
+<p align="center">
+  <img src="../../assets/assistive-2.png" alt="Inline fact checking with citations and claim statuses" width="60%">
+</p>
+
 ## What is Grounding UI?
 
 Grounding UI is an intelligent content verification system that connects AI-generated content with real-world data sources, ensuring accuracy and reliability. It provides visual indicators, source citations, and verification status to help you create trustworthy, fact-checked content.

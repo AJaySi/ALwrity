@@ -22,6 +22,7 @@ export interface StoryWriterState {
   storyLength: string;
   enableExplainer: boolean;
   enableIllustration: boolean;
+  enableNarration: boolean;
   enableVideoNarration: boolean;
 
   // Image generation settings
@@ -75,6 +76,7 @@ const DEFAULT_STATE: Partial<StoryWriterState> = {
   storyLength: 'Medium',
   enableExplainer: true,
   enableIllustration: true,
+  enableNarration: true,
   enableVideoNarration: true,
   // Image generation settings
   imageProvider: null,
@@ -252,6 +254,10 @@ export const useStoryWriterState = () => {
     setState((prev) => ({ ...prev, enableIllustration: enabled }));
   }, []);
 
+  const setEnableNarration = useCallback((enabled: boolean) => {
+    setState((prev) => ({ ...prev, enableNarration: enabled }));
+  }, []);
+
   const setEnableVideoNarration = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, enableVideoNarration: enabled }));
   }, []);
@@ -371,6 +377,7 @@ export const useStoryWriterState = () => {
       story_length: state.storyLength,
       enable_explainer: state.enableExplainer,
       enable_illustration: state.enableIllustration,
+      enable_narration: state.enableNarration,
       enable_video_narration: state.enableVideoNarration,
       // Image generation settings
       image_provider: state.imageProvider || undefined,
@@ -422,6 +429,7 @@ export const useStoryWriterState = () => {
     setStoryLength,
     setEnableExplainer,
     setEnableIllustration,
+    setEnableNarration,
     setEnableVideoNarration,
     setImageProvider,
     setImageWidth,

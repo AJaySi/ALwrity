@@ -696,15 +696,15 @@ async def generate_scene_audio(
             audio_filename = result.get("audio_filename") or ""
             
             audio_models.append(
-                StoryAudioResult(
-                    scene_number=result.get("scene_number", 0),
-                    scene_title=result.get("scene_title", "Untitled"),
+            StoryAudioResult(
+                scene_number=result.get("scene_number", 0),
+                scene_title=result.get("scene_title", "Untitled"),
                     audio_filename=audio_filename,
                     audio_url=audio_url,
-                    provider=result.get("provider", "unknown"),
-                    file_size=result.get("file_size", 0),
-                    error=result.get("error")
-                )
+                provider=result.get("provider", "unknown"),
+                file_size=result.get("file_size", 0),
+                error=result.get("error")
+            )
             )
         
         return StoryAudioGenerationResponse(

@@ -20,6 +20,7 @@ export interface StoryGenerationRequest {
   story_length?: string;
   enable_explainer?: boolean;
   enable_illustration?: boolean;
+  enable_narration?: boolean;
   enable_video_narration?: boolean;
   // Image generation settings
   image_provider?: string;

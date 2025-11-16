@@ -11,6 +11,7 @@ import {
   FormControlLabel,
   Checkbox,
   Slider,
+  Chip,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { SectionProps } from './types';
@@ -18,6 +19,27 @@ import { textFieldStyles, accordionStyles } from './styles';
 import { IMAGE_PROVIDERS, AUDIO_PROVIDERS, COMMON_IMAGE_SIZES } from './constants';
 
 export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => {
+  const imageDisabled = !state.enableIllustration;
+  const audioDisabled = !state.enableNarration;
+  const videoDisabled = !state.enableVideoNarration;
+
+  const disabledStyles = (disabled: boolean) =>
+    disabled
+      ? {
+          opacity: 0.4,
+          pointerEvents: 'none',
+        }
+      : undefined;
+
+  const renderHeading = (title: string, disabled: boolean) => (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1A1611' }}>
+        {title}
+      </Typography>
+      {disabled && <Chip label="Disabled in Story Setup" size="small" />}
+    </Box>
+  );
+
   return (
     <Box sx={{ mt: 4 }}>
       <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 600 }}>
@@ -28,13 +50,11 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
       </Typography>
 
       {/* Image Generation Settings */}
-      <Accordion sx={accordionStyles}>
+      <Accordion sx={accordionStyles} disabled={imageDisabled}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1A1611' }}>
-            Image Generation Settings
-          </Typography>
+          {renderHeading('Image Generation Settings', imageDisabled)}
         </AccordionSummary>
-        <AccordionDetails>
+        <AccordionDetails sx={disabledStyles(imageDisabled)}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <TextField
@@ -45,6 +65,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 onChange={(e) => state.setImageProvider(e.target.value || null)}
                 helperText="Select the image generation provider. Leave as 'Auto' to use the default."
                 sx={textFieldStyles}
+                disabled={imageDisabled}
               >
                 {IMAGE_PROVIDERS.map((provider) => (
                   <MenuItem key={provider.value} value={provider.value}>
@@ -66,6 +87,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 }}
                 helperText="Select a common image size or set custom dimensions below."
                 sx={textFieldStyles}
+                disabled={imageDisabled}
               >
                 {COMMON_IMAGE_SIZES.map((size) => (
                   <MenuItem key={`${size.width}x${size.height}`} value={`${size.width}x${size.height}`}>
@@ -84,6 +106,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 inputProps={{ min: 256, max: 2048, step: 64 }}
                 helperText="Image width in pixels (256-2048)"
                 sx={textFieldStyles}
+                disabled={imageDisabled}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -96,6 +119,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 inputProps={{ min: 256, max: 2048, step: 64 }}
                 helperText="Image height in pixels (256-2048)"
                 sx={textFieldStyles}
+                disabled={imageDisabled}
               />
             </Grid>
             <Grid item xs={12}>
@@ -107,6 +131,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 placeholder="Leave empty to use default model"
                 helperText="Specific model to use for image generation (optional)"
                 sx={textFieldStyles}
+                disabled={imageDisabled}
               />
             </Grid>
           </Grid>
@@ -114,13 +139,11 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
       </Accordion>
 
       {/* Video Generation Settings */}
-      <Accordion sx={accordionStyles}>
+      <Accordion sx={accordionStyles} disabled={videoDisabled}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1A1611' }}>
-            Video Generation Settings
-          </Typography>
+          {renderHeading('Video Generation Settings', videoDisabled)}
         </AccordionSummary>
-        <AccordionDetails>
+        <AccordionDetails sx={disabledStyles(videoDisabled)}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <TextField
@@ -132,6 +155,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 inputProps={{ min: 15, max: 60, step: 1 }}
                 helperText="Video frame rate (15-60 fps). Higher values create smoother video but larger files."
                 sx={textFieldStyles}
+                disabled={videoDisabled}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -151,6 +175,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                     { value: 2, label: '2s' },
                   ]}
                   valueLabelDisplay="auto"
+                  disabled={videoDisabled}
                 />
                 <Typography variant="caption" sx={{ color: '#5D4037' }}>
                   Duration of transitions between scenes in seconds
@@ -162,13 +187,11 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
       </Accordion>
 
       {/* Audio Generation Settings */}
-      <Accordion sx={accordionStyles}>
+      <Accordion sx={accordionStyles} disabled={audioDisabled}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1A1611' }}>
-            Audio Generation Settings
-          </Typography>
+          {renderHeading('Audio Generation Settings', audioDisabled)}
         </AccordionSummary>
-        <AccordionDetails>
+        <AccordionDetails sx={disabledStyles(audioDisabled)}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <TextField
@@ -179,6 +202,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 onChange={(e) => state.setAudioProvider(e.target.value)}
                 helperText="Text-to-speech provider for narration"
                 sx={textFieldStyles}
+                disabled={audioDisabled}
               >
                 {AUDIO_PROVIDERS.map((provider) => (
                   <MenuItem key={provider.value} value={provider.value}>
@@ -196,6 +220,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                 placeholder="en"
                 helperText="Language code for text-to-speech (e.g., 'en' for English, 'es' for Spanish)"
                 sx={textFieldStyles}
+                disabled={audioDisabled}
               />
             </Grid>
             {state.audioProvider === 'gtts' && (
@@ -205,6 +230,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                     <Checkbox
                       checked={state.audioSlow}
                       onChange={(e) => state.setAudioSlow(e.target.checked)}
+                      disabled={audioDisabled}
                     />
                   }
                   label="Slow Speech (gTTS only)"
@@ -229,6 +255,7 @@ export const GenerationSettingsSection: React.FC<SectionProps> = ({ state }) => 
                       { value: 300, label: '300' },
                     ]}
                     valueLabelDisplay="auto"
+                    disabled={audioDisabled}
                   />
                   <Typography variant="caption" sx={{ color: '#5D4037' }}>
                     Speech rate in words per minute (pyttsx3 only)

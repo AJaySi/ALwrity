@@ -2,6 +2,13 @@
 
 ALwrity's Assistive Writing feature revolutionizes content creation by providing AI-powered writing assistance that helps you create high-quality, engaging content with minimal effort. This intelligent writing companion understands context, maintains consistency, and adapts to your unique writing style.
 
+## Visuals
+
+<p align="center">
+  <img src="../../assets/assistive-1.png" alt="Assistive writing selection tools" width="45%">
+  <img src="../../assets/assistive-2.png" alt="Inline fact checking and quick edits" width="45%">
+</p>
+
 ## What is Assistive Writing?
 
 Assistive Writing is an AI-powered feature that provides real-time writing assistance, suggestions, and enhancements to help you create compelling content. It combines advanced natural language processing with contextual understanding to offer intelligent recommendations that improve your writing quality and efficiency.

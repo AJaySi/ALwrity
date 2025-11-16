@@ -38,6 +38,7 @@ import TaskMonitoringTabs from '../components/SchedulerDashboard/TaskMonitoringT
 import { TerminalTypography, terminalColors } from '../components/SchedulerDashboard/terminalTheme';
 import { useSchedulerTaskAlerts } from '../hooks/useSchedulerTaskAlerts';
 import TasksNeedingIntervention from '../components/SchedulerDashboard/TasksNeedingIntervention';
+import HeaderControls from '../components/shared/HeaderControls';
 
 // Terminal-themed styled components
 const TerminalContainer = styled(Container)(({ theme }) => ({
@@ -451,6 +452,7 @@ const SchedulerDashboard: React.FC = () => {
                   </TerminalIconButton>
                 </span>
               </Tooltip>
+              <HeaderControls colorMode="dark" />
             </Box>
           </Box>
           

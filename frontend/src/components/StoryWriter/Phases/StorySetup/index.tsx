@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Paper, Typography, Box, Button, Alert, Grid, CircularProgress } from '@mui/material';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useStoryWriterState } from '../../../../hooks/useStoryWriterState';
 import { storyWriterApi, StoryScene } from '../../../../services/storyWriterApi';
 import { triggerSubscriptionError } from '../../../../api/client';
@@ -169,13 +170,28 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
   };
 
   return (
+    <>
     <Paper sx={paperStyles}>
-      <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 600, color: '#1A1611' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', md: 'row' },
+            justifyContent: 'space-between',
+            gap: 3,
+            mb: 4,
+          }}
+        >
+          <Box>
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: '#1A1611' }}>
         Story Setup
       </Typography>
-      <Typography variant="body2" sx={{ mb: 4, color: '#5D4037' }}>
-        Configure your story parameters and premise. Fill in the required fields and click "Next: Generate Outline" to continue.
+            <Typography variant="body2" sx={{ color: '#5D4037' }}>
+              Configure your story parameters and premise. Fill in the required fields and click "Generate Outline" to
+              continue.
       </Typography>
+          </Box>
+          <FeatureCheckboxesSection state={state} layout="inline" />
+        </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
@@ -183,15 +199,37 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
         </Alert>
       )}
 
-      {/* AI Story Setup Button */}
       <Box sx={{ mb: 4 }}>
-        <Button variant="outlined" color="primary" size="large" onClick={() => setIsModalOpen(true)} sx={{ mb: 2 }}>
-          Generate Story Setup With Alwrity AI
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<AutoAwesomeIcon />}
+            onClick={() => setIsModalOpen(true)}
+            sx={{
+              mb: 1,
+              px: 4,
+              py: 1.5,
+              borderRadius: '999px',
+              textTransform: 'none',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #7F5AF0 0%, #2CB67D 100%)',
+              boxShadow: '0 12px 24px rgba(127, 90, 240, 0.3)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #6c4cd4 0%, #24a26f 100%)',
+                boxShadow: '0 14px 30px rgba(127, 90, 240, 0.35)',
+              },
+            }}
+          >
+            Generate Story Setup with Alwrity AI
         </Button>
+          <Typography variant="caption" sx={{ color: '#5D4037' }}>
+            Let Alwrity AI craft a cohesive persona, setting, and premise instantly.
+          </Typography>
       </Box>
 
+        <Grid container spacing={4}>
+          <Grid item xs={12} md={8}>
       <Grid container spacing={3}>
-        {/* Story Parameters Section */}
         <StoryParametersSection
           state={state}
           customValues={customValues}
@@ -200,56 +238,61 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
           onRegeneratePremise={handleRegeneratePremise}
         />
 
-        {/* Story Configuration Section */}
         <StoryConfigurationSection
           state={state}
           customValues={customValues}
           textFieldStyles={textFieldStyles}
           normalizedAudienceAgeGroup={normalizedAudienceAgeGroup}
         />
-
-        {/* Feature Checkboxes Section */}
-        <FeatureCheckboxesSection state={state} customValues={customValues} textFieldStyles={textFieldStyles} />
+            </Grid>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Box
+              sx={{
+                position: { md: 'sticky' },
+                top: { md: 16 },
+              }}
+            >
+              <GenerationSettingsSection state={state} customValues={customValues} textFieldStyles={textFieldStyles} />
+            </Box>
+          </Grid>
       </Grid>
-
-      {/* Generation Settings Section */}
-      <GenerationSettingsSection state={state} customValues={customValues} textFieldStyles={textFieldStyles} />
 
       {/* Generate Button */}
       <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
         <Button
           variant="contained"
           size="large"
-          onClick={handleGenerateOutlineAndProceed}
-          disabled={
-            !state.persona ||
-            !state.storySetting ||
-            !state.characters ||
-            !state.plotElements ||
-            !state.premise ||
-            isGeneratingOutline
-          }
+            onClick={handleGenerateOutlineAndProceed}
+            disabled={
+              !state.persona ||
+              !state.storySetting ||
+              !state.characters ||
+              !state.plotElements ||
+              !state.premise ||
+              isGeneratingOutline
+            }
           sx={{ minWidth: 200 }}
         >
-          {isGeneratingOutline ? (
-            <>
-              <CircularProgress size={20} sx={{ mr: 1 }} />
-              Generating Outline...
-            </>
-          ) : (
-            'Generate Outline'
-          )}
+            {isGeneratingOutline ? (
+              <>
+                <CircularProgress size={20} sx={{ mr: 1 }} />
+                Generating Outline...
+              </>
+            ) : (
+              'Generate Outline'
+            )}
         </Button>
       </Box>
+      </Paper>
 
-      {/* AI Story Setup Modal */}
       <AIStorySetupModal
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         state={state}
         customValuesSetters={customValuesSetters}
       />
-    </Paper>
+    </>
   );
 };
 

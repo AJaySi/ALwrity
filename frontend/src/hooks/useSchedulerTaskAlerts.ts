@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { apiClient } from '../api/client';
 import { showToastNotification } from '../utils/toastNotifications';
+import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../api/schedulerDashboard';
 
 /**
  * Hook to poll for tasks needing intervention and show toast notifications
@@ -31,32 +31,7 @@ export function useSchedulerTaskAlerts(options: {
         isPollingRef.current = true;
 
         // Fetch tasks needing intervention
-        const response = await apiClient.get<{
-          success: boolean;
-          tasks: Array<{
-            task_id: number;
-            task_type: string;
-            user_id: string;
-            platform?: string;
-            website_url?: string;
-            failure_pattern: {
-              consecutive_failures: number;
-              recent_failures: number;
-              failure_reason: string;
-              last_failure_time: string | null;
-              error_patterns: string[];
-            };
-            failure_reason: string | null;
-            last_failure: string | null;
-          }>;
-          count: number;
-        }>(`/api/scheduler/tasks-needing-intervention/${userId}`);
-
-        if (!response.data.success) {
-          return;
-        }
-
-        const tasks = response.data.tasks || [];
+        const tasks: TaskNeedingIntervention[] = await getTasksNeedingIntervention(userId);
 
         // Show toast only for critical failures (API limits) - other failures are shown in dedicated section
         for (const task of tasks) {

@@ -63,6 +63,25 @@ export interface SchedulerDashboardData {
   last_updated: string;
 }
 
+export interface TaskFailurePattern {
+  consecutive_failures: number;
+  recent_failures: number;
+  failure_reason: string;
+  last_failure_time: string | null;
+  error_patterns: string[];
+}
+
+export interface TaskNeedingIntervention {
+  task_id: number;
+  task_type: string;
+  user_id: string;
+  platform?: string;
+  website_url?: string;
+  failure_pattern: TaskFailurePattern;
+  failure_reason: string | null;
+  last_failure: string | null;
+}
+
 export interface TaskInfo {
   id: number;
   task_title: string;
@@ -254,6 +273,32 @@ export const getRecentSchedulerLogs = async (): Promise<ExecutionLogsResponse> =
       error.response?.data?.detail || 
       error.message || 
       'Failed to fetch recent scheduler logs'
+    );
+  }
+};
+
+/**
+ * Get tasks that require manual intervention for a user.
+ */
+export const getTasksNeedingIntervention = async (userId: string): Promise<TaskNeedingIntervention[]> => {
+  try {
+    const response = await apiClient.get<{
+      success: boolean;
+      tasks: TaskNeedingIntervention[];
+      count: number;
+    }>(`/api/scheduler/tasks-needing-intervention/${userId}`);
+    
+    if (!response.data.success) {
+      throw new Error('Failed to fetch tasks needing intervention');
+    }
+    
+    return response.data.tasks || [];
+  } catch (error: any) {
+    console.error('Error fetching tasks needing intervention:', error);
+    throw new Error(
+      error.response?.data?.detail ||
+      error.message ||
+      'Failed to fetch tasks needing intervention'
     );
   }
 };
