@@ -59,11 +59,7 @@ class RouterManager:
             # GSC router
             from routers.gsc_auth import router as gsc_auth_router
             self.include_router_safely(gsc_auth_router, "gsc_auth")
-            
-            # WordPress router
-            from routers.wordpress_oauth import router as wordpress_oauth_router
-            self.include_router_safely(wordpress_oauth_router, "wordpress_oauth")
-            
+
             # Bing Webmaster router
             from routers.bing_oauth import router as bing_oauth_router
             self.include_router_safely(bing_oauth_router, "bing_oauth")
@@ -176,14 +172,7 @@ class RouterManager:
                 self.include_router_safely(story_writer_router, "story_writer")
             except Exception as e:
                 logger.warning(f"Story Writer router not mounted: {e}")
-            
-            # Wix Integration router
-            try:
-                from api.wix_routes import router as wix_router
-                self.include_router_safely(wix_router, "wix")
-            except Exception as e:
-                logger.warning(f"Wix Integration router not mounted: {e}")
-            
+
             # Blog Writer SEO Analysis router
             try:
                 from api.blog_writer.seo_analysis import router as blog_seo_analysis_router
