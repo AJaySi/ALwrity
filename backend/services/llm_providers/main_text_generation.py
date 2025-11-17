@@ -507,6 +507,14 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         current_images_before = getattr(summary, "stability_calls", 0) or 0
                         image_limit = limits['limits'].get("stability_calls", 0) if limits else 0
                         
+                        # Get image editing stats for unified log
+                        current_image_edit_calls = getattr(summary, "image_edit_calls", 0) or 0
+                        image_edit_limit = limits['limits'].get("image_edit_calls", 0) if limits else 0
+                        
+                        # Get video stats for unified log
+                        current_video_calls = getattr(summary, "video_calls", 0) or 0
+                        video_limit = limits['limits'].get("video_calls", 0) if limits else 0
+                        
                         # CRITICAL DEBUG: Print diagnostic info BEFORE commit (always visible, flushed immediately)
                         import sys
                         debug_msg = f"[DEBUG] BEFORE COMMIT - Record count: {record_count}, Raw SQL values: calls={current_calls_before}, tokens={current_tokens_before}, Provider: {provider_name}, Period: {current_period}, New calls will be: {new_calls}, New tokens will be: {new_tokens}"
@@ -562,6 +570,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
 ├─ Calls: {current_calls_before} → {new_calls} / {call_limit if call_limit > 0 else '∞'}
 ├─ Tokens: {current_tokens_before} → {new_tokens} / {token_limit if token_limit > 0 else '∞'}
 ├─ Images: {current_images_before} / {image_limit if image_limit > 0 else '∞'}
+├─ Image Editing: {current_image_edit_calls} / {image_edit_limit if image_edit_limit > 0 else '∞'}
 └─ Status: ✅ Allowed & Tracked
 """)
                     except Exception as track_error:
@@ -802,6 +811,14 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                                 current_images_before = getattr(summary, "stability_calls", 0) or 0
                                 image_limit = limits['limits'].get("stability_calls", 0) if limits else 0
                                 
+                                # Get image editing stats for unified log
+                                current_image_edit_calls = getattr(summary, "image_edit_calls", 0) or 0
+                                image_edit_limit = limits['limits'].get("image_edit_calls", 0) if limits else 0
+                                
+                                # Get video stats for unified log
+                                current_video_calls = getattr(summary, "video_calls", 0) or 0
+                                video_limit = limits['limits'].get("video_calls", 0) if limits else 0
+                                
                                 # CRITICAL: Flush before commit to ensure changes are immediately visible to other sessions
                                 db_track.flush()  # Flush to ensure changes are in DB (not just in transaction)
                                 db_track.commit()  # Commit transaction to make changes visible to other sessions
@@ -819,6 +836,8 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
 ├─ Calls: {current_calls_before} → {new_calls} / {call_limit if call_limit > 0 else '∞'}
 ├─ Tokens: {current_tokens_before} → {new_tokens} / {token_limit if token_limit > 0 else '∞'}
 ├─ Images: {current_images_before} / {image_limit if image_limit > 0 else '∞'}
+├─ Image Editing: {current_image_edit_calls} / {image_edit_limit if image_edit_limit > 0 else '∞'}
+├─ Videos: {current_video_calls} / {video_limit if video_limit > 0 else '∞'}
 └─ Status: ✅ Allowed & Tracked
 """)
                             except Exception as track_error:

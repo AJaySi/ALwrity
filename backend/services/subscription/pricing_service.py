@@ -295,10 +295,22 @@ class PricingService:
                 "model_name": "exa-search",
                 "cost_per_request": 0.005,  # $0.005 per search (1-25 results)
                 "description": "Exa Neural Search API"
+            },
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "tencent/HunyuanVideo",
+                "cost_per_request": 0.10,  # $0.10 per video generation (estimated)
+                "description": "HuggingFace AI Video Generation (HunyuanVideo)"
+            },
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "default",
+                "cost_per_request": 0.10,  # $0.10 per video generation (estimated)
+                "description": "AI Video Generation default pricing"
             }
         ]
         
-        # Combine all pricing data
+        # Combine all pricing data (include video pricing in search_pricing list)
         all_pricing = gemini_pricing + openai_pricing + anthropic_pricing + mistral_pricing + search_pricing
         
         # Insert or update pricing data
@@ -344,6 +356,8 @@ class PricingService:
                 "firecrawl_calls_limit": 10,
                 "stability_calls_limit": 5,
                 "exa_calls_limit": 100,
+                "video_calls_limit": 0,  # No video generation for free tier
+                "image_edit_calls_limit": 10,  # 10 AI image editing calls/month
                 "gemini_tokens_limit": 100000,
                 "monthly_cost_limit": 0.0,
                 "features": ["basic_content_generation", "limited_research"],
@@ -365,6 +379,8 @@ class PricingService:
                 "firecrawl_calls_limit": 100,
                 "stability_calls_limit": 5,
                 "exa_calls_limit": 500,
+                "video_calls_limit": 20,  # 20 videos/month for basic plan
+                "image_edit_calls_limit": 30,  # 30 AI image editing calls/month
                 "gemini_tokens_limit": 20000,  # Increased from 5000 for better stability
                 "openai_tokens_limit": 20000,  # Increased from 5000 for better stability
                 "anthropic_tokens_limit": 20000,  # Increased from 5000 for better stability
@@ -388,6 +404,8 @@ class PricingService:
                 "firecrawl_calls_limit": 500,
                 "stability_calls_limit": 200,
                 "exa_calls_limit": 2000,
+                "video_calls_limit": 50,  # 50 videos/month for pro plan
+                "image_edit_calls_limit": 100,  # 100 AI image editing calls/month
                 "gemini_tokens_limit": 5000000,
                 "openai_tokens_limit": 2500000,
                 "anthropic_tokens_limit": 1000000,
@@ -411,6 +429,8 @@ class PricingService:
                 "firecrawl_calls_limit": 0,
                 "stability_calls_limit": 0,
                 "exa_calls_limit": 0,  # Unlimited
+                "video_calls_limit": 0,  # Unlimited for enterprise
+                "image_edit_calls_limit": 0,  # Unlimited image editing for enterprise
                 "gemini_tokens_limit": 0,
                 "openai_tokens_limit": 0,
                 "anthropic_tokens_limit": 0,
@@ -429,6 +449,20 @@ class PricingService:
             if not existing:
                 plan = SubscriptionPlan(**plan_data)
                 self.db.add(plan)
+            else:
+                # Update existing plan with new limits (e.g., image_edit_calls_limit)
+                # This ensures existing plans get new columns like image_edit_calls_limit
+                for key, value in plan_data.items():
+                    if key not in ["name", "tier"]:  # Don't overwrite name/tier
+                        try:
+                            # Try to set the attribute (works even if column was just added)
+                            setattr(existing, key, value)
+                        except (AttributeError, Exception) as e:
+                            # If attribute doesn't exist yet (column not migrated), skip it
+                            # Schema migration will add it, then this will update it on next run
+                            logger.debug(f"Could not set {key} on plan {existing.name}: {e}")
+                existing.updated_at = datetime.utcnow()
+                logger.debug(f"Updated existing plan: {existing.name}")
         
         self.db.commit()
         logger.debug("Default subscription plans initialized")
@@ -615,6 +649,8 @@ class PricingService:
                 'metaphor_calls': plan.metaphor_calls_limit,
                 'firecrawl_calls': plan.firecrawl_calls_limit,
                 'stability_calls': plan.stability_calls_limit,
+                'video_calls': getattr(plan, 'video_calls_limit', 0),  # Support missing column
+                'image_edit_calls': getattr(plan, 'image_edit_calls_limit', 0),  # Support missing column
                 # Token limits
                 'gemini_tokens': plan.gemini_tokens_limit,
                 'openai_tokens': plan.openai_tokens_limit,

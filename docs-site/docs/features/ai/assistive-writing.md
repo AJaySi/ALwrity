@@ -5,9 +5,37 @@ ALwrity's Assistive Writing feature revolutionizes content creation by providing
 ## Visuals
 
 <p align="center">
-  <img src="../../assets/assistive-1.png" alt="Assistive writing selection tools" width="45%">
-  <img src="../../assets/assistive-2.png" alt="Inline fact checking and quick edits" width="45%">
+  <img src="../../assests/assistive-1.png" alt="Assistive writing selection tools" width="45%">
+  <img src="../../assests/assistive-2.png" alt="Inline fact checking and quick edits" width="45%">
 </p>
+
+## Quick Reference
+
+1. Enable: Toggle “Assistive Writing” in the LinkedIn Writer header  
+2. Write: Type at least 5 words  
+3. Wait: 5 seconds for the first automatic suggestion  
+4. Accept/Dismiss: Use buttons in the suggestion card
+
+### How It Works
+- First suggestion: Automatic (5 words + 5 seconds)
+- More suggestions: Click “Continue writing”
+- Daily limit: 50 suggestions (resets every 24 hours)
+
+### Best Practices
+- Write specific, clear content
+- Review source links before accepting
+- Use manual “Continue writing” for additional suggestions
+- Don’t expect suggestions for very short text
+- Don’t ignore source verification
+
+### Common Issues (Quick Table)
+
+| Problem | Solution |
+| --- | --- |
+| No suggestions | Write 5+ words, then wait 5 seconds |
+| “API quota exceeded” | Wait 24 hours or upgrade plan |
+| “No relevant sources” | Be more specific in your writing |
+| Suggestions not relevant | Try different wording or topics |
 
 ## What is Assistive Writing?
 
@@ -159,6 +187,67 @@ Assistive Writing is an AI-powered feature that provides real-time writing assis
 - **Tone Matching**: Match brand tone requirements
 - **Message Alignment**: Align with brand messaging
 - **Value Integration**: Incorporate brand values
+
+## Workflow
+
+```text
+1. ENABLE ASSISTIVE WRITING
+   ┌─────────────────────────┐
+   │ Toggle "Assistive       │
+   │ Writing" ON (blue)      │
+   └─────────────────────────┘
+              │
+              ▼
+
+2. START WRITING
+   ┌─────────────────────────┐
+   │ Type at least 5 words   │
+   │ in the text area        │
+   └─────────────────────────┘
+              │
+              ▼
+
+3. WAIT FOR AI ANALYSIS
+   ┌─────────────────────────┐
+   │ Wait 5 seconds          │
+   │ AI analyzes your text   │
+   └─────────────────────────┘
+              │
+              ▼
+
+4. RECEIVE FIRST SUGGESTION
+   ┌─────────────────────────┐
+   │ Suggestion card appears │
+   │ near your cursor        │
+   │                         │
+   │ [Accept] [Dismiss]      │
+   └─────────────────────────┘
+              │
+              ▼
+
+5. AFTER FIRST SUGGESTION
+   ┌─────────────────────────┐
+   │ "Continue writing"      │
+   │ prompt appears          │
+   │                         │
+   │ [Continue writing]      │
+   │ [Dismiss]               │
+   └─────────────────────────┘
+              │
+              ▼
+
+6. MANUAL SUGGESTIONS
+   ┌─────────────────────────┐
+   │ Click "Continue writing"│
+   │ to get more suggestions │
+   │ (saves costs)           │
+   └─────────────────────────┘
+```
+
+### Step-by-Step
+- Enable → Start writing (5+ words) → Wait 5s
+- First suggestion shows: suggested text, confidence score, source links, Accept/Dismiss
+- After first suggestion, trigger more via “Continue writing”
 
 ## Integration with Other Features
 

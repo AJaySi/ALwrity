@@ -185,6 +185,8 @@ function coerceUsageStats(raw: any): UsageStats {
       metaphor_calls: raw?.limits?.limits?.metaphor_calls ?? 0,
       firecrawl_calls: raw?.limits?.limits?.firecrawl_calls ?? 0,
       stability_calls: raw?.limits?.limits?.stability_calls ?? 0,
+      video_calls: raw?.limits?.limits?.video_calls ?? 0,
+      image_edit_calls: raw?.limits?.limits?.image_edit_calls ?? 0,
       gemini_tokens: raw?.limits?.limits?.gemini_tokens ?? 0,
       openai_tokens: raw?.limits?.limits?.openai_tokens ?? 0,
       anthropic_tokens: raw?.limits?.limits?.anthropic_tokens ?? 0,

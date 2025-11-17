@@ -93,6 +93,17 @@ def setup_clean_logging():
             format="{time:HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}\n",
             filter=warning_only_filter
         )
+        # Add a focused sink to surface Story Video Generation INFO logs in console
+        def video_generation_filter(record):
+            msg = record.get("message", "")
+            name = record.get("name", "")
+            return "[StoryVideoGeneration]" in msg or "services.story_writer.video_generation_service" in name
+        logger.add(
+            sys.stdout.write,
+            level="INFO",
+            format="{time:HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}\n",
+            filter=video_generation_filter
+        )
     else:
         # In verbose mode, show all log levels with detailed formatting
         logger.add(

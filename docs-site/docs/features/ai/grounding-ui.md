@@ -5,12 +5,46 @@ ALwrity's Grounding UI feature provides AI-powered content verification and fact
 ## Visuals
 
 <p align="center">
-  <img src="../../assets/assistive-2.png" alt="Inline fact checking with citations and claim statuses" width="60%">
+  <img src="../../assests/assistive-2.png" alt="Inline fact checking with citations and claim statuses" width="60%">
 </p>
 
 ## What is Grounding UI?
 
 Grounding UI is an intelligent content verification system that connects AI-generated content with real-world data sources, ensuring accuracy and reliability. It provides visual indicators, source citations, and verification status to help you create trustworthy, fact-checked content.
+
+## Implementation Overview (Concise)
+
+- Backend service: `backend/services/hallucination_detector.py` (claim extraction → evidence search → verification)
+- Models: `backend/models/hallucination_models.py`
+- API router: `backend/api/hallucination_detector.py` (registered in `backend/app.py`)
+- Frontend service: `frontend/src/services/hallucinationDetectorService.ts`
+- UI: LinkedIn Writer selection menu + FactCheckResults modal
+
+### API Endpoints (Summary)
+- `POST /api/hallucination-detector/detect` – main fact-checking
+- `POST /api/hallucination-detector/extract-claims` – claims only
+- `POST /api/hallucination-detector/verify-claim` – single claim
+- `GET  /api/hallucination-detector/health` – health check
+
+### Minimal Setup
+- Backend env:
+  - `EXA_API_KEY=...` (evidence search)
+  - `OPENAI_API_KEY=...` (claim extraction + verification)
+- Frontend env:
+  - `REACT_APP_API_URL=http://localhost:8000`
+
+### Quick Usage (UI)
+1) In LinkedIn Writer, select a passage (10+ chars)  
+2) Click “Check Facts” in the selection menu  
+3) Review claims, assessments (supported/refuted/insufficient), confidence, and sources in the results modal
+
+### Quick Usage (API)
+
+```bash
+curl -X POST "$API_URL/api/hallucination-detector/detect" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"The Eiffel Tower is in Paris and built in 1889.","include_sources":true,"max_claims":5}'
+```
 
 ### Key Benefits
 
@@ -273,6 +307,11 @@ Grounding UI is an intelligent content verification system that connects AI-gene
 - **Performance Issues**: Address performance concerns
 - **Display Problems**: Fix visual indicator issues
 - **Integration Errors**: Resolve integration problems
+
+### Environment & Health
+- “EXA_API_KEY not found” → add key to backend `.env`, restart server  
+- “OpenAI API key not found” → add `OPENAI_API_KEY`, verify credits  
+- Health check: `GET /api/hallucination-detector/health`
 
 ### Getting Help
 

@@ -579,17 +579,17 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
             onContinue={handleContinue}
           />
         </Box>
-      ) : (
-        <TextField
-          fullWidth
-          multiline
-          rows={12}
-          value={state.outline || ''}
-          onChange={(e) => state.setOutline(e.target.value)}
-          label="Story Outline"
-          sx={{ mb: 3 }}
-        />
-      )}
+          ) : (
+            <TextField
+              fullWidth
+              multiline
+              rows={12}
+              value={state.outline || ''}
+              onChange={(e) => state.setOutline(e.target.value)}
+              label="Story Outline"
+              sx={{ mb: 3 }}
+            />
+          )}
       <EditSectionModal
         open={isEditModalOpen}
         sceneNumber={currentSceneNumber}
@@ -671,7 +671,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
           setIsTitleModalOpen(false);
         }}
       />
-    </Box>
+        </Box>
   );
 };
 

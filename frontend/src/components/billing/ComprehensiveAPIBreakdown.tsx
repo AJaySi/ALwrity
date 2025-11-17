@@ -121,6 +121,13 @@ const API_CATEGORIES = {
         models: ['stable-diffusion-xl', 'stable-diffusion-3'],
         pricing: '$0.04 per image generated',
         use_cases: ['Image generation', 'Art creation', 'Visual content']
+      },
+      {
+        name: 'Image Editing',
+        description: 'AI-powered image editing using natural language prompts',
+        models: ['Qwen/Qwen-Image-Edit', 'FLUX.1-Kontext-dev'],
+        pricing: '$0.04 per image edited',
+        use_cases: ['Image editing', 'Photo manipulation', 'Natural language editing']
       }
     ]
   },
@@ -160,7 +167,7 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
     if (['firecrawl'].includes(provider)) {
       return 'content_processing';
     }
-    if (['stability'].includes(provider)) {
+    if (['stability', 'image_edit'].includes(provider)) {
       return 'image_generation';
     }
     return 'llm_models'; // default

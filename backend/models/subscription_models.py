@@ -35,6 +35,8 @@ class APIProvider(enum.Enum):
     FIRECRAWL = "firecrawl"
     STABILITY = "stability"
     EXA = "exa"
+    VIDEO = "video"
+    IMAGE_EDIT = "image_edit"
 
 class BillingCycle(enum.Enum):
     MONTHLY = "monthly"
@@ -68,6 +70,8 @@ class SubscriptionPlan(Base):
     firecrawl_calls_limit = Column(Integer, default=0)
     stability_calls_limit = Column(Integer, default=0)  # Image generation
     exa_calls_limit = Column(Integer, default=0)  # Exa neural search
+    video_calls_limit = Column(Integer, default=0)  # AI video generation
+    image_edit_calls_limit = Column(Integer, default=0)  # AI image editing
     
     # Token Limits (for LLM providers)
     gemini_tokens_limit = Column(Integer, default=0)
@@ -185,6 +189,8 @@ class UsageSummary(Base):
     firecrawl_calls = Column(Integer, default=0)
     stability_calls = Column(Integer, default=0)
     exa_calls = Column(Integer, default=0)
+    video_calls = Column(Integer, default=0)  # AI video generation
+    image_edit_calls = Column(Integer, default=0)  # AI image editing
     
     # Token Usage
     gemini_tokens = Column(Integer, default=0)
@@ -203,6 +209,8 @@ class UsageSummary(Base):
     firecrawl_cost = Column(Float, default=0.0)
     stability_cost = Column(Float, default=0.0)
     exa_cost = Column(Float, default=0.0)
+    video_cost = Column(Float, default=0.0)  # AI video generation
+    image_edit_cost = Column(Float, default=0.0)  # AI image editing
     
     # Totals
     total_calls = Column(Integer, default=0)

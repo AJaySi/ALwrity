@@ -608,6 +608,12 @@ class UsageTrackingService:
             # Reset image generation counters
             summary.stability_calls = 0
             
+            # Reset video generation counters
+            summary.video_calls = 0
+            
+            # Reset image editing counters
+            summary.image_edit_calls = 0
+            
             # Reset cost counters
             summary.gemini_cost = 0.0
             summary.openai_cost = 0.0
@@ -618,6 +624,9 @@ class UsageTrackingService:
             summary.metaphor_cost = 0.0
             summary.firecrawl_cost = 0.0
             summary.stability_cost = 0.0
+            summary.exa_cost = 0.0
+            summary.video_cost = 0.0
+            summary.image_edit_cost = 0.0
             
             # Reset totals
             summary.total_calls = 0

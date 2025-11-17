@@ -49,6 +49,8 @@ export interface SubscriptionLimits {
     metaphor_calls: number;
     firecrawl_calls: number;
     stability_calls: number;
+    video_calls: number;
+    image_edit_calls: number;
     gemini_tokens: number;
     openai_tokens: number;
     anthropic_tokens: number;
@@ -207,6 +209,8 @@ export const SubscriptionLimitsSchema = z.object({
     metaphor_calls: z.number(),
     firecrawl_calls: z.number(),
     stability_calls: z.number(),
+    video_calls: z.number().optional().default(0),
+    image_edit_calls: z.number().optional().default(0),
     gemini_tokens: z.number(),
     openai_tokens: z.number(),
     anthropic_tokens: z.number(),

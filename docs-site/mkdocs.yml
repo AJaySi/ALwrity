@@ -236,6 +236,22 @@ nav:
       - Grounding UI: features/ai/grounding-ui.md
     - LinkedIn Writer:
       - Overview: features/linkedin-writer/overview.md
+    - Integrations:
+      - Wix:
+        - Overview: features/integrations/wix/overview.md
+        - Setup: features/integrations/wix/setup.md
+        - Publishing: features/integrations/wix/publishing.md
+        - API: features/integrations/wix/api.md
+        - SEO Metadata: features/integrations/wix/seo-metadata.md
+        - Testing (Bypass): features/integrations/wix/testing-bypass.md
+    - Subscription:
+      - Overview: features/subscription/overview.md
+      - Setup: features/subscription/setup.md
+      - API Reference: features/subscription/api-reference.md
+      - Pricing: features/subscription/pricing.md
+      - Frontend Integration: features/subscription/frontend-integration.md
+      - Implementation Status: features/subscription/implementation-status.md
+      - Roadmap: features/subscription/roadmap.md
   - API Reference:
     - Overview: api/overview.md
     - Authentication: api/authentication.md

@@ -14,7 +14,7 @@ from functools import lru_cache
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
 from services.subscription.log_wrapping_service import LogWrappingService
-from services.subscription.schema_utils import ensure_subscription_plan_columns
+from services.subscription.schema_utils import ensure_subscription_plan_columns, ensure_usage_summaries_columns
 import sqlite3
 from middleware.auth_middleware import get_current_user
 from models.subscription_models import (
@@ -114,6 +114,8 @@ async def get_subscription_plans(
                     "metaphor_calls": plan.metaphor_calls_limit,
                     "firecrawl_calls": plan.firecrawl_calls_limit,
                     "stability_calls": plan.stability_calls_limit,
+                    "video_calls": getattr(plan, 'video_calls_limit', 0),
+                    "image_edit_calls": getattr(plan, 'image_edit_calls_limit', 0),
                     "gemini_tokens": plan.gemini_tokens_limit,
                     "openai_tokens": plan.openai_tokens_limit,
                     "anthropic_tokens": plan.anthropic_tokens_limit,
@@ -132,7 +134,7 @@ async def get_subscription_plans(
     
     except (sqlite3.OperationalError, Exception) as e:
         error_str = str(e).lower()
-        if 'no such column' in error_str and 'exa_calls_limit' in error_str:
+        if 'no such column' in error_str and ('exa_calls_limit' in error_str or 'video_calls_limit' in error_str or 'image_edit_calls_limit' in error_str):
             logger.warning("Missing column detected in subscription plans query, attempting schema fix...")
             try:
                 import services.subscription.schema_utils as schema_utils
@@ -237,6 +239,8 @@ async def get_user_subscription(
                             "metaphor_calls": free_plan.metaphor_calls_limit,
                             "firecrawl_calls": free_plan.firecrawl_calls_limit,
                             "stability_calls": free_plan.stability_calls_limit,
+                            "video_calls": getattr(free_plan, 'video_calls_limit', 0),
+                            "image_edit_calls": getattr(free_plan, 'image_edit_calls_limit', 0),
                             "monthly_cost": free_plan.monthly_cost_limit
                         }
                     }
@@ -334,6 +338,8 @@ async def get_subscription_status(
                             "metaphor_calls": free_plan.metaphor_calls_limit,
                             "firecrawl_calls": free_plan.firecrawl_calls_limit,
                             "stability_calls": free_plan.stability_calls_limit,
+                            "video_calls": getattr(free_plan, 'video_calls_limit', 0),
+                            "image_edit_calls": getattr(free_plan, 'image_edit_calls_limit', 0),
                             "monthly_cost": free_plan.monthly_cost_limit
                         }
                     }
@@ -399,15 +405,16 @@ async def get_subscription_status(
 
     except (sqlite3.OperationalError, Exception) as e:
         error_str = str(e).lower()
-        if 'no such column' in error_str and 'exa_calls_limit' in error_str:
+        if 'no such column' in error_str and ('exa_calls_limit' in error_str or 'video_calls_limit' in error_str or 'image_edit_calls_limit' in error_str):
             # Try to fix schema and retry once
             logger.warning("Missing column detected in subscription status query, attempting schema fix...")
             try:
                 import services.subscription.schema_utils as schema_utils
                 schema_utils._checked_subscription_plan_columns = False
                 ensure_subscription_plan_columns(db)
+                db.commit()  # Ensure schema changes are committed
                 db.expire_all()
-                # Retry the query
+                # Retry the query - query subscription without eager loading plan
                 subscription = db.query(UserSubscription).filter(
                     UserSubscription.user_id == user_id,
                     UserSubscription.is_active == True
@@ -437,11 +444,21 @@ async def get_subscription_status(
                                     "metaphor_calls": free_plan.metaphor_calls_limit,
                                     "firecrawl_calls": free_plan.firecrawl_calls_limit,
                                     "stability_calls": free_plan.stability_calls_limit,
+                                    "video_calls": getattr(free_plan, 'video_calls_limit', 0),
+                                    "image_edit_calls": getattr(free_plan, 'image_edit_calls_limit', 0),
                                     "monthly_cost": free_plan.monthly_cost_limit
                                 }
                             }
                         }
                 elif subscription:
+                    # Query plan separately after schema fix to avoid lazy loading issues
+                    plan = db.query(SubscriptionPlan).filter(
+                        SubscriptionPlan.id == subscription.plan_id
+                    ).first()
+                    
+                    if not plan:
+                        raise HTTPException(status_code=404, detail="Plan not found")
+                    
                     now = datetime.utcnow()
                     if subscription.current_period_end < now:
                         if getattr(subscription, 'auto_renew', False):
@@ -456,8 +473,8 @@ async def get_subscription_status(
                                 "success": True,
                                 "data": {
                                     "active": False,
-                                    "plan": subscription.plan.tier.value,
-                                    "tier": subscription.plan.tier.value,
+                                    "plan": plan.tier.value,
+                                    "tier": plan.tier.value,
                                     "can_use_api": False,
                                     "reason": "Subscription expired"
                                 }
@@ -466,21 +483,23 @@ async def get_subscription_status(
                         "success": True,
                         "data": {
                             "active": True,
-                            "plan": subscription.plan.tier.value,
-                            "tier": subscription.plan.tier.value,
+                            "plan": plan.tier.value,
+                            "tier": plan.tier.value,
                             "can_use_api": True,
                             "limits": {
-                                "ai_text_generation_calls": getattr(subscription.plan, 'ai_text_generation_calls_limit', None) or 0,
-                                "gemini_calls": subscription.plan.gemini_calls_limit,
-                                "openai_calls": subscription.plan.openai_calls_limit,
-                                "anthropic_calls": subscription.plan.anthropic_calls_limit,
-                                "mistral_calls": subscription.plan.mistral_calls_limit,
-                                "tavily_calls": subscription.plan.tavily_calls_limit,
-                                "serper_calls": subscription.plan.serper_calls_limit,
-                                "metaphor_calls": subscription.plan.metaphor_calls_limit,
-                                "firecrawl_calls": subscription.plan.firecrawl_calls_limit,
-                                "stability_calls": subscription.plan.stability_calls_limit,
-                                "monthly_cost": subscription.plan.monthly_cost_limit
+                                "ai_text_generation_calls": getattr(plan, 'ai_text_generation_calls_limit', None) or 0,
+                                "gemini_calls": plan.gemini_calls_limit,
+                                "openai_calls": plan.openai_calls_limit,
+                                "anthropic_calls": plan.anthropic_calls_limit,
+                                "mistral_calls": plan.mistral_calls_limit,
+                                "tavily_calls": plan.tavily_calls_limit,
+                                "serper_calls": plan.serper_calls_limit,
+                                "metaphor_calls": plan.metaphor_calls_limit,
+                                "firecrawl_calls": plan.firecrawl_calls_limit,
+                                "stability_calls": plan.stability_calls_limit,
+                                "video_calls": getattr(plan, 'video_calls_limit', 0),
+                                "image_edit_calls": getattr(plan, 'image_edit_calls_limit', 0),
+                                "monthly_cost": plan.monthly_cost_limit
                             }
                         }
                     }
@@ -893,6 +912,7 @@ async def get_dashboard_data(
     
     try:
         ensure_subscription_plan_columns(db)
+        ensure_usage_summaries_columns(db)
         # Serve from short TTL cache to avoid hammering DB on bursts
         import time
         now = time.time()
@@ -966,7 +986,72 @@ async def get_dashboard_data(
         _dashboard_cache_ts[user_id] = now
         return response_payload
     
-    except Exception as e:
+    except (sqlite3.OperationalError, Exception) as e:
+        error_str = str(e).lower()
+        if 'no such column' in error_str and ('exa_calls' in error_str or 'exa_cost' in error_str or 'video_calls' in error_str or 'video_cost' in error_str or 'image_edit_calls' in error_str or 'image_edit_cost' in error_str):
+            logger.warning("Missing column detected in dashboard query, attempting schema fix...")
+            try:
+                import services.subscription.schema_utils as schema_utils
+                schema_utils._checked_usage_summaries_columns = False
+                schema_utils._checked_subscription_plan_columns = False
+                ensure_usage_summaries_columns(db)
+                ensure_subscription_plan_columns(db)
+                db.expire_all()
+                # Retry the query
+                usage_service = UsageTrackingService(db)
+                pricing_service = PricingService(db)
+                
+                current_usage = usage_service.get_user_usage_stats(user_id)
+                trends = usage_service.get_usage_trends(user_id, 6)
+                limits = pricing_service.get_user_limits(user_id)
+                
+                alerts = db.query(UsageAlert).filter(
+                    UsageAlert.user_id == user_id,
+                    UsageAlert.is_read == False
+                ).order_by(UsageAlert.created_at.desc()).limit(5).all()
+                
+                alerts_data = [
+                    {
+                        "id": alert.id,
+                        "type": alert.alert_type,
+                        "title": alert.title,
+                        "message": alert.message,
+                        "severity": alert.severity,
+                        "created_at": alert.created_at.isoformat()
+                    }
+                    for alert in alerts
+                ]
+                
+                current_cost = current_usage.get('total_cost', 0)
+                days_in_period = 30
+                current_day = datetime.now().day
+                projected_cost = (current_cost / current_day) * days_in_period if current_day > 0 else 0
+                
+                response_payload = {
+                    "success": True,
+                    "data": {
+                        "current_usage": current_usage,
+                        "trends": trends,
+                        "limits": limits,
+                        "alerts": alerts_data,
+                        "projections": {
+                            "projected_monthly_cost": round(projected_cost, 2),
+                            "cost_limit": limits.get('limits', {}).get('monthly_cost', 0) if limits else 0,
+                            "projected_usage_percentage": (projected_cost / max(limits.get('limits', {}).get('monthly_cost', 1), 1)) * 100 if limits else 0
+                        },
+                        "summary": {
+                            "total_api_calls_this_month": current_usage.get('total_calls', 0),
+                            "total_cost_this_month": current_usage.get('total_cost', 0),
+                            "usage_status": current_usage.get('usage_status', 'active'),
+                            "unread_alerts": len(alerts_data)
+                        }
+                    }
+                }
+                return response_payload
+            except Exception as retry_err:
+                logger.error(f"Schema fix and retry failed: {retry_err}")
+                raise HTTPException(status_code=500, detail=f"Database schema error: {str(e)}")
+        
         logger.error(f"Error getting dashboard data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

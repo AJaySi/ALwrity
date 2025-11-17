@@ -694,6 +694,44 @@ class LimitValidator:
                     
                     total_images = projected_images
                 
+                # Check video generation limits
+                elif provider == APIProvider.VIDEO:
+                    video_limit = limits.get('video_calls', 0) or 0
+                    total_video_calls = usage.video_calls or 0
+                    projected_video_calls = total_video_calls + 1
+                    
+                    if video_limit > 0 and projected_video_calls > video_limit:
+                        error_info = {
+                            'current_calls': total_video_calls,
+                            'limit': video_limit,
+                            'provider': 'video',
+                            'operation_type': operation_type,
+                            'operation_index': op_idx
+                        }
+                        return False, f"Video generation limit would be exceeded. Would use {projected_video_calls} of {video_limit} videos this billing period.", {
+                            'error_type': 'video_limit',
+                            'usage_info': error_info
+                        }
+                
+                # Check image editing limits
+                elif provider == APIProvider.IMAGE_EDIT:
+                    image_edit_limit = limits.get('image_edit_calls', 0) or 0
+                    total_image_edit_calls = getattr(usage, 'image_edit_calls', 0) or 0
+                    projected_image_edit_calls = total_image_edit_calls + 1
+                    
+                    if image_edit_limit > 0 and projected_image_edit_calls > image_edit_limit:
+                        error_info = {
+                            'current_calls': total_image_edit_calls,
+                            'limit': image_edit_limit,
+                            'provider': 'image_edit',
+                            'operation_type': operation_type,
+                            'operation_index': op_idx
+                        }
+                        return False, f"Image editing limit would be exceeded. Would use {projected_image_edit_calls} of {image_edit_limit} image edits this billing period.", {
+                            'error_type': 'image_edit_limit',
+                            'usage_info': error_info
+                        }
+                
                 # Check other provider-specific limits
                 else:
                     provider_calls_key = f"{provider_name}_calls"

@@ -41,6 +41,47 @@ class StoryVideoGenerationService:
         unique_id = str(uuid.uuid4())[:8]
         return f"story_{clean_title}_{unique_id}.mp4"
     
+    def save_scene_video(self, video_bytes: bytes, scene_number: int, user_id: str) -> Dict[str, str]:
+        """
+        Save individual scene video bytes to file.
+        
+        Parameters:
+            video_bytes: Raw video file bytes (mp4/webm format)
+            scene_number: Scene number for naming
+            user_id: Clerk user ID for naming
+        
+        Returns:
+            Dict[str, str]: Video metadata with video_url and video_filename
+        """
+        try:
+            # Generate filename with scene number and user ID
+            clean_user_id = "".join(c if c.isalnum() or c in ('-', '_') else '_' for c in user_id[:16])
+            timestamp = str(uuid.uuid4())[:8]
+            filename = f"scene_{scene_number}_{clean_user_id}_{timestamp}.mp4"
+            
+            video_path = self.output_dir / filename
+            
+            # Write video bytes to file
+            with open(video_path, 'wb') as f:
+                f.write(video_bytes)
+            
+            file_size = video_path.stat().st_size
+            logger.info(f"[StoryVideoGeneration] Saved scene {scene_number} video: {filename} ({file_size} bytes)")
+            
+            # Generate URL path (relative to /api/story/videos/)
+            video_url = f"/api/story/videos/{filename}"
+            
+            return {
+                "video_filename": filename,
+                "video_url": video_url,
+                "video_path": str(video_path),
+                "file_size": file_size
+            }
+            
+        except Exception as e:
+            logger.error(f"[StoryVideoGeneration] Error saving scene video: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to save scene video: {str(e)}") from e
+    
     def generate_scene_video(
         self,
         scene: Dict[str, Any],
@@ -125,12 +166,12 @@ class StoryVideoGenerationService:
             # Use provided duration or audio duration
             video_duration = duration if duration is not None else audio_duration
             
-            # Create image clip
-            image_clip = ImageClip(str(image_file)).set_duration(video_duration)
-            image_clip = image_clip.set_fps(fps)
+            # Create image clip (MoviePy v2: use with_* API)
+            image_clip = ImageClip(str(image_file)).with_duration(video_duration)
+            image_clip = image_clip.with_fps(fps)
             
             # Set audio to image clip
-            video_clip = image_clip.set_audio(audio_clip)
+            video_clip = image_clip.with_audio(audio_clip)
             
             # Generate video filename
             video_filename = f"scene_{scene_number}_{scene_title.replace(' ', '_').replace('/', '_')[:50]}_{uuid.uuid4().hex[:8]}.mp4"
@@ -274,12 +315,12 @@ class StoryVideoGenerationService:
                     audio_clip = AudioFileClip(str(audio_file))
                     audio_duration = audio_clip.duration
                     
-                    # Create image clip
-                    image_clip = ImageClip(str(image_file)).set_duration(audio_duration)
-                    image_clip = image_clip.set_fps(fps)
+                    # Create image clip (MoviePy v2: use with_* API)
+                    image_clip = ImageClip(str(image_file)).with_duration(audio_duration)
+                    image_clip = image_clip.with_fps(fps)
                     
                     # Set audio to image clip
-                    video_clip = image_clip.set_audio(audio_clip)
+                    video_clip = image_clip.with_audio(audio_clip)
                     scene_clips.append(video_clip)
                     
                     total_duration += audio_duration

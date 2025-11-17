@@ -161,9 +161,29 @@ def start_backend(enable_reload=False, production_mode=False):
         
         # Set up clean logging for end users
         from logging_config import setup_clean_logging, get_uvicorn_log_level
+        # Video stack preflight (diagnostics + version assert)
+        try:
+            from services.story_writer.video_preflight import (
+                log_video_stack_diagnostics,
+                assert_supported_moviepy,
+            )
+        except Exception:
+            # Preflight is optional; continue if module missing
+            log_video_stack_diagnostics = None
+            assert_supported_moviepy = None
         
         verbose_mode = setup_clean_logging()
         uvicorn_log_level = get_uvicorn_log_level()
+
+        # Log diagnostics and assert versions (fail fast if misconfigured)
+        try:
+            if log_video_stack_diagnostics:
+                log_video_stack_diagnostics()
+            if assert_supported_moviepy:
+                assert_supported_moviepy()
+        except Exception as _video_stack_err:
+            print(f"[ERROR] Video stack preflight failed: {_video_stack_err}")
+            return False
         
         uvicorn.run(
             "app:app",

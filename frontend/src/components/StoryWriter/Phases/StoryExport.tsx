@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Paper,
@@ -9,11 +9,16 @@ import {
   Divider,
   CircularProgress,
   LinearProgress,
+  Tooltip,
 } from '@mui/material';
 import VideoLibraryIcon from '@mui/icons-material/VideoLibrary';
 import DownloadIcon from '@mui/icons-material/Download';
 import { useStoryWriterState } from '../../../hooks/useStoryWriterState';
 import { storyWriterApi } from '../../../services/storyWriterApi';
+import { fetchMediaBlobUrl } from '../../../utils/fetchMediaBlobUrl';
+import { triggerSubscriptionError } from '../../../api/client';
+import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
+import SceneVideoApproval from '../components/SceneVideoApproval';
 
 interface StoryExportProps {
   state: ReturnType<typeof useStoryWriterState>;
@@ -22,7 +27,27 @@ interface StoryExportProps {
 const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [videoMessage, setVideoMessage] = useState<string>('');
+  const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const [isGeneratingHdVideo, setIsGeneratingHdVideo] = useState(false);
+  const [hdVideoProgress, setHdVideoProgress] = useState(0);
+  const [hdVideoMessage, setHdVideoMessage] = useState<string>('');
+  const [hdVideoPrompts, setHdVideoPrompts] = useState<Map<number, string>>(new Map()); // Store prompts by scene number
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Scene-by-scene approval state
+  const [approvalModal, setApprovalModal] = useState<{
+    open: boolean;
+    sceneNumber: number;
+    sceneTitle: string;
+    videoUrl: string;
+    promptUsed: string;
+  } | null>(null);
+  const [regeneratingScene, setRegeneratingScene] = useState<number | null>(null);
+  
+  // Keep track of the processing function for continuation
+  const processSceneRef = useRef<((sceneIndex: number) => Promise<void>) | null>(null);
 
   const handleCopyToClipboard = () => {
     if (state.storyContent) {
@@ -91,8 +116,8 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
         throw new Error('Number of images and audio files must match number of scenes');
       }
 
-      // Generate video
-      const response = await storyWriterApi.generateStoryVideo({
+      // Start async video generation
+      const startRes = await storyWriterApi.generateStoryVideoAsync({
         scenes: scenes,
         image_urls: imageUrls,
         audio_urls: audioUrls,
@@ -101,12 +126,42 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
         transition_duration: state.videoTransitionDuration,
       });
 
-      if (response.success && response.video) {
-        state.setStoryVideo(response.video.video_url);
+      // Poll task status
+      const taskId = startRes.task_id;
+      setVideoMessage(startRes.message || 'Starting video generation...');
+
+      let done = false;
+      while (!done) {
+        await new Promise((r) => setTimeout(r, 1200));
+        const status = await storyWriterApi.getTaskStatus(taskId);
+        setVideoProgress(Math.round(status.progress ?? 0));
+        if (status.message) setVideoMessage(status.message);
+        if (status.status === 'completed') {
+          done = true;
+          const result = await storyWriterApi.getTaskResult(taskId);
+          // result.video exists under result.video
+          // @ts-ignore – result typing is StoryFullGenerationResponse; our async returns a dict
+          const video = result.video || (result as any).video;
+          const videoUrl = video?.video_url;
+          if (!videoUrl) throw new Error('Video URL missing in result');
+          state.setStoryVideo(videoUrl);
+          // fetch blob for authenticated preview
+          const blobUrl = await fetchMediaBlobUrl(videoUrl);
+          setVideoBlobUrl(blobUrl);
+          setVideoProgress(100);
+          setVideoMessage('Video generation complete');
         state.setError(null);
-        setVideoProgress(100);
-      } else {
-        throw new Error('Failed to generate video');
+          // Autoplay and fullscreen
+          setTimeout(() => {
+            const v = videoRef.current;
+            if (v) {
+              try { v.play().catch(() => {}); } catch {}
+              try { if (v.requestFullscreen) v.requestFullscreen(); } catch {}
+            }
+          }, 300);
+        } else if (status.status === 'failed') {
+          throw new Error(status.error || 'Video generation failed');
+        }
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.detail || err.message || 'Failed to generate video';
@@ -117,19 +172,260 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
     }
   };
 
-  const handleDownloadVideo = () => {
+  const handleDownloadVideo = async () => {
     if (state.storyVideo) {
-      const videoUrl = storyWriterApi.getVideoUrl(state.storyVideo);
+      const blobUrl = await fetchMediaBlobUrl(state.storyVideo);
       const a = document.createElement('a');
-      a.href = videoUrl;
+      a.href = blobUrl;
       a.download = `story-video-${Date.now()}.mp4`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    }
+  };
+
+  const handleGenerateHdVideo = async () => {
+    if (!state.outlineScenes || state.outlineScenes.length === 0) {
+      setError('Please generate a structured outline first');
+      return;
+    }
+
+    const scenes = state.outlineScenes;
+    const totalScenes = scenes.length;
+    
+    // Initialize HD videos map if not exists
+    if (!state.sceneHdVideos) {
+      state.setSceneHdVideos(new Map());
+    }
+    
+    // Clear previous prompts
+    setHdVideoPrompts(new Map());
+    
+    state.setHdVideoGenerationStatus('generating');
+    setIsGeneratingHdVideo(true);
+    setError(null);
+
+    // Build story context for prompt enhancement
+    const storyContext = {
+      persona: state.persona,
+      story_setting: state.storySetting,
+      characters: state.characters,
+      plot_elements: state.plotElements,
+      writing_style: state.writingStyle,
+      story_tone: state.storyTone,
+      narrative_pov: state.narrativePOV,
+      audience_age_group: state.audienceAgeGroup,
+      content_rating: state.contentRating,
+      premise: state.premise || '',
+      outline: state.outline || '',
+      story_content: state.storyContent || '',
+    };
+
+    // Iterate through scenes one at a time
+    const processScene = async (sceneIndex: number): Promise<void> => {
+      if (sceneIndex >= totalScenes) {
+        // All scenes processed
+        state.setHdVideoGenerationStatus('completed');
+        setIsGeneratingHdVideo(false);
+        setHdVideoProgress(100);
+        setHdVideoMessage(`All ${totalScenes} scenes processed`);
+        
+        // Show completion message
+        const approvedCount = state.sceneHdVideos?.size || 0;
+        setHdVideoMessage(`HD video generation complete! ${approvedCount} of ${totalScenes} scenes approved.`);
+        return;
+      }
+
+      const scene = scenes[sceneIndex];
+      const sceneNumber = scene.scene_number || sceneIndex + 1;
+      state.setCurrentHdSceneIndex(sceneIndex);
+      
+      setHdVideoProgress(Math.round((sceneIndex / totalScenes) * 100));
+      setHdVideoMessage(`Generating HD video for Scene ${sceneNumber}...`);
+
+      try {
+        // Generate video for current scene
+        const result = await storyWriterApi.generateHdVideoScene({
+          scene_number: sceneNumber,
+          scene_data: scene,
+          story_context: storyContext,
+          all_scenes: scenes,
+          provider: 'huggingface',
+          model: 'tencent/HunyuanVideo',
+          num_frames: 50,
+          guidance_scale: 7.5,
+        });
+
+        // Store prompt for this scene
+        setHdVideoPrompts((prev) => {
+          const newPrompts = new Map(prev);
+          newPrompts.set(sceneNumber, result.prompt_used);
+          return newPrompts;
+        });
+
+        // Show approval modal
+        state.setHdVideoGenerationStatus('awaiting_approval');
+        setApprovalModal({
+          open: true,
+          sceneNumber: sceneNumber,
+          sceneTitle: scene.title || `Scene ${sceneNumber}`,
+          videoUrl: result.video_url,
+          promptUsed: result.prompt_used,
+        });
+
+      } catch (err: any) {
+        // Check if this is a subscription error (429/402) and trigger global subscription modal
+        const status = err?.response?.status;
+        if (status === 429 || status === 402) {
+          const handled = await triggerSubscriptionError(err);
+          if (handled) {
+            // Subscription modal is showing, stop processing scenes
+            setIsGeneratingHdVideo(false);
+            state.setHdVideoGenerationStatus('idle');
+            return;
+          }
+        }
+        
+        const errorMessage = err.response?.data?.detail || err.message || `Failed to generate HD video for scene ${sceneNumber}`;
+        setError(errorMessage);
+        
+        // On subscription error, stop processing. On other errors, continue to next scene.
+        if (status !== 429 && status !== 402) {
+          await processScene(sceneIndex + 1);
+        } else {
+          setIsGeneratingHdVideo(false);
+          state.setHdVideoGenerationStatus('idle');
+        }
+      }
+    };
+
+    // Store processScene function in ref for continuation
+    processSceneRef.current = processScene;
+    
+    // Start processing first scene
+    await processScene(0);
+  };
+
+  // Handle approval modal actions
+  const handleApprove = () => {
+    if (!approvalModal) return;
+    
+    const sceneNumber = approvalModal.sceneNumber;
+    const hdVideos = state.sceneHdVideos || new Map();
+    hdVideos.set(sceneNumber, approvalModal.videoUrl);
+    state.setSceneHdVideos(new Map(hdVideos));
+    
+    setApprovalModal(null);
+    
+    // Continue to next scene
+    const currentIndex = state.currentHdSceneIndex;
+    const scenes = state.outlineScenes || [];
+    if (currentIndex + 1 < scenes.length && processSceneRef.current) {
+      state.setHdVideoGenerationStatus('generating');
+      processSceneRef.current(currentIndex + 1);
+    } else {
+      state.setHdVideoGenerationStatus('completed');
+      setIsGeneratingHdVideo(false);
+      const approvedCount = state.sceneHdVideos?.size || 0;
+      setHdVideoMessage(`HD video generation complete! ${approvedCount} of ${scenes.length} scenes approved.`);
+    }
+  };
+
+  const handleReject = () => {
+    if (!approvalModal) return;
+    
+    // Skip scene and continue to next
+    setApprovalModal(null);
+    
+    const currentIndex = state.currentHdSceneIndex;
+    const scenes = state.outlineScenes || [];
+    if (currentIndex + 1 < scenes.length && processSceneRef.current) {
+      state.setHdVideoGenerationStatus('generating');
+      processSceneRef.current(currentIndex + 1);
+    } else {
+      state.setHdVideoGenerationStatus('completed');
+      setIsGeneratingHdVideo(false);
+      const approvedCount = state.sceneHdVideos?.size || 0;
+      setHdVideoMessage(`HD video generation complete! ${approvedCount} of ${scenes.length} scenes approved.`);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!approvalModal) return;
+    
+    const sceneNumber = approvalModal.sceneNumber;
+    const scenes = state.outlineScenes || [];
+    const sceneIndex = scenes.findIndex((s: any) => (s.scene_number || 0) === sceneNumber);
+    const scene = scenes[sceneIndex];
+    
+    if (!scene) return;
+    
+    setRegeneratingScene(sceneNumber);
+    
+    try {
+      const storyContext = {
+        persona: state.persona,
+        story_setting: state.storySetting,
+        characters: state.characters,
+        plot_elements: state.plotElements,
+        writing_style: state.writingStyle,
+        story_tone: state.storyTone,
+        narrative_pov: state.narrativePOV,
+        audience_age_group: state.audienceAgeGroup,
+        content_rating: state.contentRating,
+        premise: state.premise || '',
+        outline: state.outline || '',
+        story_content: state.storyContent || '',
+      };
+
+      const result = await storyWriterApi.generateHdVideoScene({
+        scene_number: sceneNumber,
+        scene_data: scene,
+        story_context: storyContext,
+        all_scenes: scenes,
+        provider: 'huggingface',
+        model: 'tencent/HunyuanVideo',
+        num_frames: 50,
+        guidance_scale: 7.5,
+      });
+
+      // Update prompt for this scene
+      setHdVideoPrompts((prev) => {
+        const newPrompts = new Map(prev);
+        newPrompts.set(sceneNumber, result.prompt_used);
+        return newPrompts;
+      });
+
+      // Update approval modal with new video
+      setApprovalModal({
+        open: true,
+        sceneNumber: sceneNumber,
+        sceneTitle: scene.title || `Scene ${sceneNumber}`,
+        videoUrl: result.video_url,
+        promptUsed: result.prompt_used,
+      });
+    } catch (err: any) {
+      // Check if this is a subscription error (429/402) and trigger global subscription modal
+      const status = err?.response?.status;
+      if (status === 429 || status === 402) {
+        const handled = await triggerSubscriptionError(err);
+        if (handled) {
+          // Subscription modal is showing, stop here
+          setRegeneratingScene(null);
+          return;
+        }
+      }
+      
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to regenerate video';
+      setError(errorMessage);
+    } finally {
+      setRegeneratingScene(null);
     }
   };
 
   return (
+    <>
     <Paper 
       sx={{ 
         p: 4, 
@@ -289,7 +585,7 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
                 <Box sx={{ mb: 2 }}>
                   <LinearProgress variant="determinate" value={videoProgress} sx={{ mb: 1 }} />
                   <Typography variant="body2" sx={{ color: '#5D4037' }}>
-                    Generating video... {videoProgress}%
+                    {videoMessage || 'Generating video...'} {videoProgress}%
                   </Typography>
                 </Box>
               )}
@@ -297,8 +593,9 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
               {state.storyVideo && (
                 <Box sx={{ mb: 2 }}>
                   <video
+                    ref={videoRef}
                     controls
-                    src={storyWriterApi.getVideoUrl(state.storyVideo)}
+                    src={videoBlobUrl ?? undefined}
                     style={{ width: '100%', maxHeight: '500px' }}
                   >
                     Your browser does not support the video element.
@@ -306,6 +603,107 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
                   <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#5D4037' }}>
                     Generated story video
                   </Typography>
+                  <Box sx={{ mt: 1, display: 'flex', gap: 1, flexDirection: 'column' }}>
+                    <Tooltip
+                      title={
+                        <Box sx={{ p: 1 }}>
+                          <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                            Generate HD Animation with AI
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                            Upgrade this storyboard into a high‑definition AI animation using Hugging Face text‑to‑video models.
+                            Your draft was generated affordably (images + narration). This premium option uses an AI model to render motion.
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
+                            Recommended models:
+                          </Typography>
+                          <Typography variant="caption" component="div" sx={{ display: 'block', mb: 1 }}>
+                            • tencent/HunyuanVideo<br />
+                            • Lightricks/LTX-Video<br />
+                            • Lightricks/LTX-Video-0.9.8-13B-distilled
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block', fontStyle: 'italic' }}>
+                            This will generate HD videos for each scene one at a time. You'll review and approve each scene before the next one is generated.
+                          </Typography>
+                        </Box>
+                      }
+                      arrow
+                      placement="top"
+                    >
+                      <Button
+                        variant="contained"
+                        startIcon={<SmartDisplayIcon />}
+                        onClick={handleGenerateHdVideo}
+                        disabled={isGeneratingHdVideo || state.hdVideoGenerationStatus === 'awaiting_approval'}
+                      >
+                        {isGeneratingHdVideo || state.hdVideoGenerationStatus === 'awaiting_approval' 
+                          ? 'Generating HD Animation...' 
+                          : 'Generate HD Animation with AI'}
+                      </Button>
+                    </Tooltip>
+                    
+                    {/* Show progress and prompts during generation */}
+                    {(isGeneratingHdVideo || state.hdVideoGenerationStatus === 'generating' || state.hdVideoGenerationStatus === 'awaiting_approval') && (
+                      <Box sx={{ mt: 2, p: 2, backgroundColor: '#FAF9F6', borderRadius: 1, border: '1px solid #E0DCD4' }}>
+                        <LinearProgress variant="determinate" value={hdVideoProgress} sx={{ mb: 1 }} />
+                        <Typography variant="body2" sx={{ color: '#5D4037', fontWeight: 500, mb: 1 }}>
+                          {hdVideoMessage || 'Generating HD video...'} {hdVideoProgress}%
+                        </Typography>
+                        {state.hdVideoGenerationStatus === 'awaiting_approval' && (
+                          <Typography variant="body2" sx={{ color: '#1976d2', display: 'block', mb: 1, fontWeight: 500 }}>
+                            ⏸ Awaiting your approval for Scene {state.currentHdSceneIndex + 1} of {state.outlineScenes?.length || 0}
+                          </Typography>
+                        )}
+                        {state.hdVideoGenerationStatus === 'generating' && (
+                          <Typography variant="body2" sx={{ color: '#5D4037', display: 'block', mb: 1 }}>
+                            Processing Scene {state.currentHdSceneIndex + 1} of {state.outlineScenes?.length || 0}...
+                          </Typography>
+                        )}
+                        {state.sceneHdVideos && state.sceneHdVideos.size > 0 && (
+                          <Typography variant="caption" sx={{ color: '#4caf50', display: 'block', mb: 1, fontWeight: 500 }}>
+                            ✓ {state.sceneHdVideos.size} of {state.outlineScenes?.length || 0} scenes approved
+                          </Typography>
+                        )}
+                        
+                        {/* Display prompts for completed scenes */}
+                        {hdVideoPrompts.size > 0 && (
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#1A1611', mb: 1, fontWeight: 600 }}>
+                              Generated Prompts:
+                            </Typography>
+                            {Array.from(hdVideoPrompts.entries())
+                              .sort(([a], [b]) => a - b)
+                              .map(([sceneNum, prompt]) => (
+                                <Box key={sceneNum} sx={{ mb: 2, p: 1.5, backgroundColor: '#fff', borderRadius: 1, border: '1px solid #E0DCD4' }}>
+                                  <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                    Scene {sceneNum}:
+                                  </Typography>
+                                  <Typography 
+                                    variant="caption" 
+                                    sx={{ 
+                                      color: '#2C2416', 
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.75rem',
+                                      whiteSpace: 'pre-wrap',
+                                      wordBreak: 'break-word',
+                                      display: 'block',
+                                    }}
+                                  >
+                                    {prompt.length > 200 ? `${prompt.substring(0, 200)}...` : prompt}
+                                  </Typography>
+                                </Box>
+                              ))}
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+                    
+                    {state.hdVideoGenerationStatus === 'completed' && (
+                      <Alert severity="success" sx={{ mt: 2 }}>
+                        HD video generation complete! {state.sceneHdVideos?.size || 0} of {state.outlineScenes?.length || 0} scenes were approved.
+                      </Alert>
+                    )}
+                  </Box>
                 </Box>
               )}
 
@@ -364,6 +762,29 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
         </>
       )}
     </Paper>
+    
+    {/* Scene Video Approval Modal */}
+    {approvalModal && state.outlineScenes && (
+      <SceneVideoApproval
+        open={approvalModal.open}
+        sceneNumber={approvalModal.sceneNumber}
+        sceneTitle={approvalModal.sceneTitle}
+        totalScenes={state.outlineScenes.length}
+        videoUrl={approvalModal.videoUrl}
+        promptUsed={approvalModal.promptUsed}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onRegenerate={handleRegenerate}
+        isRegenerating={regeneratingScene === approvalModal.sceneNumber}
+        onClose={() => {
+          if (!isGeneratingHdVideo && !regeneratingScene) {
+            setApprovalModal(null);
+            state.setHdVideoGenerationStatus('paused');
+          }
+        }}
+      />
+    )}
+    </>
   );
 };
 

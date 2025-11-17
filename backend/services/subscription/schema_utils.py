@@ -29,6 +29,8 @@ def ensure_subscription_plan_columns(db: Session) -> None:
         # Columns we may reference in models but might be missing in older DBs
         required_columns = {
             "exa_calls_limit": "INTEGER DEFAULT 0",
+            "video_calls_limit": "INTEGER DEFAULT 0",
+            "image_edit_calls_limit": "INTEGER DEFAULT 0",
         }
 
         for col_name, ddl in required_columns.items():
@@ -78,6 +80,10 @@ def ensure_usage_summaries_columns(db: Session) -> None:
         required_columns = {
             "exa_calls": "INTEGER DEFAULT 0",
             "exa_cost": "REAL DEFAULT 0.0",
+            "video_calls": "INTEGER DEFAULT 0",
+            "video_cost": "REAL DEFAULT 0.0",
+            "image_edit_calls": "INTEGER DEFAULT 0",
+            "image_edit_cost": "REAL DEFAULT 0.0",
         }
 
         for col_name, ddl in required_columns.items():

@@ -428,6 +428,104 @@ class StoryWriterApi {
   }
 
   /**
+   * Generate video asynchronously (returns task_id for polling)
+   */
+  async generateStoryVideoAsync(
+    request: StoryVideoGenerationRequest
+  ): Promise<{ task_id: string; status: string; message: string }> {
+    const response = await aiApiClient.post<{ task_id: string; status: string; message: string }>(
+      "/api/story/generate-video-async",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Generate HD AI animation via Hugging Face text-to-video (server saves and returns url)
+   */
+  async generateHdVideo(payload: {
+    prompt: string;
+    provider?: string;
+    model?: string;
+    num_frames?: number;
+    guidance_scale?: number;
+    num_inference_steps?: number;
+    negative_prompt?: string;
+    seed?: number;
+  }): Promise<{ success: boolean; video_filename: string; video_url: string; provider: string; model: string }> {
+    // Long-running request - use longRunningApiClient to allow more time
+    const { longRunningApiClient } = await import("../api/client");
+    const response = await longRunningApiClient.post(
+      "/api/story/hd-video",
+      {
+        provider: "huggingface",
+        ...payload,
+      }
+    );
+    return response.data;
+  }
+
+  /**
+   * Generate HD AI animation asynchronously (returns task_id for polling)
+   */
+  async generateHdVideoAsync(payload: {
+    prompt: string;
+    provider?: string;
+    model?: string;
+    num_frames?: number;
+    guidance_scale?: number;
+    num_inference_steps?: number;
+    negative_prompt?: string;
+    seed?: number;
+  }): Promise<{ task_id: string; status: string; message: string }> {
+    const response = await aiApiClient.post<{ task_id: string; status: string; message: string }>(
+      "/api/story/hd-video-async",
+      {
+        provider: "huggingface",
+        ...payload,
+      }
+    );
+    return response.data;
+  }
+
+  /**
+   * Generate HD AI video for a single scene with AI-enhanced prompt
+   */
+  async generateHdVideoScene(payload: {
+    scene_number: number;
+    scene_data: StoryScene;
+    story_context: Record<string, any>;
+    all_scenes: StoryScene[];
+    scene_image_url?: string;
+    provider?: string;
+    model?: string;
+    num_frames?: number;
+    guidance_scale?: number;
+    num_inference_steps?: number;
+    negative_prompt?: string;
+    seed?: number;
+  }): Promise<{
+    success: boolean;
+    scene_number: number;
+    video_filename: string;
+    video_url: string;
+    prompt_used: string;
+    provider: string;
+    model: string;
+  }> {
+    // Long-running request - use longRunningApiClient to allow more time
+    const { longRunningApiClient } = await import("../api/client");
+    const response = await longRunningApiClient.post(
+      "/api/story/hd-video-scene",
+      {
+        provider: "huggingface",
+        ...payload,
+      }
+    );
+    return response.data;
+  }
+
+  /**
    * Get video URL for a story video file
    */
   getVideoUrl(videoUrl: string): string {

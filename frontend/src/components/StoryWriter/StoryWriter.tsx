@@ -142,7 +142,8 @@ export const StoryWriter: React.FC = () => {
         throw new Error('Number of images and audio files must match number of scenes');
       }
 
-      const response = await storyWriterApi.generateStoryVideo({
+      // Switch to async flow so UI can poll progress messages
+      const start = await storyWriterApi.generateStoryVideoAsync({
         scenes: scenes,
         image_urls: imageUrls,
         audio_urls: audioUrls,
@@ -151,9 +152,22 @@ export const StoryWriter: React.FC = () => {
         transition_duration: state.videoTransitionDuration,
       });
 
-      if (response.success && response.video) {
-        state.setStoryVideo(response.video.video_url);
-        state.setError(null);
+      // Optional: set a lightweight spinner; export page shows detailed progress
+      let done = false;
+      while (!done) {
+        await new Promise((r) => setTimeout(r, 1200));
+        const status = await storyWriterApi.getTaskStatus(start.task_id);
+        if (status.status === 'completed') {
+          const result = await storyWriterApi.getTaskResult(start.task_id);
+          // @ts-ignore: async result includes video dict
+          const video = (result as any).video || (result as any)?.result?.video;
+          const finalUrl: string | undefined = video?.video_url;
+          if (finalUrl) state.setStoryVideo(finalUrl);
+          state.setError(null);
+          done = true;
+        } else if (status.status === 'failed') {
+          throw new Error(status.error || 'Video generation failed');
+        }
       }
     } catch (err: any) {
       const status = err?.response?.status;

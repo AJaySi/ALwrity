@@ -299,3 +299,124 @@ def validate_image_generation_operations(
             }
         )
 
+
+def validate_image_editing_operations(
+    pricing_service: PricingService,
+    user_id: str
+) -> None:
+    """
+    Validate image editing operation before making API calls.
+    
+    Args:
+        pricing_service: PricingService instance
+        user_id: User ID for subscription checking
+        
+    Returns:
+        None - raises HTTPException with 429 status if validation fails
+    """
+    try:
+        operations_to_validate = [
+            {
+                'provider': APIProvider.IMAGE_EDIT,
+                'tokens_requested': 0,
+                'actual_provider_name': 'image_edit',
+                'operation_type': 'image_editing'
+            }
+        ]
+        
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate
+        )
+        
+        if not can_proceed:
+            logger.error(f"[Pre-flight Validator] Image editing blocked for user {user_id}: {message}")
+            
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', 'image_edit') if usage_info else 'image_edit'
+            
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details
+                }
+            )
+        
+        logger.info(f"[Pre-flight Validator] ✅ Image editing validated for user {user_id}")
+        # Validation passed - no return needed (function raises HTTPException if validation fails)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Pre-flight Validator] Error validating image editing: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': f"Failed to validate image editing: {str(e)}",
+                'message': f"Failed to validate image editing: {str(e)}"
+            }
+        )
+
+
+def validate_video_generation_operations(
+    pricing_service: PricingService,
+    user_id: str
+) -> None:
+    """
+    Validate video generation operation before making API calls.
+    
+    Args:
+        pricing_service: PricingService instance
+        user_id: User ID for subscription checking
+        
+    Returns:
+        None - raises HTTPException with 429 status if validation fails
+    """
+    try:
+        operations_to_validate = [
+            {
+                'provider': APIProvider.VIDEO,
+                'tokens_requested': 0,
+                'actual_provider_name': 'video',
+                'operation_type': 'video_generation'
+            }
+        ]
+        
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate
+        )
+        
+        if not can_proceed:
+            logger.error(f"[Pre-flight Validator] Video generation blocked for user {user_id}: {message}")
+            
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', 'video') if usage_info else 'video'
+            
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details
+                }
+            )
+        
+        logger.info(f"[Pre-flight Validator] ✅ Video generation validated for user {user_id}")
+        # Validation passed - no return needed (function raises HTTPException if validation fails)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Pre-flight Validator] Error validating video generation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': f"Failed to validate video generation: {str(e)}",
+                'message': f"Failed to validate video generation: {str(e)}"
+            }
+        )

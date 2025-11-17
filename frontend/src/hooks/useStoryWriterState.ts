@@ -51,6 +51,9 @@ export interface StoryWriterState {
   sceneImages: Map<number, string> | null; // Generated image URLs by scene number
   sceneAudio: Map<number, string> | null; // Generated audio URLs by scene number
   storyVideo: string | null; // Generated video URL
+  sceneHdVideos: Map<number, string> | null; // Approved HD video URLs by scene number
+  hdVideoGenerationStatus: 'idle' | 'generating' | 'awaiting_approval' | 'completed' | 'paused';
+  currentHdSceneIndex: number; // Which scene is currently being generated/reviewed
 
   // Task management
   currentTaskId: string | null;
@@ -100,6 +103,9 @@ const DEFAULT_STATE: Partial<StoryWriterState> = {
   sceneImages: null,
   sceneAudio: null,
   storyVideo: null,
+  sceneHdVideos: null,
+  hdVideoGenerationStatus: 'idle',
+  currentHdSceneIndex: 0,
   currentTaskId: null,
   generationProgress: 0,
   generationMessage: null,
@@ -141,6 +147,7 @@ export const useStoryWriterState = () => {
           ...parsed,
           sceneImages: parsed.sceneImages ? new Map(parsed.sceneImages) : null,
           sceneAudio: parsed.sceneAudio ? new Map(parsed.sceneAudio) : null,
+          sceneHdVideos: parsed.sceneHdVideos ? new Map(parsed.sceneHdVideos) : null,
         };
         
         return restoredState as StoryWriterState;
@@ -185,6 +192,7 @@ export const useStoryWriterState = () => {
         audienceAgeGroup: validAudienceAgeGroup,
         sceneImages: persistableState.sceneImages ? Array.from(persistableState.sceneImages.entries()) : null,
         sceneAudio: persistableState.sceneAudio ? Array.from(persistableState.sceneAudio.entries()) : null,
+        sceneHdVideos: persistableState.sceneHdVideos ? Array.from(persistableState.sceneHdVideos.entries()) : null,
       };
       
       localStorage.setItem('story_writer_state', JSON.stringify(serializableState));
@@ -337,6 +345,18 @@ export const useStoryWriterState = () => {
     setState((prev) => ({ ...prev, storyVideo: video }));
   }, []);
 
+  const setSceneHdVideos = useCallback((videos: Map<number, string> | null) => {
+    setState((prev) => ({ ...prev, sceneHdVideos: videos }));
+  }, []);
+
+  const setHdVideoGenerationStatus = useCallback((status: 'idle' | 'generating' | 'awaiting_approval' | 'completed' | 'paused') => {
+    setState((prev) => ({ ...prev, hdVideoGenerationStatus: status }));
+  }, []);
+
+  const setCurrentHdSceneIndex = useCallback((index: number) => {
+    setState((prev) => ({ ...prev, currentHdSceneIndex: index }));
+  }, []);
+
   const setIsComplete = useCallback((complete: boolean) => {
     setState((prev) => ({ ...prev, isComplete: complete }));
   }, []);
@@ -450,6 +470,9 @@ export const useStoryWriterState = () => {
     setSceneImages,
     setSceneAudio,
     setStoryVideo,
+    setSceneHdVideos,
+    setHdVideoGenerationStatus,
+    setCurrentHdSceneIndex,
     setCurrentTaskId,
     setGenerationProgress,
     setGenerationMessage,

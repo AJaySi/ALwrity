@@ -15,9 +15,9 @@
 </div>
 
 <p align="center">
-  <a href="https://ajaysi.github.io/ALwrity/"><img src="../docs-site/docs/assets/hero-1.jpg" alt="ALwrity dashboard overview" width="30%"/></a>
-  <a href="https://ajaysi.github.io/ALwrity/features/blog-writer/overview/"><img src="../docs-site/docs/assets/hero-2.png" alt="Story Writer workflow" width="30%"/></a>
-  <a href="https://ajaysi.github.io/ALwrity/features/seo-dashboard/overview/"><img src="../docs-site/docs/assets/hero-3.png" alt="SEO dashboard insights" width="30%"/></a>
+  <a href="https://ajaysi.github.io/ALwrity/"><img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-1.jpg" alt="ALwrity dashboard overview" width="30%"/></a>
+  <a href="https://ajaysi.github.io/ALwrity/features/blog-writer/overview/"><img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-2.png" alt="Story Writer workflow" width="30%"/></a>
+  <a href="https://ajaysi.github.io/ALwrity/features/seo-dashboard/overview/"><img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-3.png" alt="SEO dashboard insights" width="30%"/></a>
 </p>
 
 ---
