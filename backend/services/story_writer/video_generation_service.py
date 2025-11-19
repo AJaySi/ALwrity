@@ -220,35 +220,41 @@ class StoryVideoGenerationService:
     def generate_story_video(
         self,
         scenes: List[Dict[str, Any]],
-        image_paths: List[str],
+        image_paths: List[Optional[str]],
         audio_paths: List[str],
         user_id: str,
         story_title: str = "Story",
         fps: int = 24,
         transition_duration: float = 0.5,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        video_paths: Optional[List[Optional[str]]] = None
     ) -> Dict[str, Any]:
         """
         Generate a complete story video from multiple scenes.
         
         Parameters:
             scenes (List[Dict[str, Any]]): List of scene data.
-            image_paths (List[str]): List of image file paths for each scene.
+            image_paths (List[Optional[str]]): List of image file paths (None if scene has animated video).
             audio_paths (List[str]): List of audio file paths for each scene.
             user_id (str): Clerk user ID for subscription checking.
             story_title (str): Title of the story (default: "Story").
             fps (int): Frames per second for video (default: 24).
             transition_duration (float): Duration of transitions between scenes in seconds (default: 0.5).
             progress_callback (callable, optional): Callback function for progress updates.
+            video_paths (Optional[List[Optional[str]]]): List of animated video file paths (None if scene has static image).
         
         Returns:
             Dict[str, Any]: Video metadata including file path, URL, and story info.
         """
-        if not scenes or not image_paths or not audio_paths:
-            raise ValueError("Scenes, image paths, and audio paths are required")
+        if not scenes or not audio_paths:
+            raise ValueError("Scenes and audio paths are required")
         
-        if len(scenes) != len(image_paths) or len(scenes) != len(audio_paths):
-            raise ValueError("Number of scenes, image paths, and audio paths must match")
+        if len(scenes) != len(audio_paths):
+            raise ValueError("Number of scenes and audio paths must match")
+        
+        video_paths = video_paths or [None] * len(scenes)
+        if len(video_paths) != len(scenes):
+            video_paths = video_paths + [None] * (len(scenes) - len(video_paths))
         
         try:
             logger.info(f"[StoryVideoGeneration] Generating story video for {len(scenes)} scenes")
@@ -293,36 +299,59 @@ class StoryVideoGenerationService:
             scene_clips = []
             total_duration = 0.0
             
-            for idx, (scene, image_path, audio_path) in enumerate(zip(scenes, image_paths, audio_paths)):
+            # Import VideoFileClip for animated videos
+            try:
+                from moviepy import VideoFileClip
+            except ImportError:
+                VideoFileClip = None
+            
+            for idx, (scene, image_path, audio_path, video_path) in enumerate(zip(scenes, image_paths, audio_paths, video_paths)):
                 try:
                     scene_number = scene.get("scene_number", idx + 1)
                     scene_title = scene.get("title", "Untitled")
                     
                     logger.info(f"[StoryVideoGeneration] Processing scene {scene_number}/{len(scenes)}: {scene_title}")
                     
-                    # Load image and audio
-                    image_file = Path(image_path)
                     audio_file = Path(audio_path)
-                    
-                    if not image_file.exists():
-                        logger.warning(f"[StoryVideoGeneration] Image not found: {image_path}, skipping scene {scene_number}")
-                        continue
                     if not audio_file.exists():
                         logger.warning(f"[StoryVideoGeneration] Audio not found: {audio_path}, skipping scene {scene_number}")
                         continue
                     
-                    # Load audio to get duration
+                    # Load audio
                     audio_clip = AudioFileClip(str(audio_file))
                     audio_duration = audio_clip.duration
                     
-                    # Create image clip (MoviePy v2: use with_* API)
-                    image_clip = ImageClip(str(image_file)).with_duration(audio_duration)
-                    image_clip = image_clip.with_fps(fps)
+                    # Prefer animated video if available
+                    if video_path and Path(video_path).exists():
+                        logger.info(f"[StoryVideoGeneration] Using animated video for scene {scene_number}: {video_path}")
+                        # Load animated video
+                        if VideoFileClip is None:
+                            raise RuntimeError("VideoFileClip not available - MoviePy may not be fully installed")
+                        video_clip = VideoFileClip(str(video_path))
+                        # Replace audio with the preferred audio (AI or free)
+                        video_clip = video_clip.with_audio(audio_clip)
+                        # Match duration to audio if needed
+                        if video_clip.duration > audio_duration:
+                            video_clip = video_clip.subclip(0, audio_duration)
+                        elif video_clip.duration < audio_duration:
+                            # Loop the video if it's shorter than audio
+                            loops_needed = int(audio_duration / video_clip.duration) + 1
+                            video_clip = concatenate_videoclips([video_clip] * loops_needed).subclip(0, audio_duration)
+                            video_clip = video_clip.with_audio(audio_clip)
+                    elif image_path and Path(image_path).exists():
+                        # Fall back to static image
+                        logger.info(f"[StoryVideoGeneration] Using static image for scene {scene_number}: {image_path}")
+                        image_file = Path(image_path)
+                        # Create image clip (MoviePy v2: use with_* API)
+                        image_clip = ImageClip(str(image_file)).with_duration(audio_duration)
+                        image_clip = image_clip.with_fps(fps)
+                        # Set audio to image clip
+                        video_clip = image_clip.with_audio(audio_clip)
+                    else:
+                        logger.warning(f"[StoryVideoGeneration] No video or image found for scene {scene_number}, skipping")
+                        continue
                     
-                    # Set audio to image clip
-                    video_clip = image_clip.with_audio(audio_clip)
                     scene_clips.append(video_clip)
-                    
                     total_duration += audio_duration
                     
                     # Call progress callback if provided

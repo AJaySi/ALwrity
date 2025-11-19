@@ -2,15 +2,14 @@ import React, { useState, useRef } from 'react';
 import {
   Box,
   Typography,
-  Button,
   Alert,
   LinearProgress,
-  Tooltip,
 } from '@mui/material';
 import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import { useStoryWriterState } from '../../../hooks/useStoryWriterState';
 import { storyWriterApi } from '../../../services/storyWriterApi';
 import { triggerSubscriptionError } from '../../../api/client';
+import { OperationButton } from '../../shared/OperationButton';
 import SceneVideoApproval from './SceneVideoApproval';
 
 // Simple logger for frontend
@@ -94,14 +93,11 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
       setHdVideoMessage(`Generating HD video for Scene ${sceneNumber}...`);
 
       try {
-        const sceneImageUrl = state.sceneImages?.get(sceneNumber);
-
         const result = await storyWriterApi.generateHdVideoScene({
           scene_number: sceneNumber,
           scene_data: scene,
           story_context: storyContext,
           all_scenes: scenes,
-          scene_image_url: sceneImageUrl,
           provider: 'huggingface',
           model: 'tencent/HunyuanVideo',
           num_frames: 50,
@@ -240,14 +236,11 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
         story_content: state.storyContent || '',
       };
 
-      const sceneImageUrl = state.sceneImages?.get(sceneNumber);
-
       const result = await storyWriterApi.generateHdVideoScene({
         scene_number: sceneNumber,
         scene_data: scene,
         story_context: storyContext,
         all_scenes: scenes,
-        scene_image_url: sceneImageUrl,
         provider: 'huggingface',
         model: 'tencent/HunyuanVideo',
         num_frames: 50,
@@ -303,45 +296,30 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
   return (
     <>
       <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Tooltip
-          title={
-            <Box sx={{ p: 1 }}>
-              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
-                Generate HD Animation with AI
-              </Typography>
-              <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-                Upgrade this storyboard into a high‑definition AI animation using Hugging Face text‑to‑video models.
-                Your draft was generated affordably (images + narration). This premium option uses an AI model to render motion.
-              </Typography>
-              <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
-                Recommended models:
-              </Typography>
-              <Typography variant="caption" component="div" sx={{ display: 'block', mb: 1 }}>
-                • tencent/HunyuanVideo<br />
-                • Lightricks/LTX-Video<br />
-                • Lightricks/LTX-Video-0.9.8-13B-distilled
-              </Typography>
-              <Typography variant="caption" sx={{ display: 'block', fontStyle: 'italic' }}>
-                This will generate HD videos for each scene one at a time. You'll review and approve each scene before the next one is generated.
-              </Typography>
-            </Box>
-          }
-          arrow
-          placement="top"
-        >
-          <span style={{ display: 'inline-flex' }}>
-            <Button
-              variant="contained"
-              startIcon={<SmartDisplayIcon />}
-              onClick={handleGenerateHdVideo}
-              disabled={isGeneratingHdVideo || state.hdVideoGenerationStatus === 'awaiting_approval'}
-            >
-              {isGeneratingHdVideo || state.hdVideoGenerationStatus === 'awaiting_approval' 
-                ? 'Generating HD Animation...' 
-                : 'Generate HD Animation with AI'}
-            </Button>
-          </span>
-        </Tooltip>
+        <OperationButton
+          operation={{
+            provider: 'video',
+            model: 'tencent/HunyuanVideo',
+            tokens_requested: 0,
+            operation_type: 'video_generation',
+            actual_provider_name: 'huggingface',
+          }}
+          label="Generate HD Animation with AI"
+          variant="contained"
+          startIcon={<SmartDisplayIcon />}
+          showCost={true}
+          checkOnHover={true}
+          checkOnMount={false}
+          onClick={handleGenerateHdVideo}
+          disabled={isGeneratingHdVideo || state.hdVideoGenerationStatus === 'awaiting_approval'}
+          loading={isGeneratingHdVideo || state.hdVideoGenerationStatus === 'awaiting_approval'}
+          tooltipPlacement="top"
+          buttonProps={{
+            children: isGeneratingHdVideo || state.hdVideoGenerationStatus === 'awaiting_approval'
+              ? 'Generating HD Animation...'
+              : undefined,
+          }}
+        />
         
         {(isGeneratingHdVideo || state.hdVideoGenerationStatus === 'generating' || state.hdVideoGenerationStatus === 'awaiting_approval') && (
           <Box sx={{ mt: 2, p: 2, backgroundColor: '#FAF9F6', borderRadius: 1, border: '1px solid #E0DCD4' }}>

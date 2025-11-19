@@ -95,25 +95,38 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
 
     try {
       // Prepare image and audio URLs in scene order
-      const imageUrls: string[] = [];
+      const imageUrls: (string | null)[] = [];
       const audioUrls: string[] = [];
       const scenes = state.outlineScenes;
+
+      const videoUrls: (string | null)[] = [];
 
       for (const scene of scenes) {
         const sceneNumber = scene.scene_number || scenes.indexOf(scene) + 1;
         const imageUrl = state.sceneImages?.get(sceneNumber);
         const audioUrl = state.sceneAudio?.get(sceneNumber);
+        const animatedVideoUrl = state.sceneAnimatedVideos?.get(sceneNumber);
 
-        if (imageUrl && audioUrl) {
-          imageUrls.push(imageUrl);
-          audioUrls.push(audioUrl);
-        } else {
-          throw new Error(`Missing image or audio for scene ${sceneNumber}`);
+        if (!audioUrl) {
+          throw new Error(`Missing audio for scene ${sceneNumber}`);
         }
+
+        // Prefer animated video if available, otherwise use image
+        if (animatedVideoUrl) {
+          videoUrls.push(animatedVideoUrl);
+          imageUrls.push(null);
+        } else if (imageUrl) {
+          videoUrls.push(null);
+          imageUrls.push(imageUrl);
+        } else {
+          throw new Error(`Missing image or animated video for scene ${sceneNumber}`);
+        }
+
+        audioUrls.push(audioUrl);
       }
 
       if (imageUrls.length !== scenes.length || audioUrls.length !== scenes.length) {
-        throw new Error('Number of images and audio files must match number of scenes');
+        throw new Error('Number of images/videos and audio files must match number of scenes');
       }
 
       // Start async video generation
@@ -121,6 +134,8 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
         scenes: scenes,
         image_urls: imageUrls,
         audio_urls: audioUrls,
+        video_urls: videoUrls.length > 0 ? videoUrls : undefined,
+        ai_audio_urls: undefined, // TODO: Track AI audio separately in state
         story_title: state.storySetting || 'Story',
         fps: state.videoFps,
         transition_duration: state.videoTransitionDuration,
@@ -147,7 +162,11 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
           state.setStoryVideo(videoUrl);
           // fetch blob for authenticated preview
           const blobUrl = await fetchMediaBlobUrl(videoUrl);
-          setVideoBlobUrl(blobUrl);
+          if (blobUrl) {
+            setVideoBlobUrl(blobUrl);
+          } else {
+            setVideoBlobUrl(null);
+          }
           setVideoProgress(100);
           setVideoMessage('Video generation complete');
         state.setError(null);
@@ -175,6 +194,9 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
   const handleDownloadVideo = async () => {
     if (state.storyVideo) {
       const blobUrl = await fetchMediaBlobUrl(state.storyVideo);
+      if (!blobUrl) {
+        return;
+      }
       const a = document.createElement('a');
       a.href = blobUrl;
       a.download = `story-video-${Date.now()}.mp4`;

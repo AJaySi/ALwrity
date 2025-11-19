@@ -288,4 +288,90 @@ class StoryAudioGenerationService:
         
         logger.info(f"[StoryAudioGeneration] Generated {len(audio_results)} audio files out of {total_scenes} scenes")
         return audio_results
+    
+    def generate_ai_audio(
+        self,
+        scene_number: int,
+        scene_title: str,
+        text: str,
+        user_id: str,
+        voice_id: str = "Wise_Woman",
+        speed: float = 1.0,
+        volume: float = 1.0,
+        pitch: float = 0.0,
+        emotion: str = "happy",
+    ) -> Dict[str, Any]:
+        """
+        Generate AI audio for a single scene using main_audio_generation.
+        
+        Parameters:
+            scene_number (int): Scene number.
+            scene_title (str): Scene title.
+            text (str): Text to convert to speech.
+            user_id (str): Clerk user ID for subscription checking.
+            voice_id (str): Voice ID for AI audio generation (default: "Wise_Woman").
+            speed (float): Speech speed (0.5-2.0, default: 1.0).
+            volume (float): Speech volume (0.1-10.0, default: 1.0).
+            pitch (float): Speech pitch (-12 to 12, default: 0.0).
+            emotion (str): Emotion for speech (default: "happy").
+        
+        Returns:
+            Dict[str, Any]: Audio metadata including file path, URL, and scene info.
+        """
+        if not text or not text.strip():
+            raise ValueError(f"Scene {scene_number} ({scene_title}) requires non-empty text")
+        
+        try:
+            logger.info(f"[StoryAudioGeneration] Generating AI audio for scene {scene_number}: {scene_title}")
+            logger.debug(f"[StoryAudioGeneration] Text length: {len(text)} characters, voice: {voice_id}")
+            
+            # Import main_audio_generation
+            from services.llm_providers.main_audio_generation import generate_audio
+            
+            # Generate audio using main_audio_generation service
+            result = generate_audio(
+                text=text.strip(),
+                voice_id=voice_id,
+                speed=speed,
+                volume=volume,
+                pitch=pitch,
+                emotion=emotion,
+                user_id=user_id,
+            )
+            
+            # Save audio to file
+            audio_filename = self._generate_audio_filename(scene_number, scene_title)
+            audio_path = self.output_dir / audio_filename
+            
+            with open(audio_path, "wb") as f:
+                f.write(result.audio_bytes)
+            
+            logger.info(f"[StoryAudioGeneration] Saved AI audio to: {audio_path} ({result.file_size} bytes)")
+            
+            # Calculate cost (for response)
+            character_count = result.text_length
+            cost_per_1000_chars = 0.05
+            cost = (character_count / 1000.0) * cost_per_1000_chars
+            
+            # Return audio metadata
+            return {
+                "scene_number": scene_number,
+                "scene_title": scene_title,
+                "audio_path": str(audio_path),
+                "audio_filename": audio_filename,
+                "audio_url": f"/api/story/audio/{audio_filename}",
+                "provider": result.provider,
+                "model": result.model,
+                "voice_id": result.voice_id,
+                "text_length": result.text_length,
+                "file_size": result.file_size,
+                "cost": cost,
+            }
+            
+        except HTTPException:
+            # Re-raise HTTPExceptions (e.g., 429 subscription limit)
+            raise
+        except Exception as e:
+            logger.error(f"[StoryAudioGeneration] Error generating AI audio for scene {scene_number}: {e}")
+            raise RuntimeError(f"Failed to generate AI audio for scene {scene_number}: {str(e)}") from e
 

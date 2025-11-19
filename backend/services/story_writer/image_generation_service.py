@@ -193,4 +193,82 @@ class StoryImageGenerationService:
         
         logger.info(f"[StoryImageGeneration] Generated {len(image_results)} images out of {total_scenes} scenes")
         return image_results
+    
+    def regenerate_scene_image(
+        self,
+        scene_number: int,
+        scene_title: str,
+        prompt: str,
+        user_id: str,
+        provider: Optional[str] = None,
+        width: int = 1024,
+        height: int = 1024,
+        model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Regenerate an image for a single scene using a direct prompt (no AI prompt generation).
+        
+        Parameters:
+            scene_number (int): Scene number.
+            scene_title (str): Scene title.
+            prompt (str): Direct prompt to use for image generation.
+            user_id (str): Clerk user ID for subscription checking.
+            provider (str, optional): Image generation provider (gemini, huggingface, stability).
+            width (int): Image width (default: 1024).
+            height (int): Image height (default: 1024).
+            model (str, optional): Model to use for image generation.
+        
+        Returns:
+            Dict[str, Any]: Image metadata including file path, URL, and scene info.
+        """
+        if not prompt or not prompt.strip():
+            raise ValueError(f"Scene {scene_number} ({scene_title}) requires a non-empty prompt")
+        
+        try:
+            logger.info(f"[StoryImageGeneration] Regenerating image for scene {scene_number}: {scene_title}")
+            logger.debug(f"[StoryImageGeneration] Using direct prompt: {prompt[:100]}...")
+            
+            # Generate image using main_image_generation service with the direct prompt
+            image_options = {
+                "provider": provider,
+                "width": width,
+                "height": height,
+                "model": model,
+            }
+            
+            result: ImageGenerationResult = generate_image(
+                prompt=prompt.strip(),
+                options=image_options,
+                user_id=user_id
+            )
+            
+            # Save image to file
+            image_filename = self._generate_image_filename(scene_number, scene_title)
+            image_path = self.output_dir / image_filename
+            
+            with open(image_path, "wb") as f:
+                f.write(result.image_bytes)
+            
+            logger.info(f"[StoryImageGeneration] Saved regenerated image to: {image_path}")
+            
+            # Return image metadata
+            return {
+                "scene_number": scene_number,
+                "scene_title": scene_title,
+                "image_path": str(image_path),
+                "image_filename": image_filename,
+                "image_url": f"/api/story/images/{image_filename}",
+                "width": result.width,
+                "height": result.height,
+                "provider": result.provider,
+                "model": result.model,
+                "seed": result.seed,
+            }
+            
+        except HTTPException:
+            # Re-raise HTTPExceptions (e.g., 429 subscription limit)
+            raise
+        except Exception as e:
+            logger.error(f"[StoryImageGeneration] Error regenerating image for scene {scene_number}: {e}")
+            raise RuntimeError(f"Failed to regenerate image for scene {scene_number}: {str(e)}") from e
 

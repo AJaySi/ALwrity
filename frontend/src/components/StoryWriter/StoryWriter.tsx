@@ -123,23 +123,38 @@ export const StoryWriter: React.FC = () => {
     setIsGeneratingVideo(true);
 
     try {
-      const imageUrls: string[] = [];
+      const imageUrls: (string | null)[] = [];
       const audioUrls: string[] = [];
       const scenes = state.outlineScenes;
+
+      const videoUrls: (string | null)[] = [];
 
       for (const scene of scenes) {
         const sceneNumber = scene.scene_number || scenes.indexOf(scene) + 1;
         const imageUrl = state.sceneImages?.get(sceneNumber);
         const audioUrl = state.sceneAudio?.get(sceneNumber);
+        const animatedVideoUrl = state.sceneAnimatedVideos?.get(sceneNumber);
 
-        if (imageUrl && audioUrl) {
-          imageUrls.push(imageUrl);
-          audioUrls.push(audioUrl);
+        if (!audioUrl) {
+          continue; // Skip scenes without audio
         }
+
+        // Prefer animated video if available, otherwise use image
+        if (animatedVideoUrl) {
+          videoUrls.push(animatedVideoUrl);
+          imageUrls.push(null);
+        } else if (imageUrl) {
+          videoUrls.push(null);
+          imageUrls.push(imageUrl);
+        } else {
+          continue; // Skip scenes without image or video
+        }
+
+        audioUrls.push(audioUrl);
       }
 
       if (imageUrls.length !== scenes.length || audioUrls.length !== scenes.length) {
-        throw new Error('Number of images and audio files must match number of scenes');
+        throw new Error('Number of images/videos and audio files must match number of scenes');
       }
 
       // Switch to async flow so UI can poll progress messages
@@ -147,6 +162,8 @@ export const StoryWriter: React.FC = () => {
         scenes: scenes,
         image_urls: imageUrls,
         audio_urls: audioUrls,
+        video_urls: videoUrls.length > 0 ? videoUrls : undefined,
+        ai_audio_urls: undefined, // TODO: Track AI audio separately in state
         story_title: state.storySetting || 'Story',
         fps: state.videoFps,
         transition_duration: state.videoTransitionDuration,

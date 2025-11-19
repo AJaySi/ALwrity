@@ -420,3 +420,54 @@ def validate_video_generation_operations(
                 'message': f"Failed to validate video generation: {str(e)}"
             }
         )
+
+
+def validate_scene_animation_operation(
+    pricing_service: PricingService,
+    user_id: str,
+) -> None:
+    """
+    Validate the per-scene animation workflow before API calls.
+    """
+    try:
+        operations_to_validate = [
+            {
+                'provider': APIProvider.VIDEO,
+                'tokens_requested': 0,
+                'actual_provider_name': 'wavespeed',
+                'operation_type': 'scene_animation',
+            }
+        ]
+
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate,
+        )
+
+        if not can_proceed:
+            logger.error(f"[Pre-flight Validator] Scene animation blocked for user {user_id}: {message}")
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', 'video') if usage_info else 'video'
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details,
+                }
+            )
+
+        logger.info(f"[Pre-flight Validator] ✅ Scene animation validated for user {user_id}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Pre-flight Validator] Error validating scene animation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': f"Failed to validate scene animation: {str(e)}",
+                'message': f"Failed to validate scene animation: {str(e)}",
+            },
+        )

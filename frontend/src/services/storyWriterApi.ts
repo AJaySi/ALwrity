@@ -204,8 +204,10 @@ export interface StoryAudioGenerationResponse {
 
 export interface StoryVideoGenerationRequest {
   scenes: StoryScene[];
-  image_urls: string[];
+  image_urls: (string | null)[];
   audio_urls: string[];
+  video_urls?: (string | null)[] | null;
+  ai_audio_urls?: (string | null)[] | null;
   story_title?: string;
   fps?: number;
   transition_duration?: number;
@@ -225,6 +227,38 @@ export interface StoryVideoGenerationResponse {
   video: StoryVideoResult;
   success: boolean;
   task_id?: string;
+}
+
+export interface AnimateSceneRequest {
+  scene_number: number;
+  scene_data: StoryScene;
+  story_context: Record<string, any>;
+  image_url: string;
+  duration?: 5 | 10;
+}
+
+export interface AnimateSceneVoiceoverRequest extends AnimateSceneRequest {
+  audio_url: string;
+  resolution?: '480p' | '720p';
+  prompt?: string;
+}
+
+export interface AnimateSceneResponse {
+  success: boolean;
+  scene_number: number;
+  video_filename: string;
+  video_url: string;
+  duration: number;
+  cost: number;
+  prompt_used: string;
+  provider: string;
+  prediction_id?: string;
+}
+
+export interface ResumeAnimateSceneRequest {
+  prediction_id: string;
+  scene_number: number;
+  duration?: 5 | 10;
 }
 
 class StoryWriterApi {
@@ -374,19 +408,62 @@ class StoryWriterApi {
   }
 
   /**
+   * Animate a single scene image into a short video preview
+   */
+  async animateScene(request: AnimateSceneRequest): Promise<AnimateSceneResponse> {
+    const response = await aiApiClient.post<AnimateSceneResponse>(
+      "/api/story/animate-scene-preview",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Animate a scene image using WaveSpeed InfiniteTalk with voiceover (async)
+   * Returns task_id for polling since InfiniteTalk can take up to 10 minutes.
+   */
+  async animateSceneVoiceover(request: AnimateSceneVoiceoverRequest): Promise<{ task_id: string; status: string; message: string }> {
+    const response = await aiApiClient.post<{ task_id: string; status: string; message: string }>(
+      "/api/story/animate-scene-voiceover",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Resume a timed-out scene animation download using the prediction id
+   */
+  async resumeAnimateScene(request: ResumeAnimateSceneRequest): Promise<AnimateSceneResponse> {
+    const response = await aiApiClient.post<AnimateSceneResponse>(
+      "/api/story/animate-scene-resume",
+      request
+    );
+    return response.data;
+  }
+
+  private buildAbsoluteUrl(path: string): string {
+    if (!path) return path;
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    const baseURL = aiApiClient.defaults.baseURL || '';
+    const cleanBaseURL = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    return `${cleanBaseURL}${cleanPath}`;
+  }
+
+  /**
    * Get image URL for a scene image
    */
   getImageUrl(imageUrl: string): string {
-    // If imageUrl is already a full URL, return it as-is
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      return imageUrl;
+    return this.buildAbsoluteUrl(imageUrl);
     }
-    // Otherwise, prepend the base URL
-    const baseURL = aiApiClient.defaults.baseURL || '';
-    // Remove trailing slash from baseURL if present, and leading slash from imageUrl if present
-    const cleanBaseURL = baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL;
-    const cleanImageUrl = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`;
-    return `${cleanBaseURL}${cleanImageUrl}`;
+
+  /**
+   * Convert any relative media URL to absolute
+   */
+  getMediaUrl(path: string): string {
+    return this.buildAbsoluteUrl(path);
   }
 
   /**
@@ -398,6 +475,165 @@ class StoryWriterApi {
       request
     );
     return response.data;
+  }
+
+  /**
+   * Optimize an image prompt using WaveSpeed prompt optimizer
+   */
+  async optimizePrompt(request: {
+    text: string;
+    mode?: 'image' | 'video';
+    style?: 'default' | 'artistic' | 'photographic' | 'technical' | 'anime' | 'realistic';
+    image?: string;
+  }): Promise<{ optimized_prompt: string; success: boolean }> {
+    const response = await aiApiClient.post<{ optimized_prompt: string; success: boolean }>(
+      "/api/story/optimize-prompt",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Regenerate a scene image using a direct prompt (no AI prompt generation)
+   */
+  async regenerateSceneImage(request: {
+    scene_number: number;
+    scene_title: string;
+    prompt: string;
+    provider?: string;
+    width?: number;
+    height?: number;
+    model?: string;
+  }): Promise<{
+    scene_number: number;
+    scene_title: string;
+    image_filename: string;
+    image_url: string;
+    width: number;
+    height: number;
+    provider: string;
+    model?: string;
+    seed?: number;
+    success: boolean;
+    error?: string;
+  }> {
+    const response = await aiApiClient.post<{
+      scene_number: number;
+      scene_title: string;
+      image_filename: string;
+      image_url: string;
+      width: number;
+      height: number;
+      provider: string;
+      model?: string;
+      seed?: number;
+      success: boolean;
+      error?: string;
+    }>(
+      "/api/story/regenerate-images",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Generate AI audio for a single scene using WaveSpeed Minimax Speech 02 HD
+   */
+  async generateAIAudio(request: {
+    scene_number: number;
+    scene_title: string;
+    text: string;
+    voice_id?: string;
+    speed?: number;
+    volume?: number;
+    pitch?: number;
+    emotion?: string;
+  }): Promise<{
+    scene_number: number;
+    scene_title: string;
+    audio_filename: string;
+    audio_url: string;
+    provider: string;
+    model: string;
+    voice_id: string;
+    text_length: number;
+    file_size: number;
+    cost: number;
+    success: boolean;
+    error?: string;
+  }> {
+    const response = await aiApiClient.post<{
+      scene_number: number;
+      scene_title: string;
+      audio_filename: string;
+      audio_url: string;
+      provider: string;
+      model: string;
+      voice_id: string;
+      text_length: number;
+      file_size: number;
+      cost: number;
+      success: boolean;
+      error?: string;
+    }>(
+      "/api/story/generate-ai-audio",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Generate free audio for a single scene using gTTS
+   */
+  async generateFreeAudio(request: {
+    scene_number: number;
+    scene_title: string;
+    text: string;
+    provider?: string;
+    lang?: string;
+    slow?: boolean;
+    rate?: number;
+  }): Promise<{
+    scene_number: number;
+    scene_title: string;
+    audio_filename: string;
+    audio_url: string;
+    provider: string;
+    file_size: number;
+    success: boolean;
+    error?: string;
+  }> {
+    // Use existing generateSceneAudio endpoint but for a single scene
+    const response = await aiApiClient.post<StoryAudioGenerationResponse>(
+      "/api/story/generate-audio",
+      {
+        scenes: [{
+          scene_number: request.scene_number,
+          title: request.scene_title,
+          audio_narration: request.text,
+        }],
+        provider: request.provider || 'gtts',
+        lang: request.lang || 'en',
+        slow: request.slow || false,
+        rate: request.rate || 150,
+      }
+    );
+    const result = response.data;
+    if (result.success && result.audio_files && result.audio_files.length > 0) {
+      const audio = result.audio_files[0];
+      return {
+        scene_number: audio.scene_number,
+        scene_title: audio.scene_title,
+        audio_filename: audio.audio_filename,
+        audio_url: audio.audio_url,
+        provider: audio.provider,
+        file_size: audio.file_size,
+        success: true,
+        error: audio.error,
+      };
+    } else {
+      throw new Error(result.audio_files?.[0]?.error || 'Failed to generate audio');
+    }
   }
 
   /**
@@ -496,7 +732,6 @@ class StoryWriterApi {
     scene_data: StoryScene;
     story_context: Record<string, any>;
     all_scenes: StoryScene[];
-    scene_image_url?: string;
     provider?: string;
     model?: string;
     num_frames?: number;

@@ -2,7 +2,7 @@
 
 import os
 from typing import Optional, Dict, Any
-from fastapi import HTTPException, Depends, status
+from fastapi import HTTPException, Depends, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from loguru import logger
 from dotenv import load_dotenv
@@ -259,3 +259,63 @@ async def get_optional_user(
     except Exception as e:
         logger.warning(f"Optional authentication failed: {e}")
         return None
+
+async def get_current_user_with_query_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> Dict[str, Any]:
+    """Get current authenticated user from either Authorization header or query parameter.
+    
+    This is useful for media endpoints (audio, video, images) that need to be accessed
+    by HTML elements like <audio> or <img> which cannot send custom headers.
+    
+    Args:
+        request: FastAPI request object
+        credentials: HTTP authorization credentials from header
+    
+    Returns:
+        User dictionary with authentication info
+    
+    Raises:
+        HTTPException: If authentication fails
+    """
+    try:
+        # Try to get token from Authorization header first
+        token_to_verify = None
+        if credentials:
+            token_to_verify = credentials.credentials
+        else:
+            # Fall back to query parameter if no header
+            query_token = request.query_params.get("token")
+            if query_token:
+                token_to_verify = query_token
+        
+        if not token_to_verify:
+            logger.warning("No credentials provided (neither header nor query parameter)")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        user = await clerk_auth.verify_token(token_to_verify)
+        if not user:
+            # Token verification failed (likely expired) - log at debug level to reduce noise
+            logger.debug("Token verification failed (likely expired token)")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication failed",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return user
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

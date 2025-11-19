@@ -37,6 +37,7 @@ class APIProvider(enum.Enum):
     EXA = "exa"
     VIDEO = "video"
     IMAGE_EDIT = "image_edit"
+    AUDIO = "audio"
 
 class BillingCycle(enum.Enum):
     MONTHLY = "monthly"
@@ -72,6 +73,7 @@ class SubscriptionPlan(Base):
     exa_calls_limit = Column(Integer, default=0)  # Exa neural search
     video_calls_limit = Column(Integer, default=0)  # AI video generation
     image_edit_calls_limit = Column(Integer, default=0)  # AI image editing
+    audio_calls_limit = Column(Integer, default=0)  # AI audio generation (text-to-speech)
     
     # Token Limits (for LLM providers)
     gemini_tokens_limit = Column(Integer, default=0)
@@ -191,6 +193,7 @@ class UsageSummary(Base):
     exa_calls = Column(Integer, default=0)
     video_calls = Column(Integer, default=0)  # AI video generation
     image_edit_calls = Column(Integer, default=0)  # AI image editing
+    audio_calls = Column(Integer, default=0)  # AI audio generation (text-to-speech)
     
     # Token Usage
     gemini_tokens = Column(Integer, default=0)
@@ -211,6 +214,7 @@ class UsageSummary(Base):
     exa_cost = Column(Float, default=0.0)
     video_cost = Column(Float, default=0.0)  # AI video generation
     image_edit_cost = Column(Float, default=0.0)  # AI image editing
+    audio_cost = Column(Float, default=0.0)  # AI audio generation (text-to-speech)
     
     # Totals
     total_calls = Column(Integer, default=0)

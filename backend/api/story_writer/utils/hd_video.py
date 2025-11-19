@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import HTTPException
 from loguru import logger
 from uuid import uuid4
-
-from .media_utils import load_story_image_bytes
 
 
 def generate_hd_video_payload(request: Any, user_id: str) -> Dict[str, Any]:
@@ -57,8 +55,8 @@ def generate_hd_video_payload(request: Any, user_id: str) -> Dict[str, Any]:
 
 def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any]:
     """
-    Handles per-scene HD video generation including prompt enhancement,
-    subscription validation, and optional image conditioning.
+    Handles per-scene HD video generation including prompt enhancement
+    and subscription validation.
     """
     from services.database import get_db as get_db_validation
     from services.onboarding.api_key_manager import APIKeyManager
@@ -71,7 +69,6 @@ def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any
     scene_number = request.scene_number
     logger.info(f"[StoryWriter] Generating HD video for scene {scene_number} for user {user_id}")
 
-    # Step 1: Validate API key
     hf_token = APIKeyManager().get_api_key("hf_token")
     if not hf_token:
         logger.error("[StoryWriter] Pre-flight: HF token not configured - blocking video generation")
@@ -83,7 +80,6 @@ def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any
             },
         )
 
-    # Step 2: Subscription limits
     db_validation = next(get_db_validation())
     try:
         pricing_service = PricingService(db_validation)
@@ -93,7 +89,6 @@ def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any
     finally:
         db_validation.close()
 
-    # Stage 1: Prompt enhancement
     enhanced_prompt = enhance_scene_prompt_for_video(
         current_scene=request.scene_data,
         story_context=request.story_context,
@@ -101,15 +96,6 @@ def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any
         user_id=user_id,
     )
     logger.info(f"[StoryWriter] Generated enhanced prompt ({len(enhanced_prompt)} chars) for scene {scene_number}")
-
-    # Stage 2: Optional image reference
-    scene_image_bytes: Optional[bytes] = None
-    if getattr(request, "scene_image_url", None):
-        scene_image_bytes = load_story_image_bytes(request.scene_image_url)
-        if scene_image_bytes:
-            logger.info(f"[StoryWriter] Using scene image reference for scene {scene_number}")
-        else:
-            logger.warning(f"[StoryWriter] Scene image could not be loaded for scene {scene_number}, falling back to text-only video")
 
     kwargs: Dict[str, Any] = {}
     if getattr(request, "model", None):
@@ -129,7 +115,6 @@ def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any
         prompt=enhanced_prompt,
         provider=getattr(request, "provider", None) or "huggingface",
         user_id=user_id,
-        input_image_bytes=scene_image_bytes,
         **kwargs,
     )
 
@@ -150,5 +135,4 @@ def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any
         "provider": getattr(request, "provider", None) or "huggingface",
         "model": getattr(request, "model", None) or "tencent/HunyuanVideo",
     }
-
 

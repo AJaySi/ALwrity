@@ -7,6 +7,13 @@ import {
   StoryFullGenerationResponse,
 } from '../services/storyWriterApi';
 
+export interface SceneAnimationResume {
+  predictionId: string;
+  duration: 5 | 10;
+  message?: string;
+  createdAt?: string;
+}
+
 export interface StoryWriterState {
   // Story parameters (Setup phase)
   persona: string;
@@ -52,6 +59,8 @@ export interface StoryWriterState {
   sceneAudio: Map<number, string> | null; // Generated audio URLs by scene number
   storyVideo: string | null; // Generated video URL
   sceneHdVideos: Map<number, string> | null; // Approved HD video URLs by scene number
+  sceneAnimatedVideos: Map<number, string> | null; // Animated scene preview videos
+  sceneAnimationResumables: Map<number, SceneAnimationResume> | null; // Pending resume info per scene
   hdVideoGenerationStatus: 'idle' | 'generating' | 'awaiting_approval' | 'completed' | 'paused';
   currentHdSceneIndex: number; // Which scene is currently being generated/reviewed
 
@@ -104,6 +113,8 @@ const DEFAULT_STATE: Partial<StoryWriterState> = {
   sceneAudio: null,
   storyVideo: null,
   sceneHdVideos: null,
+  sceneAnimatedVideos: null,
+  sceneAnimationResumables: null,
   hdVideoGenerationStatus: 'idle',
   currentHdSceneIndex: 0,
   currentTaskId: null,
@@ -148,6 +159,8 @@ export const useStoryWriterState = () => {
           sceneImages: parsed.sceneImages ? new Map(parsed.sceneImages) : null,
           sceneAudio: parsed.sceneAudio ? new Map(parsed.sceneAudio) : null,
           sceneHdVideos: parsed.sceneHdVideos ? new Map(parsed.sceneHdVideos) : null,
+          sceneAnimatedVideos: parsed.sceneAnimatedVideos ? new Map(parsed.sceneAnimatedVideos) : null,
+          sceneAnimationResumables: parsed.sceneAnimationResumables ? new Map(parsed.sceneAnimationResumables) : null,
         };
         
         return restoredState as StoryWriterState;
@@ -193,6 +206,12 @@ export const useStoryWriterState = () => {
         sceneImages: persistableState.sceneImages ? Array.from(persistableState.sceneImages.entries()) : null,
         sceneAudio: persistableState.sceneAudio ? Array.from(persistableState.sceneAudio.entries()) : null,
         sceneHdVideos: persistableState.sceneHdVideos ? Array.from(persistableState.sceneHdVideos.entries()) : null,
+        sceneAnimatedVideos: persistableState.sceneAnimatedVideos
+          ? Array.from(persistableState.sceneAnimatedVideos.entries())
+          : null,
+        sceneAnimationResumables: persistableState.sceneAnimationResumables
+          ? Array.from(persistableState.sceneAnimationResumables.entries())
+          : null,
       };
       
       localStorage.setItem('story_writer_state', JSON.stringify(serializableState));
@@ -337,6 +356,14 @@ export const useStoryWriterState = () => {
     setState((prev) => ({ ...prev, sceneImages: images }));
   }, []);
 
+  const setSceneAnimatedVideos = useCallback((videos: Map<number, string> | null) => {
+    setState((prev) => ({ ...prev, sceneAnimatedVideos: videos }));
+  }, []);
+
+  const setSceneAnimationResumables = useCallback((resumables: Map<number, SceneAnimationResume> | null) => {
+    setState((prev) => ({ ...prev, sceneAnimationResumables: resumables }));
+  }, []);
+
   const setSceneAudio = useCallback((audio: Map<number, string> | null) => {
     setState((prev) => ({ ...prev, sceneAudio: audio }));
   }, []);
@@ -471,6 +498,8 @@ export const useStoryWriterState = () => {
     setSceneAudio,
     setStoryVideo,
     setSceneHdVideos,
+    setSceneAnimatedVideos,
+    setSceneAnimationResumables,
     setHdVideoGenerationStatus,
     setCurrentHdSceneIndex,
     setCurrentTaskId,

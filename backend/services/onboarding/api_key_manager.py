@@ -414,7 +414,8 @@ class APIKeyManager:
             'SERPER_API_KEY',
             'METAPHOR_API_KEY',
             'FIRECRAWL_API_KEY',
-            'STABILITY_API_KEY'
+            'STABILITY_API_KEY',
+            'WAVESPEED_API_KEY',
         ]
         
         for provider in providers:

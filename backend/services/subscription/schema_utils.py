@@ -31,6 +31,7 @@ def ensure_subscription_plan_columns(db: Session) -> None:
             "exa_calls_limit": "INTEGER DEFAULT 0",
             "video_calls_limit": "INTEGER DEFAULT 0",
             "image_edit_calls_limit": "INTEGER DEFAULT 0",
+            "audio_calls_limit": "INTEGER DEFAULT 0",
         }
 
         for col_name, ddl in required_columns.items():
@@ -84,6 +85,8 @@ def ensure_usage_summaries_columns(db: Session) -> None:
             "video_cost": "REAL DEFAULT 0.0",
             "image_edit_calls": "INTEGER DEFAULT 0",
             "image_edit_cost": "REAL DEFAULT 0.0",
+            "audio_calls": "INTEGER DEFAULT 0",
+            "audio_cost": "REAL DEFAULT 0.0",
         }
 
         for col_name, ddl in required_columns.items():

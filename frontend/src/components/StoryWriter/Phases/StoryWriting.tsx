@@ -13,6 +13,7 @@ import { useStoryWriterState } from '../../../hooks/useStoryWriterState';
 import { storyWriterApi } from '../../../services/storyWriterApi';
 import { triggerSubscriptionError } from '../../../api/client';
 import { aiApiClient } from '../../../api/client';
+import { fetchMediaBlobUrl } from '../../../utils/fetchMediaBlobUrl';
 import { MultimediaSection } from '../components/MultimediaSection';
 
 const MotionBox = motion(Box);
@@ -123,10 +124,13 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
   const [pageDirection, setPageDirection] = useState(0);
   const [imageLoadError, setImageLoadError] = useState<Set<number>>(new Set());
   const [imageBlobUrls, setImageBlobUrls] = useState<Map<number, string>>(new Map());
+  const [videoBlobUrls, setVideoBlobUrls] = useState<Map<number, string>>(new Map());
+  const [videoLoadError, setVideoLoadError] = useState<Set<number>>(new Set());
 
   // Get scenes and images from state
   const scenes = state.outlineScenes || [];
   const sceneImages = state.sceneImages || new Map<number, string>();
+  const sceneAnimatedVideos = state.sceneAnimatedVideos || new Map<number, string>();
   const hasScenes = state.isOutlineStructured && scenes.length > 0;
   
   // Split story content into sections mapped to scenes
@@ -201,6 +205,10 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
   }, []);
 
   const currentSceneImageFullUrl = imageBlobUrls.get(currentSceneNumber) || null;
+  const currentSceneAnimatedVideoUrl = sceneAnimatedVideos.get(currentSceneNumber) || null;
+  const currentSceneAnimatedVideoBlobUrl = videoBlobUrls.get(currentSceneNumber) || null;
+  const hasVideoLoadError = videoLoadError.has(currentSceneNumber);
+  const showAnimatedVideo = Boolean(currentSceneAnimatedVideoBlobUrl);
 
   // Reset image load error when page changes
   useEffect(() => {
@@ -210,6 +218,60 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
       return next;
     });
   }, [currentSceneNumber]);
+
+  useEffect(() => {
+    if (!currentSceneAnimatedVideoUrl || hasVideoLoadError || currentSceneAnimatedVideoBlobUrl) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadVideo = async () => {
+      try {
+        const videoPath = currentSceneAnimatedVideoUrl.startsWith('/')
+          ? currentSceneAnimatedVideoUrl
+          : `/${currentSceneAnimatedVideoUrl}`;
+        const blobUrl = await fetchMediaBlobUrl(videoPath);
+        if (!blobUrl || cancelled) {
+          if (!blobUrl) {
+            setVideoLoadError((prev) => new Set(prev).add(currentSceneNumber));
+          }
+          return;
+        }
+
+        setVideoBlobUrls((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(currentSceneNumber);
+          if (existing) {
+            URL.revokeObjectURL(existing);
+          }
+          next.set(currentSceneNumber, blobUrl);
+          return next;
+        });
+      } catch (err) {
+        console.warn('Failed to load animated video:', err);
+        setVideoLoadError((prev) => {
+          const next = new Set(prev);
+          next.add(currentSceneNumber);
+          return next;
+        });
+      }
+    };
+
+    loadVideo();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSceneNumber, currentSceneAnimatedVideoUrl, currentSceneAnimatedVideoBlobUrl, hasVideoLoadError]);
+
+  useEffect(() => {
+    return () => {
+      videoBlobUrls.forEach((blob) => {
+        URL.revokeObjectURL(blob);
+      });
+    };
+  }, [videoBlobUrls]);
 
   useEffect(() => {
     if (storySections.length > 0) {
@@ -502,7 +564,37 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
                         },
                       }}
                     >
-                      {currentSceneImageFullUrl ? (
+                      {showAnimatedVideo ? (
+                        <Box
+                          sx={{
+                            width: '100%',
+                            borderRadius: '12px',
+                            overflow: 'hidden',
+                            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.12)',
+                            border: '3px solid rgba(120, 90, 60, 0.25)',
+                            backgroundColor: '#000',
+                          }}
+                        >
+                          <Box
+                            component="video"
+                            src={currentSceneAnimatedVideoBlobUrl ?? undefined}
+                            poster={currentSceneImageFullUrl ?? undefined}
+                            autoPlay
+                            muted
+                            loop
+                            controls
+                            playsInline
+                            sx={{
+                              width: '100%',
+                              height: 'auto',
+                              display: 'block',
+                              minHeight: '300px',
+                              maxHeight: '500px',
+                              objectFit: 'cover',
+                            }}
+                          />
+                        </Box>
+                      ) : currentSceneImageFullUrl ? (
                         <Box
                           sx={{
                             width: '100%',

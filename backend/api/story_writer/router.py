@@ -5,12 +5,19 @@ Main router for story generation operations including premise, outline,
 content generation, and full story creation.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from typing import Any, Dict, Union, List, Optional
+import mimetypes
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from loguru import logger
-from middleware.auth_middleware import get_current_user
+from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 
 from models.story_models import (
+    AnimateSceneRequest,
+    AnimateSceneVoiceoverRequest,
+    AnimateSceneResponse,
+    ResumeSceneAnimationRequest,
     StoryGenerationRequest,
     StorySetupGenerationRequest,
     StorySetupGenerationResponse,
@@ -34,24 +41,66 @@ from models.story_models import (
     StoryVideoResult,
     TaskStatus,
 )
+from pydantic import BaseModel, Field
+from services.database import get_db
+from services.llm_providers.main_video_generation import track_video_usage
 from services.story_writer.story_service import StoryWriterService
-from .task_manager import task_manager
-from .cache_manager import cache_manager
+from services.story_writer.video_generation_service import StoryVideoGenerationService
+from services.subscription import PricingService
+from services.subscription.preflight_validator import validate_scene_animation_operation
+from services.wavespeed.kling_animation import animate_scene_image, resume_scene_animation
+from services.wavespeed.infinitetalk import animate_scene_with_voiceover
 from uuid import uuid4
-from pydantic import BaseModel
-from pathlib import Path
+from utils.logger_utils import get_service_logger
 
+from .cache_manager import cache_manager
+from .routes import cache_routes, media_generation, story_content, story_setup, story_tasks, video_generation
+from .task_manager import task_manager
 from .utils.auth import require_authenticated_user
-from .utils.media_utils import resolve_media_file
-from .utils.hd_video import (
-    generate_hd_video_payload,
-    generate_hd_video_scene_payload,
-)
+from .utils.hd_video import generate_hd_video_payload, generate_hd_video_scene_payload
+from .utils.media_utils import load_story_image_bytes, load_story_audio_bytes, resolve_media_file
+from urllib.parse import quote
 
 
 router = APIRouter(prefix="/api/story", tags=["Story Writer"])
 
+# Include modular routers (order preserved roughly by workflow)
+router.include_router(story_setup.router)
+router.include_router(story_content.router)
+router.include_router(story_tasks.router)
+router.include_router(media_generation.router)
+router.include_router(video_generation.router)
+router.include_router(cache_routes.router)
+
 service = StoryWriterService()
+scene_logger = get_service_logger("api.story_writer.scene_animation")
+AI_VIDEO_SUBDIR = Path("AI_Videos")
+
+
+def _build_authenticated_media_url(request: Request, path: str) -> str:
+    """Append the caller's auth token to a media URL so <video>/<img> tags can access it."""
+    if not path:
+        return path
+
+    token: Optional[str] = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "").strip()
+    elif "token" in request.query_params:
+        token = request.query_params["token"]
+
+    if token:
+        separator = "&" if "?" in path else "?"
+        path = f"{path}{separator}token={quote(token)}"
+
+    return path
+
+
+def _guess_mime_from_url(url: str, fallback: str) -> str:
+    if not url:
+        return fallback
+    mime, _ = mimetypes.guess_type(url)
+    return mime or fallback
 
 
 @router.get("/health")
@@ -558,6 +607,22 @@ async def get_task_result(
         logger.error(f"[StoryWriter] Failed to get task result: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class PromptOptimizeRequest(BaseModel):
+    text: str = Field(..., description="The prompt text to optimize")
+    mode: Optional[str] = Field(default="image", pattern="^(image|video)$", description="Optimization mode: 'image' or 'video'")
+    style: Optional[str] = Field(
+        default="default", 
+        pattern="^(default|artistic|photographic|technical|anime|realistic)$",
+        description="Style: 'default', 'artistic', 'photographic', 'technical', 'anime', or 'realistic'"
+    )
+    image: Optional[str] = Field(None, description="Base64-encoded image for context (optional)")
+
+
+class PromptOptimizeResponse(BaseModel):
+    optimized_prompt: str
+    success: bool
+
+
 class HDVideoRequest(BaseModel):
     prompt: str
     provider: str = "huggingface"
@@ -692,6 +757,51 @@ async def generate_scene_images(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/optimize-prompt", response_model=PromptOptimizeResponse)
+async def optimize_prompt(
+    request: PromptOptimizeRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> PromptOptimizeResponse:
+    """Optimize an image prompt using WaveSpeed prompt optimizer."""
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+        
+        if not request.text or not request.text.strip():
+            raise HTTPException(status_code=400, detail="Prompt text is required")
+        
+        logger.info(f"[StoryWriter] Optimizing prompt for user {user_id} (mode={request.mode}, style={request.style})")
+        
+        from services.wavespeed.client import WaveSpeedClient
+        
+        client = WaveSpeedClient()
+        optimized_prompt = client.optimize_prompt(
+            text=request.text.strip(),
+            mode=request.mode or "image",
+            style=request.style or "default",
+            image=request.image,  # Optional base64 image
+            enable_sync_mode=True,
+            timeout=30
+        )
+        
+        logger.info(f"[StoryWriter] Prompt optimized successfully for user {user_id}")
+        
+        return PromptOptimizeResponse(
+            optimized_prompt=optimized_prompt,
+            success=True
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[StoryWriter] Failed to optimize prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/images/{image_filename}")
 async def serve_scene_image(
     image_filename: str,
@@ -793,32 +903,376 @@ async def generate_scene_audio(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/audio/{audio_filename}")
-async def serve_scene_audio(
-    audio_filename: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """Serve a generated story scene audio file."""
+# Audio serving endpoint is handled by routes/media_generation.py
+# No duplicate endpoint needed here
+
+
+# ---------------------------
+# Scene Animation Endpoints
+# ---------------------------
+
+
+@router.post("/animate-scene-preview", response_model=AnimateSceneResponse)
+async def animate_scene_preview(
+    request_obj: Request,
+    request: AnimateSceneRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> AnimateSceneResponse:
+    """
+    Animate a single scene image using WaveSpeed Kling v2.5 Turbo Std.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    user_id = str(current_user.get("id", ""))
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+
+    duration = request.duration or 5
+    if duration not in (5, 10):
+        raise HTTPException(status_code=400, detail="Duration must be 5 or 10 seconds.")
+
+    scene_logger.info(
+        "[AnimateScene] User=%s scene=%s duration=%s image_url=%s",
+        user_id,
+        request.scene_number,
+        duration,
+        request.image_url,
+    )
+
+    image_bytes = load_story_image_bytes(request.image_url)
+    if not image_bytes:
+        scene_logger.warning("[AnimateScene] Missing image bytes for user=%s scene=%s", user_id, request.scene_number)
+        raise HTTPException(status_code=404, detail="Scene image not found. Generate images first.")
+
+    db = next(get_db())
     try:
-        require_authenticated_user(current_user)
+        pricing_service = PricingService(db)
+        validate_scene_animation_operation(pricing_service=pricing_service, user_id=user_id)
+    finally:
+        db.close()
 
-        from services.story_writer.audio_generation_service import StoryAudioGenerationService
-        from fastapi.responses import FileResponse
+    animation_result = animate_scene_image(
+        image_bytes=image_bytes,
+        scene_data=request.scene_data,
+        story_context=request.story_context,
+        user_id=user_id,
+        duration=duration,
+    )
 
-        audio_service = StoryAudioGenerationService()
-        audio_path = resolve_media_file(audio_service.output_dir, audio_filename)
+    base_dir = Path(__file__).parent.parent.parent
+    ai_video_dir = base_dir / "story_videos" / AI_VIDEO_SUBDIR
+    ai_video_dir.mkdir(parents=True, exist_ok=True)
+    video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
 
-        return FileResponse(
-            path=str(audio_path),
-            media_type="audio/mpeg",
-            filename=audio_filename
+    save_result = video_service.save_scene_video(
+        video_bytes=animation_result["video_bytes"],
+        scene_number=request.scene_number,
+        user_id=user_id,
+    )
+    video_filename = save_result["video_filename"]
+    video_url = _build_authenticated_media_url(
+        request_obj, f"/api/story/videos/ai/{video_filename}"
+    )
+
+    usage_info = track_video_usage(
+        user_id=user_id,
+        provider=animation_result["provider"],
+        model_name=animation_result["model_name"],
+        prompt=animation_result["prompt"],
+        video_bytes=animation_result["video_bytes"],
+        cost_override=animation_result["cost"],
+    )
+    if usage_info:
+        scene_logger.warning(
+            "[AnimateScene] Video usage tracked user=%s: %s → %s / %s (cost +$%.2f, total=$%.2f)",
+            user_id,
+            usage_info.get("previous_calls"),
+            usage_info.get("current_calls"),
+            usage_info.get("video_limit_display"),
+            usage_info.get("cost_per_video", 0.0),
+            usage_info.get("total_video_cost", 0.0),
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[StoryWriter] Failed to serve audio: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    scene_logger.info(
+        "[AnimateScene] ✅ Completed user=%s scene=%s duration=%s cost=$%.2f video=%s",
+        user_id,
+        request.scene_number,
+        animation_result["duration"],
+        animation_result["cost"],
+        video_url,
+    )
+
+    return AnimateSceneResponse(
+        success=True,
+        scene_number=request.scene_number,
+        video_filename=video_filename,
+        video_url=video_url,
+        duration=animation_result["duration"],
+        cost=animation_result["cost"],
+        prompt_used=animation_result["prompt"],
+        provider=animation_result["provider"],
+        prediction_id=animation_result.get("prediction_id"),
+    )
+
+
+@router.post("/animate-scene-resume", response_model=AnimateSceneResponse)
+async def resume_scene_animation_endpoint(
+    request_obj: Request,
+    request: ResumeSceneAnimationRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> AnimateSceneResponse:
+    """Resume downloading a WaveSpeed animation when the initial call timed out."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    user_id = str(current_user.get("id", ""))
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+
+    scene_logger.info(
+        "[AnimateScene] Resume requested user=%s scene=%s prediction=%s",
+        user_id,
+        request.scene_number,
+        request.prediction_id,
+    )
+
+    animation_result = resume_scene_animation(
+        prediction_id=request.prediction_id,
+        duration=request.duration or 5,
+        user_id=user_id,
+    )
+
+    base_dir = Path(__file__).parent.parent.parent
+    ai_video_dir = base_dir / "story_videos" / AI_VIDEO_SUBDIR
+    ai_video_dir.mkdir(parents=True, exist_ok=True)
+    video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
+
+    save_result = video_service.save_scene_video(
+        video_bytes=animation_result["video_bytes"],
+        scene_number=request.scene_number,
+        user_id=user_id,
+    )
+    video_filename = save_result["video_filename"]
+    video_url = _build_authenticated_media_url(
+        request_obj, f"/api/story/videos/ai/{video_filename}"
+    )
+
+    usage_info = track_video_usage(
+        user_id=user_id,
+        provider=animation_result["provider"],
+        model_name=animation_result["model_name"],
+        prompt=animation_result["prompt"],
+        video_bytes=animation_result["video_bytes"],
+        cost_override=animation_result["cost"],
+    )
+    if usage_info:
+        scene_logger.warning(
+            "[AnimateScene] (Resume) Video usage tracked user=%s: %s → %s / %s (cost +$%.2f, total=$%.2f)",
+            user_id,
+            usage_info.get("previous_calls"),
+            usage_info.get("current_calls"),
+            usage_info.get("video_limit_display"),
+            usage_info.get("cost_per_video", 0.0),
+            usage_info.get("total_video_cost", 0.0),
+        )
+
+    scene_logger.info(
+        "[AnimateScene] ✅ Resume completed user=%s scene=%s prediction=%s video=%s",
+        user_id,
+        request.scene_number,
+        request.prediction_id,
+        video_url,
+    )
+
+    return AnimateSceneResponse(
+        success=True,
+        scene_number=request.scene_number,
+        video_filename=video_filename,
+        video_url=video_url,
+        duration=animation_result["duration"],
+        cost=animation_result["cost"],
+        prompt_used=animation_result["prompt"],
+        provider=animation_result["provider"],
+        prediction_id=animation_result.get("prediction_id"),
+    )
+
+
+@router.post("/animate-scene-voiceover", response_model=Dict[str, Any])
+async def animate_scene_voiceover_endpoint(
+    request_obj: Request,
+    request: AnimateSceneVoiceoverRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Animate a scene using WaveSpeed InfiniteTalk (image + audio) asynchronously.
+    Returns task_id for polling since InfiniteTalk can take up to 10 minutes.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    user_id = str(current_user.get("id", ""))
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+
+    scene_logger.info(
+        "[AnimateSceneVoiceover] User=%s scene=%s resolution=%s (async)",
+        user_id,
+        request.scene_number,
+        request.resolution or "720p",
+    )
+
+    image_bytes = load_story_image_bytes(request.image_url)
+    if not image_bytes:
+        raise HTTPException(status_code=404, detail="Scene image not found. Generate images first.")
+
+    audio_bytes = load_story_audio_bytes(request.audio_url)
+    if not audio_bytes:
+        raise HTTPException(status_code=404, detail="Scene audio not found. Generate audio first.")
+
+    db = next(get_db())
+    try:
+        pricing_service = PricingService(db)
+        validate_scene_animation_operation(pricing_service=pricing_service, user_id=user_id)
+    finally:
+        db.close()
+
+    # Extract token for authenticated URL building (if needed)
+    auth_token = None
+    auth_header = request_obj.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        auth_token = auth_header.replace("Bearer ", "").strip()
+
+    # Create async task
+    task_id = task_manager.create_task("scene_voiceover_animation")
+    background_tasks.add_task(
+        _execute_voiceover_animation_task,
+        task_id=task_id,
+        request=request,
+        user_id=user_id,
+        image_bytes=image_bytes,
+        audio_bytes=audio_bytes,
+        auth_token=auth_token,
+    )
+
+    return {
+        "task_id": task_id,
+        "status": "pending",
+        "message": "InfiniteTalk animation started. This may take up to 10 minutes.",
+    }
+
+
+def _execute_voiceover_animation_task(
+    task_id: str,
+    request: AnimateSceneVoiceoverRequest,
+    user_id: str,
+    image_bytes: bytes,
+    audio_bytes: bytes,
+    auth_token: Optional[str] = None,
+):
+    """Background task to generate InfiniteTalk video with progress updates."""
+    try:
+        task_manager.update_task_status(
+            task_id, "processing", progress=5.0, message="Submitting to WaveSpeed InfiniteTalk..."
+        )
+
+        animation_result = animate_scene_with_voiceover(
+            image_bytes=image_bytes,
+            audio_bytes=audio_bytes,
+            scene_data=request.scene_data,
+            story_context=request.story_context,
+            user_id=user_id,
+            resolution=request.resolution or "720p",
+            prompt_override=request.prompt,
+            image_mime=_guess_mime_from_url(request.image_url, "image/png"),
+            audio_mime=_guess_mime_from_url(request.audio_url, "audio/mpeg"),
+        )
+
+        task_manager.update_task_status(
+            task_id, "processing", progress=80.0, message="Saving video file..."
+        )
+
+        base_dir = Path(__file__).parent.parent.parent
+        ai_video_dir = base_dir / "story_videos" / AI_VIDEO_SUBDIR
+        ai_video_dir.mkdir(parents=True, exist_ok=True)
+        video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
+
+        save_result = video_service.save_scene_video(
+            video_bytes=animation_result["video_bytes"],
+            scene_number=request.scene_number,
+            user_id=user_id,
+        )
+        video_filename = save_result["video_filename"]
+        # Build authenticated URL if token provided, otherwise return plain URL
+        video_url = f"/api/story/videos/ai/{video_filename}"
+        if auth_token:
+            video_url = f"{video_url}?token={quote(auth_token)}"
+
+        usage_info = track_video_usage(
+            user_id=user_id,
+            provider=animation_result["provider"],
+            model_name=animation_result["model_name"],
+            prompt=animation_result["prompt"],
+            video_bytes=animation_result["video_bytes"],
+            cost_override=animation_result["cost"],
+        )
+        if usage_info:
+            scene_logger.warning(
+                "[AnimateSceneVoiceover] Video usage tracked user=%s: %s → %s / %s (cost +$%.2f, total=$%.2f)",
+                user_id,
+                usage_info.get("previous_calls"),
+                usage_info.get("current_calls"),
+                usage_info.get("video_limit_display"),
+                usage_info.get("cost_per_video", 0.0),
+                usage_info.get("total_video_cost", 0.0),
+            )
+
+        scene_logger.info(
+            "[AnimateSceneVoiceover] ✅ Completed user=%s scene=%s cost=$%.2f video=%s",
+            user_id,
+            request.scene_number,
+            animation_result["cost"],
+            video_url,
+        )
+
+        result = AnimateSceneResponse(
+            success=True,
+            scene_number=request.scene_number,
+            video_filename=video_filename,
+            video_url=video_url,
+            duration=animation_result["duration"],
+            cost=animation_result["cost"],
+            prompt_used=animation_result["prompt"],
+            provider=animation_result["provider"],
+            prediction_id=animation_result.get("prediction_id"),
+        )
+
+        task_manager.update_task_status(
+            task_id,
+            "completed",
+            progress=100.0,
+            message="InfiniteTalk animation complete!",
+            result=result.dict(),
+        )
+    except HTTPException as exc:
+        error_msg = str(exc.detail) if isinstance(exc.detail, str) else exc.detail.get("error", "Animation failed") if isinstance(exc.detail, dict) else "Animation failed"
+        scene_logger.error(f"[AnimateSceneVoiceover] Failed: {error_msg}")
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"InfiniteTalk animation failed: {error_msg}",
+        )
+    except Exception as exc:
+        error_msg = str(exc)
+        scene_logger.error(f"[AnimateSceneVoiceover] Error: {error_msg}", exc_info=True)
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"InfiniteTalk animation error: {error_msg}",
+        )
 
 
 # ---------------------------
@@ -1260,19 +1714,25 @@ def execute_complete_video_generation(
         )
 
 
-@router.get("/videos/{video_filename}")
-async def serve_story_video(
+# Regular video serving endpoint is handled by routes/video_generation.py
+# Only AI videos need a separate endpoint here
+
+
+@router.get("/videos/ai/{video_filename}")
+async def serve_ai_story_video(
     video_filename: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Serve a generated story video file."""
+    """Serve a generated AI scene animation video."""
     try:
         require_authenticated_user(current_user)
 
         from services.story_writer.video_generation_service import StoryVideoGenerationService
         from fastapi.responses import FileResponse
 
-        video_service = StoryVideoGenerationService()
+        base_dir = Path(__file__).parent.parent.parent
+        ai_video_dir = (base_dir / "story_videos" / "AI_Videos").resolve()
+        video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
         video_path = resolve_media_file(video_service.output_dir, video_filename)
 
         return FileResponse(
@@ -1284,7 +1744,7 @@ async def serve_story_video(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[StoryWriter] Failed to serve video: {e}")
+        logger.error(f"[StoryWriter] Failed to serve AI video: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

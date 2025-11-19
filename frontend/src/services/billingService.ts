@@ -587,6 +587,127 @@ export const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
+// Pre-flight check interfaces
+export interface PreflightOperation {
+  provider: string;
+  model?: string;
+  tokens_requested?: number;
+  operation_type: string;
+  actual_provider_name?: string;
+}
+
+export interface PreflightLimitInfo {
+  current_usage: number;
+  limit: number;
+  remaining: number;
+}
+
+export interface PreflightOperationResult {
+  provider: string;
+  operation_type: string;
+  cost: number;
+  allowed: boolean;
+  limit_info: PreflightLimitInfo | null;
+  message: string | null;
+}
+
+export interface PreflightCheckResponse {
+  can_proceed: boolean;
+  estimated_cost: number;
+  operations: PreflightOperationResult[];
+  total_cost: number;
+  usage_summary: {
+    current_calls: number;
+    limit: number;
+    remaining: number;
+  } | null;
+  cached: boolean;
+}
+
+/**
+ * Check pre-flight validation for a single operation.
+ * Returns cost estimation, limits check, and usage information.
+ */
+export const checkPreflight = async (
+  operation: PreflightOperation
+): Promise<PreflightCheckResponse> => {
+  try {
+    const response = await billingAPI.post<{ success: boolean; data: PreflightCheckResponse }>(
+      '/preflight-check',
+      {
+        operations: [operation]
+      }
+    );
+
+    if (!response.data.success) {
+      throw new Error('Pre-flight check failed');
+    }
+
+    return response.data.data;
+  } catch (error: any) {
+    console.error('[BillingService] Pre-flight check error:', error);
+    
+    // Return a safe default response on error
+    return {
+      can_proceed: false,
+      estimated_cost: 0,
+      operations: [{
+        provider: operation.provider,
+        operation_type: operation.operation_type,
+        cost: 0,
+        allowed: false,
+        limit_info: null,
+        message: error?.response?.data?.detail || 'Pre-flight check failed'
+      }],
+      total_cost: 0,
+      usage_summary: null,
+      cached: false
+    };
+  }
+};
+
+/**
+ * Check pre-flight validation for multiple operations in a single request.
+ * Useful for pages with many buttons to reduce API calls.
+ */
+export const checkPreflightBatch = async (
+  operations: PreflightOperation[]
+): Promise<PreflightCheckResponse> => {
+  try {
+    const response = await billingAPI.post<{ success: boolean; data: PreflightCheckResponse }>(
+      '/preflight-check',
+      {
+        operations
+      }
+    );
+
+    if (!response.data.success) {
+      throw new Error('Pre-flight check failed');
+    }
+
+    return response.data.data;
+  } catch (error: any) {
+    console.error('[BillingService] Pre-flight batch check error:', error);
+    
+    // Return a safe default response on error
+    return {
+      can_proceed: false,
+      estimated_cost: 0,
+      operations: operations.map(op => ({
+        provider: op.provider,
+        operation_type: op.operation_type,
+        cost: 0,
+        allowed: false,
+        limit_info: null,
+        message: error?.response?.data?.detail || 'Pre-flight check failed'
+      })),
+      total_cost: 0,
+      usage_summary: null,
+      cached: false
+    };
+  }
+};
+
 export const formatNumber = (num: number): string => {
   return new Intl.NumberFormat('en-US').format(num);
 };

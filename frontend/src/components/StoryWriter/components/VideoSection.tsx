@@ -40,7 +40,19 @@ export const VideoSection: React.FC<VideoSectionProps> = ({ state, error, onErro
   // Load video blob URL when storyVideo changes
   useEffect(() => {
     if (state.storyVideo) {
-      fetchMediaBlobUrl(state.storyVideo).then(setVideoBlobUrl);
+      fetchMediaBlobUrl(state.storyVideo)
+        .then((blobUrl) => {
+          if (blobUrl) {
+            setVideoBlobUrl(blobUrl);
+          } else {
+            // File not found - clear the blob URL
+            setVideoBlobUrl(null);
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to load video blob:', err);
+          setVideoBlobUrl(null);
+        });
     } else {
       if (videoBlobUrl) {
         URL.revokeObjectURL(videoBlobUrl);
@@ -76,31 +88,50 @@ export const VideoSection: React.FC<VideoSectionProps> = ({ state, error, onErro
     setVideoMessage('');
 
     try {
-      const imageUrls: string[] = [];
+      const imageUrls: (string | null)[] = [];
       const audioUrls: string[] = [];
       const scenes = state.outlineScenes;
+
+      const videoUrls: (string | null)[] = [];
+      const aiAudioUrls: (string | null)[] = [];
 
       for (const scene of scenes) {
         const sceneNumber = scene.scene_number || scenes.indexOf(scene) + 1;
         const imageUrl = state.sceneImages?.get(sceneNumber);
         const audioUrl = state.sceneAudio?.get(sceneNumber);
+        const animatedVideoUrl = state.sceneAnimatedVideos?.get(sceneNumber);
 
-        if (imageUrl && audioUrl) {
-          imageUrls.push(imageUrl);
-          audioUrls.push(audioUrl);
-        } else {
-          throw new Error(`Missing image or audio for scene ${sceneNumber}`);
+        if (!audioUrl) {
+          throw new Error(`Missing audio for scene ${sceneNumber}`);
         }
+
+        // Prefer animated video if available, otherwise use image
+        if (animatedVideoUrl) {
+          videoUrls.push(animatedVideoUrl);
+          imageUrls.push(null);
+        } else if (imageUrl) {
+          videoUrls.push(null);
+          imageUrls.push(imageUrl);
+        } else {
+          throw new Error(`Missing image or animated video for scene ${sceneNumber}`);
+        }
+
+        audioUrls.push(audioUrl);
+        // AI audio detection: check if URL contains 'ai' or 'wavespeed' (can be enhanced later)
+        // For now, pass null and backend will use available audio
+        aiAudioUrls.push(null);
       }
 
       if (imageUrls.length !== scenes.length || audioUrls.length !== scenes.length) {
-        throw new Error('Number of images and audio files must match number of scenes');
+        throw new Error('Number of images/videos and audio files must match number of scenes');
       }
 
       const start = await storyWriterApi.generateStoryVideoAsync({
         scenes: scenes,
         image_urls: imageUrls,
         audio_urls: audioUrls,
+        video_urls: videoUrls.length > 0 ? videoUrls : undefined,
+        ai_audio_urls: undefined, // TODO: Track AI audio separately in state
         story_title: state.storySetting || 'Story',
         fps: state.videoFps,
         transition_duration: state.videoTransitionDuration,
@@ -122,7 +153,9 @@ export const VideoSection: React.FC<VideoSectionProps> = ({ state, error, onErro
           if (!finalUrl) throw new Error('Video URL not found in result');
           state.setStoryVideo(finalUrl);
           const blobUrl = await fetchMediaBlobUrl(finalUrl);
-          setVideoBlobUrl(blobUrl);
+          if (blobUrl) {
+            setVideoBlobUrl(blobUrl);
+          }
           setVideoProgress(100);
           setVideoMessage('Video generation complete');
           state.setError(null);
@@ -160,6 +193,10 @@ export const VideoSection: React.FC<VideoSectionProps> = ({ state, error, onErro
   const handleDownloadVideo = async () => {
     if (state.storyVideo) {
       const blobUrl = await fetchMediaBlobUrl(state.storyVideo);
+      if (!blobUrl) {
+        // File not found - skip download
+        return;
+      }
       const a = document.createElement('a');
       a.href = blobUrl;
       a.download = `story-video-${Date.now()}.mp4`;

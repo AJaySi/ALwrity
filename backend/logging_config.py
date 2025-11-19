@@ -97,7 +97,14 @@ def setup_clean_logging():
         def video_generation_filter(record):
             msg = record.get("message", "")
             name = record.get("name", "")
-            return "[StoryVideoGeneration]" in msg or "services.story_writer.video_generation_service" in name
+            service = record.get("extra", {}).get("service")
+            return (
+                "[StoryVideoGeneration]" in msg
+                or "services.story_writer.video_generation_service" in name
+                or "[video_gen]" in msg
+                or service == "video_generation_service"
+                or "services.llm_providers.main_video_generation" in name
+            )
         logger.add(
             sys.stdout.write,
             level="INFO",

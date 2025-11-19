@@ -19,9 +19,17 @@ import re
 
 from models.api_monitoring import APIRequest, APIEndpointStats, SystemHealth, CachePerformance
 from models.subscription_models import APIProvider
-from services.database import get_db
 from .usage_tracking_service import UsageTrackingService
 from .pricing_service import PricingService
+
+
+def _get_db_session():
+    """
+    Get a database session with lazy import to survive hot reloads.
+    Uvicorn's reloader can sometimes clear module-level imports.
+    """
+    from services.database import get_db
+    return next(get_db())
 
 class DatabaseAPIMonitor:
     """Database-backed API monitoring with usage tracking and subscription management."""
@@ -145,8 +153,9 @@ async def check_usage_limits_middleware(request: Request, user_id: str, request_
     except Exception:
         pass
     
+    db = None
     try:
-        db = next(get_db())
+        db = _get_db_session()
         api_monitor = DatabaseAPIMonitor()
         
         # Detect if this is an API call that should be rate limited
@@ -203,14 +212,15 @@ async def check_usage_limits_middleware(request: Request, user_id: str, request_
         # Don't block requests if usage checking fails
         return None
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 async def monitoring_middleware(request: Request, call_next):
     """Enhanced FastAPI middleware for monitoring API calls with usage tracking."""
     start_time = time.time()
     
     # Get database session
-    db = next(get_db())
+    db = _get_db_session()
     
     # Extract request details - Enhanced user identification
     user_id = None
@@ -340,8 +350,9 @@ async def monitoring_middleware(request: Request, call_next):
 
 async def get_monitoring_stats(minutes: int = 5) -> Dict[str, Any]:
     """Get current monitoring statistics."""
-    db = next(get_db())
+    db = None
     try:
+        db = _get_db_session()
         # Placeholder to match old API; heavy stats handled elsewhere
         return {
             'timestamp': datetime.utcnow().isoformat(),
@@ -354,12 +365,14 @@ async def get_monitoring_stats(minutes: int = 5) -> Dict[str, Any]:
             'system_health': {'status': 'healthy', 'error_rate': 0.0}
         }
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 async def get_lightweight_stats() -> Dict[str, Any]:
     """Get lightweight stats for dashboard header."""
-    db = next(get_db())
+    db = None
     try:
+        db = _get_db_session()
         # Minimal viable placeholder values
         now = datetime.utcnow()
         return {
@@ -371,4 +384,5 @@ async def get_lightweight_stats() -> Dict[str, Any]:
             'timestamp': now.isoformat()
         }
     finally:
-        db.close()
+        if db is not None:
+            db.close()

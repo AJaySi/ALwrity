@@ -307,6 +307,41 @@ class PricingService:
                 "model_name": "default",
                 "cost_per_request": 0.10,  # $0.10 per video generation (estimated)
                 "description": "AI Video Generation default pricing"
+            },
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "kling-v2.5-turbo-std-5s",
+                "cost_per_request": 0.21,
+                "description": "WaveSpeed Kling v2.5 Turbo Std Image-to-Video (5 seconds)"
+            },
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "kling-v2.5-turbo-std-10s",
+                "cost_per_request": 0.42,
+                "description": "WaveSpeed Kling v2.5 Turbo Std Image-to-Video (10 seconds)"
+            },
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "wavespeed-ai/infinitetalk",
+                "cost_per_request": 0.30,
+                "description": "WaveSpeed InfiniteTalk (image + audio to talking avatar video)"
+            },
+            # Audio Generation Pricing (Minimax Speech 02 HD via WaveSpeed)
+            {
+                "provider": APIProvider.AUDIO,
+                "model_name": "minimax/speech-02-hd",
+                "cost_per_input_token": 0.00005,  # $0.05 per 1,000 characters (every character is 1 token)
+                "cost_per_output_token": 0.0,  # No output tokens for audio
+                "cost_per_request": 0.0,  # Pricing is per character, not per request
+                "description": "AI Audio Generation (Text-to-Speech) - Minimax Speech 02 HD via WaveSpeed"
+            },
+            {
+                "provider": APIProvider.AUDIO,
+                "model_name": "default",
+                "cost_per_input_token": 0.00005,  # $0.05 per 1,000 characters default
+                "cost_per_output_token": 0.0,
+                "cost_per_request": 0.0,
+                "description": "AI Audio Generation default pricing"
             }
         ]
         
@@ -358,6 +393,7 @@ class PricingService:
                 "exa_calls_limit": 100,
                 "video_calls_limit": 0,  # No video generation for free tier
                 "image_edit_calls_limit": 10,  # 10 AI image editing calls/month
+                "audio_calls_limit": 20,  # 20 AI audio generation calls/month
                 "gemini_tokens_limit": 100000,
                 "monthly_cost_limit": 0.0,
                 "features": ["basic_content_generation", "limited_research"],
@@ -381,6 +417,7 @@ class PricingService:
                 "exa_calls_limit": 500,
                 "video_calls_limit": 20,  # 20 videos/month for basic plan
                 "image_edit_calls_limit": 30,  # 30 AI image editing calls/month
+                "audio_calls_limit": 50,  # 50 AI audio generation calls/month
                 "gemini_tokens_limit": 20000,  # Increased from 5000 for better stability
                 "openai_tokens_limit": 20000,  # Increased from 5000 for better stability
                 "anthropic_tokens_limit": 20000,  # Increased from 5000 for better stability
@@ -406,6 +443,7 @@ class PricingService:
                 "exa_calls_limit": 2000,
                 "video_calls_limit": 50,  # 50 videos/month for pro plan
                 "image_edit_calls_limit": 100,  # 100 AI image editing calls/month
+                "audio_calls_limit": 200,  # 200 AI audio generation calls/month
                 "gemini_tokens_limit": 5000000,
                 "openai_tokens_limit": 2500000,
                 "anthropic_tokens_limit": 1000000,
@@ -431,6 +469,7 @@ class PricingService:
                 "exa_calls_limit": 0,  # Unlimited
                 "video_calls_limit": 0,  # Unlimited for enterprise
                 "image_edit_calls_limit": 0,  # Unlimited image editing for enterprise
+                "audio_calls_limit": 0,  # Unlimited audio generation for enterprise
                 "gemini_tokens_limit": 0,
                 "openai_tokens_limit": 0,
                 "anthropic_tokens_limit": 0,
@@ -651,6 +690,7 @@ class PricingService:
                 'stability_calls': plan.stability_calls_limit,
                 'video_calls': getattr(plan, 'video_calls_limit', 0),  # Support missing column
                 'image_edit_calls': getattr(plan, 'image_edit_calls_limit', 0),  # Support missing column
+                'audio_calls': getattr(plan, 'audio_calls_limit', 0),  # Support missing column
                 # Token limits
                 'gemini_tokens': plan.gemini_tokens_limit,
                 'openai_tokens': plan.openai_tokens_limit,

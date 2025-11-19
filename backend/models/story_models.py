@@ -207,6 +207,32 @@ class StoryImageGenerationResponse(BaseModel):
     task_id: Optional[str] = Field(None, description="Task ID for async operations")
 
 
+class RegenerateImageRequest(BaseModel):
+    """Request model for regenerating a single scene image with a direct prompt."""
+    scene_number: int = Field(..., description="Scene number to regenerate image for")
+    scene_title: str = Field(..., description="Scene title")
+    prompt: str = Field(..., description="Direct prompt to use for image generation (no AI prompt generation)")
+    provider: Optional[str] = Field(None, description="Image generation provider (gemini, huggingface, stability)")
+    width: Optional[int] = Field(1024, description="Image width")
+    height: Optional[int] = Field(1024, description="Image height")
+    model: Optional[str] = Field(None, description="Model to use for image generation")
+
+
+class RegenerateImageResponse(BaseModel):
+    """Response model for regenerated image."""
+    scene_number: int = Field(..., description="Scene number")
+    scene_title: str = Field(..., description="Scene title")
+    image_filename: str = Field(..., description="Generated image filename")
+    image_url: str = Field(..., description="Image URL")
+    width: int = Field(..., description="Image width")
+    height: int = Field(..., description="Image height")
+    provider: str = Field(..., description="Provider used")
+    model: Optional[str] = Field(None, description="Model used")
+    seed: Optional[int] = Field(None, description="Seed used")
+    success: bool = Field(default=True, description="Whether the generation was successful")
+    error: Optional[str] = Field(None, description="Error message if generation failed")
+
+
 class StoryAudioGenerationRequest(BaseModel):
     """Request model for audio generation."""
     scenes: List[StoryScene] = Field(..., description="List of scenes to generate audio for")
@@ -234,11 +260,41 @@ class StoryAudioGenerationResponse(BaseModel):
     task_id: Optional[str] = Field(None, description="Task ID for async operations")
 
 
+class GenerateAIAudioRequest(BaseModel):
+    """Request model for generating AI audio for a single scene."""
+    scene_number: int = Field(..., description="Scene number to generate audio for")
+    scene_title: str = Field(..., description="Scene title")
+    text: str = Field(..., description="Text to convert to speech")
+    voice_id: Optional[str] = Field("Wise_Woman", description="Voice ID for AI audio generation")
+    speed: Optional[float] = Field(1.0, description="Speech speed (0.5-2.0)")
+    volume: Optional[float] = Field(1.0, description="Speech volume (0.1-10.0)")
+    pitch: Optional[float] = Field(0.0, description="Speech pitch (-12 to 12)")
+    emotion: Optional[str] = Field("happy", description="Emotion for speech")
+
+
+class GenerateAIAudioResponse(BaseModel):
+    """Response model for AI audio generation."""
+    scene_number: int = Field(..., description="Scene number")
+    scene_title: str = Field(..., description="Scene title")
+    audio_filename: str = Field(..., description="Generated audio filename")
+    audio_url: str = Field(..., description="Audio URL")
+    provider: str = Field(..., description="Provider used (wavespeed)")
+    model: str = Field(..., description="Model used (minimax/speech-02-hd)")
+    voice_id: str = Field(..., description="Voice ID used")
+    text_length: int = Field(..., description="Number of characters in text")
+    file_size: int = Field(..., description="Audio file size in bytes")
+    cost: float = Field(..., description="Cost of generation")
+    success: bool = Field(default=True, description="Whether the generation was successful")
+    error: Optional[str] = Field(None, description="Error message if generation failed")
+
+
 class StoryVideoGenerationRequest(BaseModel):
     """Request model for video generation."""
     scenes: List[StoryScene] = Field(..., description="List of scenes to generate video for")
     image_urls: List[str] = Field(..., description="List of image URLs for each scene")
     audio_urls: List[str] = Field(..., description="List of audio URLs for each scene")
+    video_urls: Optional[List[Optional[str]]] = Field(None, description="Optional list of animated video URLs (preferred over images)")
+    ai_audio_urls: Optional[List[Optional[str]]] = Field(None, description="Optional list of AI audio URLs (preferred over free audio)")
     story_title: Optional[str] = Field(default="Story", description="Title of the story")
     fps: Optional[int] = Field(default=24, description="Frames per second for video")
     transition_duration: Optional[float] = Field(default=0.5, description="Duration of transitions between scenes")
@@ -260,3 +316,39 @@ class StoryVideoGenerationResponse(BaseModel):
     video: StoryVideoResult = Field(..., description="Generated video")
     success: bool = Field(default=True, description="Whether the generation was successful")
     task_id: Optional[str] = Field(None, description="Task ID for async operations")
+
+
+class AnimateSceneRequest(BaseModel):
+    """Request model for per-scene animation preview."""
+    scene_number: int = Field(..., description="Scene number to animate")
+    scene_data: Dict[str, Any] = Field(..., description="Scene data payload")
+    story_context: Dict[str, Any] = Field(..., description="Story-wide context used for prompts")
+    image_url: str = Field(..., description="Relative URL to the generated scene image")
+    duration: int = Field(default=5, description="Animation duration (5 or 10 seconds)")
+
+
+class AnimateSceneVoiceoverRequest(AnimateSceneRequest):
+    """Request model for WaveSpeed InfiniteTalk animation."""
+    audio_url: str = Field(..., description="Relative URL to the generated scene audio")
+    resolution: Optional[str] = Field("720p", description="Output resolution ('480p' or '720p')")
+    prompt: Optional[str] = Field(None, description="Optional positive prompt override")
+
+
+class AnimateSceneResponse(BaseModel):
+    """Response model for scene animation preview."""
+    success: bool = Field(default=True, description="Whether the animation succeeded")
+    scene_number: int = Field(..., description="Scene number animated")
+    video_filename: str = Field(..., description="Stored video filename")
+    video_url: str = Field(..., description="API URL to access the animated video")
+    duration: int = Field(..., description="Duration of the animation")
+    cost: float = Field(..., description="Cost billed for the animation")
+    prompt_used: str = Field(..., description="Animation prompt passed to the model")
+    provider: str = Field(default="wavespeed", description="Underlying provider used")
+    prediction_id: Optional[str] = Field(None, description="WaveSpeed prediction ID for resume operations")
+
+
+class ResumeSceneAnimationRequest(BaseModel):
+    """Request model to resume scene animation download."""
+    prediction_id: str = Field(..., description="WaveSpeed prediction ID to resume from")
+    scene_number: int = Field(..., description="Scene number being resumed")
+    duration: int = Field(default=5, description="Animation duration (5 or 10 seconds)")

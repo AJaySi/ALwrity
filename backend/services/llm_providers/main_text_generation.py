@@ -515,6 +515,12 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         current_video_calls = getattr(summary, "video_calls", 0) or 0
                         video_limit = limits['limits'].get("video_calls", 0) if limits else 0
                         
+                        # Get audio stats for unified log
+                        current_audio_calls = getattr(summary, "audio_calls", 0) or 0
+                        audio_limit = limits['limits'].get("audio_calls", 0) if limits else 0
+                        # Only show ∞ for Enterprise tier when limit is 0 (unlimited)
+                        audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
+                        
                         # CRITICAL DEBUG: Print diagnostic info BEFORE commit (always visible, flushed immediately)
                         import sys
                         debug_msg = f"[DEBUG] BEFORE COMMIT - Record count: {record_count}, Raw SQL values: calls={current_calls_before}, tokens={current_tokens_before}, Provider: {provider_name}, Period: {current_period}, New calls will be: {new_calls}, New tokens will be: {new_tokens}"
@@ -571,6 +577,8 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
 ├─ Tokens: {current_tokens_before} → {new_tokens} / {token_limit if token_limit > 0 else '∞'}
 ├─ Images: {current_images_before} / {image_limit if image_limit > 0 else '∞'}
 ├─ Image Editing: {current_image_edit_calls} / {image_edit_limit if image_edit_limit > 0 else '∞'}
+├─ Videos: {current_video_calls} / {video_limit if video_limit > 0 else '∞'}
+├─ Audio: {current_audio_calls} / {audio_limit_display}
 └─ Status: ✅ Allowed & Tracked
 """)
                     except Exception as track_error:
@@ -819,6 +827,12 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                                 current_video_calls = getattr(summary, "video_calls", 0) or 0
                                 video_limit = limits['limits'].get("video_calls", 0) if limits else 0
                                 
+                                # Get audio stats for unified log
+                                current_audio_calls = getattr(summary, "audio_calls", 0) or 0
+                                audio_limit = limits['limits'].get("audio_calls", 0) if limits else 0
+                                # Only show ∞ for Enterprise tier when limit is 0 (unlimited)
+                                audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
+                                
                                 # CRITICAL: Flush before commit to ensure changes are immediately visible to other sessions
                                 db_track.flush()  # Flush to ensure changes are in DB (not just in transaction)
                                 db_track.commit()  # Commit transaction to make changes visible to other sessions
@@ -838,6 +852,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
 ├─ Images: {current_images_before} / {image_limit if image_limit > 0 else '∞'}
 ├─ Image Editing: {current_image_edit_calls} / {image_edit_limit if image_edit_limit > 0 else '∞'}
 ├─ Videos: {current_video_calls} / {video_limit if video_limit > 0 else '∞'}
+├─ Audio: {current_audio_calls} / {audio_limit_display}
 └─ Status: ✅ Allowed & Tracked
 """)
                             except Exception as track_error:

@@ -134,6 +134,12 @@ def generate(
                             current_video_calls = getattr(summary, "video_calls", 0) or 0
                             video_limit = limits['limits'].get("video_calls", 0) if limits else 0
                             
+                            # Get audio stats for unified log
+                            current_audio_calls = getattr(summary, "audio_calls", 0) or 0
+                            audio_limit = limits['limits'].get("audio_calls", 0) if limits else 0
+                            # Only show ∞ for Enterprise tier when limit is 0 (unlimited)
+                            audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
+                            
                             db_track.commit()
                             logger.info(f"[images.generate] ✅ Successfully tracked usage: user {user_id} -> stability -> {new_calls} calls")
                             
@@ -148,6 +154,7 @@ def generate(
 ├─ Calls: {current_calls_before} → {new_calls} / {call_limit if call_limit > 0 else '∞'}
 ├─ Image Editing: {current_image_edit_calls} / {image_edit_limit if image_edit_limit > 0 else '∞'}
 ├─ Videos: {current_video_calls} / {video_limit if video_limit > 0 else '∞'}
+├─ Audio: {current_audio_calls} / {audio_limit_display}
 └─ Status: ✅ Allowed & Tracked
 """)
                         except Exception as track_error:
@@ -437,6 +444,12 @@ def edit(
                     current_video_calls = getattr(summary, "video_calls", 0) or 0
                     video_limit = limits['limits'].get("video_calls", 0) if limits else 0
                     
+                    # Get audio stats for unified log
+                    current_audio_calls = getattr(summary, "audio_calls", 0) or 0
+                    audio_limit = limits['limits'].get("audio_calls", 0) if limits else 0
+                    # Only show ∞ for Enterprise tier when limit is 0 (unlimited)
+                    audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
+                    
                     db_track.commit()
                     logger.info(f"[images.edit] ✅ Successfully tracked usage: user {user_id} -> image_edit -> {new_calls} calls")
                     
@@ -451,6 +464,7 @@ def edit(
 ├─ Calls: {current_calls_before} → {new_calls} / {call_limit if call_limit > 0 else '∞'}
 ├─ Images: {current_image_gen_calls} / {image_gen_limit if image_gen_limit > 0 else '∞'}
 ├─ Videos: {current_video_calls} / {video_limit if video_limit > 0 else '∞'}
+├─ Audio: {current_audio_calls} / {audio_limit_display}
 └─ Status: ✅ Allowed & Tracked
 """)
                 except Exception as track_error:

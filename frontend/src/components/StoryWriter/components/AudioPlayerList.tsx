@@ -29,14 +29,30 @@ export const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ scenes, sceneA
       for (const [sceneNumber, audioPath] of entries) {
         if (!audioPath) continue;
         try {
-          const normalizedPath = audioPath.startsWith('/') ? audioPath : `/${audioPath}`;
+          // Normalize path - ensure it starts with /api/story/audio/
+          let normalizedPath = audioPath.startsWith('/') ? audioPath : `/${audioPath}`;
+          
+          // If path doesn't include /api/story/audio/, add it
+          if (!normalizedPath.includes('/api/story/audio/')) {
+            // Extract filename from path
+            const filename = audioPath.split('/').pop() || audioPath;
+            normalizedPath = `/api/story/audio/${filename}`;
+          }
+          
           const response = await aiApiClient.get(normalizedPath, {
             responseType: 'blob',
           });
           const blobUrl = URL.createObjectURL(response.data);
           blobEntries.push([sceneNumber, blobUrl]);
-        } catch (err) {
-          console.error('Failed to load audio blob:', err);
+        } catch (err: any) {
+          console.error(`Failed to load audio blob for scene ${sceneNumber}:`, err);
+          console.error(`Audio path was: ${audioPath}`);
+          console.error(`Normalized path would be: ${audioPath.startsWith('/') ? audioPath : `/${audioPath}`}`);
+          
+          // If auth error, log more details
+          if (err?.response?.status === 401) {
+            console.error(`Authentication failed for audio file. Make sure auth token is set.`);
+          }
         }
       }
 
@@ -87,13 +103,19 @@ export const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ scenes, sceneA
               <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: '#1A1611' }}>
                 Scene {sceneNumber}: {scene.title || `Scene ${sceneNumber}`}
               </Typography>
-              <audio
-                controls
-                src={blobUrl ? blobUrl : storyWriterApi.getAudioUrl(audioUrl)}
-                style={{ width: '100%' }}
-              >
-                Your browser does not support the audio element.
-              </audio>
+              {blobUrl ? (
+                <audio
+                  controls
+                  src={blobUrl}
+                  style={{ width: '100%' }}
+                >
+                  Your browser does not support the audio element.
+                </audio>
+              ) : (
+                <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                  Loading audio...
+                </Typography>
+              )}
             </Box>
           );
         })}

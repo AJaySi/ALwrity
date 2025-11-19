@@ -8,7 +8,10 @@ interface OutlineHoverActionsProps {
   onImprove: () => void;
 }
 
-const OutlineHoverActions: React.FC<OutlineHoverActionsProps> = ({ onEdit, onImprove }) => {
+const OutlineHoverActions: React.FC<OutlineHoverActionsProps> = ({
+  onEdit,
+  onImprove,
+}) => {
   return (
     <Box
       className="outline-actions"
