@@ -2,6 +2,7 @@ from .base import ImageGenerationOptions, ImageGenerationResult, ImageGeneration
 from .hf_provider import HuggingFaceImageProvider
 from .gemini_provider import GeminiImageProvider
 from .stability_provider import StabilityImageProvider
+from .wavespeed_provider import WaveSpeedImageProvider
 
 __all__ = [
     "ImageGenerationOptions",
@@ -10,6 +11,7 @@ __all__ = [
     "HuggingFaceImageProvider",
     "GeminiImageProvider",
     "StabilityImageProvider",
+    "WaveSpeedImageProvider",
 ]
 
 

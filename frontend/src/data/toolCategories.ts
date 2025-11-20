@@ -57,6 +57,15 @@ export const toolCategories: ToolCategories = {
         isHighlighted: true
       },
       {
+        name: 'Image Editor',
+        description: 'AI-powered editing: remove background, inpaint, recolor & relight',
+        icon: React.createElement(ImageIcon),
+        status: 'beta',
+        path: '/image-editor',
+        features: ['Background Removal', 'Inpainting', 'Outpainting', 'Recolor', 'Relight'],
+        isHighlighted: true
+      },
+      {
         name: 'Audio Generator',
         description: 'AI voice synthesis and audio content creation',
         icon: React.createElement(AudioIcon),

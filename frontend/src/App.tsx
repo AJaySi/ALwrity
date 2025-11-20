@@ -12,6 +12,7 @@ import FacebookWriter from './components/FacebookWriter/FacebookWriter';
 import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
 import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
+import { CreateStudio, EditStudio, UpscaleStudio, ImageStudioDashboard } from './components/ImageStudio';
 import PricingPage from './components/Pricing/PricingPage';
 import WixTestPage from './components/WixTestPage/WixTestPage';
 import WixCallbackPage from './components/WixCallbackPage/WixCallbackPage';
@@ -450,6 +451,10 @@ const App: React.FC = () => {
                 <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                 <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
                 <Route path="/story-writer" element={<ProtectedRoute><StoryWriter /></ProtectedRoute>} />
+                <Route path="/image-studio" element={<ProtectedRoute><ImageStudioDashboard /></ProtectedRoute>} />
+                <Route path="/image-generator" element={<ProtectedRoute><CreateStudio /></ProtectedRoute>} />
+                <Route path="/image-editor" element={<ProtectedRoute><EditStudio /></ProtectedRoute>} />
+                <Route path="/image-upscale" element={<ProtectedRoute><UpscaleStudio /></ProtectedRoute>} />
                 <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />

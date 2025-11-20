@@ -240,20 +240,23 @@ def validate_exa_research_operations(
 
 def validate_image_generation_operations(
     pricing_service: PricingService,
-    user_id: str
+    user_id: str,
+    num_images: int = 1
 ) -> None:
     """
-    Validate image generation operation before making API calls.
+    Validate image generation operation(s) before making API calls.
     
     Args:
         pricing_service: PricingService instance
         user_id: User ID for subscription checking
+        num_images: Number of images to generate (for multiple variations)
         
     Returns:
-        (can_proceed, error_message, error_details)
-        If can_proceed is False, raises HTTPException with 429 status
+        None
+        If validation fails, raises HTTPException with 429 status
     """
     try:
+        # Create validation operations for each image
         operations_to_validate = [
             {
                 'provider': APIProvider.STABILITY,
@@ -261,7 +264,10 @@ def validate_image_generation_operations(
                 'actual_provider_name': 'stability',
                 'operation_type': 'image_generation'
             }
+            for _ in range(num_images)
         ]
+        
+        logger.info(f"[Pre-flight Validator] 🚀 Validating {num_images} image generation(s) for user {user_id}")
         
         can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
             user_id=user_id,
@@ -287,6 +293,54 @@ def validate_image_generation_operations(
         logger.info(f"[Pre-flight Validator] ✅ Image generation validated for user {user_id}")
         # Validation passed - no return needed (function raises HTTPException if validation fails)
         
+    except HTTPException:
+        raise
+
+
+def validate_image_upscale_operations(
+    pricing_service: PricingService,
+    user_id: str,
+    num_images: int = 1
+) -> None:
+    """
+    Validate image upscaling before making API calls.
+    """
+    try:
+        operations_to_validate = [
+            {
+                'provider': APIProvider.STABILITY,
+                'tokens_requested': 0,
+                'actual_provider_name': 'stability',
+                'operation_type': 'image_upscale'
+            }
+            for _ in range(num_images)
+        ]
+
+        logger.info(f"[Pre-flight Validator] 🚀 Validating {num_images} image upscale request(s) for user {user_id}")
+
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate
+        )
+
+        if not can_proceed:
+            logger.error(f"[Pre-flight Validator] Image upscale blocked for user {user_id}: {message}")
+
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', 'stability') if usage_info else 'stability'
+
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details
+                }
+            )
+
+        logger.info(f"[Pre-flight Validator] ✅ Image upscale validated for user {user_id}")
+
     except HTTPException:
         raise
     except Exception as e:

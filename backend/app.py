@@ -52,6 +52,7 @@ from routers.linkedin import router as linkedin_router
 from api.linkedin_image_generation import router as linkedin_image_router
 from api.brainstorm import router as brainstorm_router
 from api.images import router as images_router
+from routers.image_studio import router as image_studio_router
 
 # Import hallucination detector router
 from api.hallucination_detector import router as hallucination_detector_router
@@ -296,6 +297,7 @@ async def batch_analyze_urls_endpoint(urls: list[str]):
 from routers.platform_analytics import router as platform_analytics_router
 app.include_router(platform_analytics_router)
 app.include_router(images_router)
+app.include_router(image_studio_router)
 
 # Include research configuration router
 app.include_router(research_config_router, prefix="/api/research", tags=["research"])
