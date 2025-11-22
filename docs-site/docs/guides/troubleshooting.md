@@ -49,7 +49,7 @@ This guide helps you resolve common issues with ALwrity. If you don't find your 
    ```bash
    cd backend
    rm alwrity.db
-   python -c "from services.database import initialize_database; initialize_database()"
+   python -c "from services.database import init_database; init_database()"
    ```
 
 3. **Check Permissions**:
