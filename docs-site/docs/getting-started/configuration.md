@@ -309,7 +309,7 @@ DATABASE_URL=postgresql://username:password@localhost:5432/alwrity
 python scripts/init_alpha_subscription_tiers.py
 
 # Or manually initialize
-python -c "from services.database import initialize_database; initialize_database()"
+python -c "from services.database import init_database; init_database()"
 ```
 
 ## Security Configuration
