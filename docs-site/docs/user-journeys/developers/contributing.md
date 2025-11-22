@@ -81,7 +81,7 @@ cp env_template.txt .env
 
 # Configure your environment
 REACT_APP_API_URL=http://localhost:8000
-REACT_APP_COPILOT_API_KEY=your_copilot_api_key
+REACT_APP_COPILOTKIT_API_KEY=your_copilot_api_key
 ```
 
 **Run Frontend**

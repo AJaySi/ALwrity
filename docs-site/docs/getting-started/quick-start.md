@@ -60,7 +60,7 @@ Create a `.env` file in the frontend directory:
 ```bash
 REACT_APP_API_URL=http://localhost:8000
 REACT_APP_CLERK_PUBLISHABLE_KEY=your_clerk_key
-REACT_APP_COPILOT_API_KEY=your_copilot_key
+REACT_APP_COPILOTKIT_API_KEY=your_copilot_key
 ```
 
 ## Running the Application

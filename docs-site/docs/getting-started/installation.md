@@ -184,7 +184,7 @@ REACT_APP_API_URL=http://localhost:8000
 REACT_APP_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key_here
 
 # CopilotKit (Optional)
-REACT_APP_COPILOT_API_KEY=your_copilot_api_key_here
+REACT_APP_COPILOTKIT_API_KEY=your_copilot_api_key_here
 
 # Google Search Console (Optional)
 REACT_APP_GSC_CLIENT_ID=your_gsc_client_id_here

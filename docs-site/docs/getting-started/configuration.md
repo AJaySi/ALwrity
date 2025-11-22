@@ -136,7 +136,7 @@ REACT_APP_GOOGLE_CLIENT_ID=your_google_client_id_here
 
 ```env
 # CopilotKit
-REACT_APP_COPILOT_API_KEY=your_copilot_api_key_here
+REACT_APP_COPILOTKIT_API_KEY=your_copilot_api_key_here
 
 # Additional AI services
 REACT_APP_OPENAI_API_KEY=your_openai_api_key_here
