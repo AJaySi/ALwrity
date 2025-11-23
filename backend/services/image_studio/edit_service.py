@@ -110,12 +110,12 @@ class EditStudioService:
         },
         "search_replace": {
             "label": "Search & Replace",
-            "description": "Locate objects via search prompt and replace them.",
+            "description": "Locate objects via search prompt and replace them. Optional mask for precise control.",
             "provider": "stability",
             "async": False,
             "fields": {
                 "prompt": True,
-                "mask": False,
+                "mask": True,  # Optional mask for precise region selection
                 "negative_prompt": False,
                 "search_prompt": True,
                 "select_prompt": False,
@@ -126,12 +126,12 @@ class EditStudioService:
         },
         "search_recolor": {
             "label": "Search & Recolor",
-            "description": "Select elements via prompt and recolor them.",
+            "description": "Select elements via prompt and recolor them. Optional mask for exact region selection.",
             "provider": "stability",
             "async": False,
             "fields": {
                 "prompt": True,
-                "mask": False,
+                "mask": True,  # Optional mask for precise region selection
                 "negative_prompt": False,
                 "search_prompt": False,
                 "select_prompt": True,
@@ -158,12 +158,12 @@ class EditStudioService:
         },
         "general_edit": {
             "label": "Prompt-based Edit",
-            "description": "Free-form editing powered by Hugging Face image-to-image models.",
+            "description": "Free-form editing powered by Hugging Face image-to-image models. Optional mask for selective editing.",
             "provider": "huggingface",
             "async": False,
             "fields": {
                 "prompt": True,
-                "mask": False,
+                "mask": True,  # Optional mask for selective region editing
                 "negative_prompt": True,
                 "search_prompt": False,
                 "select_prompt": False,
@@ -346,6 +346,7 @@ class EditStudioService:
                     image=image_bytes,
                     prompt=request.prompt,
                     search_prompt=request.search_prompt,
+                    mask=mask_bytes,  # Optional mask for precise region selection
                     output_format=request.output_format,
                 )
             elif operation == "search_recolor":
@@ -355,6 +356,7 @@ class EditStudioService:
                     image=image_bytes,
                     prompt=request.prompt,
                     select_prompt=request.select_prompt,
+                    mask=mask_bytes,  # Optional mask for precise region selection
                     output_format=request.output_format,
                 )
             elif operation == "relight":
@@ -403,6 +405,7 @@ class EditStudioService:
             request.prompt,
             options,
             user_id,
+            mask_bytes,  # Optional mask for selective editing
         )
 
         return result.image_bytes

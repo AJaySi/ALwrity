@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Stack, Typography, Chip, Tooltip } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { editBeforeAfter } from '../constants';
+import { OptimizedImage } from '../utils/OptimizedImage';
 
 export const EditEffectPreview: React.FC = () => {
   const [exampleIndex, setExampleIndex] = React.useState(0);
@@ -54,30 +55,48 @@ export const EditEffectPreview: React.FC = () => {
           overflow: 'hidden',
           border: '4px solid #22d3ee',
           minHeight: { xs: 260, md: 300 },
-          '& > img': {
+          '& > *:first-of-type': {
             '--progress': 'calc(-1 * var(--gap))',
             gridArea: '1 / 1',
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
             transition: 'clip-path 0.4s 0.1s',
-          },
-          '& > img:first-of-type': {
             clipPath: 'polygon(0 0, calc(100% + var(--progress)) 0, 0 calc(100% + var(--progress)))',
           },
-          '& > img:last-of-type': {
+          '& > *:last-of-type': {
+            '--progress': 'calc(-1 * var(--gap))',
+            gridArea: '1 / 1',
+            transition: 'clip-path 0.4s 0.1s',
             clipPath: 'polygon(100% 100%, 100% calc(0% - var(--progress)), calc(0% - var(--progress)) 100%)',
           },
-          '&:hover > img:last-of-type, &:hover > img:first-of-type:hover': {
+          '&:hover > *:last-of-type, &:hover > *:first-of-type:hover': {
             '--progress': 'calc(50% - var(--gap))',
           },
-          '&:hover > img:first-of-type, &:hover > img:first-of-type:hover + img': {
+          '&:hover > *:first-of-type, &:hover > *:first-of-type:hover + *': {
             '--progress': 'calc(-50% - var(--gap))',
           },
         }}
       >
-        <Box component="img" src={pair.before} alt="Original asset" />
-        <Box component="img" src={pair.after} alt="Edited asset" />
+        <OptimizedImage
+          src={pair.before}
+          alt="Original asset"
+          loading="lazy"
+          sizes="(max-width: 600px) 100vw, 50vw"
+          sx={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+        <OptimizedImage
+          src={pair.after}
+          alt="Edited asset"
+          loading="lazy"
+          sizes="(max-width: 600px) 100vw, 50vw"
+          sx={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
         <Stack
           direction="row"
           spacing={1}

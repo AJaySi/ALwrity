@@ -5,6 +5,8 @@ from typing import Optional, Dict, Any, List
 from .create_service import CreateStudioService, CreateStudioRequest
 from .edit_service import EditStudioService, EditStudioRequest
 from .upscale_service import UpscaleStudioService, UpscaleStudioRequest
+from .control_service import ControlStudioService, ControlStudioRequest
+from .social_optimizer_service import SocialOptimizerService, SocialOptimizerRequest
 from .templates import Platform, TemplateCategory, ImageTemplate
 from utils.logger_utils import get_service_logger
 
@@ -20,6 +22,8 @@ class ImageStudioManager:
         self.create_service = CreateStudioService()
         self.edit_service = EditStudioService()
         self.upscale_service = UpscaleStudioService()
+        self.control_service = ControlStudioService()
+        self.social_optimizer_service = SocialOptimizerService()
         logger.info("[Image Studio Manager] Initialized successfully")
     
     # ====================
@@ -215,6 +219,40 @@ class ImageStudioManager:
             "estimated": True,
         }
     
+    # ====================
+    # CONTROL STUDIO
+    # ====================
+
+    async def control_image(
+        self,
+        request: ControlStudioRequest,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run Control Studio operations."""
+        logger.info("[Image Studio] Control request from user: %s", user_id)
+        return await self.control_service.process_control(request, user_id=user_id)
+
+    def get_control_operations(self) -> Dict[str, Any]:
+        """Expose control operations for UI."""
+        return self.control_service.list_operations()
+
+    # ====================
+    # SOCIAL OPTIMIZER
+    # ====================
+
+    async def optimize_for_social(
+        self,
+        request: SocialOptimizerRequest,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Optimize image for social media platforms."""
+        logger.info("[Image Studio] Social optimization request from user: %s", user_id)
+        return self.social_optimizer_service.optimize_image(request)
+
+    def get_social_platform_formats(self, platform: Platform) -> List[Dict[str, Any]]:
+        """Get available formats for a social platform."""
+        return self.social_optimizer_service.get_platform_formats(platform)
+
     # ====================
     # PLATFORM SPECS
     # ====================

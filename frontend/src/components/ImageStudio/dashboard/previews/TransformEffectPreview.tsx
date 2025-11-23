@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Stack, Typography, Chip, Button } from '@mui/material';
 import { transformAssets } from '../constants';
+import { OptimizedImage } from '../utils/OptimizedImage';
+import { OptimizedVideo } from '../utils/OptimizedVideo';
 
 export const TransformEffectPreview: React.FC = () => {
   const [videoKey, setVideoKey] = React.useState(0);
@@ -53,7 +55,13 @@ export const TransformEffectPreview: React.FC = () => {
               boxShadow: '0 20px 45px rgba(2,6,23,0.45)',
             }}
           >
-            <Box component="img" src={transformAssets.storyboard} alt="Storyboard still" sx={{ width: '100%', display: 'block' }} />
+            <OptimizedImage
+              src={transformAssets.storyboard}
+              alt="Storyboard still"
+              loading="lazy"
+              sizes="(max-width: 600px) 100vw, 50vw"
+              sx={{ width: '100%', display: 'block' }}
+            />
           </Box>
         </Box>
         <Box
@@ -86,7 +94,15 @@ export const TransformEffectPreview: React.FC = () => {
               position: 'relative',
             }}
           >
-            <video key={videoKey} controls poster={transformAssets.storyboard} style={{ width: '100%', display: 'block' }} src={transformAssets.video} />
+            <OptimizedVideo
+              key={videoKey}
+              src={transformAssets.video}
+              poster={transformAssets.storyboard}
+              alt="Transform video preview"
+              controls
+              preload="none"
+              sx={{ width: '100%', display: 'block' }}
+            />
             <Box
               sx={{
                 position: 'absolute',

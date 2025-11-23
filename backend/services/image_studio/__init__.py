@@ -4,6 +4,8 @@ from .studio_manager import ImageStudioManager
 from .create_service import CreateStudioService, CreateStudioRequest
 from .edit_service import EditStudioService, EditStudioRequest
 from .upscale_service import UpscaleStudioService, UpscaleStudioRequest
+from .control_service import ControlStudioService, ControlStudioRequest
+from .social_optimizer_service import SocialOptimizerService, SocialOptimizerRequest
 from .templates import PlatformTemplates, TemplateManager
 
 __all__ = [
@@ -14,6 +16,10 @@ __all__ = [
     "EditStudioRequest",
     "UpscaleStudioService",
     "UpscaleStudioRequest",
+    "ControlStudioService",
+    "ControlStudioRequest",
+    "SocialOptimizerService",
+    "SocialOptimizerRequest",
     "PlatformTemplates",
     "TemplateManager",
 ]

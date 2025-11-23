@@ -20,6 +20,7 @@ from models.monitoring_models import Base as MonitoringBase
 from models.persona_models import Base as PersonaBase
 from models.subscription_models import Base as SubscriptionBase
 from models.user_business_info import Base as UserBusinessInfoBase
+from models.content_asset_models import Base as ContentAssetBase
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')
@@ -74,7 +75,8 @@ def init_database():
         PersonaBase.metadata.create_all(bind=engine)
         SubscriptionBase.metadata.create_all(bind=engine)
         UserBusinessInfoBase.metadata.create_all(bind=engine)
-        logger.info("Database initialized successfully with all models including subscription system and business info")
+        ContentAssetBase.metadata.create_all(bind=engine)
+        logger.info("Database initialized successfully with all models including subscription system, business info, and content assets")
     except SQLAlchemyError as e:
         logger.error(f"Error initializing database: {str(e)}")
         raise

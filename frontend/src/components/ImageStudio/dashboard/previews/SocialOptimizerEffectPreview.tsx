@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Stack, Typography, Chip } from '@mui/material';
 import { transformAssets, platformPresets } from '../constants';
+import { OptimizedImage } from '../utils/OptimizedImage';
 
 export const SocialOptimizerEffectPreview: React.FC = () => (
   <Box
@@ -30,11 +31,18 @@ export const SocialOptimizerEffectPreview: React.FC = () => (
         overflow: 'hidden',
       }}
     >
-      <Box
-        component="img"
+      <OptimizedImage
         src={transformAssets.storyboard}
         alt="Source creative"
-        sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 2, filter: 'brightness(0.8)' }}
+        loading="lazy"
+        sizes="(max-width: 600px) 100vw, 100vw"
+        sx={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          borderRadius: 2,
+          filter: 'brightness(0.8)',
+        }}
       />
       {platformPresets.map(frame => (
         <Box

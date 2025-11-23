@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Stack, Typography, Chip } from '@mui/material';
 import { upscaleSamples } from '../constants';
+import { OptimizedImage } from '../utils/OptimizedImage';
 
 export const UpscaleEffectPreview: React.FC = () => (
   <Box
@@ -92,7 +93,13 @@ export const UpscaleEffectPreview: React.FC = () => (
                 border: '1px solid rgba(255,255,255,0.15)',
               }}
             >
-              <Box component="img" src={card.image} alt={card.label} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <OptimizedImage
+                src={card.image}
+                alt={card.label}
+                loading="lazy"
+                sizes="(max-width: 600px) 140px, 180px"
+                sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             </Box>
           </Box>
         </Box>

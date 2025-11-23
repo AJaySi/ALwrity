@@ -156,6 +156,81 @@ export interface UpscaleResult {
   metadata: Record<string, any>;
 }
 
+export interface ControlOperationMeta {
+  label: string;
+  description: string;
+  provider: string;
+  fields?: {
+    control_image?: boolean;
+    style_image?: boolean;
+    control_strength?: boolean;
+    fidelity?: boolean;
+    style_strength?: boolean;
+    aspect_ratio?: boolean;
+  };
+}
+
+export interface ControlImageRequestPayload {
+  control_image_base64: string;
+  operation: 'sketch' | 'structure' | 'style' | 'style_transfer';
+  prompt: string;
+  style_image_base64?: string;
+  negative_prompt?: string;
+  control_strength?: number;
+  fidelity?: number;
+  style_strength?: number;
+  composition_fidelity?: number;
+  change_strength?: number;
+  aspect_ratio?: string;
+  style_preset?: string;
+  seed?: number;
+  output_format?: string;
+}
+
+export interface ControlResult {
+  success: boolean;
+  operation: string;
+  provider: string;
+  image_base64: string;
+  width: number;
+  height: number;
+  metadata: Record<string, any>;
+}
+
+export interface SocialOptimizeResult {
+  success: boolean;
+  results: Array<{
+    platform: string;
+    format: string;
+    width: number;
+    height: number;
+    ratio: string;
+    image_base64: string;
+    safe_zone: {
+      top: number;
+      bottom: number;
+      left: number;
+      right: number;
+    };
+  }>;
+  total_optimized: number;
+}
+
+export interface PlatformFormat {
+  name: string;
+  width: number;
+  height: number;
+  ratio: string;
+  safe_zone: {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+  };
+  file_type: string;
+  max_size_mb: number;
+}
+
 export const useImageStudio = () => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [providers, setProviders] = useState<Record<string, Provider> | null>(null);
@@ -172,6 +247,14 @@ export const useImageStudio = () => {
   const [upscaleResult, setUpscaleResult] = useState<UpscaleResult | null>(null);
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleError, setUpscaleError] = useState<string | null>(null);
+  const [controlOperations, setControlOperations] = useState<Record<string, ControlOperationMeta>>({});
+  const [isLoadingControlOps, setIsLoadingControlOps] = useState(false);
+  const [isProcessingControl, setIsProcessingControl] = useState(false);
+  const [controlResult, setControlResult] = useState<ControlResult | null>(null);
+  const [controlError, setControlError] = useState<string | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizeResult, setOptimizeResult] = useState<SocialOptimizeResult | null>(null);
+  const [optimizeError, setOptimizeError] = useState<string | null>(null);
 
   // Load templates
   const loadTemplates = useCallback(async (platform?: string, category?: string) => {
@@ -351,6 +434,83 @@ export const useImageStudio = () => {
     setUpscaleError(null);
   }, []);
 
+  // Load control operations
+  const loadControlOperations = useCallback(async () => {
+    setIsLoadingControlOps(true);
+    try {
+      const response = await aiApiClient.get('/api/image-studio/control/operations');
+      setControlOperations(response.data.operations || {});
+    } catch (err: any) {
+      console.error('Failed to load control operations:', err);
+    } finally {
+      setIsLoadingControlOps(false);
+    }
+  }, []);
+
+  // Process control
+  const processControl = useCallback(async (payload: ControlImageRequestPayload) => {
+    setIsProcessingControl(true);
+    setControlError(null);
+    try {
+      const response = await aiApiClient.post('/api/image-studio/control/process', payload);
+      setControlResult(response.data);
+      return response.data as ControlResult;
+    } catch (err: any) {
+      console.error('Failed to process control:', err);
+      const message = err.response?.data?.detail || 'Failed to process control';
+      setControlError(message);
+      throw new Error(message);
+    } finally {
+      setIsProcessingControl(false);
+    }
+  }, []);
+
+  const clearControlResult = useCallback(() => {
+    setControlResult(null);
+    setControlError(null);
+  }, []);
+
+  // Social Optimizer
+  const optimizeForSocial = useCallback(async (payload: {
+    image_base64: string;
+    platforms: string[];
+    format_names?: Record<string, string>;
+    show_safe_zones?: boolean;
+    crop_mode?: string;
+    focal_point?: { x: number; y: number };
+    output_format?: string;
+  }) => {
+    setIsOptimizing(true);
+    setOptimizeError(null);
+    try {
+      const response = await aiApiClient.post('/api/image-studio/social/optimize', payload);
+      setOptimizeResult(response.data);
+      return response.data as SocialOptimizeResult;
+    } catch (err: any) {
+      console.error('Failed to optimize for social:', err);
+      const message = err.response?.data?.detail || 'Failed to optimize for social platforms';
+      setOptimizeError(message);
+      throw new Error(message);
+    } finally {
+      setIsOptimizing(false);
+    }
+  }, []);
+
+  const getPlatformFormats = useCallback(async (platform: string): Promise<PlatformFormat[]> => {
+    try {
+      const response = await aiApiClient.get(`/api/image-studio/social/platforms/${platform}/formats`);
+      return response.data.formats || [];
+    } catch (err: any) {
+      console.error(`Failed to load formats for ${platform}:`, err);
+      return [];
+    }
+  }, []);
+
+  const clearOptimizeResult = useCallback(() => {
+    setOptimizeResult(null);
+    setOptimizeError(null);
+  }, []);
+
   return {
     // State
     templates,
@@ -368,6 +528,11 @@ export const useImageStudio = () => {
     upscaleResult,
     isUpscaling,
     upscaleError,
+    controlOperations,
+    isLoadingControlOps,
+    isProcessingControl,
+    controlResult,
+    controlError,
     
     // Actions
     loadTemplates,
@@ -383,6 +548,15 @@ export const useImageStudio = () => {
     clearEditResult,
     processUpscale,
     clearUpscaleResult,
+    loadControlOperations,
+    processControl,
+    clearControlResult,
+    optimizeForSocial,
+    getPlatformFormats,
+    isOptimizing,
+    optimizeResult,
+    optimizeError,
+    clearOptimizeResult,
   };
 };
 

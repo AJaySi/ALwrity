@@ -54,7 +54,8 @@ def edit_image(
     input_image_bytes: bytes,
     prompt: str,
     options: Optional[Dict[str, Any]] = None,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    mask_bytes: Optional[bytes] = None,
 ) -> ImageGenerationResult:
     """Edit image with pre-flight validation.
     
@@ -63,6 +64,7 @@ def edit_image(
         prompt: Natural language prompt describing desired edits (e.g., "Turn the cat into a tiger")
         options: Image editing options (provider, model, etc.)
         user_id: User ID for subscription checking (optional, but required for validation)
+        mask_bytes: Optional mask image bytes for selective editing (grayscale, white=edit, black=preserve)
     
     Returns:
         ImageGenerationResult with edited image bytes and metadata
@@ -72,6 +74,8 @@ def edit_image(
     - Describe what should change and what should remain
     - Examples: "Turn the cat into a tiger", "Change background to forest", 
                 "Make it look like a watercolor painting"
+    
+    Note: Mask support depends on the specific model. Some models may ignore the mask parameter.
     """
     # PRE-FLIGHT VALIDATION: Validate image editing before API call
     # MUST happen BEFORE any API calls - return immediately if validation fails
@@ -128,14 +132,33 @@ def edit_image(
         width = input_image.width
         height = input_image.height
         
+        # Convert mask bytes to PIL Image if provided
+        mask_image = None
+        if mask_bytes:
+            try:
+                mask_image = Image.open(io.BytesIO(mask_bytes)).convert("L")  # Convert to grayscale
+                # Ensure mask dimensions match input image
+                if mask_image.size != input_image.size:
+                    logger.warning(f"[Image Editing] Mask size {mask_image.size} doesn't match image size {input_image.size}, resizing mask")
+                    mask_image = mask_image.resize(input_image.size, Image.Resampling.LANCZOS)
+            except Exception as e:
+                logger.warning(f"[Image Editing] Failed to process mask image: {e}, continuing without mask")
+                mask_image = None
+        
         # Use image_to_image method from Hugging Face InferenceClient
         # This follows the pattern from the Hugging Face documentation
         # Docs: https://huggingface.co/docs/inference-providers/en/guides/image-editor
+        # Note: Mask support depends on the model - some models may ignore it
+        call_params = params.copy()
+        if mask_image:
+            call_params["mask_image"] = mask_image
+            logger.info("[Image Editing] Using mask for selective editing")
+        
         edited_image: Image.Image = client.image_to_image(
             image=input_image,
             prompt=prompt.strip(),
             model=model,
-            **params,
+            **call_params,
         )
         
         # Convert edited image back to bytes

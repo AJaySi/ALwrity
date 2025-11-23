@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Stack, Typography, Chip, Button } from '@mui/material';
 import { controlAssets } from '../constants';
+import { OptimizedImage } from '../utils/OptimizedImage';
+import { OptimizedVideo } from '../utils/OptimizedVideo';
 
 export const ControlEffectPreview: React.FC = () => {
   const [videoKey, setVideoKey] = React.useState(0);
@@ -32,11 +34,17 @@ export const ControlEffectPreview: React.FC = () => {
           <Typography variant="overline" sx={{ letterSpacing: 2, color: '#e9d5ff' }}>
             Control Input
           </Typography>
-          <Box
-            component="img"
+          <OptimizedImage
             src={controlAssets.inputImage}
             alt="Control reference"
-            sx={{ width: '100%', borderRadius: 2, border: '2px solid rgba(255,255,255,0.2)', boxShadow: '0 10px 25px rgba(139,92,246,0.3)' }}
+            loading="lazy"
+            sizes="(max-width: 600px) 100vw, 50vw"
+            sx={{
+              width: '100%',
+              borderRadius: 2,
+              border: '2px solid rgba(255,255,255,0.2)',
+              boxShadow: '0 10px 25px rgba(139,92,246,0.3)',
+            }}
           />
           <Stack spacing={1}>
             <Typography variant="caption" sx={{ color: '#e9d5ff', fontWeight: 600 }}>
@@ -94,7 +102,15 @@ export const ControlEffectPreview: React.FC = () => {
               position: 'relative',
             }}
           >
-            <video key={videoKey} controls poster={controlAssets.inputImage} style={{ width: '100%', display: 'block' }} src={controlAssets.outputVideo} />
+            <OptimizedVideo
+              key={videoKey}
+              src={controlAssets.outputVideo}
+              poster={controlAssets.inputImage}
+              alt="Control video output"
+              controls
+              preload="none"
+              sx={{ width: '100%', display: 'block' }}
+            />
             <Box
               sx={{
                 position: 'absolute',

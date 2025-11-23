@@ -115,7 +115,8 @@ export const studioModules: ModuleConfig[] = [
     description:
       'Smart resize, safe zones, and engagement tips for Instagram, TikTok, LinkedIn, YouTube, Pinterest, and more in one click.',
     highlights: ['Text safe zones', 'Batch export', 'Platform presets'],
-    status: 'planning',
+    status: 'live',
+    route: '/social-optimizer',
     icon: <ShareIcon />,
     help: 'Ship consistent assets across every social surface.',
     pricing: {
@@ -139,7 +140,8 @@ export const studioModules: ModuleConfig[] = [
     description:
       'Sketch-to-image, structure control, and advanced style transfer so creative directors can steer outputs precisely.',
     highlights: ['Sketch control', 'Style libraries', 'Strength sliders'],
-    status: 'planning',
+    status: 'live',
+    route: '/image-control',
     icon: <EditNoteIcon />,
     help: 'For art directors who need total control over AI outputs.',
     pricing: {
@@ -187,7 +189,8 @@ export const studioModules: ModuleConfig[] = [
     description:
       'AI-tagged collections, favorites, history, and collaboration. Filters by platform, persona, use case, or campaign.',
     highlights: ['AI tagging', 'Version history', 'Shareable collections'],
-    status: 'planning',
+    status: 'live',
+    route: '/asset-library',
     icon: <LibraryBooksIcon />,
     help: 'Centralize every visual produced inside ALwrity.',
     pricing: {

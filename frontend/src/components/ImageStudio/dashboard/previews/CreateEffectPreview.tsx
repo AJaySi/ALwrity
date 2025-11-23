@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Stack, Typography, Chip } from '@mui/material';
 import { createExamples } from '../constants';
+import { OptimizedImage } from '../utils/OptimizedImage';
 
 export const CreateEffectPreview: React.FC = () => {
   const [textHovered, setTextHovered] = React.useState(false);
@@ -28,13 +29,22 @@ export const CreateEffectPreview: React.FC = () => {
           flex: '0 0 auto',
           width: imageWidth,
           transition: 'width 0.4s ease, filter 0.4s ease',
-          backgroundImage: `url(${example.image})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
           filter: textHovered ? 'saturate(1.1)' : 'saturate(1)',
           position: 'relative',
+          overflow: 'hidden',
         }}
       >
+        <OptimizedImage
+          src={example.image}
+          alt={example.label}
+          loading="lazy"
+          sizes="(max-width: 600px) 70vw, 50vw"
+          sx={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
         <Stack
           direction="row"
           spacing={1}

@@ -9,6 +9,8 @@ from services.image_studio import (
     ImageStudioManager,
     CreateStudioRequest,
     EditStudioRequest,
+    ControlStudioRequest,
+    SocialOptimizerRequest,
 )
 from services.image_studio.upscale_service import UpscaleStudioRequest
 from services.image_studio.templates import Platform, TemplateCategory
@@ -529,6 +531,197 @@ async def upscale_image(
     except Exception as e:
         logger.error(f"[Upscale Image] ❌ Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Image upscaling failed: {e}")
+
+
+# ====================
+# CONTROL STUDIO ENDPOINTS
+# ====================
+
+class ControlImageRequest(BaseModel):
+    """Request payload for Control Studio."""
+
+    control_image_base64: str = Field(..., description="Control image (sketch/structure/style) in base64")
+    operation: Literal["sketch", "structure", "style", "style_transfer"] = Field(..., description="Control operation")
+    prompt: str = Field(..., description="Text prompt for generation")
+    style_image_base64: Optional[str] = Field(None, description="Style reference image (for style_transfer only)")
+    negative_prompt: Optional[str] = Field(None, description="Negative prompt")
+    control_strength: Optional[float] = Field(None, ge=0.0, le=1.0, description="Control strength (sketch/structure)")
+    fidelity: Optional[float] = Field(None, ge=0.0, le=1.0, description="Style fidelity (style operation)")
+    style_strength: Optional[float] = Field(None, ge=0.0, le=1.0, description="Style strength (style_transfer)")
+    composition_fidelity: Optional[float] = Field(None, ge=0.0, le=1.0, description="Composition fidelity (style_transfer)")
+    change_strength: Optional[float] = Field(None, ge=0.0, le=1.0, description="Change strength (style_transfer)")
+    aspect_ratio: Optional[str] = Field(None, description="Aspect ratio (style operation)")
+    style_preset: Optional[str] = Field(None, description="Style preset")
+    seed: Optional[int] = Field(None, description="Random seed")
+    output_format: str = Field("png", description="Output format")
+
+
+class ControlImageResponse(BaseModel):
+    success: bool
+    operation: str
+    provider: str
+    image_base64: str
+    width: int
+    height: int
+    metadata: Dict[str, Any]
+
+
+class ControlOperationsResponse(BaseModel):
+    operations: Dict[str, Dict[str, Any]]
+
+
+@router.post("/control/process", response_model=ControlImageResponse, summary="Process Control Studio request")
+async def process_control_image(
+    request: ControlImageRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Perform Control Studio operations such as sketch-to-image, structure control, style control, and style transfer."""
+    try:
+        user_id = _require_user_id(current_user, "image control")
+        logger.info(f"[Control Image] Request from user {user_id}: operation={request.operation}")
+
+        control_request = ControlStudioRequest(
+            operation=request.operation,
+            prompt=request.prompt,
+            control_image_base64=request.control_image_base64,
+            style_image_base64=request.style_image_base64,
+            negative_prompt=request.negative_prompt,
+            control_strength=request.control_strength,
+            fidelity=request.fidelity,
+            style_strength=request.style_strength,
+            composition_fidelity=request.composition_fidelity,
+            change_strength=request.change_strength,
+            aspect_ratio=request.aspect_ratio,
+            style_preset=request.style_preset,
+            seed=request.seed,
+            output_format=request.output_format,
+        )
+
+        result = await studio_manager.control_image(control_request, user_id=user_id)
+        return ControlImageResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Control Image] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Image control failed: {e}")
+
+
+@router.get("/control/operations", response_model=ControlOperationsResponse, summary="List Control Studio operations")
+async def get_control_operations(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Return metadata for supported Control Studio operations."""
+    try:
+        operations = studio_manager.get_control_operations()
+        return ControlOperationsResponse(operations=operations)
+    except Exception as e:
+        logger.error(f"[Control Operations] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load control operations")
+
+
+# ====================
+# SOCIAL OPTIMIZER ENDPOINTS
+# ====================
+
+class SocialOptimizeRequest(BaseModel):
+    """Request payload for Social Optimizer."""
+    image_base64: str = Field(..., description="Source image in base64 or data URL")
+    platforms: List[str] = Field(..., description="List of platforms to optimize for")
+    format_names: Optional[Dict[str, str]] = Field(None, description="Specific format per platform")
+    show_safe_zones: bool = Field(False, description="Include safe zone overlay in output")
+    crop_mode: str = Field("smart", description="Crop mode: smart, center, or fit")
+    focal_point: Optional[Dict[str, float]] = Field(None, description="Focal point for smart crop (x, y as 0-1)")
+    output_format: str = Field("png", description="Output format (png or jpg)")
+
+
+class SocialOptimizeResponse(BaseModel):
+    success: bool
+    results: List[Dict[str, Any]]
+    total_optimized: int
+
+
+class PlatformFormatsResponse(BaseModel):
+    formats: List[Dict[str, Any]]
+
+
+@router.post("/social/optimize", response_model=SocialOptimizeResponse, summary="Optimize image for social platforms")
+async def optimize_for_social(
+    request: SocialOptimizeRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Optimize an image for multiple social media platforms with smart cropping and safe zones."""
+    try:
+        user_id = _require_user_id(current_user, "social optimization")
+        logger.info(f"[Social Optimizer] Request from user {user_id}: platforms={request.platforms}")
+
+        # Convert platform strings to Platform enum
+        from services.image_studio.templates import Platform
+        platforms = []
+        for platform_str in request.platforms:
+            try:
+                platforms.append(Platform(platform_str.lower()))
+            except ValueError:
+                logger.warning(f"[Social Optimizer] Invalid platform: {platform_str}")
+                continue
+
+        if not platforms:
+            raise HTTPException(status_code=400, detail="No valid platforms provided")
+
+        # Convert format_names dict keys to Platform enum
+        format_names = None
+        if request.format_names:
+            format_names = {}
+            for platform_str, format_name in request.format_names.items():
+                try:
+                    platform = Platform(platform_str.lower())
+                    format_names[platform] = format_name
+                except ValueError:
+                    logger.warning(f"[Social Optimizer] Invalid platform in format_names: {platform_str}")
+
+        social_request = SocialOptimizerRequest(
+            image_base64=request.image_base64,
+            platforms=platforms,
+            format_names=format_names,
+            show_safe_zones=request.show_safe_zones,
+            crop_mode=request.crop_mode,
+            focal_point=request.focal_point,
+            output_format=request.output_format,
+            options={},
+        )
+
+        result = await studio_manager.optimize_for_social(social_request, user_id=user_id)
+        return SocialOptimizeResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Social Optimizer] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Social optimization failed: {e}")
+
+
+@router.get("/social/platforms/{platform}/formats", response_model=PlatformFormatsResponse, summary="Get platform formats")
+async def get_platform_formats(
+    platform: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get available formats for a social media platform."""
+    try:
+        from services.image_studio.templates import Platform
+        try:
+            platform_enum = Platform(platform.lower())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid platform: {platform}")
+
+        formats = studio_manager.get_social_platform_formats(platform_enum)
+        return PlatformFormatsResponse(formats=formats)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Platform Formats] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to load platform formats: {e}")
 
 
 # ====================

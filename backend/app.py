@@ -299,6 +299,10 @@ app.include_router(platform_analytics_router)
 app.include_router(images_router)
 app.include_router(image_studio_router)
 
+# Include content assets router
+from api.content_assets.router import router as content_assets_router
+app.include_router(content_assets_router)
+
 # Include research configuration router
 app.include_router(research_config_router, prefix="/api/research", tags=["research"])
 

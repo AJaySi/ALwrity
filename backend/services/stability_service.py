@@ -397,6 +397,7 @@ class StabilityAIService:
         image: Union[UploadFile, bytes],
         prompt: str,
         search_prompt: str,
+        mask: Optional[Union[UploadFile, bytes]] = None,
         **kwargs
     ) -> Union[bytes, Dict[str, Any]]:
         """Replace objects in image using search prompt.
@@ -405,6 +406,7 @@ class StabilityAIService:
             image: Input image
             prompt: Text prompt for replacement
             search_prompt: What to search for
+            mask: Optional mask image for precise region selection
             **kwargs: Additional parameters
             
         Returns:
@@ -414,6 +416,8 @@ class StabilityAIService:
         data.update({k: v for k, v in kwargs.items() if v is not None})
         
         files = {"image": await self._prepare_image_file(image)}
+        if mask:
+            files["mask"] = await self._prepare_image_file(mask)
         
         return await self._make_request(
             method="POST",
@@ -427,6 +431,7 @@ class StabilityAIService:
         image: Union[UploadFile, bytes],
         prompt: str,
         select_prompt: str,
+        mask: Optional[Union[UploadFile, bytes]] = None,
         **kwargs
     ) -> Union[bytes, Dict[str, Any]]:
         """Recolor objects in image using select prompt.
@@ -435,6 +440,7 @@ class StabilityAIService:
             image: Input image
             prompt: Text prompt for recoloring
             select_prompt: What to select for recoloring
+            mask: Optional mask image for precise region selection
             **kwargs: Additional parameters
             
         Returns:
@@ -444,6 +450,8 @@ class StabilityAIService:
         data.update({k: v for k, v in kwargs.items() if v is not None})
         
         files = {"image": await self._prepare_image_file(image)}
+        if mask:
+            files["mask"] = await self._prepare_image_file(mask)
         
         return await self._make_request(
             method="POST",

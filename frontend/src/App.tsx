@@ -12,7 +12,7 @@ import FacebookWriter from './components/FacebookWriter/FacebookWriter';
 import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
 import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
-import { CreateStudio, EditStudio, UpscaleStudio, ImageStudioDashboard } from './components/ImageStudio';
+import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard } from './components/ImageStudio';
 import PricingPage from './components/Pricing/PricingPage';
 import WixTestPage from './components/WixTestPage/WixTestPage';
 import WixCallbackPage from './components/WixCallbackPage/WixCallbackPage';
@@ -455,6 +455,9 @@ const App: React.FC = () => {
                 <Route path="/image-generator" element={<ProtectedRoute><CreateStudio /></ProtectedRoute>} />
                 <Route path="/image-editor" element={<ProtectedRoute><EditStudio /></ProtectedRoute>} />
                 <Route path="/image-upscale" element={<ProtectedRoute><UpscaleStudio /></ProtectedRoute>} />
+                <Route path="/image-control" element={<ProtectedRoute><ControlStudio /></ProtectedRoute>} />
+                <Route path="/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
+                <Route path="/asset-library" element={<ProtectedRoute><AssetLibrary /></ProtectedRoute>} />
                 <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />
