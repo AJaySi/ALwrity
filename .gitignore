@@ -12,6 +12,11 @@ backend/database/migrations/*
 .cursorignore
 story_videos
 story_videos/*
+story_audio
+story_images
+backend/story_videos/*
+backend/story_audio/*
+backend/story_images/*
 # Environment
 .env
 .env.*
