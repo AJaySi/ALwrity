@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import base64
 import os
+import uuid
 from typing import Optional, Dict, Any
 from datetime import datetime
+from pathlib import Path
+from sqlalchemy.orm import Session
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from services.llm_providers.main_image_generation import generate_image
@@ -16,6 +20,8 @@ from middleware.auth_middleware import get_current_user
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
 from models.subscription_models import APIProvider, UsageSummary
+from utils.asset_tracker import save_asset_to_library
+from utils.file_storage import save_file_safely, generate_unique_filename, sanitize_filename
 
 
 router = APIRouter(prefix="/api/images", tags=["images"])
@@ -37,6 +43,7 @@ class ImageGenerateRequest(BaseModel):
 class ImageGenerateResponse(BaseModel):
     success: bool = True
     image_base64: str
+    image_url: Optional[str] = None  # URL to saved image file
     width: int
     height: int
     provider: str
@@ -47,7 +54,8 @@ class ImageGenerateResponse(BaseModel):
 @router.post("/generate", response_model=ImageGenerateResponse)
 def generate(
     req: ImageGenerateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ) -> ImageGenerateResponse:
     """Generate image with subscription checking."""
     try:
@@ -79,6 +87,78 @@ def generate(
                     user_id=user_id,  # Pass user_id for validation inside generate_image
                 )
                 image_b64 = base64.b64encode(result.image_bytes).decode("utf-8")
+                
+                # Save image to disk and track in asset library
+                image_url = None
+                image_filename = None
+                image_path = None
+                
+                try:
+                    # Create output directory for image studio images
+                    base_dir = Path(__file__).parent.parent
+                    output_dir = base_dir / "image_studio_images"
+                    
+                    # Generate safe filename from prompt
+                    clean_prompt = sanitize_filename(req.prompt[:50], max_length=50)
+                    image_filename = generate_unique_filename(
+                        prefix=f"img_{clean_prompt}",
+                        extension=".png",
+                        include_uuid=True
+                    )
+                    
+                    # Save file safely
+                    image_path, save_error = save_file_safely(
+                        content=result.image_bytes,
+                        directory=output_dir,
+                        filename=image_filename,
+                        max_file_size=50 * 1024 * 1024  # 50MB for images
+                    )
+                    
+                    if image_path and not save_error:
+                        # Generate file URL (will be served via API endpoint)
+                        image_url = f"/api/images/image-studio/images/{image_path.name}"
+                        
+                        logger.info(f"[images.generate] Saved image to: {image_path} ({len(result.image_bytes)} bytes)")
+                        
+                        # Save to asset library (non-blocking)
+                        try:
+                            asset_id = save_asset_to_library(
+                                db=db,
+                                user_id=user_id,
+                                asset_type="image",
+                                source_module="image_studio",
+                                filename=image_path.name,
+                                file_url=image_url,
+                                file_path=str(image_path),
+                                file_size=len(result.image_bytes),
+                                mime_type="image/png",
+                                title=req.prompt[:100] if len(req.prompt) <= 100 else req.prompt[:97] + "...",
+                                description=f"Generated image: {req.prompt[:200]}" if len(req.prompt) > 200 else req.prompt,
+                                prompt=req.prompt,
+                                tags=["image_studio", "generated", result.provider] if result.provider else ["image_studio", "generated"],
+                                provider=result.provider,
+                                model=result.model,
+                                asset_metadata={
+                                    "width": result.width,
+                                    "height": result.height,
+                                    "seed": result.seed,
+                                    "status": "completed",
+                                    "negative_prompt": req.negative_prompt
+                                }
+                            )
+                            if asset_id:
+                                logger.info(f"[images.generate] ✅ Asset saved to library: ID={asset_id}, filename={image_path.name}")
+                            else:
+                                logger.warning(f"[images.generate] Asset tracking returned None (may have failed silently)")
+                        except Exception as asset_error:
+                            logger.error(f"[images.generate] Failed to save asset to library: {asset_error}", exc_info=True)
+                            # Don't fail the request if asset tracking fails
+                    else:
+                        logger.warning(f"[images.generate] Failed to save image to disk: {save_error}")
+                        # Continue without failing the request - base64 is still available
+                except Exception as save_error:
+                    logger.error(f"[images.generate] Unexpected error saving image: {save_error}", exc_info=True)
+                    # Continue without failing the request
                 
                 # TRACK USAGE after successful image generation
                 if result:
@@ -168,6 +248,7 @@ def generate(
                 
                 return ImageGenerateResponse(
                     image_base64=image_b64,
+                    image_url=image_url,
                     width=result.width,
                     height=result.height,
                     provider=result.provider,
@@ -226,6 +307,7 @@ class ImageEditRequest(BaseModel):
 class ImageEditResponse(BaseModel):
     success: bool = True
     image_base64: str
+    image_url: Optional[str] = None  # URL to saved edited image file
     width: int
     height: int
     provider: str
@@ -358,7 +440,8 @@ def suggest_prompts(
 @router.post("/edit", response_model=ImageEditResponse)
 def edit(
     req: ImageEditRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ) -> ImageEditResponse:
     """Edit image with subscription checking."""
     try:
@@ -390,6 +473,78 @@ def edit(
             user_id=user_id,  # Pass user_id for validation inside edit_image
         )
         edited_image_b64 = base64.b64encode(result.image_bytes).decode("utf-8")
+        
+        # Save edited image to disk and track in asset library
+        image_url = None
+        image_filename = None
+        image_path = None
+        
+        try:
+            # Create output directory for image studio edited images
+            base_dir = Path(__file__).parent.parent
+            output_dir = base_dir / "image_studio_images" / "edited"
+            
+            # Generate safe filename from prompt
+            clean_prompt = sanitize_filename(req.prompt[:50], max_length=50)
+            image_filename = generate_unique_filename(
+                prefix=f"edited_{clean_prompt}",
+                extension=".png",
+                include_uuid=True
+            )
+            
+            # Save file safely
+            image_path, save_error = save_file_safely(
+                content=result.image_bytes,
+                directory=output_dir,
+                filename=image_filename,
+                max_file_size=50 * 1024 * 1024  # 50MB for images
+            )
+            
+            if image_path and not save_error:
+                # Generate file URL
+                image_url = f"/api/images/image-studio/images/edited/{image_path.name}"
+                
+                logger.info(f"[images.edit] Saved edited image to: {image_path} ({len(result.image_bytes)} bytes)")
+                
+                # Save to asset library (non-blocking)
+                try:
+                    asset_id = save_asset_to_library(
+                        db=db,
+                        user_id=user_id,
+                        asset_type="image",
+                        source_module="image_studio",
+                        filename=image_path.name,
+                        file_url=image_url,
+                        file_path=str(image_path),
+                        file_size=len(result.image_bytes),
+                        mime_type="image/png",
+                        title=f"Edited: {req.prompt[:100]}" if len(req.prompt) <= 100 else f"Edited: {req.prompt[:97]}...",
+                        description=f"Edited image with prompt: {req.prompt[:200]}" if len(req.prompt) > 200 else f"Edited image with prompt: {req.prompt}",
+                        prompt=req.prompt,
+                        tags=["image_studio", "edited", result.provider] if result.provider else ["image_studio", "edited"],
+                        provider=result.provider,
+                        model=result.model,
+                        asset_metadata={
+                            "width": result.width,
+                            "height": result.height,
+                            "seed": result.seed,
+                            "status": "completed",
+                            "operation": "edit"
+                        }
+                    )
+                    if asset_id:
+                        logger.info(f"[images.edit] ✅ Asset saved to library: ID={asset_id}, filename={image_path.name}")
+                    else:
+                        logger.warning(f"[images.edit] Asset tracking returned None (may have failed silently)")
+                except Exception as asset_error:
+                    logger.error(f"[images.edit] Failed to save asset to library: {asset_error}", exc_info=True)
+                    # Don't fail the request if asset tracking fails
+            else:
+                logger.warning(f"[images.edit] Failed to save edited image to disk: {save_error}")
+                # Continue without failing the request - base64 is still available
+        except Exception as save_error:
+            logger.error(f"[images.edit] Unexpected error saving edited image: {save_error}", exc_info=True)
+            # Continue without failing the request
         
         # TRACK USAGE after successful image editing
         if result:
@@ -478,6 +633,7 @@ def edit(
         
         return ImageEditResponse(
             image_base64=edited_image_b64,
+            image_url=image_url,
             width=result.width,
             height=result.height,
             provider=result.provider,
@@ -493,4 +649,56 @@ def edit(
             status_code=500,
             detail="Image editing service is temporarily unavailable or the connection was reset. Please try again."
         )
+
+
+# ---------------------------
+# Image Serving Endpoints
+# ---------------------------
+
+@router.get("/image-studio/images/{image_filename:path}")
+async def serve_image_studio_image(
+    image_filename: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Serve a generated or edited image from Image Studio."""
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        # Determine if it's an edited image or regular image
+        base_dir = Path(__file__).parent.parent
+        image_studio_dir = (base_dir / "image_studio_images").resolve()
+        
+        if image_filename.startswith("edited/"):
+            # Remove "edited/" prefix and serve from edited directory
+            actual_filename = image_filename.replace("edited/", "", 1)
+            image_path = (image_studio_dir / "edited" / actual_filename).resolve()
+            base_subdir = (image_studio_dir / "edited").resolve()
+        else:
+            image_path = (image_studio_dir / image_filename).resolve()
+            base_subdir = image_studio_dir
+        
+        # Security: Prevent directory traversal attacks
+        # Ensure the resolved path is within the intended directory
+        try:
+            image_path.relative_to(base_subdir)
+        except ValueError:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: Invalid image path"
+            )
+        
+        if not image_path.exists():
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        return FileResponse(
+            path=str(image_path),
+            media_type="image/png",
+            filename=image_path.name
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[images] Failed to serve image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 

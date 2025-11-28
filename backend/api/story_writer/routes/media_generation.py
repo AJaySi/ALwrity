@@ -1,8 +1,10 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from loguru import logger
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from models.story_models import (
@@ -18,8 +20,10 @@ from models.story_models import (
     GenerateAIAudioResponse,
     StoryScene,
 )
+from services.database import get_db
 from services.story_writer.image_generation_service import StoryImageGenerationService
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
+from utils.asset_tracker import save_asset_to_library
 
 from ..utils.auth import require_authenticated_user
 from ..utils.media_utils import resolve_media_file
@@ -34,6 +38,7 @@ audio_service = StoryAudioGenerationService()
 async def generate_scene_images(
     request: StoryImageGenerationRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> StoryImageGenerationResponse:
     """Generate images for story scenes."""
     try:
@@ -69,6 +74,37 @@ async def generate_scene_images(
             )
             for result in image_results
         ]
+
+        # Save assets to library
+        for result in image_results:
+            if not result.get("error") and result.get("image_url"):
+                try:
+                    scene_number = result.get("scene_number", 0)
+                    # Safely get prompt from scenes_data with bounds checking
+                    prompt = None
+                    if scene_number > 0 and scene_number <= len(scenes_data):
+                        prompt = scenes_data[scene_number - 1].get("image_prompt")
+                    
+                    save_asset_to_library(
+                        db=db,
+                        user_id=user_id,
+                        asset_type="image",
+                        source_module="story_writer",
+                        filename=result.get("image_filename", ""),
+                        file_url=result.get("image_url", ""),
+                        file_path=result.get("image_path"),
+                        file_size=result.get("file_size"),
+                        mime_type="image/png",
+                        title=f"Scene {scene_number}: {result.get('scene_title', 'Untitled')}",
+                        description=f"Story scene image for scene {scene_number}",
+                        prompt=prompt,
+                        tags=["story_writer", "scene", f"scene_{scene_number}"],
+                        provider=result.get("provider"),
+                        model=result.get("model"),
+                        asset_metadata={"scene_number": scene_number, "scene_title": result.get("scene_title"), "status": "completed"}
+                    )
+                except Exception as e:
+                    logger.warning(f"[StoryWriter] Failed to save image asset to library: {e}")
 
         return StoryImageGenerationResponse(images=image_models, success=True)
 
@@ -163,6 +199,7 @@ async def serve_scene_image(
 async def generate_scene_audio(
     request: StoryAudioGenerationRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> StoryAudioGenerationResponse:
     """Generate audio narration for story scenes."""
     try:
@@ -185,17 +222,51 @@ async def generate_scene_audio(
 
         audio_models: List[StoryAudioResult] = []
         for result in audio_results:
+            audio_url = result.get("audio_url") or ""
+            audio_filename = result.get("audio_filename") or ""
+            
             audio_models.append(
                 StoryAudioResult(
                     scene_number=result.get("scene_number", 0),
                     scene_title=result.get("scene_title", "Untitled"),
-                    audio_filename=result.get("audio_filename") or "",
-                    audio_url=result.get("audio_url") or "",
+                    audio_filename=audio_filename,
+                    audio_url=audio_url,
                     provider=result.get("provider", "unknown"),
                     file_size=result.get("file_size", 0),
                     error=result.get("error"),
                 )
             )
+
+            # Save assets to library
+            if not result.get("error") and audio_url:
+                try:
+                    scene_number = result.get("scene_number", 0)
+                    # Safely get prompt from scenes_data with bounds checking
+                    prompt = None
+                    if scene_number > 0 and scene_number <= len(scenes_data):
+                        prompt = scenes_data[scene_number - 1].get("text")
+                    
+                    save_asset_to_library(
+                        db=db,
+                        user_id=user_id,
+                        asset_type="audio",
+                        source_module="story_writer",
+                        filename=audio_filename,
+                        file_url=audio_url,
+                        file_path=result.get("audio_path"),
+                        file_size=result.get("file_size"),
+                        mime_type="audio/mpeg",
+                        title=f"Scene {scene_number}: {result.get('scene_title', 'Untitled')}",
+                        description=f"Story scene audio narration for scene {scene_number}",
+                        prompt=prompt,
+                        tags=["story_writer", "audio", "narration", f"scene_{scene_number}"],
+                        provider=result.get("provider"),
+                        model=result.get("model"),
+                        cost=result.get("cost"),
+                        asset_metadata={"scene_number": scene_number, "scene_title": result.get("scene_title"), "status": "completed"}
+                    )
+                except Exception as e:
+                    logger.warning(f"[StoryWriter] Failed to save audio asset to library: {e}")
 
         return StoryAudioGenerationResponse(audio_files=audio_models, success=True)
 
@@ -284,6 +355,62 @@ async def serve_scene_audio(
         raise
     except Exception as exc:
         logger.error(f"[StoryWriter] Failed to serve audio: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class PromptOptimizeRequest(BaseModel):
+    text: str = Field(..., description="The prompt text to optimize")
+    mode: Optional[str] = Field(default="image", pattern="^(image|video)$", description="Optimization mode: 'image' or 'video'")
+    style: Optional[str] = Field(
+        default="default", 
+        pattern="^(default|artistic|photographic|technical|anime|realistic)$",
+        description="Style: 'default', 'artistic', 'photographic', 'technical', 'anime', or 'realistic'"
+    )
+    image: Optional[str] = Field(None, description="Base64-encoded image for context (optional)")
+
+
+class PromptOptimizeResponse(BaseModel):
+    optimized_prompt: str
+    success: bool
+
+
+@router.post("/optimize-prompt", response_model=PromptOptimizeResponse)
+async def optimize_prompt(
+    request: PromptOptimizeRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> PromptOptimizeResponse:
+    """Optimize an image prompt using WaveSpeed prompt optimizer."""
+    try:
+        user_id = require_authenticated_user(current_user)
+
+        if not request.text or not request.text.strip():
+            raise HTTPException(status_code=400, detail="Prompt text is required")
+
+        logger.info(f"[StoryWriter] Optimizing prompt for user {user_id} (mode={request.mode}, style={request.style})")
+
+        from services.wavespeed.client import WaveSpeedClient
+
+        client = WaveSpeedClient()
+        optimized_prompt = client.optimize_prompt(
+            text=request.text.strip(),
+            mode=request.mode or "image",
+            style=request.style or "default",
+            image=request.image,  # Optional base64 image
+            enable_sync_mode=True,
+            timeout=30
+        )
+
+        logger.info(f"[StoryWriter] Prompt optimized successfully for user {user_id}")
+
+        return PromptOptimizeResponse(
+            optimized_prompt=optimized_prompt,
+            success=True
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[StoryWriter] Failed to optimize prompt: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

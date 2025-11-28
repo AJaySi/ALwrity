@@ -55,11 +55,13 @@ import {
   MoreVert,
   Upload,
   CalendarToday,
-  FilterList,
   CheckCircle,
   HourglassEmpty,
   Error as ErrorIcon,
   Refresh,
+  Warning,
+  ExpandMore,
+  ExpandLess,
 } from '@mui/icons-material';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { useContentAssets, AssetFilters, ContentAsset } from '../../hooks/useContentAssets';
@@ -111,6 +113,7 @@ const getStatusChip = (status: string) => {
         color: style.color,
         fontWeight: 600,
         textTransform: 'capitalize',
+        height: 28,
       }}
     />
   );
@@ -135,6 +138,7 @@ export const AssetLibrary: React.FC = () => {
     message: '',
     severity: 'success',
   });
+  const [textPreviews, setTextPreviews] = useState<{ [key: number]: { content: string; loading: boolean; expanded: boolean } }>({});
 
   // Debounce search query
   useEffect(() => {
@@ -301,13 +305,59 @@ export const AssetLibrary: React.FC = () => {
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
       const seconds = String(date.getSeconds()).padStart(2, '0');
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      const timezoneOffset = -date.getTimezoneOffset();
+      const offsetHours = String(Math.floor(Math.abs(timezoneOffset) / 60)).padStart(2, '0');
+      const offsetMinutes = String(Math.abs(timezoneOffset) % 60).padStart(2, '0');
+      const offsetSign = timezoneOffset >= 0 ? '+' : '-';
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} GMT${offsetSign}${offsetHours}.${offsetMinutes}`;
     } catch {
       return dateString;
     }
   };
 
-  const getAssetPreview = (asset: ContentAsset) => {
+  // Fetch text content for text assets
+  const fetchTextContent = async (asset: ContentAsset) => {
+    if (asset.asset_type !== 'text' || textPreviews[asset.id]) return;
+    
+    setTextPreviews(prev => ({ ...prev, [asset.id]: { content: '', loading: true, expanded: false } }));
+    
+    try {
+      const token = await (window as any).Clerk?.session?.getToken();
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(asset.file_url, { headers });
+      if (response.ok) {
+        const content = await response.text();
+        setTextPreviews(prev => ({ ...prev, [asset.id]: { content, loading: false, expanded: false } }));
+      } else {
+        throw new Error('Failed to fetch text content');
+      }
+    } catch (error) {
+      console.error('Error fetching text content:', error);
+      setTextPreviews(prev => ({ 
+        ...prev, 
+        [asset.id]: { content: 'Failed to load content', loading: false, expanded: false } 
+      }));
+    }
+  };
+
+  const toggleTextPreview = (asset: ContentAsset) => {
+    if (asset.asset_type !== 'text') return;
+    
+    if (!textPreviews[asset.id]) {
+      fetchTextContent(asset);
+    } else {
+      setTextPreviews(prev => ({
+        ...prev,
+        [asset.id]: { ...prev[asset.id], expanded: !prev[asset.id].expanded }
+      }));
+    }
+  };
+
+  const getAssetPreview = (asset: ContentAsset, isListView: boolean = false) => {
     if (asset.asset_type === 'image') {
       return (
         <Box
@@ -320,7 +370,9 @@ export const AssetLibrary: React.FC = () => {
             objectFit: 'cover',
             borderRadius: 1,
             border: '1px solid rgba(255,255,255,0.1)',
+            cursor: 'pointer',
           }}
+          onClick={() => window.open(asset.file_url, '_blank')}
         />
       );
     } else if (asset.asset_type === 'video') {
@@ -335,7 +387,9 @@ export const AssetLibrary: React.FC = () => {
             alignItems: 'center',
             justifyContent: 'center',
             border: '1px solid rgba(255,255,255,0.1)',
+            cursor: 'pointer',
           }}
+          onClick={() => window.open(asset.file_url, '_blank')}
         >
           <VideoLibrary sx={{ color: '#c7d2fe', fontSize: 32 }} />
         </Box>
@@ -352,9 +406,112 @@ export const AssetLibrary: React.FC = () => {
             alignItems: 'center',
             justifyContent: 'center',
             border: '1px solid rgba(255,255,255,0.1)',
+            cursor: 'pointer',
           }}
+          onClick={() => window.open(asset.file_url, '_blank')}
         >
           <AudioFile sx={{ color: '#93c5fd', fontSize: 32 }} />
+        </Box>
+      );
+    } else if (asset.asset_type === 'text') {
+      const preview = textPreviews[asset.id];
+      const previewText = preview?.content || '';
+      const lines = previewText.split('\n');
+      const previewLines = lines.slice(0, 2).join('\n');
+      const hasMore = lines.length > 2 || previewText.length > 100;
+      
+      return (
+        <Box
+          sx={{
+            width: isListView ? 'auto' : 80,
+            minHeight: isListView ? 'auto' : 80,
+            maxWidth: isListView ? 300 : 80,
+            borderRadius: 1,
+            background: 'rgba(107,114,128,0.2)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            cursor: 'pointer',
+            p: isListView ? 1.5 : 1,
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleTextPreview(asset);
+          }}
+        >
+          {preview?.loading ? (
+            <CircularProgress size={20} sx={{ m: 'auto' }} />
+          ) : preview?.expanded ? (
+            <Box sx={{ 
+              flex: 1, 
+              overflow: 'auto', 
+              fontSize: isListView ? '0.8rem' : '0.7rem', 
+              color: '#d1d5db',
+              maxHeight: isListView ? 200 : 150,
+            }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  whiteSpace: 'pre-wrap', 
+                  wordBreak: 'break-word',
+                  fontFamily: isListView ? 'monospace' : 'inherit',
+                  lineHeight: 1.5,
+                }}
+              >
+                {previewText.substring(0, isListView ? 1000 : 500)}
+                {previewText.length > (isListView ? 1000 : 500) && '...'}
+              </Typography>
+              <IconButton 
+                size="small" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTextPreview(asset);
+                }}
+                sx={{ position: 'absolute', bottom: 4, right: 4, p: 0.5 }}
+              >
+                <ExpandLess sx={{ fontSize: 16, color: '#d1d5db' }} />
+              </IconButton>
+            </Box>
+          ) : (
+            <>
+              <TextFields sx={{ color: '#d1d5db', fontSize: isListView ? 28 : 24, mb: 0.5 }} />
+              {previewText ? (
+                <Typography 
+                  variant="caption" 
+                  sx={{ 
+                    fontSize: isListView ? '0.75rem' : '0.65rem', 
+                    color: '#9ca3af', 
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: isListView ? 3 : 2,
+                    WebkitBoxOrient: 'vertical',
+                    lineHeight: 1.3,
+                    mb: 0.5,
+                  }}
+                >
+                  {previewLines || previewText.substring(0, 100)}
+                </Typography>
+              ) : (
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                  Click to preview
+                </Typography>
+              )}
+              {hasMore && (
+                <IconButton 
+                  size="small" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleTextPreview(asset);
+                  }}
+                  sx={{ position: 'absolute', bottom: 4, right: 4, p: 0.5 }}
+                >
+                  <ExpandMore sx={{ fontSize: 16, color: '#d1d5db' }} />
+                </IconButton>
+              )}
+            </>
+          )}
         </Box>
       );
     } else {
@@ -369,7 +526,9 @@ export const AssetLibrary: React.FC = () => {
             alignItems: 'center',
             justifyContent: 'center',
             border: '1px solid rgba(255,255,255,0.1)',
+            cursor: 'pointer',
           }}
+          onClick={() => window.open(asset.file_url, '_blank')}
         >
           <TextFields sx={{ color: '#d1d5db', fontSize: 32 }} />
         </Box>
@@ -377,11 +536,17 @@ export const AssetLibrary: React.FC = () => {
     }
   };
 
+  const getModelName = (asset: ContentAsset) => {
+    if (asset.model) return asset.model;
+    if (asset.provider) return `${asset.provider}/${asset.source_module.replace('_', ' ')}`;
+    return asset.source_module.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
   const filteredAssets = useMemo(() => {
     let filtered = assets;
     
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(a => (a.metadata?.status || 'completed') === statusFilter);
+      filtered = filtered.filter(a => (a.asset_metadata?.status || 'completed') === statusFilter);
     }
     
     if (dateFilter) {
@@ -432,7 +597,7 @@ export const AssetLibrary: React.FC = () => {
           {/* Reminder Banner */}
           <Alert
             severity="warning"
-            icon={<Star />}
+            icon={<Warning />}
             sx={{
               background: 'rgba(245,158,11,0.1)',
               border: '1px solid rgba(245,158,11,0.3)',
@@ -637,7 +802,15 @@ export const AssetLibrary: React.FC = () => {
             <Button
               variant="outlined"
               startIcon={<Refresh />}
-              onClick={() => refetch()}
+              onClick={() => {
+                refetch();
+                setIdSearch('');
+                setModelSearch('');
+                setDateFilter('');
+                setStatusFilter('all');
+                setFilterType('all');
+                setSelectedAssets(new Set());
+              }}
               sx={{ ml: 'auto', textTransform: 'none' }}
             >
               Reset
@@ -773,11 +946,11 @@ export const AssetLibrary: React.FC = () => {
                             '&:hover': { textDecoration: 'underline' },
                           }}
                         >
-                          {asset.model || asset.provider || asset.source_module.replace(/_/g, ' ')}
+                          {getModelName(asset)}
                         </Typography>
                       </TableCell>
-                      <TableCell>{getStatusChip(asset.metadata?.status || 'completed')}</TableCell>
-                      <TableCell>{getAssetPreview(asset)}</TableCell>
+                      <TableCell>{getStatusChip(asset.asset_metadata?.status || 'completed')}</TableCell>
+                      <TableCell>{getAssetPreview(asset, true)}</TableCell>
                       <TableCell>
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem' }}>
                           {formatDate(asset.created_at)}
@@ -885,6 +1058,67 @@ export const AssetLibrary: React.FC = () => {
                             objectFit: 'cover',
                           }}
                         />
+                      ) : asset.asset_type === 'text' ? (
+                        <Box
+                          sx={{
+                            width: '100%',
+                            height: '100%',
+                            p: 2,
+                            background: 'rgba(107,114,128,0.2)',
+                            color: '#d1d5db',
+                            overflow: 'auto',
+                            display: 'flex',
+                            flexDirection: 'column',
+                          }}
+                        >
+                          {textPreviews[asset.id]?.loading ? (
+                            <CircularProgress size={24} sx={{ m: 'auto' }} />
+                          ) : textPreviews[asset.id]?.expanded ? (
+                            <>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-word',
+                                  flex: 1,
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.875rem',
+                                  lineHeight: 1.6,
+                                }}
+                              >
+                                {textPreviews[asset.id].content}
+                              </Typography>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleTextPreview(asset);
+                                }}
+                                sx={{ alignSelf: 'flex-end', mt: 1 }}
+                              >
+                                <ExpandLess />
+                              </IconButton>
+                            </>
+                          ) : (
+                            <>
+                              <TextFields sx={{ fontSize: 48, mb: 1, opacity: 0.7 }} />
+                              <Typography variant="body2" sx={{ textAlign: 'center', mb: 1 }}>
+                                Text Content
+                              </Typography>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleTextPreview(asset);
+                                }}
+                                sx={{ mt: 'auto' }}
+                              >
+                                Preview
+                              </Button>
+                            </>
+                          )}
+                        </Box>
                       ) : (
                         <Box
                           sx={{
@@ -897,7 +1131,7 @@ export const AssetLibrary: React.FC = () => {
                             color: '#c7d2fe',
                           }}
                         >
-                          {asset.asset_type === 'audio' ? <AudioFile /> : <TextFields />}
+                          {getAssetIcon(asset.asset_type)}
                         </Box>
                       )}
                       <Box
@@ -944,7 +1178,7 @@ export const AssetLibrary: React.FC = () => {
                         {asset.title || asset.filename}
                       </Typography>
                       <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                        {getStatusChip(asset.metadata?.status || 'completed')}
+                        {getStatusChip(asset.asset_metadata?.status || 'completed')}
                         <Chip
                           label={asset.asset_type}
                           size="small"
@@ -1028,4 +1262,19 @@ export const AssetLibrary: React.FC = () => {
       </Paper>
     </ImageStudioLayout>
   );
+};
+
+const getAssetIcon = (assetType: string) => {
+  switch (assetType) {
+    case 'image':
+      return <ImageIcon />;
+    case 'video':
+      return <VideoLibrary />;
+    case 'audio':
+      return <AudioFile />;
+    case 'text':
+      return <TextFields />;
+    default:
+      return <ImageIcon />;
+  }
 };

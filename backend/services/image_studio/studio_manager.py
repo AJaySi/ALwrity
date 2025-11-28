@@ -7,6 +7,11 @@ from .edit_service import EditStudioService, EditStudioRequest
 from .upscale_service import UpscaleStudioService, UpscaleStudioRequest
 from .control_service import ControlStudioService, ControlStudioRequest
 from .social_optimizer_service import SocialOptimizerService, SocialOptimizerRequest
+from .transform_service import (
+    TransformStudioService,
+    TransformImageToVideoRequest,
+    TalkingAvatarRequest,
+)
 from .templates import Platform, TemplateCategory, ImageTemplate
 from utils.logger_utils import get_service_logger
 
@@ -24,6 +29,7 @@ class ImageStudioManager:
         self.upscale_service = UpscaleStudioService()
         self.control_service = ControlStudioService()
         self.social_optimizer_service = SocialOptimizerService()
+        self.transform_service = TransformStudioService()
         logger.info("[Image Studio Manager] Initialized successfully")
     
     # ====================
@@ -339,4 +345,35 @@ class ImageStudioManager:
         }
         
         return specs.get(platform, {})
+    
+    # ====================
+    # TRANSFORM STUDIO
+    # ====================
+    
+    async def transform_image_to_video(
+        self,
+        request: TransformImageToVideoRequest,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Transform image to video using WAN 2.5."""
+        logger.info("[Image Studio] Transform image-to-video request from user: %s", user_id)
+        return await self.transform_service.transform_image_to_video(request, user_id=user_id or "anonymous")
+    
+    async def create_talking_avatar(
+        self,
+        request: TalkingAvatarRequest,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create talking avatar using InfiniteTalk."""
+        logger.info("[Image Studio] Talking avatar request from user: %s", user_id)
+        return await self.transform_service.create_talking_avatar(request, user_id=user_id or "anonymous")
+    
+    def estimate_transform_cost(
+        self,
+        operation: str,
+        resolution: str,
+        duration: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Estimate cost for transform operation."""
+        return self.transform_service.estimate_cost(operation, resolution, duration)
 

@@ -1,7 +1,9 @@
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
+from pydantic import BaseModel
 
 from middleware.auth_middleware import get_current_user
 from models.story_models import (
@@ -18,6 +20,7 @@ from ..utils.auth import require_authenticated_user
 
 router = APIRouter()
 story_service = StoryWriterService()
+scene_approval_store: Dict[str, Dict[str, Any]] = {}
 
 
 @router.post("/generate-start", response_model=StoryContentResponse)
@@ -190,6 +193,48 @@ async def continue_story(
         raise
     except Exception as exc:
         logger.error(f"[StoryWriter] Failed to continue story: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class SceneApprovalRequest(BaseModel):
+    project_id: str
+    scene_id: str
+    approved: bool = True
+    notes: Optional[str] = None
+
+
+@router.post("/script/approve")
+async def approve_script_scene(
+    request: SceneApprovalRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Persist scene approval metadata for auditing."""
+    try:
+        user_id = require_authenticated_user(current_user)
+        approvals = scene_approval_store.setdefault(request.project_id, {})
+        approvals[request.scene_id] = {
+            "approved": request.approved,
+            "notes": request.notes,
+            "user_id": user_id,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        logger.info(
+            "[StoryWriter] Scene approval recorded user=%s project=%s scene=%s approved=%s",
+            user_id,
+            request.project_id,
+            request.scene_id,
+            request.approved,
+        )
+        return {
+            "success": True,
+            "project_id": request.project_id,
+            "scene_id": request.scene_id,
+            "approved": request.approved,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[StoryWriter] Failed to approve scene: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

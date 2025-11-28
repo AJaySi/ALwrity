@@ -1,8 +1,10 @@
 """API endpoints for Image Studio operations."""
 
 import base64
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from services.image_studio import (
@@ -11,10 +13,12 @@ from services.image_studio import (
     EditStudioRequest,
     ControlStudioRequest,
     SocialOptimizerRequest,
+    TransformImageToVideoRequest,
+    TalkingAvatarRequest,
 )
 from services.image_studio.upscale_service import UpscaleStudioRequest
 from services.image_studio.templates import Platform, TemplateCategory
-from middleware.auth_middleware import get_current_user
+from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from utils.logger_utils import get_service_logger
 
 
@@ -136,7 +140,12 @@ def get_studio_manager() -> ImageStudioManager:
 
 def _require_user_id(current_user: Dict[str, Any], operation: str) -> str:
     """Ensure user_id is available for protected operations."""
-    user_id = current_user.get("sub") or current_user.get("user_id")
+    user_id = (
+        current_user.get("sub")
+        or current_user.get("user_id")
+        or current_user.get("id")
+        or current_user.get("clerk_user_id")
+    )
     if not user_id:
         logger.error(
             "[Image Studio] ❌ Missing user_id for %s operation - blocking request",
@@ -759,6 +768,244 @@ async def get_platform_specs(
         raise
     except Exception as e:
         logger.error(f"[Get Platform Specs] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ====================
+# TRANSFORM STUDIO ENDPOINTS
+# ====================
+
+class TransformImageToVideoRequestModel(BaseModel):
+    """Request model for image-to-video transformation."""
+    image_base64: str = Field(..., description="Image in base64 or data URL format")
+    prompt: str = Field(..., description="Text prompt describing the video")
+    audio_base64: Optional[str] = Field(None, description="Optional audio file (wav/mp3, 3-30s, ≤15MB)")
+    resolution: Literal["480p", "720p", "1080p"] = Field("720p", description="Output resolution")
+    duration: Literal[5, 10] = Field(5, description="Video duration in seconds")
+    negative_prompt: Optional[str] = Field(None, description="Negative prompt")
+    seed: Optional[int] = Field(None, description="Random seed for reproducibility")
+    enable_prompt_expansion: bool = Field(True, description="Enable prompt optimizer")
+
+
+class TalkingAvatarRequestModel(BaseModel):
+    """Request model for talking avatar generation."""
+    image_base64: str = Field(..., description="Person image in base64 or data URL")
+    audio_base64: str = Field(..., description="Audio file in base64 or data URL (wav/mp3, max 10 minutes)")
+    resolution: Literal["480p", "720p"] = Field("720p", description="Output resolution")
+    prompt: Optional[str] = Field(None, description="Optional prompt for expression/style")
+    mask_image_base64: Optional[str] = Field(None, description="Optional mask for animatable regions")
+    seed: Optional[int] = Field(None, description="Random seed")
+
+
+class TransformVideoResponse(BaseModel):
+    """Response model for video generation."""
+    success: bool
+    video_url: Optional[str] = None
+    video_base64: Optional[str] = None
+    duration: float
+    resolution: str
+    width: int
+    height: int
+    file_size: int
+    cost: float
+    provider: str
+    model: str
+    metadata: Dict[str, Any]
+
+
+class TransformCostEstimateRequest(BaseModel):
+    """Request model for cost estimation."""
+    operation: Literal["image-to-video", "talking-avatar"] = Field(..., description="Operation type")
+    resolution: str = Field(..., description="Output resolution")
+    duration: Optional[int] = Field(None, description="Video duration in seconds (for image-to-video)")
+
+
+class TransformCostEstimateResponse(BaseModel):
+    """Response model for cost estimation."""
+    estimated_cost: float
+    breakdown: Dict[str, Any]
+    currency: str
+    provider: str
+    model: str
+
+
+@router.post("/transform/image-to-video", response_model=TransformVideoResponse, summary="Transform Image to Video")
+async def transform_image_to_video(
+    request: TransformImageToVideoRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Transform an image into a video using WAN 2.5.
+    
+    This endpoint generates a video from an image and text prompt, with optional audio synchronization.
+    Supports resolutions of 480p, 720p, and 1080p, with durations of 5 or 10 seconds.
+    
+    Returns:
+        Video generation result with URL and metadata
+    """
+    try:
+        user_id = _require_user_id(current_user, "image-to-video transformation")
+        logger.info(f"[Transform Studio] Image-to-video request from user {user_id}: resolution={request.resolution}, duration={request.duration}s")
+        
+        # Convert request to service request
+        transform_request = TransformImageToVideoRequest(
+            image_base64=request.image_base64,
+            prompt=request.prompt,
+            audio_base64=request.audio_base64,
+            resolution=request.resolution,
+            duration=request.duration,
+            negative_prompt=request.negative_prompt,
+            seed=request.seed,
+            enable_prompt_expansion=request.enable_prompt_expansion,
+        )
+        
+        # Generate video
+        result = await studio_manager.transform_image_to_video(transform_request, user_id=user_id)
+        
+        logger.info(f"[Transform Studio] ✅ Image-to-video completed: cost=${result['cost']:.2f}")
+        return TransformVideoResponse(**result)
+        
+    except ValueError as e:
+        logger.error(f"[Transform Studio] ❌ Validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Transform Studio] ❌ Unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Video generation failed: {str(e)}")
+
+
+@router.post("/transform/talking-avatar", response_model=TransformVideoResponse, summary="Create Talking Avatar")
+async def create_talking_avatar(
+    request: TalkingAvatarRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Create a talking avatar video using InfiniteTalk.
+    
+    This endpoint generates a video with precise lip-sync from an image and audio file.
+    Supports resolutions of 480p and 720p, with videos up to 10 minutes long.
+    
+    Returns:
+        Video generation result with URL and metadata
+    """
+    try:
+        user_id = _require_user_id(current_user, "talking avatar generation")
+        logger.info(f"[Transform Studio] Talking avatar request from user {user_id}: resolution={request.resolution}")
+        
+        # Convert request to service request
+        avatar_request = TalkingAvatarRequest(
+            image_base64=request.image_base64,
+            audio_base64=request.audio_base64,
+            resolution=request.resolution,
+            prompt=request.prompt,
+            mask_image_base64=request.mask_image_base64,
+            seed=request.seed,
+        )
+        
+        # Generate video
+        result = await studio_manager.create_talking_avatar(avatar_request, user_id=user_id)
+        
+        logger.info(f"[Transform Studio] ✅ Talking avatar completed: cost=${result['cost']:.2f}")
+        return TransformVideoResponse(**result)
+        
+    except ValueError as e:
+        logger.error(f"[Transform Studio] ❌ Validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Transform Studio] ❌ Unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Talking avatar generation failed: {str(e)}")
+
+
+@router.post("/transform/estimate-cost", response_model=TransformCostEstimateResponse, summary="Estimate Transform Cost")
+async def estimate_transform_cost(
+    request: TransformCostEstimateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Estimate cost for transform operations.
+    
+    Provides cost estimates before generation to help users make informed decisions.
+    
+    Returns:
+        Cost estimation details
+    """
+    try:
+        estimate = studio_manager.estimate_transform_cost(
+            operation=request.operation,
+            resolution=request.resolution,
+            duration=request.duration,
+        )
+        return TransformCostEstimateResponse(**estimate)
+        
+    except ValueError as e:
+        logger.error(f"[Transform Studio] ❌ Cost estimation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[Transform Studio] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/videos/{user_id}/{video_filename:path}", summary="Serve Transform Studio Video")
+async def serve_transform_video(
+    user_id: str,
+    video_filename: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
+):
+    """Serve a generated Transform Studio video file.
+    
+    Args:
+        user_id: User ID from URL path
+        video_filename: Video filename
+        current_user: Authenticated user
+        
+    Returns:
+        Video file response
+    """
+    try:
+        # Verify user has access (must be the owner)
+        authenticated_user_id = _require_user_id(current_user, "video access")
+        if authenticated_user_id != user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: You can only access your own videos"
+            )
+        
+        # Resolve video path
+        # __file__ is: backend/routers/image_studio.py
+        # We need: backend/transform_videos
+        base_dir = Path(__file__).parent.parent.parent
+        transform_videos_dir = base_dir / "transform_videos"
+        video_path = transform_videos_dir / user_id / video_filename
+        
+        # Security: Ensure path is within transform_videos directory
+        # Prevent directory traversal attacks
+        try:
+            resolved_video_path = video_path.resolve()
+            resolved_base = transform_videos_dir.resolve()
+            # Check if video path is within base directory
+            resolved_video_path.relative_to(resolved_base)
+        except ValueError:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid video path: path traversal detected"
+            )
+        
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        return FileResponse(
+            path=str(video_path),
+            media_type="video/mp4",
+            filename=video_filename
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Transform Studio] Failed to serve video: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -8,9 +8,10 @@ proper error handling, monitoring, and documentation.
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import time
 from loguru import logger
+from pathlib import Path
 
 from models.linkedin_models import (
     LinkedInPostRequest, LinkedInArticleRequest, LinkedInCarouselRequest,
@@ -19,11 +20,13 @@ from models.linkedin_models import (
     LinkedInVideoScriptResponse, LinkedInCommentResponseResult
 )
 from services.linkedin_service import LinkedInService
+from middleware.auth_middleware import get_current_user
+from utils.text_asset_tracker import save_and_track_text_content
 
 # Initialize the LinkedIn service instance
 linkedin_service = LinkedInService()
 from services.subscription.monitoring_middleware import DatabaseAPIMonitor
-from services.database import get_db_session
+from services.database import get_db as get_db_dependency
 from sqlalchemy.orm import Session
 
 # Initialize router
@@ -41,14 +44,8 @@ router = APIRouter(
 monitor = DatabaseAPIMonitor()
 
 
-def get_db():
-    """Dependency to get database session."""
-    db = get_db_session()
-    try:
-        yield db
-    finally:
-        if db:
-            db.close()
+# Use the proper database dependency from services.database
+get_db = get_db_dependency
 
 
 async def log_api_request(request: Request, db: Session, duration: float, status_code: int):
@@ -104,7 +101,8 @@ async def generate_post(
     request: LinkedInPostRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Generate a LinkedIn post based on the provided parameters."""
     start_time = time.time()
@@ -119,6 +117,13 @@ async def generate_post(
         if not request.industry.strip():
             raise HTTPException(status_code=422, detail="Industry cannot be empty")
         
+        # Extract user_id
+        user_id = None
+        if current_user:
+            user_id = str(current_user.get('id', '') or current_user.get('sub', ''))
+        if not user_id:
+            user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
+        
         # Generate post content
         response = await linkedin_service.generate_linkedin_post(request)
         
@@ -130,6 +135,38 @@ async def generate_post(
         
         if not response.success:
             raise HTTPException(status_code=500, detail=response.error)
+        
+        # Save and track text content (non-blocking)
+        if user_id and response.data and response.data.content:
+            try:
+                # Combine all text content
+                text_content = response.data.content
+                if response.data.call_to_action:
+                    text_content += f"\n\nCall to Action: {response.data.call_to_action}"
+                if response.data.hashtags:
+                    hashtag_text = " ".join([f"#{h.hashtag}" if isinstance(h, dict) else f"#{h.get('hashtag', '')}" for h in response.data.hashtags])
+                    text_content += f"\n\nHashtags: {hashtag_text}"
+                
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=text_content,
+                    source_module="linkedin_writer",
+                    title=f"LinkedIn Post: {request.topic[:80]}",
+                    description=f"LinkedIn post for {request.industry} industry",
+                    prompt=f"Topic: {request.topic}\nIndustry: {request.industry}\nTone: {request.tone}",
+                    tags=["linkedin", "post", request.industry.lower().replace(' ', '_')],
+                    asset_metadata={
+                        "post_type": request.post_type.value if hasattr(request.post_type, 'value') else str(request.post_type),
+                        "tone": request.tone.value if hasattr(request.tone, 'value') else str(request.tone),
+                        "character_count": response.data.character_count,
+                        "hashtag_count": len(response.data.hashtags),
+                        "grounding_enabled": response.data.grounding_enabled if hasattr(response.data, 'grounding_enabled') else False
+                    },
+                    subdirectory="posts"
+                )
+            except Exception as track_error:
+                logger.warning(f"Failed to track LinkedIn post asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn post in {duration:.2f} seconds")
         return response
@@ -174,7 +211,8 @@ async def generate_article(
     request: LinkedInArticleRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Generate a LinkedIn article based on the provided parameters."""
     start_time = time.time()
@@ -189,6 +227,13 @@ async def generate_article(
         if not request.industry.strip():
             raise HTTPException(status_code=422, detail="Industry cannot be empty")
         
+        # Extract user_id
+        user_id = None
+        if current_user:
+            user_id = str(current_user.get('id', '') or current_user.get('sub', ''))
+        if not user_id:
+            user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
+        
         # Generate article content
         response = await linkedin_service.generate_linkedin_article(request)
         
@@ -200,6 +245,44 @@ async def generate_article(
         
         if not response.success:
             raise HTTPException(status_code=500, detail=response.error)
+        
+        # Save and track text content (non-blocking)
+        if user_id and response.data:
+            try:
+                # Combine article content
+                text_content = f"# {response.data.title}\n\n"
+                text_content += response.data.content
+                
+                if response.data.sections:
+                    text_content += "\n\n## Sections:\n"
+                    for section in response.data.sections:
+                        if isinstance(section, dict):
+                            text_content += f"\n### {section.get('heading', 'Section')}\n{section.get('content', '')}\n"
+                
+                if response.data.seo_metadata:
+                    text_content += f"\n\n## SEO Metadata\n{response.data.seo_metadata}\n"
+                
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=text_content,
+                    source_module="linkedin_writer",
+                    title=f"LinkedIn Article: {response.data.title[:80] if response.data.title else request.topic[:80]}",
+                    description=f"LinkedIn article for {request.industry} industry",
+                    prompt=f"Topic: {request.topic}\nIndustry: {request.industry}\nTone: {request.tone}\nWord Count: {request.word_count}",
+                    tags=["linkedin", "article", request.industry.lower().replace(' ', '_')],
+                    asset_metadata={
+                        "tone": request.tone.value if hasattr(request.tone, 'value') else str(request.tone),
+                        "word_count": response.data.word_count,
+                        "reading_time": response.data.reading_time,
+                        "section_count": len(response.data.sections) if response.data.sections else 0,
+                        "grounding_enabled": response.data.grounding_enabled if hasattr(response.data, 'grounding_enabled') else False
+                    },
+                    subdirectory="articles",
+                    file_extension=".md"
+                )
+            except Exception as track_error:
+                logger.warning(f"Failed to track LinkedIn article asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn article in {duration:.2f} seconds")
         return response
@@ -243,7 +326,8 @@ async def generate_carousel(
     request: LinkedInCarouselRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Generate a LinkedIn carousel based on the provided parameters."""
     start_time = time.time()
@@ -261,6 +345,13 @@ async def generate_carousel(
         if request.slide_count < 3 or request.slide_count > 15:
             raise HTTPException(status_code=422, detail="Slide count must be between 3 and 15")
         
+        # Extract user_id
+        user_id = None
+        if current_user:
+            user_id = str(current_user.get('id', '') or current_user.get('sub', ''))
+        if not user_id:
+            user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
+        
         # Generate carousel content
         response = await linkedin_service.generate_linkedin_carousel(request)
         
@@ -272,6 +363,36 @@ async def generate_carousel(
         
         if not response.success:
             raise HTTPException(status_code=500, detail=response.error)
+        
+        # Save and track text content (non-blocking)
+        if user_id and response.data:
+            try:
+                # Combine carousel content
+                text_content = f"# {response.data.title}\n\n"
+                for slide in response.data.slides:
+                    text_content += f"\n## Slide {slide.slide_number}: {slide.title}\n{slide.content}\n"
+                    if slide.visual_elements:
+                        text_content += f"\nVisual Elements: {', '.join(slide.visual_elements)}\n"
+                
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=text_content,
+                    source_module="linkedin_writer",
+                    title=f"LinkedIn Carousel: {response.data.title[:80] if response.data.title else request.topic[:80]}",
+                    description=f"LinkedIn carousel for {request.industry} industry",
+                    prompt=f"Topic: {request.topic}\nIndustry: {request.industry}\nSlides: {getattr(request, 'number_of_slides', request.slide_count if hasattr(request, 'slide_count') else 5)}",
+                    tags=["linkedin", "carousel", request.industry.lower().replace(' ', '_')],
+                    asset_metadata={
+                        "slide_count": len(response.data.slides),
+                        "has_cover": response.data.cover_slide is not None,
+                        "has_cta": response.data.cta_slide is not None
+                    },
+                    subdirectory="carousels",
+                    file_extension=".md"
+                )
+            except Exception as track_error:
+                logger.warning(f"Failed to track LinkedIn carousel asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn carousel in {duration:.2f} seconds")
         return response
@@ -315,7 +436,8 @@ async def generate_video_script(
     request: LinkedInVideoScriptRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Generate a LinkedIn video script based on the provided parameters."""
     start_time = time.time()
@@ -330,8 +452,16 @@ async def generate_video_script(
         if not request.industry.strip():
             raise HTTPException(status_code=422, detail="Industry cannot be empty")
         
-        if request.video_length < 15 or request.video_length > 300:
+        video_duration = getattr(request, 'video_duration', getattr(request, 'video_length', 60))
+        if video_duration < 15 or video_duration > 300:
             raise HTTPException(status_code=422, detail="Video length must be between 15 and 300 seconds")
+        
+        # Extract user_id
+        user_id = None
+        if current_user:
+            user_id = str(current_user.get('id', '') or current_user.get('sub', ''))
+        if not user_id:
+            user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
         
         # Generate video script content
         response = await linkedin_service.generate_linkedin_video_script(request)
@@ -344,6 +474,47 @@ async def generate_video_script(
         
         if not response.success:
             raise HTTPException(status_code=500, detail=response.error)
+        
+        # Save and track text content (non-blocking)
+        if user_id and response.data:
+            try:
+                # Combine video script content
+                text_content = f"# Video Script: {request.topic}\n\n"
+                text_content += f"## Hook\n{response.data.hook}\n\n"
+                text_content += "## Main Content\n"
+                for scene in response.data.main_content:
+                    if isinstance(scene, dict):
+                        text_content += f"\n### Scene {scene.get('scene_number', '')}\n"
+                        text_content += f"{scene.get('content', '')}\n"
+                        if scene.get('duration'):
+                            text_content += f"Duration: {scene.get('duration')}s\n"
+                        if scene.get('visual_notes'):
+                            text_content += f"Visual Notes: {scene.get('visual_notes')}\n"
+                text_content += f"\n## Conclusion\n{response.data.conclusion}\n"
+                if response.data.captions:
+                    text_content += f"\n## Captions\n" + "\n".join(response.data.captions) + "\n"
+                if response.data.thumbnail_suggestions:
+                    text_content += f"\n## Thumbnail Suggestions\n" + "\n".join(response.data.thumbnail_suggestions) + "\n"
+                
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=text_content,
+                    source_module="linkedin_writer",
+                    title=f"LinkedIn Video Script: {request.topic[:80]}",
+                    description=f"LinkedIn video script for {request.industry} industry",
+                    prompt=f"Topic: {request.topic}\nIndustry: {request.industry}\nDuration: {video_duration}s",
+                    tags=["linkedin", "video_script", request.industry.lower().replace(' ', '_')],
+                    asset_metadata={
+                        "video_duration": video_duration,
+                        "scene_count": len(response.data.main_content),
+                        "has_captions": bool(response.data.captions)
+                    },
+                    subdirectory="video_scripts",
+                    file_extension=".md"
+                )
+            except Exception as track_error:
+                logger.warning(f"Failed to track LinkedIn video script asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn video script in {duration:.2f} seconds")
         return response
@@ -387,7 +558,8 @@ async def generate_comment_response(
     request: LinkedInCommentResponseRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """Generate a LinkedIn comment response based on the provided parameters."""
     start_time = time.time()
@@ -396,11 +568,21 @@ async def generate_comment_response(
         logger.info("Received LinkedIn comment response generation request")
         
         # Validate request
-        if not request.original_post.strip():
-            raise HTTPException(status_code=422, detail="Original post cannot be empty")
+        original_comment = getattr(request, 'original_comment', getattr(request, 'comment', ''))
+        post_context = getattr(request, 'post_context', getattr(request, 'original_post', ''))
         
-        if not request.comment.strip():
-            raise HTTPException(status_code=422, detail="Comment cannot be empty")
+        if not original_comment.strip():
+            raise HTTPException(status_code=422, detail="Original comment cannot be empty")
+        
+        if not post_context.strip():
+            raise HTTPException(status_code=422, detail="Post context cannot be empty")
+        
+        # Extract user_id
+        user_id = None
+        if current_user:
+            user_id = str(current_user.get('id', '') or current_user.get('sub', ''))
+        if not user_id:
+            user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
         
         # Generate comment response
         response = await linkedin_service.generate_linkedin_comment_response(request)
@@ -413,6 +595,38 @@ async def generate_comment_response(
         
         if not response.success:
             raise HTTPException(status_code=500, detail=response.error)
+        
+        # Save and track text content (non-blocking)
+        if user_id and hasattr(response, 'response') and response.response:
+            try:
+                text_content = f"# Comment Response\n\n"
+                text_content += f"## Original Comment\n{original_comment}\n\n"
+                text_content += f"## Post Context\n{post_context}\n\n"
+                text_content += f"## Generated Response\n{response.response}\n"
+                if hasattr(response, 'alternatives') and response.alternatives:
+                    text_content += f"\n## Alternative Responses\n"
+                    for i, alt in enumerate(response.alternatives, 1):
+                        text_content += f"\n### Alternative {i}\n{alt}\n"
+                
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=text_content,
+                    source_module="linkedin_writer",
+                    title=f"LinkedIn Comment Response: {original_comment[:60]}",
+                    description=f"LinkedIn comment response for {request.industry} industry",
+                    prompt=f"Original Comment: {original_comment}\nPost Context: {post_context}\nIndustry: {request.industry}",
+                    tags=["linkedin", "comment_response", request.industry.lower().replace(' ', '_')],
+                    asset_metadata={
+                        "response_length": getattr(request, 'response_length', 'medium'),
+                        "tone": request.tone.value if hasattr(request.tone, 'value') else str(request.tone),
+                        "has_alternatives": hasattr(response, 'alternatives') and bool(response.alternatives)
+                    },
+                    subdirectory="comment_responses",
+                    file_extension=".md"
+                )
+            except Exception as track_error:
+                logger.warning(f"Failed to track LinkedIn comment response asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn comment response in {duration:.2f} seconds")
         return response

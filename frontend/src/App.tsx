@@ -13,6 +13,9 @@ import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
 import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
 import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard } from './components/ImageStudio';
+import { ProductMarketingDashboard } from './components/ProductMarketing';
+import { ProductPhotoshootStudio } from './components/ProductMarketing/ProductPhotoshootStudio';
+import PodcastDashboard from './components/PodcastMaker/PodcastDashboard';
 import PricingPage from './components/Pricing/PricingPage';
 import WixTestPage from './components/WixTestPage/WixTestPage';
 import WixCallbackPage from './components/WixCallbackPage/WixCallbackPage';
@@ -451,13 +454,17 @@ const App: React.FC = () => {
                 <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                 <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
                 <Route path="/story-writer" element={<ProtectedRoute><StoryWriter /></ProtectedRoute>} />
+                <Route path="/podcast-maker" element={<ProtectedRoute><PodcastDashboard /></ProtectedRoute>} />
                 <Route path="/image-studio" element={<ProtectedRoute><ImageStudioDashboard /></ProtectedRoute>} />
                 <Route path="/image-generator" element={<ProtectedRoute><CreateStudio /></ProtectedRoute>} />
                 <Route path="/image-editor" element={<ProtectedRoute><EditStudio /></ProtectedRoute>} />
                 <Route path="/image-upscale" element={<ProtectedRoute><UpscaleStudio /></ProtectedRoute>} />
                 <Route path="/image-control" element={<ProtectedRoute><ControlStudio /></ProtectedRoute>} />
-                <Route path="/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
+                <Route path="/image-studio/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
                 <Route path="/asset-library" element={<ProtectedRoute><AssetLibrary /></ProtectedRoute>} />
+                <Route path="/campaign-creator" element={<ProtectedRoute><ProductMarketingDashboard /></ProtectedRoute>} />
+                <Route path="/campaign-creator/photoshoot" element={<ProtectedRoute><ProductPhotoshootStudio /></ProtectedRoute>} />
+                <Route path="/product-marketing" element={<Navigate to="/campaign-creator" replace />} />
                 <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />

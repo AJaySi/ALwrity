@@ -38,7 +38,7 @@ class ContentAssetService:
         description: Optional[str] = None,
         prompt: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        asset_metadata: Optional[Dict[str, Any]] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
         cost: Optional[float] = None,
@@ -60,7 +60,7 @@ class ContentAssetService:
             description: Asset description (optional)
             prompt: Generation prompt (optional)
             tags: List of tags (optional)
-            metadata: Additional metadata (optional)
+            asset_metadata: Additional metadata (optional)
             provider: AI provider used (optional)
             model: Model used (optional)
             cost: Generation cost (optional)
@@ -83,7 +83,7 @@ class ContentAssetService:
                 description=description,
                 prompt=prompt,
                 tags=tags or [],
-                metadata=metadata or {},
+                asset_metadata=asset_metadata or {},
                 provider=provider,
                 model=model,
                 cost=cost or 0.0,
@@ -222,7 +222,7 @@ class ContentAssetService:
         title: Optional[str] = None,
         description: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        asset_metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[ContentAsset]:
         """Update asset metadata."""
         try:
@@ -236,8 +236,8 @@ class ContentAssetService:
                 asset.description = description
             if tags is not None:
                 asset.tags = tags
-            if metadata is not None:
-                asset.metadata = {**(asset.metadata or {}), **metadata}
+            if asset_metadata is not None:
+                asset.asset_metadata = {**(asset.asset_metadata or {}), **asset_metadata}
             
             asset.updated_at = datetime.utcnow()
             self.db.commit()

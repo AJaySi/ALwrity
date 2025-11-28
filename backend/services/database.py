@@ -21,6 +21,10 @@ from models.persona_models import Base as PersonaBase
 from models.subscription_models import Base as SubscriptionBase
 from models.user_business_info import Base as UserBusinessInfoBase
 from models.content_asset_models import Base as ContentAssetBase
+# Product Marketing models use SubscriptionBase, but import to ensure models are registered
+from models.product_marketing_models import Campaign, CampaignProposal, CampaignAsset
+# Product Asset models (Product Marketing Suite - product assets, not campaigns)
+from models.product_asset_models import ProductAsset, ProductStyleTemplate, EcommerceExport
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')
@@ -73,10 +77,10 @@ def init_database():
         EnhancedStrategyBase.metadata.create_all(bind=engine)
         MonitoringBase.metadata.create_all(bind=engine)
         PersonaBase.metadata.create_all(bind=engine)
-        SubscriptionBase.metadata.create_all(bind=engine)
+        SubscriptionBase.metadata.create_all(bind=engine)  # Includes product_marketing models
         UserBusinessInfoBase.metadata.create_all(bind=engine)
         ContentAssetBase.metadata.create_all(bind=engine)
-        logger.info("Database initialized successfully with all models including subscription system, business info, and content assets")
+        logger.info("Database initialized successfully with all models including subscription system, product marketing, business info, and content assets")
     except SQLAlchemyError as e:
         logger.error(f"Error initializing database: {str(e)}")
         raise

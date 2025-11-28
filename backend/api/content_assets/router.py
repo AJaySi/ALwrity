@@ -32,7 +32,7 @@ class AssetResponse(BaseModel):
     description: Optional[str] = None
     prompt: Optional[str] = None
     tags: List[str] = []
-    metadata: Dict[str, Any] = {}
+    asset_metadata: Dict[str, Any] = {}
     provider: Optional[str] = None
     model: Optional[str] = None
     cost: float = 0.0

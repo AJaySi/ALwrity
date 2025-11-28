@@ -6,6 +6,11 @@ from .edit_service import EditStudioService, EditStudioRequest
 from .upscale_service import UpscaleStudioService, UpscaleStudioRequest
 from .control_service import ControlStudioService, ControlStudioRequest
 from .social_optimizer_service import SocialOptimizerService, SocialOptimizerRequest
+from .transform_service import (
+    TransformStudioService,
+    TransformImageToVideoRequest,
+    TalkingAvatarRequest,
+)
 from .templates import PlatformTemplates, TemplateManager
 
 __all__ = [
@@ -20,6 +25,9 @@ __all__ = [
     "ControlStudioRequest",
     "SocialOptimizerService",
     "SocialOptimizerRequest",
+    "TransformStudioService",
+    "TransformImageToVideoRequest",
+    "TalkingAvatarRequest",
     "PlatformTemplates",
     "TemplateManager",
 ]

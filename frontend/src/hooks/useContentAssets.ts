@@ -15,7 +15,7 @@ export interface ContentAsset {
   description?: string;
   prompt?: string;
   tags: string[];
-  metadata: Record<string, any>;
+  asset_metadata: Record<string, any>;
   provider?: string;
   model?: string;
   cost: number;
@@ -44,7 +44,7 @@ export interface AssetListResponse {
   offset: number;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 export const useContentAssets = (filters: AssetFilters = {}) => {
   const { getToken } = useAuth();

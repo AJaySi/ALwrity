@@ -53,6 +53,7 @@ from api.linkedin_image_generation import router as linkedin_image_router
 from api.brainstorm import router as brainstorm_router
 from api.images import router as images_router
 from routers.image_studio import router as image_studio_router
+from routers.product_marketing import router as product_marketing_router
 
 # Import hallucination detector router
 from api.hallucination_detector import router as hallucination_detector_router
@@ -298,6 +299,7 @@ from routers.platform_analytics import router as platform_analytics_router
 app.include_router(platform_analytics_router)
 app.include_router(images_router)
 app.include_router(image_studio_router)
+app.include_router(product_marketing_router)
 
 # Include content assets router
 from api.content_assets.router import router as content_assets_router

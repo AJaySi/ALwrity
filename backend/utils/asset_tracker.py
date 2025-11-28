@@ -51,7 +51,7 @@ def save_asset_to_library(
     description: Optional[str] = None,
     prompt: Optional[str] = None,
     tags: Optional[list] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    asset_metadata: Optional[Dict[str, Any]] = None,
     provider: Optional[str] = None,
     model: Optional[str] = None,
     cost: Optional[float] = None,
@@ -77,7 +77,7 @@ def save_asset_to_library(
         description: Asset description (optional)
         prompt: Generation prompt (optional)
         tags: List of tags (optional)
-        metadata: Additional metadata (optional)
+        asset_metadata: Additional metadata (optional)
         provider: AI provider used (optional)
         model: Model used (optional)
         cost: Generation cost (optional)
@@ -143,7 +143,7 @@ def save_asset_to_library(
             description=description,
             prompt=prompt,
             tags=tags or [],
-            metadata=metadata or {},
+            asset_metadata=asset_metadata or {},
             provider=provider,
             model=model,
             cost=cost,

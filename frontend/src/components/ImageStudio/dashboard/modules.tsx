@@ -89,9 +89,10 @@ export const studioModules: ModuleConfig[] = [
     title: 'Transform Studio',
     subtitle: 'Image → Video / Avatar / 3D',
     description:
-      'WaveSpeed WAN 2.5 (image-to-video), Hunyuan Avatar, and Stable Fast 3D to convert images into motion, avatars, or 3D assets.',
+      'WaveSpeed WAN 2.5 (image-to-video), InfiniteTalk (talking avatars), and Stable Fast 3D to convert images into motion, avatars, or 3D assets.',
     highlights: ['Image-to-video', 'Talking avatars', '3D export'],
-    status: 'coming soon',
+    status: 'live',
+    route: '/image-transform',
     icon: <TransformIcon />,
     help: 'Designed for campaign teasers, explainers, and immersive media.',
     pricing: {
@@ -116,7 +117,7 @@ export const studioModules: ModuleConfig[] = [
       'Smart resize, safe zones, and engagement tips for Instagram, TikTok, LinkedIn, YouTube, Pinterest, and more in one click.',
     highlights: ['Text safe zones', 'Batch export', 'Platform presets'],
     status: 'live',
-    route: '/social-optimizer',
+    route: '/image-studio/social-optimizer',
     icon: <ShareIcon />,
     help: 'Ship consistent assets across every social surface.',
     pricing: {

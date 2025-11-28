@@ -10,6 +10,9 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from loguru import logger
 from middleware.auth_middleware import get_current_user
+from sqlalchemy.orm import Session
+from services.database import get_db as get_db_dependency
+from utils.text_asset_tracker import save_and_track_text_content
 
 from models.blog_models import (
     BlogResearchRequest,
@@ -41,6 +44,10 @@ router = APIRouter(prefix="/api/blog", tags=["AI Blog Writer"])
 
 service = BlogWriterService()
 recommendation_applier = BlogSEORecommendationApplier()
+
+
+# Use the proper database dependency from services.database
+get_db = get_db_dependency
 # ---------------------------
 # SEO Recommendation Endpoints
 # ---------------------------
@@ -272,10 +279,41 @@ async def rebalance_outline(outline_data: Dict[str, Any], target_words: int = 15
 
 # Content Generation Endpoints
 @router.post("/section/generate", response_model=BlogSectionResponse)
-async def generate_section(request: BlogSectionRequest) -> BlogSectionResponse:
+async def generate_section(
+    request: BlogSectionRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> BlogSectionResponse:
     """Generate content for a specific section."""
     try:
-        return await service.generate_section(request)
+        response = await service.generate_section(request)
+        
+        # Save and track text content (non-blocking)
+        if response.markdown:
+            try:
+                user_id = str(current_user.get('id', '')) if current_user else None
+                if user_id:
+                    section_heading = getattr(request, 'section_heading', getattr(request, 'heading', 'Section'))
+                    save_and_track_text_content(
+                        db=db,
+                        user_id=user_id,
+                        content=response.markdown,
+                        source_module="blog_writer",
+                        title=f"Blog Section: {section_heading[:60]}",
+                        description=f"Blog section content",
+                        prompt=f"Section: {section_heading}\nKeywords: {getattr(request, 'keywords', [])}",
+                        tags=["blog", "section", "content"],
+                        asset_metadata={
+                            "section_id": getattr(request, 'section_id', None),
+                            "word_count": len(response.markdown.split()),
+                        },
+                        subdirectory="sections",
+                        file_extension=".md"
+                    )
+            except Exception as track_error:
+                logger.warning(f"Failed to track blog section asset: {track_error}")
+        
+        return response
     except Exception as e:
         logger.error(f"Failed to generate section: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -321,12 +359,47 @@ async def start_content_generation(
 
 
 @router.get("/content/status/{task_id}")
-async def content_generation_status(task_id: str) -> Dict[str, Any]:
+async def content_generation_status(
+    task_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """Poll status for content generation task."""
     try:
         status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Track blog content when task completes (non-blocking)
+        if status.get('status') == 'completed' and status.get('result'):
+            try:
+                result = status.get('result', {})
+                if result.get('sections') and len(result.get('sections', [])) > 0:
+                    user_id = str(current_user.get('id', '')) if current_user else None
+                    if user_id:
+                        # Combine all sections into full blog content
+                        blog_content = f"# {result.get('title', 'Untitled Blog')}\n\n"
+                        for section in result.get('sections', []):
+                            blog_content += f"\n## {section.get('heading', 'Section')}\n\n{section.get('content', '')}\n\n"
+                        
+                        save_and_track_text_content(
+                            db=db,
+                            user_id=user_id,
+                            content=blog_content,
+                            source_module="blog_writer",
+                            title=f"Blog: {result.get('title', 'Untitled Blog')[:60]}",
+                            description=f"Complete blog post with {len(result.get('sections', []))} sections",
+                            prompt=f"Title: {result.get('title', 'Untitled')}\nSections: {len(result.get('sections', []))}",
+                            tags=["blog", "complete", "content"],
+                            asset_metadata={
+                                "section_count": len(result.get('sections', [])),
+                                "model": result.get('model'),
+                            },
+                            subdirectory="complete",
+                            file_extension=".md"
+                        )
+            except Exception as track_error:
+                logger.warning(f"Failed to track blog content asset: {track_error}")
         
         # If task failed with subscription error, return HTTP error so frontend interceptor can catch it
         if status.get('status') == 'failed' and status.get('error_status') in [429, 402]:
@@ -420,10 +493,40 @@ async def analyze_flow_advanced(request: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.post("/section/optimize", response_model=BlogOptimizeResponse)
-async def optimize_section(request: BlogOptimizeRequest) -> BlogOptimizeResponse:
+async def optimize_section(
+    request: BlogOptimizeRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> BlogOptimizeResponse:
     """Optimize a specific section for better quality and engagement."""
     try:
-        return await service.optimize_section(request)
+        response = await service.optimize_section(request)
+        
+        # Save and track text content (non-blocking)
+        if response.optimized:
+            try:
+                user_id = str(current_user.get('id', '')) if current_user else None
+                if user_id:
+                    save_and_track_text_content(
+                        db=db,
+                        user_id=user_id,
+                        content=response.optimized,
+                        source_module="blog_writer",
+                        title=f"Optimized Blog Section",
+                        description=f"Optimized blog section content",
+                        prompt=f"Original Content: {request.content[:200]}\nGoals: {request.goals}",
+                        tags=["blog", "section", "optimized"],
+                        asset_metadata={
+                            "optimization_goals": request.goals,
+                            "word_count": len(response.optimized.split()),
+                        },
+                        subdirectory="sections/optimized",
+                        file_extension=".md"
+                    )
+            except Exception as track_error:
+                logger.warning(f"Failed to track optimized blog section asset: {track_error}")
+        
+        return response
     except Exception as e:
         logger.error(f"Failed to optimize section: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -591,12 +694,48 @@ async def start_medium_generation(
 
 
 @router.get("/generate/medium/status/{task_id}")
-async def medium_generation_status(task_id: str):
+async def medium_generation_status(
+    task_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Poll status for medium blog generation task."""
     try:
         status = await task_manager.get_task_status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Track blog content when task completes (non-blocking)
+        if status.get('status') == 'completed' and status.get('result'):
+            try:
+                result = status.get('result', {})
+                if result.get('sections') and len(result.get('sections', [])) > 0:
+                    user_id = str(current_user.get('id', '')) if current_user else None
+                    if user_id:
+                        # Combine all sections into full blog content
+                        blog_content = f"# {result.get('title', 'Untitled Blog')}\n\n"
+                        for section in result.get('sections', []):
+                            blog_content += f"\n## {section.get('heading', 'Section')}\n\n{section.get('content', '')}\n\n"
+                        
+                        save_and_track_text_content(
+                            db=db,
+                            user_id=user_id,
+                            content=blog_content,
+                            source_module="blog_writer",
+                            title=f"Medium Blog: {result.get('title', 'Untitled Blog')[:60]}",
+                            description=f"Medium-length blog post with {len(result.get('sections', []))} sections",
+                            prompt=f"Title: {result.get('title', 'Untitled')}\nSections: {len(result.get('sections', []))}",
+                            tags=["blog", "medium", "complete"],
+                            asset_metadata={
+                                "section_count": len(result.get('sections', [])),
+                                "model": result.get('model'),
+                                "generation_time_ms": result.get('generation_time_ms'),
+                            },
+                            subdirectory="medium",
+                            file_extension=".md"
+                        )
+            except Exception as track_error:
+                logger.warning(f"Failed to track medium blog asset: {track_error}")
         
         # If task failed with subscription error, return HTTP error so frontend interceptor can catch it
         if status.get('status') == 'failed' and status.get('error_status') in [429, 402]:
@@ -677,7 +816,8 @@ async def rewrite_status(task_id: str):
 @router.post("/titles/generate-seo")
 async def generate_seo_titles(
     request: Dict[str, Any],
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate 5 SEO-optimized blog titles using research and outline data."""
     try:
@@ -722,6 +862,30 @@ async def generate_seo_titles(
             user_id=user_id
         )
         
+        # Save and track titles (non-blocking)
+        if titles and len(titles) > 0:
+            try:
+                titles_content = "# SEO Blog Titles\n\n" + "\n".join([f"{i+1}. {title}" for i, title in enumerate(titles)])
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=titles_content,
+                    source_module="blog_writer",
+                    title=f"SEO Blog Titles: {primary_keywords[0] if primary_keywords else 'Blog'}",
+                    description=f"SEO-optimized blog title suggestions",
+                    prompt=f"Primary Keywords: {primary_keywords}\nSearch Intent: {search_intent}\nWord Count: {word_count}",
+                    tags=["blog", "titles", "seo"],
+                    asset_metadata={
+                        "title_count": len(titles),
+                        "primary_keywords": primary_keywords,
+                        "search_intent": search_intent,
+                    },
+                    subdirectory="titles",
+                    file_extension=".md"
+                )
+            except Exception as track_error:
+                logger.warning(f"Failed to track SEO titles asset: {track_error}")
+        
         return {
             "success": True,
             "titles": titles
@@ -736,7 +900,8 @@ async def generate_seo_titles(
 @router.post("/introductions/generate")
 async def generate_introductions(
     request: Dict[str, Any],
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate 3 varied blog introductions using research, outline, and content."""
     try:
@@ -780,6 +945,33 @@ async def generate_introductions(
             search_intent=search_intent,
             user_id=user_id
         )
+        
+        # Save and track introductions (non-blocking)
+        if introductions and len(introductions) > 0:
+            try:
+                intro_content = f"# Blog Introductions for: {blog_title}\n\n"
+                for i, intro in enumerate(introductions, 1):
+                    intro_content += f"## Introduction {i}\n\n{intro}\n\n"
+                
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=intro_content,
+                    source_module="blog_writer",
+                    title=f"Blog Introductions: {blog_title[:60]}",
+                    description=f"Blog introduction variations",
+                    prompt=f"Blog Title: {blog_title}\nPrimary Keywords: {primary_keywords}\nSearch Intent: {search_intent}",
+                    tags=["blog", "introductions"],
+                    asset_metadata={
+                        "introduction_count": len(introductions),
+                        "blog_title": blog_title,
+                        "search_intent": search_intent,
+                    },
+                    subdirectory="introductions",
+                    file_extension=".md"
+                )
+            except Exception as track_error:
+                logger.warning(f"Failed to track blog introductions asset: {track_error}")
         
         return {
             "success": True,

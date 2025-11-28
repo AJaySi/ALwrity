@@ -6,6 +6,7 @@ export { EditStudio } from './EditStudio';
 export { UpscaleStudio } from './UpscaleStudio';
 export { ControlStudio } from './ControlStudio';
 export { SocialOptimizer } from './SocialOptimizer';
+export { TransformStudio } from './TransformStudio';
 export { AssetLibrary } from './AssetLibrary';
 export { ImageStudioDashboard } from './ImageStudioDashboard';
 export { ImageStudioLayout } from './ImageStudioLayout';

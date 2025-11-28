@@ -22,41 +22,31 @@ class AssetType(enum.Enum):
 
 
 class AssetSource(enum.Enum):
-    """Source module/tool that generated the asset - covers ALL ALwrity tools."""
-    # Image Studio modules
-    IMAGE_STUDIO_CREATE = "image_studio_create"
-    IMAGE_STUDIO_EDIT = "image_studio_edit"
-    IMAGE_STUDIO_UPSCALE = "image_studio_upscale"
-    IMAGE_STUDIO_TRANSFORM = "image_studio_transform"
-    IMAGE_STUDIO_CONTROL = "image_studio_control"
-    IMAGE_STUDIO_SOCIAL = "image_studio_social"
-    IMAGE_STUDIO_BATCH = "image_studio_batch"
-    
-    # Content Writers
+    """Source module/tool that generated the asset."""
+    # Core Content Generation
     STORY_WRITER = "story_writer"
-    BLOG_WRITER = "blog_writer"
-    LINKEDIN_WRITER = "linkedin_writer"
-    FACEBOOK_WRITER = "facebook_writer"
-    
-    # Content Planning
-    CONTENT_PLANNING = "content_planning"
-    CONTENT_STRATEGY = "content_strategy"
-    
-    # SEO Tools
-    SEO_DASHBOARD = "seo_dashboard"
-    SEO_TOOLS = "seo_tools"
-    
-    # Research
-    RESEARCH = "research"
-    
-    # Scheduler
-    SCHEDULER = "scheduler"
-    
-    # Main Generation (legacy/fallback)
+    IMAGE_STUDIO = "image_studio"
     MAIN_TEXT_GENERATION = "main_text_generation"
     MAIN_IMAGE_GENERATION = "main_image_generation"
     MAIN_VIDEO_GENERATION = "main_video_generation"
     MAIN_AUDIO_GENERATION = "main_audio_generation"
+    
+    # Social Media Writers
+    BLOG_WRITER = "blog_writer"
+    LINKEDIN_WRITER = "linkedin_writer"
+    FACEBOOK_WRITER = "facebook_writer"
+    
+    # SEO & Content Tools
+    SEO_TOOLS = "seo_tools"
+    CONTENT_PLANNING = "content_planning"
+    WRITING_ASSISTANT = "writing_assistant"
+    
+    # Research & Strategy
+    RESEARCH_TOOLS = "research_tools"
+    CONTENT_STRATEGY = "content_strategy"
+    
+    # Product Marketing Suite
+    PRODUCT_MARKETING = "product_marketing"
 
 
 class ContentAsset(Base):
@@ -87,17 +77,13 @@ class ContentAsset(Base):
     description = Column(Text, nullable=True)
     prompt = Column(Text, nullable=True)  # Original prompt used for generation
     tags = Column(JSON, nullable=True)  # Array of tags for search/filtering
-    metadata = Column(JSON, nullable=True)  # Additional module-specific metadata
+    asset_metadata = Column(JSON, nullable=True)  # Additional module-specific metadata (renamed from 'metadata' to avoid SQLAlchemy conflict)
     
     # Generation details
-    provider = Column(String(100), nullable=True, index=True)  # AI provider used (e.g., "stability", "gemini")
-    model = Column(String(200), nullable=True, index=True)  # Model used (full model path/name)
+    provider = Column(String(100), nullable=True)  # AI provider used (e.g., "stability", "gemini")
+    model = Column(String(100), nullable=True)  # Model used
     cost = Column(Float, nullable=True, default=0.0)  # Generation cost in USD
     generation_time = Column(Float, nullable=True)  # Time taken in seconds
-    
-    # Status tracking
-    status = Column(String(50), default='completed', index=True)  # completed, processing, failed, pending
-    error_message = Column(Text, nullable=True)  # Error details if failed
     
     # Organization
     is_favorite = Column(Boolean, default=False, index=True)
@@ -113,7 +99,11 @@ class ContentAsset(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    collection = relationship("AssetCollection", back_populates="assets", cascade="all, delete-orphan")
+    collection = relationship(
+        "AssetCollection", 
+        back_populates="assets", 
+        foreign_keys=[collection_id]
+    )
     
     # Composite indexes for common query patterns
     __table_args__ = (
@@ -141,5 +131,15 @@ class AssetCollection(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    assets = relationship("ContentAsset", back_populates="collection")
+    assets = relationship(
+        "ContentAsset", 
+        back_populates="collection", 
+        foreign_keys="[ContentAsset.collection_id]",
+        cascade="all, delete-orphan"  # Cascade delete on the "one" side (one-to-many)
+    )
+    cover_asset = relationship(
+        "ContentAsset", 
+        foreign_keys=[cover_asset_id], 
+        uselist=False
+    )
 

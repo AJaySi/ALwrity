@@ -21,6 +21,7 @@ from models.blog_models import (
 )
 from services.blog_writer.blog_service import BlogWriterService
 from services.blog_writer.database_task_manager import DatabaseTaskManager
+from utils.text_asset_tracker import save_and_track_text_content
 
 
 class TaskManager:
@@ -281,6 +282,9 @@ class TaskManager:
             self.task_storage[task_id]["status"] = "completed"
             self.task_storage[task_id]["result"] = result.dict()
             await self.update_progress(task_id, f"✅ Generated {len(result.sections)} sections successfully.")
+            
+            # Note: Blog content tracking is handled in the status endpoint
+            # to ensure we have proper database session and user context
 
         except HTTPException as http_error:
             # Handle HTTPException (e.g., 429 subscription limit) - preserve error details for frontend

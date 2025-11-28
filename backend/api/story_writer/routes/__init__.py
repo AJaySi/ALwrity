@@ -4,18 +4,20 @@ Each module focuses on a related set of routes to keep the primary
 `router.py` concise and easier to maintain.
 """
 
-from . import story_setup
-from . import story_content
-from . import story_tasks
-from . import media_generation
-from . import video_generation
 from . import cache_routes
+from . import media_generation
+from . import scene_animation
+from . import story_content
+from . import story_setup
+from . import story_tasks
+from . import video_generation
 
 __all__ = [
-    "story_setup",
-    "story_content",
-    "story_tasks",
-    "media_generation",
-    "video_generation",
     "cache_routes",
+    "media_generation",
+    "scene_animation",
+    "story_content",
+    "story_setup",
+    "story_tasks",
+    "video_generation",
 ]

@@ -509,3 +509,30 @@ async def serve_story_video(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/videos/ai/{video_filename}")
+async def serve_ai_story_video(
+    video_filename: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Serve a generated AI scene animation video."""
+    try:
+        require_authenticated_user(current_user)
+
+        base_dir = Path(__file__).parent.parent.parent.parent
+        ai_video_dir = (base_dir / "story_videos" / "AI_Videos").resolve()
+        video_service_ai = StoryVideoGenerationService(output_dir=str(ai_video_dir))
+        video_path = resolve_media_file(video_service_ai.output_dir, video_filename)
+
+        return FileResponse(
+            path=str(video_path),
+            media_type="video/mp4",
+            filename=video_filename
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[StoryWriter] Failed to serve AI video: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
