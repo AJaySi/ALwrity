@@ -48,6 +48,15 @@ export const toolCategories: ToolCategories = {
         isHighlighted: true
       },
       {
+        name: 'Podcast Maker',
+        description: 'Generate research-grounded podcast scripts and audio',
+        icon: React.createElement(AudioIcon),
+        status: 'beta',
+        path: '/podcast-maker',
+        features: ['Research Workflow', 'Editable Script', 'Scene Approvals', 'WaveSpeed Audio'],
+        isHighlighted: true
+      },
+      {
         name: 'Image Generator',
         description: 'AI image creation and visual content generation',
         icon: React.createElement(ImageIcon),

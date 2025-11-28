@@ -68,6 +68,10 @@ export type Job = {
   previewUrl?: string | null;
   finalUrl?: string | null;
   jobId?: string | null;
+  cost?: number | null;
+  provider?: string | null;
+  voiceId?: string | null;
+  fileSize?: number | null;
 };
 
 export type PodcastAnalysis = {

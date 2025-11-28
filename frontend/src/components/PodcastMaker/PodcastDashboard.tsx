@@ -109,7 +109,8 @@ const CreateModal: React.FC<{
   onCreate: (payload: CreateProjectPayload) => void;
   open: boolean;
   defaultKnobs: Knobs;
-}> = ({ onCreate, open, defaultKnobs }) => {
+  isSubmitting?: boolean;
+}> = ({ onCreate, open, defaultKnobs, isSubmitting = false }) => {
   const [idea, setIdea] = useState("");
   const [url, setUrl] = useState("");
   const [speakers, setSpeakers] = useState<number>(1);
@@ -119,8 +120,10 @@ const CreateModal: React.FC<{
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [knobs, setKnobs] = useState<Knobs>({ ...defaultKnobs });
 
+  const canSubmit = Boolean(idea || url);
+
   const submit = () => {
-    if (!idea && !url) return;
+    if (!canSubmit || isSubmitting) return;
     onCreate({
       ideaOrUrl: idea || url,
       speakers,
@@ -150,7 +153,7 @@ const CreateModal: React.FC<{
               </h3>
               <p className="text-sm text-gray-300 mt-1">Enter a short idea or paste a blog URL. We&apos;ll analyze and suggest defaults.</p>
             </div>
-            <PrimaryButton onClick={submit} ariaLabel="Analyze and continue">
+            <PrimaryButton onClick={submit} ariaLabel="Analyze and continue" disabled={!canSubmit || isSubmitting}>
               Analyze & Continue
             </PrimaryButton>
           </div>
@@ -274,7 +277,9 @@ const CreateModal: React.FC<{
               >
                 Reset
               </SecondaryButton>
-              <PrimaryButton onClick={submit}>Analyze & Continue</PrimaryButton>
+              <PrimaryButton onClick={submit} disabled={!canSubmit || isSubmitting}>
+                {isSubmitting ? "Analyzing..." : "Analyze & Continue"}
+              </PrimaryButton>
             </div>
           </div>
         </Card>
@@ -422,11 +427,13 @@ const SceneEditor: React.FC<{
   onUpdateScene: (s: Scene) => void;
   onApprove: (id: string) => Promise<void>;
   onPreviewLine: (text: string) => Promise<{ ok: boolean; message: string; audioUrl?: string }>;
-}> = ({ scene, onUpdateScene, onApprove, onPreviewLine }) => {
+  approvingSceneId?: string | null;
+}> = ({ scene, onUpdateScene, onApprove, onPreviewLine, approvingSceneId }) => {
   const updateLine = (updatedLine: Line) => {
     const updated = { ...scene, lines: scene.lines.map((l) => (l.id === updatedLine.id ? updatedLine : l)) };
     onUpdateScene(updated);
   };
+  const approving = approvingSceneId === scene.id;
 
   return (
     <Card className="p-4">
@@ -444,8 +451,9 @@ const SceneEditor: React.FC<{
               await onApprove(scene.id);
               onUpdateScene({ ...scene, approved: true });
             }}
+            disabled={scene.approved || approving}
           >
-            Approve Scene
+            {scene.approved ? "Approved" : approving ? "Approving..." : "Approve Scene"}
           </PrimaryButton>
         </div>
       </div>
@@ -469,14 +477,20 @@ const ScriptEditor: React.FC<{
   durationMinutes: number;
   onBackToResearch: () => void;
   onProceedToRendering: (script: Script) => void;
-}> = ({ projectId, idea, research, rawResearch, knobs, speakers, durationMinutes, onBackToResearch, onProceedToRendering }) => {
+  onError: (message: string) => void;
+}> = ({ projectId, idea, research, rawResearch, knobs, speakers, durationMinutes, onBackToResearch, onProceedToRendering, onError }) => {
   const [script, setScript] = useState<Script | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [approvingSceneId, setApprovingSceneId] = useState<string | null>(null);
+
+  const showBusy = isAnalyzing || isResearching;
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
+    setScript(null);
+    setError(null);
     podcastApi
       .generateScript({
         projectId,
@@ -493,7 +507,9 @@ const ScriptEditor: React.FC<{
         }
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to generate script");
+        const message = err instanceof Error ? err.message : "Failed to generate script";
+        setError(message);
+        onError(message);
       })
       .finally(() => mounted && setLoading(false));
     return () => {
@@ -508,6 +524,7 @@ const ScriptEditor: React.FC<{
 
   const approveScene = async (sceneId: string) => {
     try {
+      setApprovingSceneId(sceneId);
       await podcastApi.approveScene({ projectId, sceneId });
       setScript((prev) =>
         prev
@@ -520,7 +537,10 @@ const ScriptEditor: React.FC<{
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to approve scene";
       setError(message);
+      onError(message);
       throw err;
+    } finally {
+      setApprovingSceneId((current) => (current === sceneId ? null : current));
     }
   };
 
@@ -546,7 +566,13 @@ const ScriptEditor: React.FC<{
 
           {script.scenes.map((scene) => (
             <motion.div key={scene.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-              <SceneEditor scene={scene} onUpdateScene={updateScene} onApprove={approveScene} onPreviewLine={(text) => podcastApi.previewLine(text)} />
+              <SceneEditor
+                scene={scene}
+                onUpdateScene={updateScene}
+                onApprove={approveScene}
+                onPreviewLine={(text) => podcastApi.previewLine(text)}
+                approvingSceneId={approvingSceneId}
+              />
             </motion.div>
           ))}
 
@@ -574,11 +600,13 @@ const RenderQueue: React.FC<{
   script: Script;
   knobs: Knobs;
   onBack: () => void;
-}> = ({ projectId, script, knobs, onBack }) => {
+  onError: (message: string) => void;
+}> = ({ projectId, script, knobs, onBack, onError }) => {
   const [jobs, setJobs] = useState<Job[]>(
     script.scenes.map((s) => ({ sceneId: s.id, title: s.title, status: "idle", progress: 0, previewUrl: null, finalUrl: null, jobId: null }))
   );
   const [rendering, setRendering] = useState<string | null>(null);
+  const isBusy = Boolean(rendering);
 
   const getScene = (sceneId: string) => script.scenes.find((s) => s.id === sceneId);
 
@@ -609,6 +637,10 @@ const RenderQueue: React.FC<{
                 progress: 100,
                 previewUrl: mode === "preview" ? result.audioUrl : job.previewUrl,
                 finalUrl: mode === "full" ? result.audioUrl : job.finalUrl,
+                cost: result.cost,
+                provider: result.provider,
+                voiceId: result.voiceId,
+                fileSize: result.fileSize,
               }
             : job
         )
@@ -618,6 +650,8 @@ const RenderQueue: React.FC<{
       setJobs((list) =>
         list.map((job) => (job.sceneId === sceneId ? { ...job, status: "failed", progress: 0 } : job))
       );
+      const message = error instanceof Error ? error.message : "Render failed";
+      onError(message);
     } finally {
       setRendering(null);
     }
@@ -654,6 +688,11 @@ const RenderQueue: React.FC<{
                     </a>
                   </div>
                 )}
+                {job.cost != null && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    Cost: ${job.cost?.toFixed(2)} via {job.provider || "AI audio"}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -672,8 +711,10 @@ const RenderQueue: React.FC<{
               <div className="mt-3 flex items-center gap-2 justify-end flex-wrap">
                 {job.status === "idle" && (
                   <>
-                    <SecondaryButton onClick={() => runRender(job.sceneId, "preview")}>Preview</SecondaryButton>
-                    <PrimaryButton onClick={() => runRender(job.sceneId, "full")} disabled={rendering === job.sceneId}>
+                    <SecondaryButton onClick={() => runRender(job.sceneId, "preview")} disabled={isBusy}>
+                      Preview
+                    </SecondaryButton>
+                    <PrimaryButton onClick={() => runRender(job.sceneId, "full")} disabled={isBusy}>
                       Start Full Render
                     </PrimaryButton>
                   </>
@@ -711,7 +752,8 @@ const PodcastDashboard: React.FC = () => {
   const [research, setResearch] = useState<Research | null>(null);
   const [rawResearch, setRawResearch] = useState<BlogResearchResponse | null>(null);
   const [estimate, setEstimate] = useState<PodcastEstimate | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isResearching, setIsResearching] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [showScriptEditor, setShowScriptEditor] = useState(false);
   const [showRenderQueue, setShowRenderQueue] = useState(false);
@@ -728,8 +770,13 @@ const PodcastDashboard: React.FC = () => {
   }, [announcement]);
 
   const handleCreate = async (payload: CreateProjectPayload) => {
+    setResearch(null);
+    setRawResearch(null);
+    setScriptData(null);
+    setShowScriptEditor(false);
+    setShowRenderQueue(false);
     try {
-      setLoading(true);
+      setIsAnalyzing(true);
       setAnnouncement("Analyzing your idea — AI suggestions incoming");
       const result = await podcastApi.createProject(payload);
       setProject({ id: result.projectId, idea: payload.ideaOrUrl, duration: payload.duration, speakers: payload.speakers });
@@ -742,7 +789,7 @@ const PodcastDashboard: React.FC = () => {
     } catch (error) {
       announceError(setAnnouncement, error);
     } finally {
-      setLoading(false);
+      setIsAnalyzing(false);
     }
   };
 
@@ -751,9 +798,18 @@ const PodcastDashboard: React.FC = () => {
       setAnnouncement("Create a project first.");
       return;
     }
+    if (selectedQueries.size === 0) {
+      setAnnouncement("Select at least one query to research.");
+      return;
+    }
     try {
-      setLoading(true);
+      setIsResearching(true);
       setAnnouncement("Running grounded research — fetching sources");
+      setResearch(null);
+      setRawResearch(null);
+      setScriptData(null);
+      setShowScriptEditor(false);
+      setShowRenderQueue(false);
       const approvedQueries = queries.filter((q) => selectedQueries.has(q.id));
       const { research: mapped, raw } = await podcastApi.runResearch({
         projectId: project.id,
@@ -767,7 +823,7 @@ const PodcastDashboard: React.FC = () => {
     } catch (error) {
       announceError(setAnnouncement, error);
     } finally {
-      setLoading(false);
+      setIsResearching(false);
     }
   };
 
@@ -777,6 +833,7 @@ const PodcastDashboard: React.FC = () => {
       return;
     }
     setScriptData(null);
+    setShowRenderQueue(false);
     setShowScriptEditor(true);
   };
 
@@ -786,7 +843,11 @@ const PodcastDashboard: React.FC = () => {
     setShowScriptEditor(false);
   };
 
+  const selectedCount = selectedQueries.size;
+  const canGenerateScript = Boolean(project && research && rawResearch);
+
   const toggleQuery = (id: string) => {
+    if (isResearching) return;
     setSelectedQueries((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -812,9 +873,9 @@ const PodcastDashboard: React.FC = () => {
         <div className="mb-4 rounded bg-blue-50 text-blue-900 px-4 py-2 border border-blue-200 shadow">{announcement}</div>
       )}
 
-      {loading && <div className="p-3 mb-4 bg-yellow-50 text-yellow-900 rounded border border-yellow-200">Working... please wait</div>}
+      {showBusy && <div className="p-3 mb-4 bg-yellow-50 text-yellow-900 rounded border border-yellow-200">Working... please wait</div>}
 
-      {!project && <CreateModal open onCreate={handleCreate} defaultKnobs={DEFAULT_KNOBS} />}
+      {!project && <CreateModal open onCreate={handleCreate} defaultKnobs={DEFAULT_KNOBS} isSubmitting={isAnalyzing} />}
 
       <div className="space-y-6">
         {analysis && !showScriptEditor && !showRenderQueue && <AnalysisPanel analysis={analysis} onRegenerate={() => setAnalysis({ ...analysis })} />}
@@ -840,10 +901,14 @@ const PodcastDashboard: React.FC = () => {
                     value={researchProvider}
                     onChange={(e) => setResearchProvider(e.target.value as ResearchProvider)}
                     className="bg-black/30 border border-white/10 rounded px-3 py-1 text-sm"
+                    disabled={isResearching}
                   >
                     <option value="google">Google Grounding</option>
                     <option value="exa">Exa Neural Search</option>
                   </select>
+                </div>
+                <div className="text-xs text-gray-400">
+                  Selected {selectedCount} / {queries.length}
                 </div>
               </div>
               <div className="grid gap-3">
@@ -863,7 +928,9 @@ const PodcastDashboard: React.FC = () => {
                 ))}
               </div>
               <div className="flex justify-end">
-                <PrimaryButton onClick={handleRunResearch}>Run research</PrimaryButton>
+                <PrimaryButton onClick={handleRunResearch} disabled={!project || selectedCount === 0 || isResearching}>
+                  {isResearching ? "Running..." : "Run research"}
+                </PrimaryButton>
               </div>
             </Card>
           </div>
@@ -874,7 +941,9 @@ const PodcastDashboard: React.FC = () => {
             <Card className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white">Research summary</h3>
-                <PrimaryButton onClick={handleGenerateScript}>Generate Script</PrimaryButton>
+                <PrimaryButton onClick={handleGenerateScript} disabled={!canGenerateScript}>
+                  {canGenerateScript ? "Generate Script" : "Complete research to continue"}
+                </PrimaryButton>
               </div>
               <p className="text-sm text-gray-200">{research.summary}</p>
               {research.factCards.length > 0 && (
@@ -888,7 +957,7 @@ const PodcastDashboard: React.FC = () => {
           </div>
         )}
 
-        {showScriptEditor && project && (
+        {showScriptEditor && project && research && rawResearch && (
           <ScriptEditor
             projectId={project.id}
             idea={project.idea}
@@ -899,7 +968,14 @@ const PodcastDashboard: React.FC = () => {
             durationMinutes={project.duration}
             onBackToResearch={() => setShowScriptEditor(false)}
             onProceedToRendering={(s) => handleProceedToRendering(s)}
+            onError={(msg) => setAnnouncement(msg)}
           />
+        )}
+
+        {showScriptEditor && (!research || !rawResearch) && (
+          <Card className="p-4 text-sm text-yellow-100 bg-yellow-900/30 border border-yellow-700">
+            Complete a research run before opening the script editor.
+          </Card>
         )}
 
         {showRenderQueue && project && scriptData && (
@@ -911,6 +987,7 @@ const PodcastDashboard: React.FC = () => {
               setShowRenderQueue(false);
               setShowScriptEditor(true);
             }}
+            onError={(msg) => setAnnouncement(msg)}
           />
         )}
       </div>

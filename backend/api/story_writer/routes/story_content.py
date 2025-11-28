@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from middleware.auth_middleware import get_current_user
 from models.story_models import (
@@ -20,7 +20,56 @@ from ..utils.auth import require_authenticated_user
 
 router = APIRouter()
 story_service = StoryWriterService()
-scene_approval_store: Dict[str, Dict[str, Any]] = {}
+scene_approval_store: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
+APPROVAL_TTL_SECONDS = 60 * 60 * 24
+MAX_APPROVALS_PER_USER = 200
+
+
+def _cleanup_user_approvals(user_id: str) -> None:
+    user_store = scene_approval_store.get(user_id)
+    if not user_store:
+        return
+    now = datetime.utcnow()
+    for project_id in list(user_store.keys()):
+        scenes = user_store.get(project_id, {})
+        for scene_id in list(scenes.keys()):
+            timestamp = scenes[scene_id].get("timestamp")
+            if isinstance(timestamp, datetime):
+                if (now - timestamp).total_seconds() > APPROVAL_TTL_SECONDS:
+                    scenes.pop(scene_id, None)
+        if not scenes:
+            user_store.pop(project_id, None)
+    if not user_store:
+        scene_approval_store.pop(user_id, None)
+
+
+def _enforce_capacity(user_id: str) -> None:
+    user_store = scene_approval_store.get(user_id)
+    if not user_store:
+        return
+    entries: List[tuple[datetime, str, str]] = []
+    for project_id, scenes in user_store.items():
+        for scene_id, meta in scenes.items():
+            timestamp = meta.get("timestamp")
+            if isinstance(timestamp, datetime):
+                entries.append((timestamp, project_id, scene_id))
+    if len(entries) <= MAX_APPROVALS_PER_USER:
+        return
+    entries.sort(key=lambda item: item[0])
+    to_remove = len(entries) - MAX_APPROVALS_PER_USER
+    for i in range(to_remove):
+        _, project_id, scene_id = entries[i]
+        scenes = user_store.get(project_id)
+        if not scenes:
+            continue
+        scenes.pop(scene_id, None)
+        if not scenes:
+            user_store.pop(project_id, None)
+
+
+def _get_user_store(user_id: str) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    _cleanup_user_approvals(user_id)
+    return scene_approval_store.setdefault(user_id, {})
 
 
 @router.post("/generate-start", response_model=StoryContentResponse)
@@ -197,8 +246,8 @@ async def continue_story(
 
 
 class SceneApprovalRequest(BaseModel):
-    project_id: str
-    scene_id: str
+    project_id: str = Field(..., min_length=1)
+    scene_id: str = Field(..., min_length=1)
     approved: bool = True
     notes: Optional[str] = None
 
@@ -211,13 +260,20 @@ async def approve_script_scene(
     """Persist scene approval metadata for auditing."""
     try:
         user_id = require_authenticated_user(current_user)
-        approvals = scene_approval_store.setdefault(request.project_id, {})
-        approvals[request.scene_id] = {
+        if not request.project_id.strip() or not request.scene_id.strip():
+            raise HTTPException(status_code=400, detail="project_id and scene_id are required")
+
+        notes = request.notes.strip() if request.notes else None
+        user_store = _get_user_store(user_id)
+        project_store = user_store.setdefault(request.project_id, {})
+        timestamp = datetime.utcnow()
+        project_store[request.scene_id] = {
             "approved": request.approved,
-            "notes": request.notes,
+            "notes": notes,
             "user_id": user_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": timestamp,
         }
+        _enforce_capacity(user_id)
         logger.info(
             "[StoryWriter] Scene approval recorded user=%s project=%s scene=%s approved=%s",
             user_id,
@@ -230,6 +286,7 @@ async def approve_script_scene(
             "project_id": request.project_id,
             "scene_id": request.scene_id,
             "approved": request.approved,
+            "timestamp": timestamp.isoformat(),
         }
     except HTTPException:
         raise

@@ -14,7 +14,6 @@ import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
 import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard } from './components/ImageStudio';
 import { ProductMarketingDashboard } from './components/ProductMarketing';
-import { ProductPhotoshootStudio } from './components/ProductMarketing/ProductPhotoshootStudio';
 import PodcastDashboard from './components/PodcastMaker/PodcastDashboard';
 import PricingPage from './components/Pricing/PricingPage';
 import WixTestPage from './components/WixTestPage/WixTestPage';
@@ -463,7 +462,6 @@ const App: React.FC = () => {
                 <Route path="/image-studio/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
                 <Route path="/asset-library" element={<ProtectedRoute><AssetLibrary /></ProtectedRoute>} />
                 <Route path="/campaign-creator" element={<ProtectedRoute><ProductMarketingDashboard /></ProtectedRoute>} />
-                <Route path="/campaign-creator/photoshoot" element={<ProtectedRoute><ProductPhotoshootStudio /></ProtectedRoute>} />
                 <Route path="/product-marketing" element={<Navigate to="/campaign-creator" replace />} />
                 <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
