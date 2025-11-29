@@ -134,7 +134,7 @@ COPILOT_API_KEY=your_copilot_api_key_here
 
 ```bash
 # Initialize the database
-python -c "from services.database import initialize_database; initialize_database()"
+python -c "from services.database import init_database; init_database()"
 
 # Or run the initialization script
 python scripts/init_alpha_subscription_tiers.py
@@ -285,7 +285,7 @@ rm backend/alwrity.db  # Linux/macOS
 del backend\alwrity.db  # Windows
 
 # Reinitialize
-python -c "from services.database import initialize_database; initialize_database()"
+python -c "from services.database import init_database; init_database()"
 ```
 
 **Missing Dependencies**
