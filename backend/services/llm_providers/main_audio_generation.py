@@ -69,12 +69,20 @@ def generate_audio(
         RuntimeError: If subscription limits are exceeded or user_id is missing.
     """
     try:
-        logger.info("[audio_gen] Starting audio generation")
-        logger.debug(f"[audio_gen] Text length: {len(text)} characters, voice: {voice_id}")
+        # VALIDATION: Check inputs before any processing or API calls
+        if not text or not isinstance(text, str) or len(text.strip()) == 0:
+            raise ValueError("Text input is required and cannot be empty")
         
-        # SUBSCRIPTION CHECK - Required and strict enforcement
+        text = text.strip()  # Normalize whitespace
+        
+        if len(text) > 10000:
+            raise ValueError(f"Text is too long ({len(text)} characters). Maximum is 10,000 characters.")
+        
         if not user_id:
             raise RuntimeError("user_id is required for subscription checking. Please provide Clerk user ID.")
+        
+        logger.info("[audio_gen] Starting audio generation")
+        logger.debug(f"[audio_gen] Text length: {len(text)} characters, voice: {voice_id}")
         
         # Calculate cost based on character count (every character is 1 token)
         # Pricing: $0.05 per 1,000 characters
@@ -190,8 +198,9 @@ def generate_audio(
                     new_cost = current_cost_before + estimated_cost
                     
                     # Use direct SQL UPDATE for dynamic attributes
-                    from sqlalchemy import text
-                    update_query = text("""
+                    # Import sqlalchemy.text with alias to avoid shadowing the 'text' parameter
+                    from sqlalchemy import text as sql_text
+                    update_query = sql_text("""
                         UPDATE usage_summaries 
                         SET audio_calls = :new_calls,
                             audio_cost = :new_cost
@@ -210,6 +219,8 @@ def generate_audio(
                     summary.updated_at = datetime.utcnow()
                     
                     # Create usage log
+                    # Store the text parameter in a local variable before any imports to prevent shadowing
+                    text_param = text  # Capture function parameter before any potential shadowing
                     usage_log = APIUsageLog(
                         user_id=user_id,
                         provider=APIProvider.AUDIO,
@@ -224,7 +235,7 @@ def generate_audio(
                         cost_total=estimated_cost,
                         response_time=0.0,
                         status_code=200,
-                        request_size=len(text.encode("utf-8")),
+                        request_size=len(text_param.encode("utf-8")),  # Use captured parameter
                         response_size=len(audio_bytes),
                         billing_period=current_period,
                     )

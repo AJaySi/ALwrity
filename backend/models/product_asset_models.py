@@ -74,8 +74,9 @@ class ProductAsset(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Additional metadata
-    metadata = Column(JSON, nullable=True)  # Additional product-specific metadata
+    # Additional metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name conflict)
+    # Using 'product_metadata' as column name in DB to avoid conflict with SQLAlchemy's reserved 'metadata' attribute
+    product_metadata = Column('product_metadata', JSON, nullable=True)  # Additional product-specific metadata
     
     # Composite indexes
     __table_args__ = (

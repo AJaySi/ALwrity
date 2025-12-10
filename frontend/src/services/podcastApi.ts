@@ -23,6 +23,7 @@ import {
 } from "../components/PodcastMaker/types";
 import { checkPreflight, PreflightOperation } from "./billingService";
 import { TaskStatusResponse } from "./blogWriterApi";
+import { TaskStatus } from "./storyWriterApi";
 
 type WaitForTaskFn = (taskId: string) => Promise<TaskStatusResponse>;
 
@@ -44,7 +45,9 @@ const createId = (prefix: string) => {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 };
 
-const deriveSegments = (option?: StorySetupGenerationResponse["options"][0]): string[] => {
+type OptionLike = StorySetupGenerationResponse["options"][0] | { plot_elements?: string; premise?: string };
+
+const deriveSegments = (option?: OptionLike): string[] => {
   const segments: string[] = [];
   if (option?.plot_elements) {
     option.plot_elements
@@ -53,7 +56,7 @@ const deriveSegments = (option?: StorySetupGenerationResponse["options"][0]): st
       .filter(Boolean)
       .forEach((p) => segments.push(p));
   }
-  if (!segments.length && option?.premise) {
+  if (!segments.length && "premise" in (option || {}) && (option as any)?.premise) {
     segments.push("Intro", "Key Takeaways", "Examples", "CTA");
   }
   return segments.slice(0, 5);
@@ -65,19 +68,21 @@ const estimateCosts = ({
   chars,
   quality,
   avatars,
+  queryCount = 3,
 }: {
   minutes: number;
   scenes: number;
   chars: number;
   quality: string;
   avatars: number;
+  queryCount?: number;
 }): PodcastEstimate => {
   const secs = Math.max(60, minutes * 60);
   const ttsCost = (chars / 1000) * 0.05;
   const avatarCost = avatars * 0.15;
   const videoRate = quality === "hd" ? 0.06 : 0.03;
   const videoCost = secs * videoRate;
-  const researchCost = 0.5;
+  const researchCost = +(Math.max(1, queryCount) * 0.1).toFixed(2);
   const total = +(ttsCost + avatarCost + videoCost + researchCost).toFixed(2);
   return {
     ttsCost: +ttsCost.toFixed(2),
@@ -89,25 +94,35 @@ const estimateCosts = ({
 };
 
 const mapPersonaQueries = (persona: ResearchPersona | undefined, seed: string): Query[] => {
-  const keywords = persona?.suggested_keywords?.length ? persona.suggested_keywords : seed.split(/\s+/).filter(Boolean);
-  if (!keywords.length) {
-    return [
-      {
-        id: createId("q"),
-        query: seed || "ai marketing small business",
-        rationale: "Seed query derived from idea/topic",
-        needsRecentStats: true,
-      },
-    ];
+  const baseIdea = seed || "AI marketing for small businesses";
+  const personaKeywords = persona?.suggested_keywords?.filter(Boolean) || [];
+  const angles = persona?.research_angles ?? [];
+  const generated: Query[] = [];
+
+  const addQuery = (q: string, why: string, needsRecent = false) => {
+    if (!q.trim()) return;
+    generated.push({
+      id: createId("q"),
+      query: q.trim(),
+      rationale: why,
+      needsRecentStats: needsRecent,
+    });
+  };
+
+  if (personaKeywords.length) {
+    personaKeywords.slice(0, 4).forEach((k, idx) =>
+      addQuery(k, angles[idx % Math.max(1, angles.length)] || "Persona-aligned query", /202[45]|latest|trend/i.test(k))
+    );
   }
 
-  const angles = persona?.research_angles ?? [];
-  return keywords.slice(0, 6).map((keyword, idx) => ({
-    id: createId("q"),
-    query: `${keyword}`.trim(),
-    rationale: angles[idx % angles.length] || "High-impact persona angle",
-    needsRecentStats: /202[45]|latest|trend/i.test(keyword),
-  }));
+  if (!generated.length) {
+    addQuery(`How is ${baseIdea} evolving in 2024?`, "Trend + outcome focus", true);
+    addQuery(`Best practices for ${baseIdea}`, "Actionable guidance", false);
+    addQuery(`${baseIdea} case studies with ROI`, "Proof and outcomes", true);
+    addQuery(`${baseIdea} risks and objections`, "Address listener concerns", false);
+  }
+
+  return generated.slice(0, 6);
 };
 
 const mapSourcesToFacts = (sources: BlogResearchResponse["sources"]): Fact[] => {
@@ -191,20 +206,40 @@ const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StorySc
   return [];
 };
 
-const waitForTaskCompletion = async (taskId: string, poll: WaitForTaskFn): Promise<any> => {
+const waitForTaskCompletion = async (
+  taskId: string, 
+  poll: WaitForTaskFn,
+  onProgress?: (status: { status: string; progress?: number; message?: string }) => void
+): Promise<any> => {
   let attempts = 0;
   while (attempts < 120) {
     const status = await poll(taskId);
+    
+    // Report progress if callback provided
+    if (onProgress) {
+      // Extract latest progress message if available
+      const latestMessage = status.progress_messages && status.progress_messages.length > 0
+        ? status.progress_messages[status.progress_messages.length - 1].message
+        : undefined;
+      
+      onProgress({
+        status: status.status,
+        progress: undefined, // TaskStatusResponse doesn't have progress field
+        message: latestMessage,
+      });
+    }
+    
     if (status.status === "completed") {
       return status.result;
     }
     if (status.status === "failed") {
-      throw new Error(status.error || "Task failed");
+      const errorMsg = status.error || "Task failed";
+      throw new Error(errorMsg);
     }
     await sleep(2500);
     attempts += 1;
   }
-  throw new Error("Task polling timed out");
+  throw new Error("Task polling timed out after 5 minutes");
 };
 
 const ensurePreflight = async (operation: PreflightOperation) => {
@@ -219,27 +254,27 @@ const ensurePreflight = async (operation: PreflightOperation) => {
 export const podcastApi = {
   async createProject(payload: CreateProjectPayload): Promise<CreateProjectResult> {
     const storyIdea = payload.ideaOrUrl || "AI marketing for small businesses";
-    const setup = await storyWriterApi.generateStorySetup({ story_idea: storyIdea });
-    const primary = setup.options?.[0];
 
-    const suggestedOutlines = [
-      {
-        id: "primary",
-        title: primary?.premise?.slice(0, 60) || "Episode Outline",
-        segments: deriveSegments(primary),
-      },
-    ];
+    // Podcast-specific analysis (not story setup)
+    const analysisResp = await aiApiClient.post("/api/podcast/analyze", {
+      idea: storyIdea,
+      duration: payload.duration,
+      speakers: payload.speakers,
+    });
+
+    const outlines = (analysisResp.data?.suggested_outlines || []).map((o: any, idx: number) => ({
+      id: o.id || `outline-${idx + 1}`,
+      title: o.title || `Outline ${idx + 1}`,
+      segments: Array.isArray(o.segments) ? o.segments : deriveSegments({ plot_elements: o.segments }),
+    }));
 
     const analysis: PodcastAnalysis = {
-      audience: primary?.audience_age_group || "Growth-minded pros",
-      contentType: primary?.persona || "How-to podcast",
-      topKeywords: suggestedOutlines[0].segments.slice(0, 3),
-      suggestedOutlines,
+      audience: analysisResp.data?.audience || "Growth-minded pros",
+      contentType: analysisResp.data?.content_type || "Podcast interview",
+      topKeywords: analysisResp.data?.top_keywords || outlines[0]?.segments?.slice(0, 3) || [],
+      suggestedOutlines: outlines,
       suggestedKnobs: { ...DEFAULT_KNOBS, ...payload.knobs },
-      titleSuggestions: [
-        primary?.premise?.slice(0, 80),
-        `${primary?.persona || "AI Host"} on ${primary?.story_setting || "automation"}`,
-      ].filter(Boolean) as string[],
+      titleSuggestions: (analysisResp.data?.title_suggestions || []).filter(Boolean),
     };
 
     const researchConfig = await getResearchConfig().catch(() => null);
@@ -252,6 +287,7 @@ export const podcastApi = {
       chars: Math.max(1000, payload.duration * 900),
       quality: payload.knobs.bitrate || "standard",
       avatars: payload.speakers,
+      queryCount: queries.length || 3,
     });
 
     return {
@@ -267,6 +303,7 @@ export const podcastApi = {
     topic: string;
     approvedQueries: Query[];
     provider?: ResearchProvider;
+    onProgress?: (message: string) => void;
   }): Promise<{ research: Research; raw: BlogResearchResponse }> {
     const keywords = params.approvedQueries.map((q) => q.query).filter(Boolean);
     if (!keywords.length) {
@@ -291,7 +328,29 @@ export const podcastApi = {
     });
 
     const { task_id } = await blogWriterApi.startResearch(researchPayload);
-    const result = (await waitForTaskCompletion(task_id, blogWriterApi.pollResearchStatus)) as BlogResearchResponse;
+    let lastProgressMessage = "";
+    const result = (await waitForTaskCompletion(
+      task_id, 
+      blogWriterApi.pollResearchStatus,
+      (status) => {
+        // Extract latest progress message and notify caller
+        if (status.message && status.message !== lastProgressMessage) {
+          lastProgressMessage = status.message;
+          if (params.onProgress) {
+            params.onProgress(status.message);
+          }
+        } else if (status.status === "running" && !status.message) {
+          // Provide default status messages if none available
+          const defaultMessage = params.provider === "exa" 
+            ? "Deep research in progress..." 
+            : "Gathering research sources...";
+          if (params.onProgress && lastProgressMessage !== defaultMessage) {
+            lastProgressMessage = defaultMessage;
+            params.onProgress(defaultMessage);
+          }
+        }
+      }
+    )) as BlogResearchResponse;
     const mapped = mapResearchResponse(result);
     return { research: mapped, raw: result };
   },
@@ -311,28 +370,34 @@ export const podcastApi = {
       actual_provider_name: "gemini",
     });
 
-    const premise =
-      params.research?.keyword_analysis?.summary ||
-      params.research?.keyword_analysis?.key_insights?.join(" ") ||
-      params.idea;
+    const response = await aiApiClient.post("/api/podcast/script", {
+      idea: params.idea,
+      duration_minutes: params.durationMinutes,
+      speakers: params.speakers,
+      research: params.research,
+    });
 
-    const storyRequest: StoryGenerationRequest = {
-      persona: "AI Podcast Host",
-      story_setting: "Modern marketing studio",
-      character_input: "Host and guest conversation",
-      plot_elements: params.research?.suggested_angles?.join(", ") || params.idea,
-      writing_style: "Conversational",
-      story_tone: "Informative",
-      narrative_pov: "first-person",
-      audience_age_group: "Adults",
-      content_rating: "G",
-      ending_preference: "Call to action",
-      story_length: params.durationMinutes > 15 ? "Long" : "Medium",
-    };
-
-    const outlineResponse = await storyWriterApi.generateOutline(premise, storyRequest);
-    const storyScenes = ensureScenes(outlineResponse.outline);
-    const scriptScenes = storyScenes.map((scene) => storySceneToPodcastScene(scene, params.knobs, params.speakers));
+    const scenes = response.data?.scenes || [];
+    const scriptScenes: Scene[] = scenes.map((scene: any) => ({
+      id: scene.id || createId("scene"),
+      title: scene.title || "Scene",
+      duration: scene.duration || Math.max(20, params.knobs.scene_length_target || DEFAULT_KNOBS.scene_length_target),
+      lines:
+        Array.isArray(scene.lines) && scene.lines.length
+          ? scene.lines.map((l: any) => ({
+              id: createId("line"),
+              speaker: l.speaker || "Host",
+              text: l.text || "",
+            }))
+          : [
+              {
+                id: createId("line"),
+                speaker: "Host",
+                text: "Let's dive into today's topic.",
+              },
+            ],
+      approved: false,
+    }));
 
     return { scenes: scriptScenes };
   },
@@ -377,8 +442,8 @@ export const podcastApi = {
       actual_provider_name: "wavespeed",
     });
 
-    const response = await storyWriterApi.generateAIAudio({
-      scene_number: Number(params.scene.id.replace(/\D+/g, "")) || 0,
+    const response = await aiApiClient.post("/api/podcast/audio", {
+      scene_id: params.scene.id,
       scene_title: params.scene.title,
       text,
       voice_id: params.voiceId || "Wise_Woman",
@@ -386,18 +451,14 @@ export const podcastApi = {
       emotion: params.emotion || "neutral",
     });
 
-    if (!response.success) {
-      throw new Error(response.error || "Render failed");
-    }
-
     return {
-      audioUrl: response.audio_url,
-      audioFilename: response.audio_filename,
-      provider: response.provider,
-      model: response.model,
-      cost: response.cost,
-      voiceId: response.voice_id,
-      fileSize: response.file_size,
+      audioUrl: response.data.audio_url,
+      audioFilename: response.data.audio_filename,
+      provider: response.data.provider,
+      model: response.data.model,
+      cost: response.data.cost,
+      voiceId: response.data.voice_id,
+      fileSize: response.data.file_size,
     };
   },
 
@@ -408,6 +469,123 @@ export const podcastApi = {
       approved: true,
       notes: params.notes,
     });
+  },
+
+  // Project persistence endpoints
+  async saveProject(projectId: string, state: any): Promise<void> {
+    try {
+      await aiApiClient.put(`/api/podcast/projects/${projectId}`, state);
+    } catch (error) {
+      console.error("Failed to save project to database:", error);
+      // Don't throw - localStorage fallback is acceptable
+    }
+  },
+
+  async loadProject(projectId: string): Promise<any> {
+    const response = await aiApiClient.get(`/api/podcast/projects/${projectId}`);
+    return response.data;
+  },
+
+  async listProjects(params?: {
+    status?: string;
+    favorites_only?: boolean;
+    limit?: number;
+    offset?: number;
+    order_by?: "updated_at" | "created_at";
+  }): Promise<{ projects: any[]; total: number; limit: number; offset: number }> {
+    const response = await aiApiClient.get("/api/podcast/projects", { params });
+    return response.data;
+  },
+
+  async createProjectInDb(params: {
+    project_id: string;
+    idea: string;
+    duration: number;
+    speakers: number;
+    budget_cap: number;
+  }): Promise<any> {
+    const response = await aiApiClient.post("/api/podcast/projects", params);
+    return response.data;
+  },
+
+  async deleteProject(projectId: string): Promise<void> {
+    await aiApiClient.delete(`/api/podcast/projects/${projectId}`);
+  },
+
+  async toggleFavorite(projectId: string): Promise<any> {
+    const response = await aiApiClient.post(`/api/podcast/projects/${projectId}/favorite`);
+    return response.data;
+  },
+
+  async saveAudioToAssetLibrary(params: {
+    audioUrl: string;
+    filename: string;
+    title: string;
+    description?: string;
+    projectId: string;
+    sceneId?: string;
+    cost?: number;
+    provider?: string;
+    model?: string;
+    fileSize?: number;
+  }): Promise<{ assetId: number }> {
+    const response = await aiApiClient.post("/api/content-assets/", {
+      asset_type: "audio",
+      source_module: "podcast_maker",
+      filename: params.filename,
+      file_url: params.audioUrl,
+      title: params.title,
+      description: params.description || `Podcast episode audio: ${params.title}`,
+      tags: ["podcast", "audio", params.projectId],
+      asset_metadata: {
+        project_id: params.projectId,
+        scene_id: params.sceneId,
+        provider: params.provider,
+        model: params.model,
+      },
+      provider: params.provider,
+      model: params.model,
+      cost: params.cost || 0,
+      file_size: params.fileSize,
+      mime_type: "audio/mpeg",
+    });
+    return { assetId: response.data.id };
+  },
+
+  async generateVideo(params: {
+    projectId: string;
+    sceneId: string;
+    sceneTitle: string;
+    audioUrl: string;
+    avatarImageUrl?: string;
+    resolution?: string;
+    prompt?: string;
+  }): Promise<{ taskId: string; status: string; message: string }> {
+    const response = await aiApiClient.post("/api/podcast/render/video", {
+      project_id: params.projectId,
+      scene_id: params.sceneId,
+      scene_title: params.sceneTitle,
+      audio_url: params.audioUrl,
+      avatar_image_url: params.avatarImageUrl,
+      resolution: params.resolution || "720p",
+      prompt: params.prompt,
+    });
+    return response.data;
+  },
+
+  async pollTaskStatus(taskId: string): Promise<TaskStatus> {
+    const response = await aiApiClient.get(`/api/podcast/task/${taskId}/status`);
+    return response.data;
+  },
+
+  async cancelTask(taskId: string): Promise<void> {
+    // Note: Task cancellation may not be fully supported by backend yet
+    // This is a placeholder for future implementation
+    try {
+      await aiApiClient.post(`/api/story/task/${taskId}/cancel`);
+    } catch (error) {
+      console.warn("Task cancellation not supported:", error);
+    }
   },
 };
 

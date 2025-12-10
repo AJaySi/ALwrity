@@ -477,10 +477,12 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
                     variant="contained"
                     onClick={handleCreate}
                     disabled={
-                      isCreatingBlueprint ||
-                      isGeneratingProposals ||
-                      isValidatingPreflight ||
-                      (preflightResult && !preflightResult.can_proceed)
+                      Boolean(
+                        isCreatingBlueprint ||
+                        isGeneratingProposals ||
+                        isValidatingPreflight ||
+                        (preflightResult ? !preflightResult.can_proceed : false)
+                      )
                     }
                     startIcon={
                       isCreatingBlueprint || isGeneratingProposals ? (

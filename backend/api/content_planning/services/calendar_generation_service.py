@@ -26,6 +26,10 @@ from ..utils.error_handlers import ContentPlanningErrorHandler
 from ..utils.response_builders import ResponseBuilder
 from ..utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 
+# Import models for persistence
+from models.enhanced_calendar_models import CalendarGenerationSession
+from models.content_planning import CalendarEvent, ContentStrategy
+
 class CalendarGenerationService:
     """Service class for calendar generation operations."""
     
@@ -42,7 +46,7 @@ class CalendarGenerationService:
             logger.error(f"❌ Failed to initialize orchestrator: {e}")
             self.orchestrator = None
     
-    async def generate_comprehensive_calendar(self, user_id: int, strategy_id: Optional[int] = None, 
+    async def generate_comprehensive_calendar(self, user_id: str, strategy_id: Optional[int] = None, 
                                            calendar_type: str = "monthly", industry: Optional[str] = None, 
                                            business_size: str = "sme") -> Dict[str, Any]:
         """Generate a comprehensive AI-powered content calendar using the 12-step orchestrator."""
@@ -79,6 +83,10 @@ class CalendarGenerationService:
                 if progress and progress.get("status") == "completed":
                     calendar_data = progress.get("step_results", {}).get("step_12", {}).get("result", {})
                     processing_time = time.time() - start_time
+                    
+                    # Save to database
+                    await self._save_calendar_to_db(user_id, strategy_id, calendar_data, session_id)
+                    
                     logger.info(f"✅ Calendar generated successfully in {processing_time:.2f}s")
                     return calendar_data
                 elif progress and progress.get("status") == "failed":
@@ -96,7 +104,7 @@ class CalendarGenerationService:
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "generate_comprehensive_calendar")
     
-    async def optimize_content_for_platform(self, user_id: int, title: str, description: str, 
+    async def optimize_content_for_platform(self, user_id: str, title: str, description: str, 
                                          content_type: str, target_platform: str, event_id: Optional[int] = None) -> Dict[str, Any]:
         """Optimize content for specific platforms using the 12-step orchestrator."""
         try:
@@ -138,7 +146,7 @@ class CalendarGenerationService:
             logger.error(f"❌ Error optimizing content: {str(e)}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "optimize_content_for_platform")
     
-    async def predict_content_performance(self, user_id: int, content_type: str, platform: str, 
+    async def predict_content_performance(self, user_id: str, content_type: str, platform: str, 
                                        content_data: Dict[str, Any], strategy_id: Optional[int] = None) -> Dict[str, Any]:
         """Predict content performance using the 12-step orchestrator."""
         try:
@@ -172,7 +180,7 @@ class CalendarGenerationService:
             logger.error(f"❌ Error predicting content performance: {str(e)}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "predict_content_performance")
     
-    async def repurpose_content_across_platforms(self, user_id: int, original_content: Dict[str, Any], 
+    async def repurpose_content_across_platforms(self, user_id: str, original_content: Dict[str, Any], 
                                                target_platforms: List[str], strategy_id: Optional[int] = None) -> Dict[str, Any]:
         """Repurpose content across different platforms using the 12-step orchestrator."""
         try:
@@ -217,7 +225,7 @@ class CalendarGenerationService:
             logger.error(f"❌ Error repurposing content: {str(e)}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "repurpose_content_across_platforms")
     
-    async def get_trending_topics(self, user_id: int, industry: str, limit: int = 10) -> Dict[str, Any]:
+    async def get_trending_topics(self, user_id: str, industry: str, limit: int = 10) -> Dict[str, Any]:
         """Get trending topics relevant to the user's industry and content gaps using the 12-step orchestrator."""
         try:
             logger.info(f"📈 Getting trending topics for user {user_id} in {industry} using orchestrator")
@@ -257,7 +265,7 @@ class CalendarGenerationService:
             logger.error(f"❌ Error getting trending topics: {str(e)}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "get_trending_topics")
     
-    async def get_comprehensive_user_data(self, user_id: int) -> Dict[str, Any]:
+    async def get_comprehensive_user_data(self, user_id: str) -> Dict[str, Any]:
         """Get comprehensive user data for calendar generation using the 12-step orchestrator."""
         try:
             logger.info(f"Getting comprehensive user data for user_id: {user_id} using orchestrator")
@@ -398,7 +406,7 @@ class CalendarGenerationService:
             logger.error(f"❌ Failed to initialize orchestrator session: {e}")
             return False
     
-    def _cleanup_old_sessions(self, user_id: int) -> None:
+    def _cleanup_old_sessions(self, user_id: str) -> None:
         """Clean up old sessions for a user."""
         try:
             current_time = datetime.now()
@@ -426,7 +434,7 @@ class CalendarGenerationService:
         except Exception as e:
             logger.error(f"❌ Error cleaning up old sessions: {e}")
     
-    def _get_active_session_for_user(self, user_id: int) -> Optional[str]:
+    def _get_active_session_for_user(self, user_id: str) -> Optional[str]:
         """Get active session for a user."""
         try:
             for session_id, session_data in self.orchestrator_sessions.items():
@@ -540,3 +548,67 @@ class CalendarGenerationService:
                 
         except Exception as e:
             logger.error(f"❌ Error updating session progress: {e}")
+
+    async def _save_calendar_to_db(self, user_id: str, strategy_id: Optional[int], calendar_data: Dict[str, Any], session_id: str) -> None:
+        """Save generated calendar to database."""
+        try:
+            if not self.db_session:
+                logger.warning("⚠️ No database session available, skipping persistence")
+                return
+
+            # Save session record
+            session_record = CalendarGenerationSession(
+                user_id=user_id,
+                strategy_id=strategy_id,
+                session_type=calendar_data.get("calendar_type", "monthly"),
+                generation_params={"session_id": session_id},
+                generated_calendar=calendar_data,
+                ai_insights=calendar_data.get("ai_insights"),
+                performance_predictions=calendar_data.get("performance_predictions"),
+                content_themes=calendar_data.get("weekly_themes"),
+                generation_status="completed",
+                ai_confidence=calendar_data.get("ai_confidence"),
+                processing_time=calendar_data.get("processing_time")
+            )
+            self.db_session.add(session_record)
+            self.db_session.flush() # Get ID
+
+            # Save calendar events
+            # Extract daily schedule from calendar data
+            daily_schedule = calendar_data.get("daily_schedule", [])
+            
+            # If daily_schedule is not directly available, try to extract from step results
+            if not daily_schedule and "step_results" in calendar_data:
+                 daily_schedule = calendar_data.get("step_results", {}).get("step_08", {}).get("daily_schedule", [])
+
+            for day in daily_schedule:
+                content_items = day.get("content_items", [])
+                for item in content_items:
+                    # Parse date
+                    date_str = day.get("date")
+                    scheduled_date = datetime.utcnow()
+                    if date_str:
+                        try:
+                            scheduled_date = datetime.fromisoformat(date_str)
+                        except:
+                            pass
+
+                    event = CalendarEvent(
+                        strategy_id=strategy_id if strategy_id else 0, # Fallback if no strategy
+                        title=item.get("title", "Untitled Event"),
+                        description=item.get("description"),
+                        content_type=item.get("type", "social_post"),
+                        platform=item.get("platform", "generic"),
+                        scheduled_date=scheduled_date,
+                        status="draft",
+                        ai_recommendations=item
+                    )
+                    self.db_session.add(event)
+
+            self.db_session.commit()
+            logger.info(f"✅ Calendar saved to database for user {user_id}")
+
+        except Exception as e:
+            self.db_session.rollback()
+            logger.error(f"❌ Error saving calendar to database: {str(e)}")
+            # Don't raise, just log error so we don't fail the request if persistence fails

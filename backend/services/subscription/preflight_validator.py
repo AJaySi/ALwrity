@@ -582,6 +582,188 @@ def validate_scene_animation_operation(
             )
 
         logger.info(f"[Pre-flight Validator] ✅ Scene animation validated for user {user_id}")
+        # Validation passed - no return needed (function raises HTTPException if validation fails)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Pre-flight Validator] Error validating scene animation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': f"Failed to validate scene animation: {str(e)}",
+                'message': f"Failed to validate scene animation: {str(e)}"
+            }
+        )
+
+
+def validate_image_control_operations(
+    pricing_service: PricingService,
+    user_id: str,
+    num_images: int = 1
+) -> None:
+    """
+    Validate image control operations (sketch-to-image, structure control, style transfer) before making API calls.
+    
+    Control operations use Stability AI for image generation with control inputs, so they use
+    the same validation as image generation operations.
+    
+    Args:
+        pricing_service: PricingService instance
+        user_id: User ID for subscription checking
+        num_images: Number of images to generate (for multiple variations)
+        
+    Returns:
+        None - raises HTTPException with 429 status if validation fails
+    """
+    try:
+        # Control operations use Stability AI, same as image generation
+        operations_to_validate = [
+            {
+                'provider': APIProvider.STABILITY,
+                'tokens_requested': 0,
+                'actual_provider_name': 'stability',
+                'operation_type': 'image_generation'  # Control ops use image generation limits
+            }
+            for _ in range(num_images)
+        ]
+        
+        logger.info(f"[Pre-flight Validator] 🚀 Validating {num_images} image control operation(s) for user {user_id}")
+        
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate
+        )
+        
+        if not can_proceed:
+            logger.error(f"[Pre-flight Validator] Image control blocked for user {user_id}: {message}")
+            
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', 'stability') if usage_info else 'stability'
+            
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details
+                }
+            )
+        
+        logger.info(f"[Pre-flight Validator] ✅ Image control validated for user {user_id}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Pre-flight Validator] Error validating image control: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': f"Failed to validate image control: {str(e)}",
+                'message': f"Failed to validate image control: {str(e)}"
+            }
+        )
+
+
+def validate_video_generation_operations(
+    pricing_service: PricingService,
+    user_id: str
+) -> None:
+    """
+    Validate video generation operation before making API calls.
+    
+    Args:
+        pricing_service: PricingService instance
+        user_id: User ID for subscription checking
+        
+    Returns:
+        None - raises HTTPException with 429 status if validation fails
+    """
+    try:
+        operations_to_validate = [
+            {
+                'provider': APIProvider.VIDEO,
+                'tokens_requested': 0,
+                'actual_provider_name': 'video',
+                'operation_type': 'video_generation'
+            }
+        ]
+        
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate
+        )
+        
+        if not can_proceed:
+            logger.error(f"[Pre-flight Validator] Video generation blocked for user {user_id}: {message}")
+            
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', 'video') if usage_info else 'video'
+            
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details
+                }
+            )
+        
+        logger.info(f"[Pre-flight Validator] ✅ Video generation validated for user {user_id}")
+        # Validation passed - no return needed (function raises HTTPException if validation fails)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Pre-flight Validator] Error validating video generation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': f"Failed to validate video generation: {str(e)}",
+                'message': f"Failed to validate video generation: {str(e)}"
+            }
+        )
+
+
+def validate_scene_animation_operation(
+    pricing_service: PricingService,
+    user_id: str,
+) -> None:
+    """
+    Validate the per-scene animation workflow before API calls.
+    """
+    try:
+        operations_to_validate = [
+            {
+                'provider': APIProvider.VIDEO,
+                'tokens_requested': 0,
+                'actual_provider_name': 'wavespeed',
+                'operation_type': 'scene_animation',
+            }
+        ]
+
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate,
+        )
+
+        if not can_proceed:
+            logger.error(f"[Pre-flight Validator] Scene animation blocked for user {user_id}: {message}")
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', 'video') if usage_info else 'video'
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details,
+                }
+            )
+
+        logger.info(f"[Pre-flight Validator] ✅ Scene animation validated for user {user_id}")
 
     except HTTPException:
         raise
@@ -593,4 +775,79 @@ def validate_scene_animation_operation(
                 'error': f"Failed to validate scene animation: {str(e)}",
                 'message': f"Failed to validate scene animation: {str(e)}",
             },
+        )
+
+
+def validate_calendar_generation_operations(
+    pricing_service: PricingService,
+    user_id: str,
+    gpt_provider: str = "google"
+) -> None:
+    """
+    Validate calendar generation operations before making API calls.
+    
+    Args:
+        pricing_service: PricingService instance
+        user_id: User ID for subscription checking
+        gpt_provider: GPT provider from env var (defaults to "google")
+        
+    Returns:
+        None - raises HTTPException with 429 status if validation fails
+    """
+    try:
+        # Determine actual provider for LLM calls based on GPT_PROVIDER env var
+        gpt_provider_lower = gpt_provider.lower()
+        if gpt_provider_lower == "huggingface":
+            llm_provider_enum = APIProvider.MISTRAL
+            llm_provider_name = "huggingface"
+        else:
+            llm_provider_enum = APIProvider.GEMINI
+            llm_provider_name = "gemini"
+            
+        # Estimate tokens for 12-step process
+        # This is a heavy operation involving multiple steps and analysis
+        operations_to_validate = [
+            {
+                'provider': llm_provider_enum,
+                'tokens_requested': 20000, # Conservative estimate for full calendar generation
+                'actual_provider_name': llm_provider_name,
+                'operation_type': 'calendar_generation'
+            }
+        ]
+        
+        logger.info(f"[Pre-flight Validator] 🚀 Validating Calendar Generation for user {user_id}")
+        
+        can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
+            user_id=user_id,
+            operations=operations_to_validate
+        )
+        
+        if not can_proceed:
+            usage_info = error_details.get('usage_info', {}) if error_details else {}
+            provider = usage_info.get('provider', llm_provider_name) if usage_info else llm_provider_name
+            
+            logger.warning(f"[Pre-flight Validator] Calendar generation blocked for user {user_id}: {message}")
+            
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    'error': message,
+                    'message': message,
+                    'provider': provider,
+                    'usage_info': usage_info if usage_info else error_details
+                }
+            )
+            
+        logger.info(f"[Pre-flight Validator] ✅ Calendar Generation validated for user {user_id}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Pre-flight Validator] Error validating calendar generation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': f"Failed to validate calendar generation: {str(e)}",
+                'message': f"Failed to validate calendar generation: {str(e)}"
+            }
         )

@@ -269,9 +269,14 @@ const GenerateChip: React.FC<{
 
   const IconComponent = chip.icon;
 
+  const navigate = useNavigate();
+  
   const handleClick = () => {
     if (chip.label === 'Today' && onTodayClick) {
       onTodayClick();
+    } else if (chip.label === 'Video') {
+      // Navigate to YouTube Creator
+      navigate('/youtube-creator');
     }
   };
 
@@ -446,6 +451,8 @@ const GeneratePillarChips: React.FC<{
   index: number;
   isHovered?: boolean;
 }> = ({ index, isHovered = false }) => {
+  const navigate = useNavigate();
+  
   // Generate pillar Today tasks
   const generateTodayTasks: TodayTask[] = [
     {
@@ -461,7 +468,7 @@ const GeneratePillarChips: React.FC<{
       icon: FacebookIcon,
       color: '#1877F2',
       enabled: true,
-      action: () => console.log('Navigate to Facebook writer')
+      action: () => navigate('/facebook-writer')
     },
     {
       id: 'blog-post',
@@ -491,7 +498,22 @@ const GeneratePillarChips: React.FC<{
       icon: LinkedInIcon,
       color: '#0077B5',
       enabled: true,
-      action: () => console.log('Navigate to LinkedIn writer')
+      action: () => navigate('/linkedin-writer')
+    },
+    {
+      id: 'youtube-video',
+      pillarId: 'generate',
+      title: 'Create YouTube Video with AI',
+      description: 'Generate AI-powered YouTube videos from your ideas',
+      status: 'pending' as const,
+      priority: 'high' as const,
+      estimatedTime: 25,
+      actionType: 'navigate' as const,
+      actionUrl: '/youtube-creator',
+      icon: VideoIcon,
+      color: '#E91E63',
+      enabled: true,
+      action: () => navigate('/youtube-creator')
     }
   ];
 
@@ -546,6 +568,16 @@ const GeneratePillarChips: React.FC<{
         delay={index * 5}
       />
       
+      {/* Video Chip - Always Visible (Primary Action) */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+        style={{ marginTop: '8px' }}
+      >
+        <GenerateChip chip={generateChips.video} delay={index * 5 + 1} />
+      </motion.div>
+      
       {/* More Options Indicator */}
       {!isHovered && (
         <motion.div
@@ -590,13 +622,6 @@ const GeneratePillarChips: React.FC<{
                 transition={{ duration: 0.3, delay: 0.3 }}
               >
                 <GenerateChip chip={generateChips.audio} delay={index * 5 + 3} />
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: 0.4 }}
-              >
-                <GenerateChip chip={generateChips.video} delay={index * 5 + 4} />
               </motion.div>
             </Box>
           </motion.div>

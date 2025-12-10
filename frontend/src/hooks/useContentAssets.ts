@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 
 export interface ContentAsset {
@@ -49,40 +49,100 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:800
 export const useContentAssets = (filters: AssetFilters = {}) => {
   const { getToken } = useAuth();
   const [assets, setAssets] = useState<ContentAsset[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const isFetchingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Memoize filters to create stable reference - only changes when actual values change
+  const stableFilters = useMemo(() => {
+    return {
+      asset_type: filters.asset_type,
+      source_module: filters.source_module,
+      search: filters.search,
+      tags: filters.tags,
+      favorites_only: filters.favorites_only,
+      limit: filters.limit,
+      offset: filters.offset,
+    };
+  }, [
+    filters.asset_type,
+    filters.source_module,
+    filters.search,
+    filters.tags?.join(','),
+    filters.favorites_only,
+    filters.limit,
+    filters.offset,
+  ]);
+
+  // Create stable filter key for comparison
+  const filterKey = useMemo(() => {
+    return JSON.stringify(stableFilters);
+  }, [stableFilters]);
+
+  // Store latest filters in ref for use in fetch function
+  const filtersRef = useRef(stableFilters);
+  useEffect(() => {
+    filtersRef.current = stableFilters;
+  }, [stableFilters]);
+
+  // Fetch function - exposed for manual retry, not called automatically on errors
   const fetchAssets = useCallback(async () => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    // Cancel any pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
+      isFetchingRef.current = true;
       setLoading(true);
       setError(null);
 
       const token = await getToken();
       if (!token) {
-        throw new Error('Not authenticated');
+        setLoading(false);
+        isFetchingRef.current = false;
+        return;
       }
 
+      // Use ref to get latest filters
+      const currentFilters = filtersRef.current;
       const params = new URLSearchParams();
-      if (filters.asset_type) params.append('asset_type', filters.asset_type);
-      if (filters.source_module) params.append('source_module', filters.source_module);
-      if (filters.search) params.append('search', filters.search);
-      if (filters.tags && filters.tags.length > 0) params.append('tags', filters.tags.join(','));
-      if (filters.favorites_only) params.append('favorites_only', 'true');
-      params.append('limit', String(filters.limit || 100));
-      params.append('offset', String(filters.offset || 0));
-
-      // Add cache busting for fresh data
-      params.append('_t', String(Date.now()));
+      if (currentFilters.asset_type) params.append('asset_type', currentFilters.asset_type);
+      if (currentFilters.source_module) params.append('source_module', currentFilters.source_module);
+      if (currentFilters.search) params.append('search', currentFilters.search);
+      if (currentFilters.tags && currentFilters.tags.length > 0) params.append('tags', currentFilters.tags.join(','));
+      if (currentFilters.favorites_only) params.append('favorites_only', 'true');
+      params.append('limit', String(currentFilters.limit || 100));
+      params.append('offset', String(currentFilters.offset || 0));
 
       const response = await fetch(`${API_BASE_URL}/api/content-assets/?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          setError('Rate limit exceeded. Please try again later.');
+          setAssets([]);
+          setTotal(0);
+          setLoading(false);
+          isFetchingRef.current = false;
+          return;
+        }
         throw new Error(`Failed to fetch assets: ${response.statusText}`);
       }
 
@@ -90,16 +150,34 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
       setAssets(data.assets);
       setTotal(data.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch assets');
+      // Don't set error for aborted requests
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        setError('Network error. Please check your connection.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch assets');
+      }
       setAssets([]);
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [getToken, filters]);
+  }, [getToken]); // Only depend on getToken, use ref for filters
 
+  // Fetch on mount and when filters change - but only once per filter change
+  // NO automatic retry on errors - user must call refetch() manually
   useEffect(() => {
     fetchAssets();
-  }, [fetchAssets]);
+    
+    // Cleanup: abort on unmount or filter change
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [filterKey, fetchAssets]); // Include fetchAssets but it's stable due to ref usage
 
   const toggleFavorite = useCallback(async (assetId: number) => {
     try {

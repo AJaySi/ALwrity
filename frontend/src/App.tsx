@@ -12,6 +12,7 @@ import FacebookWriter from './components/FacebookWriter/FacebookWriter';
 import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
 import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
+import YouTubeCreator from './components/YouTubeCreator/YouTubeCreator';
 import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard } from './components/ImageStudio';
 import { ProductMarketingDashboard } from './components/ProductMarketing';
 import PodcastDashboard from './components/PodcastMaker/PodcastDashboard';
@@ -453,6 +454,7 @@ const App: React.FC = () => {
                 <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                 <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
                 <Route path="/story-writer" element={<ProtectedRoute><StoryWriter /></ProtectedRoute>} />
+                <Route path="/youtube-creator" element={<ProtectedRoute><YouTubeCreator /></ProtectedRoute>} />
                 <Route path="/podcast-maker" element={<ProtectedRoute><PodcastDashboard /></ProtectedRoute>} />
                 <Route path="/image-studio" element={<ProtectedRoute><ImageStudioDashboard /></ProtectedRoute>} />
                 <Route path="/image-generator" element={<ProtectedRoute><CreateStudio /></ProtectedRoute>} />

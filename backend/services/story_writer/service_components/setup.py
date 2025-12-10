@@ -8,6 +8,8 @@ from typing import Any, Dict, List
 from fastapi import HTTPException
 from loguru import logger
 
+from services.llm_providers.main_text_generation import llm_text_gen
+
 from .base import StoryServiceBase
 
 

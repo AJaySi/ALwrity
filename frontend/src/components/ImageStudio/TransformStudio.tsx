@@ -38,6 +38,7 @@ import { motion, type Variants, type Easing } from 'framer-motion';
 import { useTransformStudio } from '../../hooks/useTransformStudio';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { OperationButton } from '../shared/OperationButton';
+import { PreflightOperation } from '../../services/billingService';
 
 const MotionPaper = motion(Paper);
 const MotionCard = motion(Card);
@@ -145,6 +146,19 @@ export const TransformStudio: React.FC = () => {
   const canGenerateTalkingAvatar = useMemo(() => {
     return imageBase64 && audioBase64;
   }, [imageBase64, audioBase64]);
+
+  // Define preflight operations for cost estimation
+  const imageToVideoOperation: PreflightOperation = useMemo(() => ({
+    provider: 'wavespeed',
+    model: 'alibaba/wan-2.5/image-to-video',
+    operation_type: 'image-to-video',
+  }), []);
+
+  const talkingAvatarOperation: PreflightOperation = useMemo(() => ({
+    provider: 'wavespeed',
+    model: 'wavespeed-ai/infinitetalk',
+    operation_type: 'talking-avatar',
+  }), []);
 
   const handleEstimateCost = useCallback(async () => {
     if (tabValue === 0) {
@@ -510,13 +524,13 @@ export const TransformStudio: React.FC = () => {
                         Estimate Cost
                       </Button>
                       <OperationButton
+                        operation={imageToVideoOperation}
+                        label="Generate Video"
                         onClick={handleGenerate}
                         disabled={!canGenerateImageToVideo || isGenerating}
                         loading={isGenerating}
                         fullWidth
-                      >
-                        Generate Video
-                      </OperationButton>
+                      />
                     </Stack>
                   </Stack>
                 </MotionCard>
@@ -583,7 +597,6 @@ export const TransformStudio: React.FC = () => {
                           startIcon={<Upload />}
                           fullWidth
                           sx={{ py: 2 }}
-                          required
                         >
                           {audioBase64 ? 'Change Audio' : 'Upload Audio (Required)'}
                         </Button>
@@ -709,13 +722,13 @@ export const TransformStudio: React.FC = () => {
                         Estimate Cost
                       </Button>
                       <OperationButton
+                        operation={talkingAvatarOperation}
+                        label="Generate Avatar"
                         onClick={handleGenerate}
                         disabled={!canGenerateTalkingAvatar || isGenerating}
                         loading={isGenerating}
                         fullWidth
-                      >
-                        Generate Avatar
-                      </OperationButton>
+                      />
                     </Stack>
                   </Stack>
                 </MotionCard>

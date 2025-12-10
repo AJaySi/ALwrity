@@ -76,10 +76,12 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
   buttonProps = {},
 }) => {
   const preflightOptions: UsePreflightCheckOptions = {
-    operation,
-    enabled: checkOnHover || checkOnMount,
-    debounceMs: 300,
-    cacheTtl: 5000,
+    onBlocked: (response) => {
+      // Handle blocked response if needed
+    },
+    onAllowed: (response) => {
+      // Handle allowed response if needed
+    },
   };
 
   const {
@@ -88,20 +90,19 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
     limitInfo,
     loading: preflightLoading,
     error: preflightError,
-    checkOnHover: triggerCheckOnHover,
-    checkNow: triggerCheckNow,
+    check: triggerCheck,
   } = usePreflightCheck(preflightOptions);
 
   // Check on mount if requested
   React.useEffect(() => {
     if (checkOnMount) {
-      triggerCheckNow();
+      triggerCheck(operation);
     }
-  }, [checkOnMount, triggerCheckNow]);
+  }, [checkOnMount, triggerCheck, operation]);
 
   // Notify parent of pre-flight result changes
   React.useEffect(() => {
-    if (onPreflightResult) {
+    if (onPreflightResult && canProceed !== null) {
       onPreflightResult(canProceed);
     }
   }, [canProceed, onPreflightResult]);
@@ -129,7 +130,7 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
 
   // Determine if button should be disabled
   const isDisabled = useMemo(() => {
-    return externalDisabled || externalLoading || preflightLoading || !canProceed;
+    return externalDisabled || externalLoading || preflightLoading || (canProceed !== null && !canProceed);
   }, [externalDisabled, externalLoading, preflightLoading, canProceed]);
 
   // Build tooltip content
@@ -155,7 +156,7 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
       content.push(
         <Box key="limits" sx={{ mb: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-            {canProceed ? '✅ Operation Allowed' : '❌ Operation Blocked'}
+            {(canProceed === null || canProceed) ? '✅ Operation Allowed' : '❌ Operation Blocked'}
           </Typography>
           {isUnlimited ? (
             <Typography variant="caption" sx={{ display: 'block' }}>
@@ -189,20 +190,20 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
   // Handle hover
   const handleMouseEnter = () => {
     if (checkOnHover) {
-      triggerCheckOnHover();
+      triggerCheck(operation);
     }
   };
 
   // Handle click
   const handleClick = () => {
-    if (!isDisabled && canProceed) {
+    if (!isDisabled && (canProceed === null || canProceed)) {
       onClick();
     }
   };
 
   // Determine button color based on state
   const buttonColor = useMemo(() => {
-    if (!canProceed) {
+    if (canProceed !== null && !canProceed) {
       return 'error';
     }
     return color;
@@ -219,7 +220,7 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
     if (showLoading && !externalLoading) {
       return 'Checking...';
     }
-    if (!canProceed && preflightError) {
+    if (canProceed !== null && !canProceed && preflightError) {
       return preflightError;
     }
     return buttonLabel;
@@ -234,7 +235,7 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
       startIcon={
         showLoading ? (
           <CircularProgress size={16} color="inherit" />
-        ) : !canProceed ? (
+        ) : (canProceed !== null && !canProceed) ? (
           <WarningIcon fontSize="small" />
         ) : (
           startIcon

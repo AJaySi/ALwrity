@@ -1,0 +1,139 @@
+"""
+Podcast Service
+
+Service layer for managing podcast project persistence.
+"""
+
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, and_, or_
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+import uuid
+
+from models.podcast_models import PodcastProject
+
+
+class PodcastService:
+    """Service for managing podcast projects."""
+    
+    def __init__(self, db: Session):
+        self.db = db
+    
+    def create_project(
+        self,
+        user_id: str,
+        project_id: str,
+        idea: str,
+        duration: int,
+        speakers: int,
+        budget_cap: float,
+        **kwargs
+    ) -> PodcastProject:
+        """Create a new podcast project."""
+        project = PodcastProject(
+            project_id=project_id,
+            user_id=user_id,
+            idea=idea,
+            duration=duration,
+            speakers=speakers,
+            budget_cap=budget_cap,
+            status="draft",
+            current_step="create",
+            **kwargs
+        )
+        self.db.add(project)
+        self.db.commit()
+        self.db.refresh(project)
+        return project
+    
+    def get_project(self, user_id: str, project_id: str) -> Optional[PodcastProject]:
+        """Get a project by ID, ensuring user ownership."""
+        return self.db.query(PodcastProject).filter(
+            and_(
+                PodcastProject.project_id == project_id,
+                PodcastProject.user_id == user_id
+            )
+        ).first()
+    
+    def update_project(
+        self,
+        user_id: str,
+        project_id: str,
+        **updates
+    ) -> Optional[PodcastProject]:
+        """Update project fields."""
+        project = self.get_project(user_id, project_id)
+        if not project:
+            return None
+        
+        # Update fields
+        for key, value in updates.items():
+            if hasattr(project, key):
+                setattr(project, key, value)
+        
+        project.updated_at = datetime.utcnow()
+        self.db.commit()
+        self.db.refresh(project)
+        return project
+    
+    def list_projects(
+        self,
+        user_id: str,
+        status: Optional[str] = None,
+        favorites_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+        order_by: str = "updated_at"  # "updated_at" or "created_at"
+    ) -> tuple[List[PodcastProject], int]:
+        """List user's projects with optional filtering."""
+        query = self.db.query(PodcastProject).filter(
+            PodcastProject.user_id == user_id
+        )
+        
+        # Apply filters
+        if status:
+            query = query.filter(PodcastProject.status == status)
+        
+        if favorites_only:
+            query = query.filter(PodcastProject.is_favorite == True)
+        
+        # Get total count before pagination
+        total = query.count()
+        
+        # Apply ordering
+        if order_by == "created_at":
+            query = query.order_by(desc(PodcastProject.created_at))
+        else:
+            query = query.order_by(desc(PodcastProject.updated_at))
+        
+        # Apply pagination
+        projects = query.offset(offset).limit(limit).all()
+        
+        return projects, total
+    
+    def delete_project(self, user_id: str, project_id: str) -> bool:
+        """Delete a project."""
+        project = self.get_project(user_id, project_id)
+        if not project:
+            return False
+        
+        self.db.delete(project)
+        self.db.commit()
+        return True
+    
+    def toggle_favorite(self, user_id: str, project_id: str) -> Optional[PodcastProject]:
+        """Toggle favorite status of a project."""
+        project = self.get_project(user_id, project_id)
+        if not project:
+            return None
+        
+        project.is_favorite = not project.is_favorite
+        project.updated_at = datetime.utcnow()
+        self.db.commit()
+        self.db.refresh(project)
+        return project
+    
+    def update_status(self, user_id: str, project_id: str, status: str) -> Optional[PodcastProject]:
+        """Update project status."""
+        return self.update_project(user_id, project_id, status=status)
+

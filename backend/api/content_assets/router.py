@@ -3,7 +3,7 @@ Content Assets API Router
 API endpoints for managing unified content assets across all modules.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
@@ -116,6 +116,79 @@ async def get_assets(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching assets: {str(e)}")
+
+
+class AssetCreateRequest(BaseModel):
+    """Request model for creating a new asset."""
+    asset_type: str = Field(..., description="Asset type: text, image, video, or audio")
+    source_module: str = Field(..., description="Source module that generated the asset")
+    filename: str = Field(..., description="Original filename")
+    file_url: str = Field(..., description="Public URL to access the asset")
+    file_path: Optional[str] = Field(None, description="Server file path (optional)")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    mime_type: Optional[str] = Field(None, description="MIME type")
+    title: Optional[str] = Field(None, description="Asset title")
+    description: Optional[str] = Field(None, description="Asset description")
+    prompt: Optional[str] = Field(None, description="Generation prompt")
+    tags: Optional[List[str]] = Field(default_factory=list, description="List of tags")
+    asset_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+    provider: Optional[str] = Field(None, description="AI provider used")
+    model: Optional[str] = Field(None, description="Model used")
+    cost: Optional[float] = Field(0.0, description="Generation cost")
+    generation_time: Optional[float] = Field(None, description="Generation time in seconds")
+
+
+@router.post("/", response_model=AssetResponse)
+async def create_asset(
+    asset_data: AssetCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Create a new content asset."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        # Validate asset type
+        try:
+            asset_type_enum = AssetType(asset_data.asset_type.lower())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid asset type: {asset_data.asset_type}")
+        
+        # Validate source module
+        try:
+            source_module_enum = AssetSource(asset_data.source_module.lower())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid source module: {asset_data.source_module}")
+        
+        service = ContentAssetService(db)
+        asset = service.create_asset(
+            user_id=user_id,
+            asset_type=asset_type_enum,
+            source_module=source_module_enum,
+            filename=asset_data.filename,
+            file_url=asset_data.file_url,
+            file_path=asset_data.file_path,
+            file_size=asset_data.file_size,
+            mime_type=asset_data.mime_type,
+            title=asset_data.title,
+            description=asset_data.description,
+            prompt=asset_data.prompt,
+            tags=asset_data.tags or [],
+            asset_metadata=asset_data.asset_metadata or {},
+            provider=asset_data.provider,
+            model=asset_data.model,
+            cost=asset_data.cost,
+            generation_time=asset_data.generation_time,
+        )
+        
+        return AssetResponse.model_validate(asset)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating asset: {str(e)}")
 
 
 @router.post("/{asset_id}/favorite", response_model=Dict[str, Any])

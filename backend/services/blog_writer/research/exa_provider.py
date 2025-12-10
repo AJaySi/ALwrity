@@ -29,17 +29,15 @@ class ExaResearchProvider(BaseProvider):
         # Determine category: use exa_category if set, otherwise map from source_types
         category = config.exa_category if config.exa_category else self._map_source_type_to_category(config.source_types)
         
-        # Build search kwargs
+        # Build search kwargs - use correct Exa API format
         search_kwargs = {
             'type': config.exa_search_type or "auto",
             'num_results': min(config.max_sources, 25),
-            'contents': {
-                'text': {'max_characters': 1000},
-                'summary': {'query': f"Key insights about {topic}"},
-                'highlights': {
-                    'num_sentences': 2,
-                    'highlights_per_url': 3
-                }
+            'text': {'max_characters': 1000},
+            'summary': {'query': f"Key insights about {topic}"},
+            'highlights': {
+                'num_sentences': 2,
+                'highlights_per_url': 3
             }
         }
         
@@ -53,8 +51,39 @@ class ExaResearchProvider(BaseProvider):
         
         logger.info(f"[Exa Research] Executing search: {query}")
         
-        # Execute Exa search
-        results = self.exa.search_and_contents(query, **search_kwargs)
+        # Execute Exa search - pass contents parameters directly, not nested
+        try:
+            results = self.exa.search_and_contents(
+                query,
+                text={'max_characters': 1000},
+                summary={'query': f"Key insights about {topic}"},
+                highlights={'num_sentences': 2, 'highlights_per_url': 3},
+                type=config.exa_search_type or "auto",
+                num_results=min(config.max_sources, 25),
+                **({k: v for k, v in {
+                    'category': category,
+                    'include_domains': config.exa_include_domains,
+                    'exclude_domains': config.exa_exclude_domains
+                }.items() if v})
+            )
+        except Exception as e:
+            logger.error(f"[Exa Research] API call failed: {e}")
+            # Try simpler call without contents if the above fails
+            try:
+                logger.info("[Exa Research] Retrying with simplified parameters")
+                results = self.exa.search_and_contents(
+                    query,
+                    type=config.exa_search_type or "auto",
+                    num_results=min(config.max_sources, 25),
+                    **({k: v for k, v in {
+                        'category': category,
+                        'include_domains': config.exa_include_domains,
+                        'exclude_domains': config.exa_exclude_domains
+                    }.items() if v})
+                )
+            except Exception as retry_error:
+                logger.error(f"[Exa Research] Retry also failed: {retry_error}")
+                raise RuntimeError(f"Exa search failed: {str(retry_error)}") from retry_error
         
         # Transform to standardized format
         sources = self._transform_sources(results.results)

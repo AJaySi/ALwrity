@@ -40,22 +40,16 @@ from ...utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 # Removed old service import - using orchestrator only
 from ...services.calendar_generation_service import CalendarGenerationService
 
+# Import for preflight checks
+from services.subscription.preflight_validator import validate_calendar_generation_operations
+from services.subscription.pricing_service import PricingService
+from models.onboarding import OnboardingSession
+from models.content_planning import ContentStrategy
+
 # Create router
 router = APIRouter(prefix="/calendar-generation", tags=["calendar-generation"])
 
-# Helper function to convert Clerk user ID to integer
-def get_user_id_int(clerk_user_id: str) -> int:
-    """
-    Convert Clerk user ID string to integer for database compatibility.
-    Uses consistent hashing to ensure same user always gets same ID.
-    """
-    try:
-        # Try to extract numeric portion from Clerk ID format (user_XXXX)
-        numeric_part = clerk_user_id.replace('user_', '').replace('-', '')[:8]
-        return int(numeric_part, 16) % 2147483647
-    except:
-        # Fallback to hash if extraction fails
-        return hash(clerk_user_id) % 2147483647
+# Helper function removed - using Clerk ID string directly
 
 @router.post("/generate-calendar", response_model=CalendarGenerationResponse)
 async def generate_comprehensive_calendar(
@@ -71,15 +65,36 @@ async def generate_comprehensive_calendar(
     try:
         # Use authenticated user ID instead of request user ID for security
         clerk_user_id = str(current_user.get('id'))
-        user_id_int = get_user_id_int(clerk_user_id)
         
-        logger.info(f"🎯 Generating comprehensive calendar for authenticated user {clerk_user_id} (int: {user_id_int})")
+        logger.info(f"🎯 Generating comprehensive calendar for authenticated user {clerk_user_id}")
+
+        # Preflight Checks
+        # 1. Check Onboarding Data
+        onboarding = db.query(OnboardingSession).filter(OnboardingSession.user_id == clerk_user_id).first()
+        if not onboarding:
+            raise HTTPException(status_code=400, detail="Onboarding data not found. Please complete onboarding first.")
+
+        # 2. Check Strategy (if provided)
+        if request.strategy_id:
+            # Assuming migration to string user_id
+            # Note: If migration hasn't run for ContentStrategy, this might fail if user_id column is Integer.
+            # But we are proceeding with the assumption of full string ID support.
+            strategy = db.query(ContentStrategy).filter(ContentStrategy.id == request.strategy_id).first()
+            if not strategy:
+                 raise HTTPException(status_code=404, detail="Content Strategy not found.")
+            # Verify ownership
+            if str(strategy.user_id) != clerk_user_id:
+                 raise HTTPException(status_code=403, detail="Not authorized to access this strategy.")
+
+        # 3. Subscription/Limits Check
+        pricing_service = PricingService(db)
+        validate_calendar_generation_operations(pricing_service, clerk_user_id)
         
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
         calendar_data = await calendar_service.generate_comprehensive_calendar(
-            user_id=user_id_int,  # Use authenticated user ID
+            user_id=clerk_user_id,  # Use authenticated user ID string
             strategy_id=request.strategy_id,
             calendar_type=request.calendar_type,
             industry=request.industry,
@@ -222,15 +237,14 @@ async def get_trending_topics(
     try:
         # Use authenticated user ID instead of query parameter for security
         clerk_user_id = str(current_user.get('id'))
-        user_id = get_user_id_int(clerk_user_id)
         
-        logger.info(f"📈 Getting trending topics for authenticated user {clerk_user_id} (int: {user_id}) in {industry}")
+        logger.info(f"📈 Getting trending topics for authenticated user {clerk_user_id} in {industry}")
         
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
         result = await calendar_service.get_trending_topics(
-            user_id=user_id,
+            user_id=clerk_user_id,
             industry=industry,
             limit=limit
         )
@@ -257,9 +271,8 @@ async def get_comprehensive_user_data(
     try:
         # Use authenticated user ID instead of query parameter for security
         clerk_user_id = str(current_user.get('id'))
-        user_id = get_user_id_int(clerk_user_id)
         
-        logger.info(f"Getting comprehensive user data for authenticated user {clerk_user_id} (int: {user_id}, force_refresh={force_refresh})")
+        logger.info(f"Getting comprehensive user data for authenticated user {clerk_user_id} (force_refresh={force_refresh})")
         
         # Initialize cache service
         from services.comprehensive_user_data_cache_service import ComprehensiveUserDataCacheService
@@ -267,7 +280,7 @@ async def get_comprehensive_user_data(
         
         # Get data with caching
         data, is_cached = await cache_service.get_cached_data(
-            user_id, None, force_refresh=force_refresh
+            clerk_user_id, None, force_refresh=force_refresh
         )
         
         if not data:
@@ -285,11 +298,11 @@ async def get_comprehensive_user_data(
             "message": f"Comprehensive user data retrieved successfully (cache: {'HIT' if is_cached else 'MISS'})"
         }
         
-        logger.info(f"Successfully retrieved comprehensive user data for user_id: {user_id} (cache: {'HIT' if is_cached else 'MISS'})")
+        logger.info(f"Successfully retrieved comprehensive user data for user_id: {clerk_user_id} (cache: {'HIT' if is_cached else 'MISS'})")
         return result
         
     except Exception as e:
-        logger.error(f"Error getting comprehensive user data for user_id {user_id}: {str(e)}")
+        logger.error(f"Error getting comprehensive user data for user_id {clerk_user_id}: {str(e)}")
         logger.error(f"Exception type: {type(e)}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
@@ -373,18 +386,17 @@ async def start_calendar_generation(
     try:
         # Use authenticated user ID instead of request user ID for security
         clerk_user_id = str(current_user.get('id'))
-        user_id_int = get_user_id_int(clerk_user_id)
         
-        logger.info(f"🎯 Starting calendar generation for authenticated user {clerk_user_id} (int: {user_id_int})")
+        logger.info(f"🎯 Starting calendar generation for authenticated user {clerk_user_id}")
         
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
         # Check if user already has an active session
-        existing_session = calendar_service._get_active_session_for_user(user_id_int)
+        existing_session = calendar_service._get_active_session_for_user(clerk_user_id)
         
         if existing_session:
-            logger.info(f"🔄 User {user_id_int} already has active session: {existing_session}")
+            logger.info(f"🔄 User {clerk_user_id} already has active session: {existing_session}")
             return {
                 "session_id": existing_session,
                 "status": "existing",
@@ -397,7 +409,7 @@ async def start_calendar_generation(
         
         # Update request data with authenticated user ID
         request_dict = request.dict()
-        request_dict['user_id'] = user_id_int  # Override with authenticated user ID
+        request_dict['user_id'] = clerk_user_id  # Override with authenticated user ID
         
         # Initialize orchestrator session
         success = calendar_service.initialize_orchestrator_session(session_id, request_dict)
@@ -464,7 +476,7 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
 @router.delete("/cache/invalidate/{user_id}")
 async def invalidate_user_cache(
-    user_id: int,
+    user_id: str,
     strategy_id: Optional[int] = Query(None, description="Strategy ID to invalidate (optional)"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:

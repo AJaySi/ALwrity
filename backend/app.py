@@ -305,6 +305,14 @@ app.include_router(product_marketing_router)
 from api.content_assets.router import router as content_assets_router
 app.include_router(content_assets_router)
 
+# Include Podcast Maker router
+from api.podcast.router import router as podcast_router
+app.include_router(podcast_router)
+
+# Include YouTube Creator Studio router
+from api.youtube.router import router as youtube_router
+app.include_router(youtube_router, prefix="/api")
+
 # Include research configuration router
 app.include_router(research_config_router, prefix="/api/research", tags=["research"])
 

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -120,6 +121,12 @@ const getStatusChip = (status: string) => {
 };
 
 export const AssetLibrary: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  
+  // Initialize filters from URL params if present
+  const urlSourceModule = searchParams.get('source_module');
+  const urlAssetType = searchParams.get('asset_type');
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [idSearch, setIdSearch] = useState('');
   const [modelSearch, setModelSearch] = useState('');
@@ -127,7 +134,13 @@ export const AssetLibrary: React.FC = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list'); // Default to list like reference
   const [tabValue, setTabValue] = useState(0);
-  const [filterType, setFilterType] = useState('all');
+  const [filterType, setFilterType] = useState(() => {
+    // Set filter type from URL if present
+    if (urlAssetType) {
+      return urlAssetType === 'audio' ? 'audio' : urlAssetType === 'image' ? 'images' : urlAssetType === 'video' ? 'videos' : urlAssetType === 'text' ? 'text' : 'all';
+    }
+    return 'all';
+  });
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedAssets, setSelectedAssets] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(0);
@@ -156,6 +169,11 @@ export const AssetLibrary: React.FC = () => {
       offset: page * pageSize,
     };
 
+    // Apply source_module from URL if present
+    if (urlSourceModule) {
+      baseFilters.source_module = urlSourceModule as any;
+    }
+
     // Combine all search terms
     const searchTerms: string[] = [];
     if (debouncedSearch) searchTerms.push(debouncedSearch);
@@ -179,7 +197,7 @@ export const AssetLibrary: React.FC = () => {
     }
 
     return baseFilters;
-  }, [debouncedSearch, idSearch, modelSearch, filterType, tabValue, page, pageSize]);
+  }, [debouncedSearch, idSearch, modelSearch, filterType, tabValue, page, pageSize, urlSourceModule]);
 
   const { assets, loading, error, total, toggleFavorite, deleteAsset, trackUsage, refetch } = useContentAssets(filters);
 

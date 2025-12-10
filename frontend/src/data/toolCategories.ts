@@ -49,11 +49,11 @@ export const toolCategories: ToolCategories = {
       },
       {
         name: 'Podcast Maker',
-        description: 'Generate research-grounded podcast scripts and audio',
+        description: 'Create professional podcast episodes with AI-powered research, scriptwriting, and voice narration',
         icon: React.createElement(AudioIcon),
         status: 'beta',
         path: '/podcast-maker',
-        features: ['Research Workflow', 'Editable Script', 'Scene Approvals', 'WaveSpeed Audio'],
+        features: ['AI Research', 'Smart Scripting', 'Voice Narration', 'Export & Share', 'Episode Library'],
         isHighlighted: true
       },
       {
@@ -305,12 +305,12 @@ export const toolCategories: ToolCategories = {
         features: ['Visual Descriptions', 'Hashtag Strategy', 'Story Content']
       },
       {
-        name: 'YouTube Content Writer',
-        description: 'Video scripts and descriptions',
+        name: 'YouTube Creator Studio',
+        description: 'AI-powered YouTube video creation with scenes and rendering',
         icon: React.createElement(SocialIcon),
-        status: 'premium',
-        path: '/youtube-writer',
-        features: ['Video Scripts', 'SEO Descriptions', 'Engagement Hooks']
+        status: 'active',
+        path: '/youtube-creator',
+        features: ['Video Planning', 'Scene Generation', 'AI Video Rendering', 'Cost Estimation']
       }
     ]
   },

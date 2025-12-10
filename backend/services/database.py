@@ -25,6 +25,8 @@ from models.content_asset_models import Base as ContentAssetBase
 from models.product_marketing_models import Campaign, CampaignProposal, CampaignAsset
 # Product Asset models (Product Marketing Suite - product assets, not campaigns)
 from models.product_asset_models import ProductAsset, ProductStyleTemplate, EcommerceExport
+# Podcast Maker models use SubscriptionBase, but import to ensure models are registered
+from models.podcast_models import PodcastProject
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')

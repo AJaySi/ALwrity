@@ -67,11 +67,14 @@ export type Job = {
   progress: number;
   previewUrl?: string | null;
   finalUrl?: string | null;
+  videoUrl?: string | null;
   jobId?: string | null;
+  taskId?: string | null;
   cost?: number | null;
   provider?: string | null;
   voiceId?: string | null;
   fileSize?: number | null;
+  avatarImageUrl?: string | null;
 };
 
 export type PodcastAnalysis = {
@@ -115,5 +118,18 @@ export type RenderJobResult = {
   cost: number;
   voiceId: string;
   fileSize: number;
+  videoUrl?: string;
+  videoFilename?: string;
+};
+
+export type TaskStatus = {
+  task_id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  progress?: number;
+  message?: string;
+  result?: any;
+  error?: string;
+  created_at?: string;
+  updated_at?: string;
 };
 

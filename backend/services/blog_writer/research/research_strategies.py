@@ -52,45 +52,44 @@ class BasicResearchStrategy(ResearchStrategy):
         target_audience: str,
         config: ResearchConfig
     ) -> str:
-        """Build basic research prompt focused on keywords and quick insights."""
-        prompt = f"""You are a professional blog content strategist researching for a {industry} blog targeting {target_audience}.
+        """Build basic research prompt focused on podcast-ready, actionable insights."""
+        prompt = f"""You are a podcast researcher creating TALKING POINTS and FACT CARDS for a {industry} audience of {target_audience}.
 
 Research Topic: "{topic}"
 
 Provide analysis in this EXACT format:
 
-## CURRENT TRENDS (2024-2025)
-- [Trend 1 with specific data and source URL]
-- [Trend 2 with specific data and source URL]
-- [Trend 3 with specific data and source URL]
+## PODCAST HOOKS (3)
+- [Hook line with tension + data point + source URL]
 
-## KEY STATISTICS
-- [Statistic 1: specific number/percentage with source URL]
-- [Statistic 2: specific number/percentage with source URL]
-- [Statistic 3: specific number/percentage with source URL]
-- [Statistic 4: specific number/percentage with source URL]
-- [Statistic 5: specific number/percentage with source URL]
+## OBJECTIONS & COUNTERS (3)
+- Objection: [common listener objection]
+  Counter: [concise rebuttal with stat + source URL]
 
-## PRIMARY KEYWORDS
-1. "{topic}" (main keyword)
-2. [Variation 1]
-3. [Variation 2]
+## KEY STATS & PROOF (6)
+- [Specific metric with %/number, date, and source URL]
 
-## SECONDARY KEYWORDS
-[5 related keywords for blog content]
+## MINI CASE SNAPS (3)
+- [Brand/company], [what they did], [outcome metric], [source URL]
 
-## CONTENT ANGLES (Top 5)
-1. [Angle 1: specific unique approach]
-2. [Angle 2: specific unique approach]
-3. [Angle 3: specific unique approach]
-4. [Angle 4: specific unique approach]
-5. [Angle 5: specific unique approach]
+## KEYWORDS TO MENTION (Primary + 5 Secondary)
+- Primary: "{topic}"
+- Secondary: [5 related keywords]
+
+## 5 CONTENT ANGLES
+1. [Angle with audience benefit + why-now]
+2. [Angle ...]
+3. [Angle ...]
+4. [Angle ...]
+5. [Angle ...]
+
+## FACT CARD LIST (8)
+- For each: Quote/claim, source URL, published date, metric/context.
 
 REQUIREMENTS:
-- Cite EVERY claim with authoritative source URLs
-- Use 2024-2025 data when available
-- Include specific numbers, dates, examples
-- Focus on actionable blog insights for {target_audience}"""
+- Every claim MUST include a source URL (authoritative, recent: 2024-2025 preferred).
+- Use concrete numbers, dates, outcomes; avoid generic advice.
+- Keep bullets tight and scannable for spoken narration."""
         return prompt.strip()
 
 
@@ -107,57 +106,54 @@ class ComprehensiveResearchStrategy(ResearchStrategy):
         target_audience: str,
         config: ResearchConfig
     ) -> str:
-        """Build comprehensive research prompt with all analysis components."""
+        """Build comprehensive research prompt with podcast-focused, high-value insights."""
         date_filter = f"\nDate Focus: {config.date_range.value.replace('_', ' ')}" if config.date_range else ""
         source_filter = f"\nPriority Sources: {', '.join([s.value for s in config.source_types])}" if config.source_types else ""
         
-        prompt = f"""You are a senior blog content strategist conducting comprehensive research for a {industry} blog targeting {target_audience}.
+        prompt = f"""You are a senior podcast researcher creating deeply sourced talking points for a {industry} audience of {target_audience}.
 
 Research Topic: "{topic}"{date_filter}{source_filter}
 
 Provide COMPLETE analysis in this EXACT format:
 
-## TRENDS AND INSIGHTS (2024-2025)
-[5-7 trends with specific data, numbers, and source URLs]
+## WHAT'S CHANGED (2024-2025)
+[5-7 concise trend bullets with numbers + source URLs]
 
-## KEY STATISTICS
-[7-10 statistics with exact numbers, percentages, dates, and source URLs]
+## PROOF & NUMBERS
+[10 stats with metric, date, sample size/method, and source URL]
 
-## EXPERT OPINIONS
-[4-5 expert quotes with full attribution and source URLs]
+## EXPERT SIGNALS
+[5 expert quotes with name, title/company, source URL]
 
-## RECENT DEVELOPMENTS
-[5-7 recent news/developments with dates and source URLs]
+## RECENT MOVES
+[5-7 news items or launches with dates and source URLs]
 
-## MARKET ANALYSIS
-[3-5 market insights with data points and source URLs]
+## MARKET SNAPSHOTS
+[3-5 insights with TAM/SAM/SOM or adoption metrics, source URLs]
 
-## BEST PRACTICES & CASE STUDIES
-[3-5 examples with specific outcomes/metrics and source URLs]
+## CASE SNAPS
+[3-5 cases: who, what they did, outcome metric, source URL]
 
-## KEYWORD ANALYSIS
-Primary Keywords: [3 main variations]
-Secondary Keywords: [7-10 related keywords]
-Long-Tail Opportunities: [5-7 specific search phrases]
+## KEYWORD PLAN
+Primary (3), Secondary (8-10), Long-tail (5-7) with intent hints.
 
-## COMPETITOR ANALYSIS
-Top Competitors: [5 competitors with brief descriptions]
-Content Gaps: [5 topics competitors are missing]
-Competitive Advantages: [5 unique angles we can own]
+## COMPETITOR GAPS
+- Top 5 competitors (URL) + 1-line strength
+- 5 content gaps we can own
+- 3 unique angles to differentiate
 
-## CONTENT ANGLES (Exactly 5)
-1. [Unique angle with reasoning and target benefit]
-2. [Unique angle with reasoning and target benefit]
-3. [Unique angle with reasoning and target benefit]
-4. [Unique angle with reasoning and target benefit]
-5. [Unique angle with reasoning and target benefit]
+## PODCAST-READY ANGLES (5)
+- Each: Hook, promised takeaway, data or example, source URL.
+
+## FACT CARD LIST (10)
+- Each: Quote/claim, source URL, published date, metric/context, suggested angle tag.
 
 VERIFICATION REQUIREMENTS:
-- Minimum 2 authoritative sources per major claim
-- Prioritize: Industry publications > Research papers > News > Blogs
-- 2024-2025 data strongly preferred
-- All numbers must include context (timeframe, sample size, methodology)
-- Every recommendation must be actionable for {target_audience}"""
+- Minimum 2 authoritative sources per major claim.
+- Prefer industry reports > research papers > news > blogs.
+- 2024-2025 data strongly preferred.
+- All numbers must include timeframe and methodology.
+- Every bullet must be concise for spoken narration and actionable for {target_audience}."""
         return prompt.strip()
 
 

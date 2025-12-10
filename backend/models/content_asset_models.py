@@ -48,6 +48,9 @@ class AssetSource(enum.Enum):
     # Product Marketing Suite
     PRODUCT_MARKETING = "product_marketing"
 
+    # Podcast Maker
+    PODCAST_MAKER = "podcast_maker"
+
 
 class ContentAsset(Base):
     """

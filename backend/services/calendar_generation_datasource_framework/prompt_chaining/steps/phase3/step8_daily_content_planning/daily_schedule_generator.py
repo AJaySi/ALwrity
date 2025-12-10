@@ -78,6 +78,23 @@ class DailyScheduleGenerator:
         try:
             logger.info("🚀 Starting daily schedule generation")
             
+            # CRITICAL VALIDATION: Ensure weekly_themes is a list of dictionaries
+            if not isinstance(weekly_themes, list):
+                raise TypeError(f"weekly_themes must be a list, got {type(weekly_themes)}")
+            
+            if not weekly_themes:
+                raise ValueError("weekly_themes cannot be empty")
+            
+            for i, theme in enumerate(weekly_themes):
+                if not isinstance(theme, dict):
+                    raise TypeError(f"weekly_themes[{i}] must be a dictionary, got {type(theme)}. Value: {theme}")
+                
+                # Validate required fields
+                if "week_number" not in theme:
+                    raise ValueError(f"weekly_themes[{i}] missing required 'week_number' field")
+            
+            logger.info(f"✅ Validated {len(weekly_themes)} weekly themes")
+            
             daily_schedules = []
             current_date = datetime.now()
             
@@ -153,12 +170,22 @@ class DailyScheduleGenerator:
     def _get_weekly_theme(self, weekly_themes: List[Dict], week_number: int) -> Dict:
         """Get weekly theme for specific week number."""
         try:
+            # Additional validation
+            if not isinstance(weekly_themes, list):
+                raise TypeError(f"weekly_themes must be a list, got {type(weekly_themes)}")
+            
             for theme in weekly_themes:
+                if not isinstance(theme, dict):
+                    raise TypeError(f"Theme must be a dictionary, got {type(theme)}: {theme}")
+                
                 if theme.get("week_number") == week_number:
                     return theme
             
             # If no theme found, fail with clear error
-            raise ValueError(f"No weekly theme found for week {week_number}")
+            raise ValueError(
+                f"No weekly theme found for week {week_number}. "
+                f"Available weeks: {[t.get('week_number') for t in weekly_themes if isinstance(t, dict)]}"
+            )
             
         except Exception as e:
             logger.error(f"Error getting weekly theme: {str(e)}")
@@ -205,9 +232,21 @@ class DailyScheduleGenerator:
             # Call AI service - NO FALLBACKS
             ai_response = await self.ai_engine.generate_content_recommendations(analysis_data)
             
-            # Validate AI response - NO FALLBACKS
+            # ENHANCED VALIDATION: Check for unexpected types (including float)
+            if ai_response is None:
+                raise ValueError("AI service returned None")
+            
+            if isinstance(ai_response, (int, float, str, bool)):
+                raise TypeError(
+                    f"AI service returned primitive type {type(ai_response).__name__}: {ai_response}. "
+                    f"Expected list of dictionaries. This indicates an AI service error."
+                )
+            
             if not isinstance(ai_response, list):
-                raise ValueError(f"AI service returned unexpected type: {type(ai_response)}. Expected list, got {type(ai_response)}")
+                raise TypeError(
+                    f"AI service returned unexpected type: {type(ai_response).__name__}. "
+                    f"Expected list, got {type(ai_response)}. Value: {str(ai_response)[:200]}"
+                )
             
             if not ai_response:
                 raise ValueError("AI service returned empty list of recommendations")
