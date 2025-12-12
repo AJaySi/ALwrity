@@ -9,6 +9,12 @@ __pycache__/
 backend/.onboarding_progress.json
 backend/database/migrations/*
 
+*.mp3
+podcast_audio/*
+backend/podcast_audio/
+
+
+
 .cursorignore
 story_videos
 story_videos/*

@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Box, Typography, Divider, Chip, Paper, alpha } from "@mui/material";
-import { Psychology as PsychologyIcon, Insights as InsightsIcon } from "@mui/icons-material";
+import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon } from "@mui/icons-material";
 import { PodcastAnalysis } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
@@ -92,6 +92,82 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, onRegene
           </Stack>
 
           <Stack spacing={2}>
+            {analysis.exaSuggestedConfig && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a", display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <SearchIcon fontSize="small" sx={{ color: "#4f46e5" }} />
+                  Exa Research Suggestions
+                </Typography>
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                  {analysis.exaSuggestedConfig.exa_search_type && (
+                    <Chip
+                      label={`Search: ${analysis.exaSuggestedConfig.exa_search_type}`}
+                      size="small"
+                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                    />
+                  )}
+                  {analysis.exaSuggestedConfig.exa_category && (
+                    <Chip
+                      label={`Category: ${analysis.exaSuggestedConfig.exa_category}`}
+                      size="small"
+                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                    />
+                  )}
+                  {analysis.exaSuggestedConfig.date_range && (
+                    <Chip
+                      label={`Date: ${analysis.exaSuggestedConfig.date_range}`}
+                      size="small"
+                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                    />
+                  )}
+                  {typeof analysis.exaSuggestedConfig.include_statistics === "boolean" && (
+                    <Chip
+                      label={analysis.exaSuggestedConfig.include_statistics ? "Include stats" : "No stats needed"}
+                      size="small"
+                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                    />
+                  )}
+                  {analysis.exaSuggestedConfig.max_sources && (
+                    <Chip
+                      label={`Max sources: ${analysis.exaSuggestedConfig.max_sources}`}
+                      size="small"
+                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                    />
+                  )}
+                </Stack>
+
+                {(analysis.exaSuggestedConfig.exa_include_domains?.length || analysis.exaSuggestedConfig.exa_exclude_domains?.length) && (
+                  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                    {analysis.exaSuggestedConfig.exa_include_domains?.length ? (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: "#475569", fontWeight: 600, display: "block", mb: 0.5 }}>
+                          Prefer domains
+                        </Typography>
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                          {analysis.exaSuggestedConfig.exa_include_domains.map((d) => (
+                            <Chip key={d} label={d} size="small" sx={{ background: "#f8fafc", color: "#0f172a", border: "1px solid rgba(0,0,0,0.08)" }} />
+                          ))}
+                        </Stack>
+                      </Box>
+                    ) : null}
+
+                    {analysis.exaSuggestedConfig.exa_exclude_domains?.length ? (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: "#475569", fontWeight: 600, display: "block", mb: 0.5 }}>
+                          Avoid domains
+                        </Typography>
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                          {analysis.exaSuggestedConfig.exa_exclude_domains.map((d) => (
+                            <Chip key={d} label={d} size="small" sx={{ background: "#fff7ed", color: "#b45309", border: "1px solid rgba(180,83,9,0.25)" }} />
+                          ))}
+                        </Stack>
+                      </Box>
+                    ) : null}
+                  </Stack>
+                )}
+              </Box>
+            )}
+
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a" }}>Suggested Episode Outlines</Typography>
               <Stack spacing={1.5}>

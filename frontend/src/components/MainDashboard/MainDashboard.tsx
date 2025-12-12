@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -84,15 +84,17 @@ const MainDashboard: React.FC = () => {
     initializeWorkflow();
   }, [generateDailyWorkflow]);
 
-  // Debug logging for workflow state
+  // Debug logging for workflow state (only in development)
   React.useEffect(() => {
-    console.log('Workflow Debug:', {
-      currentWorkflow,
-      workflowProgress,
-      isWorkflowActive: currentWorkflow?.workflowStatus === 'in_progress',
-      workflowStatus: currentWorkflow?.workflowStatus,
-      hasWorkflow: !!currentWorkflow
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Workflow Debug:', {
+        currentWorkflow,
+        workflowProgress,
+        isWorkflowActive: currentWorkflow?.workflowStatus === 'in_progress',
+        workflowStatus: currentWorkflow?.workflowStatus,
+        hasWorkflow: !!currentWorkflow
+      });
+    }
   }, [currentWorkflow, workflowProgress]);
 
   // State to track if we need to start a newly generated workflow
@@ -166,42 +168,50 @@ const MainDashboard: React.FC = () => {
     }
   };
 
-  const handleToolClick = (tool: Tool) => {
-    console.log('Navigating to tool:', tool.path);
+  const handleToolClick = useCallback((tool: Tool) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Navigating to tool:', tool.path);
+    }
     if (tool.path) {
       navigate(tool.path);
       return;
     }
     showSnackbar(`Launching ${tool.name}...`, 'info');
-  };
+  }, [navigate, showSnackbar]);
 
   // Handle category click to open modal
-  const handleCategoryClick = (categoryName: string | null, categoryData?: any) => {
+  const handleCategoryClick = useCallback((categoryName: string | null, categoryData?: any) => {
     setModalCategoryName(categoryName);
     setModalCategory(categoryData);
     setToolsModalOpen(true);
-  };
+  }, []);
+
+  // Memoize search results computation
+  const searchResultsMemo = useMemo(() => {
+    if (!searchQuery || searchQuery.length < 2) return [];
+    
+    // Get all tools from all categories that match search
+    const allTools: Tool[] = [];
+    Object.values(toolCategories).forEach(category => {
+      if (category) {
+        const tools = getToolsForCategory(category, null);
+        allTools.push(...tools);
+      }
+    });
+    
+    const queryLower = searchQuery.toLowerCase();
+    return allTools.filter(tool => 
+      tool.name.toLowerCase().includes(queryLower) ||
+      tool.description.toLowerCase().includes(queryLower) ||
+      tool.features.some(feature => feature.toLowerCase().includes(queryLower))
+    );
+  }, [searchQuery]);
 
   // Handle search to show results in modal with debouncing
   React.useEffect(() => {
-    if (searchQuery && searchQuery.length >= 2) { // Only search after 2+ characters
+    if (searchQuery && searchQuery.length >= 2) {
       const timeoutId = setTimeout(() => {
-        // Get all tools from all categories that match search
-        const allTools: Tool[] = [];
-        Object.values(toolCategories).forEach(category => {
-          if (category) {
-            const tools = getToolsForCategory(category, null);
-            allTools.push(...tools);
-          }
-        });
-        
-        const filtered = allTools.filter(tool => 
-          tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          tool.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          tool.features.some(feature => feature.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-        
-        setSearchResults(filtered);
+        setSearchResults(searchResultsMemo);
         setModalCategoryName(null);
         setModalCategory(null);
         setToolsModalOpen(true);
@@ -212,10 +222,10 @@ const MainDashboard: React.FC = () => {
       // Close modal if search query is too short
       setToolsModalOpen(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, searchResultsMemo]);
 
   // Close modal and clear search
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setToolsModalOpen(false);
     setModalCategoryName(null);
     setModalCategory(null);
@@ -223,7 +233,7 @@ const MainDashboard: React.FC = () => {
     if (searchQuery) {
       setSearchQuery('');
     }
-  };
+  }, [searchQuery, setSearchQuery]);
 
   // Note: filteredCategories removed as it's not used in the current implementation
 
@@ -242,19 +252,21 @@ const MainDashboard: React.FC = () => {
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
         padding: theme.spacing(4),
         position: 'relative',
+        overflow: 'hidden', // Prevent layout shifts from pseudo-elements
         '&::before': {
           content: '""',
-          position: 'absolute',
+          position: 'fixed', // Changed from absolute to fixed to prevent layout shifts
           top: 0,
           left: 0,
           right: 0,
           bottom: 0,
           background: 'url("data:image/svg+xml,%3Csvg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23ffffff" fill-opacity="0.03"%3E%3Ccircle cx="40" cy="40" r="3"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
           pointerEvents: 'none',
+          willChange: 'transform', // Optimize for animations
         },
         '&::after': {
           content: '""',
-          position: 'absolute',
+          position: 'fixed', // Changed from absolute to fixed to prevent layout shifts
           top: '50%',
           left: '50%',
           width: '600px',
@@ -263,6 +275,7 @@ const MainDashboard: React.FC = () => {
           transform: 'translate(-50%, -50%)',
           pointerEvents: 'none',
           zIndex: 0,
+          willChange: 'transform', // Optimize for animations
         },
       }}
     >

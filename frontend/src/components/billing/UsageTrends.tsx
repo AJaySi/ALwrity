@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import {
   Card,
   CardContent,
@@ -6,10 +6,17 @@ import {
   Box,
   Grid,
   Chip,
+  CircularProgress,
 } from '@mui/material';
+import {
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  CalendarToday as CalendarIcon,
+} from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { 
-  LineChart, 
+  LazyLineChart,
+  LazyAreaChart,
   Line, 
   XAxis, 
   YAxis, 
@@ -17,13 +24,8 @@ import {
   Tooltip, 
   ResponsiveContainer,
   Area,
-  AreaChart
-} from 'recharts';
-import { 
-  TrendingUp, 
-  TrendingDown,
-  Calendar
-} from 'lucide-react';
+  ChartLoadingFallback
+} from '../../utils/lazyRecharts';
 
 // Types
 import { UsageTrends as UsageTrendsType, CostProjections } from '../../types/billing';
@@ -113,7 +115,7 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
         {/* Header */}
         <CardContent sx={{ pb: 1 }}>
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 'bold', mb: 2 }}>
-            <TrendingUp size={20} />
+            <TrendingUpIcon fontSize="small" />
             Usage Trends & Projections
           </Typography>
         </CardContent>
@@ -138,9 +140,9 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
                     {costGrowth >= 0 ? (
-                      <TrendingUp size={16} color="#22c55e" />
+                      <TrendingUpIcon sx={{ fontSize: 16, color: '#22c55e' }} />
                     ) : (
-                      <TrendingDown size={16} color="#ef4444" />
+                      <TrendingDownIcon sx={{ fontSize: 16, color: '#ef4444' }} />
                     )}
                     <Typography variant="body2" color="text.secondary">
                       Cost Growth
@@ -176,9 +178,9 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
                     {callsGrowth >= 0 ? (
-                      <TrendingUp size={16} color="#22c55e" />
+                      <TrendingUpIcon sx={{ fontSize: 16, color: '#22c55e' }} />
                     ) : (
-                      <TrendingDown size={16} color="#ef4444" />
+                      <TrendingDownIcon sx={{ fontSize: 16, color: '#ef4444' }} />
                     )}
                     <Typography variant="body2" color="text.secondary">
                       Calls Growth
@@ -205,7 +207,8 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
             </Typography>
             <Box sx={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
+                <Suspense fallback={<ChartLoadingFallback />}>
+                  <LazyAreaChart data={chartData}>
                   <defs>
                     <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#667eea" stopOpacity={0.3}/>
@@ -234,7 +237,8 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
                     fillOpacity={1}
                     fill="url(#costGradient)"
                   />
-                </AreaChart>
+                </LazyAreaChart>
+                </Suspense>
               </ResponsiveContainer>
             </Box>
           </Box>
@@ -246,7 +250,8 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
             </Typography>
             <Box sx={{ height: 150 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
+                <Suspense fallback={<ChartLoadingFallback />}>
+                  <LazyLineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                   <XAxis 
                     dataKey="period" 
@@ -267,7 +272,8 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
                     dot={{ fill: '#764ba2', strokeWidth: 2, r: 4 }}
                     activeDot={{ r: 6, stroke: '#764ba2', strokeWidth: 2 }}
                   />
-                </LineChart>
+                </LazyLineChart>
+                </Suspense>
               </ResponsiveContainer>
             </Box>
           </Box>
@@ -282,7 +288,7 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
             }}
           >
             <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Calendar size={16} />
+              <CalendarIcon fontSize="small" />
               Monthly Projections
             </Typography>
             

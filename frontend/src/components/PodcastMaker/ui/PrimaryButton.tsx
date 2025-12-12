@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, CircularProgress, Tooltip, alpha } from "@mui/material";
+import { Button, CircularProgress, Tooltip, alpha, SxProps, Theme } from "@mui/material";
 
 interface PrimaryButtonProps {
   children: React.ReactNode;
@@ -9,6 +9,7 @@ interface PrimaryButtonProps {
   startIcon?: React.ReactNode;
   tooltip?: string;
   ariaLabel?: string;
+  sx?: SxProps<Theme>;
 }
 
 export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
@@ -19,6 +20,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   startIcon,
   tooltip,
   ariaLabel,
+  sx,
 }) => {
   const button = (
     <Button
@@ -41,6 +43,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
           background: alpha("#9ca3af", 0.3),
           color: alpha("#fff", 0.5),
         },
+        ...sx,
       }}
     >
       {children}

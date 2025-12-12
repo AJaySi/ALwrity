@@ -300,6 +300,7 @@ class StoryAudioGenerationService:
         volume: float = 1.0,
         pitch: float = 0.0,
         emotion: str = "happy",
+        english_normalization: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate AI audio for a single scene using main_audio_generation.
@@ -314,6 +315,7 @@ class StoryAudioGenerationService:
             volume (float): Speech volume (0.1-10.0, default: 1.0).
             pitch (float): Speech pitch (-12 to 12, default: 0.0).
             emotion (str): Emotion for speech (default: "happy").
+            english_normalization (bool): Enable English text normalization for better number reading (default: False).
         
         Returns:
             Dict[str, Any]: Audio metadata including file path, URL, and scene info.
@@ -337,6 +339,7 @@ class StoryAudioGenerationService:
                 pitch=pitch,
                 emotion=emotion,
                 user_id=user_id,
+                english_normalization=english_normalization,
             )
             
             # Save audio to file

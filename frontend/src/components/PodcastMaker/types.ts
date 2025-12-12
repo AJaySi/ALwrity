@@ -30,6 +30,11 @@ export type Research = {
     why: string;
     mappedFactIds: string[];
   }[];
+  searchQueries?: string[];
+  searchType?: string;
+  provider?: string;
+  cost?: number;
+  sourceCount?: number;
 };
 
 export type Line = {
@@ -37,6 +42,7 @@ export type Line = {
   speaker: string;
   text: string;
   usedFactIds?: string[];
+  emphasis?: boolean; // Mark lines that need vocal emphasis
 };
 
 export type Scene = {
@@ -45,6 +51,9 @@ export type Scene = {
   duration: number;
   lines: Line[];
   approved?: boolean;
+  emotion?: string; // Scene-specific emotion
+  audioUrl?: string; // Generated audio URL for this scene
+  imageUrl?: string; // Generated image URL for this scene (for video generation)
 };
 
 export type Script = {
@@ -75,6 +84,7 @@ export type Job = {
   voiceId?: string | null;
   fileSize?: number | null;
   avatarImageUrl?: string | null;
+  imageUrl?: string | null; // Scene-specific image URL
 };
 
 export type PodcastAnalysis = {
@@ -84,6 +94,15 @@ export type PodcastAnalysis = {
   suggestedOutlines: { id: number | string; title: string; segments: string[] }[];
   suggestedKnobs: Knobs;
   titleSuggestions: string[];
+  exaSuggestedConfig?: {
+    exa_search_type?: "auto" | "keyword" | "neural";
+    exa_category?: string;
+    exa_include_domains?: string[];
+    exa_exclude_domains?: string[];
+    max_sources?: number;
+    include_statistics?: boolean;
+    date_range?: string;
+  };
 };
 
 export type PodcastEstimate = {

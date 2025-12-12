@@ -508,6 +508,7 @@ const ContentLifecyclePillars: React.FC = () => {
           borderRadius: 2,
           mb: 4,
           position: 'relative', // For hero section positioning
+          minHeight: '200px', // Reserve space for hero section to prevent layout shift
         }}
       >
         <Container maxWidth="xl">

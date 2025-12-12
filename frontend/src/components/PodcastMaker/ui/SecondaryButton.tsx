@@ -1,10 +1,11 @@
 import React from "react";
-import { Button, Tooltip, alpha } from "@mui/material";
+import { Button, Tooltip, CircularProgress, alpha } from "@mui/material";
 
 interface SecondaryButtonProps {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  loading?: boolean;
   startIcon?: React.ReactNode;
   tooltip?: string;
   ariaLabel?: string;
@@ -14,6 +15,7 @@ export const SecondaryButton: React.FC<SecondaryButtonProps> = ({
   children,
   onClick,
   disabled = false,
+  loading = false,
   startIcon,
   tooltip,
   ariaLabel,
@@ -22,8 +24,8 @@ export const SecondaryButton: React.FC<SecondaryButtonProps> = ({
     <Button
       variant="outlined"
       onClick={onClick}
-      disabled={disabled}
-      startIcon={startIcon}
+      disabled={disabled || loading}
+      startIcon={loading ? <CircularProgress size={16} /> : startIcon}
       aria-label={ariaLabel}
       sx={{
         borderColor: "rgba(255,255,255,0.2)",

@@ -55,6 +55,8 @@ const WorkflowHeroSection: React.FC<WorkflowHeroSectionProps> = ({
               justifyContent: 'center',
               borderRadius: 2, // Match the parent container's border radius
               px: 2, // Add horizontal padding to constrain width
+              minHeight: '200px', // Reserve space to prevent layout shift
+              willChange: 'transform', // Optimize for animations
             }}
           >
             {/* Hero Content - Full Coverage */}
@@ -130,6 +132,7 @@ const WorkflowHeroSection: React.FC<WorkflowHeroSectionProps> = ({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
+                style={{ width: '100%' }} // Prevent width changes
               >
                 {/* Main Heading with Rocket */}
                 <Box sx={{ 
@@ -137,7 +140,8 @@ const WorkflowHeroSection: React.FC<WorkflowHeroSectionProps> = ({
                   alignItems: 'center', 
                   justifyContent: 'center',
                   gap: 2,
-                  mb: 2
+                  mb: 2,
+                  minHeight: '48px', // Reserve space for heading to prevent layout shift
                 }}>
                   <Typography
                     variant={isMobile ? "h5" : "h4"}
@@ -149,6 +153,7 @@ const WorkflowHeroSection: React.FC<WorkflowHeroSectionProps> = ({
                       backgroundClip: 'text',
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
+                      lineHeight: 1.2, // Fixed line height to prevent shift
                     }}
                   >
                     Grow Your Business Now
@@ -220,6 +225,8 @@ const WorkflowHeroSection: React.FC<WorkflowHeroSectionProps> = ({
                         background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent)',
                         animation: 'shimmer 2.5s infinite',
                         zIndex: 1,
+                        pointerEvents: 'none', // Prevent layout impact
+                        willChange: 'left', // Optimize animation
                       },
                       '&::after': {
                         content: '""',
@@ -233,6 +240,8 @@ const WorkflowHeroSection: React.FC<WorkflowHeroSectionProps> = ({
                         borderRadius: 'inherit',
                         zIndex: -1,
                         animation: 'borderGlow 3s ease-in-out infinite',
+                        pointerEvents: 'none', // Prevent layout impact
+                        willChange: 'background-position', // Optimize animation
                       },
                       '@keyframes shimmer': {
                         '0%': { left: '-100%' },

@@ -1,7 +1,6 @@
-import { blogWriterApi, BlogResearchRequest, BlogResearchResponse, ResearchProvider } from "./blogWriterApi";
+import { ResearchProvider, ResearchConfig } from "./blogWriterApi";
 import {
   storyWriterApi,
-  StoryGenerationRequest,
   StoryScene,
   StorySetupGenerationResponse,
 } from "./storyWriterApi";
@@ -22,10 +21,7 @@ import {
   Script,
 } from "../components/PodcastMaker/types";
 import { checkPreflight, PreflightOperation } from "./billingService";
-import { TaskStatusResponse } from "./blogWriterApi";
 import { TaskStatus } from "./storyWriterApi";
-
-type WaitForTaskFn = (taskId: string) => Promise<TaskStatusResponse>;
 
 const DEFAULT_KNOBS: Knobs = {
   voice_emotion: "neutral",
@@ -36,7 +32,7 @@ const DEFAULT_KNOBS: Knobs = {
   bitrate: "standard",
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const createId = (prefix: string) => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -125,33 +121,53 @@ const mapPersonaQueries = (persona: ResearchPersona | undefined, seed: string): 
   return generated.slice(0, 6);
 };
 
-const mapSourcesToFacts = (sources: BlogResearchResponse["sources"]): Fact[] => {
+const mapSourcesToFacts = (sources: ExaSource[]): Fact[] => {
   if (!sources || !sources.length) return [];
-  return sources.slice(0, 12).map((source, idx) => ({
+  return sources.slice(0, 12).map((source: ExaSource, idx: number) => ({
     id: source.url || createId("fact"),
     quote: source.excerpt || source.title || "Insight",
     url: source.url || "",
     date: source.published_at || "Unknown",
-    confidence: typeof source.credibility_score === "number" ? source.credibility_score : 0.8 - idx * 0.02,
+    confidence: typeof (source as any).credibility_score === "number" ? (source as any).credibility_score : Math.max(0.5, 0.85 - idx * 0.02),
   }));
 };
 
-const mapResearchResponse = (response: BlogResearchResponse): Research => {
+type ExaSource = {
+  title?: string;
+  url?: string;
+  excerpt?: string;
+  published_at?: string;
+  highlights?: string[];
+  summary?: string;
+  source_type?: string;
+  index?: number;
+};
+
+type ExaResearchResult = {
+  sources: ExaSource[];
+  search_queries?: string[];
+  cost?: { total?: number };
+  search_type?: string;
+  provider?: string;
+  content?: string;
+};
+
+const mapExaResearchResponse = (response: ExaResearchResult): Research => {
   const factCards = mapSourcesToFacts(response.sources);
   const summary =
-    response.keyword_analysis?.summary ||
-    response.keyword_analysis?.key_insights?.join(" • ") ||
-    "Research completed. Review fact cards for details.";
-  const mappedAngles =
-    response.suggested_angles?.map((angle, idx) => ({
-      title: angle,
-      why: response.keyword_analysis?.angle_breakdown?.[angle]?.reason || "High priority topic from research insights.",
-      mappedFactIds: factCards.slice(idx, idx + 2).map((fact) => fact.id),
-    })) || [];
+    response.content?.slice(0, 1200) ||
+    (response.search_queries && response.search_queries.length
+      ? `Research completed for queries: ${response.search_queries.join(", ")}`
+      : "Research completed. Review fact cards for details.");
   return {
     summary,
     factCards,
-    mappedAngles,
+    mappedAngles: [],
+    searchQueries: response.search_queries,
+    searchType: response.search_type,
+    provider: response.provider || "exa",
+    cost: response.cost?.total,
+    sourceCount: response.sources?.length || 0,
   };
 };
 
@@ -176,71 +192,36 @@ const splitIntoLines = (text: string, speakers: number): Line[] => {
   }));
 };
 
-const storySceneToPodcastScene = (scene: StoryScene, knobs: Knobs, speakers: number): Scene => {
-  const text = scene.description || scene.audio_narration || scene.image_prompt || scene.title || "Narration";
-  return {
-    id: `scene-${scene.scene_number || createId("scene")}`,
-    title: scene.title || `Scene ${scene.scene_number}`,
-    duration: Math.max(20, knobs.scene_length_target || DEFAULT_KNOBS.scene_length_target),
-    lines: splitIntoLines(text, Math.max(1, speakers)),
-    approved: false,
-  };
-};
+// Unused helper functions - kept for reference but not currently used
+// const storySceneToPodcastScene = (scene: StoryScene, knobs: Knobs, speakers: number): Scene => {
+//   const text = scene.description || scene.audio_narration || scene.image_prompt || scene.title || "Narration";
+//   return {
+//     id: `scene-${scene.scene_number || createId("scene")}`,
+//     title: scene.title || `Scene ${scene.scene_number}`,
+//     duration: Math.max(20, knobs.scene_length_target || DEFAULT_KNOBS.scene_length_target),
+//     lines: splitIntoLines(text, Math.max(1, speakers)),
+//     approved: false,
+//   };
+// };
 
-const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StoryScene[] | string | undefined): StoryScene[] => {
-  if (!outline) return [];
-  if (typeof outline === "string") {
-    return [
-      {
-        scene_number: 1,
-        title: outline.slice(0, 60),
-        description: outline,
-        image_prompt: outline,
-        audio_narration: outline,
-      } as StoryScene,
-    ];
-  }
-  if (Array.isArray(outline)) {
-    return outline as StoryScene[];
-  }
-  return [];
-};
-
-const waitForTaskCompletion = async (
-  taskId: string, 
-  poll: WaitForTaskFn,
-  onProgress?: (status: { status: string; progress?: number; message?: string }) => void
-): Promise<any> => {
-  let attempts = 0;
-  while (attempts < 120) {
-    const status = await poll(taskId);
-    
-    // Report progress if callback provided
-    if (onProgress) {
-      // Extract latest progress message if available
-      const latestMessage = status.progress_messages && status.progress_messages.length > 0
-        ? status.progress_messages[status.progress_messages.length - 1].message
-        : undefined;
-      
-      onProgress({
-        status: status.status,
-        progress: undefined, // TaskStatusResponse doesn't have progress field
-        message: latestMessage,
-      });
-    }
-    
-    if (status.status === "completed") {
-      return status.result;
-    }
-    if (status.status === "failed") {
-      const errorMsg = status.error || "Task failed";
-      throw new Error(errorMsg);
-    }
-    await sleep(2500);
-    attempts += 1;
-  }
-  throw new Error("Task polling timed out after 5 minutes");
-};
+// const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StoryScene[] | string | undefined): StoryScene[] => {
+//   if (!outline) return [];
+//   if (typeof outline === "string") {
+//     return [
+//       {
+//         scene_number: 1,
+//         title: outline.slice(0, 60),
+//         description: outline,
+//         image_prompt: outline,
+//         audio_narration: outline,
+//       } as StoryScene,
+//     ];
+//   }
+//   if (Array.isArray(outline)) {
+//     return outline as StoryScene[];
+//   }
+//   return [];
+// };
 
 const ensurePreflight = async (operation: PreflightOperation) => {
   const result = await checkPreflight(operation);
@@ -275,6 +256,7 @@ export const podcastApi = {
       suggestedOutlines: outlines,
       suggestedKnobs: { ...DEFAULT_KNOBS, ...payload.knobs },
       titleSuggestions: (analysisResp.data?.title_suggestions || []).filter(Boolean),
+      exaSuggestedConfig: analysisResp.data?.exa_suggested_config || undefined,
     };
 
     const researchConfig = await getResearchConfig().catch(() => null);
@@ -303,62 +285,53 @@ export const podcastApi = {
     topic: string;
     approvedQueries: Query[];
     provider?: ResearchProvider;
+    exaConfig?: ResearchConfig;
     onProgress?: (message: string) => void;
-  }): Promise<{ research: Research; raw: BlogResearchResponse }> {
+  }): Promise<{ research: Research; raw: any }> {
     const keywords = params.approvedQueries.map((q) => q.query).filter(Boolean);
     if (!keywords.length) {
       throw new Error("At least one query must be approved for research.");
     }
 
-    const researchPayload: BlogResearchRequest = {
-      keywords,
-      topic: params.topic || keywords[0],
-      research_mode: "basic",
-      config: {
-        provider: params.provider || "google",
-        include_statistics: params.approvedQueries.some((q) => q.needsRecentStats),
-      },
-    };
+    // Ensure Exa payload respects API constraint: when requesting contents, only one of includeDomains or excludeDomains.
+    let sanitizedExaConfig: ResearchConfig | undefined = params.exaConfig;
+    if (sanitizedExaConfig && sanitizedExaConfig.exa_include_domains?.length) {
+      sanitizedExaConfig = {
+        ...sanitizedExaConfig,
+        exa_exclude_domains: undefined,
+      };
+    } else if (sanitizedExaConfig && sanitizedExaConfig.exa_exclude_domains?.length) {
+      sanitizedExaConfig = {
+        ...sanitizedExaConfig,
+        exa_include_domains: undefined,
+      };
+    }
 
     await ensurePreflight({
-      provider: params.provider === "exa" ? "exa" : "gemini",
-      operation_type: params.provider === "exa" ? "exa_neural_search" : "google_grounding",
-      tokens_requested: params.provider === "exa" ? 0 : 1200,
-      actual_provider_name: params.provider || "google",
+      provider: "exa",
+      operation_type: "exa_neural_search",
+      tokens_requested: 0,
+      actual_provider_name: "exa",
     });
 
-    const { task_id } = await blogWriterApi.startResearch(researchPayload);
-    let lastProgressMessage = "";
-    const result = (await waitForTaskCompletion(
-      task_id, 
-      blogWriterApi.pollResearchStatus,
-      (status) => {
-        // Extract latest progress message and notify caller
-        if (status.message && status.message !== lastProgressMessage) {
-          lastProgressMessage = status.message;
-          if (params.onProgress) {
-            params.onProgress(status.message);
-          }
-        } else if (status.status === "running" && !status.message) {
-          // Provide default status messages if none available
-          const defaultMessage = params.provider === "exa" 
-            ? "Deep research in progress..." 
-            : "Gathering research sources...";
-          if (params.onProgress && lastProgressMessage !== defaultMessage) {
-            lastProgressMessage = defaultMessage;
-            params.onProgress(defaultMessage);
-          }
-        }
-      }
-    )) as BlogResearchResponse;
-    const mapped = mapResearchResponse(result);
-    return { research: mapped, raw: result };
+    const response = await aiApiClient.post("/api/podcast/research/exa", {
+      topic: params.topic || keywords[0],
+      queries: keywords,
+      exa_config: sanitizedExaConfig,
+    });
+
+    const exaResult = response.data as ExaResearchResult;
+    if (params.onProgress) {
+      params.onProgress("Deep research completed with Exa.");
+    }
+    const mapped = mapExaResearchResponse(exaResult);
+    return { research: mapped, raw: exaResult };
   },
 
   async generateScript(params: {
     projectId: string;
     idea: string;
-    research?: BlogResearchResponse | null;
+    research?: ExaResearchResult | null;
     knobs: Knobs;
     speakers: number;
     durationMinutes: number;
@@ -433,22 +406,96 @@ export const podcastApi = {
     };
   },
 
-  async renderSceneAudio(params: { scene: Scene; voiceId?: string; emotion?: string; speed?: number }): Promise<RenderJobResult> {
-    const text = params.scene.lines.map((line) => line.text).join(" ");
+  async renderSceneAudio(params: {
+    scene: Scene;
+    voiceId?: string;
+    emotion?: string; // Fallback if scene doesn't have emotion
+    speed?: number;
+  }): Promise<RenderJobResult> {
+    // Use scene-specific emotion if available, otherwise fallback to provided/default
+    const sceneEmotion = params.scene.emotion || params.emotion || "neutral";
+
+    // Optimize text for Minimax Speech-02-HD TTS
+    // - Strip markdown formatting (bold, italic, etc.) - TTS reads it literally
+    // - Use pause markers <#x#> for natural speech rhythm
+    // - Add longer pauses for speaker changes
+    // - Preserve punctuation for natural breathing
+    // - Add emphasis pauses for important points
+    const text = params.scene.lines
+      .map((line, idx) => {
+        let lineText = line.text.trim();
+
+        // Strip markdown formatting - TTS reads asterisks and other markdown literally
+        // Remove bold (**text** or __text__)
+        lineText = lineText.replace(/\*\*([^*]+)\*\*/g, '$1'); // **bold**
+        lineText = lineText.replace(/\*([^*]+)\*/g, '$1'); // *bold* (single asterisk)
+        lineText = lineText.replace(/__([^_]+)__/g, '$1'); // __bold__
+        lineText = lineText.replace(/_([^_]+)_/g, '$1'); // _italic_ (single underscore)
+        // Remove any remaining stray asterisks or underscores
+        lineText = lineText.replace(/\*+/g, ''); // Remove any remaining asterisks
+        lineText = lineText.replace(/_+/g, ''); // Remove any remaining underscores
+        // Clean up extra spaces
+        lineText = lineText.replace(/\s+/g, ' ').trim();
+
+        // Preserve punctuation (Minimax uses it for natural breathing)
+        // Don't strip punctuation - it helps TTS understand natural pauses
+
+        // Add emphasis pause after lines marked with emphasis
+        if (line.emphasis) {
+          // Minimal pause after emphasized content (0.15s for subtle emphasis)
+          lineText = `${lineText}<#0.15#>`;
+        }
+
+        // Check for speaker change (longer pause for natural conversation flow)
+        const prevLine = idx > 0 ? params.scene.lines[idx - 1] : null;
+        const isSpeakerChange = prevLine && prevLine.speaker !== line.speaker;
+
+        if (isSpeakerChange) {
+          // Short pause for speaker changes (0.2s - enough for natural transition)
+          lineText = `<#0.2#>${lineText}`;
+        }
+
+        // Add minimal pause between lines (only between regular lines, very short)
+        if (idx < params.scene.lines.length - 1) {
+          if (!line.emphasis && !isSpeakerChange) {
+            // Very short pause between lines (0.08s - barely noticeable but helps flow)
+            lineText = `${lineText}<#0.08#>`;
+          }
+          // If emphasis or speaker change, the pause is already added above
+        }
+
+        return lineText;
+      })
+      .join(" ");
+
+    // Validate character limit (Minimax max: 10,000 characters)
+    const MAX_CHARS = 10000;
+    let textToUse = text;
+    if (text.length > MAX_CHARS) {
+      console.warn(
+        `[Podcast] Scene "${params.scene.title}" exceeds ${MAX_CHARS} character limit (${text.length} chars). Truncating...`
+      );
+      // Truncate at word boundary to avoid cutting mid-word
+      const truncated = text.substring(0, MAX_CHARS);
+      const lastSpace = truncated.lastIndexOf(" ");
+      textToUse = lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+    }
+
     await ensurePreflight({
       provider: "audio",
       operation_type: "tts_full_render",
-      tokens_requested: text.length,
+      tokens_requested: textToUse.length,
       actual_provider_name: "wavespeed",
     });
 
     const response = await aiApiClient.post("/api/podcast/audio", {
       scene_id: params.scene.id,
       scene_title: params.scene.title,
-      text,
+      text: textToUse,
       voice_id: params.voiceId || "Wise_Woman",
-      speed: params.speed || 1.0,
-      emotion: params.emotion || "neutral",
+      speed: params.speed || 1.0, // Normal speed (was 0.9, but too slow - causing duration issues)
+      emotion: sceneEmotion,
+      english_normalization: true, // Better number reading for statistics
     });
 
     return {
@@ -578,6 +625,35 @@ export const podcastApi = {
     return response.data;
   },
 
+  async generateSceneImage(params: {
+    sceneId: string;
+    sceneTitle: string;
+    sceneContent?: string;
+    idea?: string;
+    width?: number;
+    height?: number;
+  }): Promise<{
+    scene_id: string;
+    scene_title: string;
+    image_filename: string;
+    image_url: string;
+    width: number;
+    height: number;
+    provider: string;
+    model?: string;
+    cost: number;
+  }> {
+    const response = await aiApiClient.post("/api/podcast/image", {
+      scene_id: params.sceneId,
+      scene_title: params.sceneTitle,
+      scene_content: params.sceneContent,
+      idea: params.idea,
+      width: params.width || 1024,
+      height: params.height || 1024,
+    });
+    return response.data;
+  },
+
   async cancelTask(taskId: string): Promise<void> {
     // Note: Task cancellation may not be fully supported by backend yet
     // This is a placeholder for future implementation
@@ -586,6 +662,25 @@ export const podcastApi = {
     } catch (error) {
       console.warn("Task cancellation not supported:", error);
     }
+  },
+
+  async combineAudio(params: {
+    projectId: string;
+    sceneIds: string[];
+    sceneAudioUrls: string[];
+  }): Promise<{
+    combined_audio_url: string;
+    combined_audio_filename: string;
+    total_duration: number;
+    file_size: number;
+    scene_count: number;
+  }> {
+    const response = await aiApiClient.post("/api/podcast/combine-audio", {
+      project_id: params.projectId,
+      scene_ids: params.sceneIds,
+      scene_audio_urls: params.sceneAudioUrls,
+    });
+    return response.data;
   },
 };
 
