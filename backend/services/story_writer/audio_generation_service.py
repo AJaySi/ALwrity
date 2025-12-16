@@ -301,6 +301,12 @@ class StoryAudioGenerationService:
         pitch: float = 0.0,
         emotion: str = "happy",
         english_normalization: bool = False,
+        sample_rate: Optional[int] = None,
+        bitrate: Optional[int] = None,
+        channel: Optional[str] = None,
+        format: Optional[str] = None,
+        language_boost: Optional[str] = None,
+        enable_sync_mode: Optional[bool] = True,
     ) -> Dict[str, Any]:
         """
         Generate AI audio for a single scene using main_audio_generation.
@@ -340,6 +346,12 @@ class StoryAudioGenerationService:
                 emotion=emotion,
                 user_id=user_id,
                 english_normalization=english_normalization,
+                sample_rate=sample_rate,
+                bitrate=bitrate,
+                channel=channel,
+                format=format,
+                language_boost=language_boost,
+                enable_sync_mode=enable_sync_mode,
             )
             
             # Save audio to file

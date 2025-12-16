@@ -14,7 +14,15 @@ import { podcastApi } from '../services/podcastApi';
 
 export interface PodcastProjectState {
   // Project metadata
-  project: { id: string; idea: string; duration: number; speakers: number } | null;
+  project: {
+    id: string;
+    idea: string;
+    duration: number;
+    speakers: number;
+    avatarUrl?: string | null;
+    avatarPrompt?: string | null;
+    avatarPersonaId?: string | null;
+  } | null;
   
   // Step results
   analysis: PodcastAnalysis | null;
@@ -39,6 +47,9 @@ export interface PodcastProjectState {
   
   // Current step tracking
   currentStep: 'create' | 'analysis' | 'research' | 'script' | 'render' | null;
+  
+  // Final combined video
+  finalVideoUrl?: string | null;
   
   // Timestamps
   createdAt?: string;
@@ -233,13 +244,44 @@ export const usePodcastProjectState = () => {
   }, []);
 
   const updateRenderJob = useCallback((sceneId: string, updates: Partial<Job>) => {
-    setState((prev) => ({
-      ...prev,
-      renderJobs: prev.renderJobs.map((job) =>
-        job.sceneId === sceneId ? { ...job, ...updates } : job
-      ),
-      updatedAt: new Date().toISOString(),
-    }));
+    setState((prev) => {
+      const existingJob = prev.renderJobs.find((job) => job.sceneId === sceneId);
+      
+      if (existingJob) {
+        // Update existing job
+        return {
+          ...prev,
+          renderJobs: prev.renderJobs.map((job) =>
+            job.sceneId === sceneId ? { ...job, ...updates } : job
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        // Create new job if it doesn't exist
+        const newJob: Job = {
+          sceneId,
+          title: updates.title || sceneId,
+          status: updates.status || "idle",
+          progress: updates.progress || 0,
+          previewUrl: updates.previewUrl || null,
+          finalUrl: updates.finalUrl || null,
+          videoUrl: updates.videoUrl || null,
+          imageUrl: updates.imageUrl || null,
+          jobId: updates.jobId || null,
+          taskId: updates.taskId || null,
+          cost: updates.cost || null,
+          provider: updates.provider || null,
+          voiceId: updates.voiceId || null,
+          fileSize: updates.fileSize || null,
+          avatarImageUrl: updates.avatarImageUrl || null,
+        };
+        return {
+          ...prev,
+          renderJobs: [...prev.renderJobs, newJob],
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    });
   }, []);
 
   const setKnobs = useCallback((knobs: Knobs) => {
@@ -295,6 +337,9 @@ export const usePodcastProjectState = () => {
         idea: payload.ideaOrUrl,
         duration: payload.duration,
         speakers: payload.speakers,
+        avatarUrl: payload.avatarUrl || null,
+        avatarPrompt: null, // Will be set when avatar is generated
+        avatarPersonaId: null,
       },
       knobs: payload.knobs,
       budgetCap: payload.budgetCap,
@@ -317,6 +362,9 @@ export const usePodcastProjectState = () => {
           idea: dbProject.idea,
           duration: dbProject.duration,
           speakers: dbProject.speakers,
+          avatarUrl: dbProject.avatar_url || null,
+          avatarPrompt: dbProject.avatar_prompt || null,
+          avatarPersonaId: dbProject.avatar_persona_id || null,
         },
         analysis: dbProject.analysis,
         queries: dbProject.queries || [],
@@ -332,6 +380,7 @@ export const usePodcastProjectState = () => {
         showScriptEditor: dbProject.show_script_editor || false,
         showRenderQueue: dbProject.show_render_queue || false,
         currentStep: dbProject.current_step || null,
+        finalVideoUrl: dbProject.final_video_url || null,
         createdAt: dbProject.created_at,
         updatedAt: dbProject.updated_at,
       }));

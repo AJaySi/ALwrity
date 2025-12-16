@@ -92,6 +92,9 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
   }
 
   // Has audio - show all action buttons
+  const videoInProgress = rendering !== null;
+  const isCurrentVideo = rendering === scene.id;
+
   return (
     <Stack direction="row" spacing={1.5} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
       {/* Generate Image */}
@@ -114,21 +117,29 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
 
       {/* Generate Video */}
       <PrimaryButton
-        onClick={() => onVideoRender(scene.id)}
-        disabled={isBusy || !hasImage || hasVideo}
+        onClick={() => {
+          onVideoRender(scene.id);
+        }}
+        disabled={isBusy || videoInProgress || !hasImage || hasVideo}
         startIcon={<VideocamIcon />}
         tooltip={
           hasVideo
             ? "Video already generated"
             : !hasImage
             ? "Generate an image first to create video"
+            : videoInProgress
+            ? "A video generation is already running. Please wait..."
             : isBusy
             ? "Another operation in progress"
             : "Generate video for this scene"
         }
-        sx={{ minWidth: 160 }}
+        sx={{ minWidth: 180 }}
       >
-        {hasVideo ? "Video Ready" : "Generate Video"}
+        {videoInProgress && isCurrentVideo
+          ? "Generating Video..."
+          : hasVideo
+          ? "Video Ready"
+          : "Generate Video"}
       </PrimaryButton>
 
       {/* Download Video */}

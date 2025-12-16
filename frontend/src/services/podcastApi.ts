@@ -321,9 +321,9 @@ export const podcastApi = {
     });
 
     const exaResult = response.data as ExaResearchResult;
-    if (params.onProgress) {
+          if (params.onProgress) {
       params.onProgress("Deep research completed with Exa.");
-    }
+          }
     const mapped = mapExaResearchResponse(exaResult);
     return { research: mapped, raw: exaResult };
   },
@@ -411,6 +411,14 @@ export const podcastApi = {
     voiceId?: string;
     emotion?: string; // Fallback if scene doesn't have emotion
     speed?: number;
+    volume?: number;
+    pitch?: number;
+    englishNormalization?: boolean;
+    sampleRate?: number;
+    bitrate?: number;
+    channel?: "1" | "2";
+    format?: "mp3" | "wav" | "pcm" | "flac";
+    languageBoost?: string;
   }): Promise<RenderJobResult> {
     // Use scene-specific emotion if available, otherwise fallback to provided/default
     const sceneEmotion = params.scene.emotion || params.emotion || "neutral";
@@ -493,9 +501,16 @@ export const podcastApi = {
       scene_title: params.scene.title,
       text: textToUse,
       voice_id: params.voiceId || "Wise_Woman",
-      speed: params.speed || 1.0, // Normal speed (was 0.9, but too slow - causing duration issues)
+      speed: params.speed ?? 1.0, // Normal speed (was 0.9, but too slow - causing duration issues)
+      volume: params.volume ?? 1.0,
+      pitch: params.pitch ?? 0.0,
       emotion: sceneEmotion,
-      english_normalization: true, // Better number reading for statistics
+      english_normalization: params.englishNormalization ?? true, // Better number reading for statistics
+      sample_rate: params.sampleRate || null,
+      bitrate: params.bitrate || null,
+      channel: params.channel || null,
+      format: params.format || null,
+      language_boost: params.languageBoost || null,
     });
 
     return {
@@ -607,6 +622,8 @@ export const podcastApi = {
     avatarImageUrl?: string;
     resolution?: string;
     prompt?: string;
+    seed?: number;
+    maskImageUrl?: string;
   }): Promise<{ taskId: string; status: string; message: string }> {
     const response = await aiApiClient.post("/api/podcast/render/video", {
       project_id: params.projectId,
@@ -616,22 +633,73 @@ export const podcastApi = {
       avatar_image_url: params.avatarImageUrl,
       resolution: params.resolution || "720p",
       prompt: params.prompt,
+      seed: params.seed ?? -1,
+      mask_image_url: params.maskImageUrl,
     });
+
+    // Backend returns snake_case (task_id); normalize to camelCase for callers
+    const { task_id, status, message } = response.data || {};
+    return {
+      taskId: task_id,
+      status,
+      message,
+    };
+  },
+
+  async pollTaskStatus(taskId: string): Promise<TaskStatus | null> {
+    const response = await aiApiClient.get(`/api/podcast/task/${taskId}/status`);
+    // Backend returns null if task not found
+    return response.data || null;
+  },
+
+  async listVideos(projectId?: string): Promise<{
+    videos: Array<{
+      scene_number: number;
+      filename: string;
+      video_url: string;
+      file_size: number;
+    }>;
+  }> {
+    const params = projectId ? { project_id: projectId } : {};
+    const response = await aiApiClient.get("/api/podcast/videos", { params });
     return response.data;
   },
 
-  async pollTaskStatus(taskId: string): Promise<TaskStatus> {
-    const response = await aiApiClient.get(`/api/podcast/task/${taskId}/status`);
-    return response.data;
+  async combineVideos(params: {
+    projectId: string;
+    sceneVideoUrls: string[];
+    podcastTitle?: string;
+  }): Promise<{
+    taskId: string;
+    status: string;
+    message: string;
+  }> {
+    const response = await aiApiClient.post("/api/podcast/render/combine-videos", {
+      project_id: params.projectId,
+      scene_video_urls: params.sceneVideoUrls,
+      podcast_title: params.podcastTitle || "Podcast",
+    });
+
+    const { task_id, status, message } = response.data || {};
+    return {
+      taskId: task_id,
+      status,
+      message,
+    };
   },
 
   async generateSceneImage(params: {
     sceneId: string;
     sceneTitle: string;
     sceneContent?: string;
+    baseAvatarUrl?: string;
     idea?: string;
     width?: number;
     height?: number;
+    customPrompt?: string;
+    style?: "Auto" | "Fiction" | "Realistic";
+    renderingSpeed?: "Default" | "Turbo" | "Quality";
+    aspectRatio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4";
   }): Promise<{
     scene_id: string;
     scene_title: string;
@@ -647,9 +715,14 @@ export const podcastApi = {
       scene_id: params.sceneId,
       scene_title: params.sceneTitle,
       scene_content: params.sceneContent,
-      idea: params.idea,
+      base_avatar_url: params.baseAvatarUrl || null,
+      idea: params.idea || null,
       width: params.width || 1024,
       height: params.height || 1024,
+      custom_prompt: params.customPrompt || null,
+      style: params.style || null,
+      rendering_speed: params.renderingSpeed || null,
+      aspect_ratio: params.aspectRatio || null,
     });
     return response.data;
   },
@@ -679,6 +752,60 @@ export const podcastApi = {
       project_id: params.projectId,
       scene_ids: params.sceneIds,
       scene_audio_urls: params.sceneAudioUrls,
+    });
+      return response.data;
+    },
+
+  async uploadAvatar(file: File, projectId?: string): Promise<{ avatar_url: string; avatar_filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (projectId) {
+      formData.append('project_id', projectId);
+    }
+    const response = await aiApiClient.post('/api/podcast/avatar/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  async generatePresenters(
+    speakers: number,
+    projectId?: string,
+    audience?: string,
+    contentType?: string,
+    topKeywords?: string[]
+  ): Promise<{
+    avatars: Array<{ avatar_url: string; speaker_number: number; prompt?: string; persona_id?: string; seed?: number }>;
+    persona_id?: string;
+  }> {
+    const formData = new FormData();
+    formData.append('speakers', speakers.toString());
+    if (projectId) {
+      formData.append('project_id', projectId);
+    }
+    if (audience) {
+      formData.append('audience', audience);
+    }
+    if (contentType) {
+      formData.append('content_type', contentType);
+    }
+    if (topKeywords && Array.isArray(topKeywords) && topKeywords.length > 0) {
+      formData.append('top_keywords', JSON.stringify(topKeywords));
+    }
+    const response = await aiApiClient.post('/api/podcast/avatar/generate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  async makeAvatarPresentable(avatarUrl: string, projectId?: string): Promise<{ avatar_url: string; avatar_filename: string }> {
+    const formData = new FormData();
+    formData.append('avatar_url', avatarUrl);
+    if (projectId) {
+      formData.append('project_id', projectId);
+    }
+    const response = await aiApiClient.post('/api/podcast/avatar/make-presentable', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   },

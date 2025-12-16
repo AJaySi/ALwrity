@@ -1,16 +1,97 @@
-import React from "react";
-import { Stack, Box, Typography, Divider, Chip, Paper, alpha } from "@mui/material";
-import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon } from "@mui/icons-material";
+import React, { useState, useEffect } from "react";
+import { Stack, Box, Typography, Divider, Chip, Paper, alpha, CircularProgress } from "@mui/material";
+import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon } from "@mui/icons-material";
 import { PodcastAnalysis } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
+import { aiApiClient } from "../../api/client";
 
 interface AnalysisPanelProps {
   analysis: PodcastAnalysis | null;
+  idea?: string;
+  duration?: number;
+  speakers?: number;
+  avatarUrl?: string | null;
+  avatarPrompt?: string | null;
   onRegenerate?: () => void;
 }
 
-export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, onRegenerate }) => {
+export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, idea, duration, speakers, avatarUrl, avatarPrompt, onRegenerate }) => {
+  const [avatarBlobUrl, setAvatarBlobUrl] = useState<string | null>(null);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+
+  // Load avatar image as blob for authenticated URLs
+  useEffect(() => {
+    if (!avatarUrl) {
+      setAvatarBlobUrl(null);
+      setAvatarError(false);
+      return;
+    }
+
+    // Check if it's already a blob URL
+    if (avatarUrl.startsWith('blob:')) {
+      setAvatarBlobUrl(avatarUrl);
+      return;
+    }
+
+    // Check if it's an authenticated endpoint
+    const isAuthenticatedEndpoint = avatarUrl.includes('/api/podcast/images/') || avatarUrl.includes('/api/podcast/avatar/');
+    
+    let currentBlobUrl: string | null = null;
+    
+    if (isAuthenticatedEndpoint) {
+      setAvatarLoading(true);
+      setAvatarError(false);
+      
+      const loadAvatarBlob = async () => {
+        try {
+          const response = await aiApiClient.get(avatarUrl, { responseType: 'blob' });
+          const blobUrl = URL.createObjectURL(response.data);
+          currentBlobUrl = blobUrl;
+          setAvatarBlobUrl(blobUrl);
+          setAvatarError(false);
+        } catch (error) {
+          console.error('[AnalysisPanel] Failed to load avatar as blob:', error);
+          // Fallback: try with query token
+          try {
+            const token = localStorage.getItem('clerk_dashboard_token') || '';
+            if (token) {
+              const urlWithToken = `${avatarUrl}?token=${encodeURIComponent(token)}`;
+              setAvatarBlobUrl(urlWithToken);
+            } else {
+              setAvatarError(true);
+            }
+          } catch (fallbackError) {
+            console.error('[AnalysisPanel] Fallback avatar loading failed:', fallbackError);
+            setAvatarError(true);
+          }
+        } finally {
+          setAvatarLoading(false);
+        }
+      };
+
+      loadAvatarBlob();
+
+      // Cleanup blob URL on unmount or when avatarUrl changes
+      return () => {
+        if (currentBlobUrl && currentBlobUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(currentBlobUrl);
+        }
+        // Also cleanup any previous blob URL from state
+        setAvatarBlobUrl((prev) => {
+          if (prev && prev.startsWith('blob:') && prev !== currentBlobUrl) {
+            URL.revokeObjectURL(prev);
+          }
+          return null;
+        });
+      };
+    } else {
+      // Direct URL, use as-is
+      setAvatarBlobUrl(avatarUrl);
+    }
+  }, [avatarUrl]);
+
   if (!analysis) return null;
   return (
     <GlassyCard
@@ -53,6 +134,229 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, onRegene
         </Stack>
 
         <Divider sx={{ borderColor: "rgba(0,0,0,0.06)" }} />
+
+        {/* Inputs Section */}
+        {(idea || duration || speakers || avatarUrl || avatarPrompt) && (
+          <>
+            <Box>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  color: "#0f172a",
+                  fontWeight: 700,
+                  mb: 1.5,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                }}
+              >
+                Your Inputs
+              </Typography>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: avatarUrl ? "1fr 1fr" : "1fr" },
+                  gap: 3,
+                  alignItems: "flex-start",
+                }}
+              >
+                {/* Left Column: Text Inputs */}
+                <Stack spacing={1.5}>
+                  {idea && (
+                    <Box>
+                      <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 600, display: "block", mb: 0.5 }}>
+                        Podcast Idea
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "#0f172a", wordBreak: "break-word" }}>
+                        {idea}
+                      </Typography>
+                    </Box>
+                  )}
+                  <Stack direction="row" spacing={2} flexWrap="wrap">
+                    {duration !== undefined && (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 600, display: "block", mb: 0.5 }}>
+                          Duration
+                        </Typography>
+                        <Chip
+                          label={`${duration} minutes`}
+                          size="small"
+                          sx={{ background: "#f1f5f9", color: "#0f172a", border: "1px solid rgba(0,0,0,0.08)" }}
+                        />
+                      </Box>
+                    )}
+                    {speakers !== undefined && (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 600, display: "block", mb: 0.5 }}>
+                          Speakers
+                        </Typography>
+                        <Chip
+                          label={`${speakers} ${speakers === 1 ? "speaker" : "speakers"}`}
+                          size="small"
+                          sx={{ background: "#f1f5f9", color: "#0f172a", border: "1px solid rgba(0,0,0,0.08)" }}
+                        />
+                      </Box>
+                    )}
+                  </Stack>
+                  
+                  {/* AI Prompt Used for Avatar Generation */}
+                  {avatarUrl && (
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "#64748b",
+                          fontWeight: 600,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          mb: 0.75,
+                        }}
+                      >
+                        <AutoAwesomeIcon sx={{ fontSize: 14 }} />
+                        AI Generation Prompt
+                      </Typography>
+                      {avatarPrompt ? (
+                        <Paper
+                          sx={{
+                            p: 1.5,
+                            background: "#f8fafc",
+                            border: "1px solid rgba(0,0,0,0.08)",
+                            borderRadius: 1.5,
+                            maxHeight: 200,
+                            overflow: "auto",
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: "#475569",
+                              fontFamily: "monospace",
+                              fontSize: "0.75rem",
+                              lineHeight: 1.6,
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                              display: "block",
+                            }}
+                          >
+                            {avatarPrompt}
+                          </Typography>
+                        </Paper>
+                      ) : (
+                        <Paper
+                          sx={{
+                            p: 1.5,
+                            background: "#f1f5f9",
+                            border: "1px solid rgba(0,0,0,0.08)",
+                            borderRadius: 1.5,
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: "#64748b",
+                              fontStyle: "italic",
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            Prompt not available (avatar was uploaded or generated before this feature was added)
+                          </Typography>
+                        </Paper>
+                      )}
+                    </Box>
+                  )}
+                </Stack>
+
+                {/* Right Column: Presenter Avatar */}
+                {avatarUrl && (
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "#64748b",
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                        mb: 1,
+                      }}
+                    >
+                      <PersonIcon sx={{ fontSize: 16 }} />
+                      Presenter Avatar
+                    </Typography>
+                    <Box
+                      sx={{
+                        width: "100%",
+                        maxWidth: { xs: "100%", md: 300 },
+                        borderRadius: 2,
+                        overflow: "hidden",
+                        border: "1px solid rgba(102,126,234,0.2)",
+                        background: alpha("#667eea", 0.05),
+                        position: "relative",
+                        aspectRatio: "1",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                      }}
+                    >
+                      {avatarLoading ? (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: "100%",
+                            background: "#f8fafc",
+                          }}
+                        >
+                          <CircularProgress size={40} />
+                        </Box>
+                      ) : avatarError ? (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: "100%",
+                            background: "#fef2f2",
+                            color: "#dc2626",
+                            p: 2,
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ textAlign: "center" }}>
+                            Failed to load avatar
+                          </Typography>
+                        </Box>
+                      ) : avatarBlobUrl ? (
+                        <Box
+                          component="img"
+                          src={avatarBlobUrl}
+                          alt="Podcast Presenter"
+                          sx={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block",
+                          }}
+                          onError={(e) => {
+                            console.error('[AnalysisPanel] Avatar image failed to load:', {
+                              src: e.currentTarget.src,
+                              avatarUrl,
+                              avatarBlobUrl,
+                            });
+                            setAvatarError(true);
+                          }}
+                          onLoad={() => {
+                            console.log('[AnalysisPanel] Avatar image loaded successfully');
+                          }}
+                        />
+                      ) : null}
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+            <Divider sx={{ borderColor: "rgba(0,0,0,0.06)" }} />
+          </>
+        )}
 
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
           <Stack spacing={2}>

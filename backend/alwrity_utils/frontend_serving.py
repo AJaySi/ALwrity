@@ -45,7 +45,11 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
                     # Immutable files (with hash) - cache for 1 year
                     # These files never change (new hash = new file)
                     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-                    response.headers["Expires"] = "Thu, 31 Dec 2025 23:59:59 GMT"
+                    # Expires header calculated dynamically to match max-age
+                    # Modern browsers prefer Cache-Control, but Expires provides compatibility
+                    from datetime import datetime, timedelta
+                    expires_date = datetime.utcnow() + timedelta(seconds=31536000)
+                    response.headers["Expires"] = expires_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
                 else:
                     # Non-hashed files - shorter cache (1 hour)
                     # These might be updated, so cache for shorter time

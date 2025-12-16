@@ -217,6 +217,11 @@ const PodcastDashboard: React.FC = () => {
             {analysis && !showScriptEditor && !showRenderQueue && (
               <AnalysisPanel
                 analysis={analysis}
+                idea={project?.idea}
+                duration={project?.duration}
+                speakers={project?.speakers}
+                avatarUrl={project?.avatarUrl}
+                avatarPrompt={project?.avatarPrompt}
                 onRegenerate={() => {}}
               />
             )}
@@ -259,6 +264,7 @@ const PodcastDashboard: React.FC = () => {
                 onBackToResearch={() => setShowScriptEditor(false)}
                 onProceedToRendering={(s) => workflow.handleProceedToRendering(s)}
                 onError={(msg) => workflow.setAnnouncement(msg)}
+                avatarUrl={project?.avatarUrl}
               />
             )}
 

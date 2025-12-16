@@ -94,17 +94,66 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     setShowRenderQueue(false);
     try {
       setIsAnalyzing(true);
+      
+      // Upload avatar if provided, or generate presenters
+      let avatarUrl: string | null = null;
+      if (payload.files.avatarFile) {
+        try {
+          setAnnouncement("Uploading presenter avatar...");
+          const uploadResponse = await podcastApi.uploadAvatar(payload.files.avatarFile);
+          avatarUrl = uploadResponse.avatar_url;
+        } catch (error) {
+          console.error('Avatar upload failed:', error);
+          // Continue without avatar - will generate one later
+        }
+      }
+      
       setAnnouncement("Analyzing your idea — AI suggestions incoming");
-      const result = await podcastApi.createProject(payload);
+      const result = await podcastApi.createProject({ ...payload, avatarUrl });
       await initializeProject(payload, result.projectId);
-      setProject({ id: result.projectId, idea: payload.ideaOrUrl, duration: payload.duration, speakers: payload.speakers });
+      setProject({ id: result.projectId, idea: payload.ideaOrUrl, duration: payload.duration, speakers: payload.speakers, avatarUrl });
       setAnalysis(result.analysis);
       setEstimate(result.estimate);
       setQueries(result.queries);
       setSelectedQueries(new Set(result.queries.map((q) => q.id)));
       setKnobs(payload.knobs);
       setBudgetCap(payload.budgetCap);
-      setAnnouncement("Analysis complete");
+      
+      // Generate presenters AFTER analysis completes (to use analysis insights)
+      // This happens only if no avatar was uploaded
+      if (!avatarUrl && payload.speakers > 0 && result.analysis) {
+        try {
+          setAnnouncement("Generating presenter avatars using AI insights...");
+          const presentersResponse = await podcastApi.generatePresenters(
+            payload.speakers,
+            result.projectId,
+            result.analysis.audience,
+            result.analysis.contentType,
+            result.analysis.topKeywords
+          );
+          if (presentersResponse.avatars && presentersResponse.avatars.length > 0) {
+            // Store the first presenter avatar URL and prompt
+            const firstAvatar = presentersResponse.avatars[0];
+            const prompt = firstAvatar.prompt || null;
+            setProject({ 
+              id: result.projectId, 
+              idea: payload.ideaOrUrl, 
+              duration: payload.duration, 
+              speakers: payload.speakers, 
+              avatarUrl: firstAvatar.avatar_url,
+              avatarPrompt: prompt,
+              avatarPersonaId: firstAvatar.persona_id || presentersResponse.persona_id || null,
+            });
+            setAnnouncement("Analysis complete - Presenter avatars generated");
+          }
+        } catch (error) {
+          console.error('Presenter generation failed:', error);
+          setAnnouncement("Analysis complete - Avatar generation will happen later");
+          // Continue without presenters - can generate later
+        }
+      } else {
+        setAnnouncement("Analysis complete");
+      }
     } catch (error: any) {
       if (error?.response?.status === 429 || error?.response?.data?.detail) {
         const errorDetail = error.response.data.detail;

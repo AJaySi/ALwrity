@@ -120,6 +120,7 @@ export type CreateProjectPayload = {
   knobs: Knobs;
   budgetCap: number;
   files: { voiceFile?: File | null; avatarFile?: File | null };
+  avatarUrl?: string | null;
 };
 
 export type CreateProjectResult = {
@@ -140,6 +141,13 @@ export type RenderJobResult = {
   videoUrl?: string;
   videoFilename?: string;
 };
+
+export interface VideoGenerationSettings {
+  prompt: string;
+  resolution: "480p" | "720p";
+  seed?: number | null;
+  maskImageUrl?: string | null;
+}
 
 export type TaskStatus = {
   task_id: string;

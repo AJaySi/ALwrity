@@ -14,6 +14,11 @@ podcast_audio/*
 backend/podcast_audio/
 
 
+podcast_audio/
+podcast_images/
+youtube_videos/
+backend/podcast_images/
+backend/podcast_videos/
 
 .cursorignore
 story_videos

@@ -53,6 +53,9 @@ class PodcastProject(Base):
     status = Column(String(50), default="draft", nullable=False, index=True)  # draft, in_progress, completed, archived
     is_favorite = Column(Boolean, default=False, index=True)
     
+    # Final combined video URL (persisted for reloads)
+    final_video_url = Column(String(1000), nullable=True)  # URL to final combined podcast video
+    
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, index=True)

@@ -7,11 +7,13 @@ import {
   OpenInNew as OpenInNewIcon,
   Videocam as VideocamIcon,
 } from "@mui/icons-material";
-import { Scene, Job } from "../types";
+import { Scene, Job, VideoGenerationSettings } from "../types";
 import { GlassyCard, glassyCardSx } from "../ui";
 import { InlineAudioPlayer } from "../InlineAudioPlayer";
 import { SceneActionButtons } from "./SceneActionButtons";
 import { aiApiClient } from "../../../api/client";
+import { fetchMediaBlobUrl } from "../../../utils/fetchMediaBlobUrl";
+import { VideoRegenerateModal } from "./VideoRegenerateModal";
 
 interface SceneCardProps {
   scene: Scene;
@@ -22,7 +24,7 @@ interface SceneCardProps {
   avatarImageUrl?: string | null;
   onRender: (sceneId: string, mode: "preview" | "full") => void;
   onImageGenerate: (sceneId: string) => void;
-  onVideoRender: (sceneId: string) => void;
+  onVideoGenerate: (sceneId: string, settings: VideoGenerationSettings) => void;
   onDownloadAudio: (audioUrl: string, title: string) => void;
   onDownloadVideo: (videoUrl: string, title: string) => void;
   onShare: (audioUrl: string, title: string) => void;
@@ -75,7 +77,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   avatarImageUrl,
   onRender,
   onImageGenerate,
-  onVideoRender,
+  onVideoGenerate,
   onDownloadAudio,
   onDownloadVideo,
   onShare,
@@ -89,8 +91,27 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   const status = job?.status || (hasAudio ? "completed" : "idle");
   const initials = getInitials(scene.title);
 
+
   // Load image as blob if it's an authenticated endpoint
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
+  const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [initialVideoPrompt, setInitialVideoPrompt] = useState<string>("");
+
+  // Prepare a simple default prompt based on the scene title/description
+  useEffect(() => {
+    const baseTitle = (scene.title || "").trim();
+    const description = (scene as any).description as string | undefined;
+    const descSnippet = (description || "").split(".")[0]?.trim();
+    let prompt = baseTitle;
+    if (!prompt && descSnippet) {
+      prompt = descSnippet;
+    }
+    if (!prompt) {
+      prompt = "Professional podcast scene with subtle movement";
+    }
+    setInitialVideoPrompt(prompt);
+  }, [scene]);
   
   useEffect(() => {
     if (!imageUrl) {
@@ -98,14 +119,11 @@ export const SceneCard: React.FC<SceneCardProps> = ({
       return;
     }
 
-    console.log('[SceneCard] Loading image:', { imageUrl, hasImage, sceneId: scene.id });
-
     // Check if this is a podcast image endpoint that requires authentication
     const isPodcastImage = imageUrl.includes('/api/podcast/images/') || imageUrl.includes('/api/story/images/');
     
     if (!isPodcastImage) {
       // Regular URL (external), use directly
-      console.log('[SceneCard] Using external image URL directly');
       setImageBlobUrl(imageUrl);
       return;
     }
@@ -134,21 +152,16 @@ export const SceneCard: React.FC<SceneCardProps> = ({
         // Remove query parameters if present
         imagePath = imagePath.split('?')[0];
 
-        console.log('[SceneCard] Fetching image blob from:', imagePath);
-
         const response = await aiApiClient.get(imagePath, {
           responseType: 'blob',
         });
         
         if (!isMounted || imageUrl !== currentImageUrl) {
-          console.log('[SceneCard] Component unmounted or URL changed, skipping blob URL set');
           return;
         }
         
         const blob = response.data;
         const newBlobUrl = URL.createObjectURL(blob);
-        
-        console.log('[SceneCard] Image blob loaded successfully, created blob URL');
         
         setImageBlobUrl((prevBlobUrl) => {
           // Clean up previous blob URL if exists
@@ -184,11 +197,9 @@ export const SceneCard: React.FC<SceneCardProps> = ({
             const token = localStorage.getItem('clerk_dashboard_token') || '';
             if (token) {
               const urlWithToken = `${fallbackPath}?token=${encodeURIComponent(token)}`;
-              console.log('[SceneCard] Trying URL with query token');
               setImageBlobUrl(urlWithToken);
             } else {
               // Fallback to original URL
-              console.log('[SceneCard] No token available, using original URL');
               setImageBlobUrl(imageUrl);
             }
           } catch (fallbackErr) {
@@ -212,6 +223,39 @@ export const SceneCard: React.FC<SceneCardProps> = ({
       });
     };
   }, [imageUrl, hasImage, scene.id]);
+
+  // Load video as blob when videoUrl changes (using Story Writer's utility)
+  useEffect(() => {
+    if (!job?.videoUrl) {
+      setVideoBlobUrl(null);
+      return;
+    }
+
+    let currentBlobUrl: string | null = null;
+
+    fetchMediaBlobUrl(job.videoUrl)
+      .then((blobUrl) => {
+        if (blobUrl) {
+          currentBlobUrl = blobUrl;
+          setVideoBlobUrl(blobUrl);
+        } else {
+          // File not found (404) - clear the blob URL
+          console.warn('[SceneCard] Video file not found (404):', job.videoUrl);
+          setVideoBlobUrl(null);
+        }
+      })
+      .catch((err) => {
+        console.error('[SceneCard] Failed to load video blob:', err);
+        setVideoBlobUrl(null);
+      });
+
+    return () => {
+      // Cleanup blob URL when component unmounts or URL changes
+      if (currentBlobUrl) {
+        URL.revokeObjectURL(currentBlobUrl);
+      }
+    };
+  }, [job?.videoUrl]);
 
   return (
     <GlassyCard sx={glassyCardSx}>
@@ -279,13 +323,12 @@ export const SceneCard: React.FC<SceneCardProps> = ({
                 </Box>
               </Box>
             )}
-            {hasVideo && job?.videoUrl && (
+            {hasVideo && videoBlobUrl && (
               <Box sx={{ mt: 1 }}>
                 <Box
                   component="a"
-                  href={job.videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={videoBlobUrl}
+                  download={`${scene.title.replace(/[^a-z0-9]/gi, '_')}_video.mp4`}
                   sx={{ color: "#a78bfa", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 0.5 }}
                 >
                   <VideocamIcon sx={{ fontSize: 16 }} />
@@ -350,8 +393,57 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           <InlineAudioPlayer audioUrl={audioUrl} title={scene.title} />
         )}
 
-        {/* Image Preview */}
-        {hasImage && (imageBlobUrl || imageUrl) && (
+        {/* Video Preview - Show video if available, otherwise show image */}
+        {hasVideo && videoBlobUrl ? (
+          <Box
+            sx={{
+              width: "100%",
+              borderRadius: 2,
+              overflow: "hidden",
+              border: "2px solid rgba(56,189,248,0.5)",
+              background: alpha("#0f172a", 0.85),
+              position: "relative",
+            }}
+          >
+            <Box
+              component="video"
+              src={videoBlobUrl}
+              controls
+              preload="metadata"
+              sx={{
+                width: "100%",
+                height: "auto",
+                display: "block",
+                maxHeight: 420,
+                objectFit: "cover",
+                backgroundColor: "black",
+              }}
+              onError={(e) => {
+                const videoElement = e.currentTarget as HTMLVideoElement;
+                console.error("[SceneCard] Video failed to load:", {
+                  originalUrl: job?.videoUrl,
+                  networkState: videoElement.networkState,
+                });
+              }}
+            />
+            <Box
+              sx={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                bgcolor: "rgba(56,189,248,0.9)",
+                color: "white",
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                fontSize: "0.75rem",
+                fontWeight: 600,
+              }}
+            >
+              VIDEO
+            </Box>
+          </Box>
+        ) : hasImage && (imageBlobUrl || imageUrl) ? (
           <Box
             sx={{
               width: "100%",
@@ -373,21 +465,14 @@ export const SceneCard: React.FC<SceneCardProps> = ({
                 objectFit: "cover",
               }}
               onError={(e) => {
-                console.error('[SceneCard] Image failed to load:', {
+                console.error("[SceneCard] Image failed to load:", {
                   src: e.currentTarget.src,
                   imageUrl,
-                  imageBlobUrl,
-                  hasImage,
-                });
-              }}
-              onLoad={() => {
-                console.log('[SceneCard] Image loaded successfully:', {
-                  src: imageBlobUrl || imageUrl,
                 });
               }}
             />
           </Box>
-        )}
+        ) : null}
 
         {/* Action Buttons */}
         <SceneActionButtons
@@ -402,11 +487,24 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           isBusy={isBusy}
           onRender={onRender}
           onImageGenerate={onImageGenerate}
-          onVideoRender={onVideoRender}
+          onVideoRender={() => setShowVideoModal(true)}
           onDownloadAudio={onDownloadAudio}
           onDownloadVideo={onDownloadVideo}
           onShare={onShare}
           onError={onError}
+        />
+
+        {/* Video Generation Settings Modal */}
+        <VideoRegenerateModal
+          open={showVideoModal}
+          onClose={() => setShowVideoModal(false)}
+          onGenerate={(settings: VideoGenerationSettings) => {
+            setShowVideoModal(false);
+            onVideoGenerate(scene.id, settings);
+          }}
+          initialPrompt={initialVideoPrompt}
+          initialResolution="480p"
+          initialSeed={-1}
         />
       </Stack>
     </GlassyCard>

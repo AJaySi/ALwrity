@@ -137,6 +137,9 @@ def generate_audio(
         
         # Generate audio using WaveSpeed
         try:
+            # Avoid passing duplicate enable_sync_mode; allow override via kwargs
+            enable_sync_mode = kwargs.pop("enable_sync_mode", True)
+
             client = WaveSpeedClient()
             audio_bytes = client.generate_speech(
                 text=text,
@@ -145,7 +148,7 @@ def generate_audio(
                 volume=volume,
                 pitch=pitch,
                 emotion=emotion,
-                enable_sync_mode=True,
+                enable_sync_mode=enable_sync_mode,
                 **kwargs
             )
             

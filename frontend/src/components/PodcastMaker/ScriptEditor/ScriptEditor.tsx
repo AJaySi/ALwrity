@@ -22,6 +22,7 @@ interface ScriptEditorProps {
   onBackToResearch: () => void;
   onProceedToRendering: (script: Script) => void;
   onError: (message: string) => void;
+  avatarUrl?: string | null; // Base avatar URL for consistent scene image generation
 }
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -37,6 +38,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   onBackToResearch,
   onProceedToRendering,
   onError,
+  avatarUrl,
 }) => {
   const [script, setScript] = useState<Script | null>(initialScript);
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,12 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     duration: number;
     sceneCount: number;
   } | null>(null);
+
+  // Defer upward script updates to avoid setState during render warnings
+  const emitScriptChange = useCallback(
+    (next: Script) => Promise.resolve().then(() => onScriptChange(next)),
+    [onScriptChange]
+  );
 
   // Sync with parent state
   useEffect(() => {
@@ -85,7 +93,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       .then((res) => {
         if (mounted) {
           setScript(res);
-          onScriptChange(res);
+          emitScriptChange(res);
           setError(null);
         }
       })
@@ -108,7 +116,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
         ...currentScript, 
         scenes: currentScript.scenes.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)) 
       };
-      onScriptChange(updatedScript);
+      emitScriptChange(updatedScript);
       return updatedScript;
     });
   };
@@ -124,7 +132,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           ...currentScript,
           scenes: currentScript.scenes.map((s) => (s.id === sceneId ? { ...s, approved: true } : s)),
         };
-        onScriptChange(updatedScript);
+        emitScriptChange(updatedScript);
         return updatedScript;
       });
     } catch (err) {
@@ -570,11 +578,12 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
                         s.id === sceneId ? { ...s, audioUrl, approved: true } : s
                       );
                       const updatedScript = { ...currentScript, scenes: updatedScenes };
-                      onScriptChange(updatedScript);
+                      emitScriptChange(updatedScript);
                       return updatedScript;
                     });
                   }}
                   idea={idea}
+                  avatarUrl={avatarUrl}
                 />
               </GlassyCard>
             ))}

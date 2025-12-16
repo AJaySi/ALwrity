@@ -71,13 +71,16 @@ class WaveSpeedClient:
         logger.info(f"[WaveSpeed] Submitted request: {prediction_id}")
         return prediction_id
 
-    def get_prediction_result(self, prediction_id: str, timeout: int = 120) -> Dict[str, Any]:
+    def get_prediction_result(self, prediction_id: str, timeout: int = 30) -> Dict[str, Any]:
         """
         Fetch the current status/result for a prediction.
+        Matches the example pattern: simple GET request, check status_code == 200, return data.
         """
         url = f"{self.BASE_URL}/predictions/{prediction_id}/result"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        
         try:
-            response = requests.get(url, headers={"Authorization": f"Bearer {self.api_key}"}, timeout=timeout)
+            response = requests.get(url, headers=headers, timeout=timeout)
         except requests_exceptions.Timeout as exc:
             raise HTTPException(
                 status_code=504,
@@ -98,7 +101,15 @@ class WaveSpeedClient:
                     "exception": str(exc),
                 },
             ) from exc
-        if response.status_code != 200:
+        
+        # Match example pattern: check status_code == 200, then get data
+        if response.status_code == 200:
+            result = response.json().get("data")
+            if not result:
+                raise HTTPException(status_code=502, detail={"error": "WaveSpeed polling response missing data"})
+            return result
+        else:
+            # Non-200 status - log and raise error (matching example's break behavior)
             logger.error(f"[WaveSpeed] Polling failed: {response.status_code} {response.text}")
             raise HTTPException(
                 status_code=502,
@@ -109,59 +120,116 @@ class WaveSpeedClient:
                 },
             )
 
-        result = response.json().get("data")
-        if not result:
-            raise HTTPException(status_code=502, detail={"error": "WaveSpeed polling response missing data"})
-        return result
-
     def poll_until_complete(
         self,
         prediction_id: str,
-        timeout_seconds: int = 240,
+        timeout_seconds: Optional[int] = None,
         interval_seconds: float = 1.0,
     ) -> Dict[str, Any]:
         """
-        Poll WaveSpeed until the job completes, fails, or times out.
+        Poll WaveSpeed until the job completes or fails.
+        Matches the example pattern: simple polling loop until status is "completed" or "failed".
+        
+        Args:
+            prediction_id: The prediction ID to poll for
+            timeout_seconds: Optional timeout in seconds. If None, polls indefinitely until completion/failure.
+            interval_seconds: Seconds to wait between polling attempts (default: 1.0, faster than 2.0)
+        
+        Returns:
+            Dict containing the completed result
+            
+        Raises:
+            HTTPException: If the task fails, polling fails, or times out (if timeout_seconds is set)
         """
         start_time = time.time()
+        consecutive_errors = 0
+        max_consecutive_errors = 6  # safety guard for non-transient errors
+        
         while True:
             try:
                 result = self.get_prediction_result(prediction_id)
+                consecutive_errors = 0  # Reset error counter on success
             except HTTPException as exc:
                 detail = exc.detail or {}
                 if isinstance(detail, dict):
                     detail.setdefault("prediction_id", prediction_id)
                     detail.setdefault("resume_available", True)
                     detail.setdefault("error", detail.get("error", "WaveSpeed polling failed"))
-                raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+
+                # Determine underlying status code (WaveSpeed vs proxy)
+                status_code = detail.get("status_code", exc.status_code)
+
+                # Treat 5xx as transient: keep polling indefinitely with backoff
+                if 500 <= int(status_code) < 600:
+                    consecutive_errors += 1
+                    backoff = min(30.0, interval_seconds * (2 ** (consecutive_errors - 1)))
+                    logger.warning(
+                        f"[WaveSpeed] Transient polling error {consecutive_errors} for {prediction_id}: "
+                        f"{status_code}. Backing off {backoff:.1f}s"
+                    )
+                    time.sleep(backoff)
+                    continue
+
+                # For non-transient (typically 4xx) errors, apply safety cap
+                consecutive_errors += 1
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error(
+                        f"[WaveSpeed] Too many polling errors ({consecutive_errors}) for {prediction_id}, "
+                        f"status_code={status_code}. Giving up."
+                    )
+                    raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+
+                backoff = min(30.0, interval_seconds * (2 ** (consecutive_errors - 1)))
+                logger.warning(
+                    f"[WaveSpeed] Polling error {consecutive_errors}/{max_consecutive_errors} for {prediction_id}: "
+                    f"{status_code}. Backing off {backoff:.1f}s"
+                )
+                time.sleep(backoff)
+                continue
+            
+            # Extract status from result (matching example pattern)
             status = result.get("status")
+            
             if status == "completed":
-                logger.info(f"[WaveSpeed] Prediction {prediction_id} completed.")
+                elapsed = time.time() - start_time
+                logger.info(f"[WaveSpeed] Prediction {prediction_id} completed in {elapsed:.1f}s")
                 return result
+            
             if status == "failed":
-                logger.error(f"[WaveSpeed] Prediction {prediction_id} failed: {result.get('error')}")
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"[WaveSpeed] Prediction {prediction_id} failed: {error_msg}")
                 raise HTTPException(
                     status_code=502,
                     detail={
-                        "error": "WaveSpeed animation failed",
+                        "error": "WaveSpeed task failed",
                         "prediction_id": prediction_id,
-                        "details": result.get("error"),
-                    },
-                )
-
-            elapsed = time.time() - start_time
-            if elapsed > timeout_seconds:
-                logger.error(f"[WaveSpeed] Prediction {prediction_id} timed out after {timeout_seconds}s")
-                raise HTTPException(
-                    status_code=504,
-                    detail={
-                        "error": "WaveSpeed animation timed out",
-                        "prediction_id": prediction_id,
+                        "message": error_msg,
                         "details": result,
                     },
                 )
 
-            logger.debug(f"[WaveSpeed] Prediction {prediction_id} status={status}. Waiting...")
+            # Check timeout only if specified
+            if timeout_seconds is not None:
+                elapsed = time.time() - start_time
+                if elapsed > timeout_seconds:
+                    logger.error(f"[WaveSpeed] Prediction {prediction_id} timed out after {timeout_seconds}s")
+                    raise HTTPException(
+                        status_code=504,
+                        detail={
+                            "error": "WaveSpeed task timed out",
+                            "prediction_id": prediction_id,
+                            "timeout_seconds": timeout_seconds,
+                            "current_status": status,
+                            "message": f"Task did not complete within {timeout_seconds} seconds. Status: {status}",
+                        },
+                    )
+
+            # Log progress periodically (every 30 seconds)
+            elapsed = time.time() - start_time
+            if int(elapsed) % 30 == 0 and elapsed > 0:
+                logger.info(f"[WaveSpeed] Polling {prediction_id}: status={status}, elapsed={elapsed:.0f}s")
+            
+            # Poll faster (1.0s instead of 2.0s) to match example's responsiveness
             time.sleep(interval_seconds)
 
     def optimize_prompt(
@@ -469,7 +537,9 @@ class WaveSpeedClient:
         
         # Fetch image bytes
         logger.info(f"[WaveSpeed] Fetching image from URL: {image_url}")
-        image_response = requests.get(image_url, timeout=timeout)
+        # Use reasonable timeout for downloading the final image (60s should be enough)
+        # The timeout parameter is for polling, not for downloading
+        image_response = requests.get(image_url, timeout=60)
         if image_response.status_code == 200:
             image_bytes = image_response.content
             logger.info(f"[WaveSpeed] Image generated successfully (size: {len(image_bytes)} bytes)")
@@ -481,6 +551,208 @@ class WaveSpeedClient:
                 detail="Failed to fetch generated image from WaveSpeed URL",
             )
     
+    def generate_character_image(
+        self,
+        prompt: str,
+        reference_image_bytes: bytes,
+        style: str = "Auto",
+        aspect_ratio: str = "16:9",
+        rendering_speed: str = "Default",
+        timeout: Optional[int] = None,
+    ) -> bytes:
+        """
+        Generate image using Ideogram Character API to maintain character consistency.
+        Creates variations of a reference character image while respecting the base appearance.
+        
+        Note: This API is always async and requires polling for results.
+        
+        Args:
+            prompt: Text prompt describing the scene/context for the character
+            reference_image_bytes: Reference image bytes (base avatar)
+            style: Character style type ("Auto", "Fiction", or "Realistic")
+            aspect_ratio: Aspect ratio ("1:1", "16:9", "9:16", "4:3", "3:4")
+            rendering_speed: Rendering speed ("Default", "Turbo", "Quality")
+            timeout: Total timeout in seconds for submission + polling (default: 180)
+            
+        Returns:
+            bytes: Generated image bytes with consistent character
+        """
+        import base64
+        
+        # Encode reference image to base64
+        image_base64 = base64.b64encode(reference_image_bytes).decode('utf-8')
+        # Add data URI prefix
+        image_data_uri = f"data:image/png;base64,{image_base64}"
+        
+        url = f"{self.BASE_URL}/ideogram-ai/ideogram-character"
+        
+        # Note: enable_sync_mode is not a valid parameter for Ideogram Character API
+        # The API is always async and requires polling
+        payload = {
+            "prompt": prompt,
+            "image": image_data_uri,
+            "style": style,
+            "aspect_ratio": aspect_ratio,
+            "rendering_speed": rendering_speed,
+        }
+        
+        logger.info(f"[WaveSpeed] Generating character image via Ideogram Character (prompt_length={len(prompt)})")
+        # POST request should return quickly with just the task ID
+        # Use reasonable timeouts for the initial submission
+        # Connection timeout: 30s (increased for reliability - network may be slow)
+        # Read timeout: 30s (should be enough to get task ID response)
+        # Retry logic for transient connection failures
+        max_retries = 2
+        retry_delay = 2.0  # seconds
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(
+                    url, 
+                    headers=self._headers(), 
+                    json=payload, 
+                    timeout=(30, 30)  # (connect_timeout, read_timeout) - increased for network reliability
+                )
+                break  # Success, exit retry loop
+            except (requests_exceptions.ConnectTimeout, requests_exceptions.ConnectionError) as e:
+                if attempt < max_retries:
+                    logger.warning(f"[WaveSpeed] Connection attempt {attempt + 1}/{max_retries + 1} failed, retrying in {retry_delay}s: {e}")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    # Final attempt failed
+                    error_type = "Connection timeout" if isinstance(e, requests_exceptions.ConnectTimeout) else "Connection error"
+                    logger.error(f"[WaveSpeed] {error_type} to Ideogram Character API after {max_retries + 1} attempts: {e}")
+                    raise HTTPException(
+                        status_code=504 if isinstance(e, requests_exceptions.ConnectTimeout) else 502,
+                        detail={
+                            "error": f"{error_type} to WaveSpeed Ideogram Character API",
+                            "message": "Unable to establish connection to the image generation service after multiple attempts. Please check your network connection and try again.",
+                            "exception": str(e),
+                            "retry_recommended": True,
+                        },
+                    )
+            except requests_exceptions.Timeout as e:
+                logger.error(f"[WaveSpeed] Request timeout to Ideogram Character API: {e}")
+                raise HTTPException(
+                    status_code=504,
+                    detail={
+                        "error": "Request timeout to WaveSpeed Ideogram Character API",
+                        "message": "The image generation request took too long. Please try again.",
+                        "exception": str(e),
+                    },
+                )
+        
+        if response.status_code != 200:
+            logger.error(f"[WaveSpeed] Character image generation failed: {response.status_code} {response.text}")
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "WaveSpeed Ideogram Character generation failed",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                },
+            )
+        
+        response_json = response.json()
+        data = response_json.get("data") or response_json
+        
+        # Extract prediction ID
+        prediction_id = data.get("id")
+        if not prediction_id:
+            logger.error(f"[WaveSpeed] No prediction ID in response: {response.text}")
+            raise HTTPException(
+                status_code=502,
+                detail="WaveSpeed Ideogram Character response missing prediction id",
+            )
+        
+        # Ideogram Character API is always async - check status and poll if needed
+        outputs = data.get("outputs") or []
+        status = data.get("status", "unknown")
+        
+        logger.info(f"[WaveSpeed] Ideogram Character task created: prediction_id={prediction_id}, status={status}")
+        
+        # If status is already completed, use outputs directly (unlikely but possible)
+        if outputs and status == "completed":
+            logger.info(f"[WaveSpeed] Got immediate results from Ideogram Character")
+        else:
+            # Always need to poll for results (API is async)
+            logger.info(f"[WaveSpeed] Polling for Ideogram Character result (status: {status}, prediction_id: {prediction_id})")
+            # Poll until complete - use timeout if provided, otherwise poll indefinitely
+            # Match example pattern exactly: simple while True loop, check status, break on completed/failed
+            polling_timeout = timeout if timeout else None  # None means poll indefinitely
+            result = self.poll_until_complete(
+                prediction_id,
+                timeout_seconds=polling_timeout,
+                interval_seconds=0.5,  # Poll every 0.5s (closer to example's 0.1s)
+            )
+            # Safely extract outputs and status
+            if not isinstance(result, dict):
+                logger.error(f"[WaveSpeed] Unexpected result type: {type(result)}, value: {result}")
+                raise HTTPException(
+                    status_code=502,
+                    detail="WaveSpeed Ideogram Character returned unexpected response format",
+                )
+            
+            outputs = result.get("outputs") or []
+            status = result.get("status", "unknown")
+            
+            if status != "completed":
+                # Safely extract error message
+                error_msg = "Unknown error"
+                if isinstance(result, dict):
+                    error_msg = result.get("error") or result.get("message") or str(result.get("details", "Unknown error"))
+                else:
+                    error_msg = str(result)
+                
+                logger.error(f"[WaveSpeed] Ideogram Character task did not complete: status={status}, error={error_msg}")
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "error": "WaveSpeed Ideogram Character task failed",
+                        "status": status,
+                        "message": error_msg,
+                    }
+                )
+        
+        # Extract image URL from outputs
+        if not outputs:
+            logger.error(f"[WaveSpeed] No outputs after polling: status={status}")
+            raise HTTPException(
+                status_code=502,
+                detail="WaveSpeed Ideogram Character returned no outputs",
+            )
+        
+        image_url = None
+        if isinstance(outputs, list) and len(outputs) > 0:
+            first_output = outputs[0]
+            if isinstance(first_output, str):
+                image_url = first_output
+            elif isinstance(first_output, dict):
+                image_url = first_output.get("url") or first_output.get("image_url")
+        
+        if not image_url:
+            logger.error(f"[WaveSpeed] No image URL in outputs: {outputs}")
+            raise HTTPException(
+                status_code=502,
+                detail="WaveSpeed Ideogram Character response missing image URL",
+            )
+        
+        # Download image
+        logger.info(f"[WaveSpeed] Downloading character image from: {image_url}")
+        image_response = requests.get(image_url, timeout=60)
+        if image_response.status_code != 200:
+            logger.error(f"[WaveSpeed] Failed to download image: {image_response.status_code}")
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to download generated character image",
+            )
+        
+        image_bytes = image_response.content
+        logger.info(f"[WaveSpeed] ✅ Successfully generated character image: {len(image_bytes)} bytes")
+        return image_bytes
+    
     def generate_speech(
         self,
         text: str,
@@ -490,7 +762,7 @@ class WaveSpeedClient:
         pitch: float = 0.0,
         emotion: str = "happy",
         enable_sync_mode: bool = True,
-        timeout: int = 60,
+        timeout: int = 120,
         **kwargs
     ) -> bytes:
         """
@@ -537,7 +809,51 @@ class WaveSpeedClient:
                 payload[param] = kwargs[param]
         
         logger.info(f"[WaveSpeed] Generating speech via {url} (voice={voice_id}, text_length={len(text)})")
-        response = requests.post(url, headers=self._headers(), json=payload, timeout=timeout)
+
+        # Retry on transient connection issues
+        max_retries = 2
+        retry_delay = 2.0
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(
+                    url,
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=(30, 60),  # connect, read
+                )
+                break
+            except (requests_exceptions.ConnectTimeout, requests_exceptions.ConnectionError) as e:
+                last_error = e
+                if attempt < max_retries:
+                    logger.warning(
+                        f"[WaveSpeed] Speech connection attempt {attempt + 1}/{max_retries + 1} failed, "
+                        f"retrying in {retry_delay}s: {e}"
+                    )
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                logger.error(f"[WaveSpeed] Speech connection failed after {max_retries + 1} attempts: {e}")
+                raise HTTPException(
+                    status_code=504,
+                    detail={
+                        "error": "Connection to WaveSpeed speech API timed out",
+                        "message": "Unable to reach the speech service. Please try again.",
+                        "exception": str(e),
+                        "retry_recommended": True,
+                    },
+                )
+            except requests_exceptions.Timeout as e:
+                last_error = e
+                logger.error(f"[WaveSpeed] Speech request timeout: {e}")
+                raise HTTPException(
+                    status_code=504,
+                    detail={
+                        "error": "WaveSpeed speech request timed out",
+                        "message": "The speech generation request took too long. Please try again.",
+                        "exception": str(e),
+                    },
+                )
         
         if response.status_code != 200:
             logger.error(f"[WaveSpeed] Speech generation failed: {response.status_code} {response.text}")

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Script, Knobs, Job, RenderJobResult, TaskStatus } from "../types";
+import { Script, Knobs, Job, RenderJobResult, TaskStatus, VideoGenerationSettings } from "../types";
 import { podcastApi } from "../../../services/podcastApi";
 
 interface UseRenderQueueProps {
@@ -36,7 +36,11 @@ export const useRenderQueue = ({
     duration: number;
     sceneCount: number;
   } | null>(null);
+  const [combiningVideos, setCombiningVideos] = useState(false);
+  const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
+  const [combiningProgress, setCombiningProgress] = useState<{ progress: number; message: string } | null>(null);
   const pollingIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pollingErrorCounts = useRef<Map<string, number>>(new Map());
 
   // Cleanup polling intervals on unmount
   useEffect(() => {
@@ -44,10 +48,11 @@ export const useRenderQueue = ({
     return () => {
       intervals.forEach((interval) => clearInterval(interval));
       intervals.clear();
+      pollingErrorCounts.current.clear();
     };
   }, []);
 
-  // Initialize jobs if empty
+  // Initialize jobs if empty (audio/image only)
   useEffect(() => {
     if (jobs.length === 0 && script.scenes.length > 0) {
       const initialJobs: Job[] = script.scenes.map((s) => {
@@ -59,7 +64,7 @@ export const useRenderQueue = ({
           progress: hasExistingAudio ? 100 : 0,
           previewUrl: null,
           finalUrl: hasExistingAudio ? s.audioUrl || null : null,
-          imageUrl: s.imageUrl || null, // Include existing imageUrl from scene
+          imageUrl: s.imageUrl || null,
           jobId: null,
         };
       });
@@ -67,25 +72,201 @@ export const useRenderQueue = ({
         onUpdateJob(job.sceneId, job);
       });
     }
-  }, [script.scenes.length, jobs.length, onUpdateJob, script.scenes]);
+  }, [jobs.length, script.scenes.length, onUpdateJob, script.scenes]);
+
+  // Load final video URL from project on mount (for persistence across reloads)
+  useEffect(() => {
+    if (!projectId) return;
+
+    podcastApi
+      .loadProject(projectId)
+      .then((project) => {
+        if (project.final_video_url) {
+          console.log("[useRenderQueue] Loaded final video URL from project:", project.final_video_url);
+          setFinalVideoUrl(project.final_video_url);
+        }
+      })
+      .catch((error) => {
+        console.error("[useRenderQueue] Failed to load project for final video URL:", error);
+        // Don't show error to user - this is just for restoring state
+      });
+  }, [projectId]);
+
+  // Always try to attach existing videos to scenes (even after reloads)
+  useEffect(() => {
+    if (script.scenes.length === 0) return;
+
+    podcastApi
+      .listVideos(projectId)
+      .then((result) => {
+        const videoMap = new Map<number, string>();
+        
+        result.videos.forEach((video) => {
+          // Use the most recent video for each scene number
+          if (!videoMap.has(video.scene_number)) {
+            // Store the raw video URL - SceneCard will handle authentication via blob loading
+            videoMap.set(video.scene_number, video.video_url);
+          }
+        });
+
+        script.scenes.forEach((scene) => {
+          const sceneNumberMatch = scene.id.match(/\d+/);
+          const sceneNumber = sceneNumberMatch ? parseInt(sceneNumberMatch[0], 10) : null;
+          
+          if (sceneNumber === null) return;
+
+          const videoUrl = videoMap.get(sceneNumber);
+          if (!videoUrl) return;
+
+          const job = jobs.find((j) => j.sceneId === scene.id);
+
+          // Avoid redundant updates
+          if (job?.videoUrl === videoUrl) return;
+
+          onUpdateJob(scene.id, {
+            sceneId: scene.id,
+            title: scene.title,
+            videoUrl,
+            status: "completed" as const,
+            progress: 100,
+          });
+        });
+      })
+      .catch((error) => {
+        console.error("[useRenderQueue] Failed to list existing videos:", error);
+      });
+  }, [projectId, script.scenes, jobs, onUpdateJob]);
+
+  // Periodic check to rescue videos that were generated but not detected by polling
+  useEffect(() => {
+    if (rendering && script.scenes.length > 0) {
+      const rescueInterval = setInterval(async () => {
+        // Check for videos every 2 minutes while rendering is active
+        try {
+          const videoList = await podcastApi.listVideos(projectId);
+          
+          const videoMap = new Map<number, string>();
+          videoList.videos.forEach((video) => {
+            if (!videoMap.has(video.scene_number)) {
+              // Store the raw video URL - SceneCard will handle authentication via blob loading
+              videoMap.set(video.scene_number, video.video_url);
+            }
+          });
+
+          // Update jobs for scenes that have videos but no videoUrl set
+          script.scenes.forEach((scene) => {
+            const sceneNumberMatch = scene.id.match(/\d+/);
+            const sceneNumber = sceneNumberMatch ? parseInt(sceneNumberMatch[0], 10) : null;
+            if (sceneNumber !== null) {
+              const videoUrl = videoMap.get(sceneNumber);
+              const job = jobs.find((j) => j.sceneId === scene.id);
+              
+              if (videoUrl) {
+                if (!job) {
+                  onUpdateJob(scene.id, { 
+                    sceneId: scene.id,
+                    title: scene.title,
+                    status: "completed" as const,
+                    progress: 100,
+                    videoUrl,
+                  });
+                } else if (!job.videoUrl) {
+                  onUpdateJob(scene.id, { videoUrl, status: "completed" as const, progress: 100 });
+                  // If this was the rendering scene, stop rendering
+                  if (rendering === scene.id) {
+                    setRendering(null);
+                  }
+                }
+              }
+            }
+          });
+        } catch (error) {
+          console.error("[useRenderQueue] Failed to rescue videos:", error);
+        }
+      }, 120000); // Check every 2 minutes
+
+      return () => clearInterval(rescueInterval);
+    }
+  }, [rendering, script.scenes, jobs, projectId, onUpdateJob]);
 
   const getScene = useCallback((sceneId: string) => script.scenes.find((s) => s.id === sceneId), [script.scenes]);
 
   const pollTaskStatus = useCallback(async (taskId: string, sceneId: string) => {
     try {
-      const status: TaskStatus = await podcastApi.pollTaskStatus(taskId);
+      const status: TaskStatus | null = await podcastApi.pollTaskStatus(taskId);
+
+      // Handle null response (task not found)
+      if (!status) {
+        const errorCount = (pollingErrorCounts.current.get(sceneId) || 0) + 1;
+        pollingErrorCounts.current.set(sceneId, errorCount);
+        
+        // Stop polling after 3 consecutive "task not found" errors
+        if (errorCount >= 3) {
+          onUpdateJob(sceneId, { status: "failed", progress: 0 });
+          const interval = pollingIntervals.current.get(sceneId);
+          if (interval) {
+            clearInterval(interval);
+            pollingIntervals.current.delete(sceneId);
+          }
+          pollingErrorCounts.current.delete(sceneId);
+          setRendering(null);
+          onError("Video generation task not found. The task may have expired or been cancelled.");
+          return true; // Stop polling
+        }
+        return false; // Continue polling (might be transient)
+      }
+
+      // Reset error count on successful poll
+      pollingErrorCounts.current.delete(sceneId);
 
       onUpdateJob(sceneId, {
         progress: status.progress ?? 0,
         status: status.status === "completed" ? "completed" : status.status === "failed" ? "failed" : "running",
       });
 
-      if (status.status === "completed" && status.result) {
+      // Check for completion - handle both "completed" and "processing" with 100% progress
+      const isCompleted = status.status === "completed" || (status.status === "processing" && status.progress === 100);
+      
+      if (isCompleted && status.result) {
         const result = status.result;
+        console.log("[useRenderQueue] Task completed, extracting video URL", {
+          result,
+          video_url: result.video_url,
+          status: status.status,
+          progress: status.progress,
+        });
+        
+        let videoUrl = result.video_url;
+        if (!videoUrl) {
+          console.error("[useRenderQueue] No video_url in result! Attempting to rescue from file system...", { result });
+          // Try to rescue: check if video exists for this scene
+          const sceneNumberMatch = getScene(sceneId)?.id.match(/\d+/);
+          const sceneNumber = sceneNumberMatch ? parseInt(sceneNumberMatch[0], 10) : null;
+          if (sceneNumber !== null) {
+            podcastApi
+              .listVideos(projectId)
+              .then((videoList) => {
+                const sceneVideo = videoList.videos.find((v) => v.scene_number === sceneNumber);
+                if (sceneVideo) {
+                  // Store the raw video URL - SceneCard will handle authentication via blob loading
+                  onUpdateJob(sceneId, {
+                    status: "completed",
+                    progress: 100,
+                    videoUrl: sceneVideo.video_url,
+                    cost: result.cost || 0,
+                  });
+                }
+              })
+              .catch((err) => console.error("[useRenderQueue] Failed to rescue video:", err));
+          }
+          return true; // Stop polling
+        }
+        
+        // Store the raw video URL - SceneCard will handle authentication via blob loading
         onUpdateJob(sceneId, {
           status: "completed",
           progress: 100,
-          videoUrl: result.video_url,
+          videoUrl,
           cost: result.cost,
         });
 
@@ -94,20 +275,62 @@ export const useRenderQueue = ({
           clearInterval(interval);
           pollingIntervals.current.delete(sceneId);
         }
+        setRendering(null);
+        return true; // Stop polling
       } else if (status.status === "failed") {
+        // Extract user-friendly error message
+        let errorMessage = "Video generation failed";
+        if (status.error) {
+          // Try to extract meaningful error from various formats
+          const errorStr = status.error;
+          if (errorStr.includes("Insufficient credits")) {
+            errorMessage = "Video generation failed: Insufficient WaveSpeed credits. Please top up your account.";
+          } else if (errorStr.includes("HTTPException") || errorStr.includes("502")) {
+            // Extract the actual error message from HTTPException details
+            const match = errorStr.match(/message[":\s]+"([^"]+)"/i) || errorStr.match(/detail[":\s]+"([^"]+)"/i);
+            if (match && match[1]) {
+              errorMessage = `Video generation failed: ${match[1]}`;
+            } else {
+              errorMessage = `Video generation failed: ${errorStr}`;
+            }
+          } else {
+            errorMessage = `Video generation failed: ${errorStr}`;
+          }
+        }
+
         onUpdateJob(sceneId, { status: "failed", progress: 0 });
         const interval = pollingIntervals.current.get(sceneId);
         if (interval) {
           clearInterval(interval);
           pollingIntervals.current.delete(sceneId);
         }
-        onError(status.error || "Video generation failed");
+        pollingErrorCounts.current.delete(sceneId);
+        setRendering(null);
+        onError(errorMessage);
+        return true; // Stop polling
       }
 
-      return status.status === "completed" || status.status === "failed";
+      return false; // Continue polling
     } catch (error) {
       console.error("Error polling task status:", error);
-      return false;
+      const errorCount = (pollingErrorCounts.current.get(sceneId) || 0) + 1;
+      pollingErrorCounts.current.set(sceneId, errorCount);
+      
+      // Stop polling after 5 consecutive network errors
+      if (errorCount >= 5) {
+        onUpdateJob(sceneId, { status: "failed", progress: 0 });
+        const interval = pollingIntervals.current.get(sceneId);
+        if (interval) {
+          clearInterval(interval);
+          pollingIntervals.current.delete(sceneId);
+        }
+        pollingErrorCounts.current.delete(sceneId);
+        setRendering(null);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        onError(`Video generation failed: Unable to check status. ${errorMsg}`);
+        return true; // Stop polling
+      }
+      return false; // Continue polling (might be transient network error)
     }
   }, [onUpdateJob, onError]);
 
@@ -217,6 +440,7 @@ export const useRenderQueue = ({
         sceneId: scene.id,
         sceneTitle: scene.title,
         sceneContent: sceneContent,
+        baseAvatarUrl: avatarImageUrl || undefined, // Use base avatar if available
         width: 1024,
         height: 1024,
       });
@@ -239,68 +463,112 @@ export const useRenderQueue = ({
     } finally {
       setGeneratingImage(null);
     }
-  }, [generatingImage, getScene, onUpdateJob, onError]);
+  }, [generatingImage, getScene, avatarImageUrl, onUpdateJob, onError, script]);
 
-  const runVideoRender = useCallback(async (sceneId: string) => {
-    if (rendering && rendering !== sceneId) return;
-    const scene = getScene(sceneId);
-    if (!scene) return;
-
-    const sceneImageUrl = scene.imageUrl || avatarImageUrl;
-    if (!sceneImageUrl) {
-      onError("Scene image is required for video generation. Please generate images for scenes first.");
-      return;
-    }
-
-    const job = jobs.find((j) => j.sceneId === sceneId);
-    if (!job?.finalUrl) {
-      onError("Please generate audio first before creating video.");
-      return;
-    }
-
-    const estimatedCost = 0.30;
-    if (budgetCap && budgetCap > 0) {
-      const currentSpent = jobs
-        .filter((j) => j.status === "completed" && j.cost)
-        .reduce((sum, j) => sum + (j.cost || 0), 0);
-
-      if (currentSpent + estimatedCost > budgetCap) {
-        onError(`Budget cap exceeded. Estimated cost: $${estimatedCost.toFixed(2)}, Budget remaining: $${(budgetCap - currentSpent).toFixed(2)}`);
+  const runVideoRender = useCallback(
+    async (sceneId: string, settings?: VideoGenerationSettings) => {
+      if (rendering && rendering !== sceneId) {
         return;
       }
-    }
 
-    setRendering(sceneId);
-    onUpdateJob(sceneId, {
-      status: "running",
-      progress: 5,
-    });
+      const scene = getScene(sceneId);
+      if (!scene) {
+        return;
+      }
 
-    try {
-      const result = await podcastApi.generateVideo({
-        projectId,
-        sceneId,
-        sceneTitle: scene.title,
-        audioUrl: job.finalUrl,
-        avatarImageUrl: sceneImageUrl,
-        resolution: knobs.resolution || "720p",
-      });
+      // Guard: require image and audio before calling expensive video gen
+      const sceneImageUrl = scene.imageUrl || avatarImageUrl;
+      if (!sceneImageUrl) {
+        onError("Scene image is required for video generation. Please generate images for scenes first.");
+        return;
+      }
 
+      const job = jobs.find((j) => j.sceneId === sceneId);
+      // Use job.finalUrl if available, otherwise fall back to scene.audioUrl (from Script Editor)
+      const audioUrl = job?.finalUrl || scene.audioUrl;
+      if (!audioUrl || audioUrl.startsWith("blob:")) {
+        onError("Please generate audio first before creating video.");
+        return;
+      }
+
+      // Guard: ensure every scene has audio and image before enabling render queue video
+      const allScenesHaveAudio = script.scenes.every((s) => s.audioUrl && !s.audioUrl.startsWith("blob:"));
+      const allScenesHaveImage = script.scenes.every((s) => s.imageUrl);
+      if (!allScenesHaveAudio || !allScenesHaveImage) {
+        onError("Please ensure all scenes have both audio and image before generating video.");
+        return;
+      }
+
+      // Resolution & simple cost heuristic (default 480p for lower cost)
+      const targetResolution: "480p" | "720p" =
+        settings?.resolution || (knobs.resolution as "480p" | "720p") || "480p";
+      const baseCost = 0.3; // 5s at 720p
+      const estimatedCost = targetResolution === "480p" ? baseCost / 2 : baseCost;
+
+      if (budgetCap && budgetCap > 0) {
+        const currentSpent = jobs
+          .filter((j) => j.status === "completed" && j.cost)
+          .reduce((sum, j) => sum + (j.cost || 0), 0);
+
+        if (currentSpent + estimatedCost > budgetCap) {
+          onError(
+            `Budget cap exceeded. Estimated cost: $${estimatedCost.toFixed(
+              2
+            )}, Budget remaining: $${(budgetCap - currentSpent).toFixed(2)}`
+          );
+          return;
+        }
+      }
+
+      setRendering(sceneId);
       onUpdateJob(sceneId, {
-        taskId: result.taskId,
         status: "running",
         progress: 5,
       });
 
-      startPolling(result.taskId, sceneId);
-    } catch (error) {
-      onUpdateJob(sceneId, { status: "failed", progress: 0 });
-      const message = error instanceof Error ? error.message : "Video generation failed";
-      onError(message);
-    } finally {
-      setRendering(null);
-    }
-  }, [rendering, getScene, avatarImageUrl, jobs, budgetCap, projectId, knobs, onUpdateJob, onError, startPolling]);
+      try {
+        console.log("[useRenderQueue] Starting video generation", {
+          sceneId,
+          sceneTitle: scene.title,
+          audioUrl,
+          avatarImageUrl: sceneImageUrl,
+          resolution: targetResolution,
+          prompt: settings?.prompt,
+          seed: settings?.seed,
+          maskImageUrl: settings?.maskImageUrl,
+        });
+
+        const result = await podcastApi.generateVideo({
+          projectId,
+          sceneId,
+          sceneTitle: scene.title,
+          audioUrl,
+          avatarImageUrl: sceneImageUrl,
+          resolution: targetResolution,
+          prompt: settings?.prompt || undefined,
+          seed: settings?.seed ?? -1,
+          maskImageUrl: settings?.maskImageUrl || undefined,
+        });
+
+        if (!result.taskId) {
+          throw new Error("Backend did not return a task ID. Response: " + JSON.stringify(result));
+        }
+
+        onUpdateJob(sceneId, {
+          taskId: result.taskId,
+          status: "running",
+          progress: 5,
+        });
+
+        startPolling(result.taskId, sceneId);
+      } catch (error) {
+        onUpdateJob(sceneId, { status: "failed", progress: 0 });
+        const message = error instanceof Error ? error.message : "Video generation failed";
+        onError(message);
+      }
+    },
+    [rendering, getScene, avatarImageUrl, jobs, budgetCap, projectId, knobs, onUpdateJob, onError, script.scenes, startPolling]
+  );
 
   const combineAudio = useCallback(async () => {
     try {
@@ -361,16 +629,151 @@ export const useRenderQueue = ({
     }
   }, [script.scenes, jobs, projectId, onError]);
 
+  const combineFinalVideo = useCallback(async () => {
+    try {
+      setCombiningVideos(true);
+      onError("");
+
+      // Collect all scene video URLs
+      const sceneVideoUrls: string[] = [];
+      for (const scene of script.scenes) {
+        const job = jobs.find((j) => j.sceneId === scene.id);
+        if (!job?.videoUrl) {
+          throw new Error(`Scene "${scene.title}" is missing a video. Please generate videos for all scenes first.`);
+        }
+        // Remove blob URLs and query params - use the API path only
+        let videoUrl = job.videoUrl;
+        if (videoUrl.startsWith("blob:")) {
+          throw new Error(`Scene "${scene.title}" has a blob URL. Cannot combine blob URLs. Please use API URLs.`);
+        }
+        videoUrl = videoUrl.split("?")[0]; // Remove query params
+        sceneVideoUrls.push(videoUrl);
+      }
+
+      console.log("[combineFinalVideo] Starting combination with", sceneVideoUrls.length, "videos");
+
+      // Start combination task
+      const result = await podcastApi.combineVideos({
+        projectId,
+        sceneVideoUrls,
+        podcastTitle: script.scenes[0]?.title || "Podcast",
+      });
+
+      console.log("[combineFinalVideo] Task created:", result.taskId);
+
+      // Poll for completion
+      const taskId = result.taskId;
+      let done = false;
+      let pollCount = 0;
+      const maxPolls = 300; // 10 minutes max (300 * 2 seconds) - encoding can take time
+      let lastProgress = 0;
+      let lastMessage = "Starting video combination...";
+      
+      while (!done && pollCount < maxPolls) {
+        await new Promise((r) => setTimeout(r, 2000)); // Poll every 2 seconds
+        pollCount++;
+        
+        const status = await podcastApi.pollTaskStatus(taskId);
+        
+        // Update progress and message for user feedback
+        if (status) {
+          const currentProgress = status.progress ?? 0;
+          const currentMessage = status.message || "Processing...";
+          
+          // Update UI with progress
+          setCombiningProgress({
+            progress: currentProgress,
+            message: currentMessage,
+          });
+          
+          // Only log if progress or message changed to reduce noise
+          if (currentProgress !== lastProgress || currentMessage !== lastMessage) {
+            console.log(
+              `[combineFinalVideo] Poll ${pollCount}: ${status.status} | ` +
+              `Progress: ${currentProgress.toFixed(1)}% | Message: ${currentMessage}`
+            );
+            lastProgress = currentProgress;
+            lastMessage = currentMessage;
+          }
+        } else {
+          console.log(`[combineFinalVideo] Poll ${pollCount}: No status yet...`);
+        }
+        
+        if (!status) {
+          // Don't fail immediately - task might still be initializing
+          if (pollCount < 10) {
+            continue; // Wait up to 20 seconds for task to appear
+          }
+          console.error("[combineFinalVideo] Task not found after 10 polls");
+          throw new Error("Task not found. Video combination may have failed on the server. Please try again.");
+        }
+
+        if (status.status === "completed") {
+          done = true;
+          const videoUrl = status.result?.video_url;
+          if (!videoUrl) {
+            console.error("[combineFinalVideo] No video URL in result:", status.result);
+            throw new Error("Final video URL not found in result. Please contact support.");
+          }
+          console.log("[combineFinalVideo] Success! Video URL:", videoUrl);
+          setFinalVideoUrl(videoUrl);
+          
+          // Save final video URL to project for persistence across reloads
+          try {
+            await podcastApi.saveProject(projectId, { final_video_url: videoUrl });
+            console.log("[combineFinalVideo] Saved final video URL to project");
+          } catch (error) {
+            console.warn("[combineFinalVideo] Failed to save final video URL to project:", error);
+            // Don't fail the operation if project save fails - video is still available
+          }
+        } else if (status.status === "failed") {
+          const errorMsg = status.error || status.message || "Video combination failed";
+          console.error("[combineFinalVideo] Task failed:", errorMsg);
+          throw new Error(`Video combination failed: ${errorMsg}`);
+        }
+      }
+      
+      if (pollCount >= maxPolls) {
+        throw new Error("Video combination timed out after 10 minutes. The video may still be processing. Please check back in a few minutes or try again.");
+      }
+    } catch (error: any) {
+      console.error("[combineFinalVideo] Error:", error);
+      
+      // Extract detailed error message
+      let message = "Failed to combine videos";
+      
+      if (error?.response?.data?.detail) {
+        // Backend error with detail
+        message = error.response.data.detail;
+      } else if (error?.message) {
+        // Standard error message
+        message = error.message;
+      } else if (typeof error === "string") {
+        message = error;
+      }
+      
+      console.error("[combineFinalVideo] Displaying error to user:", message);
+      onError(message);
+    } finally {
+      setCombiningVideos(false);
+      setCombiningProgress(null);
+    }
+  }, [script.scenes, jobs, projectId, onError]);
+
   return {
     rendering,
     generatingImage,
     combiningAudio,
     combinedAudioResult,
+    combiningVideos,
+    combiningProgress,
+    finalVideoUrl,
     isBusy: Boolean(rendering),
     runRender,
     runImageGeneration,
     runVideoRender,
     combineAudio,
+    combineFinalVideo,
   };
 };
 

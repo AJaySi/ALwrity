@@ -252,9 +252,13 @@ class StoryVideoGenerationService:
         if len(scenes) != len(audio_paths):
             raise ValueError("Number of scenes and audio paths must match")
         
-        video_paths = video_paths or [None] * len(scenes)
-        if len(video_paths) != len(scenes):
+        # Ensure video_paths is a list and matches scenes length
+        if video_paths is None:
+            video_paths = [None] * len(scenes)
+        elif len(video_paths) != len(scenes):
             video_paths = video_paths + [None] * (len(scenes) - len(video_paths))
+        
+        logger.debug(f"[StoryVideoGeneration] video_paths length: {len(video_paths)}, scenes length: {len(scenes)}")
         
         try:
             logger.info(f"[StoryVideoGeneration] Generating story video for {len(scenes)} scenes")
@@ -311,48 +315,63 @@ class StoryVideoGenerationService:
                     scene_title = scene.get("title", "Untitled")
                     
                     logger.info(f"[StoryVideoGeneration] Processing scene {scene_number}/{len(scenes)}: {scene_title}")
-                    
-                    audio_file = Path(audio_path)
-                    if not audio_file.exists():
-                        logger.warning(f"[StoryVideoGeneration] Audio not found: {audio_path}, skipping scene {scene_number}")
-                        continue
-                    
-                    # Load audio
-                    audio_clip = AudioFileClip(str(audio_file))
-                    audio_duration = audio_clip.duration
+                    logger.debug(f"[StoryVideoGeneration] Scene {scene_number} paths - video: {video_path}, audio: {audio_path}, image: {image_path}")
                     
                     # Prefer animated video if available
-                    if video_path and Path(video_path).exists():
+                    # Check video_path is not None and is a valid string before calling Path()
+                    if video_path is not None and isinstance(video_path, (str, Path)) and video_path and Path(video_path).exists():
                         logger.info(f"[StoryVideoGeneration] Using animated video for scene {scene_number}: {video_path}")
                         # Load animated video
                         if VideoFileClip is None:
                             raise RuntimeError("VideoFileClip not available - MoviePy may not be fully installed")
                         video_clip = VideoFileClip(str(video_path))
-                        # Replace audio with the preferred audio (AI or free)
-                        video_clip = video_clip.with_audio(audio_clip)
-                        # Match duration to audio if needed
-                        if video_clip.duration > audio_duration:
-                            video_clip = video_clip.subclip(0, audio_duration)
-                        elif video_clip.duration < audio_duration:
-                            # Loop the video if it's shorter than audio
-                            loops_needed = int(audio_duration / video_clip.duration) + 1
-                            video_clip = concatenate_videoclips([video_clip] * loops_needed).subclip(0, audio_duration)
+                        
+                        # Handle audio: use embedded audio if no separate audio_path provided
+                        if audio_path is not None and isinstance(audio_path, (str, Path)) and audio_path and Path(audio_path).exists():
+                            # Load separate audio file and replace video's audio
+                            logger.info(f"[StoryVideoGeneration] Replacing video audio with separate audio file: {audio_path}")
+                            audio_clip = AudioFileClip(str(audio_path))
+                            audio_duration = audio_clip.duration
                             video_clip = video_clip.with_audio(audio_clip)
-                    elif image_path and Path(image_path).exists():
-                        # Fall back to static image
-                        logger.info(f"[StoryVideoGeneration] Using static image for scene {scene_number}: {image_path}")
-                        image_file = Path(image_path)
-                        # Create image clip (MoviePy v2: use with_* API)
-                        image_clip = ImageClip(str(image_file)).with_duration(audio_duration)
-                        image_clip = image_clip.with_fps(fps)
-                        # Set audio to image clip
-                        video_clip = image_clip.with_audio(audio_clip)
+                            # Match duration to audio if needed
+                            if video_clip.duration > audio_duration:
+                                video_clip = video_clip.subclip(0, audio_duration)
+                            elif video_clip.duration < audio_duration:
+                                # Loop the video if it's shorter than audio
+                                loops_needed = int(audio_duration / video_clip.duration) + 1
+                                video_clip = concatenate_videoclips([video_clip] * loops_needed).subclip(0, audio_duration)
+                                video_clip = video_clip.with_audio(audio_clip)
+                        else:
+                            # Use embedded audio from video
+                            logger.info(f"[StoryVideoGeneration] Using embedded audio from video for scene {scene_number}")
+                            audio_duration = video_clip.duration
+                            # Video already has audio, no need to replace
+                        
+                        scene_clips.append(video_clip)
+                        total_duration += audio_duration
+                    elif audio_path is not None and isinstance(audio_path, (str, Path)) and audio_path and Path(audio_path).exists():
+                        # No video, but we have audio - use with image or create blank
+                        audio_file = Path(audio_path)
+                        audio_clip = AudioFileClip(str(audio_file))
+                        audio_duration = audio_clip.duration
+                        
+                        if image_path is not None and isinstance(image_path, (str, Path)) and image_path and Path(image_path).exists():
+                            # Fall back to static image with audio
+                            logger.info(f"[StoryVideoGeneration] Using static image for scene {scene_number}: {image_path}")
+                            image_file = Path(image_path)
+                            # Create image clip (MoviePy v2: use with_* API)
+                            image_clip = ImageClip(str(image_file)).with_duration(audio_duration)
+                            image_clip = image_clip.with_fps(fps)
+                            # Set audio to image clip
+                            video_clip = image_clip.with_audio(audio_clip)
+                            scene_clips.append(video_clip)
+                            total_duration += audio_duration
+                        else:
+                            logger.warning(f"[StoryVideoGeneration] Audio provided but no video or image for scene {scene_number}, skipping")
+                            continue
                     else:
-                        logger.warning(f"[StoryVideoGeneration] No video or image found for scene {scene_number}, skipping")
+                        logger.warning(f"[StoryVideoGeneration] No video, audio, or image found for scene {scene_number}, skipping")
                         continue
-                    
-                    scene_clips.append(video_clip)
-                    total_duration += audio_duration
                     
                     # Call progress callback if provided
                     if progress_callback:
@@ -362,7 +381,12 @@ class StoryVideoGenerationService:
                     logger.info(f"[StoryVideoGeneration] Processed scene {idx + 1}/{len(scenes)}")
                     
                 except Exception as e:
-                    logger.error(f"[StoryVideoGeneration] Failed to process scene {idx + 1}: {e}")
+                    logger.error(
+                        f"[StoryVideoGeneration] Failed to process scene {idx + 1} ({scene_number}): {e}\n"
+                        f"  video_path: {video_path} (type: {type(video_path)})\n"
+                        f"  audio_path: {audio_path} (type: {type(audio_path)})\n"
+                        f"  image_path: {image_path} (type: {type(image_path)})"
+                    )
                     # Continue with next scene instead of failing completely
                     continue
             

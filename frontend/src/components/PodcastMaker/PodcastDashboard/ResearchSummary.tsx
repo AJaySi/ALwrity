@@ -1,10 +1,11 @@
-import React from "react";
-import { Stack, Typography, Chip, Divider, Box, alpha } from "@mui/material";
+import React, { useMemo } from "react";
+import { Stack, Typography, Chip, Divider, Box, alpha, Paper } from "@mui/material";
 import {
   Insights as InsightsIcon,
   Search as SearchIcon,
   AttachMoney as AttachMoneyIcon,
   EditNote as EditNoteIcon,
+  Article as ArticleIcon,
 } from "@mui/icons-material";
 import { Research } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
@@ -21,17 +22,68 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
   canGenerateScript,
   onGenerateScript,
 }) => {
+  // Extract key insights from summary if it's long
+  const summaryParts = useMemo(() => {
+    const fullSummary = research.summary || "";
+    if (fullSummary.length > 500) {
+      // Try to split into paragraphs or sentences
+      const sentences = fullSummary.split(/[.!?]\s+/).filter(s => s.trim().length > 20);
+      const keyPoints = sentences.slice(0, 3);
+      const remainingText = sentences.slice(3).join(". ") + (sentences.length > 3 ? "." : "");
+      return { keyPoints, remainingText };
+    }
+    return { keyPoints: [], remainingText: fullSummary };
+  }, [research.summary]);
+
   return (
     <GlassyCard sx={glassyCardSx}>
       <Stack spacing={3}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+          <Box sx={{ flex: 1, minWidth: { xs: "100%", md: "60%" } }}>
+            <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
               <InsightsIcon />
               Research Summary
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.7 }}>
-              {research.summary}
+            
+            {/* Key Insights */}
+            {summaryParts.keyPoints.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a", fontWeight: 600, display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <ArticleIcon fontSize="small" />
+                  Key Insights
+                </Typography>
+                <Stack spacing={1}>
+                  {summaryParts.keyPoints.map((point, idx) => (
+                    <Paper
+                      key={idx}
+                      sx={{
+                        p: 1.25,
+                        background: alpha("#667eea", 0.05),
+                        border: "1px solid rgba(102, 126, 234, 0.15)",
+                        borderRadius: 1.5,
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ color: "#0f172a", lineHeight: 1.6, fontSize: "0.875rem" }}>
+                        {point}
+                      </Typography>
+                    </Paper>
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {/* Full Summary Text */}
+            <Typography 
+              variant="body2" 
+              color="text.secondary" 
+              sx={{ 
+                mb: 2, 
+                lineHeight: 1.7,
+                fontSize: "0.875rem",
+                color: "#475569",
+              }}
+            >
+              {summaryParts.remainingText || research.summary}
             </Typography>
 
             {/* Research Metadata */}
@@ -126,15 +178,23 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
         {research.factCards.length > 0 && (
           <>
             <Divider sx={{ borderColor: "rgba(0,0,0,0.08)" }} />
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: "wrap", gap: 1 }}>
               <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600 }}>
                 Research Sources & Facts ({research.factCards.length})
               </Typography>
-              <Typography variant="caption" sx={{ color: "#64748b" }}>
-                Click any card to view source details
+              <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.75rem" }}>
+                Click to expand • Hover to see source
               </Typography>
             </Stack>
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1fr 1fr 1fr" }, gap: 2 }}>
+            <Box 
+              sx={{ 
+                display: "grid", 
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)", lg: "repeat(4, 1fr)" }, 
+                gap: 1.5,
+                width: "100%",
+                overflow: "hidden",
+              }}
+            >
               {research.factCards.map((fact) => (
                 <FactCard key={fact.id} fact={fact} />
               ))}

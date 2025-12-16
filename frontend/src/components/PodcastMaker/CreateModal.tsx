@@ -6,6 +6,9 @@ import {
   Info as InfoIcon,
   HelpOutline as HelpOutlineIcon,
   AttachMoney as AttachMoneyIcon,
+  CloudUpload as CloudUploadIcon,
+  Person as PersonIcon,
+  Delete as DeleteIcon,
 } from "@mui/icons-material";
 import { CreateProjectPayload, Knobs } from "./types";
 import { PrimaryButton, SecondaryButton } from "./ui";
@@ -35,6 +38,9 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const [budgetCap, setBudgetCap] = useState<number>(50);
   const [voiceFile, setVoiceFile] = useState<File | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // Store uploaded avatar URL
+  const [makingPresentable, setMakingPresentable] = useState(false);
   const [knobs, setKnobs] = useState<Knobs>({ ...defaultKnobs });
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
@@ -107,8 +113,22 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
 
   const canSubmit = Boolean(idea || url);
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSubmit || isSubmitting) return;
+    
+    // If avatar was uploaded but not yet uploaded to server, upload it now
+    let finalAvatarUrl: string | null = avatarUrl;
+    if (avatarFile && !avatarUrl) {
+      try {
+        const { podcastApi } = await import("../../services/podcastApi");
+        const uploadResult = await podcastApi.uploadAvatar(avatarFile);
+        finalAvatarUrl = uploadResult.avatar_url;
+      } catch (error) {
+        console.error('Avatar upload failed:', error);
+        // Continue without avatar
+      }
+    }
+    
     onCreate({
       ideaOrUrl: idea || url,
       speakers,
@@ -116,6 +136,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
       knobs,
       budgetCap,
       files: { voiceFile, avatarFile },
+      avatarUrl: finalAvatarUrl,
     });
   };
 
@@ -127,6 +148,9 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     setBudgetCap(50);
     setVoiceFile(null);
     setAvatarFile(null);
+    setAvatarPreview(null);
+    setAvatarUrl(null);
+    setMakingPresentable(false);
     setKnobs({ ...defaultKnobs });
     setPlaceholderIndex(0);
   };
@@ -139,6 +163,68 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const handleSpeakersChange = (value: number) => {
     const clamped = Math.min(2, Math.max(1, value));
     setSpeakers(clamped);
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        console.error('Please select an image file');
+        return;
+      }
+      // Validate file size (e.g., max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        console.error('Image file size must be less than 5MB');
+        return;
+      }
+      setAvatarFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      
+      // Upload image immediately to get URL (for "Make Presentable" feature)
+      try {
+        const { podcastApi } = await import("../../services/podcastApi");
+        const uploadResult = await podcastApi.uploadAvatar(file);
+        setAvatarUrl(uploadResult.avatar_url);
+      } catch (error) {
+        console.error('Avatar upload failed:', error);
+        // Continue with local preview - upload will happen on submit
+      }
+    }
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setAvatarUrl(null);
+    setMakingPresentable(false);
+  };
+
+  const handleMakePresentable = async () => {
+    if (!avatarUrl || makingPresentable) return;
+    
+    try {
+      setMakingPresentable(true);
+      const { podcastApi } = await import("../../services/podcastApi");
+      const result = await podcastApi.makeAvatarPresentable(avatarUrl);
+      
+      // Fetch the transformed image as blob to display
+      const { aiApiClient } = await import("../../api/client");
+      const response = await aiApiClient.get(result.avatar_url, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(response.data);
+      setAvatarPreview(blobUrl);
+      setAvatarUrl(result.avatar_url);
+    } catch (error) {
+      console.error('Failed to make avatar presentable:', error);
+      // Could show error message to user
+    } finally {
+      setMakingPresentable(false);
+    }
   };
 
   return (
@@ -601,181 +687,372 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
         {/* Settings Section */}
         <Box
           sx={{
-            p: 3,
-            borderRadius: 2,
-            background: alpha("#f8fafc", 0.5),
-            border: "1px solid rgba(15, 23, 42, 0.06)",
+            p: 3.5,
+            borderRadius: 2.5,
+            background: "linear-gradient(135deg, rgba(248, 250, 252, 0.8) 0%, rgba(241, 245, 249, 0.8) 100%)",
+            border: "1.5px solid rgba(15, 23, 42, 0.08)",
+            boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.06)",
           }}
         >
-          <Typography variant="subtitle2" sx={{ mb: 2, color: "#0f172a", fontWeight: 600, fontSize: "0.9375rem" }}>
-            Podcast Settings
-          </Typography>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="flex-start">
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ flex: 1 }}>
-            <TextField
-              label="Duration (minutes)"
-              type="number"
-              value={duration}
-              onChange={(e) => handleDurationChange(Number(e.target.value) || 1)}
-              InputProps={{ inputProps: { min: 1, max: 10 } }}
-              size="small"
-            helperText={duration > 10 ? "Maximum duration is 10 minutes" : `Recommended: 1-3 minutes for quick tests (currently: ${duration} min)`}
-              error={duration > 10}
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
+            <Box
               sx={{
-                maxWidth: 220,
-                "& .MuiOutlinedInput-root": {
-                  backgroundColor: "#ffffff",
-                  border: "1.5px solid rgba(15, 23, 42, 0.12)",
-                  borderRadius: 2,
-                  "&:hover": { 
-                    backgroundColor: "#ffffff",
-                    borderColor: "rgba(102, 126, 234, 0.4)",
-                  },
-                  "&.Mui-focused": {
-                    borderColor: "#667eea",
-                    borderWidth: 2,
-                  },
-                },
-                "& .MuiInputLabel-root": {
-                  color: "#64748b",
-                  "&.Mui-focused": {
-                    color: "#667eea",
-                  },
-                },
-                "& .MuiFormHelperText-root": {
-                  color: "#64748b",
-                  fontSize: "0.8125rem",
-                },
-              }}
-            />
-            <TextField
-              label="Number of speakers"
-              type="number"
-              value={speakers}
-              onChange={(e) => handleSpeakersChange(Number(e.target.value) || 1)}
-              InputProps={{ inputProps: { min: 1, max: 2 } }}
-              size="small"
-              helperText={speakers > 2 ? "Maximum 2 speakers supported" : `Supports 1-2 speakers (currently: ${speakers})`}
-              error={speakers > 2}
-              sx={{
-                maxWidth: 220,
-                "& .MuiOutlinedInput-root": {
-                  backgroundColor: "#ffffff",
-                  border: "1.5px solid rgba(15, 23, 42, 0.12)",
-                  borderRadius: 2,
-                  "&:hover": { 
-                    backgroundColor: "#ffffff",
-                    borderColor: "rgba(102, 126, 234, 0.4)",
-                  },
-                  "&.Mui-focused": {
-                    borderColor: "#667eea",
-                    borderWidth: 2,
-                  },
-                },
-                "& .MuiInputLabel-root": {
-                  color: "#64748b",
-                  "&.Mui-focused": {
-                    color: "#667eea",
-                  },
-                },
-                "& .MuiFormHelperText-root": {
-                  color: "#64748b",
-                  fontSize: "0.8125rem",
-                },
-              }}
-            />
-          </Stack>
-          
-            {/* Cost Breakdown Panel - positioned in empty space */}
-            <Paper
-              elevation={0}
-              sx={{
-                p: 2.5,
-                background: "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%)",
-                border: "1.5px solid rgba(16, 185, 129, 0.2)",
+                width: 40,
+                height: 40,
                 borderRadius: 2,
-                minWidth: { xs: "100%", sm: 300 },
-                flex: { xs: "none", sm: "0 0 auto" },
-                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.08)",
+                background: "linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              <Stack spacing={1.5}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Box
-                    sx={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 1.5,
-                      background: "linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <AttachMoneyIcon sx={{ fontSize: "1.125rem", color: "#059669" }} />
-                  </Box>
-                  <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, fontSize: "0.875rem" }}>
-                    Estimated Cost
-                  </Typography>
-                </Stack>
-                <Typography 
-                  variant="h5" 
-                  sx={{ 
-                    color: "#059669", 
-                    fontWeight: 700,
-                    fontSize: "1.75rem",
-                    lineHeight: 1.2,
+              <AutoAwesomeIcon sx={{ color: "#667eea", fontSize: "1.25rem" }} />
+            </Box>
+            <Typography variant="h6" sx={{ color: "#0f172a", fontWeight: 700, fontSize: "1.125rem", letterSpacing: "-0.01em" }}>
+              Podcast Settings
+            </Typography>
+          </Stack>
+          
+          <Stack direction={{ xs: "column", lg: "row" }} spacing={3} alignItems="flex-start">
+            {/* Duration and Speakers in vertical column */}
+            <Box
+              sx={{
+                flex: { xs: "1 1 auto", lg: "0 0 280px" },
+                width: { xs: "100%", lg: "280px" },
+                p: 2.5,
+                borderRadius: 2,
+                background: "#ffffff",
+                border: "1px solid rgba(15, 23, 42, 0.08)",
+                boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ mb: 2, color: "#0f172a", fontWeight: 600, fontSize: "0.875rem" }}>
+                Basic Configuration
+              </Typography>
+              <Stack spacing={2.5}>
+                <TextField
+                  label="Duration (minutes)"
+                  type="number"
+                  value={duration}
+                  onChange={(e) => handleDurationChange(Number(e.target.value) || 1)}
+                  InputProps={{ inputProps: { min: 1, max: 10 } }}
+                  size="small"
+                  helperText={duration > 10 ? "Maximum duration is 10 minutes" : `Recommended: 1-3 minutes for quick tests`}
+                  error={duration > 10}
+                  fullWidth
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      backgroundColor: "#f8fafc",
+                      border: "1.5px solid rgba(15, 23, 42, 0.12)",
+                      borderRadius: 2,
+                      transition: "all 0.2s",
+                      "&:hover": { 
+                        backgroundColor: "#ffffff",
+                        borderColor: "rgba(102, 126, 234, 0.4)",
+                        boxShadow: "0 0 0 3px rgba(102, 126, 234, 0.08)",
+                      },
+                      "&.Mui-focused": {
+                        backgroundColor: "#ffffff",
+                        borderColor: "#667eea",
+                        borderWidth: 2,
+                        boxShadow: "0 0 0 3px rgba(102, 126, 234, 0.12)",
+                      },
+                    },
+                    "& .MuiInputLabel-root": {
+                      color: "#64748b",
+                      fontWeight: 500,
+                      "&.Mui-focused": {
+                        color: "#667eea",
+                        fontWeight: 600,
+                      },
+                    },
+                    "& .MuiFormHelperText-root": {
+                      color: duration > 10 ? "#dc2626" : "#64748b",
+                      fontSize: "0.8125rem",
+                      mt: 0.75,
+                    },
                   }}
-                >
-                  ${estimatedCost.total}
-                </Typography>
-                <Stack spacing={0.75} sx={{ mt: 0.5 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.8125rem", fontWeight: 400 }}>
-                      Audio Generation
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#0f172a", fontSize: "0.8125rem", fontWeight: 600 }}>
-                      ${estimatedCost.ttsCost}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.8125rem", fontWeight: 400 }}>
-                      Avatar Creation
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#0f172a", fontSize: "0.8125rem", fontWeight: 600 }}>
-                      ${estimatedCost.avatarCost}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.8125rem", fontWeight: 400 }}>
-                      Video Rendering
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#0f172a", fontSize: "0.8125rem", fontWeight: 600 }}>
-                      ${estimatedCost.videoCost}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.8125rem", fontWeight: 400 }}>
-                      Research
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#0f172a", fontSize: "0.8125rem", fontWeight: 600 }}>
-                      ${estimatedCost.researchCost}
-                    </Typography>
-                  </Box>
-                </Stack>
+                />
+                <TextField
+                  label="Number of speakers"
+                  type="number"
+                  value={speakers}
+                  onChange={(e) => handleSpeakersChange(Number(e.target.value) || 1)}
+                  InputProps={{ inputProps: { min: 1, max: 2 } }}
+                  size="small"
+                  helperText={speakers > 2 ? "Maximum 2 speakers supported" : `Supports 1-2 speakers`}
+                  error={speakers > 2}
+                  fullWidth
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      backgroundColor: "#f8fafc",
+                      border: "1.5px solid rgba(15, 23, 42, 0.12)",
+                      borderRadius: 2,
+                      transition: "all 0.2s",
+                      "&:hover": { 
+                        backgroundColor: "#ffffff",
+                        borderColor: "rgba(102, 126, 234, 0.4)",
+                        boxShadow: "0 0 0 3px rgba(102, 126, 234, 0.08)",
+                      },
+                      "&.Mui-focused": {
+                        backgroundColor: "#ffffff",
+                        borderColor: "#667eea",
+                        borderWidth: 2,
+                        boxShadow: "0 0 0 3px rgba(102, 126, 234, 0.12)",
+                      },
+                    },
+                    "& .MuiInputLabel-root": {
+                      color: "#64748b",
+                      fontWeight: 500,
+                      "&.Mui-focused": {
+                        color: "#667eea",
+                        fontWeight: 600,
+                      },
+                    },
+                    "& .MuiFormHelperText-root": {
+                      color: speakers > 2 ? "#dc2626" : "#64748b",
+                      fontSize: "0.8125rem",
+                      mt: 0.75,
+                    },
+                  }}
+                />
+              </Stack>
+            </Box>
+            
+            {/* Avatar Upload Section - replacing Estimated Cost */}
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                p: 2.5,
+                borderRadius: 2,
+                background: "#ffffff",
+                border: "1px solid rgba(15, 23, 42, 0.08)",
+                boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+              }}
+            >
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
                 <Box
                   sx={{
-                    mt: 1,
-                    pt: 1.5,
-                    borderTop: "1.5px solid rgba(16, 185, 129, 0.15)",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 1.5,
+                    background: "linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.75rem", fontWeight: 500 }}>
-                    {duration} min • {speakers} speaker{speakers > 1 ? "s" : ""} • {knobs.bitrate === "hd" ? "HD" : "Standard"} quality
-                  </Typography>
+                  <PersonIcon fontSize="small" sx={{ color: "#667eea" }} />
+                </Box>
+                <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, fontSize: "0.9375rem" }}>
+                  Podcast Presenter Avatar
+                </Typography>
+                <Tooltip
+                  title={
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                        Avatar Options:
+                      </Typography>
+                      <Typography variant="body2" component="div" sx={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
+                        <strong>Upload your photo:</strong> We'll enhance it into a professional podcast presenter using AI. Click "Make Presentable" after upload.<br/><br/>
+                        <strong>Skip upload:</strong> After analysis completes, we'll generate professional presenter images based on your podcast topic, audience, and speaker count.
+                      </Typography>
+                    </Box>
+                  }
+                  arrow
+                  placement="top"
+                  componentsProps={{
+                    tooltip: {
+                      sx: {
+                        bgcolor: "#0f172a",
+                        color: "#ffffff",
+                        maxWidth: 320,
+                        fontSize: "0.875rem",
+                        p: 1.5,
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                      },
+                    },
+                    arrow: {
+                      sx: {
+                        color: "#0f172a",
+                      },
+                    },
+                  }}
+                >
+                  <InfoIcon fontSize="small" sx={{ color: "#94a3b8", cursor: "help" }} />
+                </Tooltip>
+              </Stack>
+              
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5} alignItems="flex-start">
+                {avatarPreview ? (
+                  <Stack spacing={1.5} sx={{ flexShrink: 0 }}>
+                    <Box sx={{ position: "relative", display: "inline-block" }}>
+                      <Box
+                        component="img"
+                        src={avatarPreview}
+                        alt="Avatar preview"
+                        sx={{
+                          width: 140,
+                          height: 140,
+                          objectFit: "cover",
+                          borderRadius: 2.5,
+                          border: "2px solid #e2e8f0",
+                          boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
+                        }}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={handleRemoveAvatar}
+                        sx={{
+                          position: "absolute",
+                          top: -8,
+                          right: -8,
+                          bgcolor: "white",
+                          border: "1.5px solid #e2e8f0",
+                          boxShadow: "0 2px 4px rgba(15, 23, 42, 0.1)",
+                          "&:hover": { 
+                            bgcolor: "#f8fafc",
+                            borderColor: "#dc2626",
+                            color: "#dc2626",
+                          },
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                    {avatarUrl && (
+                      <Tooltip
+                        title="Transform your uploaded photo into a professional podcast presenter. This AI enhancement optimizes your photo for video generation while maintaining your appearance and identity."
+                        arrow
+                        placement="top"
+                      >
+                        <Box>
+                          <SecondaryButton
+                            onClick={handleMakePresentable}
+                            disabled={makingPresentable}
+                            loading={makingPresentable}
+                            startIcon={!makingPresentable ? <AutoAwesomeIcon fontSize="small" /> : undefined}
+                            sx={{
+                              fontSize: "0.8125rem",
+                              py: 0.75,
+                              width: "100%",
+                              background: makingPresentable ? undefined : "linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%)",
+                              border: makingPresentable ? undefined : "1px solid rgba(102, 126, 234, 0.2)",
+                              color: makingPresentable ? undefined : "#667eea",
+                              fontWeight: 600,
+                              "&:hover": {
+                                background: makingPresentable ? undefined : "linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%)",
+                              },
+                            }}
+                          >
+                            {makingPresentable ? "Transforming..." : "Make Presentable"}
+                          </SecondaryButton>
+                        </Box>
+                      </Tooltip>
+                    )}
+                  </Stack>
+                ) : (
+                  <Box
+                    component="label"
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: { xs: "100%", sm: 200 },
+                      minHeight: 140,
+                      border: "2px dashed #cbd5e1",
+                      borderRadius: 2.5,
+                      bgcolor: "#f8fafc",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      flexShrink: 0,
+                      "&:hover": {
+                        borderColor: "#667eea",
+                        bgcolor: "#f1f5f9",
+                        borderWidth: "2.5px",
+                        boxShadow: "0 0 0 3px rgba(102, 126, 234, 0.08)",
+                      },
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      style={{ display: "none" }}
+                    />
+                    <CloudUploadIcon sx={{ color: "#94a3b8", fontSize: 36, mb: 1.5 }} />
+                    <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 600, mb: 0.5 }}>
+                      Upload Your Photo
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#94a3b8", textAlign: "center", px: 2, lineHeight: 1.5 }}>
+                      Optional - We'll enhance it with AI or generate one after analysis
+                    </Typography>
+                  </Box>
+                )}
+                
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Stack spacing={1.5}>
+                    <Box>
+                      <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.9375rem", lineHeight: 1.7, fontWeight: 500, mb: 1 }}>
+                        Choose Your Avatar Option:
+                      </Typography>
+                      
+                      <Stack spacing={1.5}>
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 1.5,
+                            background: alpha("#f0f4ff", 0.6),
+                            border: "1px solid rgba(99, 102, 241, 0.2)",
+                          }}
+                        >
+                          <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.875rem", fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                            <AutoAwesomeIcon fontSize="small" sx={{ color: "#667eea" }} />
+                            Upload Your Photo (Recommended)
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                            Upload your photo and we'll enhance it into a professional podcast presenter using AI. After upload, click <strong>"Make Presentable"</strong> to transform your photo into a podcast-ready avatar that maintains your appearance while optimizing it for video generation.
+                          </Typography>
+                        </Box>
+                        
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 1.5,
+                            background: alpha("#f8fafc", 0.8),
+                            border: "1px solid rgba(15, 23, 42, 0.1)",
+                          }}
+                        >
+                          <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.875rem", fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                            <PersonIcon fontSize="small" sx={{ color: "#64748b" }} />
+                            Let ALwrity Generate (Alternative)
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                            If you skip upload, we'll automatically generate professional presenter images <strong>after the AI analysis completes</strong>. The generated presenters will be tailored to your podcast topic, target audience, content type, and speaker count for the best fit.
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                    
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 1.5,
+                        background: alpha("#f0f4ff", 0.5),
+                        border: "1px solid rgba(99, 102, 241, 0.15)",
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ color: "#6366f1", fontSize: "0.8125rem", fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <InfoIcon fontSize="inherit" />
+                        Supported formats: JPG, PNG, WebP (max 5MB)
+                      </Typography>
+                    </Box>
+                  </Stack>
                 </Box>
               </Stack>
-            </Paper>
+            </Box>
           </Stack>
         </Box>
 
