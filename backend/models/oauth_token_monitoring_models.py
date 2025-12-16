@@ -53,10 +53,11 @@ class OAuthTokenMonitoringTask(Base):
     )
     
     # Indexes for efficient queries
+    # Use table-scoped index names to avoid collisions with other models
     __table_args__ = (
-        Index('idx_user_platform', 'user_id', 'platform'),
-        Index('idx_next_check', 'next_check'),
-        Index('idx_status', 'status'),
+        Index('idx_oauth_task_user_platform', 'user_id', 'platform'),
+        Index('idx_oauth_task_next_check', 'next_check'),
+        Index('idx_oauth_task_status', 'status'),
     )
     
     def __repr__(self):
@@ -92,9 +93,10 @@ class OAuthTokenExecutionLog(Base):
     task = relationship("OAuthTokenMonitoringTask", back_populates="execution_logs")
     
     # Indexes for efficient queries
+    # Use table-scoped index names to avoid collisions with other models
     __table_args__ = (
-        Index('idx_task_execution_date', 'task_id', 'execution_date'),
-        Index('idx_status', 'status'),
+        Index('idx_oauth_log_task_execution_date', 'task_id', 'execution_date'),
+        Index('idx_oauth_log_status', 'status'),
     )
     
     def __repr__(self):
