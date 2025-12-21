@@ -1,15 +1,20 @@
 // YouTube Creator Studio API Client
 
-import { apiClient } from '../api/client';
+import { apiClient, aiApiClient } from '../api/client';
 
 const API_BASE = '/api/youtube';
 
 export interface VideoPlanRequest {
   user_idea: string;
   duration_type: 'shorts' | 'medium' | 'long';
+  video_type?: 'tutorial' | 'review' | 'educational' | 'entertainment' | 'vlog' | 'product_demo' | 'reaction' | 'storytelling';
+  target_audience?: string;
+  video_goal?: string;
+  brand_style?: string;
   reference_image_description?: string;
   source_content_id?: string;
   source_content_type?: 'blog' | 'story';
+  avatar_url?: string;
 }
 
 export interface VideoPlan {
@@ -30,6 +35,14 @@ export interface VideoPlan {
   seo_keywords: string[];
   duration_type: string;
   estimated_duration?: string;
+  auto_generated_avatar_url?: string;
+  avatar_reused?: boolean; // Flag indicating if avatar was reused from asset library
+  avatar_recommendations?: {
+    description?: string;
+    style?: string;
+    energy?: string;
+  };
+  avatar_prompt?: string; // AI prompt used to generate the avatar
 }
 
 export interface Scene {
@@ -88,6 +101,42 @@ export interface CostEstimateResponse {
   success: boolean;
   estimate?: CostEstimate;
   message: string;
+}
+
+export interface AvatarUploadResponse {
+  avatar_url: string;
+  avatar_filename: string;
+  message: string;
+}
+
+export interface AvatarTransformResponse {
+  avatar_url: string;
+  avatar_filename: string;
+  avatar_prompt?: string;
+  message: string;
+}
+
+export interface SceneImageRequest {
+  sceneId: string;
+  sceneTitle?: string;
+  sceneContent?: string;
+  baseAvatarUrl?: string;
+  idea?: string;
+  width?: number;
+  height?: number;
+  customPrompt?: string;
+  style?: string;
+  renderingSpeed?: string;
+  aspectRatio?: string;
+}
+
+export interface SceneImageResponse {
+  scene_id: string;
+  scene_title?: string;
+  image_filename: string;
+  image_url: string;
+  width: number;
+  height: number;
 }
 
 export const youtubeApi = {
@@ -185,5 +234,129 @@ export const youtubeApi = {
    */
   getVideoUrl(filename: string): string {
     return `${API_BASE}/videos/${filename}`;
+  },
+
+  /**
+   * Upload a YouTube avatar image.
+   */
+  async uploadAvatar(file: File): Promise<AvatarUploadResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await apiClient.post(`${API_BASE}/avatar/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || 'Failed to upload avatar';
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Make an uploaded avatar presentable for YouTube.
+   */
+  async makeAvatarPresentable(
+    avatarUrl: string, 
+    projectId?: string,
+    videoType?: string,
+    targetAudience?: string,
+    videoGoal?: string,
+    brandStyle?: string
+  ): Promise<AvatarTransformResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('avatar_url', avatarUrl);
+      if (projectId) formData.append('project_id', projectId);
+      if (videoType) formData.append('video_type', videoType);
+      if (targetAudience) formData.append('target_audience', targetAudience);
+      if (videoGoal) formData.append('video_goal', videoGoal);
+      if (brandStyle) formData.append('brand_style', brandStyle);
+      // Use aiApiClient for longer timeout (image editing takes ~30 seconds)
+      const response = await aiApiClient.post(`${API_BASE}/avatar/make-presentable`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || 'Failed to optimize avatar';
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Auto-generate a YouTube creator avatar.
+   */
+  async generateCreatorAvatar(params: { projectId?: string; audience?: string; contentType?: string }): Promise<AvatarTransformResponse> {
+    try {
+      const formData = new FormData();
+      if (params.projectId) formData.append('project_id', params.projectId);
+      if (params.audience) formData.append('audience', params.audience);
+      if (params.contentType) formData.append('content_type', params.contentType);
+      const response = await apiClient.post(`${API_BASE}/avatar/generate`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || 'Failed to generate avatar';
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Regenerate a YouTube creator avatar using video plan context.
+   */
+  async regenerateCreatorAvatar(videoPlan: VideoPlan, projectId?: string): Promise<AvatarTransformResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('video_plan_json', JSON.stringify(videoPlan));
+      if (projectId) formData.append('project_id', projectId);
+
+      const response = await aiApiClient.post(`${API_BASE}/avatar/regenerate`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || 'Failed to regenerate avatar';
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Generate a YouTube scene image (with optional avatar consistency).
+   */
+  async generateSceneImage(params: SceneImageRequest): Promise<SceneImageResponse> {
+    try {
+      const response = await apiClient.post(`${API_BASE}/image`, {
+        scene_id: params.sceneId,
+        scene_title: params.sceneTitle,
+        scene_content: params.sceneContent,
+        base_avatar_url: params.baseAvatarUrl || null,
+        idea: params.idea || null,
+        width: params.width || 1024,
+        height: params.height || 576,
+        custom_prompt: params.customPrompt || null,
+        style: params.style || null,
+        rendering_speed: params.renderingSpeed || null,
+        aspect_ratio: params.aspectRatio || null,
+      });
+      return response.data;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || 'Failed to generate scene image';
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Get avatar URL for display.
+   */
+  getAvatarUrl(filename: string): string {
+    return `${API_BASE}/images/avatars/${filename}`;
+  },
+
+  /**
+   * Get scene image URL for display.
+   */
+  getSceneImageUrl(filename: string): string {
+    return `${API_BASE}/images/scenes/${filename}`;
   },
 };

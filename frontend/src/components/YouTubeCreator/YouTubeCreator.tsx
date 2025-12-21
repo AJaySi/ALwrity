@@ -5,7 +5,7 @@
  * Three-phase workflow: Plan → Scenes → Render
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -21,38 +21,60 @@ import { ArrowBack } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { youtubeApi, type VideoPlan, type Scene } from '../../services/youtubeApi';
-import { STEPS, YT_RED, YT_BG, YT_BORDER, YT_TEXT, type Resolution, type DurationType } from './constants';
+import { STEPS, YT_RED, YT_BG, YT_BORDER, YT_TEXT, type Resolution, type DurationType, type VideoType } from './constants';
 import { PlanStep } from './components/PlanStep';
 import { ScenesStep } from './components/ScenesStep';
 import { RenderStep } from './components/RenderStep';
 import { useRenderPolling } from './hooks/useRenderPolling';
 import { useCostEstimate } from './hooks/useCostEstimate';
 import HeaderControls from '../shared/HeaderControls';
+import { useYouTubeCreatorState } from '../../hooks/useYouTubeCreatorState';
+import { ContentAsset } from '../../hooks/useContentAssets';
 
 const YouTubeCreator: React.FC = () => {
   const navigate = useNavigate();
-  const [activeStep, setActiveStep] = useState(0);
+  const { state, updateState } = useYouTubeCreatorState();
+  
+  // Extract state from hook
+  const {
+    userIdea,
+    durationType,
+    videoType,
+    targetAudience,
+    videoGoal,
+    brandStyle,
+    referenceImage,
+    avatarUrl,
+    videoPlan,
+    scenes,
+    editingSceneId,
+    editedScene,
+    renderTaskId,
+    renderStatus,
+    renderProgress,
+    resolution,
+    combineScenes,
+    activeStep: persistedActiveStep,
+  } = state;
+
+  // Local UI state (not persisted)
+  const [activeStep, setActiveStep] = useState(persistedActiveStep);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [makingPresentable, setMakingPresentable] = useState(false);
+  const [regeneratingAvatar, setRegeneratingAvatar] = useState(false);
 
-  // Step 1: Plan
-  const [userIdea, setUserIdea] = useState('');
-  const [durationType, setDurationType] = useState<DurationType>('medium');
-  const [referenceImage, setReferenceImage] = useState('');
-  const [videoPlan, setVideoPlan] = useState<VideoPlan | null>(null);
+  // Sync activeStep with persisted state on mount
+  useEffect(() => {
+    setActiveStep(persistedActiveStep);
+  }, [persistedActiveStep]);
 
-  // Step 2: Scenes
-  const [scenes, setScenes] = useState<Scene[]>([]);
-  const [editingSceneId, setEditingSceneId] = useState<number | null>(null);
-  const [editedScene, setEditedScene] = useState<Partial<Scene> | null>(null);
-
-  // Step 3: Render
-  const [renderTaskId, setRenderTaskId] = useState<string | null>(null);
-  const [renderStatus, setRenderStatus] = useState<any>(null);
-  const [renderProgress, setRenderProgress] = useState(0);
-  const [resolution, setResolution] = useState<Resolution>('720p');
-  const [combineScenes, setCombineScenes] = useState(true);
+  // Update persisted activeStep when local activeStep changes
+  useEffect(() => {
+    updateState({ activeStep });
+  }, [activeStep, updateState]);
 
   // Custom hooks
   const { renderStatus: polledStatus, renderProgress: polledProgress, error: pollingError } = useRenderPolling(
@@ -61,18 +83,22 @@ const YouTubeCreator: React.FC = () => {
     (err) => setError(err)
   );
 
-  // Update local state from polling hook
+  // Update local state from polling hook and persist to localStorage
   React.useEffect(() => {
+    const updates: any = {};
     if (polledStatus) {
-      setRenderStatus(polledStatus);
+      updates.renderStatus = polledStatus;
     }
     if (polledProgress !== undefined) {
-      setRenderProgress(polledProgress);
+      updates.renderProgress = polledProgress;
     }
     if (pollingError) {
       setError(pollingError);
     }
-  }, [polledStatus, polledProgress, pollingError]);
+    if (Object.keys(updates).length > 0) {
+      updateState(updates);
+    }
+  }, [polledStatus, polledProgress, pollingError, updateState]);
 
   const { costEstimate, loadingCostEstimate } = useCostEstimate({
     activeStep,
@@ -102,12 +128,28 @@ const YouTubeCreator: React.FC = () => {
       const response = await youtubeApi.createPlan({
         user_idea: userIdea,
         duration_type: durationType,
+        video_type: videoType || undefined,
+        target_audience: targetAudience || undefined,
+        video_goal: videoGoal || undefined,
+        brand_style: brandStyle || undefined,
         reference_image_description: referenceImage || undefined,
+        avatar_url: avatarUrl || undefined,
       });
 
       if (response.success && response.plan) {
-        setVideoPlan(response.plan);
-        setSuccess('Video plan generated successfully!');
+        // Update persisted state
+        const updates: any = { videoPlan: response.plan };
+        
+        // If avatar was auto-generated, set it
+        if (response.plan.auto_generated_avatar_url) {
+          updates.avatarUrl = response.plan.auto_generated_avatar_url;
+          setSuccess('Video plan generated! Avatar auto-generated based on your plan.');
+        } else {
+          setSuccess('Video plan generated successfully!');
+        }
+        
+        updateState(updates);
+        
         setTimeout(() => {
           setActiveStep(1);
           setSuccess(null);
@@ -120,11 +162,110 @@ const YouTubeCreator: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [userIdea, durationType, referenceImage]);
+  }, [userIdea, durationType, videoType, targetAudience, videoGoal, brandStyle, referenceImage, avatarUrl]);
+
+  const handleAvatarUpload = useCallback(async (file: File) => {
+    setUploadingAvatar(true);
+    setError(null);
+    try {
+      // Note: avatarPreview is handled locally in PlanStep component
+      // We only persist avatarUrl (server URL)
+      const response = await youtubeApi.uploadAvatar(file);
+      updateState({ avatarUrl: response.avatar_url });
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload avatar');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, [updateState]);
+
+  const handleAvatarSelectFromLibrary = useCallback((asset: ContentAsset) => {
+    if (!asset?.file_url) return;
+    updateState({ avatarUrl: asset.file_url });
+    setError(null);
+    setSuccess('Avatar selected from Asset Library');
+    setTimeout(() => setSuccess(null), 2000);
+  }, [updateState]);
+
+  const handleRemoveAvatar = useCallback(() => {
+    updateState({ avatarUrl: null });
+  }, [updateState]);
+
+  const handleAvatarRegenerate = useCallback(async () => {
+    if (!videoPlan) {
+      setError('Please generate a plan first');
+      return;
+    }
+
+    setRegeneratingAvatar(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await youtubeApi.regenerateCreatorAvatar(videoPlan);
+
+      if (response.avatar_url) {
+        updateState({
+          avatarUrl: response.avatar_url,
+        });
+        // Update the video plan with the new avatar prompt if provided
+        if (response.avatar_prompt && videoPlan) {
+          const updatedPlan = { ...videoPlan, avatar_prompt: response.avatar_prompt };
+          updateState({ videoPlan: updatedPlan });
+        }
+        setSuccess('Avatar regenerated successfully!');
+        setTimeout(() => setSuccess(null), 2000);
+      } else {
+        setError(response.message || 'Failed to regenerate avatar');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to regenerate avatar');
+    } finally {
+      setRegeneratingAvatar(false);
+    }
+  }, [videoPlan, updateState]);
+
+  const handleMakePresentable = useCallback(async () => {
+    if (!avatarUrl || makingPresentable) return;
+    setMakingPresentable(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await youtubeApi.makeAvatarPresentable(
+        avatarUrl,
+        undefined, // projectId
+        videoType || undefined,
+        targetAudience || undefined,
+        videoGoal || undefined,
+        brandStyle || undefined
+      );
+      
+      // Update avatarUrl - PlanStep will handle loading blob URL for preview
+      updateState({ avatarUrl: response.avatar_url });
+      setSuccess('✨ Avatar transformed successfully! Your photo has been optimized for YouTube.');
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to optimize avatar');
+    } finally {
+      setMakingPresentable(false);
+    }
+  }, [avatarUrl, makingPresentable, videoType, targetAudience, videoGoal, brandStyle, updateState]);
 
   const handleBuildScenes = useCallback(async () => {
     if (!videoPlan) {
       setError('Please generate a plan first');
+      return;
+    }
+
+    // Guard: Prevent duplicate calls if scenes already exist
+    // This prevents wasting AI calls during testing/development
+    if (scenes.length > 0) {
+      console.warn('[YouTubeCreator] Scenes already exist, skipping build to prevent duplicate AI calls');
+      setError('Scenes have already been generated. Please refresh the page if you want to regenerate.');
       return;
     }
 
@@ -136,12 +277,47 @@ const YouTubeCreator: React.FC = () => {
       const response = await youtubeApi.buildScenes(videoPlan);
 
       if (response.success && response.scenes) {
-        setScenes(response.scenes.map(s => ({ ...s, enabled: s.enabled !== false })));
-        setSuccess(`Built ${response.scenes.length} scenes successfully!`);
+        const updatedScenes = response.scenes.map(s => ({ ...s, enabled: s.enabled !== false }));
+
+        // Calculate enhanced statistics for success message
+        const enabledScenes = updatedScenes.filter(s => s.enabled !== false);
+        const totalDuration = enabledScenes.reduce((sum, scene) => sum + scene.duration_estimate, 0);
+
+        // Group scenes by emphasis type
+        const sceneBreakdown = updatedScenes.reduce((acc, scene) => {
+          const type = scene.emphasis_tags?.[0] || 'main_content';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        // Format duration
+        const formatDuration = (seconds: number): string => {
+          if (seconds < 60) {
+            return `${Math.round(seconds)}s`;
+          }
+          const minutes = Math.floor(seconds / 60);
+          const remainingSeconds = Math.round(seconds % 60);
+          return `${minutes}m ${remainingSeconds}s`;
+        };
+
+        // Create enhanced success message
+        const breakdownText = Object.entries(sceneBreakdown)
+          .map(([type, count]) => {
+            const typeLabel = type === 'hook' ? 'hook' : type === 'cta' ? 'CTA' : type === 'main_content' ? 'main content' : type;
+            return `${count} ${typeLabel}`;
+          })
+          .join(' • ');
+
+        const successMessage = `✅ Successfully built ${response.scenes.length} scenes\n⏱️ Total duration: ${formatDuration(totalDuration)}\n📊 Breakdown: ${breakdownText}`;
+
+        updateState({ scenes: updatedScenes });
+        setSuccess(successMessage);
+        // Navigate immediately to Render step so user can see scenes and cost estimates
+        setActiveStep(2);
+        // Clear success message after a brief moment
         setTimeout(() => {
-          setActiveStep(2);
           setSuccess(null);
-        }, 1000);
+        }, 3000);
       } else {
         setError(response.message || 'Failed to build scenes');
       }
@@ -150,17 +326,19 @@ const YouTubeCreator: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [videoPlan]);
+  }, [videoPlan, scenes.length, updateState]);
 
   const handleEditScene = useCallback((scene: Scene) => {
-    setEditingSceneId(scene.scene_number);
-    setEditedScene({
-      narration: scene.narration,
-      visual_prompt: scene.visual_prompt,
-      duration_estimate: scene.duration_estimate,
-      enabled: scene.enabled !== false,
+    updateState({
+      editingSceneId: scene.scene_number,
+      editedScene: {
+        narration: scene.narration,
+        visual_prompt: scene.visual_prompt,
+        duration_estimate: scene.duration_estimate,
+        enabled: scene.enabled !== false,
+      },
     });
-  }, []);
+  }, [updateState]);
 
   const handleSaveScene = useCallback(async () => {
     if (!editingSceneId || !editedScene) return;
@@ -177,11 +355,14 @@ const YouTubeCreator: React.FC = () => {
       });
 
       if (response.success && response.scene) {
-        setScenes(scenes.map(s =>
+        const updatedScenes = scenes.map(s =>
           s.scene_number === editingSceneId ? { ...s, ...response.scene } : s
-        ));
-        setEditingSceneId(null);
-        setEditedScene(null);
+        );
+        updateState({
+          scenes: updatedScenes,
+          editingSceneId: null,
+          editedScene: null,
+        });
         setSuccess('Scene updated successfully!');
       } else {
         setError(response.message || 'Failed to update scene');
@@ -191,18 +372,24 @@ const YouTubeCreator: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [editingSceneId, editedScene, scenes]);
+  }, [editingSceneId, editedScene, scenes, updateState]);
 
   const handleCancelEdit = useCallback(() => {
-    setEditingSceneId(null);
-    setEditedScene(null);
-  }, []);
+    updateState({ editingSceneId: null, editedScene: null });
+  }, [updateState]);
+
+  const handleEditChange = useCallback((updates: Partial<Scene>) => {
+    if (editedScene) {
+      updateState({ editedScene: { ...editedScene, ...updates } });
+    }
+  }, [editedScene, updateState]);
 
   const handleToggleScene = useCallback((sceneNumber: number) => {
-    setScenes(scenes.map(s =>
+    const updatedScenes = scenes.map(s =>
       s.scene_number === sceneNumber ? { ...s, enabled: !s.enabled } : s
-    ));
-  }, [scenes]);
+    );
+    updateState({ scenes: updatedScenes });
+  }, [scenes, updateState]);
 
   const handleStartRender = useCallback(async () => {
     if (scenes.length === 0) {
@@ -234,8 +421,11 @@ const YouTubeCreator: React.FC = () => {
       });
 
       if (response.success && response.task_id) {
-        setRenderTaskId(response.task_id);
-        setRenderProgress(0);
+        updateState({
+          renderTaskId: response.task_id,
+          renderProgress: 0,
+          renderStatus: null,
+        });
         setSuccess('Video rendering started!');
       } else {
         setError(response.message || 'Failed to start render');
@@ -245,7 +435,7 @@ const YouTubeCreator: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [scenes, videoPlan, resolution, combineScenes]);
+  }, [scenes, videoPlan, resolution, combineScenes, updateState]);
 
   const getVideoUrl = useCallback(() => {
     if (renderStatus?.result?.final_video_url) {
@@ -295,11 +485,13 @@ const YouTubeCreator: React.FC = () => {
   }, [activeStep, videoPlan, scenes.length, enabledScenesCount]);
 
   const handleResetRender = useCallback(() => {
-    setRenderTaskId(null);
-    setRenderStatus(null);
-    setRenderProgress(0);
+    updateState({
+      renderTaskId: null,
+      renderStatus: null,
+      renderProgress: 0,
+    });
     setError(null);
-  }, []);
+  }, [updateState]);
 
   const handleRetryFailedScenes = useCallback((failedScenes: any[]) => {
     if (failedScenes.length > 0) {
@@ -309,10 +501,10 @@ const YouTubeCreator: React.FC = () => {
           ? { ...s, enabled: true }
           : s
       );
-      setScenes(updatedScenes);
+      updateState({ scenes: updatedScenes });
       handleResetRender();
     }
-  }, [scenes, handleResetRender]);
+  }, [scenes, handleResetRender, updateState]);
 
   return (
     <Container
@@ -399,12 +591,28 @@ const YouTubeCreator: React.FC = () => {
         <PlanStep
           userIdea={userIdea}
           durationType={durationType}
+          videoType={videoType || undefined}
+          targetAudience={targetAudience}
+          videoGoal={videoGoal}
+          brandStyle={brandStyle}
           referenceImage={referenceImage}
           loading={loading}
-          onIdeaChange={setUserIdea}
-          onDurationChange={setDurationType}
-          onReferenceImageChange={setReferenceImage}
+          avatarPreview={avatarUrl}
+          avatarUrl={avatarUrl}
+          uploadingAvatar={uploadingAvatar}
+          makingPresentable={makingPresentable}
+          onIdeaChange={(value) => updateState({ userIdea: value })}
+          onDurationChange={(value) => updateState({ durationType: value })}
+          onVideoTypeChange={(value) => updateState({ videoType: value })}
+          onTargetAudienceChange={(value) => updateState({ targetAudience: value })}
+          onVideoGoalChange={(value) => updateState({ videoGoal: value })}
+          onBrandStyleChange={(value) => updateState({ brandStyle: value })}
+          onReferenceImageChange={(value) => updateState({ referenceImage: value })}
           onGeneratePlan={handleGeneratePlan}
+          onAvatarUpload={handleAvatarUpload}
+          onRemoveAvatar={handleRemoveAvatar}
+          onMakePresentable={handleMakePresentable}
+          onAvatarSelectFromLibrary={handleAvatarSelectFromLibrary}
         />
       )}
 
@@ -419,10 +627,12 @@ const YouTubeCreator: React.FC = () => {
           onEditScene={handleEditScene}
           onSaveScene={handleSaveScene}
           onCancelEdit={handleCancelEdit}
-          onEditChange={setEditedScene}
+          onEditChange={(value) => updateState({ editedScene: value })}
           onToggleScene={handleToggleScene}
           onBack={() => setActiveStep(0)}
           onNext={() => setActiveStep(2)}
+          onAvatarRegenerate={handleAvatarRegenerate}
+          regeneratingAvatar={regeneratingAvatar}
         />
       )}
 
@@ -437,12 +647,21 @@ const YouTubeCreator: React.FC = () => {
           costEstimate={costEstimate}
           loadingCostEstimate={loadingCostEstimate}
           loading={loading}
-          onResolutionChange={setResolution}
-          onCombineScenesChange={setCombineScenes}
+          scenes={scenes}
+          videoPlan={videoPlan}
+          editingSceneId={editingSceneId}
+          editedScene={editedScene}
+          onResolutionChange={(value) => updateState({ resolution: value })}
+          onCombineScenesChange={(value) => updateState({ combineScenes: value })}
           onStartRender={handleStartRender}
           onBack={() => setActiveStep(1)}
           onReset={handleResetRender}
           onRetryFailedScenes={handleRetryFailedScenes}
+          onEditScene={handleEditScene}
+          onSaveScene={handleSaveScene}
+          onCancelEdit={handleCancelEdit}
+          onEditChange={handleEditChange}
+          onToggleScene={handleToggleScene}
           getVideoUrl={getVideoUrl}
         />
       )}

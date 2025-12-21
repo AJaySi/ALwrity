@@ -69,7 +69,8 @@ async def get_assets(
 ):
     """Get user's content assets with optional filtering."""
     try:
-        user_id = current_user.get("user_id") or current_user.get("id")
+        # Auth middleware returns 'id' as the primary key
+        user_id = current_user.get("id") or current_user.get("user_id") or current_user.get("clerk_user_id")
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found")
         

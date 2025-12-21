@@ -336,6 +336,8 @@ class StoryVideoGenerationService:
                             # Match duration to audio if needed
                             if video_clip.duration > audio_duration:
                                 video_clip = video_clip.subclip(0, audio_duration)
+                                # Re-attach audio after subclip (subclip loses audio)
+                                video_clip = video_clip.with_audio(audio_clip)
                             elif video_clip.duration < audio_duration:
                                 # Loop the video if it's shorter than audio
                                 loops_needed = int(audio_duration / video_clip.duration) + 1

@@ -37,6 +37,7 @@ import { CopilotKitHealthProvider } from './contexts/CopilotKitHealthContext';
 import { useOAuthTokenAlerts } from './hooks/useOAuthTokenAlerts';
 
 import { setAuthTokenGetter, setClerkSignOut } from './api/client';
+import { setMediaAuthTokenGetter } from './utils/fetchMediaBlobUrl';
 import { setBillingAuthTokenGetter } from './services/billingService';
 import { useOnboarding } from './contexts/OnboardingContext';
 import { useState, useEffect } from 'react';
@@ -335,6 +336,9 @@ const TokenInstaller: React.FC = () => {
     
     // Set token getter for billing API client (same function)
     setBillingAuthTokenGetter(tokenGetter);
+    
+    // Set token getter for media blob URL fetcher (for authenticated image/video requests)
+    setMediaAuthTokenGetter(tokenGetter);
   }, [getToken]);
   
   // Install Clerk signOut function for handling expired tokens

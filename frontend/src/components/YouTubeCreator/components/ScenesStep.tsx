@@ -7,16 +7,16 @@ import {
   Paper,
   Typography,
   Button,
-  Stack,
   Box,
-  CircularProgress,
 } from '@mui/material';
 import { PlayArrow, VideoLibrary } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { VideoPlan, Scene } from '../../../services/youtubeApi';
 import { PlanDetails } from './PlanDetails';
-import { SceneCard } from './SceneCard';
 import { YT_BORDER } from '../constants';
+import { OperationButton } from '../../shared/OperationButton';
+import { buildSceneBuildingOperation } from '../utils/operationHelpers';
+import { DurationType } from '../constants';
 
 interface ScenesStepProps {
   videoPlan: VideoPlan;
@@ -32,6 +32,8 @@ interface ScenesStepProps {
   onToggleScene: (sceneNumber: number) => void;
   onBack: () => void;
   onNext: () => void;
+  onAvatarRegenerate?: () => void;
+  regeneratingAvatar?: boolean;
 }
 
 export const ScenesStep: React.FC<ScenesStepProps> = React.memo(({
@@ -48,11 +50,20 @@ export const ScenesStep: React.FC<ScenesStepProps> = React.memo(({
   onToggleScene,
   onBack,
   onNext,
+  onAvatarRegenerate,
+  regeneratingAvatar = false,
 }) => {
   const enabledScenesCount = useMemo(
     () => scenes.filter(s => s.enabled !== false).length,
     [scenes]
   );
+
+  // Memoize operation object to avoid recreating on every render
+  const sceneBuildingOperation = useMemo(() => {
+    const durationType = (videoPlan?.duration_type as DurationType) || 'medium';
+    const hasPlan = !!videoPlan; // Check if plan exists
+    return buildSceneBuildingOperation(durationType, hasPlan);
+  }, [videoPlan]);
 
   return (
     <motion.div
@@ -71,38 +82,29 @@ export const ScenesStep: React.FC<ScenesStepProps> = React.memo(({
             2️⃣ Review & Edit Scenes
           </Typography>
           {scenes.length === 0 && (
-            <Button
+            <OperationButton
+              operation={sceneBuildingOperation}
+              label="Build Scenes from Plan"
               variant="contained"
               color="error"
+              startIcon={<PlayArrow />}
               onClick={onBuildScenes}
               disabled={loading}
-              startIcon={loading ? <CircularProgress size={20} /> : <PlayArrow />}
-            >
-              {loading ? 'Building Scenes...' : 'Build Scenes from Plan'}
-            </Button>
+              loading={loading}
+              checkOnHover={true}
+              checkOnMount={false}
+              showCost={true}
+            />
           )}
         </Box>
 
-        <PlanDetails plan={videoPlan} />
+        <PlanDetails
+          plan={videoPlan}
+          onAvatarRegenerate={onAvatarRegenerate}
+          regeneratingAvatar={regeneratingAvatar}
+        />
 
-        {scenes.length > 0 ? (
-          <Stack spacing={2}>
-            {scenes.map((scene) => (
-              <SceneCard
-                key={scene.scene_number}
-                scene={scene}
-                isEditing={editingSceneId === scene.scene_number}
-                editedScene={editedScene}
-                onToggle={onToggleScene}
-                onEdit={onEditScene}
-                onSave={onSaveScene}
-                onCancel={onCancelEdit}
-                onEditChange={onEditChange}
-                loading={loading}
-              />
-            ))}
-          </Stack>
-        ) : (
+        {scenes.length === 0 && (
           <Box sx={{ textAlign: 'center', py: 4 }}>
             <VideoLibrary sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>

@@ -23,14 +23,24 @@ from services.subscription.preflight_validator import validate_scene_animation_o
 from utils.logger_utils import get_service_logger
 from utils.asset_tracker import save_asset_to_library
 from .task_manager import task_manager
+from .handlers import avatar as avatar_handlers
+from .handlers import images as image_handlers
 
 router = APIRouter(prefix="/youtube", tags=["youtube"])
 logger = get_service_logger("api.youtube")
 
-# Video output directory
+# Video output and image directories
 base_dir = Path(__file__).parent.parent.parent.parent
 YOUTUBE_VIDEO_DIR = base_dir / "youtube_videos"
 YOUTUBE_VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+YOUTUBE_AVATARS_DIR = base_dir / "youtube_avatars"
+YOUTUBE_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+YOUTUBE_IMAGES_DIR = base_dir / "youtube_images"
+YOUTUBE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+# Include sub-routers for avatar and images
+router.include_router(avatar_handlers.router)
+router.include_router(image_handlers.router)
 
 
 # Request/Response Models
@@ -41,6 +51,23 @@ class VideoPlanRequest(BaseModel):
         ..., 
         pattern="^(shorts|medium|long)$",
         description="Video duration type: shorts (≤60s), medium (1-4min), long (4-10min)"
+    )
+    video_type: Optional[str] = Field(
+        None,
+        pattern="^(tutorial|review|educational|entertainment|vlog|product_demo|reaction|storytelling)$",
+        description="Video format type: tutorial, review, educational, entertainment, vlog, product_demo, reaction, storytelling"
+    )
+    target_audience: Optional[str] = Field(
+        None,
+        description="Target audience description (helps optimize tone, pace, and style)"
+    )
+    video_goal: Optional[str] = Field(
+        None,
+        description="Primary goal of the video (educate, sell, entertain, etc.)"
+    )
+    brand_style: Optional[str] = Field(
+        None,
+        description="Brand visual aesthetic and style preferences"
     )
     reference_image_description: Optional[str] = Field(
         None, 
@@ -54,6 +81,14 @@ class VideoPlanRequest(BaseModel):
         None,
         pattern="^(blog|story)$",
         description="Type of source content: blog or story"
+    )
+    avatar_url: Optional[str] = Field(
+        None,
+        description="Optional avatar URL if user uploaded one before plan generation"
+    )
+    enable_research: Optional[bool] = Field(
+        True,
+        description="Enable Exa research to enhance plan with current information, trends, and better SEO keywords (default: True)"
     )
 
 
@@ -158,6 +193,12 @@ async def create_video_plan(
             f"duration={request.duration_type}, user={user_id}"
         )
         
+        # Note: Research subscription checks are handled by ResearchService internally
+        # ResearchService validates limits before making API calls and raises HTTPException(429) if exceeded
+        
+        # Note: Subscription checks for LLM are handled by llm_text_gen internally
+        # It validates limits before making API calls and raises HTTPException(429) if exceeded
+        
         # Get persona data if available
         persona_data = None
         try:
@@ -168,16 +209,74 @@ async def create_video_plan(
         
         # Generate plan (optimized: for shorts, combine plan + scenes in one call)
         planner = YouTubePlannerService()
-        plan = planner.generate_video_plan(
+        plan = await planner.generate_video_plan(
             user_idea=request.user_idea,
             duration_type=request.duration_type,
+            video_type=request.video_type,
+            target_audience=request.target_audience,
+            video_goal=request.video_goal,
+            brand_style=request.brand_style,
             persona_data=persona_data,
             reference_image_description=request.reference_image_description,
             source_content_id=request.source_content_id,
             source_content_type=request.source_content_type,
             user_id=user_id,
             include_scenes=(request.duration_type == "shorts"),  # Optimize shorts
+            enable_research=getattr(request, 'enable_research', True),  # Research enabled by default
         )
+        
+        # Auto-generate avatar if user didn't upload one
+        # Try to reuse existing avatar from asset library first to save on AI calls during testing
+        auto_avatar_url = None
+        if not request.avatar_url:
+            try:
+                from services.content_asset_service import ContentAssetService
+                from models.content_asset_models import AssetType, AssetSource
+                
+                # Check for existing YouTube creator avatar in asset library
+                asset_service = ContentAssetService(db)
+                existing_avatars = asset_service.get_assets(
+                    user_id=user_id,
+                    asset_type=AssetType.IMAGE,
+                    source_module=AssetSource.YOUTUBE_CREATOR,
+                    limit=1,  # Get most recent one
+                )
+                
+                if existing_avatars and len(existing_avatars) > 0:
+                    # Reuse the most recent avatar
+                    existing_avatar = existing_avatars[0]
+                    auto_avatar_url = existing_avatar.file_url
+                    plan["auto_generated_avatar_url"] = auto_avatar_url
+                    plan["avatar_reused"] = True  # Flag to indicate avatar was reused
+                    logger.info(
+                        f"[YouTubeAPI] ♻️ Reusing existing avatar from asset library to save AI call: {auto_avatar_url} "
+                        f"(asset_id: {existing_avatar.id}, created: {existing_avatar.created_at})"
+                    )
+                else:
+                    # No existing avatar found, generate new one
+                    import uuid
+                    import json
+                    from .handlers.avatar import _generate_avatar_from_context
+                    # Pass both original user inputs AND plan data for better avatar generation
+                    logger.info(f"[YouTubeAPI] 🎨 No existing avatar found, generating new avatar...")
+                    avatar_response = await _generate_avatar_from_context(
+                        user_id=user_id,
+                        project_id=f"plan_{user_id}_{uuid.uuid4().hex[:8]}",
+                        audience=request.target_audience or plan.get("target_audience"),  # Prefer user input
+                        content_type=request.video_type,  # User's video type selection
+                        video_plan_json=json.dumps(plan),
+                        brand_style=request.brand_style,  # User's brand style preference
+                        db=db,
+                    )
+                    auto_avatar_url = avatar_response.get("avatar_url")
+                    avatar_prompt = avatar_response.get("avatar_prompt")
+                    plan["auto_generated_avatar_url"] = auto_avatar_url
+                    plan["avatar_prompt"] = avatar_prompt  # Store the AI prompt used for generation
+                    plan["avatar_reused"] = False  # Flag to indicate avatar was newly generated
+                    logger.info(f"[YouTubeAPI] ✅ Auto-generated new avatar based on user inputs and plan: {auto_avatar_url}")
+            except Exception as e:
+                logger.warning(f"[YouTubeAPI] Avatar generation/reuse failed (non-critical): {e}")
+                # Non-critical, continue without avatar
         
         return VideoPlanResponse(
             success=True,
@@ -212,12 +311,17 @@ async def build_scenes(
     try:
         user_id = require_authenticated_user(current_user)
         
+        duration_type = request.video_plan.get('duration_type', 'medium')
+        has_existing_scenes = bool(request.video_plan.get("scenes")) and request.video_plan.get("_scenes_included")
+        
         logger.info(
-            f"[YouTubeAPI] Building scenes: duration={request.video_plan.get('duration_type')}, "
-            f"custom_script={bool(request.custom_script)}, user={user_id}"
+            f"[YouTubeAPI] Building scenes: duration={duration_type}, "
+            f"custom_script={bool(request.custom_script)}, "
+            f"has_existing_scenes={has_existing_scenes}, "
+            f"user={user_id}"
         )
         
-        # Build scenes
+        # Build scenes (optimized to reuse existing scenes if available)
         scene_builder = YouTubeSceneBuilderService()
         scenes = scene_builder.build_scenes_from_plan(
             video_plan=request.video_plan,

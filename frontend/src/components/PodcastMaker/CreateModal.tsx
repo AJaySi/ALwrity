@@ -9,10 +9,13 @@ import {
   CloudUpload as CloudUploadIcon,
   Person as PersonIcon,
   Delete as DeleteIcon,
+  Collections as CollectionsIcon,
 } from "@mui/icons-material";
 import { CreateProjectPayload, Knobs } from "./types";
 import { PrimaryButton, SecondaryButton } from "./ui";
 import { useSubscription } from "../../contexts/SubscriptionContext";
+import { AssetLibraryImageModal } from "../shared/AssetLibraryImageModal";
+import { ContentAsset } from "../../hooks/useContentAssets";
 
 interface CreateModalProps {
   onCreate: (payload: CreateProjectPayload) => void;
@@ -43,6 +46,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const [makingPresentable, setMakingPresentable] = useState(false);
   const [knobs, setKnobs] = useState<Knobs>({ ...defaultKnobs });
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [assetLibraryOpen, setAssetLibraryOpen] = useState(false);
 
   // Determine subscription tier restrictions
   const tier = subscription?.tier || 'free';
@@ -164,6 +168,14 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     const clamped = Math.min(2, Math.max(1, value));
     setSpeakers(clamped);
   };
+
+  const handleAvatarSelectFromLibrary = React.useCallback((asset: ContentAsset) => {
+    if (!asset?.file_url) return;
+    setAvatarFile(null);
+    setAvatarPreview(asset.file_url);
+    setAvatarUrl(asset.file_url);
+    setAssetLibraryOpen(false);
+  }, []);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -948,6 +960,23 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
                           >
                             {makingPresentable ? "Transforming..." : "Make Presentable"}
                           </SecondaryButton>
+                      <Button
+                        variant="outlined"
+                        startIcon={<CollectionsIcon />}
+                        onClick={() => setAssetLibraryOpen(true)}
+                        fullWidth
+                        sx={{
+                          mt: 1,
+                          borderColor: "#d1d5db",
+                          color: "#6b7280",
+                          "&:hover": {
+                            borderColor: "#9ca3af",
+                            backgroundColor: "#f9fafc",
+                          },
+                        }}
+                      >
+                        Upload from Asset Library
+                      </Button>
                         </Box>
                       </Tooltip>
                     )}
@@ -989,6 +1018,26 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
                     <Typography variant="caption" sx={{ color: "#94a3b8", textAlign: "center", px: 2, lineHeight: 1.5 }}>
                       Optional - We'll enhance it with AI or generate one after analysis
                     </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<CollectionsIcon />}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setAssetLibraryOpen(true);
+                      }}
+                      fullWidth
+                      sx={{
+                        mt: 1.5,
+                        borderColor: "#d1d5db",
+                        color: "#6b7280",
+                        "&:hover": {
+                          borderColor: "#9ca3af",
+                          backgroundColor: "#f9fafb",
+                        },
+                      }}
+                    >
+                      Upload from Asset Library
+                    </Button>
                   </Box>
                 )}
                 
@@ -1074,6 +1123,16 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
             You can provide either a topic idea or a blog post URL. We won't make any external AI calls until you click "Analyze & Continue".
           </Typography>
         </Alert>
+
+        {/* Asset Library Modal */}
+        <AssetLibraryImageModal
+          open={assetLibraryOpen}
+          onClose={() => setAssetLibraryOpen(false)}
+          onSelect={handleAvatarSelectFromLibrary}
+          title="Select Avatar from Asset Library"
+          sourceModule={undefined}
+          allowFavoritesOnly
+        />
 
         <Stack direction="row" justifyContent="flex-end" spacing={1}>
           <SecondaryButton onClick={reset} startIcon={<RefreshIcon />}>

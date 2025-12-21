@@ -392,7 +392,7 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
                       {combiningProgress && (
                         <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 600 }}>
                           {combiningProgress.progress.toFixed(0)}%
-                        </Typography>
+                      </Typography>
                       )}
                     </Stack>
                     <LinearProgress 

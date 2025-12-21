@@ -85,6 +85,7 @@ def edit_image(
         from services.subscription.preflight_validator import validate_image_editing_operations
         from fastapi import HTTPException
         
+        logger.info(f"[Image Editing] 🔍 Starting pre-flight validation for user_id={user_id}")
         db = next(get_db())
         try:
             pricing_service = PricingService(db)
@@ -93,14 +94,15 @@ def edit_image(
                 pricing_service=pricing_service,
                 user_id=user_id
             )
+            logger.info(f"[Image Editing] ✅ Pre-flight validation passed for user_id={user_id} - proceeding with image editing")
         except HTTPException as http_ex:
             # Re-raise immediately - don't proceed with API call
-            logger.error(f"[Image Editing] ❌ Pre-flight validation failed - blocking API call")
+            logger.error(f"[Image Editing] ❌ Pre-flight validation failed for user_id={user_id} - blocking API call: {http_ex.detail}")
             raise
         finally:
             db.close()
-    
-    logger.info(f"[Image Editing] ✅ Pre-flight validation passed - proceeding with image editing")
+    else:
+        logger.warning(f"[Image Editing] ⚠️ No user_id provided - skipping pre-flight validation (this should not happen in production)")
     
     # Validate input
     if not input_image_bytes:

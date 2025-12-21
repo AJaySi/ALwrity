@@ -15,3 +15,7 @@ export * from './types';
 
 // Shared utilities
 export * from './utils'; 
+
+// Asset Library modal (images only)
+export { AssetLibraryImageModal } from './AssetLibraryImageModal';
+export type { AssetLibraryImageModalProps } from './AssetLibraryImageModal';

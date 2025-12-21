@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   Button,
   ButtonProps,
@@ -129,9 +129,13 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
   }, [label, formattedCost]);
 
   // Determine if button should be disabled
+  // NOTE: We do NOT disable when canProceed === false to allow users to click and see subscription modal
+  // The API call will return 429, which triggers the subscription modal via global error handler
   const isDisabled = useMemo(() => {
-    return externalDisabled || externalLoading || preflightLoading || (canProceed !== null && !canProceed);
-  }, [externalDisabled, externalLoading, preflightLoading, canProceed]);
+    return externalDisabled || externalLoading || preflightLoading;
+    // Removed: || (canProceed !== null && !canProceed)
+    // This allows users to click even when limits are exceeded, so they can see subscription modal
+  }, [externalDisabled, externalLoading, preflightLoading]);
 
   // Build tooltip content
   const tooltipContent = useMemo(() => {
@@ -187,16 +191,41 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
     return content.length > 0 ? <Box sx={{ p: 0.5 }}>{content}</Box> : null;
   }, [canProceed, estimatedCost, formattedCost, limitInfo, preflightError, preflightLoading]);
 
-  // Handle hover
+  // Debounce hover checks to prevent excessive API calls
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCheckTimeRef = useRef<number>(0);
+  const MIN_CHECK_INTERVAL = 5000; // Only check once every 5 seconds max
+  
+  // Handle hover with debouncing
   const handleMouseEnter = () => {
     if (checkOnHover) {
+      const now = Date.now();
+      const timeSinceLastCheck = now - lastCheckTimeRef.current;
+      
+      // If we checked recently, skip (use cache)
+      if (timeSinceLastCheck < MIN_CHECK_INTERVAL) {
+        return;
+      }
+      
+      // Clear any existing timeout
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+      
+      // Debounce the check by 300ms to prevent rapid-fire calls
+      hoverTimeoutRef.current = setTimeout(() => {
       triggerCheck(operation);
+        lastCheckTimeRef.current = Date.now();
+      }, 300);
     }
   };
 
   // Handle click
+  // Allow clicks even when canProceed === false to let users see subscription modal
+  // The API will return 429, which triggers the subscription modal via global error handler
   const handleClick = () => {
-    if (!isDisabled && (canProceed === null || canProceed)) {
+    if (!isDisabled) {
+      // Always allow click - if limits are exceeded, API will return 429 and show modal
       onClick();
     }
   };
@@ -210,21 +239,20 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
   }, [canProceed, color]);
 
   // Determine if we should show loading spinner
-  const showLoading = externalLoading || (preflightLoading && checkOnMount);
+  // Only show spinner for external loading (actual operation), not for preflight checks
+  const showLoading = externalLoading;
 
   // Custom label override for loading state
   const displayLabel = useMemo(() => {
     if (externalLoading && buttonProps?.children) {
       return buttonProps.children;
     }
-    if (showLoading && !externalLoading) {
-      return 'Checking...';
-    }
-    if (canProceed !== null && !canProceed && preflightError) {
-      return preflightError;
-    }
+    // Don't show "Checking..." during preflight - keep label stable with cost
+    // Preflight loading is handled by spinner in icon position only
+    // Note: We don't override label when canProceed === false to keep button clickable
+    // The tooltip will show the limit info, and clicking will trigger subscription modal
     return buttonLabel;
-  }, [externalLoading, showLoading, canProceed, preflightError, buttonLabel, buttonProps?.children]);
+  }, [externalLoading, buttonLabel, buttonProps?.children]);
 
   // Build button with icon
   const button = (
@@ -234,6 +262,8 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
       color={buttonColor}
       startIcon={
         showLoading ? (
+          <CircularProgress size={16} color="inherit" />
+        ) : (preflightLoading && checkOnMount) ? (
           <CircularProgress size={16} color="inherit" />
         ) : (canProceed !== null && !canProceed) ? (
           <WarningIcon fontSize="small" />
@@ -252,6 +282,15 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
       {displayLabel}
     </Button>
   );
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Wrap with tooltip if we have content
   if (tooltipContent || checkOnHover) {

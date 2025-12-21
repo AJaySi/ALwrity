@@ -32,6 +32,11 @@ class YouTubeSceneBuilderService:
         """
         Build structured scenes from a video plan.
         
+        This method is optimized to minimize AI calls:
+        - For shorts: Reuses scenes if already generated in plan (0 AI calls)
+        - For medium/long: Generates scenes + batch enhances (1-3 AI calls total)
+        - Custom script: Parses script without AI calls (0 AI calls)
+        
         Args:
             video_plan: Video plan from planner service
             user_id: Clerk user ID for subscription checking
@@ -41,22 +46,38 @@ class YouTubeSceneBuilderService:
             List of scene dictionaries with narration, visual prompts, timing, etc.
         """
         try:
+            duration_type = video_plan.get('duration_type', 'medium')
             logger.info(
                 f"[YouTubeSceneBuilder] Building scenes from plan: "
-                f"duration={video_plan.get('duration_type')}, "
-                f"sections={len(video_plan.get('content_outline', []))}"
+                f"duration={duration_type}, "
+                f"sections={len(video_plan.get('content_outline', []))}, "
+                f"user={user_id}"
             )
             
             duration_metadata = video_plan.get("duration_metadata", {})
             max_scenes = duration_metadata.get("max_scenes", 10)
             
-            # If custom script provided, parse it into scenes
-            if custom_script:
+            # Optimization: Check if scenes already exist in plan (prevents duplicate generation)
+            # This can happen if plan was generated with include_scenes=True for shorts
+            existing_scenes = video_plan.get("scenes", [])
+            if existing_scenes and video_plan.get("_scenes_included"):
+                # Scenes already generated in plan - reuse them (0 AI calls)
+                logger.info(
+                    f"[YouTubeSceneBuilder] ♻️ Reusing {len(existing_scenes)} scenes from plan "
+                    f"(duration={duration_type}) - skipping generation to save AI calls"
+                )
+                scenes = self._normalize_scenes_from_plan(video_plan, duration_metadata)
+            # If custom script provided, parse it into scenes (0 AI calls for parsing)
+            elif custom_script:
+                logger.info(
+                    f"[YouTubeSceneBuilder] Parsing custom script for scene generation "
+                    f"(0 AI calls required)"
+                )
                 scenes = self._parse_custom_script(
                     custom_script, video_plan, duration_metadata, user_id
                 )
             # For shorts, check if scenes were already generated in plan (optimization)
-            elif video_plan.get("_scenes_included") and video_plan.get("duration_type") == "shorts":
+            elif video_plan.get("_scenes_included") and duration_type == "shorts":
                 prebuilt = video_plan.get("scenes") or []
                 if prebuilt:
                     logger.info(

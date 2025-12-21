@@ -20,6 +20,10 @@ youtube_videos/
 backend/podcast_images/
 backend/podcast_videos/
 
+
+youtube_avatars/
+youtube_avatars
+
 .cursorignore
 story_videos
 story_videos/*

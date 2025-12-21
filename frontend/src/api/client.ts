@@ -260,12 +260,25 @@ aiApiClient.interceptors.request.use(
   async (config) => {
     console.log(`Making AI ${config.method?.toUpperCase()} request to ${config.url}`);
     try {
-      const token = authTokenGetter ? await authTokenGetter() : null;
+      if (!authTokenGetter) {
+        console.warn(`[aiApiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
+      } else {
+        try {
+          const token = await authTokenGetter();
       if (token) {
         config.headers = config.headers || {};
         (config.headers as any)['Authorization'] = `Bearer ${token}`;
+            console.log(`[aiApiClient] ✅ Added auth token to request: ${config.url}`);
+          } else {
+            console.warn(`[aiApiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
+          }
+        } catch (tokenError) {
+          console.error(`[aiApiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error(`[aiApiClient] ❌ Unexpected error in request interceptor for ${config.url}:`, e);
+    }
     return config;
   },
   (error) => {

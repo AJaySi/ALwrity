@@ -29,7 +29,7 @@ export interface ContentAsset {
 
 export interface AssetFilters {
   asset_type?: 'text' | 'image' | 'video' | 'audio';
-  source_module?: string;
+  source_module?: string | string[]; // Support single or multiple source modules
   search?: string;
   tags?: string[];
   favorites_only?: boolean;
@@ -119,7 +119,15 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
       const currentFilters = filtersRef.current;
       const params = new URLSearchParams();
       if (currentFilters.asset_type) params.append('asset_type', currentFilters.asset_type);
-      if (currentFilters.source_module) params.append('source_module', currentFilters.source_module);
+      if (currentFilters.source_module) {
+        // Handle both string and array cases
+        if (Array.isArray(currentFilters.source_module)) {
+          // For arrays, use the first value (backend doesn't support multiple yet)
+          params.append('source_module', currentFilters.source_module[0]);
+        } else {
+          params.append('source_module', currentFilters.source_module);
+        }
+      }
       if (currentFilters.search) params.append('search', currentFilters.search);
       if (currentFilters.tags && currentFilters.tags.length > 0) params.append('tags', currentFilters.tags.join(','));
       if (currentFilters.favorites_only) params.append('favorites_only', 'true');

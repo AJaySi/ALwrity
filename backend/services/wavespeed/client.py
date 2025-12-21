@@ -177,7 +177,7 @@ class WaveSpeedClient:
                         f"[WaveSpeed] Too many polling errors ({consecutive_errors}) for {prediction_id}, "
                         f"status_code={status_code}. Giving up."
                     )
-                    raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+                raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
                 backoff = min(30.0, interval_seconds * (2 ** (consecutive_errors - 1)))
                 logger.warning(
@@ -464,16 +464,17 @@ class WaveSpeedClient:
         response_json = response.json()
         data = response_json.get("data") or response_json
         
+        # Check status - if "created" or "processing", we need to poll even in sync mode
+        status = data.get("status", "").lower()
+        outputs = data.get("outputs") or []
+        prediction_id = data.get("id")
+        
         # Handle sync mode - result should be directly in outputs
+        # BUT: If status is "created" or "processing" with no outputs, fall back to polling
         if enable_sync_mode:
-            outputs = data.get("outputs") or []
-            if not outputs:
-                logger.error(f"[WaveSpeed] No outputs in sync mode response: {response.text}")
-                raise HTTPException(
-                    status_code=502,
-                    detail="WaveSpeed image generator returned no outputs",
-                )
-            
+            # If we have outputs and status is "completed", use them directly
+            if outputs and status == "completed":
+                logger.info(f"[WaveSpeed] Got immediate results from sync mode (status: {status})")
             # Extract image URL from outputs
             image_url = None
             if isinstance(outputs, list) and len(outputs) > 0:
@@ -504,16 +505,30 @@ class WaveSpeedClient:
                     detail="Failed to fetch generated image from WaveSpeed URL",
                 )
         
-        # Async mode - poll for result
-        prediction_id = data.get("id")
+            # Sync mode returned "created" or "processing" status - need to poll
         if not prediction_id:
-            logger.error(f"[WaveSpeed] No prediction ID in async response: {response.text}")
+            logger.error(f"[WaveSpeed] Sync mode returned status '{status}' but no prediction ID: {response.text}")
             raise HTTPException(
                 status_code=502,
-                detail="WaveSpeed response missing prediction id for async mode",
+                detail="WaveSpeed sync mode returned async response without prediction ID",
+            )
+            
+            logger.info(
+                f"[WaveSpeed] Sync mode returned status '{status}' with no outputs. "
+                f"Falling back to polling (prediction_id: {prediction_id})"
+            )
+            # Fall through to async polling logic below
+        
+        # Async mode OR sync mode that returned "created"/"processing" - poll for result
+        if not prediction_id:
+            logger.error(f"[WaveSpeed] No prediction ID in response: {response.text}")
+            raise HTTPException(
+                status_code=502,
+                detail="WaveSpeed response missing prediction id",
             )
         
-        # Poll for result
+        # Poll for result (use longer timeout for image generation)
+        logger.info(f"[WaveSpeed] Polling for image generation result (prediction_id: {prediction_id}, status: {status})")
         result = self.poll_until_complete(prediction_id, timeout_seconds=240, interval_seconds=1.0)
         outputs = result.get("outputs") or []
         
