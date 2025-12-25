@@ -88,14 +88,49 @@ class YouTubeVideoRendererService:
             # Clamp duration to valid WAN 2.5 values (5 or 10 seconds)
             duration = 5 if duration_estimate <= 7 else 10
             
+            # Log asset usage status
+            has_existing_image = bool(scene.get("imageUrl"))
+            has_existing_audio = bool(scene.get("audioUrl"))
+            
             logger.info(
                 f"[YouTubeRenderer] Rendering scene {scene_number}: "
-                f"resolution={resolution}, duration={duration}s, prompt_length={len(visual_prompt)}"
+                f"resolution={resolution}, duration={duration}s, prompt_length={len(visual_prompt)}, "
+                f"has_existing_image={has_existing_image}, has_existing_audio={has_existing_audio}"
             )
             
-            # Generate audio if requested - only if narration is not empty
+            # Use existing audio if available, otherwise generate if requested
             audio_base64 = None
-            if generate_audio_enabled and narration and len(narration.strip()) > 0:
+            scene_audio_url = scene.get("audioUrl")
+            
+            if scene_audio_url:
+                # Load existing audio from URL
+                try:
+                    from pathlib import Path
+                    from urllib.parse import urlparse
+                    
+                    # Extract filename from URL (e.g., /api/youtube/audio/filename.mp3)
+                    parsed_url = urlparse(scene_audio_url)
+                    audio_filename = Path(parsed_url.path).name
+                    
+                    # Load audio file
+                    base_dir = Path(__file__).parent.parent.parent.parent
+                    youtube_audio_dir = base_dir / "youtube_audio"
+                    audio_path = youtube_audio_dir / audio_filename
+                    
+                    if audio_path.exists():
+                        with open(audio_path, "rb") as f:
+                            audio_bytes = f.read()
+                        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                        logger.info(f"[YouTubeRenderer] Using existing audio for scene {scene_number} from {audio_filename}")
+                    else:
+                        logger.warning(f"[YouTubeRenderer] Audio file not found: {audio_path}, will generate new audio")
+                        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+                except Exception as e:
+                    logger.warning(f"[YouTubeRenderer] Failed to load existing audio: {e}, will generate new audio")
+                    scene_audio_url = None  # Fall back to generation
+            
+            # Generate audio if not available and generation is enabled
+            if not audio_base64 and generate_audio_enabled and narration and len(narration.strip()) > 0:
                 try:
                     audio_result = generate_audio(
                         text=narration,
@@ -106,7 +141,7 @@ class YouTubeVideoRendererService:
                     audio_bytes = audio_result.audio_bytes if hasattr(audio_result, "audio_bytes") else audio_result
                     # Convert to base64 (just the base64 string, not data URI)
                     audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                    logger.info(f"[YouTubeRenderer] Generated audio for scene {scene_number}")
+                    logger.info(f"[YouTubeRenderer] Generated new audio for scene {scene_number}")
                 except Exception as e:
                     logger.warning(f"[YouTubeRenderer] Audio generation failed: {e}, continuing without audio")
             
@@ -352,6 +387,7 @@ class YouTubeVideoRendererService:
         self,
         scenes: List[Dict[str, Any]],
         resolution: str = "720p",
+        image_model: str = "ideogram-v3-turbo",
     ) -> Dict[str, Any]:
         """
         Estimate the cost of rendering a video before actually rendering it.
@@ -369,8 +405,16 @@ class YouTubeVideoRendererService:
             "720p": 0.10,
             "1080p": 0.15,
         }
-        
+
         price_per_second = pricing.get(resolution, 0.10)
+
+        # Image generation pricing
+        image_pricing = {
+            "ideogram-v3-turbo": 0.10,
+            "qwen-image": 0.05,
+        }
+
+        image_cost_per_scene = image_pricing.get(image_model, 0.10)
         
         # Filter enabled scenes
         enabled_scenes = [s for s in scenes if s.get("enabled", True)]
@@ -378,7 +422,8 @@ class YouTubeVideoRendererService:
         scene_costs = []
         total_cost = 0.0
         total_duration = 0.0
-        
+        total_image_cost = len(enabled_scenes) * image_cost_per_scene
+
         for scene in enabled_scenes:
             scene_number = scene.get("scene_number", 0)
             duration_estimate = scene.get("duration_estimate", 5)
@@ -396,7 +441,10 @@ class YouTubeVideoRendererService:
             
             total_cost += scene_cost
             total_duration += duration
-        
+
+        # Add image costs to total
+        total_cost += total_image_cost
+
         return {
             "resolution": resolution,
             "price_per_second": price_per_second,
@@ -408,5 +456,8 @@ class YouTubeVideoRendererService:
                 "min": round(total_cost * 0.9, 2),  # 10% buffer
                 "max": round(total_cost * 1.1, 2),  # 10% buffer
             },
+            "image_model": image_model,
+            "image_cost_per_scene": image_cost_per_scene,
+            "total_image_cost": round(total_image_cost, 2),
         }
 

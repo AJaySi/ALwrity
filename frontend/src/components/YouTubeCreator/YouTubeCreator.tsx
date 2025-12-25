@@ -24,12 +24,16 @@ import { youtubeApi, type VideoPlan, type Scene } from '../../services/youtubeAp
 import { STEPS, YT_RED, YT_BG, YT_BORDER, YT_TEXT, type Resolution, type DurationType, type VideoType } from './constants';
 import { PlanStep } from './components/PlanStep';
 import { ScenesStep } from './components/ScenesStep';
+import { SceneGenerationStep } from './components/SceneGenerationStep';
 import { RenderStep } from './components/RenderStep';
 import { useRenderPolling } from './hooks/useRenderPolling';
 import { useCostEstimate } from './hooks/useCostEstimate';
+import { useImageGenerationPolling } from './hooks/useImageGenerationPolling';
 import HeaderControls from '../shared/HeaderControls';
 import { useYouTubeCreatorState } from '../../hooks/useYouTubeCreatorState';
 import { ContentAsset } from '../../hooks/useContentAssets';
+import { AudioGenerationSettings } from '../../components/shared/AudioSettingsModal';
+import type { YouTubeImageGenerationSettings } from './shared';
 
 const YouTubeCreator: React.FC = () => {
   const navigate = useNavigate();
@@ -65,6 +69,11 @@ const YouTubeCreator: React.FC = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [makingPresentable, setMakingPresentable] = useState(false);
   const [regeneratingAvatar, setRegeneratingAvatar] = useState(false);
+  const [generatingImageSceneId, setGeneratingImageSceneId] = useState<number | null>(null);
+  const [generatingAudioSceneId, setGeneratingAudioSceneId] = useState<number | null>(null);
+  
+  // Robust polling hook for image generation
+  const { startPolling: startImagePolling, stopPolling: stopImagePolling } = useImageGenerationPolling();
 
   // Sync activeStep with persisted state on mount
   useEffect(() => {
@@ -105,6 +114,7 @@ const YouTubeCreator: React.FC = () => {
     scenes,
     resolution,
     renderTaskId,
+    imageModel: 'ideogram-v3-turbo', // Default for now, can be made configurable later
   });
 
   // Memoized computed values
@@ -312,7 +322,7 @@ const YouTubeCreator: React.FC = () => {
 
         updateState({ scenes: updatedScenes });
         setSuccess(successMessage);
-        // Navigate immediately to Render step so user can see scenes and cost estimates
+        // Navigate to Scene Generation step (step 2) to generate assets
         setActiveStep(2);
         // Clear success message after a brief moment
         setTimeout(() => {
@@ -391,6 +401,246 @@ const YouTubeCreator: React.FC = () => {
     updateState({ scenes: updatedScenes });
   }, [scenes, updateState]);
 
+  const handleGenerateSceneImage = useCallback(async (scene: Scene, imageSettings?: YouTubeImageGenerationSettings) => {
+    console.log('[YouTubeCreator] handleGenerateSceneImage called for scene', scene.scene_number);
+    console.log('[YouTubeCreator] This should ONLY be called for image generation, NOT audio generation');
+    
+    // Guard: prevent if already generating image for this scene
+    if (generatingImageSceneId === scene.scene_number) {
+      console.warn('[YouTubeCreator] Image generation already in progress for this scene');
+      return;
+    }
+    
+    setGeneratingImageSceneId(scene.scene_number);
+    setError(null);
+
+    try {
+      console.log('[YouTubeCreator] Starting image generation task for scene', scene.scene_number);
+
+      const taskResponse = await youtubeApi.generateSceneImage({
+        sceneId: `scene_${scene.scene_number}`,
+        sceneTitle: scene.title,
+        sceneContent: scene.narration,
+        baseAvatarUrl: avatarUrl || undefined,
+        idea: videoPlan?.video_summary || userIdea,
+        width: 1024,
+        height: 576,
+        customPrompt: imageSettings?.prompt,
+        style: imageSettings?.style,
+        renderingSpeed: imageSettings?.renderingSpeed,
+        aspectRatio: imageSettings?.aspectRatio,
+        model: imageSettings?.model,
+      });
+
+      console.log('[YouTubeCreator] Image generation task started:', taskResponse);
+
+      if (!taskResponse.success) {
+        throw new Error(taskResponse.message || 'Failed to start image generation task');
+      }
+
+      const taskId = taskResponse.task_id;
+
+      // Start robust polling
+      startImagePolling({
+        taskId,
+        sceneNumber: scene.scene_number,
+        getStatus: youtubeApi.getImageGenerationStatus,
+        onComplete: (imageUrl) => {
+          console.log('[YouTubeCreator] Image generation completed!', {
+            sceneNumber: scene.scene_number,
+            imageUrl,
+          });
+
+          // Update scene with image URL atomically
+          const updatedScenes = scenes.map(s =>
+            s.scene_number === scene.scene_number
+              ? { ...s, imageUrl }
+              : s
+          );
+          updateState({ scenes: updatedScenes });
+
+          setSuccess(`Image generated for Scene ${scene.scene_number}!`);
+          setTimeout(() => setSuccess(null), 3000);
+          setGeneratingImageSceneId(null);
+        },
+        onError: (errorMsg) => {
+          setError(errorMsg);
+          setGeneratingImageSceneId(null);
+        },
+        onProgress: (progress, message) => {
+          console.log(`[YouTubeCreator] Image generation in progress: ${progress}% - ${message}`);
+        },
+      });
+
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.detail?.message
+        || err?.response?.data?.detail?.error
+        || err?.response?.data?.detail
+        || err?.message
+        || 'Failed to start image generation';
+      setError(`Scene ${scene.scene_number}: ${errorMessage}`);
+      setGeneratingImageSceneId(null);
+      throw err; // Re-throw so SceneCard can handle it
+    }
+  }, [scenes, avatarUrl, videoPlan, userIdea, updateState, generatingImageSceneId, startImagePolling]);
+
+  // Helper function to build enriched text for better audio generation
+  const buildEnrichedSceneText = (scene: Scene): string => {
+    // Start with the core narration text
+    let enrichedText = scene.narration;
+
+    // Add scene title for context (helps WaveSpeed understand the scene's purpose)
+    if (scene.title && scene.title !== scene.narration.substring(0, scene.title.length)) {
+      enrichedText = `${scene.title}. ${enrichedText}`;
+    }
+
+    // Add delivery style hints based on emphasis tags
+    if (scene.emphasis_tags && scene.emphasis_tags.length > 0) {
+      const deliveryHints = scene.emphasis_tags.map(tag => {
+        switch (tag) {
+          case 'hook': return 'speak with energy and excitement';
+          case 'cta': return 'speak persuasively and confidently';
+          case 'transition': return 'speak smoothly and clearly';
+          default: return 'speak professionally and clearly';
+        }
+      });
+
+      // Use the primary emphasis tag for the delivery hint
+      const primaryHint = deliveryHints[0];
+      enrichedText += ` [${primaryHint}]`;
+    }
+
+    // Add visual cues for emotional delivery guidance
+    if (scene.visual_cues && scene.visual_cues.length > 0) {
+      // Filter for cues that affect audio delivery
+      const audioRelevantCues = scene.visual_cues.filter(cue =>
+        cue.toLowerCase().includes('slow') ||
+        cue.toLowerCase().includes('fast') ||
+        cue.toLowerCase().includes('energetic') ||
+        cue.toLowerCase().includes('calm') ||
+        cue.toLowerCase().includes('dramatic') ||
+        cue.toLowerCase().includes('intense')
+      );
+
+      if (audioRelevantCues.length > 0) {
+        enrichedText += ` [Pacing: ${audioRelevantCues.join(', ')}]`;
+      }
+    }
+
+    // Add duration estimate for natural pacing
+    if (scene.duration_estimate && scene.duration_estimate > 0) {
+      const wordsPerMinute = enrichedText.split(' ').length / (scene.duration_estimate / 60);
+      if (wordsPerMinute > 200) {
+        enrichedText += ` [Speak at a natural, conversational pace]`;
+      } else if (wordsPerMinute < 120) {
+        enrichedText += ` [Take time to articulate clearly]`;
+      }
+    }
+
+    // Ensure we don't exceed WaveSpeed's 10,000 character limit
+    if (enrichedText.length > 9500) {
+      enrichedText = enrichedText.substring(0, 9500) + '...';
+    }
+
+    return enrichedText;
+  };
+
+  const handleGenerateSceneAudio = useCallback(async (scene: Scene, audioSettings?: AudioGenerationSettings) => {
+    console.log('[YouTubeCreator] handleGenerateSceneAudio called for scene', scene.scene_number);
+    console.log('[YouTubeCreator] This should ONLY be called for audio generation, NOT image generation');
+
+    // Guard: prevent if already generating audio for this scene
+    if (generatingAudioSceneId === scene.scene_number) {
+      console.warn('[YouTubeCreator] Audio generation already in progress for this scene');
+      return;
+    }
+
+    setGeneratingAudioSceneId(scene.scene_number);
+    setError(null);
+
+    try {
+      // Enhanced audio defaults optimized for YouTube content
+      // Based on research into natural speech patterns and user feedback
+      // Speed 1.08: Natural conversational pace (engaging but not rushed)
+      // Voice: Auto-selected based on content analysis
+      // Emotion: Auto-selected based on scene content
+      // High quality settings for professional YouTube audio
+      const settings: AudioGenerationSettings = audioSettings || {
+        voiceId: "", // Empty string triggers auto-selection by backend
+        speed: 1.08, // Natural conversational pace - engaging but comfortable
+        volume: 1.0, // Standard volume
+        pitch: 0.0, // Neutral pitch for natural sound
+        emotion: "happy", // Default emotion (backend will auto-select based on content)
+        englishNormalization: true, // Better handling of numbers, dates, and technical terms
+        sampleRate: 44100, // CD quality audio
+        bitrate: 256000, // Highest quality: 256kbps for professional audio
+        channel: "2" as const, // Stereo for richer audio experience
+        format: "mp3" as const, // Universal format
+        languageBoost: "English", // Optimize for English content
+        enableSyncMode: true, // Reliable delivery
+      };
+
+      // Build enriched text for better audio generation
+      const enrichedText = buildEnrichedSceneText(scene);
+
+      console.log('[YouTubeCreator] Calling youtubeApi.generateSceneAudio with enriched text:', {
+        sceneId: `scene_${scene.scene_number}`,
+        sceneTitle: scene.title,
+        originalTextLength: scene.narration?.length,
+        enrichedTextLength: enrichedText.length,
+        voiceId: settings.voiceId || undefined, // Will auto-select if empty
+        endpoint: '/api/youtube/audio',
+        settings: settings,
+        video_plan_context: {
+          video_type: videoType,
+          target_audience: targetAudience,
+          tone: videoPlan?.tone,
+          visual_style: videoPlan?.visual_style,
+          video_goal: videoPlan?.video_goal,
+        },
+      });
+
+      const result = await youtubeApi.generateSceneAudio({
+        sceneId: `scene_${scene.scene_number}`,
+        sceneTitle: scene.title,
+        text: enrichedText, // Send enriched text instead of just narration
+        voiceId: settings.voiceId || undefined, // Will auto-select if empty
+        speed: settings.speed,
+        volume: settings.volume,
+        pitch: settings.pitch,
+        emotion: settings.emotion,
+        englishNormalization: settings.englishNormalization,
+        sampleRate: settings.sampleRate,
+        bitrate: settings.bitrate,
+        channel: settings.channel,
+        format: settings.format,
+        languageBoost: settings.languageBoost,
+        enableSyncMode: settings.enableSyncMode,
+      });
+
+      console.log('[YouTubeCreator] Audio generation result:', result);
+
+      // Update scene with audio URL
+      const updatedScenes = scenes.map(s =>
+        s.scene_number === scene.scene_number
+          ? { ...s, audioUrl: result.audio_url }
+          : s
+      );
+      updateState({ scenes: updatedScenes });
+      setSuccess(`Audio generated for Scene ${scene.scene_number}!`);
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.detail?.message 
+        || err?.response?.data?.detail?.error 
+        || err?.response?.data?.detail 
+        || err?.message 
+        || 'Failed to generate audio';
+      setError(errorMessage);
+      throw err; // Re-throw so SceneCard can handle it
+    } finally {
+      setGeneratingAudioSceneId(null);
+    }
+  }, [scenes, updateState]);
+
   const handleStartRender = useCallback(async () => {
     if (scenes.length === 0) {
       setError('Please build scenes first');
@@ -405,6 +655,19 @@ const YouTubeCreator: React.FC = () => {
 
     if (!videoPlan) {
       setError('Video plan is missing');
+      return;
+    }
+
+    // VALIDATION: Check that all enabled scenes have both image and audio
+    const scenesMissingAssets = enabledScenes.filter(s => !s.imageUrl || !s.audioUrl);
+    if (scenesMissingAssets.length > 0) {
+      const missingList = scenesMissingAssets.map(s => {
+        const missing = [];
+        if (!s.imageUrl) missing.push('image');
+        if (!s.audioUrl) missing.push('audio');
+        return `Scene ${s.scene_number} (missing: ${missing.join(', ')})`;
+      }).join(', ');
+      setError(`Please generate images and audio for all enabled scenes before rendering. Missing: ${missingList}`);
       return;
     }
 
@@ -472,17 +735,37 @@ const YouTubeCreator: React.FC = () => {
         return;
       }
       if (scenes.length === 0) {
-        setError('Please build scenes before rendering.');
+        setError('Please build scenes first.');
+        return;
+      }
+      setActiveStep(2);
+      return;
+    }
+
+    if (targetStep === 3) {
+      if (!videoPlan) {
+        setError('Please generate a plan first.');
+        return;
+      }
+      if (scenes.length === 0) {
+        setError('Please build scenes first.');
         return;
       }
       if (enabledScenesCount === 0) {
         setError('Enable at least one scene to render.');
         return;
       }
-      setActiveStep(2);
+      // Check if all enabled scenes have assets
+      const enabledScenes = scenes.filter(s => s.enabled !== false);
+      const allReady = enabledScenes.every(s => s.imageUrl && s.audioUrl);
+      if (!allReady) {
+        setError('Please generate images and audio for all enabled scenes first.');
+        return;
+      }
+      setActiveStep(3);
       return;
     }
-  }, [activeStep, videoPlan, scenes.length, enabledScenesCount]);
+  }, [activeStep, videoPlan, scenes, enabledScenesCount]);
 
   const handleResetRender = useCallback(() => {
     updateState({
@@ -637,6 +920,29 @@ const YouTubeCreator: React.FC = () => {
       )}
 
       {activeStep === 2 && (
+        <SceneGenerationStep
+          scenes={scenes}
+          videoPlan={videoPlan}
+          editingSceneId={editingSceneId}
+          editedScene={editedScene}
+          onEditScene={handleEditScene}
+          onSaveScene={handleSaveScene}
+          onCancelEdit={handleCancelEdit}
+          onEditChange={handleEditChange}
+          onToggleScene={handleToggleScene}
+          onGenerateImage={handleGenerateSceneImage}
+          generatingImageSceneId={generatingImageSceneId}
+          onGenerateAudio={handleGenerateSceneAudio}
+          generatingAudioSceneId={generatingAudioSceneId}
+          loading={loading}
+          avatarUrl={avatarUrl}
+          videoPlanIdea={videoPlan?.video_summary || userIdea}
+          onBack={() => setActiveStep(1)}
+          onNext={() => setActiveStep(3)}
+        />
+      )}
+
+      {activeStep === 3 && (
         <RenderStep
           renderTaskId={renderTaskId}
           renderStatus={renderStatus}
@@ -649,19 +955,13 @@ const YouTubeCreator: React.FC = () => {
           loading={loading}
           scenes={scenes}
           videoPlan={videoPlan}
-          editingSceneId={editingSceneId}
-          editedScene={editedScene}
           onResolutionChange={(value) => updateState({ resolution: value })}
           onCombineScenesChange={(value) => updateState({ combineScenes: value })}
           onStartRender={handleStartRender}
-          onBack={() => setActiveStep(1)}
+          onBack={() => setActiveStep(2)}
           onReset={handleResetRender}
           onRetryFailedScenes={handleRetryFailedScenes}
-          onEditScene={handleEditScene}
-          onSaveScene={handleSaveScene}
-          onCancelEdit={handleCancelEdit}
-          onEditChange={handleEditChange}
-          onToggleScene={handleToggleScene}
+          onScenesUpdate={(updated) => updateState({ scenes: updated })}
           getVideoUrl={getVideoUrl}
         />
       )}

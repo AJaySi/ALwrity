@@ -9,7 +9,9 @@ export const setMediaAuthTokenGetter = (getter: (() => Promise<string | null>) |
 
 export async function fetchMediaBlobUrl(pathOrUrl: string): Promise<string | null> {
   try {
-    const rel = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+    // If full URL (http/https), use as-is; otherwise ensure leading slash
+    const isAbsolute = /^https?:\/\//i.test(pathOrUrl);
+    const rel = isAbsolute ? pathOrUrl : pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
     
     // Try to get token and add as query parameter as fallback for endpoints that support it
     // This helps with endpoints that use get_current_user_with_query_token

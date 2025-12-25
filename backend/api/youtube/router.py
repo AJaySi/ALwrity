@@ -20,11 +20,15 @@ from services.youtube.renderer import YouTubeVideoRendererService
 from services.persona_data_service import PersonaDataService
 from services.subscription import PricingService
 from services.subscription.preflight_validator import validate_scene_animation_operation
+from services.content_asset_service import ContentAssetService
+from models.content_asset_models import AssetType, AssetSource
 from utils.logger_utils import get_service_logger
 from utils.asset_tracker import save_asset_to_library
+from services.story_writer.video_generation_service import StoryVideoGenerationService
 from .task_manager import task_manager
 from .handlers import avatar as avatar_handlers
 from .handlers import images as image_handlers
+from .handlers import audio as audio_handlers
 
 router = APIRouter(prefix="/youtube", tags=["youtube"])
 logger = get_service_logger("api.youtube")
@@ -38,9 +42,10 @@ YOUTUBE_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 YOUTUBE_IMAGES_DIR = base_dir / "youtube_images"
 YOUTUBE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-# Include sub-routers for avatar and images
+# Include sub-routers for avatar, images, and audio
 router.include_router(avatar_handlers.router)
 router.include_router(image_handlers.router)
+router.include_router(audio_handlers.router)
 
 
 # Request/Response Models
@@ -140,6 +145,52 @@ class VideoRenderRequest(BaseModel):
     voice_id: str = Field("Wise_Woman", description="Voice ID for narration")
 
 
+class SceneVideoRenderRequest(BaseModel):
+    """Request model for rendering a single scene video."""
+    scene: Dict[str, Any] = Field(..., description="Single scene data to render")
+    video_plan: Dict[str, Any] = Field(..., description="Original video plan (context)")
+    resolution: str = Field("720p", pattern="^(480p|720p|1080p)$", description="Video resolution")
+    voice_id: str = Field("Wise_Woman", description="Voice ID for narration")
+    generate_audio_enabled: bool = Field(False, description="Whether to auto-generate audio if missing (default false)")
+
+
+class SceneVideoRenderResponse(BaseModel):
+    """Response model for single scene video rendering."""
+    success: bool
+    task_id: Optional[str] = None
+    message: str
+    scene_number: Optional[int] = None
+
+
+class CombineVideosRequest(BaseModel):
+    """Request model for combining multiple scene videos."""
+    video_urls: List[str] = Field(..., description="List of scene video URLs to combine in order")
+    video_plan: Optional[Dict[str, Any]] = Field(None, description="Original video plan (for metadata)")
+    resolution: str = Field("720p", pattern="^(480p|720p|1080p)$", description="Target resolution for output")
+    title: Optional[str] = Field(None, description="Optional title for the final video")
+
+
+class CombineVideosResponse(BaseModel):
+    """Response model for combine videos request."""
+    success: bool
+    task_id: Optional[str] = None
+    message: str
+
+
+class VideoListResponse(BaseModel):
+    """Response model for listing user videos."""
+    videos: List[Dict[str, Any]]
+    success: bool = True
+    message: str = "Videos fetched successfully"
+
+
+class CombineVideosRequest(BaseModel):
+    """Request model for combining multiple scene videos."""
+    scene_video_urls: List[str] = Field(..., description="List of scene video URLs to combine")
+    resolution: str = Field("720p", pattern="^(480p|720p|1080p)$", description="Output video resolution")
+    title: Optional[str] = Field(None, description="Optional title for the combined video")
+
+
 class VideoRenderResponse(BaseModel):
     """Response model for video rendering."""
     success: bool
@@ -151,6 +202,7 @@ class CostEstimateRequest(BaseModel):
     """Request model for cost estimation."""
     scenes: List[Dict[str, Any]] = Field(..., description="List of scenes to estimate")
     resolution: str = Field("720p", pattern="^(480p|720p|1080p)$", description="Video resolution")
+    image_model: Optional[str] = Field("ideogram-v3-turbo", description="Image generation model")
 
 
 class CostEstimateResponse(BaseModel):
@@ -438,6 +490,12 @@ async def start_video_render(
             duration = scene.get("duration_estimate", 5)
             if duration < 1 or duration > 10:
                 validation_errors.append(f"Scene {scene_num}: Invalid duration ({duration}s, must be 1-10 seconds)")
+            
+            # VALIDATION: Check for required assets (image and audio)
+            if not scene.get("imageUrl"):
+                validation_errors.append(f"Scene {scene_num}: Missing image. Please generate an image for this scene first.")
+            if not scene.get("audioUrl"):
+                validation_errors.append(f"Scene {scene_num}: Missing audio. Please generate audio narration for this scene first.")
         
         if validation_errors:
             error_msg = "Validation failed: " + "; ".join(validation_errors)
@@ -511,6 +569,118 @@ async def start_video_render(
         )
 
 
+@router.post("/render/scene", response_model=SceneVideoRenderResponse)
+async def render_single_scene_video(
+    request: SceneVideoRenderRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SceneVideoRenderResponse:
+    """
+    Render a single scene video (scene-wise generation).
+    Returns a task_id for polling.
+    """
+    try:
+        user_id = require_authenticated_user(current_user)
+
+        # Subscription validation (same as full render)
+        pricing_service = PricingService(db)
+        validate_scene_animation_operation(
+            pricing_service=pricing_service,
+            user_id=user_id
+        )
+
+        scene = request.scene
+        scene_num = scene.get("scene_number", 0)
+
+        # Pre-validation to avoid wasted calls
+        validation_errors = []
+        visual_prompt = (scene.get("enhanced_visual_prompt") or scene.get("visual_prompt", "")).strip()
+        duration = scene.get("duration_estimate", 5)
+        if not visual_prompt:
+            validation_errors.append(f"Scene {scene_num}: Missing visual prompt")
+        elif len(visual_prompt) < 5:
+            validation_errors.append(f"Scene {scene_num}: Visual prompt too short ({len(visual_prompt)} chars, minimum 5)")
+        if duration < 1 or duration > 10:
+            validation_errors.append(f"Scene {scene_num}: Invalid duration ({duration}s, must be 1-10 seconds)")
+        if not scene.get("imageUrl"):
+            validation_errors.append(f"Scene {scene_num}: Missing image. Please generate an image first.")
+        if not scene.get("audioUrl") and not request.generate_audio_enabled:
+            validation_errors.append(f"Scene {scene_num}: Missing audio. Please generate audio first or enable generate_audio_enabled.")
+
+        if validation_errors:
+            error_msg = "Validation failed: " + "; ".join(validation_errors)
+            logger.warning(f"[YouTubeAPI] {error_msg}")
+            return SceneVideoRenderResponse(
+                success=False,
+                task_id=None,
+                message=error_msg,
+                scene_number=scene_num
+            )
+
+        # Create task
+        task_id = task_manager.create_task("youtube_scene_video_render")
+        logger.info(
+            f"[YouTubeAPI] Created single-scene render task {task_id} for user {user_id}, scene={scene_num}, resolution={request.resolution}"
+        )
+
+        initial_status = task_manager.get_task_status(task_id)
+        if not initial_status:
+            logger.error(f"[YouTubeAPI] Failed to create task {task_id} - task not found immediately after creation")
+            return SceneVideoRenderResponse(
+                success=False,
+                task_id=None,
+                message="Failed to create render task. Please try again.",
+                scene_number=scene_num
+            )
+
+        # Add background task
+        try:
+            background_tasks.add_task(
+                _execute_scene_video_render_task,
+                task_id=task_id,
+                scene=scene,
+                video_plan=request.video_plan,
+                user_id=user_id,
+                resolution=request.resolution,
+                generate_audio_enabled=request.generate_audio_enabled,
+                voice_id=request.voice_id,
+            )
+            logger.info(f"[YouTubeAPI] Background task added for single scene {task_id}")
+        except Exception as bg_error:
+            logger.error(f"[YouTubeAPI] Failed to add background task for {task_id}: {bg_error}", exc_info=True)
+            task_manager.update_task_status(
+                task_id,
+                "failed",
+                error=str(bg_error),
+                message="Failed to start background render task"
+            )
+            return SceneVideoRenderResponse(
+                success=False,
+                task_id=None,
+                message=f"Failed to start render task: {str(bg_error)}",
+                scene_number=scene_num
+            )
+
+        return SceneVideoRenderResponse(
+            success=True,
+            task_id=task_id,
+            message=f"Scene {scene_num} rendering started.",
+            scene_number=scene_num
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[YouTubeAPI] Error starting single-scene render: {e}", exc_info=True)
+        return SceneVideoRenderResponse(
+            success=False,
+            task_id=None,
+            message=f"Failed to start scene render: {str(e)}",
+            scene_number=request.scene.get("scene_number") if request and request.scene else None
+        )
+
+
 @router.get("/render/{task_id}")
 async def get_render_status(
     task_id: str,
@@ -550,6 +720,85 @@ async def get_render_status(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get render status: {str(e)}"
+        )
+
+
+@router.post("/render/combine", response_model=VideoRenderResponse)
+async def combine_videos(
+    request: CombineVideosRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> VideoRenderResponse:
+    """
+    Combine multiple scene videos into a final video.
+    Returns task_id for polling.
+    """
+    try:
+        user_id = require_authenticated_user(current_user)
+
+        # Subscription validation
+        pricing_service = PricingService(db)
+        validate_scene_animation_operation(
+            pricing_service=pricing_service,
+            user_id=user_id
+        )
+
+        if not request.scene_video_urls or len(request.scene_video_urls) < 2:
+            return VideoRenderResponse(
+                success=False,
+                message="At least two scene videos are required to combine."
+            )
+
+        task_id = task_manager.create_task("youtube_combine_video")
+        logger.info(
+            f"[YouTubeAPI] Created combine task {task_id} for user {user_id}, videos={len(request.scene_video_urls)}, resolution={request.resolution}"
+        )
+
+        initial_status = task_manager.get_task_status(task_id)
+        if not initial_status:
+            logger.error(f"[YouTubeAPI] Failed to create combine task {task_id} - task not found immediately after creation")
+            return VideoRenderResponse(
+                success=False,
+                message="Failed to create combine task. Please try again."
+            )
+
+        try:
+            background_tasks.add_task(
+                _execute_combine_video_task,
+                task_id=task_id,
+                scene_video_urls=request.scene_video_urls,
+                user_id=user_id,
+                resolution=request.resolution,
+                title=request.title,
+            )
+            logger.info(f"[YouTubeAPI] Background combine task added for {task_id}")
+        except Exception as bg_error:
+            logger.error(f"[YouTubeAPI] Failed to add combine background task for {task_id}: {bg_error}", exc_info=True)
+            task_manager.update_task_status(
+                task_id,
+                "failed",
+                error=str(bg_error),
+                message="Failed to start combine task"
+            )
+            return VideoRenderResponse(
+                success=False,
+                message=f"Failed to start combine task: {str(bg_error)}"
+            )
+
+        return VideoRenderResponse(
+            success=True,
+            task_id=task_id,
+            message="Video combination started."
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[YouTubeAPI] Error starting combine: {e}", exc_info=True)
+        return VideoRenderResponse(
+            success=False,
+            message=f"Failed to start combine: {str(e)}"
         )
 
 
@@ -891,6 +1140,374 @@ def _execute_video_render_task(
         )
 
 
+def _execute_scene_video_render_task(
+    task_id: str,
+    scene: Dict[str, Any],
+    video_plan: Dict[str, Any],
+    user_id: str,
+    resolution: str,
+    generate_audio_enabled: bool,
+    voice_id: str,
+):
+    """Background task to render a single scene video (scene-wise generation)."""
+    scene_num = scene.get("scene_number", 0)
+    logger.info(
+        f"[YouTubeRenderer] Background single-scene task started for task {task_id}, scene={scene_num}, user={user_id}"
+    )
+
+    task_status = task_manager.get_task_status(task_id)
+    if not task_status:
+        logger.error(
+            f"[YouTubeRenderer] Task {task_id} not found when single-scene task started."
+        )
+        return
+
+    try:
+        task_manager.update_task_status(
+            task_id, "processing", progress=5.0, message=f"Rendering scene {scene_num}..."
+        )
+
+        renderer = YouTubeVideoRendererService()
+
+        scene_result = renderer.render_scene_video(
+            scene=scene,
+            video_plan=video_plan,
+            user_id=user_id,
+            resolution=resolution,
+            generate_audio_enabled=generate_audio_enabled,
+            voice_id=voice_id,
+        )
+
+        total_cost = scene_result.get("cost", 0.0) or 0.0
+        result = {
+            "scene_results": [scene_result],
+            "failed_scenes": [],
+            "total_cost": total_cost,
+            "final_video_url": scene_result.get("video_url"),
+            "num_successful": 1,
+            "num_failed": 0,
+            "resolution": resolution,
+            "partial_success": False,
+            "scene_number": scene_num,
+            "video_url": scene_result.get("video_url"),
+            "video_filename": scene_result.get("video_filename"),
+        }
+
+        task_manager.update_task_status(
+            task_id,
+            "completed",
+            progress=100.0,
+            message=f"Scene {scene_num} rendered successfully",
+            result=result,
+        )
+
+        logger.info(
+            f"[YouTubeRenderer] ✅ Single-scene render {task_id} completed (scene {scene_num}), cost=${total_cost:.2f}"
+        )
+
+    except HTTPException as exc:
+        error_msg = (
+            str(exc.detail)
+            if isinstance(exc.detail, str)
+            else exc.detail.get("error", "Render failed")
+            if isinstance(exc.detail, dict)
+            else "Render failed"
+        )
+        logger.error(f"[YouTubeRenderer] Single-scene task {task_id} failed: {error_msg}")
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"Scene {scene_num} rendering failed: {error_msg}",
+        )
+    except Exception as exc:
+        error_msg = str(exc)
+        logger.error(f"[YouTubeRenderer] Single-scene task {task_id} error: {error_msg}", exc_info=True)
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"Scene {scene_num} rendering error: {error_msg}",
+        )
+
+
+@router.post("/render/combine", response_model=CombineVideosResponse)
+async def combine_scene_videos(
+    request: CombineVideosRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CombineVideosResponse:
+    """
+    Combine multiple scene videos into a final video.
+    Returns task_id for polling.
+    """
+    try:
+        user_id = require_authenticated_user(current_user)
+
+        # Subscription validation (reuse scene animation check)
+        pricing_service = PricingService(db)
+        validate_scene_animation_operation(
+            pricing_service=pricing_service,
+            user_id=user_id
+        )
+
+        if not request.video_urls or len(request.video_urls) < 2:
+            return CombineVideosResponse(
+                success=False,
+                task_id=None,
+                message="At least two videos are required to combine."
+            )
+
+        # Pre-validate that referenced video files exist and are within youtube_videos dir
+        base_dir = Path(__file__).parent.parent.parent.parent
+        youtube_video_dir = base_dir / "youtube_videos"
+        missing_files = []
+        for url in request.video_urls:
+            filename = Path(url).name  # strips query params if present
+            video_path = youtube_video_dir / filename
+            # prevent directory traversal
+            if ".." in filename or "/" in filename or "\\" in filename:
+                return CombineVideosResponse(
+                    success=False,
+                    task_id=None,
+                    message=f"Invalid video filename: {filename}"
+                )
+            if not video_path.exists():
+                missing_files.append(filename)
+        if missing_files:
+            return CombineVideosResponse(
+                success=False,
+                task_id=None,
+                message=f"Video files not found for combine: {', '.join(missing_files)}"
+            )
+
+        # Create task
+        task_id = task_manager.create_task("youtube_video_combine")
+        logger.info(
+            f"[YouTubeAPI] Created combine task {task_id} for user {user_id}, videos={len(request.video_urls)}, resolution={request.resolution}"
+        )
+
+        initial_status = task_manager.get_task_status(task_id)
+        if not initial_status:
+            logger.error(f"[YouTubeAPI] Failed to create combine task {task_id} - task not found immediately after creation")
+            return CombineVideosResponse(
+                success=False,
+                task_id=None,
+                message="Failed to create combine task. Please try again."
+            )
+
+        # Background combine task
+        try:
+            background_tasks.add_task(
+                _execute_combine_video_task,
+                task_id=task_id,
+                scene_video_urls=request.video_urls,
+                user_id=user_id,
+                resolution=request.resolution,
+                title=request.title,
+            )
+            logger.info(f"[YouTubeAPI] Background combine task added for task {task_id}")
+        except Exception as bg_error:
+            logger.error(f"[YouTubeAPI] Failed to add combine task {task_id}: {bg_error}", exc_info=True)
+            task_manager.update_task_status(
+                task_id,
+                "failed",
+                error=str(bg_error),
+                message="Failed to start video combination task"
+            )
+            return CombineVideosResponse(
+                success=False,
+                task_id=None,
+                message=f"Failed to start combination task: {str(bg_error)}"
+            )
+
+        return CombineVideosResponse(
+            success=True,
+            task_id=task_id,
+            message=f"Combining {len(request.video_urls)} videos...",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[YouTubeAPI] Error combining videos: {e}", exc_info=True)
+        return CombineVideosResponse(
+            success=False,
+            task_id=None,
+            message=f"Failed to start video combination: {str(e)}"
+        )
+
+
+@router.get("/videos", response_model=VideoListResponse)
+async def list_videos(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> VideoListResponse:
+    """
+    List videos for the current user from the asset library (source: youtube_creator).
+    Used to rescue/persist scene videos after reloads.
+    """
+    user_id = require_authenticated_user(current_user)
+    asset_service = ContentAssetService(db)
+
+    assets = asset_service.get_assets(
+        user_id=user_id,
+        asset_type=AssetType.VIDEO,
+        source_module=AssetSource.YOUTUBE_CREATOR,
+        limit=100,
+    )
+
+    videos = []
+    for asset in assets:
+        videos.append({
+            "scene_number": asset.asset_metadata.get("scene_number") if asset.asset_metadata else None,
+            "video_url": asset.file_url,
+            "filename": asset.filename,
+            "created_at": asset.created_at,
+            "resolution": asset.asset_metadata.get("resolution") if asset.asset_metadata else None,
+        })
+
+    return VideoListResponse(videos=videos)
+
+
+def _execute_combine_video_task(
+    task_id: str,
+    scene_video_urls: List[str],
+    user_id: str,
+    resolution: str,
+    title: Optional[str],
+):
+    """Background task to combine multiple scene videos into one final video."""
+    logger.info(
+        f"[YouTubeRenderer] Background combine task started for task {task_id}, videos={len(scene_video_urls)}, user={user_id}"
+    )
+
+    task_status = task_manager.get_task_status(task_id)
+    if not task_status:
+        logger.error(f"[YouTubeRenderer] Task {task_id} not found when combine task started.")
+        return
+
+    base_dir = Path(__file__).parent.parent.parent.parent
+    youtube_video_dir = base_dir / "youtube_videos"
+
+    try:
+        task_manager.update_task_status(
+            task_id, "processing", progress=5.0, message="Preparing to combine videos..."
+        )
+
+        # Resolve video paths from URLs
+        video_paths: List[Path] = []
+        for url in scene_video_urls:
+            filename = Path(url).name
+            video_path = youtube_video_dir / filename
+            if not video_path.exists():
+                logger.error(f"[YouTubeRenderer] Video file not found for combine: {video_path}")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Video file not found: {filename}",
+                )
+            video_paths.append(video_path)
+
+        if len(video_paths) < 2:
+            raise HTTPException(status_code=400, detail="Need at least two videos to combine.")
+
+        task_manager.update_task_status(
+            task_id, "processing", progress=25.0, message="Combining scene videos..."
+        )
+
+        video_service = StoryVideoGenerationService(output_dir=str(youtube_video_dir))
+        combined_result = video_service.generate_story_video(
+            scenes=[
+                {"scene_number": idx + 1, "title": f"Scene {idx + 1}"}
+                for idx in range(len(video_paths))
+            ],
+            image_paths=[None] * len(video_paths),
+            audio_paths=[],
+            video_paths=[str(p) for p in video_paths],
+            user_id=user_id,
+            story_title=title or "YouTube Video",
+            fps=24,
+        )
+
+        task_manager.update_task_status(
+            task_id, "processing", progress=90.0, message="Finalizing combined video..."
+        )
+
+        final_path = combined_result["video_path"]
+        final_url = combined_result["video_url"]
+        file_size = combined_result.get("file_size", 0)
+
+        # Save to asset library
+        try:
+            db = next(get_db())
+            try:
+                save_asset_to_library(
+                    db=db,
+                    user_id=user_id,
+                    asset_type="video",
+                    source_module="youtube_creator",
+                    filename=Path(final_path).name,
+                    file_url=final_url,
+                    file_path=str(final_path),
+                    file_size=file_size,
+                    mime_type="video/mp4",
+                    title=title or "YouTube Video",
+                    description="Combined YouTube creator video",
+                    tags=["youtube_creator", "video", "combined", resolution],
+                    provider="wavespeed",
+                    model="alibaba/wan-2.5/text-to-video",
+                    cost=0.0,
+                    asset_metadata={
+                        "resolution": resolution,
+                        "status": "completed",
+                        "scene_count": len(video_paths),
+                    },
+                )
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"[YouTubeRenderer] Failed to save combined video to asset library: {e}")
+
+        result = {
+            "video_url": final_url,
+            "video_path": final_path,
+            "resolution": resolution,
+            "scene_count": len(video_paths),
+        }
+
+        task_manager.update_task_status(
+            task_id,
+            "completed",
+            progress=100.0,
+            message="Combined video generated successfully",
+            result=result,
+        )
+
+        logger.info(
+            f"[YouTubeRenderer] ✅ Combine task {task_id} completed, scenes={len(video_paths)}"
+        )
+
+    except HTTPException as exc:
+        error_msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        logger.error(f"[YouTubeRenderer] Combine task {task_id} failed: {error_msg}")
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"Combine failed: {error_msg}",
+        )
+    except Exception as exc:
+        error_msg = str(exc)
+        logger.error(f"[YouTubeRenderer] Combine task {task_id} error: {error_msg}", exc_info=True)
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"Combine error: {error_msg}",
+        )
+
+
 @router.post("/estimate-cost", response_model=CostEstimateResponse)
 async def estimate_render_cost(
     request: CostEstimateRequest,
@@ -918,6 +1535,7 @@ async def estimate_render_cost(
         estimate = renderer.estimate_render_cost(
             scenes=request.scenes,
             resolution=request.resolution,
+            image_model=request.image_model,
         )
         
         return CostEstimateResponse(

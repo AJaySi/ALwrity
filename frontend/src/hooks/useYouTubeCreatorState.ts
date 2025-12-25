@@ -53,7 +53,7 @@ const DEFAULT_STATE: YouTubeCreatorState = {
   renderTaskId: null,
   renderStatus: null,
   renderProgress: 0,
-  resolution: '720p',
+  resolution: '480p',
   combineScenes: true,
   activeStep: 0,
 };

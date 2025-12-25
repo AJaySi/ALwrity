@@ -18,7 +18,7 @@ import {
   IconButton,
   Alert,
 } from '@mui/material';
-import { HelpOutline, Timeline, BarChart, AccessTime, Movie, Info } from '@mui/icons-material';
+import { HelpOutline, Timeline, BarChart, AccessTime, Movie, Info, Image as ImageIcon, VolumeUp, CheckCircle } from '@mui/icons-material';
 import { Scene } from '../../../services/youtubeApi';
 import { getSceneIcon, getSceneColor, getSceneTypeLabel, formatDuration } from '../utils/sceneHelpers';
 
@@ -40,6 +40,12 @@ export const CombinedSceneOverview: React.FC<CombinedSceneOverviewProps> = React
       return acc;
     }, {} as Record<string, number>);
 
+    // Asset readiness stats
+    const scenesWithImages = enabledScenes.filter(s => s.imageUrl).length;
+    const scenesWithAudio = enabledScenes.filter(s => s.audioUrl).length;
+    const scenesWithBoth = enabledScenes.filter(s => s.imageUrl && s.audioUrl).length;
+    const allReady = enabledScenes.length > 0 && scenesWithBoth === enabledScenes.length;
+
     return {
       totalScenes: scenes.length,
       enabledScenes: enabledScenes.length,
@@ -47,6 +53,10 @@ export const CombinedSceneOverview: React.FC<CombinedSceneOverviewProps> = React
       averageDuration,
       sceneBreakdown,
       enabledScenesList: enabledScenes,
+      scenesWithImages,
+      scenesWithAudio,
+      scenesWithBoth,
+      allReady,
     };
   }, [scenes]);
 
@@ -187,6 +197,79 @@ export const CombinedSceneOverview: React.FC<CombinedSceneOverviewProps> = React
                       Avg: <strong>{stats.averageDuration}s</strong>
                     </Typography>
                   </Tooltip>
+                </Box>
+
+                <Divider sx={{ my: 0.5 }} />
+
+                {/* Asset Readiness */}
+                <Box>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      color: '#6b7280',
+                      fontSize: '0.75rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      display: 'block',
+                      mb: 1,
+                    }}
+                  >
+                    Asset Status
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Tooltip
+                      title="Number of scenes with AI-generated images ready"
+                      arrow
+                    >
+                      <Chip
+                        icon={<ImageIcon sx={{ fontSize: 14 }} />}
+                        label={`${stats.scenesWithImages}/${stats.enabledScenes} Images`}
+                        size="small"
+                        sx={{
+                          fontWeight: 500,
+                          fontSize: '0.75rem',
+                          bgcolor: stats.scenesWithImages === stats.enabledScenes ? '#d1fae5' : '#fef3c7',
+                          color: stats.scenesWithImages === stats.enabledScenes ? '#065f46' : '#92400e',
+                          border: `1px solid ${stats.scenesWithImages === stats.enabledScenes ? '#10b981' : '#f59e0b'}`,
+                        }}
+                      />
+                    </Tooltip>
+                    <Tooltip
+                      title="Number of scenes with audio narration ready"
+                      arrow
+                    >
+                      <Chip
+                        icon={<VolumeUp sx={{ fontSize: 14 }} />}
+                        label={`${stats.scenesWithAudio}/${stats.enabledScenes} Audio`}
+                        size="small"
+                        sx={{
+                          fontWeight: 500,
+                          fontSize: '0.75rem',
+                          bgcolor: stats.scenesWithAudio === stats.enabledScenes ? '#d1fae5' : '#fef3c7',
+                          color: stats.scenesWithAudio === stats.enabledScenes ? '#065f46' : '#92400e',
+                          border: `1px solid ${stats.scenesWithAudio === stats.enabledScenes ? '#10b981' : '#f59e0b'}`,
+                        }}
+                      />
+                    </Tooltip>
+                    {stats.allReady && (
+                      <Tooltip
+                        title="All scenes are ready for video generation!"
+                        arrow
+                      >
+                        <Chip
+                          icon={<CheckCircle sx={{ fontSize: 14 }} />}
+                          label="All Ready"
+                          size="small"
+                          color="success"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                          }}
+                        />
+                      </Tooltip>
+                    )}
+                  </Stack>
                 </Box>
 
                 <Divider sx={{ my: 0.5 }} />

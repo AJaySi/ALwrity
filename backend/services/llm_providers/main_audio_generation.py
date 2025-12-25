@@ -140,6 +140,10 @@ def generate_audio(
             # Avoid passing duplicate enable_sync_mode; allow override via kwargs
             enable_sync_mode = kwargs.pop("enable_sync_mode", True)
 
+            # Filter out None values from kwargs to prevent WaveSpeed validation errors
+            filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+            logger.info(f"[audio_gen] Filtered kwargs (removed None values): {filtered_kwargs}")
+
             client = WaveSpeedClient()
             audio_bytes = client.generate_speech(
                 text=text,
@@ -149,7 +153,7 @@ def generate_audio(
                 pitch=pitch,
                 emotion=emotion,
                 enable_sync_mode=enable_sync_mode,
-                **kwargs
+                **filtered_kwargs
             )
             
             logger.info(f"[audio_gen] ✅ API call successful, generated {len(audio_bytes)} bytes")

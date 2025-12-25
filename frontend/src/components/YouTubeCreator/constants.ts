@@ -7,7 +7,7 @@ export const YT_BG = '#f9f9f9';
 export const YT_BORDER = '#e5e5e5';
 export const YT_TEXT = '#0f0f0f';
 
-export const STEPS = ['Plan Your Video', 'Review Scenes', 'Render Video'] as const;
+export const STEPS = ['Plan Your Video', 'Review Scenes', 'Generate Assets', 'Render Video'] as const;
 
 export const RESOLUTIONS = ['480p', '720p', '1080p'] as const;
 export type Resolution = typeof RESOLUTIONS[number];

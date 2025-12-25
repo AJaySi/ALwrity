@@ -22,7 +22,10 @@ backend/podcast_videos/
 
 
 youtube_avatars/
-youtube_avatars
+youtube_avatars/*
+youtube_videos/*
+youtube_images/
+youtube_audio
 
 .cursorignore
 story_videos

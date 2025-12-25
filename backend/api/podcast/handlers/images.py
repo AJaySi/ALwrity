@@ -14,7 +14,7 @@ import uuid
 from services.database import get_db
 from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from api.story_writer.utils.auth import require_authenticated_user
-from services.llm_providers.main_image_generation import generate_image
+from services.llm_providers.main_image_generation import generate_image, generate_character_image
 from utils.asset_tracker import save_asset_to_library
 from loguru import logger
 from ..constants import PODCAST_IMAGES_DIR
@@ -139,10 +139,7 @@ async def generate_podcast_scene_image(
             logger.info(f"[Podcast] Using Ideogram Character for scene {request.scene_id} with base avatar")
             logger.info(f"[Podcast] Scene prompt: {image_prompt[:150]}...")
             
-            # Use Ideogram Character API via WaveSpeed client
-            from services.wavespeed.client import WaveSpeedClient
-            wavespeed_client = WaveSpeedClient()
-            
+            # Use centralized character image generation with subscription checks and tracking
             # Use custom settings if provided, otherwise use defaults
             style = request.style or "Realistic"  # Default to Realistic for professional podcast presenters
             rendering_speed = request.rendering_speed or "Quality"  # Default to Quality for podcast videos
@@ -163,9 +160,10 @@ async def generate_podcast_scene_image(
             logger.info(f"[Podcast] Ideogram Character settings: style={style}, rendering_speed={rendering_speed}, aspect_ratio={aspect_ratio}")
             
             try:
-                image_bytes = wavespeed_client.generate_character_image(
+                image_bytes = generate_character_image(
                     prompt=image_prompt,
                     reference_image_bytes=base_avatar_bytes,
+                    user_id=user_id,
                     style=style,
                     aspect_ratio=aspect_ratio,
                     rendering_speed=rendering_speed,
@@ -308,39 +306,9 @@ async def generate_podcast_scene_image(
         # Create image URL (served via API endpoint)
         image_url = f"/api/podcast/images/{image_filename}"
 
-        # Estimate cost (rough estimate: ~$0.04 per image for most providers, ~$0.08 for Ideogram Character Quality)
-        cost = 0.08 if result.provider == "wavespeed" and result.model == "ideogram-ai/ideogram-character" else 0.04
-
-        # TRACK USAGE after successful image generation
-        try:
-            from models.subscription_models import UsageSummary, APIProvider
-            from sqlalchemy import text as sql_text
-            from datetime import datetime
-            
-            current_period = pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
-            
-            # Update stability_calls and stability_cost (used for all image generation)
-            # Note: stability_calls is used for all image generation providers, not just Stability AI
-            update_query = sql_text("""
-                UPDATE usage_summaries 
-                SET stability_calls = COALESCE(stability_calls, 0) + 1,
-                    stability_cost = COALESCE(stability_cost, 0) + :cost,
-                    total_calls = COALESCE(total_calls, 0) + 1,
-                    total_cost = COALESCE(total_cost, 0) + :cost
-                WHERE user_id = :user_id AND billing_period = :period
-            """)
-            db.execute(update_query, {
-                'cost': cost,
-                'user_id': user_id,
-                'period': current_period
-            })
-            db.commit()
-            
-            logger.info(f"[Podcast] ✅ Tracked image generation usage: user={user_id}, cost=${cost:.4f}, provider={result.provider}")
-        except Exception as usage_error:
-            logger.error(f"[Podcast] Failed to track image generation usage: {usage_error}")
-            db.rollback()
-            # Don't fail the request if usage tracking fails
+        # Estimate cost (rough estimate: ~$0.04 per image for most providers, ~$0.10 for Ideogram Character)
+        # Note: Actual usage tracking is handled by centralized generate_image()/generate_character_image() functions
+        cost = 0.10 if result.provider == "wavespeed" and result.model == "ideogram-ai/ideogram-character" else 0.04
 
         # Save to asset library
         try:

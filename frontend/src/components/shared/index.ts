@@ -19,3 +19,7 @@ export * from './utils';
 // Asset Library modal (images only)
 export { AssetLibraryImageModal } from './AssetLibraryImageModal';
 export type { AssetLibraryImageModalProps } from './AssetLibraryImageModal';
+
+// Audio Settings modal (shared across tools)
+export { AudioSettingsModal } from './AudioSettingsModal';
+export type { AudioGenerationSettings } from './AudioSettingsModal';

@@ -140,61 +140,87 @@ class YouTubeSceneBuilderService:
         
         scene_duration_range = duration_metadata.get("scene_duration_range", (5, 15))
         
-        scene_generation_prompt = f"""You are an expert video scriptwriter. Create detailed scenes for a YouTube video based on this plan.
+        scene_generation_prompt = f"""You are a top YouTube scriptwriter specializing in engaging, viral content. Create compelling scenes that captivate viewers and maximize watch time.
 
-**Video Plan:**
-- Summary: {video_plan.get('video_summary', '')}
-- Goal: {video_plan.get('video_goal', '')}
-- Key Message: {video_plan.get('key_message', '')}
-- Visual Style: {visual_style}
-- Tone: {tone}
+**VIDEO PLAN:**
+📝 Summary: {video_plan.get('video_summary', '')}
+🎯 Goal: {video_plan.get('video_goal', '')}
+💡 Key Message: {video_plan.get('key_message', '')}
+🎨 Visual Style: {visual_style}
+🎭 Tone: {tone}
 
-**Hook Strategy:**
+**🎣 HOOK STRATEGY:**
 {hook_strategy}
 
-**Content Outline:**
-{chr(10).join([f"- {section.get('section', '')}: {section.get('description', '')} ({section.get('duration_estimate', 0)}s)" for section in content_outline])}
+**📋 CONTENT STRUCTURE:**
+{chr(10).join([f"• {section.get('section', '')}: {section.get('description', '')} ({section.get('duration_estimate', 0)}s)" for section in content_outline])}
 
-**Call-to-Action:**
+**🚀 CALL-TO-ACTION:**
 {call_to_action}
 
-**Duration Constraints:**
-- Scene duration: {scene_duration_range[0]}-{scene_duration_range[1]} seconds each
-- Total target: {duration_metadata.get('target_seconds', 150)} seconds
+**⏱️ TIMING CONSTRAINTS:**
+• Scene duration: {scene_duration_range[0]}-{scene_duration_range[1]} seconds each
+• Total target: {duration_metadata.get('target_seconds', 150)} seconds
 
-**Your Task:**
-Create detailed scenes that include:
-1. Scene number and title
-2. Narration text (what will be spoken)
-3. Visual description (what viewers will see)
-4. Duration estimate
-5. Emphasis tags (hook, main_content, transition, cta)
+**🎬 YOUR MISSION - CREATE VIRAL-WORTHY SCENES:**
 
-**Format as JSON array:**
+Write narration that:
+✨ **HOOKS IMMEDIATELY** - First {duration_metadata.get('hook_seconds', 10)}s must GRAB attention
+🎭 **TELLS A STORY** - Each scene advances the narrative with emotional engagement
+💡 **DELIVERS VALUE** - Provide insights, tips, or "aha!" moments in every scene
+🔥 **BUILDS EXCITEMENT** - Use power words, questions, and cliffhangers
+👥 **CONNECTS PERSONALLY** - Speak directly to the viewer's needs and desires
+⚡ **MAINTAINS PACE** - Vary sentence length for natural rhythm
+🎯 **DRIVES ACTION** - Build toward the CTA with increasing urgency
+
+**REQUIRED SCENE ELEMENTS:**
+1. **scene_number**: Sequential numbering
+2. **title**: Catchy, descriptive title (5-8 words max)
+3. **narration**: ENGAGING spoken script with:
+   - Conversational language ("you know what I mean?")
+   - Rhetorical questions ("Have you ever wondered...?")
+   - Power transitions ("But here's the game-changer...")
+   - Emotional hooks ("Imagine this...")
+   - Action-oriented language ("Let's dive in...")
+4. **visual_description**: Cinematic, professional YouTube visuals
+5. **duration_estimate**: Realistic speaking time
+6. **emphasis**: hook/main_content/transition/cta
+7. **visual_cues**: ["dramatic_zoom", "text_overlay", "fast_cuts"]
+
+**🎯 YOUTUBE OPTIMIZATION RULES:**
+• **Hook Power**: First 3 seconds = make them stay or lose them
+• **Value Density**: Every 10 seconds must deliver new insight
+• **Emotional Arc**: Build curiosity → teach → inspire → convert
+• **Natural Flow**: Scenes must connect seamlessly
+• **CTA Momentum**: Final scene creates irresistible urge to act
+
+**📊 FORMAT AS JSON ARRAY:**
 [
   {{
     "scene_number": 1,
-    "title": "Hook - Attention Grabber",
-    "narration": "The spoken text for this scene...",
-    "visual_description": "Detailed description of what viewers see...",
-    "duration_estimate": 5,
+    "title": "The Shocking Truth They Hide",
+    "narration": "You won't believe what just happened in my latest discovery! I was scrolling through the usual content when BAM - this completely changed everything I thought about [topic]. And get this - it could transform YOUR results too!",
+    "visual_description": "Dynamic opening shot with shocking text overlay, fast cuts of social media feeds, energetic music swell, close-up of surprised reaction",
+    "duration_estimate": 8,
     "emphasis": "hook",
-    "visual_cues": ["close-up", "dynamic", "bright"]
+    "visual_cues": ["shocking_text", "fast_cuts", "music_swell", "reaction_shot"]
   }},
   ...
 ]
 
-Make sure:
-- First scene is a strong hook ({duration_metadata.get('hook_seconds', 10)}s)
-- Last scene includes the CTA ({duration_metadata.get('cta_seconds', 10)}s)
-- Each scene has clear narration and visual description
-- Total duration fits within {duration_metadata.get('target_seconds', 150)} seconds
-- Scenes flow naturally from one to the next
-"""
+**🔥 SUCCESS CRITERIA:**
+✅ First scene hooks in 3 seconds
+✅ Each scene delivers 1-2 key insights
+✅ Narration feels like talking to a friend
+✅ Total story arc creates emotional journey
+✅ CTA feels like the natural next step
+✅ Scenes fit duration perfectly"""
         
         system_prompt = (
-            "You are an expert video scriptwriter specializing in YouTube content. "
-            "Your scenes are engaging, well-paced, and optimized for viewer retention."
+            "You are a master YouTube scriptwriter who creates viral, engaging content that "
+            "keeps viewers watching until the end. You understand YouTube algorithm optimization, "
+            "emotional storytelling, and creating irresistible hooks that make viewers hit 'like' and 'subscribe'. "
+            "Your scripts are conversational, valuable, and conversion-focused."
         )
         
         response = llm_text_gen(

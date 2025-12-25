@@ -1,0 +1,376 @@
+"""YouTube Creator scene audio generation handlers."""
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from typing import Dict, Any, Optional
+from pydantic import BaseModel
+
+from services.database import get_db
+from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
+from api.story_writer.utils.auth import require_authenticated_user
+from utils.asset_tracker import save_asset_to_library
+from models.story_models import StoryAudioResult
+from services.story_writer.audio_generation_service import StoryAudioGenerationService
+from pathlib import Path
+from utils.logger_utils import get_service_logger
+
+router = APIRouter(tags=["youtube-audio"])
+logger = get_service_logger("api.youtube.audio")
+
+# Audio output directory
+base_dir = Path(__file__).parent.parent.parent.parent
+YOUTUBE_AUDIO_DIR = base_dir / "youtube_audio"
+YOUTUBE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+# Initialize audio service
+audio_service = StoryAudioGenerationService(output_dir=str(YOUTUBE_AUDIO_DIR))
+
+
+def select_optimal_emotion(scene_title: str, narration: str, video_plan_context: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Intelligently select the best emotion for YouTube content based on scene analysis.
+
+    Available emotions: "happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral"
+
+    Returns the selected emotion string.
+    """
+    # Default to happy for engaging YouTube content
+    selected_emotion = "happy"
+
+    scene_text = f"{scene_title} {narration}".lower()
+
+    # Hook scenes need excitement and energy
+    if "hook" in scene_title.lower() or any(word in scene_text for word in ["exciting", "amazing", "unbelievable", "shocking", "wow"]):
+        selected_emotion = "surprised"  # Excited and attention-grabbing
+
+    # Emotional stories or inspirational content
+    elif any(word in scene_text for word in ["emotional", "touching", "heartwarming", "inspiring", "motivational"]):
+        selected_emotion = "happy"  # Warm and uplifting
+
+    # Serious or professional content
+    elif any(word in scene_text for word in ["important", "critical", "serious", "professional", "expert"]):
+        selected_emotion = "neutral"  # Professional and serious
+
+    # Problem-solving or tutorial content
+    elif any(word in scene_text for word in ["problem", "solution", "fix", "help", "guide"]):
+        selected_emotion = "happy"  # Helpful and encouraging
+
+    # Call-to-action scenes
+    elif "cta" in scene_title.lower() or any(word in scene_text for word in ["subscribe", "like", "comment", "share", "action"]):
+        selected_emotion = "happy"  # Confident and encouraging
+
+    # Negative or concerning topics
+    elif any(word in scene_text for word in ["warning", "danger", "risk", "problem", "issue"]):
+        selected_emotion = "neutral"  # Serious but not alarming
+
+    # Check video plan context for overall tone
+    if video_plan_context:
+        tone = video_plan_context.get("tone", "").lower()
+        if "serious" in tone or "professional" in tone:
+            selected_emotion = "neutral"
+        elif "fun" in tone or "entertaining" in tone:
+            selected_emotion = "happy"
+
+    return selected_emotion
+
+
+def select_optimal_voice(scene_title: str, narration: str, video_plan_context: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Intelligently select the best voice for YouTube content based on scene analysis.
+
+    Analyzes scene title, narration content, and video plan context to choose
+    the most appropriate voice from available Minimax voices.
+
+    Available voices: Wise_Woman, Friendly_Person, Inspirational_girl, Deep_Voice_Man,
+    Calm_Woman, Casual_Guy, Lively_Girl, Patient_Man, Young_Knight, Determined_Man,
+    Lovely_Girl, Decent_Boy, Imposing_Manner, Elegant_Man, Abbess, Sweet_Girl_2, Exuberant_Girl
+
+    Returns the selected voice_id string.
+    """
+    # Default to Casual_Guy for engaging YouTube content
+    selected_voice = "Casual_Guy"
+
+    # Analyze video plan context for content type
+    if video_plan_context:
+        video_type = video_plan_context.get("video_type", "").lower()
+        target_audience = video_plan_context.get("target_audience", "").lower()
+        tone = video_plan_context.get("tone", "").lower()
+
+        # Educational/Professional content
+        if any(keyword in video_type for keyword in ["tutorial", "educational", "how-to", "guide", "course"]):
+            if "professional" in tone or "expert" in target_audience:
+                selected_voice = "Wise_Woman"  # Authoritative and trustworthy
+            else:
+                selected_voice = "Patient_Man"  # Clear and instructional
+
+        # Entertainment/Casual content
+        elif any(keyword in video_type for keyword in ["entertainment", "vlog", "lifestyle", "story", "review"]):
+            if "young" in target_audience or "millennial" in target_audience:
+                selected_voice = "Casual_Guy"  # Friendly and relatable
+            elif "female" in target_audience or "women" in target_audience:
+                selected_voice = "Lively_Girl"  # Energetic and engaging
+            else:
+                selected_voice = "Friendly_Person"  # Approachable
+
+        # Motivational/Inspirational content
+        elif any(keyword in video_type for keyword in ["motivational", "inspirational", "success", "mindset"]):
+            selected_voice = "Inspirational_girl"  # Uplifting and motivational
+
+        # Business/Corporate content
+        elif any(keyword in video_type for keyword in ["business", "corporate", "finance", "marketing"]):
+            selected_voice = "Elegant_Man"  # Professional and sophisticated
+
+        # Tech/Gaming content
+        elif any(keyword in video_type for keyword in ["tech", "gaming", "software", "app"]):
+            selected_voice = "Young_Knight"  # Energetic and modern
+
+    # Analyze scene content for specific voice requirements
+    scene_text = f"{scene_title} {narration}".lower()
+
+    # Hook scenes need energetic, attention-grabbing voices
+    if "hook" in scene_title.lower() or any(word in scene_text for word in ["attention", "grab", "exciting", "amazing", "unbelievable"]):
+        selected_voice = "Exuberant_Girl"  # Very energetic and enthusiastic
+
+    # Emotional/stories need more expressive voices
+    elif any(word in scene_text for word in ["story", "emotional", "heartwarming", "touching", "inspiring"]):
+        selected_voice = "Inspirational_girl"  # Emotional and inspiring
+
+    # Technical explanations need clear, precise voices
+    elif any(word in scene_text for word in ["technical", "explain", "step-by-step", "process", "how-to"]):
+        selected_voice = "Calm_Woman"  # Clear and methodical
+
+    # Call-to-action scenes need confident, persuasive voices
+    elif "cta" in scene_title.lower() or any(word in scene_text for word in ["subscribe", "like", "comment", "share", "now", "today"]):
+        selected_voice = "Determined_Man"  # Confident and persuasive
+
+    logger.info(f"[VoiceSelection] Selected '{selected_voice}' for scene: {scene_title[:50]}...")
+    return selected_voice
+
+
+class YouTubeAudioRequest(BaseModel):
+    scene_id: str
+    scene_title: str
+    text: str
+    voice_id: Optional[str] = None  # Will auto-select based on content if not provided
+    speed: float = 1.0
+    volume: float = 1.0
+    pitch: float = 0.0
+    emotion: str = "happy"  # More engaging for YouTube content
+    english_normalization: bool = False
+    # Enhanced defaults for high-quality YouTube audio using Minimax Speech 02 HD
+    # Higher quality settings for professional YouTube content
+    sample_rate: Optional[int] = 44100  # CD quality: 44100 Hz (valid values: 8000, 16000, 22050, 24000, 32000, 44100)
+    bitrate: int = 256000  # Highest quality: 256kbps (valid values: 32000, 64000, 128000, 256000)
+    channel: Optional[str] = "2"  # Stereo for richer audio (valid values: "1" or "2")
+    format: Optional[str] = "mp3"  # Universal format for web
+    language_boost: Optional[str] = "English"  # Optimize for English content
+    enable_sync_mode: bool = True
+    # Context for intelligent voice/emotion selection
+    video_plan_context: Optional[Dict[str, Any]] = None  # Optional video plan for context-aware voice selection
+
+
+class YouTubeAudioResponse(BaseModel):
+    scene_id: str
+    scene_title: str
+    audio_filename: str
+    audio_url: str
+    provider: str
+    model: str
+    voice_id: str
+    text_length: int
+    file_size: int
+    cost: float
+
+
+@router.post("/audio", response_model=YouTubeAudioResponse)
+async def generate_youtube_scene_audio(
+    request: YouTubeAudioRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate AI audio for a YouTube scene using shared audio service.
+    Similar to Podcast's audio generation endpoint.
+    """
+    user_id = require_authenticated_user(current_user)
+
+    if not request.text or not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text is required")
+
+    try:
+        # Preprocess text to remove instructional markers that shouldn't be spoken
+        # Remove patterns like [Pacing: slow], [Instructions: ...], etc.
+        import re
+        processed_text = request.text.strip()
+
+        # Remove instructional markers that contain pacing, timing, or other non-spoken content
+        instructional_patterns = [
+            r'\[Pacing:\s*[^\]]+\]',  # [Pacing: slow]
+            r'\[Instructions?:\s*[^\]]+\]',  # [Instructions: ...]
+            r'\[Timing:\s*[^\]]+\]',  # [Timing: ...]
+            r'\[Note:\s*[^\]]+\]',  # [Note: ...]
+            r'\[Internal:\s*[^\]]+\]',  # [Internal: ...]
+        ]
+
+        for pattern in instructional_patterns:
+            processed_text = re.sub(pattern, '', processed_text, flags=re.IGNORECASE)
+
+        # Clean up extra whitespace and normalize
+        processed_text = re.sub(r'\s+', ' ', processed_text).strip()
+
+        if not processed_text:
+            raise HTTPException(status_code=400, detail="Text became empty after removing instructions. Please provide clean narration text.")
+
+        logger.info(f"[YouTubeAudio] Text preprocessing: {len(request.text)} -> {len(processed_text)} characters")
+
+        # Intelligent voice and emotion selection based on content analysis
+        if not request.voice_id:
+            selected_voice = select_optimal_voice(
+                request.scene_title,
+                processed_text,
+                request.video_plan_context
+            )
+        else:
+            selected_voice = request.voice_id
+
+        # Auto-select emotion if not specified or if using defaults
+        if request.emotion == "happy":  # This means it wasn't specifically set by user
+            selected_emotion = select_optimal_emotion(
+                request.scene_title,
+                processed_text,
+                request.video_plan_context
+            )
+        else:
+            selected_emotion = request.emotion
+
+        logger.info(f"[YouTubeAudio] Voice selection: {selected_voice}, Emotion: {selected_emotion}")
+
+        # Build kwargs for optional parameters - use defaults if None
+        # WaveSpeed API requires specific values, so we provide sensible defaults
+        # This matches Podcast's approach but with explicit defaults to avoid None errors
+        optional_kwargs = {}
+
+        # DEBUG: Log what values we received
+        logger.info(f"[YouTubeAudio] Request parameters: sample_rate={request.sample_rate}, bitrate={request.bitrate}, channel={request.channel}, format={request.format}, language_boost={request.language_boost}")
+
+        # sample_rate: Use provided value or omit (WaveSpeed will use default)
+        if request.sample_rate is not None:
+            optional_kwargs["sample_rate"] = request.sample_rate
+
+        # bitrate: Always provide a value (default: 128000 = 128kbps)
+        # Valid values: 32000, 64000, 128000, 256000
+        # Model already has default of 128000, so request.bitrate will never be None
+        optional_kwargs["bitrate"] = request.bitrate
+
+        # channel: Only include if valid (WaveSpeed only accepts "1" or "2" as strings)
+        # If None, empty string, or invalid, omit it and WaveSpeed will use default
+        # NEVER include channel if it's not exactly "1" or "2"
+        if request.channel is not None and str(request.channel).strip() in ["1", "2"]:
+            optional_kwargs["channel"] = str(request.channel).strip()
+            logger.info(f"[YouTubeAudio] Including valid channel: {optional_kwargs['channel']}")
+        else:
+            logger.info(f"[YouTubeAudio] Omitting invalid channel: {request.channel}")
+
+        # format: Use provided value or omit (WaveSpeed will use default)
+        if request.format is not None:
+            optional_kwargs["format"] = request.format
+
+        # language_boost: Use provided value or omit (WaveSpeed will use default)
+        if request.language_boost is not None:
+            optional_kwargs["language_boost"] = request.language_boost
+
+        logger.info(f"[YouTubeAudio] Final optional_kwargs: {optional_kwargs}")
+        
+        result: StoryAudioResult = audio_service.generate_ai_audio(
+            scene_number=0,
+            scene_title=request.scene_title,
+            text=processed_text,
+            user_id=user_id,
+            voice_id=selected_voice,
+            speed=request.speed or 1.0,
+            volume=request.volume or 1.0,
+            pitch=request.pitch or 0.0,
+            emotion=selected_emotion,
+            english_normalization=request.english_normalization or False,
+            enable_sync_mode=request.enable_sync_mode,
+            **optional_kwargs,
+        )
+        
+        # Override URL to use YouTube endpoint instead of story endpoint
+        if result.get("audio_url") and "/api/story/audio/" in result.get("audio_url", ""):
+            audio_filename = result.get("audio_filename", "")
+            result["audio_url"] = f"/api/youtube/audio/{audio_filename}"
+    except Exception as exc:
+        logger.error(f"[YouTube] Audio generation failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Audio generation failed: {exc}")
+
+    # Save to asset library (youtube_creator module)
+    try:
+        if result.get("audio_url"):
+            save_asset_to_library(
+                db=db,
+                user_id=user_id,
+                asset_type="audio",
+                source_module="youtube_creator",
+                filename=result.get("audio_filename", ""),
+                file_url=result.get("audio_url", ""),
+                file_path=result.get("audio_path"),
+                file_size=result.get("file_size"),
+                mime_type="audio/mpeg",
+                title=f"{request.scene_title} - YouTube",
+                description="YouTube scene narration",
+                tags=["youtube_creator", "audio", request.scene_id],
+                provider=result.get("provider"),
+                model=result.get("model"),
+                cost=result.get("cost"),
+                asset_metadata={
+                    "scene_id": request.scene_id,
+                    "scene_title": request.scene_title,
+                    "status": "completed",
+                },
+            )
+    except Exception as e:
+        logger.warning(f"[YouTube] Failed to save audio asset: {e}")
+
+    return YouTubeAudioResponse(
+        scene_id=request.scene_id,
+        scene_title=request.scene_title,
+        audio_filename=result.get("audio_filename", ""),
+        audio_url=result.get("audio_url", ""),
+        provider=result.get("provider", "wavespeed"),
+        model=result.get("model", "minimax/speech-02-hd"),
+        voice_id=result.get("voice_id", selected_voice),
+        text_length=result.get("text_length", len(request.text)),
+        file_size=result.get("file_size", 0),
+        cost=result.get("cost", 0.0),
+    )
+
+
+@router.get("/audio/{filename}")
+async def serve_youtube_audio(
+    filename: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
+):
+    """Serve generated YouTube scene audio files.
+    
+    Supports authentication via Authorization header or token query parameter.
+    Query parameter is useful for HTML elements like <audio> that cannot send custom headers.
+    """
+    require_authenticated_user(current_user)
+    
+    # Security check: ensure filename doesn't contain path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    audio_path = (YOUTUBE_AUDIO_DIR / filename).resolve()
+    
+    # Security check: ensure path is within YOUTUBE_AUDIO_DIR
+    if not str(audio_path).startswith(str(YOUTUBE_AUDIO_DIR)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    
+    return FileResponse(audio_path, media_type="audio/mpeg")
+
