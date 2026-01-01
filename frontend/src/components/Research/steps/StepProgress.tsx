@@ -58,7 +58,12 @@ export const StepProgress: React.FC<WizardStepProps> = ({ state, onNext, onUpdat
     return '#1976d2';
   };
 
-  const providerName = state.config.provider === 'exa' ? 'Exa Neural' : 'Google Search';
+  const providerName =
+    state.config.provider === 'exa'
+      ? 'Exa Neural'
+      : state.config.provider === 'tavily'
+      ? 'Tavily AI Search'
+      : 'Google Search';
   const modeName = state.researchMode === 'basic' ? 'Basic' : state.researchMode === 'comprehensive' ? 'Comprehensive' : 'Targeted';
 
   return (

@@ -1,0 +1,14 @@
+export { VideoStudioLayout } from './VideoStudioLayout';
+export { VideoStudioDashboard } from './VideoStudioDashboard';
+export { CreateVideo } from './modules/CreateVideo';
+export { AvatarVideo } from './modules/AvatarVideo';
+export { EnhanceVideo } from './modules/EnhanceVideo';
+export { ExtendVideo } from './modules/ExtendVideo';
+export { EditVideo } from './modules/EditVideo';
+export { TransformVideo } from './modules/TransformVideo/TransformVideo';
+export { SocialVideo } from './modules/SocialVideo/SocialVideo';
+export { FaceSwap } from './modules/FaceSwap';
+export { VideoTranslate } from './modules/VideoTranslate';
+export { VideoBackgroundRemover } from './modules/VideoBackgroundRemover';
+export { AddAudioToVideo } from './modules/AddAudioToVideo';
+export { LibraryVideo } from './modules/LibraryVideo';

@@ -208,12 +208,18 @@ class ClerkAuthMiddleware:
 clerk_auth = ClerkAuthMiddleware()
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Dict[str, Any]:
     """Get current authenticated user."""
     try:
         if not credentials:
-            logger.warning("No credentials provided")
+            # CRITICAL: Log as ERROR since this is a security issue - authenticated endpoint accessed without credentials
+            endpoint_path = f"{request.method} {request.url.path}"
+            logger.error(
+                f"🔒 AUTHENTICATION ERROR: No credentials provided for authenticated endpoint: {endpoint_path} "
+                f"(client_ip={request.client.host if request.client else 'unknown'})"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Not authenticated",
@@ -223,9 +229,12 @@ async def get_current_user(
         token = credentials.credentials
         user = await clerk_auth.verify_token(token)
         if not user:
-            # Token verification failed (likely expired) - log at debug level to reduce noise
-            # The HTTPException will still be raised, but we don't need to spam logs
-            logger.debug("Token verification failed (likely expired token)")
+            # Token verification failed - log with endpoint context for debugging
+            endpoint_path = f"{request.method} {request.url.path}"
+            logger.error(
+                f"🔒 AUTHENTICATION ERROR: Token verification failed for endpoint: {endpoint_path} "
+                f"(client_ip={request.client.host if request.client else 'unknown'})"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication failed",
@@ -237,7 +246,11 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Authentication error: {e}")
+        endpoint_path = f"{request.method} {request.url.path}"
+        logger.error(
+            f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e}",
+            exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed",
@@ -291,7 +304,13 @@ async def get_current_user_with_query_token(
                 token_to_verify = query_token
         
         if not token_to_verify:
-            logger.warning("No credentials provided (neither header nor query parameter)")
+            # CRITICAL: Log as ERROR since this is a security issue
+            endpoint_path = f"{request.method} {request.url.path}"
+            logger.error(
+                f"🔒 AUTHENTICATION ERROR: No credentials provided (neither header nor query parameter) "
+                f"for authenticated endpoint: {endpoint_path} "
+                f"(client_ip={request.client.host if request.client else 'unknown'})"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Not authenticated",
@@ -300,8 +319,12 @@ async def get_current_user_with_query_token(
 
         user = await clerk_auth.verify_token(token_to_verify)
         if not user:
-            # Token verification failed (likely expired) - log at debug level to reduce noise
-            logger.debug("Token verification failed (likely expired token)")
+            # Token verification failed - log with endpoint context
+            endpoint_path = f"{request.method} {request.url.path}"
+            logger.error(
+                f"🔒 AUTHENTICATION ERROR: Token verification failed for endpoint: {endpoint_path} "
+                f"(client_ip={request.client.host if request.client else 'unknown'})"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication failed",
@@ -313,7 +336,11 @@ async def get_current_user_with_query_token(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Authentication error: {e}")
+        endpoint_path = f"{request.method} {request.url.path}"
+        logger.error(
+            f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e}",
+            exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed",

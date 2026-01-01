@@ -13,6 +13,7 @@ interface GenerationModalsProps {
   onAudioSettingsApply: (settings: AudioGenerationSettings) => void;
   onImageSettingsApply: (settings: YouTubeImageGenerationSettings) => void;
   generatingAudio?: boolean;
+  language?: string; // Language code for language-aware voice selection
 }
 
 export const GenerationModals: React.FC<GenerationModalsProps> = ({
@@ -25,6 +26,7 @@ export const GenerationModals: React.FC<GenerationModalsProps> = ({
   onAudioSettingsApply,
   onImageSettingsApply,
   generatingAudio = false,
+  language,
 }) => {
   return (
     <>
@@ -35,6 +37,7 @@ export const GenerationModals: React.FC<GenerationModalsProps> = ({
         initialSettings={currentAudioSettings}
         isGenerating={generatingAudio}
         sceneTitle={scene.title}
+        language={language}
       />
       <YouTubeImageGenerationModal
         open={showImageSettingsModal}

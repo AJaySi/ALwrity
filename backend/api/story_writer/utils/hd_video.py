@@ -31,17 +31,21 @@ def generate_hd_video_payload(request: Any, user_id: str) -> Dict[str, Any]:
         kwargs["seed"] = request.seed
 
     logger.info(f"[StoryWriter] Generating HD video via {getattr(request, 'provider', 'huggingface')} for user {user_id}")
-    raw_bytes = ai_video_generate(
+    result = ai_video_generate(
         prompt=request.prompt,
+        operation_type="text-to-video",
         provider=getattr(request, "provider", None) or "huggingface",
         user_id=user_id,
         **kwargs,
     )
 
+    # Extract video bytes from result dict
+    video_bytes = result["video_bytes"]
+    
     filename = f"hd_{uuid4().hex}.mp4"
     file_path = output_dir / filename
     with open(file_path, "wb") as fh:
-        fh.write(raw_bytes)
+        fh.write(video_bytes)
 
     logger.info(f"[StoryWriter] HD video saved to {file_path}")
     return {
@@ -111,16 +115,20 @@ def generate_hd_video_scene_payload(request: Any, user_id: str) -> Dict[str, Any
     if getattr(request, "seed", None) is not None:
         kwargs["seed"] = request.seed
 
-    raw_bytes = ai_video_generate(
+    result = ai_video_generate(
         prompt=enhanced_prompt,
+        operation_type="text-to-video",
         provider=getattr(request, "provider", None) or "huggingface",
         user_id=user_id,
         **kwargs,
     )
 
+    # Extract video bytes from result dict
+    video_bytes = result["video_bytes"]
+
     video_service = StoryVideoGenerationService()
     save_result = video_service.save_scene_video(
-        video_bytes=raw_bytes,
+        video_bytes=video_bytes,
         scene_number=scene_number,
         user_id=user_id,
     )

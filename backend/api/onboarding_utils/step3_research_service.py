@@ -40,26 +40,43 @@ class Step3ResearchService:
     async def discover_competitors_for_onboarding(
         self,
         user_url: str,
-        session_id: str,
+        user_id: str,
         industry_context: Optional[str] = None,
         num_results: int = 25,
         website_analysis_data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Discover competitors for onboarding Step 3.
-        
+
         Args:
             user_url: The user's website URL
-            session_id: Onboarding session ID
+            user_id: Clerk user ID for finding the correct session
             industry_context: Industry context for better discovery
             num_results: Number of competitors to discover
-            
+
         Returns:
             Dictionary containing competitor discovery results
         """
         try:
-            logger.info(f"Starting research analysis for session {session_id}, URL: {user_url}")
-            
+            logger.info(f"Starting research analysis for user {user_id}, URL: {user_url}")
+
+            # Find the correct onboarding session for this user
+            with get_db_session() as db:
+                from models.onboarding import OnboardingSession
+                session = db.query(OnboardingSession).filter(
+                    OnboardingSession.user_id == user_id
+                ).first()
+
+                if not session:
+                    logger.error(f"No onboarding session found for user {user_id}")
+                    return {
+                        "success": False,
+                        "error": f"No onboarding session found for user {user_id}"
+                    }
+
+                actual_session_id = str(session.id)  # Convert to string for consistency
+                logger.info(f"Found onboarding session {actual_session_id} for user {user_id}")
+
             # Step 1: Discover social media accounts
             logger.info("Step 1: Discovering social media accounts...")
             social_media_results = await self.exa_service.discover_social_media_accounts(user_url)
@@ -92,7 +109,7 @@ class Step3ResearchService:
             
             # Store research data in database
             await self._store_research_data(
-                session_id=session_id,
+                session_id=actual_session_id,
                 user_url=user_url,
                 competitors=enhanced_competitors,
                 industry_context=industry_context,
@@ -108,11 +125,11 @@ class Step3ResearchService:
                 industry_context
             )
             
-            logger.info(f"Successfully discovered {len(enhanced_competitors)} competitors for session {session_id}")
-            
+            logger.info(f"Successfully discovered {len(enhanced_competitors)} competitors for user {user_id}")
+
             return {
                 "success": True,
-                "session_id": session_id,
+                "session_id": actual_session_id,
                 "user_url": user_url,
                 "competitors": enhanced_competitors,
                 "social_media_accounts": social_media_results.get("social_media_accounts", {}),
@@ -129,7 +146,7 @@ class Step3ResearchService:
             return {
                 "success": False,
                 "error": str(e),
-                "session_id": session_id,
+                "session_id": actual_session_id if 'actual_session_id' in locals() else session_id,
                 "user_url": user_url
             }
     
@@ -398,38 +415,62 @@ class Step3ResearchService:
         """
         try:
             with get_db_session() as db:
-                # Get or create onboarding session
+                # Get onboarding session
                 session = db.query(OnboardingSession).filter(
-                    OnboardingSession.id == session_id
+                    OnboardingSession.id == int(session_id)
                 ).first()
-                
+
                 if not session:
                     logger.error(f"Onboarding session {session_id} not found")
                     return False
-                
-                # Update session with research data
-                research_data = {
-                    "step3_research_data": {
-                        "user_url": user_url,
-                        "competitors": competitors,
-                        "industry_context": industry_context,
-                        "analysis_metadata": analysis_metadata,
-                        "completed_at": datetime.utcnow().isoformat()
-                    }
+
+                # Store each competitor in CompetitorAnalysis table
+                from models.onboarding import CompetitorAnalysis
+
+                for competitor in competitors:
+                    # Create competitor analysis record
+                    competitor_record = CompetitorAnalysis(
+                        session_id=session.id,
+                        competitor_url=competitor.get("url", ""),
+                        competitor_domain=competitor.get("domain", ""),
+                        analysis_data={
+                            "title": competitor.get("title", ""),
+                            "summary": competitor.get("summary", ""),
+                            "relevance_score": competitor.get("relevance_score", 0.5),
+                            "highlights": competitor.get("highlights", []),
+                            "favicon": competitor.get("favicon"),
+                            "image": competitor.get("image"),
+                            "published_date": competitor.get("published_date"),
+                            "author": competitor.get("author"),
+                            "competitive_analysis": competitor.get("competitive_insights", {}),
+                            "content_insights": competitor.get("content_insights", {}),
+                            "industry_context": industry_context,
+                            "analysis_metadata": analysis_metadata,
+                            "completed_at": datetime.utcnow().isoformat()
+                        }
+                    )
+
+                    db.add(competitor_record)
+
+                # Store summary in session for quick access (backward compatibility)
+                research_summary = {
+                    "user_url": user_url,
+                    "total_competitors": len(competitors),
+                    "industry_context": industry_context,
+                    "completed_at": datetime.utcnow().isoformat(),
+                    "analysis_metadata": analysis_metadata
                 }
-                
-                # Merge with existing data
-                if session.step_data:
-                    session.step_data.update(research_data)
-                else:
-                    session.step_data = research_data
-                
+
+                # Store summary in session (this requires step_data field to exist)
+                # For now, we'll skip this since the model doesn't have step_data
+                # TODO: Add step_data JSON column to OnboardingSession model if needed
+
                 db.commit()
-                logger.info(f"Research data stored for session {session_id}")
+                logger.info(f"Stored {len(competitors)} competitors in CompetitorAnalysis table for session {session_id}")
                 return True
-                
+
         except Exception as e:
-            logger.error(f"Error storing research data: {str(e)}")
+            logger.error(f"Error storing research data: {str(e)}", exc_info=True)
             return False
     
     async def get_research_data(self, session_id: str) -> Dict[str, Any]:       

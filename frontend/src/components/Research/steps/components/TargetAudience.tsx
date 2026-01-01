@@ -1,21 +1,31 @@
 import React from 'react';
+import { PersonalizationIndicator } from './PersonalizationIndicator';
 
 interface TargetAudienceProps {
   value: string;
   onChange: (value: string) => void;
+  hasPersona?: boolean;
 }
 
-export const TargetAudience: React.FC<TargetAudienceProps> = ({ value, onChange }) => {
+export const TargetAudience: React.FC<TargetAudienceProps> = ({ value, onChange, hasPersona = false }) => {
   return (
     <div>
       <label style={{
-        display: 'block',
+        display: 'flex',
+        alignItems: 'center',
         marginBottom: '8px',
         fontSize: '13px',
         fontWeight: '600',
         color: '#0c4a6e',
       }}>
         Target Audience (Optional)
+        {hasPersona && (
+          <PersonalizationIndicator 
+            type="keywords" 
+            hasPersona={hasPersona}
+            source="from your research persona"
+          />
+        )}
       </label>
       <input
         type="text"

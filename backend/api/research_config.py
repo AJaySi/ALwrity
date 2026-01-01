@@ -33,11 +33,18 @@ class ProviderAvailability(BaseModel):
 
 
 class PersonaDefaults(BaseModel):
-    """Persona-aware research defaults."""
+    """Persona-aware research defaults for hyper-personalization."""
     industry: Optional[str] = None
     target_audience: Optional[str] = None
     suggested_domains: list[str] = []
     suggested_exa_category: Optional[str] = None
+    has_research_persona: bool = False  # Phase 2: Indicates if research persona exists
+    
+    # Phase 2: Additional fields from research persona for pre-filling advanced options
+    default_research_mode: Optional[str] = None  # basic, comprehensive, targeted
+    default_provider: Optional[str] = None  # exa, tavily, google
+    suggested_keywords: list[str] = []  # For keyword suggestions
+    research_angles: list[str] = []  # Alternative research focuses
 
 
 class ResearchConfigResponse(BaseModel):
@@ -106,7 +113,12 @@ async def get_persona_defaults(
     """
     Get persona-aware research defaults for the current user.
     
-    Returns industry, target audience, and smart suggestions based on onboarding data.
+    Phase 2: Prioritizes research persona fields (richer defaults) over core persona.
+    Since onboarding is mandatory, we always have core persona data - never return "General".
+    
+    Returns industry, target audience, and smart suggestions based on:
+    1. Research persona (if exists) - has suggested domains, Exa category, etc.
+    2. Core persona (fallback) - industry and target audience from onboarding
     """
     try:
         user_id = str(current_user.get('id'))
@@ -114,37 +126,88 @@ async def get_persona_defaults(
         # Add explicit null check for database session
         if not db:
             logger.error(f"[ResearchConfig] Database session is None for user {user_id} in get_persona_defaults")
-            # Return defaults rather than error
+            # Return minimal defaults - but onboarding guarantees this won't happen
             return PersonaDefaults()
         
         db_service = OnboardingDatabaseService(db=db)
         
-        # Try to get persona data first (most reliable source for industry/target_audience)
+        # Phase 2: First check if research persona exists (cached only - don't generate here)
+        # Generation happens in ResearchEngine.research() on first use
+        research_persona = None
+        try:
+            persona_service = ResearchPersonaService(db_session=db)
+            research_persona = persona_service.get_cached_only(user_id)
+        except Exception as e:
+            logger.debug(f"[ResearchConfig] Could not get research persona for {user_id}: {e}")
+        
+        # If research persona exists, use its richer defaults (Phase 2: hyper-personalization)
+        if research_persona:
+            logger.info(f"[ResearchConfig] Using research persona defaults for user {user_id}")
+
+            # Ensure we never return "General" - provide meaningful defaults
+            industry = research_persona.default_industry
+            target_audience = research_persona.default_target_audience
+
+            # If persona has generic defaults, provide better ones
+            if industry == "General" or not industry:
+                industry = "Technology"  # Safe default for content creators
+                logger.info(f"[ResearchConfig] Upgrading generic industry to '{industry}' for user {user_id}")
+
+            if target_audience == "General" or not target_audience:
+                target_audience = "Professionals and content consumers"  # Better than "General"
+                logger.info(f"[ResearchConfig] Upgrading generic target_audience to '{target_audience}' for user {user_id}")
+
+            return PersonaDefaults(
+                industry=industry,
+                target_audience=target_audience,
+                suggested_domains=research_persona.suggested_exa_domains or [],
+                suggested_exa_category=research_persona.suggested_exa_category,
+                has_research_persona=True,  # Frontend can use this
+                # Phase 2: Additional pre-fill fields
+                default_research_mode=research_persona.default_research_mode,
+                default_provider=research_persona.default_provider,
+                suggested_keywords=research_persona.suggested_keywords or [],
+                research_angles=research_persona.research_angles or [],
+                # Phase 2+: Enhanced provider-specific defaults
+                suggested_exa_search_type=getattr(research_persona, 'suggested_exa_search_type', None),
+                suggested_tavily_topic=getattr(research_persona, 'suggested_tavily_topic', None),
+                suggested_tavily_search_depth=getattr(research_persona, 'suggested_tavily_search_depth', None),
+                suggested_tavily_include_answer=getattr(research_persona, 'suggested_tavily_include_answer', None),
+                suggested_tavily_time_range=getattr(research_persona, 'suggested_tavily_time_range', None),
+                suggested_tavily_raw_content_format=getattr(research_persona, 'suggested_tavily_raw_content_format', None),
+                provider_recommendations=getattr(research_persona, 'provider_recommendations', {}),
+            )
+        
+        # Fallback to core persona from onboarding (guaranteed to exist after onboarding)
         persona_data = db_service.get_persona_data(user_id, db)
-        industry = 'General'
-        target_audience = 'General'
+        industry = None
+        target_audience = None
         
         if persona_data:
             core_persona = persona_data.get('corePersona') or persona_data.get('core_persona')
             if core_persona:
-                if core_persona.get('industry'):
-                    industry = core_persona['industry']
-                if core_persona.get('target_audience'):
-                    target_audience = core_persona['target_audience']
+                industry = core_persona.get('industry')
+                target_audience = core_persona.get('target_audience')
         
-        # Fallback to website analysis if persona data doesn't have industry info
-        if industry == 'General':
+        # Fallback to website analysis if core persona doesn't have industry
+        if not industry:
             website_analysis = db_service.get_website_analysis(user_id, db)
             if website_analysis:
                 target_audience_data = website_analysis.get('target_audience', {})
                 if isinstance(target_audience_data, dict):
-                    # Extract from target_audience JSON field
-                    industry_focus = target_audience_data.get('industry_focus')
-                    if industry_focus:
-                        industry = industry_focus
+                    industry = target_audience_data.get('industry_focus')
                     demographics = target_audience_data.get('demographics')
-                    if demographics:
+                    if demographics and not target_audience:
                         target_audience = demographics if isinstance(demographics, str) else str(demographics)
+        
+        # Phase 2: Never return "General" - use sensible defaults from onboarding or fallback
+        # Since onboarding is mandatory, we should always have real data
+        if not industry:
+            industry = "Technology"  # Safe default for content creators
+            logger.warning(f"[ResearchConfig] No industry found for user {user_id}, using default")
+        if not target_audience:
+            target_audience = "Professionals"  # Safe default
+            logger.warning(f"[ResearchConfig] No target_audience found for user {user_id}, using default")
         
         # Suggest domains based on industry
         suggested_domains = _get_domain_suggestions(industry)
@@ -152,16 +215,25 @@ async def get_persona_defaults(
         # Suggest Exa category based on industry
         suggested_exa_category = _get_exa_category_suggestion(industry)
         
+        logger.info(f"[ResearchConfig] Using core persona defaults for user {user_id}: industry={industry}")
+        
         return PersonaDefaults(
             industry=industry,
             target_audience=target_audience,
             suggested_domains=suggested_domains,
-            suggested_exa_category=suggested_exa_category
+            suggested_exa_category=suggested_exa_category,
+            has_research_persona=False  # Frontend knows to trigger generation
         )
     except Exception as e:
         logger.error(f"[ResearchConfig] Error getting persona defaults for user {user_id if 'user_id' in locals() else 'unknown'}: {e}", exc_info=True)
-        # Return defaults rather than error
-        return PersonaDefaults()
+        # Return sensible defaults - never "General"
+        return PersonaDefaults(
+            industry="Technology",
+            target_audience="Professionals",
+            suggested_domains=[],
+            suggested_exa_category=None,
+            has_research_persona=False
+        )
 
 
 @router.get("/research-persona")
@@ -430,7 +502,7 @@ async def get_competitor_analysis(
                 success=False,
                 error="Onboarding step 3 (Competitor Analysis) is not completed. Please complete onboarding step 3 first."
             )
-        
+
         print(f"[COMPETITOR_ANALYSIS] ✅ Step 3 is completed (current_step={session.current_step} or research_preferences exists)")
 
         # Try Method 1: Get competitor data from CompetitorAnalysis table using OnboardingDatabaseService
@@ -438,11 +510,11 @@ async def get_competitor_analysis(
         print(f"[COMPETITOR_ANALYSIS] 🔍 Method 1: Querying CompetitorAnalysis table using OnboardingDatabaseService...")
         try:
             competitors = db_service.get_competitor_analysis(user_id, db)
-            
+
             if competitors:
                 print(f"[COMPETITOR_ANALYSIS] ✅ Found {len(competitors)} competitor records from CompetitorAnalysis table")
                 logger.info(f"[ResearchConfig] Found {len(competitors)} competitors from CompetitorAnalysis table for user {user_id}")
-                
+
                 # Map competitor fields to match frontend expectations
                 mapped_competitors = []
                 for comp in competitors:
@@ -453,7 +525,7 @@ async def get_competitor_analysis(
                         "similarity_score": comp.get("relevance_score") or comp.get("similarity_score", 0.5)
                     }
                     mapped_competitors.append(mapped_comp)
-                
+
                 print(f"[COMPETITOR_ANALYSIS] ✅ SUCCESS: Returning {len(mapped_competitors)} competitors for user_id={user_id}")
                 return CompetitorAnalysisResponse(
                     success=True,
@@ -468,7 +540,7 @@ async def get_competitor_analysis(
                 )
             else:
                 print(f"[COMPETITOR_ANALYSIS] ⚠️ No competitor records found in CompetitorAnalysis table for user_id={user_id}")
-                
+
         except Exception as e:
             print(f"[COMPETITOR_ANALYSIS] ❌ EXCEPTION in Method 1: {e}")
             import traceback
@@ -487,12 +559,12 @@ async def get_competitor_analysis(
             research_data_result = await step3_service.get_research_data(str(session.id))
             
             print(f"[COMPETITOR_ANALYSIS] Step3ResearchService.get_research_data() result: success={research_data_result.get('success')}")
-            
+
             if research_data_result.get('success'):
-                # Handle both 'research_data' and 'step3_research_data' keys
+                # Handle both 'research_data' and 'step3_research_data' keys    
                 research_data = research_data_result.get('step3_research_data') or research_data_result.get('research_data', {})
                 print(f"[COMPETITOR_ANALYSIS] Research data keys: {list(research_data.keys()) if isinstance(research_data, dict) else 'Not a dict'}")
-                
+
                 if isinstance(research_data, dict) and research_data.get('competitors'):
                     competitors_list = research_data.get('competitors', [])
                     print(f"[COMPETITOR_ANALYSIS] ✅ Found {len(competitors_list)} competitors in step_data via Step3ResearchService")
@@ -500,8 +572,8 @@ async def get_competitor_analysis(
                     if competitors_list:
                         analysis_metadata = research_data.get('analysis_metadata', {})
                         social_media_data = analysis_metadata.get('social_media_data', {})
-                        
-                        # Map competitor fields to match frontend expectations
+
+                        # Map competitor fields to match frontend expectations  
                         mapped_competitors = []
                         for comp in competitors_list:
                             mapped_comp = {
@@ -511,7 +583,7 @@ async def get_competitor_analysis(
                                 "similarity_score": comp.get("relevance_score") or comp.get("similarity_score", 0.5)
                             }
                             mapped_competitors.append(mapped_comp)
-                        
+
                         print(f"[COMPETITOR_ANALYSIS] ✅ SUCCESS: Returning {len(mapped_competitors)} competitors from step_data for user_id={user_id}")
                         logger.info(f"[ResearchConfig] Found {len(mapped_competitors)} competitors from step_data via Step3ResearchService for user {user_id}")
                         return CompetitorAnalysisResponse(
@@ -559,6 +631,114 @@ async def get_competitor_analysis(
         )
     finally:
         print(f"[COMPETITOR_ANALYSIS] ===== END: Getting competitor analysis for user_id={user_id} =====\n")
+
+
+@router.post("/competitor-analysis/refresh", response_model=CompetitorAnalysisResponse)
+async def refresh_competitor_analysis(
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Refresh competitor analysis by re-running competitor discovery from onboarding.
+    
+    This endpoint re-triggers the competitor discovery process and saves the results
+    to the database, allowing users to update their competitor analysis data.
+    """
+    user_id = None
+    try:
+        user_id = str(current_user.get('id'))
+        logger.info(f"[ResearchConfig] Refreshing competitor analysis for user {user_id}")
+
+        if not db:
+            raise HTTPException(status_code=500, detail="Database session not available")
+
+        db_service = OnboardingDatabaseService(db=db)
+
+        # Get onboarding session
+        session = db_service.get_session_by_user(user_id, db)
+        if not session:
+            return CompetitorAnalysisResponse(
+                success=False,
+                error="No onboarding session found. Please complete onboarding first."
+            )
+
+        # Get website URL from website analysis
+        website_analysis = db_service.get_website_analysis(user_id, db)
+        if not website_analysis or not website_analysis.get('website_url'):
+            return CompetitorAnalysisResponse(
+                success=False,
+                error="No website URL found. Please complete onboarding step 2 (Website Analysis) first."
+            )
+
+        user_url = website_analysis.get('website_url')
+        if not user_url or user_url.strip() == '':
+            return CompetitorAnalysisResponse(
+                success=False,
+                error="Website URL is empty. Please complete onboarding step 2 (Website Analysis) first."
+            )
+
+        # Get industry context from research preferences or persona
+        research_prefs = db_service.get_research_preferences(user_id, db) or {}
+        persona_data = db_service.get_persona_data(user_id, db) or {}
+        core_persona = persona_data.get('corePersona') or persona_data.get('core_persona') or {}
+        industry_context = core_persona.get('industry') or research_prefs.get('industry') or None
+
+        # Import and use Step3ResearchService to re-run competitor discovery
+        from api.onboarding_utils.step3_research_service import Step3ResearchService
+        
+        step3_service = Step3ResearchService()
+        result = await step3_service.discover_competitors_for_onboarding(
+            user_url=user_url,
+            user_id=user_id,
+            industry_context=industry_context,
+            num_results=25,
+            website_analysis_data=website_analysis
+        )
+
+        if result.get("success"):
+            # Get the updated competitor data from database
+            competitors = db_service.get_competitor_analysis(user_id, db)
+            
+            if competitors:
+                # Map competitor fields
+                mapped_competitors = []
+                for comp in competitors:
+                    mapped_comp = {
+                        **comp,
+                        "name": comp.get("title") or comp.get("name") or comp.get("domain", ""),
+                        "description": comp.get("summary") or comp.get("description", ""),
+                        "similarity_score": comp.get("relevance_score") or comp.get("similarity_score", 0.5)
+                    }
+                    mapped_competitors.append(mapped_comp)
+
+                logger.info(f"[ResearchConfig] Successfully refreshed competitor analysis: {len(mapped_competitors)} competitors")
+                return CompetitorAnalysisResponse(
+                    success=True,
+                    competitors=mapped_competitors,
+                    social_media_accounts=result.get("social_media_accounts", {}),
+                    social_media_citations=result.get("social_media_citations", []),
+                    research_summary=result.get("research_summary", {}),
+                    analysis_timestamp=result.get("analysis_timestamp")
+                )
+            else:
+                return CompetitorAnalysisResponse(
+                    success=False,
+                    error="Competitor discovery completed but no data was saved. Please try again."
+                )
+        else:
+            return CompetitorAnalysisResponse(
+                success=False,
+                error=result.get("error", "Failed to refresh competitor analysis")
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ResearchConfig] Error refreshing competitor analysis for user {user_id if user_id else 'unknown'}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh competitor analysis: {str(e)}"
+        )
 
 
 # Helper functions from RESEARCH_AI_HYPERPERSONALIZATION.md

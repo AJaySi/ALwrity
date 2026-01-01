@@ -1,58 +1,139 @@
 /**
  * Industry-specific placeholder examples for personalized experience
+ * Enhanced to use research persona data (research_angles and recommended_presets)
  */
-export const getIndustryPlaceholders = (industry: string): string[] => {
+export interface PersonaPlaceholderData {
+  research_angles?: string[];
+  recommended_presets?: Array<{
+    name: string;
+    keywords: string | string[];
+    description?: string;
+  }>;
+  industry?: string;
+  target_audience?: string;
+}
+
+export const getIndustryPlaceholders = (
+  industry: string,
+  personaData?: PersonaPlaceholderData
+): string[] => {
+  // If we have research persona data, use it to generate personalized placeholders
+  if (personaData) {
+    const personalizedPlaceholders: string[] = [];
+    
+    // Priority 1: Use recommended presets (most actionable)
+    if (personaData.recommended_presets && personaData.recommended_presets.length > 0) {
+      const presets = personaData.recommended_presets.slice(0, 4); // Use first 4 presets
+      presets.forEach((preset) => {
+        const keywords = typeof preset.keywords === 'string' 
+          ? preset.keywords 
+          : Array.isArray(preset.keywords) 
+            ? preset.keywords.join(', ')
+            : '';
+        
+        if (keywords && keywords.trim().length > 0) {
+          // Make placeholders concise and actionable
+          personalizedPlaceholders.push(keywords.trim());
+        }
+      });
+    }
+    
+    // Priority 2: Use research angles (formatted as actionable queries)
+    if (personaData.research_angles && personaData.research_angles.length > 0 && personalizedPlaceholders.length < 4) {
+      const angles = personaData.research_angles.slice(0, 4 - personalizedPlaceholders.length);
+      angles.forEach((angle) => {
+        // Format angle as a concise research query
+        let placeholder = angle;
+        
+        // Replace topic placeholders with industry if available
+        if (placeholder.includes('{topic}') || placeholder.includes('{{topic}}')) {
+          placeholder = placeholder.replace(/\{topic\}/g, industry || 'your topic')
+                                   .replace(/\{\{topic\}\}/g, industry || 'your topic');
+        }
+        
+        // Make it concise - remove "Research:" prefix if present, keep it natural
+        placeholder = placeholder.replace(/^Research:\s*/i, '').trim();
+        
+        if (placeholder && placeholder.length > 10) { // Only add meaningful angles
+          personalizedPlaceholders.push(placeholder);
+        }
+      });
+    }
+    
+    // If we have personalized placeholders, return them (with fallback to industry defaults)
+    if (personalizedPlaceholders.length > 0) {
+      // Add 1-2 industry-specific ones as backup for variety
+      const industryDefaults = getIndustryDefaults(industry);
+      const needed = Math.max(0, 5 - personalizedPlaceholders.length);
+      return [...personalizedPlaceholders, ...industryDefaults.slice(0, needed)];
+    }
+  }
+  
+  // Fallback to industry-specific defaults
+  return getIndustryDefaults(industry);
+};
+
+/**
+ * Get industry-specific default placeholders (original logic)
+ */
+const getIndustryDefaults = (industry: string): string[] => {
   const industryExamples: Record<string, string[]> = {
     Healthcare: [
-      "Research: AI-powered diagnostic tools in clinical practice\n\n💡 What you'll get:\n• FDA-approved AI medical devices\n• Clinical accuracy and patient outcomes\n• Implementation costs and ROI",
-      "Analyze: Telemedicine adoption trends and patient satisfaction\n\n💡 Research includes:\n• Post-pandemic telehealth growth\n• Remote patient monitoring technologies\n• Insurance coverage and reimbursement",
-      "Investigate: Personalized medicine and genomic testing advances\n\n💡 You'll discover:\n• Latest genomic sequencing technologies\n• Precision therapy success rates\n• Ethical considerations and regulations"
+      "AI diagnostic tools and clinical applications",
+      "Telemedicine adoption and patient outcomes",
+      "Personalized medicine and genomic testing",
+      "Healthcare automation and workflow optimization"
     ],
     Technology: [
-      "Investigate: Latest developments in edge computing and IoT\n\n💡 What you'll get:\n• Edge AI deployment strategies\n• 5G integration and performance\n• Industry use cases and benchmarks",
-      "Compare: Cloud providers for enterprise SaaS applications\n\n💡 Research includes:\n• AWS vs Azure vs GCP feature comparison\n• Cost optimization strategies\n• Security and compliance certifications",
-      "Analyze: Quantum computing breakthroughs and commercial applications\n\n💡 You'll discover:\n• Latest quantum hardware developments\n• Real-world problem solving examples\n• Investment landscape and timeline"
+      "Edge computing and IoT deployment strategies",
+      "Cloud provider comparison and cost optimization",
+      "Quantum computing breakthroughs and applications",
+      "AI and machine learning industry trends"
     ],
     Finance: [
-      "Research: DeFi regulatory landscape and compliance challenges\n\n💡 What you'll get:\n• Global regulatory frameworks\n• Compliance best practices\n• Risk management strategies",
-      "Analyze: Digital banking customer retention strategies\n\n💡 Research includes:\n• Neobank growth and market share\n• Customer acquisition costs and LTV\n• Personalization and UX innovations",
-      "Investigate: ESG investing trends and impact measurement\n\n💡 You'll discover:\n• ESG rating methodologies\n• Fund performance and returns\n• Regulatory requirements and reporting"
+      "DeFi regulations and compliance strategies",
+      "Digital banking and customer retention",
+      "ESG investing trends and performance",
+      "Fintech innovations and market analysis"
     ],
     Marketing: [
-      "Research: AI-powered marketing automation and personalization\n\n💡 What you'll get:\n• Top marketing AI platforms and features\n• ROI and conversion rate improvements\n• Implementation case studies",
-      "Analyze: Influencer marketing ROI and authenticity trends\n\n💡 Research includes:\n• Micro vs macro influencer effectiveness\n• Platform-specific engagement rates\n• Brand partnership best practices",
-      "Investigate: Privacy-first marketing in a cookieless world\n\n💡 You'll discover:\n• First-party data strategies\n• Contextual targeting innovations\n• Compliance with privacy regulations"
+      "AI marketing automation and personalization",
+      "Influencer marketing ROI and best practices",
+      "Privacy-first marketing in cookieless world",
+      "Content marketing strategies and trends"
     ],
     Business: [
-      "Research: Remote work policies and hybrid workplace models\n\n💡 What you'll get:\n• Productivity metrics and employee satisfaction\n• Technology infrastructure requirements\n• Cultural impact and change management",
-      "Analyze: Supply chain resilience and diversification strategies\n\n💡 Research includes:\n• Nearshoring and reshoring trends\n• Technology solutions for visibility\n• Risk mitigation frameworks",
-      "Investigate: Sustainability initiatives and corporate ESG programs\n\n💡 You'll discover:\n• Industry-specific sustainability benchmarks\n• Cost-benefit analysis of green initiatives\n• Stakeholder communication strategies"
+      "Remote work policies and hybrid models",
+      "Supply chain resilience and diversification",
+      "Sustainability initiatives and ESG programs",
+      "Business automation and efficiency"
     ],
     Education: [
-      "Research: EdTech tools for personalized learning experiences\n\n💡 What you'll get:\n• Adaptive learning platform comparisons\n• Student engagement and outcomes data\n• Implementation costs and training needs",
-      "Analyze: Microlearning and skill-based education trends\n\n💡 Research includes:\n• Corporate training effectiveness\n• Platform and content recommendations\n• ROI and completion rates",
-      "Investigate: AI tutoring systems and student support tools\n\n💡 You'll discover:\n• Natural language processing advances\n• Student performance improvements\n• Accessibility and inclusion features"
+      "EdTech tools and personalized learning",
+      "Microlearning and skill-based education",
+      "AI tutoring systems and student support",
+      "Online learning platforms and outcomes"
     ],
     'Real Estate': [
-      "Research: PropTech innovations transforming property management\n\n💡 What you'll get:\n• Smart building technologies and IoT\n• Tenant experience platforms\n• Operational efficiency gains",
-      "Analyze: Virtual staging and 3D property tours adoption\n\n💡 Research includes:\n• Technology provider comparisons\n• Impact on sales velocity and pricing\n• Cost vs traditional staging",
-      "Investigate: Real estate tokenization and fractional ownership\n\n💡 You'll discover:\n• Blockchain platforms and regulations\n• Investor demographics and demand\n• Liquidity and exit strategies"
+      "PropTech innovations and property management",
+      "Virtual staging and 3D property tours",
+      "Real estate tokenization and fractional ownership",
+      "Smart building technologies and IoT"
     ],
     Travel: [
-      "Research: Sustainable tourism trends and eco-travel preferences\n\n💡 What you'll get:\n• Green certification programs\n• Traveler willingness to pay premium\n• Destination best practices",
-      "Analyze: AI-powered travel personalization and recommendations\n\n💡 Research includes:\n• Recommendation engine technologies\n• Booking conversion rate improvements\n• Customer lifetime value impact",
-      "Investigate: Bleisure travel and workation destination trends\n\n💡 You'll discover:\n• Remote work-friendly destinations\n• Co-working and accommodation options\n• Digital nomad demographics"
+      "Sustainable tourism and eco-travel trends",
+      "AI travel personalization and recommendations",
+      "Bleisure travel and workation destinations",
+      "Travel technology and booking platforms"
     ]
   };
 
+  // Default placeholders - concise and actionable
   return industryExamples[industry] || [
-    "Research: Latest AI advancements in your industry\n\n💡 What you'll get:\n• Recent breakthroughs and innovations\n• Key companies and technologies\n• Expert insights and market trends",
-    
-    "Write a blog on: Emerging trends shaping your industry in 2025\n\n💡 This will research:\n• Technology disruptions and innovations\n• Regulatory changes and compliance\n• Consumer behavior shifts",
-    
-    "Analyze: Best practices and success stories in your field\n\n💡 Research includes:\n• Industry leader strategies\n• Implementation case studies\n• ROI and performance metrics",
-    
-    "https://example.com/article\n\n💡 URL detected! Research will:\n• Extract key insights from the article\n• Find related sources and updates\n• Provide comprehensive context"
+    "Latest AI trends and innovations",
+    "Best practices and case studies",
+    "Market analysis and competitor insights",
+    "Emerging technologies and future predictions"
   ];
 };
 

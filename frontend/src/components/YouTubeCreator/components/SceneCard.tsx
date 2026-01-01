@@ -63,6 +63,7 @@ interface SceneCardProps {
   loading: boolean;
   avatarUrl?: string | null; // Base avatar URL for character consistency
   videoPlanIdea?: string; // Video plan idea for context
+  language?: string; // Language code for language-aware voice selection
 }
 
 // Helper function to get border color based on scene emphasis
@@ -100,6 +101,7 @@ export const SceneCard: React.FC<SceneCardProps> = React.memo(({
   loading,
   avatarUrl,
   videoPlanIdea,
+  language,
 }) => {
   const sceneData = isEditing && editedScene ? { ...scene, ...editedScene } : scene;
 
@@ -435,6 +437,7 @@ export const SceneCard: React.FC<SceneCardProps> = React.memo(({
         onAudioSettingsApply={handleAudioSettingsApply}
         onImageSettingsApply={handleImageSettingsApply}
         generatingAudio={generatingAudio}
+        language={language}
       />
     </>
   );

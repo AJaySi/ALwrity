@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -21,9 +21,10 @@ import {
   Business as BusinessIcon,
   Assessment as AssessmentIcon,
   OpenInNew as OpenInNewIcon,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { CompetitorAnalysisResponse } from '../../api/researchConfig';
+import { CompetitorAnalysisResponse, refreshCompetitorAnalysis } from '../../api/researchConfig';
 
 interface OnboardingCompetitorModalProps {
   open: boolean;
@@ -31,6 +32,7 @@ interface OnboardingCompetitorModalProps {
   data: CompetitorAnalysisResponse | null;
   loading?: boolean;
   error?: string | null;
+  onRefresh?: (newData: CompetitorAnalysisResponse) => void;
 }
 
 export const OnboardingCompetitorModal: React.FC<OnboardingCompetitorModalProps> = ({
@@ -38,8 +40,12 @@ export const OnboardingCompetitorModal: React.FC<OnboardingCompetitorModalProps>
   onClose,
   data,
   loading = false,
-  error = null
+  error = null,
+  onRefresh
 }) => {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
   if (!data && !loading && !error) {
     return null;
   }
@@ -47,6 +53,24 @@ export const OnboardingCompetitorModal: React.FC<OnboardingCompetitorModalProps>
   const competitors = data?.competitors || [];
   const socialMediaAccounts = data?.social_media_accounts || {};
   const researchSummary = data?.research_summary || {};
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    
+    try {
+      const newData = await refreshCompetitorAnalysis();
+      if (newData.success && onRefresh) {
+        onRefresh(newData);
+      } else {
+        setRefreshError(newData.error || 'Failed to refresh competitor analysis');
+      }
+    } catch (err: any) {
+      setRefreshError(err.message || 'Failed to refresh competitor analysis');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const avgScore = competitors.length > 0
     ? competitors.reduce((sum, c) => sum + (c.similarity_score || 0), 0) / competitors.length
@@ -85,9 +109,33 @@ export const OnboardingCompetitorModal: React.FC<OnboardingCompetitorModalProps>
             </Typography>
           </Box>
         </Box>
-        <Button onClick={onClose} size="small" sx={{ minWidth: 'auto', p: 1 }}>
-          <CloseIcon />
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            startIcon={refreshing ? <CircularProgress size={16} /> : <RefreshIcon />}
+            variant="outlined"
+            size="small"
+            sx={{
+              minWidth: 'auto',
+              borderColor: '#0ea5e9',
+              color: '#0ea5e9',
+              '&:hover': {
+                borderColor: '#0284c7',
+                backgroundColor: 'rgba(14, 165, 233, 0.08)'
+              },
+              '&:disabled': {
+                borderColor: '#cbd5e1',
+                color: '#94a3b8'
+              }
+            }}
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
+          <Button onClick={onClose} size="small" sx={{ minWidth: 'auto', p: 1 }}>
+            <CloseIcon />
+          </Button>
+        </Box>
       </DialogTitle>
 
       <DialogContent sx={{ py: 3, overflowY: 'auto' }}>
@@ -100,9 +148,9 @@ export const OnboardingCompetitorModal: React.FC<OnboardingCompetitorModalProps>
           </Box>
         )}
 
-        {error && (
+        {(error || refreshError) && (
           <Alert severity="error" sx={{ mb: 3 }}>
-            <Typography variant="body2">{error}</Typography>
+            <Typography variant="body2">{error || refreshError}</Typography>
           </Alert>
         )}
 

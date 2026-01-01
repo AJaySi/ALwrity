@@ -2,7 +2,7 @@
 
 import base64
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 import requests
 from fastapi import HTTPException
 from loguru import logger
@@ -103,6 +103,7 @@ class WAN25Service:
         negative_prompt: Optional[str] = None,
         seed: Optional[int] = None,
         enable_prompt_expansion: bool = True,
+        progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> Dict[str, Any]:
         """Generate video using WAN 2.5.
         
@@ -217,7 +218,8 @@ class WAN25Service:
             result = self.client.poll_until_complete(
                 prediction_id,
                 timeout_seconds=180,  # 3 minutes max
-                interval_seconds=2.0
+                interval_seconds=2.0,
+                progress_callback=progress_callback,
             )
         except HTTPException as e:
             detail = e.detail or {}

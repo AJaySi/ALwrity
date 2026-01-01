@@ -66,7 +66,28 @@ export const useVideoRenderQueue = ({
     (taskId: string, sceneNumber?: number, isCombine?: boolean) => {
       const timer = setInterval(async () => {
         try {
-          const status: TaskStatus = await youtubeApi.getRenderStatus(taskId);
+          const status: TaskStatus | null = await youtubeApi.getRenderStatus(taskId);
+          
+          // Handle null response (task not found) - matches podcast pattern
+          if (!status) {
+            console.debug(`[VideoRenderQueue] Task ${taskId} not found, stopping poll`);
+            stopPolling(taskId);
+            if (sceneNumber !== undefined) {
+              setJobs((prev) => ({
+                ...prev,
+                [sceneNumber]: {
+                  ...(prev[sceneNumber] || { scene_number: sceneNumber }),
+                  status: 'failed',
+                  progress: 0,
+                  error: 'Task expired or not found. Please try again.',
+                },
+              }));
+            } else {
+              setCombineStatus('failed');
+            }
+            return; // Don't process further for null responses
+          }
+          
           const progress = status.progress ?? 0;
 
           if (isCombine) {
@@ -127,7 +148,33 @@ export const useVideoRenderQueue = ({
               }));
             }
           }
-        } catch (err) {
+        } catch (err: any) {
+          // Check if this is a 404 (task not found) - stop polling silently
+          const isNotFound = err?.response?.status === 404 || err?.status === 404 || 
+                             err?.message?.toLowerCase().includes('not found') ||
+                             err?.response?.data?.error === 'Task not found';
+          
+          if (isNotFound) {
+            // Task not found (expired/cleaned up) - stop polling silently
+            console.debug(`[VideoRenderQueue] Task ${taskId} not found, stopping poll`);
+            stopPolling(taskId);
+            if (sceneNumber !== undefined) {
+              setJobs((prev) => ({
+                ...prev,
+                [sceneNumber]: {
+                  ...(prev[sceneNumber] || { scene_number: sceneNumber }),
+                  status: 'failed',
+                  progress: 0,
+                  error: 'Task expired or not found. Please try again.',
+                },
+              }));
+            } else {
+              setCombineStatus('failed');
+            }
+            return; // Don't process further for expected 404s
+          }
+          
+          // Other errors - handle normally
           stopPolling(taskId);
           if (sceneNumber !== undefined) {
             setJobs((prev) => ({

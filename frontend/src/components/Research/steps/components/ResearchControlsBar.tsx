@@ -1,17 +1,20 @@
 import React from 'react';
 import { ProviderAvailability } from '../../../../api/researchConfig';
 import { industries } from '../utils/constants';
+import { PersonalizationIndicator } from './PersonalizationIndicator';
 
 interface ResearchControlsBarProps {
   industry: string;
   providerAvailability: ProviderAvailability | null;
   onIndustryChange: (industry: string) => void;
+  hasPersona?: boolean;
 }
 
 export const ResearchControlsBar: React.FC<ResearchControlsBarProps> = ({
   industry,
   providerAvailability,
   onIndustryChange,
+  hasPersona = false,
 }) => {
   const dropdownStyle = {
     minWidth: '130px',
@@ -83,21 +86,29 @@ export const ResearchControlsBar: React.FC<ResearchControlsBarProps> = ({
         flexWrap: 'wrap',
       }}>
         {/* Industry Dropdown */}
-        <select
-          value={industry}
-          onChange={(e) => onIndustryChange(e.target.value)}
-          title="Select industry for targeted research"
-          style={dropdownStyle}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          {industries.map(ind => (
-            <option key={ind} value={ind}>{ind}</option>
-          ))}
-        </select>
-
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <select
+            value={industry}
+            onChange={(e) => onIndustryChange(e.target.value)}
+            title="Select industry for targeted research"
+            style={dropdownStyle}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            {industries.map(ind => (
+              <option key={ind} value={ind}>{ind}</option>
+            ))}
+          </select>
+          {hasPersona && industry !== 'General' && (
+            <PersonalizationIndicator 
+              type="keywords" 
+              hasPersona={hasPersona}
+              source="from your research persona"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

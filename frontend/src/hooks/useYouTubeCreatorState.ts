@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { VideoPlan, Scene } from '../services/youtubeApi';
-import { Resolution, DurationType, VideoType } from '../components/YouTubeCreator/constants';
+import { Resolution, DurationType, VideoType, YouTubeContentLanguage } from '../components/YouTubeCreator/constants';
 
 export interface YouTubeCreatorState {
   // Step 1: Plan inputs
@@ -12,6 +12,10 @@ export interface YouTubeCreatorState {
   brandStyle: string;
   referenceImage: string;
   avatarUrl: string | null;
+  // Step 1: Language (used for multilingual audio now; later for multilingual planning/scenes)
+  language: YouTubeContentLanguage;
+  // WaveSpeed Minimax parameter `language_boost`
+  languageBoost: string;
   // Note: avatarPreview is not persisted (can be blob URL) - regenerated from avatarUrl
   
   // Step 1: Plan output
@@ -46,6 +50,8 @@ const DEFAULT_STATE: YouTubeCreatorState = {
   brandStyle: '',
   referenceImage: '',
   avatarUrl: null,
+  language: 'en',
+  languageBoost: 'English',
   videoPlan: null,
   scenes: [],
   editingSceneId: null,

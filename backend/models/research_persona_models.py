@@ -39,12 +39,44 @@ class ResearchPersona(BaseModel):
     
     # Domain & Source Intelligence
     suggested_exa_domains: List[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="4-6 authoritative domains for the industry"
     )
     suggested_exa_category: Optional[str] = Field(
-        None, 
+        None,
         description="Suggested Exa category based on industry"
+    )
+    suggested_exa_search_type: Optional[str] = Field(
+        None,
+        description="Suggested Exa search algorithm: auto, neural, keyword, fast, deep"
+    )
+
+    # Tavily Provider Intelligence
+    suggested_tavily_topic: Optional[str] = Field(
+        None,
+        description="Suggested Tavily topic: general, news, finance"
+    )
+    suggested_tavily_search_depth: Optional[str] = Field(
+        None,
+        description="Suggested Tavily search depth: basic, advanced, fast, ultra-fast"
+    )
+    suggested_tavily_include_answer: Optional[str] = Field(
+        None,
+        description="Suggested Tavily answer type: false, basic, advanced"
+    )
+    suggested_tavily_time_range: Optional[str] = Field(
+        None,
+        description="Suggested Tavily time range: day, week, month, year"
+    )
+    suggested_tavily_raw_content_format: Optional[str] = Field(
+        None,
+        description="Suggested Tavily raw content format: false, markdown, text"
+    )
+
+    # Provider Selection Logic
+    provider_recommendations: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Provider recommendations by use case: {'trends': 'tavily', 'deep_research': 'exa', 'factual': 'google'}"
     )
     
     # Query Enhancement Intelligence
@@ -88,6 +120,19 @@ class ResearchPersona(BaseModel):
                 },
                 "suggested_exa_domains": ["pubmed.gov", "nejm.org", "thelancet.com"],
                 "suggested_exa_category": "research paper",
+                "suggested_exa_search_type": "neural",
+                "suggested_tavily_topic": "news",
+                "suggested_tavily_search_depth": "advanced",
+                "suggested_tavily_include_answer": "advanced",
+                "suggested_tavily_time_range": "month",
+                "suggested_tavily_raw_content_format": "markdown",
+                "provider_recommendations": {
+                    "trends": "tavily",
+                    "deep_research": "exa",
+                    "factual": "google",
+                    "news": "tavily",
+                    "academic": "exa"
+                },
                 "research_angles": [
                     "Compare telemedicine platforms",
                     "Telemedicine ROI analysis",

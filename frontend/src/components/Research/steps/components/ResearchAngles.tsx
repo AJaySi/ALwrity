@@ -1,12 +1,14 @@
 import React from 'react';
 import { formatAngle } from '../../../../utils/researchAngles';
+import { PersonalizationIndicator } from './PersonalizationIndicator';
 
 interface ResearchAnglesProps {
   angles: string[];
   onUseAngle: (angle: string) => void;
+  hasPersona?: boolean;
 }
 
-export const ResearchAngles: React.FC<ResearchAnglesProps> = ({ angles, onUseAngle }) => {
+export const ResearchAngles: React.FC<ResearchAnglesProps> = ({ angles, onUseAngle, hasPersona = false }) => {
   if (angles.length === 0) return null;
 
   return (
@@ -33,6 +35,13 @@ export const ResearchAngles: React.FC<ResearchAnglesProps> = ({ angles, onUseAng
         }}>
           Explore Alternative Research Angles
         </span>
+        {hasPersona && (
+          <PersonalizationIndicator 
+            type="angles" 
+            hasPersona={hasPersona}
+            source="from your writing patterns"
+          />
+        )}
       </div>
       <div style={{
         display: 'grid',

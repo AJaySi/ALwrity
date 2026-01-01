@@ -56,7 +56,9 @@ class TaskManager:
         self.cleanup_old_tasks()
         
         if task_id not in self.task_storage:
-            logger.warning(f"[StoryWriter] Task not found: {task_id}")
+            # Log at DEBUG level - task not found is expected when tasks expire or are cleaned up
+            # This prevents log spam from frontend polling for expired/completed tasks
+            logger.debug(f"[StoryWriter] Task not found: {task_id} (may have expired or been cleaned up)")
             return None
         
         task = self.task_storage[task_id]

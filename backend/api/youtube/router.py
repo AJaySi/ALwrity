@@ -287,7 +287,7 @@ async def create_video_plan(
                 
                 # Check for existing YouTube creator avatar in asset library
                 asset_service = ContentAssetService(db)
-                existing_avatars = asset_service.get_assets(
+                existing_avatars, _ = asset_service.get_user_assets(
                     user_id=user_id,
                     asset_type=AssetType.IMAGE,
                     source_module=AssetSource.YOUTUBE_CREATOR,
@@ -685,11 +685,12 @@ async def render_single_scene_video(
 async def get_render_status(
     task_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     """
     Get the status of a video rendering task.
     
     Returns current progress, status, and result when complete.
+    Returns None if task not found (matches podcast pattern for graceful handling).
     """
     try:
         require_authenticated_user(current_user)
@@ -697,24 +698,17 @@ async def get_render_status(
         logger.debug(f"[YouTubeAPI] Getting render status for task: {task_id}")
         task_status = task_manager.get_task_status(task_id)
         if not task_status:
-            logger.warning(
-                f"[YouTubeAPI] Task {task_id} not found. "
-                f"Available tasks: {list(task_manager.task_storage.keys())[:5]}..."
+            # Log at DEBUG level - null is expected when tasks expire or server restarts
+            # This prevents log spam from frontend polling for expired/completed tasks
+            # Return None instead of raising 404 to match podcast pattern for graceful frontend handling
+            logger.debug(
+                f"[YouTubeAPI] Task {task_id} not found (may have expired or been cleaned up). "
+                f"Available tasks: {len(task_manager.task_storage)}"
             )
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "Task not found",
-                    "message": "The render task was not found. It may have expired, been cleaned up, or the server may have restarted.",
-                    "task_id": task_id,
-                    "user_action": "Please try rendering again."
-                }
-            )
+            return None
         
         return task_status
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"[YouTubeAPI] Error getting render status: {e}", exc_info=True)
         raise HTTPException(
@@ -1201,6 +1195,12 @@ def _execute_scene_video_render_task(
             result=result,
         )
 
+        # Verify the task status was updated correctly (matches podcast pattern)
+        updated_status = task_manager.get_task_status(task_id)
+        logger.info(
+            f"[YouTubeRenderer] Task status after update: task_id={task_id}, status={updated_status.get('status') if updated_status else 'None'}, has_result={bool(updated_status.get('result') if updated_status else False)}, video_url={updated_status.get('result', {}).get('video_url') if updated_status else 'N/A'}"
+        )
+
         logger.info(
             f"[YouTubeRenderer] ✅ Single-scene render {task_id} completed (scene {scene_num}), cost=${total_cost:.2f}"
         )
@@ -1348,27 +1348,37 @@ async def list_videos(
     List videos for the current user from the asset library (source: youtube_creator).
     Used to rescue/persist scene videos after reloads.
     """
-    user_id = require_authenticated_user(current_user)
-    asset_service = ContentAssetService(db)
+    try:
+        user_id = require_authenticated_user(current_user)
+        asset_service = ContentAssetService(db)
 
-    assets = asset_service.get_assets(
-        user_id=user_id,
-        asset_type=AssetType.VIDEO,
-        source_module=AssetSource.YOUTUBE_CREATOR,
-        limit=100,
-    )
+        assets, _ = asset_service.get_user_assets(
+            user_id=user_id,
+            asset_type=AssetType.VIDEO,
+            source_module=AssetSource.YOUTUBE_CREATOR,
+            limit=100,
+        )
 
-    videos = []
-    for asset in assets:
-        videos.append({
-            "scene_number": asset.asset_metadata.get("scene_number") if asset.asset_metadata else None,
-            "video_url": asset.file_url,
-            "filename": asset.filename,
-            "created_at": asset.created_at,
-            "resolution": asset.asset_metadata.get("resolution") if asset.asset_metadata else None,
-        })
+        videos = []
+        for asset in assets:
+            try:
+                videos.append({
+                    "scene_number": asset.asset_metadata.get("scene_number") if asset.asset_metadata else None,
+                    "video_url": asset.file_url,
+                    "filename": asset.filename,
+                    "created_at": asset.created_at.isoformat() if asset.created_at else None,
+                    "resolution": asset.asset_metadata.get("resolution") if asset.asset_metadata else None,
+                })
+            except Exception as asset_error:
+                logger.warning(f"[YouTubeAPI] Error processing asset {asset.id if hasattr(asset, 'id') else 'unknown'}: {asset_error}")
+                continue  # Skip this asset and continue with others
 
-    return VideoListResponse(videos=videos)
+        logger.info(f"[YouTubeAPI] Listed {len(videos)} videos for user {user_id}")
+        return VideoListResponse(videos=videos)
+    except Exception as e:
+        logger.error(f"[YouTubeAPI] Error listing videos: {e}", exc_info=True)
+        # Return empty list on error rather than failing completely
+        return VideoListResponse(videos=[], success=False, message=f"Failed to list videos: {str(e)}")
 
 
 def _execute_combine_video_task(

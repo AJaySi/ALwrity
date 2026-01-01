@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { blogWriterApi, TaskStatusResponse } from '../services/blogWriterApi';
+import { researchEngineApi } from '../services/researchEngineApi';
 import { triggerSubscriptionError } from '../api/client';
 
 export interface UsePollingOptions {
@@ -240,7 +241,24 @@ export function usePolling(
 
 // Specialized hooks for specific operations
 export function useResearchPolling(options: UsePollingOptions = {}) {
-  return usePolling(blogWriterApi.pollResearchStatus, options);
+  // Use new Research Engine polling endpoint
+  return usePolling(
+    async (taskId: string): Promise<TaskStatusResponse> => {
+      const response = await researchEngineApi.pollStatus(taskId);
+      // Transform ResearchTaskStatusResponse to TaskStatusResponse
+      return {
+        task_id: taskId,
+        status: response.status as 'pending' | 'running' | 'completed' | 'failed',
+        created_at: new Date().toISOString(),
+        progress_messages: response.progress_messages || [],
+        result: response.result || undefined,
+        error: response.error,
+        error_status: response.error_status,
+        error_data: response.error_data,
+      };
+    },
+    options
+  );
 }
 
 export function useOutlinePolling(options: UsePollingOptions = {}) {

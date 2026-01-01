@@ -2,7 +2,9 @@
 Main Video Generation Service
 
 Provides a unified interface for AI video generation providers.
-Initial support: Hugging Face Inference Providers (text-to-video).
+Supports:
+- Text-to-video: Hugging Face Inference Providers, WaveSpeed models
+- Image-to-video: WaveSpeed WAN 2.5, Kandinsky 5 Pro
 Stubs included for Gemini (Veo 3) and OpenAI (Sora) for future use.
 """
 from __future__ import annotations
@@ -11,7 +13,8 @@ import os
 import base64
 import io
 import sys
-from typing import Any, Dict, Optional, Union
+import asyncio
+from typing import Any, Dict, Optional, Union, Callable
 
 from fastapi import HTTPException
 
@@ -37,6 +40,7 @@ def _get_api_key(provider: str) -> Optional[str]:
         manager = APIKeyManager()
         mapping = {
             "huggingface": "hf_token",
+            "wavespeed": "wavespeed",     # WaveSpeed API key
             "gemini": "gemini",          # placeholder for Veo 3
             "openai": "openai_api_key",  # placeholder for Sora
         }
@@ -211,6 +215,115 @@ def _generate_with_huggingface(
         })
 
 
+async def _generate_image_to_video_wavespeed(
+    image_data: Optional[bytes] = None,
+    image_base64: Optional[str] = None,
+    prompt: str = "",
+    duration: int = 5,
+    resolution: str = "720p",
+    model: str = "alibaba/wan-2.5/image-to-video",
+    negative_prompt: Optional[str] = None,
+    seed: Optional[int] = None,
+    audio_base64: Optional[str] = None,
+    enable_prompt_expansion: bool = True,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Generate video from image using WaveSpeed (WAN 2.5 or Kandinsky 5 Pro).
+    
+    Args:
+        image_data: Image bytes (required if image_base64 not provided)
+        image_base64: Image in base64 or data URI format (required if image_data not provided)
+        prompt: Text prompt describing the video motion
+        duration: Video duration in seconds (5 or 10)
+        resolution: Output resolution (480p, 720p, 1080p)
+        model: Model to use (alibaba/wan-2.5/image-to-video, wavespeed/kandinsky5-pro/image-to-video)
+        negative_prompt: Optional negative prompt
+        seed: Optional random seed
+        audio_base64: Optional audio file for synchronization
+        enable_prompt_expansion: Enable prompt optimization
+        
+    Returns:
+        Dictionary with video_bytes and metadata (cost, duration, resolution, width, height, etc.)
+    """
+    # Import here to avoid circular dependencies
+    from services.image_studio.wan25_service import WAN25Service
+    
+    logger.info(f"[video_gen] WaveSpeed image-to-video: model={model}, resolution={resolution}, duration={duration}s")
+    
+    # Validate inputs
+    if not image_data and not image_base64:
+        raise ValueError("Either image_data or image_base64 must be provided for image-to-video")
+    
+    # Convert image_data to base64 if needed
+    if image_data and not image_base64:
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        # Add data URI prefix if not present
+        if not image_base64.startswith("data:"):
+            image_base64 = f"data:image/png;base64,{image_base64}"
+    
+    # Initialize WAN25Service (handles both WAN 2.5 and Kandinsky 5 Pro)
+    wan25_service = WAN25Service()
+    
+    try:
+        # Generate video using WAN25Service (returns full metadata)
+        result = await wan25_service.generate_video(
+            image_base64=image_base64,
+            prompt=prompt,
+            audio_base64=audio_base64,
+            resolution=resolution,
+            duration=duration,
+            negative_prompt=negative_prompt,
+            seed=seed,
+            enable_prompt_expansion=enable_prompt_expansion,
+            progress_callback=progress_callback,
+        )
+        
+        video_bytes = result.get("video_bytes")
+        if not video_bytes:
+            raise ValueError("WAN25Service returned no video bytes")
+        
+        if not isinstance(video_bytes, bytes):
+            raise TypeError(f"Expected bytes from WAN25Service, got {type(video_bytes)}")
+        
+        if len(video_bytes) == 0:
+            raise ValueError("Received empty video bytes from WaveSpeed API")
+        
+        logger.info(f"[video_gen] Successfully generated image-to-video: {len(video_bytes)} bytes")
+        
+        # Return video bytes with metadata
+        return {
+            "video_bytes": video_bytes,
+            "prompt": result.get("prompt", prompt),
+            "duration": result.get("duration", float(duration)),
+            "model_name": result.get("model_name", model),
+            "cost": result.get("cost", 0.0),
+            "provider": result.get("provider", "wavespeed"),
+            "resolution": result.get("resolution", resolution),
+            "width": result.get("width", 1280),
+            "height": result.get("height", 720),
+            "metadata": result.get("metadata", {}),
+            "source_video_url": result.get("source_video_url"),
+            "prediction_id": result.get("prediction_id"),
+        }
+        
+    except HTTPException:
+        # Re-raise HTTPExceptions from WAN25Service
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        error_type = type(e).__name__
+        logger.error(f"[video_gen] WaveSpeed image-to-video error ({error_type}): {error_msg}", exc_info=True)
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": f"WaveSpeed image-to-video generation failed: {error_msg}",
+                "error_type": error_type
+            }
+        )
+
+
 def _generate_with_gemini(prompt: str, **kwargs) -> bytes:
     raise VideoProviderNotImplemented("Gemini Veo 3 integration coming soon.")
 
@@ -218,25 +331,153 @@ def _generate_with_openai(prompt: str, **kwargs) -> bytes:
     raise VideoProviderNotImplemented("OpenAI Sora integration coming soon.")
 
 
-def ai_video_generate(
+async def _generate_text_to_video_wavespeed(
     prompt: str,
+    duration: int = 5,
+    resolution: str = "720p",
+    model: str = "hunyuan-video-1.5",
+    negative_prompt: Optional[str] = None,
+    seed: Optional[int] = None,
+    audio_base64: Optional[str] = None,
+    enable_prompt_expansion: bool = True,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Generate text-to-video using WaveSpeed models.
+    
+    Args:
+        prompt: Text prompt describing the video
+        duration: Video duration in seconds
+        resolution: Output resolution (480p, 720p)
+        model: Model identifier (e.g., "hunyuan-video-1.5")
+        negative_prompt: Optional negative prompt
+        seed: Optional random seed
+        audio_base64: Optional audio (not supported by all models)
+        enable_prompt_expansion: Enable prompt optimization (not supported by all models)
+        progress_callback: Optional progress callback function
+        **kwargs: Additional model-specific parameters
+        
+    Returns:
+        Dictionary with video_bytes, prompt, duration, model_name, cost, etc.
+    """
+    from .video_generation.wavespeed_provider import get_wavespeed_text_to_video_service
+    
+    logger.info(f"[video_gen] WaveSpeed text-to-video: model={model}, resolution={resolution}, duration={duration}s")
+    
+    # Get the appropriate service for the model
+    try:
+        service = get_wavespeed_text_to_video_service(model)
+    except ValueError as e:
+        logger.error(f"[video_gen] Unsupported WaveSpeed text-to-video model: {model}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    
+    # Generate video using the service
+    try:
+        result = await service.generate_video(
+            prompt=prompt,
+            duration=duration,
+            resolution=resolution,
+            negative_prompt=negative_prompt,
+            seed=seed,
+            audio_base64=audio_base64,
+            enable_prompt_expansion=enable_prompt_expansion,
+            progress_callback=progress_callback,
+            **kwargs
+        )
+        
+        logger.info(f"[video_gen] Successfully generated text-to-video: {len(result.get('video_bytes', b''))} bytes")
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTPExceptions from service
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        error_type = type(e).__name__
+        logger.error(f"[video_gen] WaveSpeed text-to-video error ({error_type}): {error_msg}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": f"WaveSpeed text-to-video generation failed: {error_msg}",
+                "type": error_type,
+            }
+        )
+
+
+async def ai_video_generate(
+    prompt: Optional[str] = None,
+    image_data: Optional[bytes] = None,
+    image_base64: Optional[str] = None,
+    operation_type: str = "text-to-video",
     provider: str = "huggingface",
     user_id: Optional[str] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
     **kwargs,
-) -> bytes:
+) -> Dict[str, Any]:
     """
-    Unified video generation entry point.
-
-    - provider: 'huggingface' (default), 'gemini' (veo3 stub), 'openai' (sora stub)
-    - kwargs: num_frames, guidance_scale, num_inference_steps, negative_prompt, seed, model
-
-    Returns raw video bytes (mp4/webm depending on provider).
+    Unified video generation entry point for ALL video operations.
+    
+    Supports:
+    - text-to-video: prompt required, provider: 'huggingface', 'wavespeed', 'gemini' (stub), 'openai' (stub)
+    - image-to-video: image_data or image_base64 required, provider: 'wavespeed'
+    
+    Args:
+        prompt: Text prompt (required for text-to-video)
+        image_data: Image bytes (required for image-to-video if image_base64 not provided)
+        image_base64: Image base64 string (required for image-to-video if image_data not provided)
+        operation_type: "text-to-video" or "image-to-video" (default: "text-to-video")
+        provider: Provider name (default: "huggingface" for text-to-video, "wavespeed" for image-to-video)
+        user_id: Required for subscription/usage tracking
+        progress_callback: Optional function(progress: float, message: str) -> None
+            Called at key stages: submission (10%), polling (20-80%), completion (100%)
+        **kwargs: Model-specific parameters:
+            - For text-to-video: num_frames, guidance_scale, num_inference_steps, negative_prompt, seed, model
+            - For image-to-video: duration, resolution, negative_prompt, seed, audio_base64, enable_prompt_expansion, model
+    
+    Returns:
+        Dictionary with:
+        - video_bytes: Raw video bytes (mp4/webm depending on provider)
+        - prompt: The prompt used (may be enhanced)
+        - duration: Video duration in seconds
+        - model_name: Model used for generation
+        - cost: Cost of generation
+        - provider: Provider name
+        - resolution: Video resolution (for image-to-video)
+        - width: Video width in pixels (for image-to-video)
+        - height: Video height in pixels (for image-to-video)
+        - metadata: Additional metadata dict
     """
-    logger.info(f"[video_gen] provider={provider}")
+    logger.info(f"[video_gen] operation={operation_type}, provider={provider}")
 
     # Enforce authentication usage like text gen does
     if not user_id:
         raise RuntimeError("user_id is required for subscription/usage tracking.")
+
+    # Validate operation type and required inputs
+    if operation_type == "text-to-video":
+        if not prompt:
+            raise ValueError("prompt is required for text-to-video generation")
+        # Set default provider if not specified
+        if provider == "huggingface" and "model" not in kwargs:
+            kwargs.setdefault("model", "tencent/HunyuanVideo")
+    elif operation_type == "image-to-video":
+        if not image_data and not image_base64:
+            raise ValueError("image_data or image_base64 is required for image-to-video generation")
+        # Set default provider and model for image-to-video
+        if provider not in ["wavespeed"]:
+            logger.warning(f"[video_gen] Provider {provider} not supported for image-to-video, defaulting to wavespeed")
+            provider = "wavespeed"
+        if "model" not in kwargs:
+            kwargs.setdefault("model", "alibaba/wan-2.5/image-to-video")
+        # Set defaults for image-to-video
+        kwargs.setdefault("duration", 5)
+        kwargs.setdefault("resolution", "720p")
+    else:
+        raise ValueError(f"Invalid operation_type: {operation_type}. Must be 'text-to-video' or 'image-to-video'")
 
     # PRE-FLIGHT VALIDATION: Validate video generation before API call
     # MUST happen BEFORE any API calls - return immediately if validation fails
@@ -259,32 +500,141 @@ def ai_video_generate(
     finally:
         db.close()
     
-    logger.info(f"[Video Generation] ✅ Pre-flight validation passed - proceeding with video generation")
+    logger.info(f"[Video Generation] ✅ Pre-flight validation passed - proceeding with {operation_type}")
 
-    # Generate video
-    model_name = kwargs.get("model", "tencent/HunyuanVideo")
+    # Progress callback: Initial submission
+    if progress_callback:
+        progress_callback(10.0, f"Submitting {operation_type} request to {provider}...")
+
+    # Generate video based on operation type
+    model_name = kwargs.get("model", _get_default_model(operation_type, provider))
     try:
-        if provider == "huggingface":
-            video_bytes = _generate_with_huggingface(
-                prompt=prompt,
-                **kwargs,
-            )
-        elif provider == "gemini":
-            video_bytes = _generate_with_gemini(prompt=prompt, **kwargs)
-        elif provider == "openai":
-            video_bytes = _generate_with_openai(prompt=prompt, **kwargs)
-        else:
-            raise RuntimeError(f"Unknown video provider: {provider}")
+        if operation_type == "text-to-video":
+            if provider == "huggingface":
+                video_bytes = _generate_with_huggingface(
+                    prompt=prompt,
+                    **kwargs,
+                )
+                # For text-to-video, create metadata dict (HuggingFace doesn't return metadata)
+                result_dict = {
+                    "video_bytes": video_bytes,
+                    "prompt": prompt,
+                    "duration": kwargs.get("duration", 5.0),
+                    "model_name": model_name,
+                    "cost": 0.10,  # Default cost, will be calculated in track_video_usage
+                    "provider": provider,
+                    "resolution": kwargs.get("resolution", "720p"),
+                    "width": 1280,  # Default, actual may vary
+                    "height": 720,  # Default, actual may vary
+                    "metadata": {},
+                }
+            elif provider == "wavespeed":
+                # WaveSpeed text-to-video - use unified service
+                result_dict = await _generate_text_to_video_wavespeed(
+                    prompt=prompt,
+                    progress_callback=progress_callback,
+                    **kwargs,
+                )
+            elif provider == "gemini":
+                video_bytes = _generate_with_gemini(prompt=prompt, **kwargs)
+                result_dict = {
+                    "video_bytes": video_bytes,
+                    "prompt": prompt,
+                    "duration": kwargs.get("duration", 5.0),
+                    "model_name": model_name,
+                    "cost": 0.10,
+                    "provider": provider,
+                    "resolution": kwargs.get("resolution", "720p"),
+                    "width": 1280,
+                    "height": 720,
+                    "metadata": {},
+                }
+            elif provider == "openai":
+                video_bytes = _generate_with_openai(prompt=prompt, **kwargs)
+                result_dict = {
+                    "video_bytes": video_bytes,
+                    "prompt": prompt,
+                    "duration": kwargs.get("duration", 5.0),
+                    "model_name": model_name,
+                    "cost": 0.10,
+                    "provider": provider,
+                    "resolution": kwargs.get("resolution", "720p"),
+                    "width": 1280,
+                    "height": 720,
+                    "metadata": {},
+                }
+            else:
+                raise RuntimeError(f"Unknown provider for text-to-video: {provider}")
         
+        elif operation_type == "image-to-video":
+            if provider == "wavespeed":
+                # Progress callback: Starting generation
+                if progress_callback:
+                    progress_callback(20.0, "Video generation in progress...")
+                
+                # Handle async call from sync context
+                # Since ai_video_generate is sync, we need to run async function
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # We're in an async context - use ThreadPoolExecutor to run in new event loop
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                asyncio.run,
+                                _generate_image_to_video_wavespeed(
+                                    image_data=image_data,
+                                    image_base64=image_base64,
+                                    prompt=prompt or kwargs.get("prompt", ""),
+                                    progress_callback=progress_callback,
+                                    **kwargs
+                                )
+                            )
+                            result_dict = future.result()
+                    else:
+                        # Event loop exists but not running - use it
+                        result_dict = loop.run_until_complete(_generate_image_to_video_wavespeed(
+                            image_data=image_data,
+                            image_base64=image_base64,
+                            prompt=prompt or kwargs.get("prompt", ""),
+                            progress_callback=progress_callback,
+                            **kwargs
+                        ))
+                except RuntimeError:
+                    # No event loop exists, create a new one
+                    result_dict = asyncio.run(_generate_image_to_video_wavespeed(
+                        image_data=image_data,
+                        image_base64=image_base64,
+                        prompt=prompt or kwargs.get("prompt", ""),
+                        progress_callback=progress_callback,
+                        **kwargs
+                    ))
+                video_bytes = result_dict["video_bytes"]
+                model_name = result_dict.get("model_name", model_name)
+                
+                # Progress callback: Processing result
+                if progress_callback:
+                    progress_callback(90.0, "Processing video result...")
+            else:
+                raise RuntimeError(f"Unknown provider for image-to-video: {provider}. Only 'wavespeed' is supported.")
+        
+        # Track usage (same pattern as text generation)
+        # Use cost from result_dict if available, otherwise calculate
+        cost_override = result_dict.get("cost") if operation_type == "image-to-video" else kwargs.get("cost_override")
         track_video_usage(
             user_id=user_id,
             provider=provider,
             model_name=model_name,
-            prompt=prompt,
+            prompt=result_dict.get("prompt", prompt or ""),
             video_bytes=video_bytes,
+            cost_override=cost_override,
         )
 
-        return video_bytes
+        # Progress callback: Complete
+        if progress_callback:
+            progress_callback(100.0, "Video generation complete!")
+
+        return result_dict
         
     except HTTPException:
         # Re-raise HTTPExceptions (e.g., from validation or API errors)
@@ -292,6 +642,16 @@ def ai_video_generate(
     except Exception as e:
         logger.error(f"[video_gen] Error during video generation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail={"error": str(e)})
+
+
+def _get_default_model(operation_type: str, provider: str) -> str:
+    """Get default model for operation type and provider."""
+    defaults = {
+        ("text-to-video", "huggingface"): "tencent/HunyuanVideo",
+        ("text-to-video", "wavespeed"): "hunyuan-video-1.5",
+        ("image-to-video", "wavespeed"): "alibaba/wan-2.5/image-to-video",
+    }
+    return defaults.get((operation_type, provider), "hunyuan-video-1.5")
 
 
 def track_video_usage(
@@ -386,7 +746,7 @@ def track_video_usage(
             cost_total=cost_per_video,
             response_time=0.0,
             status_code=200,
-            request_size=len(prompt.encode("utf-8")),
+            request_size=len((prompt or "").encode("utf-8")),
             response_size=len(video_bytes),
             billing_period=current_period,
         )

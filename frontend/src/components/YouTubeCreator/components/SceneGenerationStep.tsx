@@ -39,6 +39,7 @@ interface SceneGenerationStepProps {
   loading: boolean;
   avatarUrl?: string | null;
   videoPlanIdea?: string;
+  language?: string; // Language code for language-aware voice selection
   onBack: () => void;
   onNext: () => void;
 }
@@ -60,6 +61,7 @@ export const SceneGenerationStep: React.FC<SceneGenerationStepProps> = React.mem
   loading,
   avatarUrl,
   videoPlanIdea,
+  language,
   onBack,
   onNext,
 }) => {
@@ -177,6 +179,7 @@ export const SceneGenerationStep: React.FC<SceneGenerationStepProps> = React.mem
                   generatingAudio={generatingAudioSceneId === scene.scene_number}
                   avatarUrl={avatarUrl}
                   videoPlanIdea={videoPlanIdea}
+                  language={language}
                 />
               ))}
             </Stack>

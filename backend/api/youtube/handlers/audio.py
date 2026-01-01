@@ -26,6 +26,76 @@ YOUTUBE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 # Initialize audio service
 audio_service = StoryAudioGenerationService(output_dir=str(YOUTUBE_AUDIO_DIR))
 
+# WaveSpeed Minimax Speech voice ids include language-specific voices
+# Ref: https://wavespeed.ai/docs/docs-api/minimax/minimax_speech_voice_id
+LANGUAGE_CODE_TO_LANGUAGE_BOOST = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "hi": "Hindi",
+    "ar": "Arabic",
+    "ru": "Russian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese",
+    "vi": "Vietnamese",
+    "id": "Indonesian",
+    "tr": "Turkish",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "th": "Thai",
+    "uk": "Ukrainian",
+    "el": "Greek",
+    "cs": "Czech",
+    "fi": "Finnish",
+    "ro": "Romanian",
+}
+
+# Default language-specific Minimax voices (first-choice). We keep English on the existing "persona" voices.
+LANGUAGE_BOOST_TO_DEFAULT_VOICE_ID = {
+    "Spanish": "Spanish_male_1_v1",
+    "French": "French_male_1_v1",
+    "German": "German_male_1_v1",
+    "Portuguese": "Portuguese_male_1_v1",
+    "Italian": "Italian_male_1_v1",
+    "Hindi": "Hindi_male_1_v1",
+    "Arabic": "Arabic_male_1_v1",
+    "Russian": "Russian_male_1_v1",
+    "Japanese": "Japanese_male_1_v1",
+    "Korean": "Korean_male_1_v1",
+    "Chinese": "Chinese_male_1_v1",
+    "Vietnamese": "Vietnamese_male_1_v1",
+    "Indonesian": "Indonesian_male_1_v1",
+    "Turkish": "Turkish_male_1_v1",
+    "Dutch": "Dutch_male_1_v1",
+    "Polish": "Polish_male_1_v1",
+    "Thai": "Thai_male_1_v1",
+    "Ukrainian": "Ukrainian_male_1_v1",
+    "Greek": "Greek_male_1_v1",
+    "Czech": "Czech_male_1_v1",
+    "Finnish": "Finnish_male_1_v1",
+    "Romanian": "Romanian_male_1_v1",
+}
+
+
+def _resolve_language_boost(language: Optional[str], explicit_language_boost: Optional[str]) -> str:
+    """
+    Determine the effective WaveSpeed `language_boost`.
+    - If user explicitly provided language_boost, use it (including "auto").
+    - Else if language code provided, map to the WaveSpeed boost label.
+    - Else default to English (backwards compatible).
+    """
+    if explicit_language_boost is not None and str(explicit_language_boost).strip() != "":
+        return str(explicit_language_boost).strip()
+
+    if language is not None and str(language).strip() != "":
+        lang_code = str(language).strip().lower()
+        return LANGUAGE_CODE_TO_LANGUAGE_BOOST.get(lang_code, "auto")
+
+    return "English"
 
 def select_optimal_emotion(scene_title: str, narration: str, video_plan_context: Optional[Dict[str, Any]] = None) -> str:
     """
@@ -153,6 +223,7 @@ class YouTubeAudioRequest(BaseModel):
     scene_title: str
     text: str
     voice_id: Optional[str] = None  # Will auto-select based on content if not provided
+    language: Optional[str] = None  # Language code for multilingual audio (e.g., "en", "es", "fr")
     speed: float = 1.0
     volume: float = 1.0
     pitch: float = 0.0
@@ -164,7 +235,7 @@ class YouTubeAudioRequest(BaseModel):
     bitrate: int = 256000  # Highest quality: 256kbps (valid values: 32000, 64000, 128000, 256000)
     channel: Optional[str] = "2"  # Stereo for richer audio (valid values: "1" or "2")
     format: Optional[str] = "mp3"  # Universal format for web
-    language_boost: Optional[str] = "English"  # Optimize for English content
+    language_boost: Optional[str] = None  # If not provided, inferred from `language` (or defaults to English)
     enable_sync_mode: bool = True
     # Context for intelligent voice/emotion selection
     video_plan_context: Optional[Dict[str, Any]] = None  # Optional video plan for context-aware voice selection
@@ -224,13 +295,24 @@ async def generate_youtube_scene_audio(
 
         logger.info(f"[YouTubeAudio] Text preprocessing: {len(request.text)} -> {len(processed_text)} characters")
 
+        effective_language_boost = _resolve_language_boost(request.language, request.language_boost)
+
         # Intelligent voice and emotion selection based on content analysis
         if not request.voice_id:
-            selected_voice = select_optimal_voice(
-                request.scene_title,
-                processed_text,
-                request.video_plan_context
-            )
+            # If non-English language is selected, default to the language-specific Minimax voice_id.
+            # Otherwise keep the existing English persona voice selection logic.
+            if effective_language_boost in LANGUAGE_BOOST_TO_DEFAULT_VOICE_ID and effective_language_boost not in ["English", "auto"]:
+                selected_voice = LANGUAGE_BOOST_TO_DEFAULT_VOICE_ID[effective_language_boost]
+                logger.info(
+                    f"[VoiceSelection] Using language-specific default voice '{selected_voice}' "
+                    f"(language_boost={effective_language_boost}, language={request.language})"
+                )
+            else:
+                selected_voice = select_optimal_voice(
+                    request.scene_title,
+                    processed_text,
+                    request.video_plan_context
+                )
         else:
             selected_voice = request.voice_id
 
@@ -244,7 +326,10 @@ async def generate_youtube_scene_audio(
         else:
             selected_emotion = request.emotion
 
-        logger.info(f"[YouTubeAudio] Voice selection: {selected_voice}, Emotion: {selected_emotion}")
+        logger.info(
+            f"[YouTubeAudio] Voice selection: {selected_voice}, Emotion: {selected_emotion}, "
+            f"language={request.language}, language_boost={effective_language_boost}"
+        )
 
         # Build kwargs for optional parameters - use defaults if None
         # WaveSpeed API requires specific values, so we provide sensible defaults
@@ -252,7 +337,11 @@ async def generate_youtube_scene_audio(
         optional_kwargs = {}
 
         # DEBUG: Log what values we received
-        logger.info(f"[YouTubeAudio] Request parameters: sample_rate={request.sample_rate}, bitrate={request.bitrate}, channel={request.channel}, format={request.format}, language_boost={request.language_boost}")
+        logger.info(
+            f"[YouTubeAudio] Request parameters: sample_rate={request.sample_rate}, bitrate={request.bitrate}, "
+            f"channel={request.channel}, format={request.format}, language_boost={request.language_boost}, "
+            f"effective_language_boost={effective_language_boost}, language={request.language}"
+        )
 
         # sample_rate: Use provided value or omit (WaveSpeed will use default)
         if request.sample_rate is not None:
@@ -276,9 +365,9 @@ async def generate_youtube_scene_audio(
         if request.format is not None:
             optional_kwargs["format"] = request.format
 
-        # language_boost: Use provided value or omit (WaveSpeed will use default)
-        if request.language_boost is not None:
-            optional_kwargs["language_boost"] = request.language_boost
+        # language_boost: always send resolved value (improves pronunciation and helps multilingual voices)
+        if effective_language_boost is not None and str(effective_language_boost).strip() != "":
+            optional_kwargs["language_boost"] = effective_language_boost
 
         logger.info(f"[YouTubeAudio] Final optional_kwargs: {optional_kwargs}")
         

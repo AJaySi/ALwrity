@@ -107,26 +107,136 @@ class YouTubeVideoRendererService:
                 try:
                     from pathlib import Path
                     from urllib.parse import urlparse
+                    import requests
+                    
+                    logger.info(f"[YouTubeRenderer] Attempting to load existing audio for scene {scene_number} from URL: {scene_audio_url}")
                     
                     # Extract filename from URL (e.g., /api/youtube/audio/filename.mp3)
                     parsed_url = urlparse(scene_audio_url)
                     audio_filename = Path(parsed_url.path).name
                     
-                    # Load audio file
+                    # Try to load from local file system first
                     base_dir = Path(__file__).parent.parent.parent.parent
                     youtube_audio_dir = base_dir / "youtube_audio"
                     audio_path = youtube_audio_dir / audio_filename
                     
-                    if audio_path.exists():
+                    # Debug: If file not found, try to find it with flexible matching
+                    if not audio_path.exists():
+                        logger.debug(f"[YouTubeRenderer] Audio file not found at {audio_path}. Searching for alternative matches...")
+                        if youtube_audio_dir.exists():
+                            all_files = list(youtube_audio_dir.glob("*.mp3"))
+                            logger.debug(f"[YouTubeRenderer] Found {len(all_files)} MP3 files in directory")
+                            
+                            # Try to find a file that matches the scene (by scene number or title pattern)
+                            # The filename format is: scene_{scene_number}_{clean_title}_{unique_id}.mp3
+                            # Extract components from expected filename
+                            expected_parts = audio_filename.replace('.mp3', '').split('_')
+                            if len(expected_parts) >= 3:
+                                scene_num_str = expected_parts[1] if expected_parts[0] == 'scene' else None
+                                title_part = expected_parts[2] if len(expected_parts) > 2 else None
+                                
+                                # Try to find files matching scene number or title
+                                matching_files = []
+                                for f in all_files:
+                                    file_parts = f.stem.split('_')
+                                    if len(file_parts) >= 3 and file_parts[0] == 'scene':
+                                        file_scene_num = file_parts[1]
+                                        file_title = file_parts[2] if len(file_parts) > 2 else ''
+                                        
+                                        # Match by scene number (try both 0-indexed and 1-indexed)
+                                        if scene_num_str:
+                                            scene_num_int = int(scene_num_str)
+                                            file_scene_int = int(file_scene_num) if file_scene_num.isdigit() else None
+                                            if file_scene_int == scene_num_int or file_scene_int == scene_num_int - 1 or file_scene_int == scene_num_int + 1:
+                                                matching_files.append(f.name)
+                                        # Or match by title
+                                        elif title_part and title_part.lower() in file_title.lower():
+                                            matching_files.append(f.name)
+                                
+                                if matching_files:
+                                    logger.info(
+                                        f"[YouTubeRenderer] Found potential audio file matches for scene {scene_number}: {matching_files[:3]}. "
+                                        f"Expected: {audio_filename}"
+                                    )
+                                    # Try using the first match
+                                    alternative_path = youtube_audio_dir / matching_files[0]
+                                    if alternative_path.exists() and alternative_path.is_file():
+                                        logger.info(f"[YouTubeRenderer] Using alternative audio file: {matching_files[0]}")
+                                        audio_path = alternative_path
+                                        audio_filename = matching_files[0]
+                                    else:
+                                        logger.warning(f"[YouTubeRenderer] Alternative match found but file doesn't exist: {alternative_path}")
+                            else:
+                                # Show sample files for debugging
+                                sample_files = [f.name for f in all_files[:10] if f.name.startswith("scene_")]
+                                if sample_files:
+                                    logger.debug(f"[YouTubeRenderer] Sample scene audio files in directory: {sample_files}")
+                    
+                    if audio_path.exists() and audio_path.is_file():
                         with open(audio_path, "rb") as f:
                             audio_bytes = f.read()
                         audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                        logger.info(f"[YouTubeRenderer] Using existing audio for scene {scene_number} from {audio_filename}")
+                        logger.info(f"[YouTubeRenderer] ✅ Using existing audio for scene {scene_number} from local file: {audio_filename} ({len(audio_bytes)} bytes)")
                     else:
-                        logger.warning(f"[YouTubeRenderer] Audio file not found: {audio_path}, will generate new audio")
-                        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+                        # File not found locally - try loading from asset library
+                        logger.warning(
+                            f"[YouTubeRenderer] Audio file not found locally at {audio_path}. "
+                            f"Attempting to load from asset library (filename: {audio_filename})"
+                        )
+                        
+                        try:
+                            from services.content_asset_service import ContentAssetService
+                            from services.database import get_db
+                            from models.content_asset_models import AssetType, AssetSource
+                            
+                            db = next(get_db())
+                            try:
+                                asset_service = ContentAssetService(db)
+                                # Try to find the asset by filename and source
+                                assets = asset_service.get_assets(
+                                    user_id=user_id,
+                                    asset_type=AssetType.AUDIO,
+                                    source_module=AssetSource.YOUTUBE_CREATOR,
+                                    limit=100,
+                                )
+                                
+                                # Find matching asset by filename
+                                matching_asset = None
+                                for asset in assets:
+                                    if asset.filename == audio_filename:
+                                        matching_asset = asset
+                                        break
+                                
+                                if matching_asset and matching_asset.file_path:
+                                    asset_path = Path(matching_asset.file_path)
+                                    if asset_path.exists() and asset_path.is_file():
+                                        with open(asset_path, "rb") as f:
+                                            audio_bytes = f.read()
+                                        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                                        logger.info(
+                                            f"[YouTubeRenderer] ✅ Loaded audio for scene {scene_number} from asset library: "
+                                            f"{audio_filename} ({len(audio_bytes)} bytes)"
+                                        )
+                                    else:
+                                        raise FileNotFoundError(f"Asset library file path does not exist: {asset_path}")
+                                else:
+                                    raise FileNotFoundError(f"Audio asset not found in library for filename: {audio_filename}")
+                            finally:
+                                db.close()
+                        except Exception as asset_error:
+                            logger.warning(
+                                f"[YouTubeRenderer] Failed to load audio from asset library: {asset_error}. "
+                                f"Original path attempted: {audio_path}"
+                            )
+                            raise FileNotFoundError(
+                                f"Audio file not found at {audio_path} and not found in asset library: {asset_error}"
+                            )
+                                
+                except FileNotFoundError as e:
+                    logger.warning(f"[YouTubeRenderer] ❌ Audio file not found: {e}. Will generate new audio if enabled.")
+                    scene_audio_url = None  # Fall back to generation
                 except Exception as e:
-                    logger.warning(f"[YouTubeRenderer] Failed to load existing audio: {e}, will generate new audio")
+                    logger.warning(f"[YouTubeRenderer] ❌ Failed to load existing audio: {e}. Will generate new audio if enabled.", exc_info=True)
                     scene_audio_url = None  # Fall back to generation
             
             # Generate audio if not available and generation is enabled

@@ -23,3 +23,8 @@ export type { AssetLibraryImageModalProps } from './AssetLibraryImageModal';
 // Audio Settings modal (shared across tools)
 export { AudioSettingsModal } from './AudioSettingsModal';
 export type { AudioGenerationSettings } from './AudioSettingsModal';
+
+// Image Generation modal (shared across tools)
+export { ImageGenerationModal } from './ImageGenerationModal';
+export * from './ImageGenerationModal.types';
+export * from './ImageGenerationPresets';

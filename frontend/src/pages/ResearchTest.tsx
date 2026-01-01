@@ -4,6 +4,8 @@ import { BlogResearchResponse } from '../services/blogWriterApi';
 import { getResearchConfig, PersonaDefaults, refreshResearchPersona, ResearchPersona, getCompetitorAnalysis, CompetitorAnalysisResponse } from '../api/researchConfig';
 import { ResearchPersonaModal } from '../components/Research/ResearchPersonaModal';
 import { OnboardingCompetitorModal } from '../components/Research/OnboardingCompetitorModal';
+import { Tooltip } from '@mui/material';
+import { AutoAwesome } from '@mui/icons-material';
 
 const samplePresets = [
   {
@@ -694,8 +696,28 @@ export const ResearchTest: React.FC = () => {
               }}>
                 🎯
               </div>
-              <h3 style={{ margin: 0, color: '#0c4a6e', fontSize: '18px', fontWeight: '600' }}>
+              <h3 style={{ margin: 0, color: '#0c4a6e', fontSize: '18px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 Quick Start Presets
+                {personaExists && (
+                  <Tooltip
+                    title={
+                      <div style={{ padding: '4px 0' }}>
+                        <div style={{ fontWeight: 600, marginBottom: '4px', fontSize: '13px' }}>
+                          Personalized Presets
+                        </div>
+                        <div style={{ fontSize: '12px', lineHeight: '1.5' }}>
+                          These presets are customized based on your content types, writing patterns, and website topics from your research persona.
+                        </div>
+                      </div>
+                    }
+                    arrow
+                    placement="top"
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help', color: '#0ea5e9' }}>
+                      <AutoAwesome sx={{ fontSize: 16 }} />
+                    </span>
+                  </Tooltip>
+                )}
               </h3>
             </div>
             
@@ -1031,6 +1053,10 @@ export const ResearchTest: React.FC = () => {
          data={competitorData}
          loading={loadingCompetitors}
          error={competitorError}
+         onRefresh={(newData) => {
+           setCompetitorData(newData);
+           setCompetitorError(null);
+         }}
        />
 
        {/* Research Persona Details Modal */}
@@ -1236,6 +1262,212 @@ export const ResearchTest: React.FC = () => {
                                   ? (preset.keywords as string[]).join(', ')
                                   : 'N/A'}
                             </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Keyword Expansion Patterns */}
+                 {researchPersona.keyword_expansion_patterns && Object.keys(researchPersona.keyword_expansion_patterns).length > 0 && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Keyword Expansion Patterns ({Object.keys(researchPersona.keyword_expansion_patterns).length})
+                     </h3>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                       {Object.entries(researchPersona.keyword_expansion_patterns).map(([keyword, expansions], idx) => (
+                         <div key={idx} style={{ padding: '12px', background: 'rgba(14, 165, 233, 0.05)', borderRadius: '8px' }}>
+                           <div style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a', marginBottom: '6px' }}>
+                             {keyword}:
+                           </div>
+                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                             {(expansions as string[]).map((expansion, expIdx) => (
+                               <span
+                                 key={expIdx}
+                                 style={{
+                                   padding: '4px 10px',
+                                   background: 'rgba(14, 165, 233, 0.1)',
+                                   borderRadius: '12px',
+                                   fontSize: '12px',
+                                   color: '#0369a1',
+                                 }}
+                               >
+                                 {expansion}
+                               </span>
+                             ))}
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Exa Provider Settings */}
+                 {(researchPersona.suggested_exa_domains?.length > 0 || researchPersona.suggested_exa_category || researchPersona.suggested_exa_search_type) && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Exa Provider Settings
+                     </h3>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
+                       {researchPersona.suggested_exa_domains && researchPersona.suggested_exa_domains.length > 0 && (
+                         <div>
+                           <div style={{ color: '#64748b', marginBottom: '6px' }}>Suggested Domains:</div>
+                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                             {researchPersona.suggested_exa_domains.map((domain, idx) => (
+                               <span
+                                 key={idx}
+                                 style={{
+                                   padding: '4px 10px',
+                                   background: 'rgba(14, 165, 233, 0.1)',
+                                   borderRadius: '12px',
+                                   fontSize: '12px',
+                                   color: '#0369a1',
+                                 }}
+                               >
+                                 {domain}
+                               </span>
+                             ))}
+                           </div>
+                         </div>
+                       )}
+                       {researchPersona.suggested_exa_category && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b' }}>Category:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.suggested_exa_category}</span>
+                         </div>
+                       )}
+                       {researchPersona.suggested_exa_search_type && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b' }}>Search Type:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.suggested_exa_search_type}</span>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Tavily Provider Settings */}
+                 {(researchPersona.suggested_tavily_topic || researchPersona.suggested_tavily_search_depth || researchPersona.suggested_tavily_include_answer || researchPersona.suggested_tavily_time_range || researchPersona.suggested_tavily_raw_content_format) && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Tavily Provider Settings
+                     </h3>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px' }}>
+                       {researchPersona.suggested_tavily_topic && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b' }}>Topic:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.suggested_tavily_topic}</span>
+                         </div>
+                       )}
+                       {researchPersona.suggested_tavily_search_depth && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b' }}>Search Depth:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.suggested_tavily_search_depth}</span>
+                         </div>
+                       )}
+                       {researchPersona.suggested_tavily_include_answer && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b' }}>Include Answer:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.suggested_tavily_include_answer}</span>
+                         </div>
+                       )}
+                       {researchPersona.suggested_tavily_time_range && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b' }}>Time Range:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.suggested_tavily_time_range}</span>
+                         </div>
+                       )}
+                       {researchPersona.suggested_tavily_raw_content_format && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b' }}>Raw Content Format:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>{researchPersona.suggested_tavily_raw_content_format}</span>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Provider Recommendations */}
+                 {researchPersona.provider_recommendations && Object.keys(researchPersona.provider_recommendations).length > 0 && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Provider Recommendations
+                     </h3>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px' }}>
+                        {Object.entries(researchPersona.provider_recommendations).map(([useCase, provider], idx) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#64748b', textTransform: 'capitalize' }}>{useCase.replace('_', ' ')}:</span>
+                            <span style={{ color: '#0f172a', fontWeight: '500', textTransform: 'uppercase' }}>{String(provider)}</span>
+                          </div>
+                        ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Query Enhancement Rules */}
+                 {researchPersona.query_enhancement_rules && Object.keys(researchPersona.query_enhancement_rules).length > 0 && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Query Enhancement Rules ({Object.keys(researchPersona.query_enhancement_rules).length})
+                     </h3>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                       {Object.entries(researchPersona.query_enhancement_rules).map(([pattern, template], idx) => (
+                         <div key={idx} style={{ padding: '12px', background: 'rgba(14, 165, 233, 0.05)', borderRadius: '8px' }}>
+                           <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'capitalize' }}>
+                             {pattern.replace('_', ' ')}:
+                           </div>
+                           <div style={{ fontSize: '14px', color: '#0f172a', fontWeight: '500' }}>
+                             {template as string}
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Research Preferences */}
+                 {researchPersona.research_preferences && Object.keys(researchPersona.research_preferences).length > 0 && (
+                   <div style={{
+                     background: 'rgba(255, 255, 255, 0.9)',
+                     padding: '20px',
+                     borderRadius: '12px',
+                     border: '1px solid rgba(14, 165, 233, 0.2)',
+                   }}>
+                     <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>
+                       Research Preferences
+                     </h3>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px' }}>
+                       {Object.entries(researchPersona.research_preferences).map(([key, value], idx) => (
+                         <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                           <span style={{ color: '#64748b', textTransform: 'capitalize' }}>{key.replace('_', ' ')}:</span>
+                           <span style={{ color: '#0f172a', fontWeight: '500' }}>
+                             {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                           </span>
                          </div>
                        ))}
                      </div>

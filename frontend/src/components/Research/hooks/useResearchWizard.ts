@@ -5,15 +5,18 @@ import { ResearchMode, ResearchConfig, BlogResearchResponse } from '../../../ser
 const WIZARD_STATE_KEY = 'alwrity_research_wizard_state';
 const MAX_STEPS = 3; // Input (combined) -> Progress -> Results
 
+// Default state: "General" is a placeholder that gets replaced by persona defaults on mount
+// Phase 2: Backend never returns "General" - persona defaults are always hyper-personalized
+// ResearchInput.tsx loads persona defaults and updates these values immediately
 const defaultState: WizardState = {
   currentStep: 1,
   keywords: [],
-  industry: 'General',
-  targetAudience: 'General',
-  researchMode: 'basic' as ResearchMode,
+  industry: 'General',  // Placeholder - replaced by persona defaults on mount
+  targetAudience: 'General',  // Placeholder - replaced by persona defaults on mount
+  researchMode: 'comprehensive' as ResearchMode,
   config: {
-    mode: 'basic',
-    provider: 'google',
+    mode: 'comprehensive',
+    provider: 'exa',  // Phase 2: Default to Exa (primary provider)
     max_sources: 10,
     include_statistics: true,
     include_expert_quotes: true,

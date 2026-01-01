@@ -10,7 +10,7 @@ from loguru import logger
 
 from .wan25_service import WAN25Service
 from .infinitetalk_adapter import InfiniteTalkService
-from services.llm_providers.main_video_generation import track_video_usage
+from services.llm_providers.main_video_generation import ai_video_generate
 from utils.logger_utils import get_service_logger
 from utils.file_storage import save_file_safely, sanitize_filename
 
@@ -114,7 +114,7 @@ class TransformStudioService:
         request: TransformImageToVideoRequest,
         user_id: str,
     ) -> Dict[str, Any]:
-        """Transform image to video using WAN 2.5.
+        """Transform image to video using unified video generation entry point.
         
         Args:
             request: Transform request
@@ -128,42 +128,33 @@ class TransformStudioService:
             f"resolution={request.resolution}, duration={request.duration}s"
         )
         
-        # Generate video using WAN 2.5
-        result = await self.wan25_service.generate_video(
+        # Use unified video generation entry point
+        # This handles pre-flight validation, generation, and usage tracking
+        # Returns dict with video_bytes and full metadata
+        result = ai_video_generate(
             image_base64=request.image_base64,
             prompt=request.prompt,
-            audio_base64=request.audio_base64,
-            resolution=request.resolution,
+            operation_type="image-to-video",
+            provider="wavespeed",
+            user_id=user_id,
             duration=request.duration,
+            resolution=request.resolution,
             negative_prompt=request.negative_prompt,
             seed=request.seed,
+            audio_base64=request.audio_base64,
             enable_prompt_expansion=request.enable_prompt_expansion,
+            model="alibaba/wan-2.5/image-to-video",
         )
+        
+        # Extract video bytes and metadata from result
+        video_bytes = result["video_bytes"]
         
         # Save video to disk
         save_result = self._save_video_file(
-            video_bytes=result["video_bytes"],
+            video_bytes=video_bytes,
             operation_type="image-to-video",
             user_id=user_id,
         )
-        
-        # Track usage
-        try:
-            usage_info = track_video_usage(
-                user_id=user_id,
-                provider=result["provider"],
-                model_name=result["model_name"],
-                prompt=result["prompt"],
-                video_bytes=result["video_bytes"],
-                cost_override=result["cost"],
-            )
-            logger.info(
-                f"[Transform Studio] Usage tracked: {usage_info.get('current_calls', 0)} / "
-                f"{usage_info.get('video_limit_display', '∞')} videos, "
-                f"cost=${result['cost']:.2f}"
-            )
-        except Exception as e:
-            logger.warning(f"[Transform Studio] Failed to track usage: {e}")
         
         # Save to asset library
         try:
@@ -184,17 +175,17 @@ class TransformStudioService:
                     mime_type="video/mp4",
                     title=f"Transform: Image-to-Video ({request.resolution})",
                     description=f"Generated video using WAN 2.5: {request.prompt[:100]}",
-                    prompt=result["prompt"],
+                    prompt=result.get("prompt", request.prompt),
                     tags=["image_studio", "transform", "video", "image-to-video", request.resolution],
-                    provider=result["provider"],
-                    model=result["model_name"],
-                    cost=result["cost"],
+                    provider=result.get("provider", "wavespeed"),
+                    model=result.get("model_name", "alibaba/wan-2.5/image-to-video"),
+                    cost=result.get("cost", 0.0),
                     asset_metadata={
                         "resolution": request.resolution,
-                        "duration": result["duration"],
+                        "duration": result.get("duration", float(request.duration)),
                         "operation": "image-to-video",
-                        "width": result["width"],
-                        "height": result["height"],
+                        "width": result.get("width", 1280),
+                        "height": result.get("height", 720),
                     }
                 )
                 logger.info(f"[Transform Studio] Video saved to asset library")
@@ -207,14 +198,14 @@ class TransformStudioService:
             "success": True,
             "video_url": save_result["file_url"],
             "video_base64": None,  # Don't include base64 for large videos
-            "duration": result["duration"],
-            "resolution": result["resolution"],
-            "width": result["width"],
-            "height": result["height"],
+            "duration": result.get("duration", float(request.duration)),
+            "resolution": result.get("resolution", request.resolution),
+            "width": result.get("width", 1280),
+            "height": result.get("height", 720),
             "file_size": save_result["file_size"],
-            "cost": result["cost"],
-            "provider": result["provider"],
-            "model": result["model_name"],
+            "cost": result.get("cost", 0.0),
+            "provider": result.get("provider", "wavespeed"),
+            "model": result.get("model_name", "alibaba/wan-2.5/image-to-video"),
             "metadata": result.get("metadata", {}),
         }
     

@@ -316,6 +316,10 @@ app.include_router(youtube_router, prefix="/api")
 # Include research configuration router
 app.include_router(research_config_router, prefix="/api/research", tags=["research"])
 
+# Include Research Engine router (standalone AI research module)
+from api.research.router import router as research_engine_router
+app.include_router(research_engine_router, tags=["Research Engine"])
+
 # Scheduler dashboard routes
 from api.scheduler_dashboard import router as scheduler_dashboard_router
 app.include_router(scheduler_dashboard_router)

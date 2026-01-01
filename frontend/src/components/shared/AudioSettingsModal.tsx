@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -21,6 +21,16 @@ import {
 } from "@mui/material";
 import { HelpOutline as HelpOutlineIcon, Close as CloseIcon, VolumeUp } from "@mui/icons-material";
 import { Button } from "@mui/material";
+
+// Import language-aware voice mapping (optional - only used in YouTube Creator context)
+let getVoicesForLanguage: ((language?: string) => any[]) | undefined;
+try {
+  const youtubeConstants = require('../../components/YouTubeCreator/constants');
+  getVoicesForLanguage = youtubeConstants.getVoicesForLanguage;
+} catch {
+  // Not in YouTube Creator context - will use fallback English voices
+  getVoicesForLanguage = undefined;
+}
 
 export type AudioGenerationSettings = {
   voiceId: string;
@@ -45,28 +55,11 @@ interface AudioSettingsModalProps {
   isGenerating?: boolean;
   sceneTitle?: string;
   isRegenerating?: boolean;
+  language?: string; // Language code (e.g., 'en', 'es', 'fr') - used to filter voice options
 }
 
-// Voice options from minimax/speech-02-hd with personality descriptions
-const VOICE_OPTIONS = [
-  { id: "Wise_Woman", name: "Wise Woman", personality: "Authoritative, trustworthy female voice - perfect for educational content and expert narration" },
-  { id: "Friendly_Person", name: "Friendly Person", personality: "Warm, approachable voice - great for welcoming introductions and customer-facing content" },
-  { id: "Inspirational_girl", name: "Inspirational Girl", personality: "Motivational, uplifting female voice - ideal for inspirational and motivational content" },
-  { id: "Deep_Voice_Man", name: "Deep Voice Man", personality: "Powerful, commanding male voice - excellent for serious topics and authoritative delivery" },
-  { id: "Calm_Woman", name: "Calm Woman", personality: "Soothing, composed female voice - perfect for meditation, relaxation, or sensitive topics" },
-  { id: "Casual_Guy", name: "Casual Guy", personality: "Relaxed, conversational male voice - great for vlogs, tutorials, and informal content" },
-  { id: "Lively_Girl", name: "Lively Girl", personality: "Energetic, enthusiastic female voice - ideal for exciting announcements and upbeat content" },
-  { id: "Patient_Man", name: "Patient Man", personality: "Gentle, understanding male voice - perfect for explanations and patient guidance" },
-  { id: "Young_Knight", name: "Young Knight", personality: "Brave, confident male voice - great for adventure, gaming, and heroic narratives" },
-  { id: "Determined_Man", name: "Determined Man", personality: "Strong, resolute male voice - excellent for motivational speeches and determined delivery" },
-  { id: "Lovely_Girl", name: "Lovely Girl", personality: "Sweet, charming female voice - ideal for storytelling and gentle narratives" },
-  { id: "Decent_Boy", name: "Decent Boy", personality: "Honest, sincere male voice - perfect for testimonials and personal stories" },
-  { id: "Imposing_Manner", name: "Imposing Manner", personality: "Formal, dignified male voice - great for corporate content and official announcements" },
-  { id: "Elegant_Man", name: "Elegant Man", personality: "Refined, sophisticated male voice - ideal for luxury, premium content" },
-  { id: "Abbess", name: "Abbess", personality: "Spiritual, serene female voice - perfect for meditation, philosophy, or contemplative content" },
-  { id: "Sweet_Girl_2", name: "Sweet Girl 2", personality: "Gentle, melodic female voice - excellent for children's content and soft storytelling" },
-  { id: "Exuberant_Girl", name: "Exuberant Girl", personality: "Joyful, expressive female voice - ideal for celebrations and happy announcements" },
-];
+// Import language-aware voice mapping (fallback to English voices if not in YouTube Creator context)
+// This will be dynamically loaded based on language prop
 
 const EMOTION_OPTIONS = ["happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral"];
 
@@ -108,12 +101,38 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
   isGenerating = false,
   sceneTitle,
   isRegenerating = false,
+  language,
 }) => {
   const [settings, setSettings] = useState<AudioGenerationSettings>(initialSettings);
 
-  useEffect(() => {
-    setSettings(initialSettings);
-  }, [initialSettings]);
+  // Fallback English voices (used when language-aware mapping is not available)
+  const ENGLISH_VOICES_FALLBACK = [
+    { id: "Wise_Woman", name: "Wise Woman", personality: "Authoritative, trustworthy female voice - perfect for educational content and expert narration" },
+    { id: "Friendly_Person", name: "Friendly Person", personality: "Warm, approachable voice - great for welcoming introductions and customer-facing content" },
+    { id: "Inspirational_girl", name: "Inspirational Girl", personality: "Motivational, uplifting female voice - ideal for inspirational and motivational content" },
+    { id: "Deep_Voice_Man", name: "Deep Voice Man", personality: "Powerful, commanding male voice - excellent for serious topics and authoritative delivery" },
+    { id: "Calm_Woman", name: "Calm Woman", personality: "Soothing, composed female voice - perfect for meditation, relaxation, or sensitive topics" },
+    { id: "Casual_Guy", name: "Casual Guy", personality: "Relaxed, conversational male voice - great for vlogs, tutorials, and informal content" },
+    { id: "Lively_Girl", name: "Lively Girl", personality: "Energetic, enthusiastic female voice - ideal for exciting announcements and upbeat content" },
+    { id: "Patient_Man", name: "Patient Man", personality: "Gentle, understanding male voice - perfect for explanations and patient guidance" },
+    { id: "Young_Knight", name: "Young Knight", personality: "Brave, confident male voice - great for adventure, gaming, and heroic narratives" },
+    { id: "Determined_Man", name: "Determined Man", personality: "Strong, resolute male voice - excellent for motivational speeches and determined delivery" },
+    { id: "Lovely_Girl", name: "Lovely Girl", personality: "Sweet, charming female voice - ideal for storytelling and gentle narratives" },
+    { id: "Decent_Boy", name: "Decent Boy", personality: "Honest, sincere male voice - perfect for testimonials and personal stories" },
+    { id: "Imposing_Manner", name: "Imposing Manner", personality: "Formal, dignified male voice - great for corporate content and official announcements" },
+    { id: "Elegant_Man", name: "Elegant Man", personality: "Refined, sophisticated male voice - ideal for luxury, premium content" },
+    { id: "Abbess", name: "Abbess", personality: "Spiritual, serene female voice - perfect for meditation, philosophy, or contemplative content" },
+    { id: "Sweet_Girl_2", name: "Sweet Girl 2", personality: "Gentle, melodic female voice - excellent for children's content and soft storytelling" },
+    { id: "Exuberant_Girl", name: "Exuberant Girl", personality: "Joyful, expressive female voice - ideal for celebrations and happy announcements" },
+  ];
+
+  // Get language-specific voices (use language-aware mapping if available, fallback to English)
+  const VOICE_OPTIONS = useMemo(() => {
+    if (getVoicesForLanguage && language) {
+      return getVoicesForLanguage(language);
+    }
+    return ENGLISH_VOICES_FALLBACK;
+  }, [language]);
 
   const handleApply = () => {
     onApplySettings(settings);
@@ -169,24 +188,33 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                   <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
                     Voice Selection Guide
                   </Typography>
+                  {language && language !== 'en' && (
+                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: '#4ade80' }}>
+                      🌍 <strong>Language-specific voices</strong> are shown for {language.toUpperCase()} content. These voices provide native pronunciation and accent.
+                    </Typography>
+                  )}
                   <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
                     Choose a voice that matches your content's personality and target audience.
                   </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                    • <strong>YouTube/Vlogging</strong>: Casual Guy (default), Friendly Person - conversational and engaging
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                    • <strong>Educational/Tutorials</strong>: Wise Woman, Deep Voice Man - authoritative and trustworthy
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                    • <strong>Motivational</strong>: Inspirational Girl, Determined Man - energetic and inspiring
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                    • <strong>Relaxing/Storytelling</strong>: Calm Woman, Lovely Girl - soothing and gentle
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: 'block' }}>
-                    <strong>Default:</strong> Casual Guy - optimized for engaging YouTube narration.
-                  </Typography>
+                  {(!language || language === 'en') && (
+                    <>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>YouTube/Vlogging</strong>: Casual Guy (default), Friendly Person - conversational and engaging
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>Educational/Tutorials</strong>: Wise Woman, Deep Voice Man - authoritative and trustworthy
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>Motivational</strong>: Inspirational Girl, Determined Man - energetic and inspiring
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>Relaxing/Storytelling</strong>: Calm Woman, Lovely Girl - soothing and gentle
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block' }}>
+                        <strong>Default:</strong> Casual Guy - optimized for engaging YouTube narration.
+                      </Typography>
+                    </>
+                  )}
                 </Box>
               } arrow placement="right">
                 <IconButton size="small" sx={{ color: "rgba(255,255,255,0.5)" }}>
@@ -194,6 +222,11 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
                 </IconButton>
               </Tooltip>
             </Stack>
+            {language && language !== 'en' && (
+              <Typography variant="caption" sx={{ opacity: 0.8, mb: 1, display: 'block', color: '#4ade80' }}>
+                🌍 Showing {language.toUpperCase()} language-specific voices for native pronunciation
+              </Typography>
+            )}
             <FormControl fullWidth>
               <Select
                 value={settings.voiceId}

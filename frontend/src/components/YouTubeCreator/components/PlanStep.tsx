@@ -39,6 +39,8 @@ import {
   TARGET_AUDIENCE_OPTIONS,
   VIDEO_GOAL_OPTIONS,
   BRAND_STYLE_OPTIONS,
+  YOUTUBE_CONTENT_LANGUAGE_OPTIONS,
+  type YouTubeContentLanguage,
 } from '../constants';
 import { OperationButton } from '../../shared/OperationButton';
 import { AssetLibraryImageModal } from '../../shared/AssetLibraryImageModal';
@@ -60,6 +62,7 @@ interface PlanStepProps {
   avatarUrl?: string | null;
   uploadingAvatar?: boolean;
   makingPresentable?: boolean;
+  language: YouTubeContentLanguage;
   onIdeaChange: (idea: string) => void;
   onDurationChange: (duration: DurationType) => void;
   onVideoTypeChange: (type: VideoType | '') => void;
@@ -67,6 +70,7 @@ interface PlanStepProps {
   onVideoGoalChange: (goal: string) => void;
   onBrandStyleChange: (style: string) => void;
   onReferenceImageChange: (image: string) => void;
+  onLanguageChange: (language: YouTubeContentLanguage) => void;
   onGeneratePlan: () => void;
   onAvatarUpload: (file: File) => void;
   onRemoveAvatar: () => void;
@@ -87,6 +91,7 @@ export const PlanStep: React.FC<PlanStepProps> = React.memo(({
   avatarUrl,
   uploadingAvatar = false,
   makingPresentable = false,
+  language,
   onIdeaChange,
   onDurationChange,
   onVideoTypeChange,
@@ -94,6 +99,7 @@ export const PlanStep: React.FC<PlanStepProps> = React.memo(({
   onVideoGoalChange,
   onBrandStyleChange,
   onReferenceImageChange,
+  onLanguageChange,
   onGeneratePlan,
   onAvatarUpload,
   onRemoveAvatar,
@@ -443,6 +449,39 @@ export const PlanStep: React.FC<PlanStepProps> = React.memo(({
               </Select>
               <FormHelperText sx={helperSx}>
                 Shorts = vertical bite-sized (≤60s). Medium = quick explainers. Long = deep dives.
+              </FormHelperText>
+            </FormControl>
+          </Box>
+
+          {/* Content Language (affects multilingual audio) */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <InputLabel sx={labelSx}>Content Language</InputLabel>
+              <Tooltip
+                title="This controls narration pronunciation and the default voice selection for audio generation. You can still override per-scene in Audio Settings."
+                arrow
+                sx={tooltipSx}
+              >
+                <IconButton size="small" sx={{ ml: 0.5, p: 0.25, color: '#64748b' }}>
+                  <InfoOutlined fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            <FormControl fullWidth>
+              <Select
+                value={language}
+                onChange={(e) => onLanguageChange(e.target.value as YouTubeContentLanguage)}
+                sx={selectSx}
+                MenuProps={selectMenuProps}
+              >
+                {YOUTUBE_CONTENT_LANGUAGE_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText sx={helperSx}>
+                Sets default audio language (voice + pronunciation). Planning/scenes are still generated in English for now.
               </FormHelperText>
             </FormControl>
           </Box>

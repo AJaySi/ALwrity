@@ -100,13 +100,13 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
 
     switch (wizard.state.currentStep) {
       case 1:
-        return <ResearchInput {...stepProps} advanced={advanced} onAdvancedChange={setAdvanced} />;
+        return <ResearchInput {...stepProps} advanced={advanced} onAdvancedChange={setAdvanced} execution={execution} />;
       case 2:
         return <StepProgress {...stepProps} execution={execution} />;
       case 3:
-        return <StepResults {...stepProps} />;
+        return <StepResults {...stepProps} execution={execution} />;
       default:
-        return <ResearchInput {...stepProps} advanced={advanced} onAdvancedChange={setAdvanced} />;
+        return <ResearchInput {...stepProps} advanced={advanced} onAdvancedChange={setAdvanced} execution={execution} />;
     }
   };
 
@@ -335,6 +335,51 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
             >
               ← Back
             </button>
+
+            {/* Intent-Driven Research Button (Primary) - Only show on Step 1 */}
+            {wizard.state.currentStep === 1 && (
+              <button
+                onClick={async () => {
+                  // Analyze intent and execute if successful
+                  const analysis = await execution.analyzeIntent(wizard.state);
+                  if (analysis?.success) {
+                    // If high confidence, auto-execute
+                    if (analysis.intent.confidence >= 0.8 && !analysis.intent.needs_clarification) {
+                      const result = await execution.executeIntentResearch(wizard.state);
+                      if (result?.success) {
+                        wizard.updateState({ currentStep: 3 }); // Skip to results
+                      }
+                    }
+                  }
+                }}
+                disabled={!wizard.canGoNext() || execution.isAnalyzingIntent || execution.isExecuting}
+                style={{
+                  padding: '10px 24px',
+                  background: wizard.canGoNext() && !execution.isAnalyzingIntent
+                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                    : 'rgba(100, 116, 139, 0.2)',
+                  color: wizard.canGoNext() ? 'white' : '#94a3b8',
+                  border: 'none',
+                  borderRadius: '10px',
+                  cursor: wizard.canGoNext() && !execution.isAnalyzingIntent ? 'pointer' : 'not-allowed',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  marginRight: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                {execution.isAnalyzingIntent ? (
+                  <>🧠 Analyzing...</>
+                ) : execution.isExecuting ? (
+                  <>🔍 Researching...</>
+                ) : (
+                  <>🧠 Smart Research</>
+                )}
+              </button>
+            )}
 
             <button
               onClick={wizard.nextStep}

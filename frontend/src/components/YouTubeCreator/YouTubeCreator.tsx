@@ -21,7 +21,7 @@ import { ArrowBack } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { youtubeApi, type VideoPlan, type Scene } from '../../services/youtubeApi';
-import { STEPS, YT_RED, YT_BG, YT_BORDER, YT_TEXT, type Resolution, type DurationType, type VideoType } from './constants';
+import { STEPS, YT_RED, YT_BG, YT_BORDER, YT_TEXT, YOUTUBE_CONTENT_LANGUAGE_OPTIONS, type Resolution, type DurationType, type VideoType, type YouTubeContentLanguage } from './constants';
 import { PlanStep } from './components/PlanStep';
 import { ScenesStep } from './components/ScenesStep';
 import { SceneGenerationStep } from './components/SceneGenerationStep';
@@ -49,6 +49,8 @@ const YouTubeCreator: React.FC = () => {
     brandStyle,
     referenceImage,
     avatarUrl,
+    language,
+    languageBoost,
     videoPlan,
     scenes,
     editingSceneId,
@@ -545,6 +547,14 @@ const YouTubeCreator: React.FC = () => {
     return enrichedText;
   };
 
+  const handleLanguageChange = useCallback((value: YouTubeContentLanguage) => {
+    const opt = YOUTUBE_CONTENT_LANGUAGE_OPTIONS.find((o) => o.value === value);
+    updateState({
+      language: value,
+      languageBoost: opt?.languageBoost || 'auto',
+    });
+  }, [updateState]);
+
   const handleGenerateSceneAudio = useCallback(async (scene: Scene, audioSettings?: AudioGenerationSettings) => {
     console.log('[YouTubeCreator] handleGenerateSceneAudio called for scene', scene.scene_number);
     console.log('[YouTubeCreator] This should ONLY be called for audio generation, NOT image generation');
@@ -571,12 +581,12 @@ const YouTubeCreator: React.FC = () => {
         volume: 1.0, // Standard volume
         pitch: 0.0, // Neutral pitch for natural sound
         emotion: "happy", // Default emotion (backend will auto-select based on content)
-        englishNormalization: true, // Better handling of numbers, dates, and technical terms
+        englishNormalization: language === 'en', // Only applicable for English
         sampleRate: 44100, // CD quality audio
         bitrate: 256000, // Highest quality: 256kbps for professional audio
         channel: "2" as const, // Stereo for richer audio experience
         format: "mp3" as const, // Universal format
-        languageBoost: "English", // Optimize for English content
+        languageBoost: languageBoost || 'auto',
         enableSyncMode: true, // Reliable delivery
       };
 
@@ -605,6 +615,7 @@ const YouTubeCreator: React.FC = () => {
         sceneTitle: scene.title,
         text: enrichedText, // Send enriched text instead of just narration
         voiceId: settings.voiceId || undefined, // Will auto-select if empty
+        language,
         speed: settings.speed,
         volume: settings.volume,
         pitch: settings.pitch,
@@ -616,6 +627,13 @@ const YouTubeCreator: React.FC = () => {
         format: settings.format,
         languageBoost: settings.languageBoost,
         enableSyncMode: settings.enableSyncMode,
+        videoPlanContext: {
+          video_type: videoType,
+          target_audience: targetAudience,
+          tone: videoPlan?.tone,
+          visual_style: videoPlan?.visual_style,
+          video_goal: videoPlan?.video_goal,
+        },
       });
 
       console.log('[YouTubeCreator] Audio generation result:', result);
@@ -639,7 +657,7 @@ const YouTubeCreator: React.FC = () => {
     } finally {
       setGeneratingAudioSceneId(null);
     }
-  }, [scenes, updateState]);
+  }, [generatingAudioSceneId, language, languageBoost, scenes, targetAudience, updateState, videoPlan, videoType]);
 
   const handleStartRender = useCallback(async () => {
     if (scenes.length === 0) {
@@ -884,6 +902,7 @@ const YouTubeCreator: React.FC = () => {
           avatarUrl={avatarUrl}
           uploadingAvatar={uploadingAvatar}
           makingPresentable={makingPresentable}
+          language={language}
           onIdeaChange={(value) => updateState({ userIdea: value })}
           onDurationChange={(value) => updateState({ durationType: value })}
           onVideoTypeChange={(value) => updateState({ videoType: value })}
@@ -891,6 +910,7 @@ const YouTubeCreator: React.FC = () => {
           onVideoGoalChange={(value) => updateState({ videoGoal: value })}
           onBrandStyleChange={(value) => updateState({ brandStyle: value })}
           onReferenceImageChange={(value) => updateState({ referenceImage: value })}
+          onLanguageChange={handleLanguageChange}
           onGeneratePlan={handleGeneratePlan}
           onAvatarUpload={handleAvatarUpload}
           onRemoveAvatar={handleRemoveAvatar}
@@ -937,6 +957,7 @@ const YouTubeCreator: React.FC = () => {
           loading={loading}
           avatarUrl={avatarUrl}
           videoPlanIdea={videoPlan?.video_summary || userIdea}
+          language={state.language}
           onBack={() => setActiveStep(1)}
           onNext={() => setActiveStep(3)}
         />

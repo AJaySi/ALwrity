@@ -78,18 +78,18 @@ export const toolCategories: ToolCategories = {
         name: 'Audio Generator',
         description: 'AI voice synthesis and audio content creation',
         icon: React.createElement(AudioIcon),
-        status: 'premium',
+        status: 'beta',
         path: '/audio-generator',
         features: ['Voice Synthesis', 'Multiple Languages', 'Custom Voices', 'Audio Editing', 'Export Options'],
         isHighlighted: true
       },
       {
-        name: 'Video Generator',
-        description: 'AI video creation and multimedia content generation',
+        name: 'Video Studio',
+        description: 'AI video creation, enhancement, and social-ready delivery',
         icon: React.createElement(VideoIcon),
         status: 'premium',
-        path: '/video-generator',
-        features: ['AI Video Creation', 'Scene Generation', 'Voice Integration', 'Custom Branding', 'Export Formats'],
+        path: '/video-studio',
+        features: ['Text/Image to Video', 'Enhance & Upscale', 'Social Packs', 'Provider-Agnostic', 'Cost Transparency'],
         isHighlighted: true
       }
     ]

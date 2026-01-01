@@ -1,4 +1,9 @@
 import { BlogResearchResponse, ResearchMode, ResearchConfig } from '../../../services/blogWriterApi';
+import { 
+  ResearchIntent, 
+  AnalyzeIntentResponse, 
+  IntentDrivenResearchResponse 
+} from './intent.types';
 
 export interface WizardState {
   currentStep: number;
@@ -11,6 +16,7 @@ export interface WizardState {
 }
 
 export interface ResearchExecution {
+  // Legacy API
   executeResearch: (state: WizardState) => Promise<string | null>;
   stopExecution: () => void;
   isExecuting: boolean;
@@ -18,6 +24,19 @@ export interface ResearchExecution {
   progressMessages: Array<{ timestamp: string; message: string }>;
   currentStatus: string;
   result: any;
+  
+  // Intent-driven API
+  useIntentMode: boolean;
+  setUseIntentMode: (enabled: boolean) => void;
+  isAnalyzingIntent: boolean;
+  intentAnalysis: AnalyzeIntentResponse | null;
+  confirmedIntent: ResearchIntent | null;
+  intentResult: IntentDrivenResearchResponse | null;
+  analyzeIntent: (state: WizardState) => Promise<AnalyzeIntentResponse | null>;
+  confirmIntent: (intent: ResearchIntent) => void;
+  updateIntentField: <K extends keyof ResearchIntent>(field: K, value: ResearchIntent[K]) => void;
+  executeIntentResearch: (state: WizardState) => Promise<IntentDrivenResearchResponse | null>;
+  clearIntent: () => void;
 }
 
 export interface WizardStepProps {

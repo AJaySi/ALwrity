@@ -1,9 +1,20 @@
 import React from 'react';
-import { WizardStepProps } from '../types/research.types';
+import { WizardStepProps, ResearchExecution } from '../types/research.types';
 import { ResearchResults } from '../../BlogWriter/ResearchResults';
 import { BlogResearchResponse } from '../../../services/blogWriterApi';
+import { IntentResultsDisplay } from './components/IntentResultsDisplay';
+import { IntentDrivenResearchResponse } from '../types/intent.types';
 
-export const StepResults: React.FC<WizardStepProps> = ({ state, onUpdate, onBack }) => {
+interface StepResultsProps extends WizardStepProps {
+  execution?: ResearchExecution;
+}
+
+export const StepResults: React.FC<StepResultsProps> = ({ state, onUpdate, onBack, execution }) => {
+  // Check if we have intent-driven results
+  const intentResult: IntentDrivenResearchResponse | null = 
+    execution?.intentResult || 
+    (state.results as any)?.intent_result || 
+    null;
   if (!state.results) {
     return (
       <div style={{ padding: '24px', textAlign: 'center' }}>
@@ -100,8 +111,13 @@ export const StepResults: React.FC<WizardStepProps> = ({ state, onUpdate, onBack
         borderRadius: '8px',
         border: '1px solid #e0e0e0',
         overflow: 'hidden',
+        padding: intentResult ? '16px' : '0',
       }}>
-        <ResearchResults research={state.results} />
+        {intentResult ? (
+          <IntentResultsDisplay result={intentResult} />
+        ) : (
+          <ResearchResults research={state.results} />
+        )}
       </div>
 
       {/* Action Section */}

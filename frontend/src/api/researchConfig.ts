@@ -20,6 +20,22 @@ export interface PersonaDefaults {
   target_audience?: string;
   suggested_domains: string[];
   suggested_exa_category?: string;
+  has_research_persona?: boolean;  // Phase 2: Indicates if research persona exists
+  
+  // Phase 2: Additional fields for pre-filling advanced options
+  default_research_mode?: string;  // basic, comprehensive, targeted
+  default_provider?: string;  // exa, tavily, google
+  suggested_keywords?: string[];  // For keyword suggestions
+  research_angles?: string[];  // Alternative research focuses
+
+  // Phase 2+: Enhanced provider-specific defaults from research persona
+  suggested_exa_search_type?: string;  // auto, neural, keyword, fast, deep
+  suggested_tavily_topic?: string;  // general, news, finance
+  suggested_tavily_search_depth?: string;  // basic, advanced, fast, ultra-fast
+  suggested_tavily_include_answer?: string;  // false, basic, advanced
+  suggested_tavily_time_range?: string;  // day, week, month, year
+  suggested_tavily_raw_content_format?: string;  // false, markdown, text
+  provider_recommendations?: Record<string, string>;  // Use case -> provider mapping
 }
 
 export interface ResearchPreset {
@@ -42,6 +58,13 @@ export interface ResearchPersona {
   keyword_expansion_patterns: Record<string, string[]>;
   suggested_exa_domains: string[];
   suggested_exa_category?: string;
+  suggested_exa_search_type?: string;
+  suggested_tavily_topic?: string;
+  suggested_tavily_search_depth?: string;
+  suggested_tavily_include_answer?: string;
+  suggested_tavily_time_range?: string;
+  suggested_tavily_raw_content_format?: string;
+  provider_recommendations?: Record<string, string>;
   research_angles: string[];
   query_enhancement_rules: Record<string, string>;
   recommended_presets: ResearchPreset[];
@@ -64,8 +87,16 @@ export interface ResearchConfigResponse {
  */
 export const getProviderAvailability = async (): Promise<ProviderAvailability> => {
   try {
-    const response = await apiClient.get('/api/research/provider-availability');
-    return response.data;
+    const response = await apiClient.get('/api/research/providers/status');
+    const data = response.data || {};
+    return {
+      google_available: !!data.google?.available,
+      exa_available: !!data.exa?.available,
+      tavily_available: !!data.tavily?.available,
+      gemini_key_status: data.google?.available ? 'configured' : 'missing',
+      exa_key_status: data.exa?.available ? 'configured' : 'missing',
+      tavily_key_status: data.tavily?.available ? 'configured' : 'missing',
+    };
   } catch (error: any) {
     console.error('[researchConfig] Error getting provider availability:', error);
     throw new Error(`Failed to get provider availability: ${error?.response?.statusText || error.message}`);
@@ -93,6 +124,9 @@ let pendingConfigRequest: Promise<ResearchConfigResponse> | null = null;
  * 
  * Uses request deduplication: if multiple components call this simultaneously,
  * they will share the same promise to prevent duplicate API calls.
+ * 
+ * Fetches complete configuration including provider availability, persona defaults,
+ * and research persona from the unified /api/research/config endpoint.
  */
 export const getResearchConfig = async (): Promise<ResearchConfigResponse> => {
   // If a request is already in flight, return the same promise
@@ -104,8 +138,33 @@ export const getResearchConfig = async (): Promise<ResearchConfigResponse> => {
   // Create new request and cache it
   pendingConfigRequest = (async () => {
     try {
+      // Use the unified /api/research/config endpoint which returns everything
       const response = await apiClient.get('/api/research/config');
-      return response.data;
+      const config: ResearchConfigResponse = response.data;
+
+      console.log('[researchConfig] Config loaded:', {
+        providers: {
+          exa: config.provider_availability?.exa_available,
+          tavily: config.provider_availability?.tavily_available,
+          google: config.provider_availability?.google_available,
+        },
+        personaDefaults: {
+          industry: config.persona_defaults?.industry,
+          target_audience: config.persona_defaults?.target_audience,
+          hasDomains: config.persona_defaults?.suggested_domains?.length > 0,
+          hasResearchPersona: config.persona_defaults?.has_research_persona,
+        },
+        researchPersona: {
+          exists: !!config.research_persona,
+          hasPresets: !!config.research_persona?.recommended_presets?.length,
+        },
+        onboarding: {
+          completed: config.onboarding_completed,
+          personaScheduled: config.persona_scheduled,
+        },
+      });
+
+      return config;
     } catch (error: any) {
       const statusCode = error?.response?.status;
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error';
@@ -116,20 +175,57 @@ export const getResearchConfig = async (): Promise<ResearchConfigResponse> => {
         fullError: error
       });
       
-      // Provide more specific error messages based on status code
-      if (statusCode === 500) {
-        throw new Error(`Backend server error: ${errorMessage}. Please check backend logs or try again later.`);
-      } else if (statusCode === 401) {
-        throw new Error('Authentication required. Please sign in again.');
-      } else if (statusCode === 403) {
-        throw new Error('Access denied. Please check your permissions.');
-      } else if (statusCode === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
-      } else if (!statusCode && error?.message) {
-        // Network error or other connection issue
-        throw new Error(`Failed to connect to server: ${error.message}`);
-      } else {
-        throw new Error(`Failed to get research config: ${errorMessage}`);
+      // Fallback: Try separate endpoints if unified endpoint fails
+      try {
+        console.log('[researchConfig] Falling back to separate endpoints');
+        const [providersResp, personaDefaultsResp] = await Promise.allSettled([
+          getProviderAvailability(),
+          getPersonaDefaults(),
+        ]);
+
+        const providerAvailability: ProviderAvailability = providersResp.status === 'fulfilled'
+          ? providersResp.value
+          : {
+              google_available: true,
+              exa_available: false,
+              tavily_available: false,
+              gemini_key_status: 'missing',
+              exa_key_status: 'missing',
+              tavily_key_status: 'missing',
+            };
+
+        const personaDefaults: PersonaDefaults = personaDefaultsResp.status === 'fulfilled'
+          ? personaDefaultsResp.value
+          : {
+              industry: 'Technology',
+              target_audience: 'Professionals',
+              suggested_domains: [],
+              has_research_persona: false,
+            };
+
+        return {
+          provider_availability: providerAvailability,
+          persona_defaults: personaDefaults,
+          research_persona: undefined,
+          onboarding_completed: false,
+          persona_scheduled: false,
+        };
+      } catch (fallbackError: any) {
+        // Provide more specific error messages based on status code
+        if (statusCode === 500) {
+          throw new Error(`Backend server error: ${errorMessage}. Please check backend logs or try again later.`);
+        } else if (statusCode === 401) {
+          throw new Error('Authentication required. Please sign in again.');
+        } else if (statusCode === 403) {
+          throw new Error('Access denied. Please check your permissions.');
+        } else if (statusCode === 429) {
+          throw new Error('Rate limit exceeded. Please try again later.');
+        } else if (!statusCode && error?.message) {
+          // Network error or other connection issue
+          throw new Error(`Failed to connect to server: ${error.message}`);
+        } else {
+          throw new Error(`Failed to get research config: ${errorMessage}`);
+        }
       }
     } finally {
       // Clear the cached request after completion (success or error)
@@ -224,3 +320,40 @@ export const getCompetitorAnalysis = async (): Promise<CompetitorAnalysisRespons
   }
 };
 
+/**
+ * Refresh competitor analysis by re-running competitor discovery
+ */
+export const refreshCompetitorAnalysis = async (): Promise<CompetitorAnalysisResponse> => {
+  console.log('[refreshCompetitorAnalysis] ===== START: Refreshing competitor analysis =====');
+  try {
+    console.log('[refreshCompetitorAnalysis] Making POST request to /api/research/competitor-analysis/refresh');
+    const response = await apiClient.post('/api/research/competitor-analysis/refresh');
+    console.log('[refreshCompetitorAnalysis] ✅ Response received:', {
+      success: response.data?.success,
+      competitorsCount: response.data?.competitors?.length || 0,
+      error: response.data?.error,
+      fullResponse: response.data
+    });
+    return response.data;
+  } catch (error: any) {
+    const statusCode = error?.response?.status;
+    const errorMessage = error?.response?.data?.detail || error?.response?.data?.error || error?.message || 'Unknown error';
+    
+    console.error('[refreshCompetitorAnalysis] ❌ ERROR:', {
+      status: statusCode,
+      message: errorMessage,
+      fullError: error,
+      responseData: error?.response?.data
+    });
+    
+    // Return error response instead of throwing
+    const errorResponse = {
+      success: false,
+      error: errorMessage
+    };
+    console.log('[refreshCompetitorAnalysis] Returning error response:', errorResponse);
+    return errorResponse;
+  } finally {
+    console.log('[refreshCompetitorAnalysis] ===== END: Refreshing competitor analysis =====');
+  }
+};

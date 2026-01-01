@@ -176,6 +176,87 @@ export function expandKeywords(keywords: string[], industry: string): {
 }
 
 /**
+ * Expands keywords using research persona patterns and suggested keywords
+ * This is more intelligent than industry-based expansion as it uses AI-generated patterns
+ */
+export function expandKeywordsWithPersona(
+  keywords: string[],
+  expansionPatterns: Record<string, string[]>,
+  suggestedKeywords?: string[]
+): {
+  original: string[];
+  expanded: string[];
+  suggestions: string[];
+} {
+  if (!keywords || keywords.length === 0) {
+    return { original: [], expanded: [], suggestions: [] };
+  }
+
+  const originalKeywords = [...keywords];
+  const suggestions: string[] = [];
+  const expandedSet = new Set<string>();
+
+  // Add original keywords to expanded set
+  originalKeywords.forEach(k => expandedSet.add(k.toLowerCase().trim()));
+
+  // For each keyword, find expansions from persona patterns
+  originalKeywords.forEach(keyword => {
+    const keywordLower = keyword.toLowerCase().trim();
+
+    // Direct match in expansion patterns
+    if (expansionPatterns[keywordLower]) {
+      expansionPatterns[keywordLower].forEach(expansion => {
+        const expansionLower = expansion.toLowerCase();
+        if (!expandedSet.has(expansionLower)) {
+          suggestions.push(expansion);
+          expandedSet.add(expansionLower);
+        }
+      });
+    }
+
+    // Partial match: check if keyword contains any pattern key
+    Object.keys(expansionPatterns).forEach(patternKey => {
+      if (keywordLower.includes(patternKey) || patternKey.includes(keywordLower)) {
+        expansionPatterns[patternKey].forEach(expansion => {
+          const expansionLower = expansion.toLowerCase();
+          if (!expandedSet.has(expansionLower)) {
+            suggestions.push(expansion);
+            expandedSet.add(expansionLower);
+          }
+        });
+      }
+    });
+  });
+
+  // Add suggested keywords from persona if they're relevant
+  if (suggestedKeywords && suggestedKeywords.length > 0) {
+    const queryLower = keywords.join(' ').toLowerCase();
+    suggestedKeywords.forEach(suggested => {
+      const suggestedLower = suggested.toLowerCase();
+      // Only add if it's relevant to the current query
+      if (!expandedSet.has(suggestedLower) && 
+          (keywords.some(kw => suggestedLower.includes(kw.toLowerCase())) ||
+           suggestedLower.includes(queryLower) ||
+           queryLower.includes(suggestedLower))) {
+        suggestions.push(suggested);
+        expandedSet.add(suggestedLower);
+      }
+    });
+  }
+
+  // Return structure
+  return {
+    original: originalKeywords,
+    expanded: Array.from(expandedSet).map(k => {
+      // Preserve original casing if it exists in originals
+      const originalMatch = originalKeywords.find(ok => ok.toLowerCase() === k);
+      return originalMatch || k;
+    }),
+    suggestions: suggestions.slice(0, 10), // Limit to 10 suggestions
+  };
+}
+
+/**
  * Formats keyword for display (capitalize first letter)
  */
 export function formatKeyword(keyword: string): string {

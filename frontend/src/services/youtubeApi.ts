@@ -194,6 +194,7 @@ export interface SceneAudioRequest {
   sceneTitle: string;
   text: string;
   voiceId?: string;
+  language?: string;
   speed?: number;
   volume?: number;
   pitch?: number;
@@ -287,12 +288,18 @@ export const youtubeApi = {
 
   /**
    * Get render task status.
+   * Returns null if task not found (matches podcast pattern for graceful handling).
    */
-  async getRenderStatus(taskId: string): Promise<TaskStatus> {
+  async getRenderStatus(taskId: string): Promise<TaskStatus | null> {
     try {
       const response = await apiClient.get(`${API_BASE}/render/${taskId}`);
-      return response.data;
+      // Backend returns null if task not found
+      return response.data || null;
     } catch (error: any) {
+      // If 404, return null instead of throwing (matches podcast pattern)
+      if (error.response?.status === 404) {
+        return null;
+      }
       const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || 'Failed to get render status';
       throw new Error(errorMessage);
     }
@@ -515,7 +522,7 @@ export const youtubeApi = {
         scene_id: params.sceneId,
         scene_title: params.sceneTitle,
         text: params.text,
-        voice_id: params.voiceId || 'Wise_Woman',
+        // Only send voice_id if explicitly set; otherwise backend will auto-select
         speed: params.speed ?? 1.0,
         volume: params.volume ?? 1.0,
         pitch: params.pitch ?? 0.0,
@@ -523,6 +530,14 @@ export const youtubeApi = {
         english_normalization: params.englishNormalization ?? false,
         enable_sync_mode: params.enableSyncMode !== false,
       };
+
+      if (params.voiceId !== undefined && params.voiceId !== null && String(params.voiceId).trim() !== '') {
+        requestBody.voice_id = params.voiceId;
+      }
+
+      if (params.language !== undefined && params.language !== null && String(params.language).trim() !== '') {
+        requestBody.language = params.language;
+      }
       
       // Only include optional fields if they are defined and valid
       // WaveSpeed has strict validation for these parameters

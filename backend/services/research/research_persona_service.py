@@ -367,16 +367,53 @@ class ResearchPersonaService:
                     if demographics:
                         business_info['target_audience'] = demographics if isinstance(demographics, str) else str(demographics)
             
-            # Check if we have enough data
-            if not website_analysis and not persona_data_dict:
-                logger.warning(f"Insufficient onboarding data for user {user_id}")
+            # Check if we have enough data - be more lenient since we can infer from minimal data
+            # We need at least some basic information to generate a meaningful persona
+            has_basic_data = bool(
+                website_analysis or
+                persona_data_dict or
+                research_prefs.get('content_types') or
+                business_info.get('industry')
+            )
+
+            if not has_basic_data:
+                logger.warning(f"Insufficient onboarding data for user {user_id} - no basic data found")
                 return None
+
+            # If we have minimal data, add intelligent defaults to help the AI
+            if not business_info.get('industry'):
+                # Try to infer industry from research preferences or content types
+                content_types = research_prefs.get('content_types', [])
+                if 'blog' in content_types or 'article' in content_types:
+                    business_info['industry'] = 'Content Marketing'
+                    business_info['inferred'] = True
+                elif 'social_media' in content_types:
+                    business_info['industry'] = 'Social Media Marketing'
+                    business_info['inferred'] = True
+                elif 'video' in content_types:
+                    business_info['industry'] = 'Video Content Creation'
+                    business_info['inferred'] = True
+
+            if not business_info.get('target_audience'):
+                # Default to professionals for content creators
+                business_info['target_audience'] = 'Professionals and content consumers'
+                business_info['inferred'] = True
+            
+            # Get competitor analysis data (if available)
+            competitor_analysis = None
+            try:
+                competitor_analysis = self.onboarding_service.get_competitor_analysis(user_id, self.db)
+                if competitor_analysis:
+                    logger.info(f"Found {len(competitor_analysis)} competitors for research persona generation")
+            except Exception as e:
+                logger.debug(f"Could not retrieve competitor analysis for persona generation: {e}")
             
             return {
                 "website_analysis": website_analysis,
                 "persona_data": persona_data_dict,
                 "research_preferences": research_prefs,
-                "business_info": business_info
+                "business_info": business_info,
+                "competitor_analysis": competitor_analysis  # Add competitor data for better preset generation
             }
             
         except Exception as e:

@@ -14,6 +14,21 @@ import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
 import YouTubeCreator from './components/YouTubeCreator/YouTubeCreator';
 import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard } from './components/ImageStudio';
+import {
+  VideoStudioDashboard,
+  CreateVideo,
+  AvatarVideo,
+  EnhanceVideo,
+  ExtendVideo,
+  EditVideo,
+  TransformVideo,
+  SocialVideo,
+  FaceSwap,
+  VideoTranslate,
+  VideoBackgroundRemover,
+  AddAudioToVideo,
+  LibraryVideo,
+} from './components/VideoStudio';
 import { ProductMarketingDashboard } from './components/ProductMarketing';
 import PodcastDashboard from './components/PodcastMaker/PodcastDashboard';
 import PricingPage from './components/Pricing/PricingPage';
@@ -23,6 +38,7 @@ import WordPressCallbackPage from './components/WordPressCallbackPage/WordPressC
 import BingCallbackPage from './components/BingCallbackPage/BingCallbackPage';
 import BingAnalyticsStorage from './components/BingAnalyticsStorage/BingAnalyticsStorage';
 import ResearchTest from './pages/ResearchTest';
+import IntentResearchTest from './pages/IntentResearchTest';
 import SchedulerDashboard from './pages/SchedulerDashboard';
 import BillingPage from './pages/BillingPage';
 import ProtectedRoute from './components/shared/ProtectedRoute';
@@ -461,6 +477,19 @@ const App: React.FC = () => {
                 <Route path="/youtube-creator" element={<ProtectedRoute><YouTubeCreator /></ProtectedRoute>} />
                 <Route path="/podcast-maker" element={<ProtectedRoute><PodcastDashboard /></ProtectedRoute>} />
                 <Route path="/image-studio" element={<ProtectedRoute><ImageStudioDashboard /></ProtectedRoute>} />
+                <Route path="/video-studio" element={<ProtectedRoute><VideoStudioDashboard /></ProtectedRoute>} />
+                <Route path="/video-studio/create" element={<ProtectedRoute><CreateVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/avatar" element={<ProtectedRoute><AvatarVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/enhance" element={<ProtectedRoute><EnhanceVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/extend" element={<ProtectedRoute><ExtendVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/edit" element={<ProtectedRoute><EditVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/transform" element={<ProtectedRoute><TransformVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/social" element={<ProtectedRoute><SocialVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/face-swap" element={<ProtectedRoute><FaceSwap /></ProtectedRoute>} />
+                <Route path="/video-studio/video-translate" element={<ProtectedRoute><VideoTranslate /></ProtectedRoute>} />
+                <Route path="/video-studio/video-background-remover" element={<ProtectedRoute><VideoBackgroundRemover /></ProtectedRoute>} />
+                <Route path="/video-studio/add-audio-to-video" element={<ProtectedRoute><AddAudioToVideo /></ProtectedRoute>} />
+                <Route path="/video-studio/library" element={<ProtectedRoute><LibraryVideo /></ProtectedRoute>} />
                 <Route path="/image-generator" element={<ProtectedRoute><CreateStudio /></ProtectedRoute>} />
                 <Route path="/image-editor" element={<ProtectedRoute><EditStudio /></ProtectedRoute>} />
                 <Route path="/image-upscale" element={<ProtectedRoute><UpscaleStudio /></ProtectedRoute>} />
@@ -473,6 +502,7 @@ const App: React.FC = () => {
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/research-test" element={<ResearchTest />} />
+                <Route path="/intent-research" element={<IntentResearchTest />} />
                 <Route path="/wix-test" element={<WixTestPage />} />
                 <Route path="/wix-test-direct" element={<WixTestPage />} />
                 <Route path="/wix/callback" element={<WixCallbackPage />} />

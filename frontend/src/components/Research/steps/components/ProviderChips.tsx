@@ -11,39 +11,23 @@ export const ProviderChips: React.FC<ProviderChipsProps> = ({ providerAvailabili
 
   if (!providerAvailability) return null;
 
+  // Provider priority: Exa → Tavily → Google for all modes
+  // Status indicators show availability (green=configured, red=not configured)
   const providers = [
-    {
-      id: 'google',
-      name: 'Google',
-      available: providerAvailability.google_available,
-      status: providerAvailability.gemini_key_status,
-      icon: '🔍',
-      tooltip: 'Google Search powered by Gemini AI. Provides comprehensive web search results with semantic understanding and real-time information from across the web.',
-      color: providerAvailability.google_available 
-        ? 'linear-gradient(135deg, rgba(66, 133, 244, 0.15) 0%, rgba(52, 168, 83, 0.15) 100%)'
-        : 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%)',
-      borderColor: providerAvailability.google_available 
-        ? 'rgba(66, 133, 244, 0.3)'
-        : 'rgba(239, 68, 68, 0.2)',
-      textColor: providerAvailability.google_available ? '#4285f4' : '#ef4444',
-    },
     {
       id: 'exa',
       name: 'Exa',
       available: providerAvailability.exa_available,
       status: providerAvailability.exa_key_status,
       icon: '🧠',
-      tooltip: 'Exa Neural Search. Advanced semantic search engine that understands context and meaning, providing highly relevant results through neural network-powered query understanding.',
-      // Show green when advanced is ON and available, red when advanced is OFF or not available
-      isAdvanced: true,
-      color: (advanced && providerAvailability.exa_available)
+      tooltip: 'Exa Neural Search (Primary). Advanced semantic search engine that understands context and meaning. Used by default when available.',
+      color: providerAvailability.exa_available 
         ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)'
         : 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%)',
-      borderColor: (advanced && providerAvailability.exa_available)
+      borderColor: providerAvailability.exa_available 
         ? 'rgba(16, 185, 129, 0.3)'
         : 'rgba(239, 68, 68, 0.2)',
-      textColor: (advanced && providerAvailability.exa_available) ? '#10b981' : '#ef4444',
-      chipStatus: (advanced && providerAvailability.exa_available) ? '#10b981' : '#ef4444',
+      textColor: providerAvailability.exa_available ? '#10b981' : '#ef4444',
     },
     {
       id: 'tavily',
@@ -51,17 +35,29 @@ export const ProviderChips: React.FC<ProviderChipsProps> = ({ providerAvailabili
       available: providerAvailability.tavily_available,
       status: providerAvailability.tavily_key_status,
       icon: '🤖',
-      tooltip: 'Tavily AI Research Engine. Specialized AI-powered research tool designed for comprehensive content discovery, providing deep insights and structured research data from multiple sources.',
-      // Show green when advanced is ON and available, red when advanced is OFF or not available
-      isAdvanced: true,
-      color: (advanced && providerAvailability.tavily_available)
-        ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)'
+      tooltip: 'Tavily AI Research (Secondary). Specialized AI-powered research tool with real-time data and news. Used when Exa is unavailable.',
+      color: providerAvailability.tavily_available 
+        ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%)'
         : 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%)',
-      borderColor: (advanced && providerAvailability.tavily_available)
-        ? 'rgba(16, 185, 129, 0.3)'
+      borderColor: providerAvailability.tavily_available 
+        ? 'rgba(59, 130, 246, 0.3)'
         : 'rgba(239, 68, 68, 0.2)',
-      textColor: (advanced && providerAvailability.tavily_available) ? '#10b981' : '#ef4444',
-      chipStatus: (advanced && providerAvailability.tavily_available) ? '#10b981' : '#ef4444',
+      textColor: providerAvailability.tavily_available ? '#3b82f6' : '#ef4444',
+    },
+    {
+      id: 'google',
+      name: 'Google',
+      available: providerAvailability.google_available,
+      status: providerAvailability.gemini_key_status,
+      icon: '🔍',
+      tooltip: 'Google Search (Fallback). Gemini-powered web search. Used when Exa and Tavily are unavailable.',
+      color: providerAvailability.google_available 
+        ? 'linear-gradient(135deg, rgba(66, 133, 244, 0.15) 0%, rgba(52, 168, 83, 0.15) 100%)'
+        : 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%)',
+      borderColor: providerAvailability.google_available 
+        ? 'rgba(66, 133, 244, 0.3)'
+        : 'rgba(239, 68, 68, 0.2)',
+      textColor: providerAvailability.google_available ? '#4285f4' : '#ef4444',
     },
   ];
 
@@ -111,8 +107,8 @@ export const ProviderChips: React.FC<ProviderChipsProps> = ({ providerAvailabili
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                background: (provider as any).chipStatus || (provider.available ? '#10b981' : '#ef4444'),
-                boxShadow: ((provider as any).chipStatus === '#10b981') || (provider.available && !(provider as any).isAdvanced)
+                background: provider.available ? '#10b981' : '#ef4444',
+                boxShadow: provider.available
                   ? '0 0 4px rgba(16, 185, 129, 0.4)' 
                   : '0 0 4px rgba(239, 68, 68, 0.4)',
               }} />

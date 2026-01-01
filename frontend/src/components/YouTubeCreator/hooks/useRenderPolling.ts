@@ -37,6 +37,20 @@ export const useRenderPolling = (
     const interval = setInterval(async () => {
       try {
         const status = await youtubeApi.getRenderStatus(renderTaskId);
+        
+        // Handle null response (task not found) - matches podcast pattern
+        if (!status) {
+          console.warn(`[YouTubeCreator] Task ${renderTaskId} not found, stopping polling`);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          const errorMessage = 'Render task not found. This may happen if the server restarted or the task expired. Please try rendering again.';
+          setError(errorMessage);
+          onError?.(errorMessage);
+          return;
+        }
+        
         setRenderStatus(status);
         setRenderProgress(status.progress || 0);
 

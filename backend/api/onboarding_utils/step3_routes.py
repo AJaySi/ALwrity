@@ -117,7 +117,7 @@ async def discover_competitors(
         # Perform competitor discovery with Clerk user ID
         result = await step3_research_service.discover_competitors_for_onboarding(
             user_url=request.user_url,
-            session_id=clerk_user_id,  # Use Clerk user ID for isolation
+            user_id=clerk_user_id,  # Use Clerk user ID to find correct session
             industry_context=request.industry_context,
             num_results=request.num_results,
             website_analysis_data=request.website_analysis_data
