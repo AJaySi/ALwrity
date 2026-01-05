@@ -9,6 +9,12 @@ from services.product_marketing import (
     BrandDNASyncService,
     AssetAuditService,
     ChannelPackService,
+    ProductAnimationService,
+    ProductAnimationRequest,
+    ProductVideoService,
+    ProductVideoRequest,
+    ProductAvatarService,
+    ProductAvatarRequest,
 )
 from services.product_marketing.campaign_storage import CampaignStorageService
 from services.product_marketing.product_image_service import ProductImageService, ProductImageRequest
@@ -268,6 +274,7 @@ async def generate_asset(
     - Applies specialized marketing prompts
     - Automatically tracks assets in Asset Library
     - Validates subscription limits
+    - Updates campaign status after generation
     """
     try:
         user_id = _require_user_id(current_user, "asset generation")
@@ -278,6 +285,51 @@ async def generate_asset(
             asset_proposal=request.asset_proposal,
             product_context=request.product_context,
         )
+        
+        # Update campaign status if asset was generated successfully
+        if result.get('success'):
+            campaign_id = request.asset_proposal.get('campaign_id')
+            if not campaign_id:
+                # Try to extract from asset_id
+                asset_id = request.asset_proposal.get('asset_id', '')
+                if asset_id and '_' in asset_id:
+                    parts = asset_id.split('_')
+                    phase_indicators = ['teaser', 'launch', 'nurture', 'prelaunch', 'postlaunch']
+                    for i, part in enumerate(parts):
+                        if part.lower() in phase_indicators and i > 0:
+                            campaign_id = '_'.join(parts[:i])
+                            break
+            
+            if campaign_id:
+                try:
+                    campaign_storage = get_campaign_storage()
+                    campaign = campaign_storage.get_campaign(user_id, campaign_id)
+                    if campaign:
+                        # Update proposal status to 'generating' or 'ready'
+                        asset_node_id = request.asset_proposal.get('asset_id', '')
+                        if asset_node_id:
+                            from models.product_marketing_models import CampaignProposal
+                            from services.database import SessionLocal
+                            db = SessionLocal()
+                            try:
+                                proposal = db.query(CampaignProposal).filter(
+                                    CampaignProposal.campaign_id == campaign_id,
+                                    CampaignProposal.asset_node_id == asset_node_id,
+                                    CampaignProposal.user_id == user_id
+                                ).first()
+                                if proposal:
+                                    proposal.status = 'ready'
+                                    db.commit()
+                                    logger.info(f"[Product Marketing] ✅ Updated proposal status for {asset_node_id}")
+                            finally:
+                                db.close()
+                        
+                        # Check if all assets are ready and update campaign status
+                        # (This could be enhanced to check all proposals)
+                        logger.info(f"[Product Marketing] ✅ Asset generated for campaign {campaign_id}")
+                except Exception as update_error:
+                    logger.warning(f"[Product Marketing] ⚠️ Could not update campaign status: {str(update_error)}")
+                    # Don't fail the request if status update fails
         
         logger.info(f"[Product Marketing] ✅ Asset generated successfully")
         return result
@@ -618,6 +670,474 @@ async def serve_product_image(
 
 
 # ====================
+# PRODUCT ANIMATION ENDPOINTS
+# ====================
+
+class ProductAnimationRequestModel(BaseModel):
+    """Request for product animation."""
+    product_image_base64: str = Field(..., description="Base64 encoded product image")
+    animation_type: str = Field(..., description="Animation type: reveal, rotation, demo, lifestyle")
+    product_name: str = Field(..., description="Product name")
+    product_description: Optional[str] = Field(None, description="Product description")
+    resolution: str = Field(default="720p", description="Video resolution: 480p, 720p, 1080p")
+    duration: int = Field(default=5, description="Video duration: 5 or 10 seconds")
+    audio_base64: Optional[str] = Field(None, description="Optional audio for synchronization")
+    additional_context: Optional[str] = Field(None, description="Additional context for animation")
+
+
+def get_product_animation_service() -> ProductAnimationService:
+    """Get Product Animation Service instance."""
+    return ProductAnimationService()
+
+
+@router.post("/products/animate", summary="Animate Product Image")
+async def animate_product(
+    request: ProductAnimationRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    animation_service: ProductAnimationService = Depends(get_product_animation_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Animate a product image into a video.
+    
+    This endpoint:
+    - Uses WAN 2.5 Image-to-Video via Transform Studio
+    - Supports multiple animation types (reveal, rotation, demo, lifestyle)
+    - Applies brand DNA for consistent styling
+    - Returns video URL and metadata
+    """
+    try:
+        user_id = _require_user_id(current_user, "product animation")
+        logger.info(f"[Product Marketing] Animating product '{request.product_name}' with type '{request.animation_type}'")
+        
+        # Get brand DNA for personalization
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception as brand_error:
+            logger.warning(f"[Product Marketing] Could not load brand DNA: {str(brand_error)}")
+        
+        # Create animation request
+        animation_request = ProductAnimationRequest(
+            product_image_base64=request.product_image_base64,
+            animation_type=request.animation_type,
+            product_name=request.product_name,
+            product_description=request.product_description,
+            resolution=request.resolution,
+            duration=request.duration,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context,
+            additional_context=request.additional_context,
+        )
+        
+        # Generate animation
+        result = await animation_service.animate_product(animation_request, user_id)
+        
+        logger.info(f"[Product Marketing] ✅ Product animation completed: cost=${result.get('cost', 0):.2f}")
+        
+        return {
+            "success": True,
+            "product_name": result.get("product_name"),
+            "animation_type": result.get("animation_type"),
+            "video_url": result.get("video_url"),
+            "video_filename": result.get("filename"),
+            "cost": result.get("cost", 0.0),
+            "resolution": request.resolution,
+            "duration": request.duration,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error animating product: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Product animation failed: {str(e)}")
+
+
+@router.post("/products/animate/reveal", summary="Create Product Reveal Animation")
+async def create_product_reveal(
+    request: ProductAnimationRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    animation_service: ProductAnimationService = Depends(get_product_animation_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product reveal animation (elegant product unveiling)."""
+    try:
+        user_id = _require_user_id(current_user, "product reveal animation")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await animation_service.create_product_reveal(
+            product_image_base64=request.product_image_base64,
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            duration=request.duration,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "animation_type": "reveal",
+            "video_url": result.get("video_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating reveal: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/animate/rotation", summary="Create Product Rotation Animation")
+async def create_product_rotation(
+    request: ProductAnimationRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    animation_service: ProductAnimationService = Depends(get_product_animation_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create 360° product rotation animation."""
+    try:
+        user_id = _require_user_id(current_user, "product rotation animation")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await animation_service.create_product_rotation(
+            product_image_base64=request.product_image_base64,
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            duration=request.duration or 10,  # Default 10s for rotation
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "animation_type": "rotation",
+            "video_url": result.get("video_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating rotation: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/animate/demo", summary="Create Product Demo Animation")
+async def create_product_demo_animation(
+    request: ProductAnimationRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    animation_service: ProductAnimationService = Depends(get_product_animation_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product demo animation (image-to-video: product in use, demonstrating features)."""
+    try:
+        user_id = _require_user_id(current_user, "product demo animation")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await animation_service.create_product_demo(
+            product_image_base64=request.product_image_base64,
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            duration=request.duration or 10,  # Default 10s for demo
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "animation_type": "demo",
+            "video_subtype": "animation",  # Image-to-video
+            "video_url": result.get("video_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating demo animation: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ====================
+# PRODUCT VIDEO ENDPOINTS (Text-to-Video)
+# ====================
+
+class ProductVideoRequestModel(BaseModel):
+    """Request for product demo video (text-to-video)."""
+    product_name: str = Field(..., description="Product name")
+    product_description: str = Field(..., description="Product description")
+    video_type: str = Field(default="demo", description="Video type: demo, storytelling, feature_highlight, launch")
+    resolution: str = Field(default="720p", description="Video resolution: 480p, 720p, 1080p")
+    duration: int = Field(default=10, description="Video duration: 5 or 10 seconds")
+    audio_base64: Optional[str] = Field(None, description="Optional audio for synchronization")
+    additional_context: Optional[str] = Field(None, description="Additional context for video")
+
+
+def get_product_video_service() -> ProductVideoService:
+    """Get Product Video Service instance."""
+    return ProductVideoService()
+
+
+@router.post("/products/video/demo", summary="Create Product Demo Video (Text-to-Video)")
+async def create_product_demo_video(
+    request: ProductVideoRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    video_service: ProductVideoService = Depends(get_product_video_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product demo video using WAN 2.5 Text-to-Video.
+    
+    This endpoint:
+    - Uses WAN 2.5 Text-to-Video via main_video_generation
+    - Generates video from product description (no image required)
+    - Applies brand DNA for consistent styling
+    - Returns video URL and metadata
+    """
+    try:
+        user_id = _require_user_id(current_user, "product demo video")
+        logger.info(f"[Product Marketing] Creating {request.video_type} video for product '{request.product_name}'")
+        
+        # Get brand DNA for personalization
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception as brand_error:
+            logger.warning(f"[Product Marketing] Could not load brand DNA: {str(brand_error)}")
+        
+        # Create video request
+        video_request = ProductVideoRequest(
+            product_name=request.product_name,
+            product_description=request.product_description,
+            video_type=request.video_type,
+            resolution=request.resolution,
+            duration=request.duration,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context,
+            additional_context=request.additional_context,
+        )
+        
+        # Generate video using unified ai_video_generate()
+        result = await video_service.generate_product_video(video_request, user_id)
+        
+        logger.info(f"[Product Marketing] ✅ Product demo video completed: cost=${result.get('cost', 0):.2f}")
+        
+        return {
+            "success": True,
+            "product_name": result.get("product_name"),
+            "video_type": result.get("video_type"),
+            "video_url": result.get("file_url"),
+            "video_filename": result.get("filename"),
+            "cost": result.get("cost", 0.0),
+            "resolution": request.resolution,
+            "duration": request.duration,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating product demo video: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Product demo video generation failed: {str(e)}")
+
+
+@router.post("/products/video/storytelling", summary="Create Product Storytelling Video")
+async def create_product_storytelling(
+    request: ProductVideoRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    video_service: ProductVideoService = Depends(get_product_video_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product storytelling video (narrative-driven product showcase)."""
+    try:
+        user_id = _require_user_id(current_user, "product storytelling video")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await video_service.create_product_storytelling(
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            duration=request.duration,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "video_type": "storytelling",
+            "video_url": result.get("file_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating storytelling video: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/video/feature-highlight", summary="Create Product Feature Highlight Video")
+async def create_product_feature_highlight(
+    request: ProductVideoRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    video_service: ProductVideoService = Depends(get_product_video_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product feature highlight video (close-up shots of key features)."""
+    try:
+        user_id = _require_user_id(current_user, "product feature highlight video")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await video_service.create_product_feature_highlight(
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            duration=request.duration,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "video_type": "feature_highlight",
+            "video_url": result.get("file_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating feature highlight video: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/video/launch", summary="Create Product Launch Video")
+async def create_product_launch(
+    request: ProductVideoRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    video_service: ProductVideoService = Depends(get_product_video_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product launch video (exciting unveiling, launch event aesthetic)."""
+    try:
+        user_id = _require_user_id(current_user, "product launch video")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await video_service.create_product_launch(
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution or "1080p",  # Higher quality for launch
+            duration=request.duration,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "video_type": "launch",
+            "video_url": result.get("file_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating launch video: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/products/videos/{user_id}/{filename}", summary="Serve Product Video")
+async def serve_product_video(
+    user_id: str,
+    filename: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Serve generated product videos."""
+    try:
+        from fastapi.responses import FileResponse
+        from pathlib import Path
+        
+        # Verify user owns the video
+        current_user_id = _require_user_id(current_user, "serving product video")
+        if current_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Locate video file
+        base_dir = Path(__file__).parent.parent.parent
+        video_path = base_dir / "product_videos" / user_id / filename
+        
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        return FileResponse(
+            path=str(video_path),
+            media_type="video/mp4",
+            filename=filename
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error serving product video: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ====================
 # HEALTH CHECK
 # ====================
 
@@ -635,6 +1155,8 @@ async def health_check():
             "asset_audit": "available",
             "channel_pack": "available",
             "product_image_service": "available",
+            "product_animation_service": "available",
+            "product_video_service": "available",
         }
     }
 

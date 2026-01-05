@@ -163,12 +163,74 @@ class ProductMarketingOrchestrator:
                         "asset_id": asset_node.asset_id,
                         "asset_type": asset_node.asset_type,
                         "channel": asset_node.channel,
+                        "campaign_id": blueprint.campaign_id,  # Include campaign_id for tracking
                         "proposed_prompt": enhanced_prompt,
                         "recommended_template": recommended_template.get('id') if recommended_template else None,
                         "recommended_provider": recommended_template.get('recommended_provider', 'wavespeed') if recommended_template else 'wavespeed',
                         "cost_estimate": cost_estimate,
                         "concept_summary": self._generate_concept_summary(enhanced_prompt),
                     }
+                
+                elif asset_node.asset_type == "video":
+                    # Video asset proposals - determine if animation (image-to-video) or demo (text-to-video)
+                    # Default to animation if we have product image, otherwise demo
+                    video_subtype = asset_proposal.get('video_subtype', 'animation') if 'asset_proposal' in locals() else 'demo'
+                    
+                    # For demo videos (text-to-video), we need product description
+                    if video_subtype == "demo" or not product_context or not product_context.get('product_image_base64'):
+                        # Text-to-video demo video
+                        video_type = "demo"  # Default, can be customized
+                        if asset_node.channel in ["tiktok", "instagram"]:
+                            video_type = "storytelling"  # Storytelling for social media
+                        elif asset_node.channel in ["linkedin", "youtube"]:
+                            video_type = "feature_highlight"  # Feature highlights for professional
+                        
+                        # Estimate cost for text-to-video (WAN 2.5: $0.05-$0.15/second)
+                        duration = 10  # Default 10s for demo videos
+                        resolution = "720p"  # Default
+                        cost_per_second = 0.10 if resolution == "720p" else (0.15 if resolution == "1080p" else 0.05)
+                        cost_estimate = duration * cost_per_second
+                        
+                        proposals[asset_node.asset_id] = {
+                            "asset_id": asset_node.asset_id,
+                            "asset_type": asset_node.asset_type,
+                            "video_subtype": "demo",  # Text-to-video
+                            "channel": asset_node.channel,
+                            "campaign_id": blueprint.campaign_id,
+                            "video_type": video_type,
+                            "duration": duration,
+                            "resolution": resolution,
+                            "cost_estimate": cost_estimate,
+                            "concept_summary": f"Product {video_type} video optimized for {asset_node.channel}",
+                            "note": "Text-to-video demo - requires product description",
+                        }
+                    else:
+                        # Image-to-video animation
+                        animation_type = "reveal"  # Default
+                        if asset_node.channel in ["tiktok", "instagram", "youtube"]:
+                            animation_type = "demo"  # Demo animations for social media
+                        elif asset_node.channel in ["linkedin", "facebook"]:
+                            animation_type = "reveal"  # Professional reveal for B2B
+                        
+                        # Estimate cost for image-to-video (WAN 2.5: $0.05-$0.15/second)
+                        duration = 5  # Default 5s for animations
+                        resolution = "720p"  # Default
+                        cost_per_second = 0.10 if resolution == "720p" else (0.15 if resolution == "1080p" else 0.05)
+                        cost_estimate = duration * cost_per_second
+                        
+                        proposals[asset_node.asset_id] = {
+                            "asset_id": asset_node.asset_id,
+                            "asset_type": asset_node.asset_type,
+                            "video_subtype": "animation",  # Image-to-video
+                            "channel": asset_node.channel,
+                            "campaign_id": blueprint.campaign_id,
+                            "animation_type": animation_type,
+                            "duration": duration,
+                            "resolution": resolution,
+                            "cost_estimate": cost_estimate,
+                            "concept_summary": f"Product {animation_type} animation optimized for {asset_node.channel}",
+                            "note": "Requires product image - will be provided during generation",
+                        }
                 
                 elif asset_node.asset_type == "text":
                     base_request = f"Write {asset_node.channel} {asset_node.asset_type} for product launch"
@@ -184,6 +246,7 @@ class ProductMarketingOrchestrator:
                         "asset_id": asset_node.asset_id,
                         "asset_type": asset_node.asset_type,
                         "channel": asset_node.channel,
+                        "campaign_id": blueprint.campaign_id,  # Include campaign_id for tracking
                         "proposed_prompt": enhanced_prompt,
                         "cost_estimate": 0.0,  # Text generation cost is minimal
                         "concept_summary": "Marketing copy optimized for channel and persona",
@@ -241,6 +304,124 @@ class ProductMarketingOrchestrator:
                         if r.get('asset_id')
                     ],
                 }
+            
+            elif asset_type == "video":
+                # Check video subtype: "animation" (image-to-video) or "demo" (text-to-video)
+                video_subtype = asset_proposal.get('video_subtype', 'animation')
+                
+                if video_subtype == "demo":
+                    # Text-to-video: Product demo video from description
+                    from .product_video_service import ProductVideoService, ProductVideoRequest
+                    
+                    # Get product info from context
+                    product_name = product_context.get('product_name', 'Product') if product_context else 'Product'
+                    product_description = product_context.get('product_description', '') if product_context else ''
+                    
+                    if not product_description:
+                        raise ValueError("Product description required for text-to-video demo generation")
+                    
+                    # Get brand context
+                    brand_dna = self.brand_dna_sync.get_brand_dna_tokens(user_id)
+                    brand_context = {
+                        "visual_identity": brand_dna.get("visual_identity", {}),
+                        "persona": brand_dna.get("persona", {}),
+                    }
+                    
+                    # Get video type from proposal or default
+                    video_type = asset_proposal.get('video_type', 'demo')
+                    
+                    # Create video service
+                    video_service = ProductVideoService()
+                    
+                    # Create video request
+                    video_request = ProductVideoRequest(
+                        product_name=product_name,
+                        product_description=product_description,
+                        video_type=video_type,
+                        resolution=asset_proposal.get('resolution', '720p'),
+                        duration=asset_proposal.get('duration', 10),
+                        audio_base64=asset_proposal.get('audio_base64'),
+                        brand_context=brand_context,
+                        additional_context=asset_proposal.get('additional_context'),
+                    )
+                    
+                    # Generate video using unified ai_video_generate()
+                    result = await video_service.generate_product_video(video_request, user_id)
+                    
+                    # Extract campaign_id for metadata
+                    campaign_id = asset_proposal.get('campaign_id')
+                    asset_id = asset_proposal.get('asset_id', '')
+                    
+                    return {
+                        "success": True,
+                        "asset_type": "video",
+                        "video_subtype": "demo",
+                        "video_url": result.get('file_url'),
+                        "video_filename": result.get('filename'),
+                        "cost": result.get('cost', 0.0),
+                        "video_type": video_type,
+                        "campaign_id": campaign_id,
+                        "asset_id": asset_id,
+                    }
+                
+                else:
+                    # Image-to-video: Product animation
+                    from .product_animation_service import ProductAnimationService, ProductAnimationRequest
+                    
+                    # Get product image from proposal or product context
+                    product_image_base64 = asset_proposal.get('product_image_base64')
+                    if not product_image_base64 and product_context:
+                        product_image_base64 = product_context.get('product_image_base64')
+                    
+                    if not product_image_base64:
+                        raise ValueError("Product image required for image-to-video animation generation")
+                    
+                    # Get animation type from proposal or default to "reveal"
+                    animation_type = asset_proposal.get('animation_type', 'reveal')
+                    product_name = product_context.get('product_name', 'Product') if product_context else 'Product'
+                    product_description = product_context.get('product_description') if product_context else None
+                    
+                    # Get brand context
+                    brand_dna = self.brand_dna_sync.get_brand_dna_tokens(user_id)
+                    brand_context = {
+                        "visual_identity": brand_dna.get("visual_identity", {}),
+                        "persona": brand_dna.get("persona", {}),
+                    }
+                    
+                    # Create animation service
+                    animation_service = ProductAnimationService()
+                    
+                    # Create animation request
+                    animation_request = ProductAnimationRequest(
+                        product_image_base64=product_image_base64,
+                        animation_type=animation_type,
+                        product_name=product_name,
+                        product_description=product_description,
+                        resolution=asset_proposal.get('resolution', '720p'),
+                        duration=asset_proposal.get('duration', 5),
+                        audio_base64=asset_proposal.get('audio_base64'),
+                        brand_context=brand_context,
+                        additional_context=asset_proposal.get('additional_context'),
+                    )
+                    
+                    # Generate video
+                    result = await animation_service.animate_product(animation_request, user_id)
+                    
+                    # Extract campaign_id for metadata
+                    campaign_id = asset_proposal.get('campaign_id')
+                    asset_id = asset_proposal.get('asset_id', '')
+                    
+                    return {
+                        "success": True,
+                        "asset_type": "video",
+                        "video_subtype": "animation",
+                        "video_url": result.get('video_url'),
+                        "video_filename": result.get('filename'),
+                        "cost": result.get('cost', 0.0),
+                        "animation_type": animation_type,
+                        "campaign_id": campaign_id,
+                        "asset_id": asset_id,
+                    }
             
             elif asset_type == "text":
                 # Import text generation service and tracker
@@ -457,6 +638,10 @@ Return only the final copy text without explanations or markdown formatting."""
         if asset_type == "image":
             # Premium quality image: ~5-6 credits
             return 5.0
+        elif asset_type == "video":
+            # WAN 2.5 Image-to-Video: $0.05-$0.15/second
+            # Default: 5 seconds at 720p = $0.50
+            return 0.50
         elif asset_type == "text":
             return 0.0  # Text generation is typically included
         else:

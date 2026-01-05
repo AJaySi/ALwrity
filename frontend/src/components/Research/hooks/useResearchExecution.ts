@@ -4,10 +4,11 @@ import { WizardState } from '../types/research.types';
 import { researchEngineApi, ResearchEngineRequest } from '../../../services/researchEngineApi';
 import { useResearchPolling } from '../../../hooks/usePolling';
 import { intentResearchApi } from '../../../api/intentResearchApi';
-import { 
+import {
   ResearchIntent, 
   IntentDrivenResearchResponse,
-  AnalyzeIntentResponse 
+  AnalyzeIntentResponse,
+  ResearchQuery,
 } from '../types/intent.types';
 
 export const useResearchExecution = () => {
@@ -133,6 +134,12 @@ export const useResearchExecution = () => {
 
     try {
       const userInput = state.keywords.join(' ');
+      if (!userInput.trim()) {
+        setError('Please enter keywords or a research topic');
+        setIsAnalyzingIntent(false);
+        return null;
+      }
+
       const response = await intentResearchApi.analyzeIntent({
         user_input: userInput,
         keywords: state.keywords,
@@ -140,20 +147,73 @@ export const useResearchExecution = () => {
         use_competitor_data: true,
       });
 
+      if (!response.success) {
+        const errorMsg = response.error_message || 'Failed to analyze intent';
+        setError(errorMsg);
+        setIsAnalyzingIntent(false);
+        return response; // Return response even if failed so UI can show error
+      }
+
       setIntentAnalysis(response);
       
       // Auto-confirm if confidence is high and no clarification needed
-      if (response.success && response.intent.confidence >= 0.85 && !response.intent.needs_clarification) {
+      if (response.intent.confidence >= 0.85 && !response.intent.needs_clarification) {
         setConfirmedIntent(response.intent);
       }
 
       setIsAnalyzingIntent(false);
       return response;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to analyze intent';
+    } catch (err: any) {
+      console.error('[useResearchExecution] analyzeIntent error:', err);
+      let errorMessage = 'Failed to analyze intent';
+      
+      if (err.response) {
+        // HTTP error response
+        if (err.response.status === 404) {
+          errorMessage = 'Smart Research endpoint not found. The feature may not be available yet. Please use the regular research flow.';
+        } else if (err.response.status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        } else if (err.response.status >= 500) {
+          errorMessage = 'Server error. Please try again later.';
+        } else {
+          errorMessage = err.response.data?.detail || err.response.data?.error_message || `Server error: ${err.response.status}`;
+        }
+      } else if (err.request) {
+        // Network error
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else {
+        errorMessage = err.message || 'Unknown error occurred';
+      }
+      
       setError(errorMessage);
       setIsAnalyzingIntent(false);
-      return null;
+      
+      // Return a failed response so UI can show the error
+      return {
+        success: false,
+        intent: {
+          primary_question: state.keywords.join(' '),
+          secondary_questions: [],
+          purpose: 'learn',
+          content_output: 'general',
+          expected_deliverables: ['key_statistics'],
+          depth: 'detailed',
+          focus_areas: [],
+          perspective: null,
+          time_sensitivity: null,
+          input_type: 'keywords',
+          original_input: state.keywords.join(' '),
+          confidence: 0,
+          needs_clarification: true,
+          clarifying_questions: [],
+        },
+        analysis_summary: '',
+        suggested_queries: [],
+        suggested_keywords: [],
+        suggested_angles: [],
+        quick_options: [],
+        error_message: errorMessage,
+      };
     }
   }, []);
 
@@ -183,7 +243,10 @@ export const useResearchExecution = () => {
   /**
    * Execute research using intent-driven approach.
    */
-  const executeIntentResearch = useCallback(async (state: WizardState): Promise<IntentDrivenResearchResponse | null> => {
+  const executeIntentResearch = useCallback(async (
+    state: WizardState,
+    selectedQueries?: ResearchQuery[]
+  ): Promise<IntentDrivenResearchResponse | null> => {
     // First analyze intent if not already done
     let intent = confirmedIntent;
     if (!intent) {
@@ -198,13 +261,23 @@ export const useResearchExecution = () => {
     setError(null);
 
     try {
+      // Use provided queries or fall back to intent analysis queries
+      const queriesToUse = selectedQueries || intentAnalysis?.suggested_queries?.slice(0, 5) || [];
+      
       const response = await intentResearchApi.executeIntentResearch({
         user_input: state.keywords.join(' '),
         confirmed_intent: intent,
-        selected_queries: intentAnalysis?.suggested_queries?.slice(0, 5),
+        selected_queries: queriesToUse.map(q => ({
+          query: q.query,
+          purpose: q.purpose,
+          provider: q.provider,
+          priority: q.priority,
+          expected_results: q.expected_results,
+        })),
         max_sources: state.config.max_sources || 10,
         include_domains: state.config.exa_include_domains || state.config.tavily_include_domains || [],
         exclude_domains: state.config.exa_exclude_domains || state.config.tavily_exclude_domains || [],
+        trends_config: intentAnalysis?.trends_config, // Include Google Trends configuration
         skip_inference: true,
       });
 

@@ -7,6 +7,9 @@ from .edit_service import EditStudioService, EditStudioRequest
 from .upscale_service import UpscaleStudioService, UpscaleStudioRequest
 from .control_service import ControlStudioService, ControlStudioRequest
 from .social_optimizer_service import SocialOptimizerService, SocialOptimizerRequest
+from .face_swap_service import FaceSwapService, FaceSwapStudioRequest
+from .compression_service import ImageCompressionService, CompressionRequest, CompressionResult
+from .format_converter_service import ImageFormatConverterService, FormatConversionRequest, FormatConversionResult
 from .transform_service import (
     TransformStudioService,
     TransformImageToVideoRequest,
@@ -29,6 +32,9 @@ class ImageStudioManager:
         self.upscale_service = UpscaleStudioService()
         self.control_service = ControlStudioService()
         self.social_optimizer_service = SocialOptimizerService()
+        self.face_swap_service = FaceSwapService()
+        self.compression_service = ImageCompressionService()
+        self.format_converter_service = ImageFormatConverterService()
         self.transform_service = TransformStudioService()
         logger.info("[Image Studio Manager] Initialized successfully")
     
@@ -69,6 +75,99 @@ class ImageStudioManager:
     def get_edit_operations(self) -> Dict[str, Any]:
         """Expose edit operations for UI."""
         return self.edit_service.list_operations()
+    
+    def get_edit_models(
+        self,
+        operation: Optional[str] = None,
+        tier: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get available editing models.
+        
+        Args:
+            operation: Filter by operation type
+            tier: Filter by tier (budget, mid, premium)
+            
+        Returns:
+            Dictionary with models and metadata
+        """
+        return self.edit_service.get_available_models(operation=operation, tier=tier)
+    
+    def recommend_edit_model(
+        self,
+        operation: str,
+        image_resolution: Optional[Dict[str, int]] = None,
+        user_tier: Optional[str] = None,
+        preferences: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Recommend best editing model for given context.
+        
+        Args:
+            operation: Operation type
+            image_resolution: Image dimensions
+            user_tier: User subscription tier
+            preferences: User preferences (prioritize_cost, prioritize_quality)
+            
+        Returns:
+            Dictionary with recommended model and alternatives
+        """
+        return self.edit_service.recommend_model(
+            operation=operation,
+            image_resolution=image_resolution,
+            user_tier=user_tier,
+            preferences=preferences,
+        )
+    
+    # ====================
+    # FACE SWAP STUDIO
+    # ====================
+    
+    async def face_swap(
+        self,
+        request: FaceSwapStudioRequest,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run Face Swap Studio operations."""
+        logger.info("[Image Studio] Face swap request from user: %s", user_id)
+        return await self.face_swap_service.process_face_swap(request, user_id=user_id)
+    
+    def get_face_swap_models(
+        self,
+        tier: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get available face swap models.
+        
+        Args:
+            tier: Filter by tier (budget, mid, premium)
+            
+        Returns:
+            Dictionary with models and metadata
+        """
+        return self.face_swap_service.get_available_models(tier=tier)
+    
+    def recommend_face_swap_model(
+        self,
+        base_image_resolution: Optional[Dict[str, int]] = None,
+        face_image_resolution: Optional[Dict[str, int]] = None,
+        user_tier: Optional[str] = None,
+        preferences: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Recommend best face swap model for given context.
+        
+        Args:
+            base_image_resolution: Base image dimensions
+            face_image_resolution: Face image dimensions
+            user_tier: User subscription tier
+            preferences: User preferences (prioritize_cost, prioritize_quality)
+            
+        Returns:
+            Dictionary with recommended model and alternatives
+        """
+        return self.face_swap_service.recommend_model(
+            base_image_resolution=base_image_resolution,
+            face_image_resolution=face_image_resolution,
+            user_tier=user_tier,
+            preferences=preferences,
+        )
 
     # ====================
     # UPSCALE STUDIO
@@ -376,4 +475,73 @@ class ImageStudioManager:
     ) -> Dict[str, Any]:
         """Estimate cost for transform operation."""
         return self.transform_service.estimate_cost(operation, resolution, duration)
+
+    # ====================
+    # COMPRESSION STUDIO
+    # ====================
+    
+    async def compress_image(
+        self,
+        request: CompressionRequest,
+        user_id: Optional[str] = None,
+    ) -> CompressionResult:
+        """Compress an image with specified settings."""
+        logger.info("[Image Studio] Compress image request from user: %s", user_id)
+        return await self.compression_service.compress(request, user_id=user_id)
+    
+    async def compress_batch(
+        self,
+        requests: List[CompressionRequest],
+        user_id: Optional[str] = None,
+    ) -> List[CompressionResult]:
+        """Compress multiple images."""
+        logger.info("[Image Studio] Batch compress request (%d images) from user: %s", len(requests), user_id)
+        return await self.compression_service.compress_batch(requests, user_id=user_id)
+    
+    async def estimate_compression(
+        self,
+        image_base64: str,
+        format: str = "jpeg",
+        quality: int = 85,
+    ) -> Dict[str, Any]:
+        """Estimate compression results without compressing."""
+        return await self.compression_service.estimate_compression(image_base64, format, quality)
+    
+    def get_compression_formats(self) -> List[Dict[str, Any]]:
+        """Get supported compression formats."""
+        return self.compression_service.get_supported_formats()
+    
+    def get_compression_presets(self) -> List[Dict[str, Any]]:
+        """Get compression presets for common use cases."""
+        return self.compression_service.get_presets()
+
+    # ====================
+    # FORMAT CONVERTER
+    # ====================
+    
+    async def convert_format(
+        self,
+        request: FormatConversionRequest,
+        user_id: Optional[str] = None,
+    ) -> FormatConversionResult:
+        """Convert an image to target format."""
+        logger.info("[Image Studio] Convert format request from user: %s", user_id)
+        return await self.format_converter_service.convert(request, user_id=user_id)
+    
+    async def convert_format_batch(
+        self,
+        requests: List[FormatConversionRequest],
+        user_id: Optional[str] = None,
+    ) -> List[FormatConversionResult]:
+        """Convert multiple images."""
+        logger.info("[Image Studio] Batch convert format request (%d images) from user: %s", len(requests), user_id)
+        return await self.format_converter_service.convert_batch(requests, user_id=user_id)
+    
+    def get_supported_formats(self) -> List[Dict[str, Any]]:
+        """Get supported conversion formats."""
+        return self.format_converter_service.get_supported_formats()
+    
+    def get_format_recommendations(self, source_format: str) -> List[Dict[str, Any]]:
+        """Get format recommendations based on source format."""
+        return self.format_converter_service.get_format_recommendations(source_format)
 

@@ -39,11 +39,21 @@ export const VideoStudioLayout: React.FC<VideoStudioLayoutProps> = ({
     <Box
       sx={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 100%)',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 35%, #312e81 70%, #1e1b4b 100%)',
         py: 4,
         px: 2,
         position: 'relative',
         overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'radial-gradient(circle at 20% 50%, rgba(99,102,241,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(139,92,246,0.15) 0%, transparent 50%)',
+          pointerEvents: 'none',
+        },
       }}
     >
       <Box

@@ -104,6 +104,176 @@ export interface EditOperationMeta {
   };
 }
 
+export interface EditingModel {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  cost_8k?: number;
+  tier: 'budget' | 'mid' | 'premium';
+  max_resolution: [number, number];
+  capabilities: string[];
+  use_cases: string[];
+  features: string[];
+  supports_multi_image: boolean;
+  supports_controlnet: boolean;
+  languages: string[];
+  api_params?: {
+    uses_size?: boolean;
+    uses_aspect_ratio?: boolean;
+    uses_resolution?: boolean;
+    supports_guidance_scale?: boolean;
+    supports_seed?: boolean;
+  };
+}
+
+export interface ModelRecommendation {
+  recommended_model: string;
+  reason: string;
+  alternatives: Array<{
+    model_id: string;
+    name: string;
+    cost: number;
+    reason: string;
+  }>;
+}
+
+export interface FaceSwapModel {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  tier: 'budget' | 'mid' | 'premium';
+  capabilities: string[];
+  use_cases: string[];
+  features: string[];
+  max_faces: number;
+}
+
+export interface FaceSwapModelRecommendation {
+  recommended_model: string;
+  reason: string;
+  alternatives: Array<{
+    model_id: string;
+    name: string;
+    cost: number;
+    reason: string;
+  }>;
+}
+
+export interface FaceSwapRequestPayload {
+  base_image_base64: string;
+  face_image_base64: string;
+  model?: string;
+  target_face_index?: number;
+  target_gender?: string;
+  options?: Record<string, any>;
+}
+
+export interface FaceSwapResult {
+  success: boolean;
+  image_base64: string;
+  width: number;
+  height: number;
+  provider: string;
+  model: string;
+  metadata: Record<string, any>;
+}
+
+// Compression types
+export interface CompressionRequest {
+  image_base64: string;
+  quality: number;
+  format: string;
+  target_size_kb?: number;
+  strip_metadata: boolean;
+  progressive: boolean;
+  optimize: boolean;
+}
+
+export interface CompressionResult {
+  success: boolean;
+  image_base64: string;
+  original_size_kb: number;
+  compressed_size_kb: number;
+  compression_ratio: number;
+  format: string;
+  width: number;
+  height: number;
+  quality_used: number;
+  metadata_stripped: boolean;
+}
+
+export interface CompressionFormat {
+  id: string;
+  name: string;
+  extension: string;
+  description: string;
+  supports_transparency: boolean;
+  quality_range: [number, number];
+  recommended_quality: number;
+  use_cases: string[];
+}
+
+export interface CompressionPreset {
+  id: string;
+  name: string;
+  description: string;
+  format: string;
+  quality: number;
+  target_size_kb?: number;
+  strip_metadata: boolean;
+}
+
+export interface CompressionEstimate {
+  original_size_kb: number;
+  estimated_size_kb: number;
+  estimated_reduction_percent: number;
+  width: number;
+  height: number;
+  format: string;
+}
+
+// Format Converter types
+export interface FormatConversionRequest {
+  image_base64: string;
+  target_format: string;
+  preserve_transparency: boolean;
+  quality?: number;
+  color_space?: string;
+  strip_metadata: boolean;
+  optimize: boolean;
+  progressive: boolean;
+}
+
+export interface FormatConversionResult {
+  success: boolean;
+  image_base64: string;
+  original_format: string;
+  target_format: string;
+  original_size_kb: number;
+  converted_size_kb: number;
+  width: number;
+  height: number;
+  transparency_preserved: boolean;
+  metadata_preserved: boolean;
+  color_space?: string;
+}
+
+export interface SupportedFormat {
+  id: string;
+  name: string;
+  description: string;
+  supports_transparency: boolean;
+  supports_lossy: boolean;
+  mime_type: string;
+}
+
+export interface FormatRecommendation {
+  format: string;
+  reason: string;
+}
+
 export interface EditImageRequestPayload {
   image_base64: string;
   operation: string;
@@ -411,6 +581,146 @@ export const useImageStudio = () => {
     setEditError(null);
   }, []);
 
+  // Edit model selection state
+  const [editModels, setEditModels] = useState<EditingModel[]>([]);
+  const [isLoadingEditModels, setIsLoadingEditModels] = useState(false);
+  const [modelRecommendation, setModelRecommendation] = useState<ModelRecommendation | null>(null);
+  const [isLoadingRecommendation, setIsLoadingRecommendation] = useState(false);
+
+  // Face swap state
+  const [faceSwapModels, setFaceSwapModels] = useState<FaceSwapModel[]>([]);
+  const [isLoadingFaceSwapModels, setIsLoadingFaceSwapModels] = useState(false);
+  const [faceSwapModelRecommendation, setFaceSwapModelRecommendation] = useState<FaceSwapModelRecommendation | null>(null);
+  const [isLoadingFaceSwapRecommendation, setIsLoadingFaceSwapRecommendation] = useState(false);
+  const [isProcessingFaceSwap, setIsProcessingFaceSwap] = useState(false);
+  const [faceSwapResult, setFaceSwapResult] = useState<FaceSwapResult | null>(null);
+  const [faceSwapError, setFaceSwapError] = useState<string | null>(null);
+
+  // Compression state
+  const [compressionFormats, setCompressionFormats] = useState<CompressionFormat[]>([]);
+  const [compressionPresets, setCompressionPresets] = useState<CompressionPreset[]>([]);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionResult, setCompressionResult] = useState<CompressionResult | null>(null);
+  const [compressionError, setCompressionError] = useState<string | null>(null);
+  const [compressionEstimate, setCompressionEstimate] = useState<CompressionEstimate | null>(null);
+
+  // Format Converter state
+  const [supportedFormats, setSupportedFormats] = useState<SupportedFormat[]>([]);
+  const [isConvertingFormat, setIsConvertingFormat] = useState(false);
+  const [formatConversionResult, setFormatConversionResult] = useState<FormatConversionResult | null>(null);
+  const [formatConversionError, setFormatConversionError] = useState<string | null>(null);
+  const [formatRecommendations, setFormatRecommendations] = useState<FormatRecommendation[]>([]);
+
+  // Load available editing models
+  const loadEditModels = useCallback(async (operation?: string, tier?: string) => {
+    setIsLoadingEditModels(true);
+    try {
+      const params = new URLSearchParams();
+      if (operation) params.append('operation', operation);
+      if (tier) params.append('tier', tier);
+      
+      const response = await aiApiClient.get(`/api/image-studio/edit/models?${params.toString()}`);
+      setEditModels(response.data.models || []);
+      return response.data.models || [];
+    } catch (err: any) {
+      console.error('Failed to load edit models:', err);
+      return [];
+    } finally {
+      setIsLoadingEditModels(false);
+    }
+  }, []);
+
+  // Get model recommendation
+  const getModelRecommendation = useCallback(async (
+    operation: string,
+    imageResolution?: { width: number; height: number },
+    userTier?: string,
+    preferences?: { prioritize_cost?: boolean; prioritize_quality?: boolean }
+  ) => {
+    setIsLoadingRecommendation(true);
+    try {
+      const response = await aiApiClient.post('/api/image-studio/edit/recommend', {
+        operation,
+        image_resolution: imageResolution,
+        user_tier: userTier,
+        preferences,
+      });
+      setModelRecommendation(response.data);
+      return response.data;
+    } catch (err: any) {
+      console.error('Failed to get model recommendation:', err);
+      return null;
+    } finally {
+      setIsLoadingRecommendation(false);
+    }
+  }, []);
+
+  // Load face swap models
+  const loadFaceSwapModels = useCallback(async (tier?: string) => {
+    setIsLoadingFaceSwapModels(true);
+    try {
+      const params = new URLSearchParams();
+      if (tier) params.append('tier', tier);
+      
+      const response = await aiApiClient.get(`/api/image-studio/face-swap/models?${params.toString()}`);
+      setFaceSwapModels(response.data.models || []);
+      return response.data.models || [];
+    } catch (err: any) {
+      console.error('Failed to load face swap models:', err);
+      return [];
+    } finally {
+      setIsLoadingFaceSwapModels(false);
+    }
+  }, []);
+
+  // Get face swap model recommendation
+  const getFaceSwapModelRecommendation = useCallback(async (
+    baseImageResolution?: { width: number; height: number },
+    faceImageResolution?: { width: number; height: number },
+    userTier?: string,
+    preferences?: { prioritize_cost?: boolean; prioritize_quality?: boolean }
+  ) => {
+    setIsLoadingFaceSwapRecommendation(true);
+    try {
+      const response = await aiApiClient.post('/api/image-studio/face-swap/recommend', {
+        base_image_resolution: baseImageResolution,
+        face_image_resolution: faceImageResolution,
+        user_tier: userTier,
+        preferences,
+      });
+      setFaceSwapModelRecommendation(response.data);
+      return response.data;
+    } catch (err: any) {
+      console.error('Failed to get face swap model recommendation:', err);
+      return null;
+    } finally {
+      setIsLoadingFaceSwapRecommendation(false);
+    }
+  }, []);
+
+  // Process face swap
+  const processFaceSwap = useCallback(async (payload: FaceSwapRequestPayload) => {
+    setIsProcessingFaceSwap(true);
+    setFaceSwapError(null);
+    try {
+      const response = await aiApiClient.post('/api/image-studio/face-swap/process', payload);
+      setFaceSwapResult(response.data);
+      return response.data as FaceSwapResult;
+    } catch (err: any) {
+      console.error('Failed to process face swap:', err);
+      const message = err.response?.data?.detail || 'Failed to process face swap';
+      setFaceSwapError(message);
+      throw new Error(message);
+    } finally {
+      setIsProcessingFaceSwap(false);
+    }
+  }, []);
+
+  const clearFaceSwapResult = useCallback(() => {
+    setFaceSwapResult(null);
+    setFaceSwapError(null);
+  }, []);
+
   // Process upscale
   const processUpscale = useCallback(async (payload: UpscaleRequestPayload) => {
     setIsUpscaling(true);
@@ -511,6 +821,122 @@ export const useImageStudio = () => {
     setOptimizeError(null);
   }, []);
 
+  // Load compression formats
+  const loadCompressionFormats = useCallback(async () => {
+    try {
+      const response = await aiApiClient.get('/api/image-studio/compress/formats');
+      setCompressionFormats(response.data.formats || []);
+      return response.data.formats || [];
+    } catch (err: any) {
+      console.error('Failed to load compression formats:', err);
+      return [];
+    }
+  }, []);
+
+  // Load compression presets
+  const loadCompressionPresets = useCallback(async () => {
+    try {
+      const response = await aiApiClient.get('/api/image-studio/compress/presets');
+      setCompressionPresets(response.data.presets || []);
+      return response.data.presets || [];
+    } catch (err: any) {
+      console.error('Failed to load compression presets:', err);
+      return [];
+    }
+  }, []);
+
+  // Estimate compression
+  const estimateCompression = useCallback(async (
+    image_base64: string,
+    format: string = 'jpeg',
+    quality: number = 85,
+  ): Promise<CompressionEstimate | null> => {
+    try {
+      const response = await aiApiClient.post('/api/image-studio/compress/estimate', {
+        image_base64,
+        format,
+        quality,
+      });
+      setCompressionEstimate(response.data);
+      return response.data;
+    } catch (err: any) {
+      console.error('Failed to estimate compression:', err);
+      return null;
+    }
+  }, []);
+
+  // Process compression
+  const processCompression = useCallback(async (request: CompressionRequest): Promise<CompressionResult> => {
+    setIsCompressing(true);
+    setCompressionError(null);
+    try {
+      const response = await aiApiClient.post('/api/image-studio/compress', request);
+      setCompressionResult(response.data);
+      return response.data;
+    } catch (err: any) {
+      console.error('Failed to compress image:', err);
+      const message = err.response?.data?.detail || 'Failed to compress image';
+      setCompressionError(message);
+      throw new Error(message);
+    } finally {
+      setIsCompressing(false);
+    }
+  }, []);
+
+  const clearCompressionResult = useCallback(() => {
+    setCompressionResult(null);
+    setCompressionError(null);
+    setCompressionEstimate(null);
+  }, []);
+
+  // Load supported formats
+  const loadSupportedFormats = useCallback(async () => {
+    try {
+      const response = await aiApiClient.get('/api/image-studio/convert-format/supported');
+      setSupportedFormats(response.data.formats || []);
+      return response.data.formats || [];
+    } catch (err: any) {
+      console.error('Failed to load supported formats:', err);
+      return [];
+    }
+  }, []);
+
+  // Get format recommendations
+  const getFormatRecommendations = useCallback(async (sourceFormat: string): Promise<FormatRecommendation[]> => {
+    try {
+      const response = await aiApiClient.get(`/api/image-studio/convert-format/recommendations?source_format=${sourceFormat}`);
+      setFormatRecommendations(response.data.recommendations || []);
+      return response.data.recommendations || [];
+    } catch (err: any) {
+      console.error('Failed to get format recommendations:', err);
+      return [];
+    }
+  }, []);
+
+  // Process format conversion
+  const processFormatConversion = useCallback(async (request: FormatConversionRequest): Promise<FormatConversionResult> => {
+    setIsConvertingFormat(true);
+    setFormatConversionError(null);
+    try {
+      const response = await aiApiClient.post('/api/image-studio/convert-format', request);
+      setFormatConversionResult(response.data);
+      return response.data;
+    } catch (err: any) {
+      console.error('Failed to convert format:', err);
+      const message = err.response?.data?.detail || 'Failed to convert image format';
+      setFormatConversionError(message);
+      throw new Error(message);
+    } finally {
+      setIsConvertingFormat(false);
+    }
+  }, []);
+
+  const clearFormatConversionResult = useCallback(() => {
+    setFormatConversionResult(null);
+    setFormatConversionError(null);
+    setFormatRecommendations([]);
+  }, []);
+
   return {
     // State
     templates,
@@ -557,6 +983,47 @@ export const useImageStudio = () => {
     optimizeResult,
     optimizeError,
     clearOptimizeResult,
+    // Edit model selection
+    editModels,
+    isLoadingEditModels,
+    loadEditModels,
+    modelRecommendation,
+    isLoadingRecommendation,
+    getModelRecommendation,
+    // Face swap
+    faceSwapModels,
+    isLoadingFaceSwapModels,
+    loadFaceSwapModels,
+    faceSwapModelRecommendation,
+    isLoadingFaceSwapRecommendation,
+    getFaceSwapModelRecommendation,
+    processFaceSwap,
+    isProcessingFaceSwap,
+    faceSwapResult,
+    faceSwapError,
+    clearFaceSwapResult,
+    // Compression
+    compressionFormats,
+    compressionPresets,
+    loadCompressionFormats,
+    loadCompressionPresets,
+    estimateCompression,
+    processCompression,
+    isCompressing,
+    compressionResult,
+    compressionError,
+    compressionEstimate,
+    clearCompressionResult,
+    // Format Converter
+    supportedFormats,
+    loadSupportedFormats,
+    getFormatRecommendations,
+    processFormatConversion,
+    isConvertingFormat,
+    formatConversionResult,
+    formatConversionError,
+    formatRecommendations,
+    clearFormatConversionResult,
   };
 };
 

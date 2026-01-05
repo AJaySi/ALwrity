@@ -1,3 +1,7 @@
+import type { AIModel, PerfectForUseCase, CostDetail } from './InfoModal';
+
+export type { AIModel, PerfectForUseCase, CostDetail };
+
 export type ModuleStatus = 'live' | 'beta' | 'coming soon';
 
 export interface ModuleConfig {
@@ -13,4 +17,7 @@ export interface ModuleConfig {
   icon?: React.ReactNode;
   help?: string;
   costDrivers?: string[];
+  perfectFor?: PerfectForUseCase[];
+  costDetails?: CostDetail;
+  aiModels?: AIModel[];
 }

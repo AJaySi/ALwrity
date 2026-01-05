@@ -9,6 +9,7 @@ import { addResearchHistory } from '../../utils/researchHistory';
 import { getResearchConfig, ProviderAvailability } from '../../api/researchConfig';
 import { ProviderChips } from './steps/components/ProviderChips';
 import { AdvancedChip } from './steps/components/AdvancedChip';
+import { SmartResearchInfo } from './steps/components/SmartResearchInfo';
 
 export const ResearchWizard: React.FC<ResearchWizardProps> = ({ 
   onComplete,
@@ -336,82 +337,105 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
               ← Back
             </button>
 
-            {/* Intent-Driven Research Button (Primary) - Only show on Step 1 */}
-            {wizard.state.currentStep === 1 && (
-              <button
-                onClick={async () => {
-                  // Analyze intent and execute if successful
-                  const analysis = await execution.analyzeIntent(wizard.state);
-                  if (analysis?.success) {
-                    // If high confidence, auto-execute
-                    if (analysis.intent.confidence >= 0.8 && !analysis.intent.needs_clarification) {
-                      const result = await execution.executeIntentResearch(wizard.state);
+            {/* Research Button (Unified - enabled only after intent analysis on Step 1) */}
+            <button
+              onClick={() => {
+                if (wizard.state.currentStep === 1) {
+                  // On Step 1: If intent is analyzed with high confidence, execute directly
+                  if (execution.intentAnalysis?.success && 
+                      execution.intentAnalysis.intent.confidence >= 0.7) {
+                    const queriesToUse = execution.intentAnalysis.suggested_queries?.slice(0, 5) || [];
+                    execution.executeIntentResearch(wizard.state, queriesToUse).then(result => {
                       if (result?.success) {
                         wizard.updateState({ currentStep: 3 }); // Skip to results
                       }
-                    }
+                    });
+                  } else {
+                    // No intent or low confidence - go to progress step for traditional research
+                    wizard.nextStep();
                   }
-                }}
-                disabled={!wizard.canGoNext() || execution.isAnalyzingIntent || execution.isExecuting}
-                style={{
-                  padding: '10px 24px',
-                  background: wizard.canGoNext() && !execution.isAnalyzingIntent
-                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                    : 'rgba(100, 116, 139, 0.2)',
-                  color: wizard.canGoNext() ? 'white' : '#94a3b8',
-                  border: 'none',
-                  borderRadius: '10px',
-                  cursor: wizard.canGoNext() && !execution.isAnalyzingIntent ? 'pointer' : 'not-allowed',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  marginRight: '10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                {execution.isAnalyzingIntent ? (
-                  <>🧠 Analyzing...</>
-                ) : execution.isExecuting ? (
-                  <>🔍 Researching...</>
-                ) : (
-                  <>🧠 Smart Research</>
-                )}
-              </button>
-            )}
-
-            <button
-              onClick={wizard.nextStep}
-              disabled={!wizard.canGoNext()}
+                } else {
+                  wizard.nextStep();
+                }
+              }}
+              disabled={
+                wizard.state.currentStep === 1 
+                  ? !wizard.canGoNext() || !execution.intentAnalysis || execution.isExecuting
+                  : !wizard.canGoNext()
+              }
               style={{
                 padding: '10px 24px',
-                background: wizard.canGoNext() 
-                  ? 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)'
-                  : 'rgba(100, 116, 139, 0.2)',
-                color: wizard.canGoNext() ? 'white' : '#94a3b8',
-                border: wizard.canGoNext() ? 'none' : '1px solid rgba(100, 116, 139, 0.2)',
+                background: (() => {
+                  const canProceed = wizard.state.currentStep === 1 
+                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
+                    : wizard.canGoNext();
+                  return canProceed 
+                    ? 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)'
+                    : 'rgba(100, 116, 139, 0.2)';
+                })(),
+                color: (() => {
+                  const canProceed = wizard.state.currentStep === 1 
+                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
+                    : wizard.canGoNext();
+                  return canProceed ? 'white' : '#94a3b8';
+                })(),
+                border: 'none',
                 borderRadius: '10px',
-                cursor: wizard.canGoNext() ? 'pointer' : 'not-allowed',
+                cursor: (() => {
+                  const canProceed = wizard.state.currentStep === 1 
+                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
+                    : wizard.canGoNext();
+                  return canProceed ? 'pointer' : 'not-allowed';
+                })(),
                 fontSize: '13px',
                 fontWeight: '600',
                 transition: 'all 0.2s ease',
-                boxShadow: wizard.canGoNext() ? '0 2px 8px rgba(14, 165, 233, 0.3)' : 'none',
+                boxShadow: (() => {
+                  const canProceed = wizard.state.currentStep === 1 
+                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
+                    : wizard.canGoNext();
+                  return canProceed ? '0 2px 8px rgba(14, 165, 233, 0.3)' : 'none';
+                })(),
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}
               onMouseEnter={(e) => {
-                if (wizard.canGoNext()) {
+                const canProceed = wizard.state.currentStep === 1 
+                  ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
+                  : wizard.canGoNext();
+                if (canProceed) {
                   e.currentTarget.style.transform = 'translateX(4px)';
                   e.currentTarget.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.4)';
                 }
               }}
               onMouseLeave={(e) => {
-                if (wizard.canGoNext()) {
+                const canProceed = wizard.state.currentStep === 1 
+                  ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
+                  : wizard.canGoNext();
+                if (canProceed) {
                   e.currentTarget.style.transform = 'translateX(0)';
                   e.currentTarget.style.boxShadow = '0 2px 8px rgba(14, 165, 233, 0.3)';
                 }
               }}
+              title={
+                wizard.state.currentStep === 1 && !execution.intentAnalysis
+                  ? 'Click "Intent & Options" in the text area to analyze your research first'
+                  : wizard.isLastStep ? 'Complete research' : 'Start research'
+              }
             >
-              {wizard.isLastStep ? 'Finish' : 'Continue →'}
+              {execution.isExecuting ? (
+                <>
+                  <span style={{ animation: 'pulse 1.5s ease-in-out infinite' }}>🔍</span>
+                  Researching...
+                </>
+              ) : wizard.isLastStep ? (
+                'Finish'
+              ) : (
+                <>
+                  🚀 Research
+                </>
+              )}
             </button>
           </div>
         )}

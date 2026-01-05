@@ -29,6 +29,7 @@ import { EditResultViewer } from './EditResultViewer';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { OperationButton } from '../shared/OperationButton';
 import { ImageMaskEditor } from './ImageMaskEditor';
+import { ModelSelector } from './ModelSelector';
 
 const MotionPaper = motion(Paper);
 const fadeEase: Easing = [0.4, 0, 0.2, 1];
@@ -52,6 +53,12 @@ export const EditStudio: React.FC = () => {
     editResult,
     editError,
     clearEditResult,
+    editModels,
+    isLoadingEditModels,
+    loadEditModels,
+    modelRecommendation,
+    isLoadingRecommendation,
+    getModelRecommendation,
   } = useImageStudio();
 
   const [operation, setOperation] = useState<string>('remove_background');
@@ -71,10 +78,33 @@ export const EditStudio: React.FC = () => {
   });
   const [localError, setLocalError] = useState<string | null>(null);
   const [showMaskEditor, setShowMaskEditor] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     loadEditOperations();
-  }, [loadEditOperations]);
+    loadEditModels();
+  }, [loadEditOperations, loadEditModels]);
+
+  // Auto-detect model when operation or image changes
+  useEffect(() => {
+    if (baseImage && operation === 'general_edit' && !selectedModel) {
+      // Get image dimensions
+      const img = new Image();
+      img.onload = async () => {
+        const recommendation = await getModelRecommendation(
+          operation,
+          { width: img.width, height: img.height },
+          undefined,
+          { prioritize_cost: true }
+        );
+        // Auto-select recommended model if available
+        if (recommendation?.recommended_model) {
+          setSelectedModel(recommendation.recommended_model);
+        }
+      };
+      img.src = baseImage;
+    }
+  }, [baseImage, operation, selectedModel, getModelRecommendation]);
 
   useEffect(() => {
     const keys = Object.keys(editOperations);
@@ -142,6 +172,8 @@ export const EditStudio: React.FC = () => {
       expand_up: fields.expansion ? expansion.up : undefined,
       expand_down: fields.expansion ? expansion.down : undefined,
       output_format: 'png',
+      provider: selectedModel ? 'wavespeed' : undefined,
+      model: selectedModel || undefined,
       options: {},
     };
     return payload;
@@ -223,6 +255,34 @@ export const EditStudio: React.FC = () => {
                 onOpenMaskEditor={() => setShowMaskEditor(true)}
               />
               <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+              
+              {/* Model Selection - Only show for general_edit */}
+              {operation === 'general_edit' && editModels.length > 0 && (
+                <>
+                  <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <AutoFixHighIcon sx={{ color: '#a78bfa' }} />
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        AI Model Selection
+                      </Typography>
+                    </Stack>
+                    <ModelSelector
+                      models={editModels}
+                      selectedModel={selectedModel}
+                      recommendedModel={modelRecommendation?.recommended_model}
+                      recommendationReason={modelRecommendation?.reason}
+                      onModelSelect={(modelId) => {
+                        setSelectedModel(modelId);
+                        setLocalError(null);
+                      }}
+                      loading={isLoadingEditModels || isLoadingRecommendation}
+                      operation={operation}
+                    />
+                  </Stack>
+                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+                </>
+              )}
+
               <Stack spacing={1.5}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <AutoFixHighIcon sx={{ color: '#a78bfa' }} />
@@ -235,6 +295,10 @@ export const EditStudio: React.FC = () => {
                   selectedOperation={operation}
                   onSelect={key => {
                     setOperation(key);
+                    // Reset model when operation changes (unless it's still general_edit)
+                    if (key !== 'general_edit') {
+                      setSelectedModel(undefined);
+                    }
                     setLocalError(null);
                     clearEditResult();
                   }}
@@ -357,6 +421,7 @@ export const EditStudio: React.FC = () => {
                   setMaskImage(null);
                   setBackgroundImage(null);
                   setLightingImage(null);
+                  setSelectedModel(undefined);
                 }}
               />
             </Stack>

@@ -51,6 +51,7 @@ class ResearchIntentInference:
         competitor_data: Optional[List[Dict]] = None,
         industry: Optional[str] = None,
         target_audience: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> IntentInferenceResponse:
         """
         Analyze user input and infer their research intent.
@@ -96,13 +97,15 @@ class ResearchIntentInference:
                     "perspective": {"type": "string"},
                     "time_sensitivity": {"type": "string"},
                     "confidence": {"type": "number"},
+                    "confidence_reason": {"type": "string"},
+                    "great_example": {"type": "string"},
                     "needs_clarification": {"type": "boolean"},
                     "clarifying_questions": {"type": "array", "items": {"type": "string"}},
                     "analysis_summary": {"type": "string"}
                 },
                 "required": [
                     "input_type", "primary_question", "purpose", "content_output",
-                    "expected_deliverables", "depth", "confidence", "analysis_summary"
+                    "expected_deliverables", "depth", "confidence", "confidence_reason", "analysis_summary"
                 ]
             }
             
@@ -112,7 +115,7 @@ class ResearchIntentInference:
             result = llm_text_gen(
                 prompt=prompt,
                 json_struct=intent_schema,
-                user_id=None
+                user_id=user_id
             )
             
             if isinstance(result, dict) and "error" in result:
@@ -134,6 +137,8 @@ class ResearchIntentInference:
                 suggested_keywords=self._extract_keywords_from_input(user_input, keywords),
                 suggested_angles=result.get("focus_areas", []),
                 quick_options=quick_options,
+                confidence_reason=result.get("confidence_reason", ""),
+                great_example=result.get("great_example", ""),
             )
             
             logger.info(f"Intent inferred: purpose={intent.purpose}, confidence={intent.confidence}")
@@ -166,7 +171,7 @@ class ResearchIntentInference:
         if not expected_deliverables:
             expected_deliverables = self._infer_deliverables_from_purpose(purpose)
         
-        return ResearchIntent(
+        intent = ResearchIntent(
             primary_question=result.get("primary_question", user_input),
             secondary_questions=result.get("secondary_questions", []),
             purpose=purpose.value,
@@ -179,9 +184,13 @@ class ResearchIntentInference:
             input_type=input_type.value,
             original_input=user_input,
             confidence=float(result.get("confidence", 0.7)),
+            confidence_reason=result.get("confidence_reason"),
+            great_example=result.get("great_example"),
             needs_clarification=result.get("needs_clarification", False),
             clarifying_questions=result.get("clarifying_questions", []),
         )
+        
+        return intent
     
     def _safe_enum(self, enum_class, value: str, default):
         """Safely convert string to enum, returning default if invalid."""

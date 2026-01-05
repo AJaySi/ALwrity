@@ -4,9 +4,15 @@ import { ResearchSources, ResearchGrounding, GoogleSearchModal } from './Researc
 
 interface ResearchResultsProps {
   research: BlogResearchResponse;
+  showSourcesOnly?: boolean;
+  showAnalysisOnly?: boolean;
 }
 
-export const ResearchResults: React.FC<ResearchResultsProps> = ({ research }) => {
+export const ResearchResults: React.FC<ResearchResultsProps> = ({ 
+  research, 
+  showSourcesOnly = false,
+  showAnalysisOnly = false,
+}) => {
   const [showAnglesModal, setShowAnglesModal] = useState(false);
   const [showCompetitorModal, setShowCompetitorModal] = useState(false);
   const [showGroundingModal, setShowGroundingModal] = useState(false);

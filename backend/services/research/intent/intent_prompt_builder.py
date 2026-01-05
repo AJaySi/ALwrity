@@ -151,6 +151,8 @@ Analyze the user's input and infer their research intent. Determine:
 
 11. **CONFIDENCE**: How confident are you in this inference? (0.0-1.0)
     - If < 0.7, set needs_clarification to true and provide clarifying_questions
+    - Provide a brief reason for your confidence level
+    - If confidence is low, provide an example of what a great input would look like
 
 ## OUTPUT FORMAT
 
@@ -168,6 +170,8 @@ Return a JSON object:
     "perspective": "target perspective or null",
     "time_sensitivity": "real_time|recent|historical|evergreen",
     "confidence": 0.85,
+    "confidence_reason": "Brief explanation of why this confidence level (e.g., 'User provided clear keywords and context' or 'Input is vague, missing specific goals')",
+    "great_example": "Example of what a great input would look like for this research (only if confidence < 0.8)",
     "needs_clarification": false,
     "clarifying_questions": [],
     "analysis_summary": "Brief summary of what the user wants"

@@ -34,39 +34,81 @@ class ResearchPersonaService:
         user_id: str
     ) -> Optional[ResearchPersona]:
         """
-        Get research persona for user ONLY if it exists in cache.
-        This method NEVER generates - it only returns cached personas.
+        Get research persona for user if it exists in database (regardless of cache validity).
+        This method NEVER generates - it only returns existing personas.
         Use this for config endpoints to avoid triggering rate limit checks.
+        
+        Note: Returns persona even if cache is expired - cache validity only matters for regeneration.
         
         Args:
             user_id: User ID (Clerk string)
             
         Returns:
-            ResearchPersona if cached and valid, None otherwise
+            ResearchPersona if exists in database, None otherwise
         """
         try:
             # Get persona data record
             persona_data = self._get_persona_data_record(user_id)
             
             if not persona_data:
-                logger.debug(f"No persona data found for user {user_id}")
+                logger.debug(f"[get_cached_only] No persona data record found for user {user_id}")
                 return None
             
-            # Only return if cache is valid and persona exists
-            if self.is_cache_valid(persona_data) and persona_data.research_persona:
+            # Check if research_persona field exists and is not None/empty
+            # Handle cases where it might be None, empty dict {}, or empty string ""
+            research_persona_raw = persona_data.research_persona
+            has_persona = (
+                research_persona_raw is not None 
+                and research_persona_raw != {}
+                and research_persona_raw != ""
+                and (isinstance(research_persona_raw, dict) and len(research_persona_raw) > 0)
+            )
+            
+            logger.info(
+                f"[get_cached_only] Checking research persona for user {user_id}: "
+                f"persona_data exists=True, research_persona_raw={research_persona_raw is not None}, "
+                f"research_persona type={type(research_persona_raw)}, "
+                f"has_persona={has_persona}, "
+                f"generated_at={persona_data.research_persona_generated_at}"
+            )
+            
+            # Return persona if it exists, regardless of cache validity
+            # Cache validity only matters when deciding whether to regenerate
+            if has_persona:
                 try:
-                    logger.debug(f"Returning cached research persona for user {user_id}")
-                    return ResearchPersona(**persona_data.research_persona)
+                    cache_valid = self.is_cache_valid(persona_data)
+                    cache_status = "valid" if cache_valid else "expired"
+                    logger.info(
+                        f"[get_cached_only] ✅ Returning research persona for user {user_id} "
+                        f"(cache: {cache_status}, generated_at: {persona_data.research_persona_generated_at})"
+                    )
+                    # Ensure we're passing a dict to ResearchPersona
+                    if not isinstance(research_persona_raw, dict):
+                        logger.error(f"[get_cached_only] research_persona_raw is not a dict: {type(research_persona_raw)}")
+                        return None
+                    parsed_persona = ResearchPersona(**research_persona_raw)
+                    logger.info(
+                        f"[get_cached_only] ✅ Successfully parsed persona for user {user_id}: "
+                        f"industry={parsed_persona.default_industry}, "
+                        f"target_audience={parsed_persona.default_target_audience}"
+                    )
+                    return parsed_persona
                 except Exception as e:
-                    logger.warning(f"Failed to parse cached research persona: {e}")
+                    logger.error(f"[get_cached_only] ❌ Failed to parse research persona for user {user_id}: {e}", exc_info=True)
+                    logger.debug(
+                        f"[get_cached_only] Persona data details: "
+                        f"type={type(research_persona_raw)}, "
+                        f"is_dict={isinstance(research_persona_raw, dict)}, "
+                        f"value sample: {str(research_persona_raw)[:500] if research_persona_raw else 'None'}"
+                    )
                     return None
             
-            # Cache invalid or persona missing - return None (don't generate)
-            logger.debug(f"No valid cached research persona for user {user_id}")
+            # Persona doesn't exist in database
+            logger.info(f"[get_cached_only] ⚠️ No research persona found in database for user {user_id}")
             return None
                 
         except Exception as e:
-            logger.error(f"Error getting cached research persona for user {user_id}: {e}")
+            logger.error(f"[get_cached_only] ❌ Error getting research persona for user {user_id}: {e}", exc_info=True)
             return None
 
     def get_or_generate(
@@ -92,25 +134,40 @@ class ResearchPersonaService:
                 logger.warning(f"No persona data found for user {user_id}, cannot generate research persona")
                 return None
             
-            # Check cache if not forcing refresh
-            if not force_refresh and self.is_cache_valid(persona_data):
-                if persona_data.research_persona:
+            # Check if persona exists in database
+            if persona_data.research_persona:
+                # Persona exists - check if we should return it or regenerate
+                cache_valid = self.is_cache_valid(persona_data)
+                
+                if not force_refresh and cache_valid:
+                    # Cache is valid - return existing persona
                     logger.info(f"Using cached research persona for user {user_id}")
                     try:
                         return ResearchPersona(**persona_data.research_persona)
                     except Exception as e:
                         logger.warning(f"Failed to parse cached research persona: {e}, regenerating...")
-                        # Fall through to regeneration
+                        # Fall through to regeneration if parsing fails
+                elif not force_refresh:
+                    # Persona exists but cache expired - return it anyway (don't regenerate unless forced)
+                    logger.info(f"Research persona exists for user {user_id} but cache expired - returning existing persona (use force_refresh=true to regenerate)")
+                    try:
+                        return ResearchPersona(**persona_data.research_persona)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse existing research persona: {e}, regenerating...")
+                        # Fall through to regeneration if parsing fails
                 else:
-                    logger.info(f"Research persona missing for user {user_id}, generating...")
-            else:
-                if force_refresh:
+                    # force_refresh=True - regenerate even though persona exists
                     logger.info(f"Forcing refresh of research persona for user {user_id}")
-                else:
-                    logger.info(f"Cache expired for user {user_id}, regenerating...")
+            else:
+                # Persona doesn't exist - generate new one
+                logger.info(f"Research persona missing for user {user_id}, generating...")
             
-            # Generate new research persona
+            # Generate new research persona (only reaches here if:
+            # 1. Persona doesn't exist, OR
+            # 2. force_refresh=True, OR
+            # 3. Parsing of existing persona failed
             try:
+                logger.info(f"Generating research persona for user {user_id}")
                 research_persona = self.generate_research_persona(user_id)
             except HTTPException:
                 # Re-raise HTTPExceptions (e.g., 429 subscription limit) so they propagate to API

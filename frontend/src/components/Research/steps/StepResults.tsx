@@ -1,27 +1,54 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { WizardStepProps, ResearchExecution } from '../types/research.types';
 import { ResearchResults } from '../../BlogWriter/ResearchResults';
 import { BlogResearchResponse } from '../../../services/blogWriterApi';
 import { IntentResultsDisplay } from './components/IntentResultsDisplay';
 import { IntentDrivenResearchResponse } from '../types/intent.types';
 
+type ResultTab = 'summary' | 'deliverables' | 'sources' | 'analysis';
+
 interface StepResultsProps extends WizardStepProps {
   execution?: ResearchExecution;
 }
 
 export const StepResults: React.FC<StepResultsProps> = ({ state, onUpdate, onBack, execution }) => {
+  const [activeTab, setActiveTab] = useState<ResultTab>('summary');
+  
   // Check if we have intent-driven results
   const intentResult: IntentDrivenResearchResponse | null = 
     execution?.intentResult || 
     (state.results as any)?.intent_result || 
     null;
-  if (!state.results) {
+    
+  // Determine if we have both types of results
+  const hasIntentResults = !!intentResult;
+  const hasTraditionalResults = !!state.results && !intentResult;
+  const hasAnyResults = hasIntentResults || hasTraditionalResults;
+    
+  if (!hasAnyResults) {
     return (
       <div style={{ padding: '24px', textAlign: 'center' }}>
         <p style={{ color: '#666' }}>No results available</p>
       </div>
     );
   }
+  
+  // Get counts for tab badges
+  const getTabBadge = (tab: ResultTab): number | undefined => {
+    if (!intentResult) return undefined;
+    switch (tab) {
+      case 'deliverables':
+        return (intentResult.statistics?.length || 0) +
+               (intentResult.expert_quotes?.length || 0) +
+               (intentResult.case_studies?.length || 0) +
+               (intentResult.trends?.length || 0) +
+               (intentResult.best_practices?.length || 0);
+      case 'sources':
+        return intentResult.sources?.length || state.results?.sources?.length || 0;
+      default:
+        return undefined;
+    }
+  };
 
   const handleExport = () => {
     const dataStr = JSON.stringify(state.results, null, 2);
@@ -105,19 +132,253 @@ export const StepResults: React.FC<StepResultsProps> = ({ state, onUpdate, onBac
         </div>
       </div>
 
-      {/* Results Display */}
+      {/* Unified Tabbed Results Display */}
       <div style={{
         backgroundColor: 'white',
-        borderRadius: '8px',
+        borderRadius: '12px',
         border: '1px solid #e0e0e0',
         overflow: 'hidden',
-        padding: intentResult ? '16px' : '0',
       }}>
-        {intentResult ? (
-          <IntentResultsDisplay result={intentResult} />
-        ) : (
-          <ResearchResults research={state.results} />
+        {/* Tab Navigation */}
+        {hasIntentResults && (
+          <div style={{
+            display: 'flex',
+            borderBottom: '2px solid #e5e7eb',
+            backgroundColor: '#f8fafc',
+          }}>
+            {[
+              { id: 'summary', label: '📋 Summary', icon: '📋' },
+              { id: 'deliverables', label: '📊 Deliverables', icon: '📊' },
+              { id: 'sources', label: '🔗 Sources', icon: '🔗' },
+              { id: 'analysis', label: '📈 Analysis', icon: '📈' },
+            ].map((tab) => {
+              const badge = getTabBadge(tab.id as ResultTab);
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as ResultTab)}
+                  style={{
+                    flex: 1,
+                    padding: '14px 16px',
+                    border: 'none',
+                    background: isActive 
+                      ? 'white' 
+                      : 'transparent',
+                    borderBottom: isActive 
+                      ? '3px solid #0ea5e9' 
+                      : '3px solid transparent',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: isActive ? '600' : '500',
+                    color: isActive ? '#0c4a6e' : '#64748b',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = '#f1f5f9';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  {badge !== undefined && badge > 0 && (
+                    <span style={{
+                      backgroundColor: isActive ? '#0ea5e9' : '#e2e8f0',
+                      color: isActive ? 'white' : '#64748b',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                    }}>
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         )}
+
+        {/* Tab Content */}
+        <div style={{ padding: '20px' }}>
+          {hasIntentResults ? (
+            <>
+              {/* Summary Tab */}
+              {activeTab === 'summary' && (
+                <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                  {intentResult.executive_summary && (
+                    <div style={{
+                      backgroundColor: '#f0f9ff',
+                      border: '1px solid #bae6fd',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      marginBottom: '20px',
+                    }}>
+                      <h4 style={{ margin: '0 0 8px 0', color: '#0c4a6e' }}>Executive Summary</h4>
+                      <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>
+                        {intentResult.executive_summary}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {intentResult.primary_answer && (
+                    <div style={{
+                      backgroundColor: '#f0fdf4',
+                      border: '1px solid #86efac',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      marginBottom: '20px',
+                    }}>
+                      <h4 style={{ margin: '0 0 8px 0', color: '#166534' }}>Direct Answer</h4>
+                      <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>
+                        {intentResult.primary_answer}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {intentResult.key_takeaways && intentResult.key_takeaways.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', color: '#333' }}>Key Takeaways</h4>
+                      <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                        {intentResult.key_takeaways.map((takeaway, idx) => (
+                          <li key={idx} style={{ color: '#334155', marginBottom: '8px', lineHeight: 1.5 }}>
+                            {takeaway}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Deliverables Tab - Uses IntentResultsDisplay */}
+              {activeTab === 'deliverables' && (
+                <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                  <IntentResultsDisplay result={intentResult} hideHeader />
+                </div>
+              )}
+
+              {/* Sources Tab - Shows traditional sources view */}
+              {activeTab === 'sources' && (
+                <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                  {intentResult.sources && intentResult.sources.length > 0 ? (
+                    <div>
+                      <h4 style={{ margin: '0 0 16px 0', color: '#333' }}>
+                        {intentResult.sources.length} Sources Found
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {intentResult.sources.map((source: any, idx: number) => (
+                          <div 
+                            key={idx}
+                            style={{
+                              padding: '16px',
+                              backgroundColor: '#f8fafc',
+                              borderRadius: '8px',
+                              border: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <a 
+                              href={source.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              style={{
+                                fontSize: '15px',
+                                fontWeight: '600',
+                                color: '#0ea5e9',
+                                textDecoration: 'none',
+                              }}
+                            >
+                              {source.title}
+                            </a>
+                            <div style={{ 
+                              fontSize: '12px', 
+                              color: '#64748b',
+                              marginTop: '4px',
+                            }}>
+                              {source.url}
+                            </div>
+                            {source.excerpt && (
+                              <p style={{
+                                margin: '8px 0 0 0',
+                                fontSize: '13px',
+                                color: '#475569',
+                                lineHeight: 1.5,
+                              }}>
+                                {source.excerpt}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : state.results?.sources ? (
+                    <ResearchResults research={state.results} showSourcesOnly />
+                  ) : (
+                    <p style={{ color: '#666' }}>No sources available</p>
+                  )}
+                </div>
+              )}
+
+              {/* Analysis Tab - Shows keyword analysis, angles, etc. */}
+              {activeTab === 'analysis' && (
+                <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                  {state.results ? (
+                    <ResearchResults research={state.results} showAnalysisOnly />
+                  ) : (
+                    <div>
+                      {intentResult.suggested_outline && intentResult.suggested_outline.length > 0 && (
+                        <div style={{ marginBottom: '20px' }}>
+                          <h4 style={{ margin: '0 0 12px 0', color: '#333' }}>Suggested Outline</h4>
+                          <ol style={{ margin: 0, paddingLeft: '24px' }}>
+                            {intentResult.suggested_outline.map((item, idx) => (
+                              <li key={idx} style={{ color: '#334155', marginBottom: '8px' }}>
+                                {item}
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                      
+                      {intentResult.gaps_identified && intentResult.gaps_identified.length > 0 && (
+                        <div style={{
+                          backgroundColor: '#fff7ed',
+                          border: '1px solid #fdba74',
+                          borderRadius: '8px',
+                          padding: '16px',
+                        }}>
+                          <h4 style={{ margin: '0 0 12px 0', color: '#9a3412' }}>Gaps Identified</h4>
+                          <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                            {intentResult.gaps_identified.map((gap, idx) => (
+                              <li key={idx} style={{ color: '#9a3412', marginBottom: '4px' }}>
+                                {gap}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : state.results ? (
+            // Traditional results display (no tabs)
+            <ResearchResults research={state.results} />
+          ) : (
+            <p style={{ color: '#666', textAlign: 'center', padding: '40px' }}>
+              No results available
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Action Section */}

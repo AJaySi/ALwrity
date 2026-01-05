@@ -19,6 +19,7 @@ from typing import Optional, List, Dict, Any
 from loguru import logger
 import uuid
 import asyncio
+from models.research_intent_models import TrendAnalysis
 
 from services.database import get_db
 from services.research.core import (
@@ -379,7 +380,7 @@ class AnalyzeIntentRequest(BaseModel):
 
 
 class AnalyzeIntentResponse(BaseModel):
-    """Response from intent analysis."""
+    """Response from intent analysis with optimized provider parameters."""
     success: bool
     intent: Dict[str, Any]
     analysis_summary: str
@@ -387,7 +388,16 @@ class AnalyzeIntentResponse(BaseModel):
     suggested_keywords: List[str]
     suggested_angles: List[str]
     quick_options: List[Dict[str, Any]]
+    confidence_reason: Optional[str] = None
+    great_example: Optional[str] = None
     error_message: Optional[str] = None
+    
+    # Unified: Optimized provider parameters based on intent
+    optimized_config: Optional[Dict[str, Any]] = None  # Provider settings auto-configured from intent
+    recommended_provider: Optional[str] = None  # Best provider for this intent (exa, tavily, google)
+    
+    # Google Trends configuration (if trends in deliverables)
+    trends_config: Optional[Dict[str, Any]] = None  # Trends keywords and settings with justifications
 
 
 class IntentDrivenResearchRequest(BaseModel):
@@ -405,6 +415,9 @@ class IntentDrivenResearchRequest(BaseModel):
     max_sources: int = Field(default=10, ge=1, le=25)
     include_domains: List[str] = Field(default_factory=list)
     exclude_domains: List[str] = Field(default_factory=list)
+    
+    # Google Trends configuration (from intent analysis)
+    trends_config: Optional[Dict[str, Any]] = None  # Trends keywords and settings
     
     # Skip intent inference (for re-runs with same intent)
     skip_inference: bool = False
@@ -445,6 +458,9 @@ class IntentDrivenResearchResponse(BaseModel):
     # The inferred/confirmed intent
     intent: Optional[Dict[str, Any]] = None
     
+    # Google Trends data (if trends were analyzed)
+    google_trends_data: Optional[Dict[str, Any]] = None
+    
     # Error handling
     error_message: Optional[str] = None
 
@@ -480,14 +496,14 @@ async def analyze_research_intent(
         
         if request.use_persona or request.use_competitor_data:
             from services.research.research_persona_service import ResearchPersonaService
-            from services.onboarding_service import OnboardingService
+            from services.onboarding.database_service import OnboardingDatabaseService
             from sqlalchemy.orm import Session
             
             # Get database session
             db = next(get_db())
             try:
                 persona_service = ResearchPersonaService(db)
-                onboarding_service = OnboardingService()
+                onboarding_service = OnboardingDatabaseService(db=db)
                 
                 if request.use_persona:
                     research_persona = persona_service.get_or_generate(user_id)
@@ -497,37 +513,91 @@ async def analyze_research_intent(
             finally:
                 db.close()
         
-        # Infer intent
-        intent_service = ResearchIntentInference()
-        response = await intent_service.infer_intent(
+        # Use Unified Research Analyzer (single AI call for intent + queries + params)
+        from services.research.intent.unified_research_analyzer import UnifiedResearchAnalyzer
+        
+        analyzer = UnifiedResearchAnalyzer()
+        unified_result = await analyzer.analyze(
             user_input=request.user_input,
             keywords=request.keywords,
             research_persona=research_persona,
             competitor_data=competitor_data,
             industry=research_persona.default_industry if research_persona else None,
             target_audience=research_persona.default_target_audience if research_persona else None,
+            user_id=user_id,
         )
         
-        # Generate targeted queries
-        query_generator = IntentQueryGenerator()
-        query_result = await query_generator.generate_queries(
-            intent=response.intent,
-            research_persona=research_persona,
-        )
+        if not unified_result.get("success", False):
+            logger.warning("Unified analysis failed, using fallback")
         
-        # Update response with queries
-        response.suggested_queries = [q.dict() for q in query_result.get("queries", [])]
-        response.suggested_keywords = query_result.get("enhanced_keywords", [])
-        response.suggested_angles = query_result.get("research_angles", [])
+        # Extract results
+        intent = unified_result.get("intent")
+        queries = unified_result.get("queries", [])
+        exa_config = unified_result.get("exa_config", {})
+        tavily_config = unified_result.get("tavily_config", {})
+        trends_config = unified_result.get("trends_config", {})  # NEW: Google Trends config
+        
+        # Build optimized config with AI-driven justifications
+        optimized_config = {
+            "provider": unified_result.get("recommended_provider", "exa"),
+            "provider_justification": unified_result.get("provider_justification", ""),
+            # Exa settings with justifications
+            "exa_type": exa_config.get("type", "auto"),
+            "exa_type_justification": exa_config.get("type_justification", ""),
+            "exa_category": exa_config.get("category"),
+            "exa_category_justification": exa_config.get("category_justification", ""),
+            "exa_include_domains": exa_config.get("includeDomains", []),
+            "exa_include_domains_justification": exa_config.get("includeDomains_justification", ""),
+            "exa_num_results": exa_config.get("numResults", 10),
+            "exa_num_results_justification": exa_config.get("numResults_justification", ""),
+            "exa_date_filter": exa_config.get("startPublishedDate"),
+            "exa_date_justification": exa_config.get("date_justification", ""),
+            "exa_highlights": exa_config.get("highlights", True),
+            "exa_highlights_justification": exa_config.get("highlights_justification", ""),
+            "exa_context": exa_config.get("context", True),
+            "exa_context_justification": exa_config.get("context_justification", ""),
+            # Tavily settings with justifications
+            "tavily_topic": tavily_config.get("topic", "general"),
+            "tavily_topic_justification": tavily_config.get("topic_justification", ""),
+            "tavily_search_depth": tavily_config.get("search_depth", "advanced"),
+            "tavily_search_depth_justification": tavily_config.get("search_depth_justification", ""),
+            "tavily_include_answer": tavily_config.get("include_answer", True),
+            "tavily_include_answer_justification": tavily_config.get("include_answer_justification", ""),
+            "tavily_time_range": tavily_config.get("time_range"),
+            "tavily_time_range_justification": tavily_config.get("time_range_justification", ""),
+            "tavily_max_results": tavily_config.get("max_results", 10),
+            "tavily_max_results_justification": tavily_config.get("max_results_justification", ""),
+            "tavily_raw_content": tavily_config.get("include_raw_content", "markdown"),
+            "tavily_raw_content_justification": tavily_config.get("include_raw_content_justification", ""),
+        }
+        
+        # Build trends config response (if enabled)
+        trends_config_response = None
+        if trends_config.get("enabled", False):
+            trends_config_response = {
+                "enabled": True,
+                "keywords": trends_config.get("keywords", []),
+                "keywords_justification": trends_config.get("keywords_justification", ""),
+                "timeframe": trends_config.get("timeframe", "today 12-m"),
+                "timeframe_justification": trends_config.get("timeframe_justification", ""),
+                "geo": trends_config.get("geo", "US"),
+                "geo_justification": trends_config.get("geo_justification", ""),
+                "expected_insights": trends_config.get("expected_insights", []),
+            }
         
         return AnalyzeIntentResponse(
             success=True,
-            intent=response.intent.dict(),
-            analysis_summary=response.analysis_summary,
-            suggested_queries=response.suggested_queries,
-            suggested_keywords=response.suggested_keywords,
-            suggested_angles=response.suggested_angles,
-            quick_options=response.quick_options,
+            intent=intent.dict() if hasattr(intent, 'dict') else intent,
+            analysis_summary=unified_result.get("analysis_summary", ""),
+            suggested_queries=[q.dict() if hasattr(q, 'dict') else q for q in queries],
+            suggested_keywords=unified_result.get("enhanced_keywords", []),
+            suggested_angles=unified_result.get("research_angles", []),
+            quick_options=[],  # Deprecated in unified approach
+            confidence_reason=intent.confidence_reason if hasattr(intent, 'confidence_reason') else "",
+            great_example=intent.great_example if hasattr(intent, 'great_example') else "",
+            optimized_config=optimized_config,
+            recommended_provider=unified_result.get("recommended_provider", "exa"),
+            trends_config=trends_config_response,  # NEW: Google Trends configuration
         )
         
     except Exception as e:
@@ -540,6 +610,8 @@ async def analyze_research_intent(
             suggested_keywords=[],
             suggested_angles=[],
             quick_options=[],
+            confidence_reason=None,
+            great_example=None,
             error_message=str(e),
         )
 
@@ -591,6 +663,7 @@ async def execute_intent_driven_research(
                 intent_response = await intent_service.infer_intent(
                     user_input=request.user_input,
                     research_persona=research_persona,
+                    user_id=user_id,
                 )
                 intent = intent_response.intent
             else:
@@ -613,6 +686,7 @@ async def execute_intent_driven_research(
                 query_result = await query_generator.generate_queries(
                     intent=intent,
                     research_persona=research_persona,
+                    user_id=user_id,
                 )
                 queries = query_result.get("queries", [])
             
@@ -648,8 +722,35 @@ async def execute_intent_driven_research(
                 exclude_domains=request.exclude_domains,
             )
             
-            # Execute research
-            raw_result = await engine.research(context)
+            # Execute research and trends in parallel
+            research_task = asyncio.create_task(engine.research(context))
+            
+            # Execute Google Trends analysis in parallel (if enabled)
+            trends_task = None
+            trends_data = None
+            if request.trends_config and request.trends_config.get("enabled"):
+                from services.research.trends.google_trends_service import GoogleTrendsService
+                trends_service = GoogleTrendsService()
+                trends_task = asyncio.create_task(
+                    trends_service.analyze_trends(
+                        keywords=request.trends_config.get("keywords", []),
+                        timeframe=request.trends_config.get("timeframe", "today 12-m"),
+                        geo=request.trends_config.get("geo", "US"),
+                        user_id=user_id
+                    )
+                )
+            
+            # Wait for research to complete
+            raw_result = await research_task
+            
+            # Wait for trends if it was started
+            if trends_task:
+                try:
+                    trends_data = await trends_task
+                    logger.info(f"Google Trends data fetched: {len(trends_data.get('interest_over_time', []))} time points")
+                except Exception as e:
+                    logger.error(f"Google Trends analysis failed: {e}")
+                    trends_data = None
             
             # Analyze results using intent-aware analyzer
             analyzer = IntentAwareAnalyzer()
@@ -661,7 +762,12 @@ async def execute_intent_driven_research(
                 },
                 intent=intent,
                 research_persona=research_persona,
+                user_id=user_id,  # Required for subscription checking
             )
+            
+            # Merge Google Trends data into trends analysis
+            if trends_data and analyzed_result.trends:
+                analyzed_result = _merge_trends_data(analyzed_result, trends_data)
             
             # Build response
             return IntentDrivenResearchResponse(
@@ -687,6 +793,7 @@ async def execute_intent_driven_research(
                 gaps_identified=analyzed_result.gaps_identified,
                 follow_up_queries=analyzed_result.follow_up_queries,
                 intent=intent.dict(),
+                google_trends_data=trends_data,  # Include Google Trends data in response
             )
             
         finally:
@@ -736,4 +843,68 @@ def _map_provider_to_preference(provider: str) -> ProviderPreference:
         "google": ProviderPreference.GOOGLE,
     }
     return mapping.get(provider, ProviderPreference.AUTO)
+
+
+def _merge_trends_data(
+    analyzed_result: Any,
+    trends_data: Dict[str, Any]
+) -> Any:
+    """
+    Merge Google Trends data into analyzed result trends.
+    
+    Enhances AI-extracted trends with Google Trends data.
+    """
+    from services.research.intent.intent_aware_analyzer import IntentDrivenResearchResult
+    from models.research_intent_models import TrendAnalysis
+    
+    if not analyzed_result.trends:
+        return analyzed_result
+    
+    # Enhance each trend with Google Trends data
+    enhanced_trends = []
+    for trend in analyzed_result.trends:
+        # Create enhanced trend with Google Trends data
+        trend_dict = trend.dict() if hasattr(trend, 'dict') else trend
+        trend_dict["google_trends_data"] = trends_data
+        
+        # Add interest score if available
+        if trends_data.get("interest_over_time"):
+            # Calculate average interest score
+            interest_values = []
+            for point in trends_data["interest_over_time"]:
+                for key, value in point.items():
+                    if key not in ["date", "isPartial"] and isinstance(value, (int, float)):
+                        interest_values.append(value)
+            if interest_values:
+                trend_dict["interest_score"] = sum(interest_values) / len(interest_values)
+        
+        # Add related topics/queries
+        if trends_data.get("related_topics"):
+            top_topics = [t.get("topic_title", "") for t in trends_data["related_topics"].get("top", [])[:5]]
+            rising_topics = [t.get("topic_title", "") for t in trends_data["related_topics"].get("rising", [])[:5]]
+            trend_dict["related_topics"] = {"top": top_topics, "rising": rising_topics}
+        
+        if trends_data.get("related_queries"):
+            top_queries = [q.get("query", "") for q in trends_data["related_queries"].get("top", [])[:5]]
+            rising_queries = [q.get("query", "") for q in trends_data["related_queries"].get("rising", [])[:5]]
+            trend_dict["related_queries"] = {"top": top_queries, "rising": rising_queries}
+        
+        # Add regional interest
+        if trends_data.get("interest_by_region"):
+            regional_interest = {}
+            for region in trends_data["interest_by_region"][:10]:  # Top 10 regions
+                region_name = region.get("geoName", "")
+                if region_name:
+                    # Get interest value (first numeric column)
+                    for key, value in region.items():
+                        if key != "geoName" and isinstance(value, (int, float)):
+                            regional_interest[region_name] = value
+                            break
+            trend_dict["regional_interest"] = regional_interest
+        
+        enhanced_trends.append(TrendAnalysis(**trend_dict))
+    
+    # Update analyzed result with enhanced trends
+    analyzed_result.trends = enhanced_trends
+    return analyzed_result
 

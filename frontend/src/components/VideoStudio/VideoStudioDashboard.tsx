@@ -16,11 +16,12 @@ export const VideoStudioDashboard: React.FC = () => {
         sx={{
           maxWidth: 1400,
           mx: 'auto',
-          borderRadius: 4,
-          border: '1px solid rgba(255,255,255,0.08)',
-          background: 'rgba(15,23,42,0.78)',
+          borderRadius: 5,
+          border: '1px solid rgba(255,255,255,0.12)',
+          background: 'rgba(15,23,42,0.85)',
           p: { xs: 3, md: 5 },
-          backdropFilter: 'blur(25px)',
+          backdropFilter: 'blur(30px)',
+          boxShadow: '0 20px 60px rgba(15,23,42,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
         }}
       >
 

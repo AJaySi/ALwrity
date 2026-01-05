@@ -2,7 +2,8 @@ import { BlogResearchResponse, ResearchMode, ResearchConfig } from '../../../ser
 import { 
   ResearchIntent, 
   AnalyzeIntentResponse, 
-  IntentDrivenResearchResponse 
+  IntentDrivenResearchResponse,
+  ResearchQuery,
 } from './intent.types';
 
 export interface WizardState {
@@ -35,7 +36,7 @@ export interface ResearchExecution {
   analyzeIntent: (state: WizardState) => Promise<AnalyzeIntentResponse | null>;
   confirmIntent: (intent: ResearchIntent) => void;
   updateIntentField: <K extends keyof ResearchIntent>(field: K, value: ResearchIntent[K]) => void;
-  executeIntentResearch: (state: WizardState) => Promise<IntentDrivenResearchResponse | null>;
+  executeIntentResearch: (state: WizardState, selectedQueries?: ResearchQuery[]) => Promise<IntentDrivenResearchResponse | null>;
   clearIntent: () => void;
 }
 

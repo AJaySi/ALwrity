@@ -6,6 +6,9 @@ import TransformIcon from '@mui/icons-material/Transform';
 import ShareIcon from '@mui/icons-material/Share';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import CompressIcon from '@mui/icons-material/Compress';
+import BuildIcon from '@mui/icons-material/Build';
 import { ModuleConfig } from './types';
 
 export const studioModules: ModuleConfig[] = [
@@ -82,6 +85,82 @@ export const studioModules: ModuleConfig[] = [
         'Schedule overnight batch with 6 variants',
       ],
       eta: 'Fast = 1s · 4K = 6s',
+    },
+  },
+  {
+    key: 'face-swap',
+    title: 'Face Swap Studio',
+    subtitle: 'AI face swapping',
+    description:
+      'Swap faces in photos with multiple AI models. Choose from budget to premium options with auto-detection and smart recommendations.',
+    highlights: ['Multi-model support', 'Auto-detection', 'Group photos'],
+    status: 'live',
+    route: '/image-studio/face-swap',
+    icon: <SwapHorizIcon />,
+    help: 'Perfect for creative projects, content creation, and marketing campaigns.',
+    pricing: {
+      estimate: '$0.025 - $0.16 / swap',
+      notes: 'Auto-selects best model based on your images and preferences.',
+    },
+    example: {
+      title: 'Swap face in group photo',
+      steps: [
+        'Upload base image and face image',
+        'System auto-selects best model (or choose manually)',
+        'Preview and download swapped result',
+      ],
+      eta: '~3-5s per swap',
+    },
+  },
+  {
+    key: 'compress',
+    title: 'Compression Studio',
+    subtitle: 'Optimize file sizes',
+    description:
+      'Smart image compression for web, email, and social media. Convert formats, target specific file sizes, and strip metadata.',
+    highlights: ['Format conversion', 'Size targeting', 'Metadata stripping'],
+    status: 'live',
+    route: '/image-studio/compress',
+    icon: <CompressIcon />,
+    help: 'Reduce file sizes without visible quality loss for faster loading.',
+    pricing: {
+      estimate: 'Free (local processing)',
+      notes: 'No credits required - processed locally.',
+    },
+    example: {
+      title: 'Optimize blog images for web',
+      steps: [
+        'Upload image → see original size',
+        'Select WebP format + 80% quality',
+        'Download optimized file (40-60% smaller)',
+      ],
+      eta: '<1s per image',
+    },
+  },
+  {
+    key: 'processing',
+    title: 'Image Processing Studio',
+    subtitle: 'All-in-one toolkit',
+    description:
+      'Unified studio for compression, format conversion, resizing, and watermarking. Complete image processing toolkit in one place.',
+    highlights: ['Compression', 'Format Converter', 'Resizer (coming)', 'Watermark (coming)'],
+    status: 'live',
+    route: '/image-studio/processing',
+    icon: <BuildIcon />,
+    help: 'All image processing tools in one unified interface.',
+    pricing: {
+      estimate: 'Free (local processing)',
+      notes: 'No credits required - processed locally.',
+    },
+    example: {
+      title: 'Complete image workflow',
+      steps: [
+        'Upload image → Compress to reduce size',
+        'Convert format (PNG → WebP)',
+        'Resize for platform (coming soon)',
+        'Add watermark (coming soon)',
+      ],
+      eta: '<2s per operation',
     },
   },
   {

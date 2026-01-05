@@ -3,7 +3,7 @@
 import base64
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Literal
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,7 @@ from services.image_studio import (
     TransformImageToVideoRequest,
     TalkingAvatarRequest,
 )
+from services.image_studio.face_swap_service import FaceSwapStudioRequest
 from services.image_studio.upscale_service import UpscaleStudioRequest
 from services.image_studio.templates import Platform, TemplateCategory
 from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
@@ -95,6 +96,27 @@ class EditImageRequest(BaseModel):
         None,
         description="Advanced provider-specific options (e.g., grow_mask)",
     )
+
+
+class EditModelsResponse(BaseModel):
+    """Response model for available editing models."""
+    models: List[Dict[str, Any]]
+    total: int
+
+
+class EditModelRecommendationRequest(BaseModel):
+    """Request model for model recommendations."""
+    operation: str
+    image_resolution: Optional[Dict[str, int]] = None
+    user_tier: Optional[str] = None
+    preferences: Optional[Dict[str, Any]] = None
+
+
+class EditModelRecommendationResponse(BaseModel):
+    """Response model for model recommendations."""
+    recommended_model: str
+    reason: str
+    alternatives: List[Dict[str, Any]]
 
 
 class EditImageResponse(BaseModel):
@@ -510,6 +532,173 @@ async def get_edit_operations(
     except Exception as e:
         logger.error(f"[Edit Operations] ❌ Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to load edit operations")
+
+
+@router.get("/edit/models", response_model=EditModelsResponse, summary="List available editing models")
+async def get_edit_models(
+    operation: Optional[str] = None,
+    tier: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get available WaveSpeed editing models with metadata.
+    
+    Query Parameters:
+    - operation: Filter by operation type (e.g., "general_edit")
+    - tier: Filter by tier ("budget", "mid", "premium")
+    """
+    try:
+        result = studio_manager.get_edit_models(operation=operation, tier=tier)
+        return EditModelsResponse(**result)
+    except Exception as e:
+        logger.error(f"[Edit Models] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load editing models")
+
+
+@router.post("/edit/recommend", response_model=EditModelRecommendationResponse, summary="Get model recommendation")
+async def recommend_edit_model(
+    request: EditModelRecommendationRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get recommended editing model based on operation, image resolution, and user preferences.
+    
+    Auto-detects best model when user doesn't specify one.
+    """
+    try:
+        # Get user tier from current_user if available
+        user_tier = request.user_tier
+        if not user_tier and current_user:
+            # Try to extract from user data (adjust based on your user model)
+            user_tier = current_user.get("tier") or current_user.get("subscription_tier")
+        
+        result = studio_manager.recommend_edit_model(
+            operation=request.operation,
+            image_resolution=request.image_resolution,
+            user_tier=user_tier,
+            preferences=request.preferences,
+        )
+        return EditModelRecommendationResponse(**result)
+    except Exception as e:
+        logger.error(f"[Edit Recommend] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get recommendation: {e}")
+
+
+# ====================
+# FACE SWAP STUDIO ENDPOINTS
+# ====================
+
+class FaceSwapRequest(BaseModel):
+    base_image_base64: str
+    face_image_base64: str
+    model: Optional[str] = None
+    target_face_index: Optional[int] = None
+    target_gender: Optional[str] = None
+    options: Optional[Dict[str, Any]] = None
+
+
+class FaceSwapResponse(BaseModel):
+    success: bool
+    image_base64: str
+    width: int
+    height: int
+    provider: str
+    model: str
+    metadata: Dict[str, Any]
+
+
+class FaceSwapModelsResponse(BaseModel):
+    """Response model for available face swap models."""
+    models: List[Dict[str, Any]]
+    total: int
+
+
+class FaceSwapModelRecommendationRequest(BaseModel):
+    """Request model for face swap model recommendations."""
+    base_image_resolution: Optional[Dict[str, int]] = None
+    face_image_resolution: Optional[Dict[str, int]] = None
+    user_tier: Optional[str] = None
+    preferences: Optional[Dict[str, Any]] = None
+
+
+class FaceSwapModelRecommendationResponse(BaseModel):
+    """Response model for face swap model recommendations."""
+    recommended_model: str
+    reason: str
+    alternatives: List[Dict[str, Any]]
+
+
+@router.post("/face-swap/process", response_model=FaceSwapResponse, summary="Process Face Swap")
+async def process_face_swap(
+    request: FaceSwapRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Process face swap request with auto-detection and model selection."""
+    try:
+        user_id = _require_user_id(current_user, "face swap")
+        face_swap_request = FaceSwapStudioRequest(
+            base_image_base64=request.base_image_base64,
+            face_image_base64=request.face_image_base64,
+            model=request.model,
+            target_face_index=request.target_face_index,
+            target_gender=request.target_gender,
+            options=request.options,
+        )
+        result = await studio_manager.face_swap(face_swap_request, user_id=user_id)
+        return FaceSwapResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Face Swap] ❌ Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Face swap failed: {e}")
+
+
+@router.get("/face-swap/models", response_model=FaceSwapModelsResponse, summary="List available face swap models")
+async def get_face_swap_models(
+    tier: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get available WaveSpeed face swap models with metadata.
+    
+    Query Parameters:
+    - tier: Filter by tier ("budget", "mid", "premium")
+    """
+    try:
+        result = studio_manager.get_face_swap_models(tier=tier)
+        return FaceSwapModelsResponse(**result)
+    except Exception as e:
+        logger.error(f"[Face Swap Models] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load face swap models")
+
+
+@router.post("/face-swap/recommend", response_model=FaceSwapModelRecommendationResponse, summary="Get face swap model recommendation")
+async def recommend_face_swap_model(
+    request: FaceSwapModelRecommendationRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get recommended face swap model based on image resolutions and user preferences.
+    
+    Auto-detects best model when user doesn't specify one.
+    """
+    try:
+        # Get user tier from current_user if available
+        user_tier = request.user_tier
+        if not user_tier and current_user:
+            user_tier = current_user.get("tier") or current_user.get("subscription_tier")
+        
+        result = studio_manager.recommend_face_swap_model(
+            base_image_resolution=request.base_image_resolution,
+            face_image_resolution=request.face_image_resolution,
+            user_tier=user_tier,
+            preferences=request.preferences,
+        )
+        return FaceSwapModelRecommendationResponse(**result)
+    except Exception as e:
+        logger.error(f"[Face Swap Recommend] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get recommendation: {e}")
 
 
 # ====================
@@ -1010,6 +1199,403 @@ async def serve_transform_video(
 
 
 # ====================
+# COMPRESSION STUDIO ENDPOINTS
+# ====================
+
+class CompressImageRequest(BaseModel):
+    """Request payload for image compression."""
+    image_base64: str = Field(..., description="Image in base64 or data URL format")
+    quality: int = Field(85, ge=1, le=100, description="Compression quality (1-100)")
+    format: str = Field("jpeg", description="Output format: jpeg, png, webp")
+    target_size_kb: Optional[int] = Field(None, ge=10, description="Target file size in KB")
+    strip_metadata: bool = Field(True, description="Remove EXIF metadata")
+    progressive: bool = Field(True, description="Progressive JPEG encoding")
+    optimize: bool = Field(True, description="Optimize encoding")
+
+
+class CompressImageResponse(BaseModel):
+    success: bool
+    image_base64: str
+    original_size_kb: float
+    compressed_size_kb: float
+    compression_ratio: float
+    format: str
+    width: int
+    height: int
+    quality_used: int
+    metadata_stripped: bool
+
+
+class CompressBatchRequest(BaseModel):
+    """Request payload for batch compression."""
+    images: List[CompressImageRequest] = Field(..., description="List of images to compress")
+
+
+class CompressBatchResponse(BaseModel):
+    success: bool
+    results: List[CompressImageResponse]
+    total_images: int
+    successful: int
+    failed: int
+
+
+class CompressionEstimateRequest(BaseModel):
+    """Request for compression estimation."""
+    image_base64: str = Field(..., description="Image in base64 or data URL format")
+    format: str = Field("jpeg", description="Output format")
+    quality: int = Field(85, ge=1, le=100, description="Quality level")
+
+
+class CompressionEstimateResponse(BaseModel):
+    original_size_kb: float
+    estimated_size_kb: float
+    estimated_reduction_percent: float
+    width: int
+    height: int
+    format: str
+
+
+class CompressionFormatsResponse(BaseModel):
+    formats: List[Dict[str, Any]]
+
+
+class CompressionPresetsResponse(BaseModel):
+    presets: List[Dict[str, Any]]
+
+
+@router.post("/compress", response_model=CompressImageResponse, summary="Compress an image")
+async def compress_image(
+    request: CompressImageRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Compress an image with specified quality and format settings.
+    
+    Features:
+    - Quality control (1-100)
+    - Format conversion (JPEG, PNG, WebP)
+    - Target size compression
+    - Metadata stripping
+    - Progressive JPEG support
+    """
+    try:
+        user_id = _require_user_id(current_user, "image compression")
+        logger.info(f"[Compression] Request from user {user_id}: format={request.format}, quality={request.quality}")
+        
+        from services.image_studio.compression_service import CompressionRequest as ServiceRequest
+        
+        compression_request = ServiceRequest(
+            image_base64=request.image_base64,
+            quality=request.quality,
+            format=request.format,
+            target_size_kb=request.target_size_kb,
+            strip_metadata=request.strip_metadata,
+            progressive=request.progressive,
+            optimize=request.optimize,
+        )
+        
+        result = await studio_manager.compress_image(compression_request, user_id=user_id)
+        
+        return CompressImageResponse(
+            success=result.success,
+            image_base64=result.image_base64,
+            original_size_kb=result.original_size_kb,
+            compressed_size_kb=result.compressed_size_kb,
+            compression_ratio=result.compression_ratio,
+            format=result.format,
+            width=result.width,
+            height=result.height,
+            quality_used=result.quality_used,
+            metadata_stripped=result.metadata_stripped,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Compression] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Image compression failed: {e}")
+
+
+@router.post("/compress/batch", response_model=CompressBatchResponse, summary="Compress multiple images")
+async def compress_batch(
+    request: CompressBatchRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Compress multiple images with the same or individual settings."""
+    try:
+        user_id = _require_user_id(current_user, "batch compression")
+        logger.info(f"[Compression] Batch request from user {user_id}: {len(request.images)} images")
+        
+        from services.image_studio.compression_service import CompressionRequest as ServiceRequest
+        
+        compression_requests = [
+            ServiceRequest(
+                image_base64=img.image_base64,
+                quality=img.quality,
+                format=img.format,
+                target_size_kb=img.target_size_kb,
+                strip_metadata=img.strip_metadata,
+                progressive=img.progressive,
+                optimize=img.optimize,
+            )
+            for img in request.images
+        ]
+        
+        results = await studio_manager.compress_batch(compression_requests, user_id=user_id)
+        
+        successful = sum(1 for r in results if r.success)
+        failed = len(results) - successful
+        
+        return CompressBatchResponse(
+            success=failed == 0,
+            results=[
+                CompressImageResponse(
+                    success=r.success,
+                    image_base64=r.image_base64,
+                    original_size_kb=r.original_size_kb,
+                    compressed_size_kb=r.compressed_size_kb,
+                    compression_ratio=r.compression_ratio,
+                    format=r.format,
+                    width=r.width,
+                    height=r.height,
+                    quality_used=r.quality_used,
+                    metadata_stripped=r.metadata_stripped,
+                )
+                for r in results
+            ],
+            total_images=len(results),
+            successful=successful,
+            failed=failed,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Compression] ❌ Batch error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch compression failed: {e}")
+
+
+@router.post("/compress/estimate", response_model=CompressionEstimateResponse, summary="Estimate compression results")
+async def estimate_compression(
+    request: CompressionEstimateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Estimate compression results without actually compressing the image."""
+    try:
+        result = await studio_manager.estimate_compression(
+            request.image_base64,
+            request.format,
+            request.quality,
+        )
+        return CompressionEstimateResponse(**result)
+    except Exception as e:
+        logger.error(f"[Compression] ❌ Estimate error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Compression estimation failed: {e}")
+
+
+@router.get("/compress/formats", response_model=CompressionFormatsResponse, summary="Get supported compression formats")
+async def get_compression_formats(
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get list of supported compression formats with their capabilities."""
+    formats = studio_manager.get_compression_formats()
+    return CompressionFormatsResponse(formats=formats)
+
+
+@router.get("/compress/presets", response_model=CompressionPresetsResponse, summary="Get compression presets")
+async def get_compression_presets(
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get predefined compression presets for common use cases."""
+    presets = studio_manager.get_compression_presets()
+    return CompressionPresetsResponse(presets=presets)
+
+
+# ====================
+# FORMAT CONVERTER ENDPOINTS
+# ====================
+
+class ConvertFormatRequest(BaseModel):
+    """Request payload for format conversion."""
+    image_base64: str = Field(..., description="Image in base64 or data URL format")
+    target_format: str = Field(..., description="Target format: png, jpeg, jpg, webp, gif, bmp, tiff")
+    preserve_transparency: bool = Field(True, description="Preserve transparency when possible")
+    quality: Optional[int] = Field(None, ge=1, le=100, description="Quality for lossy formats (1-100)")
+    color_space: Optional[str] = Field(None, description="Color space: sRGB, Adobe RGB")
+    strip_metadata: bool = Field(False, description="Remove EXIF metadata")
+    optimize: bool = Field(True, description="Optimize encoding")
+    progressive: bool = Field(True, description="Progressive JPEG encoding")
+
+
+class ConvertFormatResponse(BaseModel):
+    success: bool
+    image_base64: str
+    original_format: str
+    target_format: str
+    original_size_kb: float
+    converted_size_kb: float
+    width: int
+    height: int
+    transparency_preserved: bool
+    metadata_preserved: bool
+    color_space: Optional[str] = None
+
+
+class ConvertFormatBatchRequest(BaseModel):
+    """Request payload for batch format conversion."""
+    images: List[ConvertFormatRequest] = Field(..., description="List of images to convert")
+
+
+class ConvertFormatBatchResponse(BaseModel):
+    success: bool
+    results: List[ConvertFormatResponse]
+    total_images: int
+    successful: int
+    failed: int
+
+
+class SupportedFormatsResponse(BaseModel):
+    formats: List[Dict[str, Any]]
+
+
+class FormatRecommendationsResponse(BaseModel):
+    recommendations: List[Dict[str, Any]]
+
+
+@router.post("/convert-format", response_model=ConvertFormatResponse, summary="Convert image format")
+async def convert_format(
+    request: ConvertFormatRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Convert an image to a different format.
+    
+    Features:
+    - Multi-format support (PNG, JPEG, WebP, GIF, BMP, TIFF)
+    - Transparency preservation
+    - Color space conversion
+    - Metadata handling
+    """
+    try:
+        user_id = _require_user_id(current_user, "format conversion")
+        logger.info(f"[Format Converter] Request from user {user_id}: {request.target_format}")
+        
+        from services.image_studio.format_converter_service import FormatConversionRequest as ServiceRequest
+        
+        conversion_request = ServiceRequest(
+            image_base64=request.image_base64,
+            target_format=request.target_format,
+            preserve_transparency=request.preserve_transparency,
+            quality=request.quality,
+            color_space=request.color_space,
+            strip_metadata=request.strip_metadata,
+            optimize=request.optimize,
+            progressive=request.progressive,
+        )
+        
+        result = await studio_manager.convert_format(conversion_request, user_id=user_id)
+        
+        return ConvertFormatResponse(
+            success=result.success,
+            image_base64=result.image_base64,
+            original_format=result.original_format,
+            target_format=result.target_format,
+            original_size_kb=result.original_size_kb,
+            converted_size_kb=result.converted_size_kb,
+            width=result.width,
+            height=result.height,
+            transparency_preserved=result.transparency_preserved,
+            metadata_preserved=result.metadata_preserved,
+            color_space=result.color_space,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Format Converter] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Format conversion failed: {e}")
+
+
+@router.post("/convert-format/batch", response_model=ConvertFormatBatchResponse, summary="Convert multiple images")
+async def convert_format_batch(
+    request: ConvertFormatBatchRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Convert multiple images to different formats."""
+    try:
+        user_id = _require_user_id(current_user, "batch format conversion")
+        logger.info(f"[Format Converter] Batch request from user {user_id}: {len(request.images)} images")
+        
+        from services.image_studio.format_converter_service import FormatConversionRequest as ServiceRequest
+        
+        conversion_requests = [
+            ServiceRequest(
+                image_base64=img.image_base64,
+                target_format=img.target_format,
+                preserve_transparency=img.preserve_transparency,
+                quality=img.quality,
+                color_space=img.color_space,
+                strip_metadata=img.strip_metadata,
+                optimize=img.optimize,
+                progressive=img.progressive,
+            )
+            for img in request.images
+        ]
+        
+        results = await studio_manager.convert_format_batch(conversion_requests, user_id=user_id)
+        
+        successful = sum(1 for r in results if r.success)
+        failed = len(results) - successful
+        
+        return ConvertFormatBatchResponse(
+            success=failed == 0,
+            results=[
+                ConvertFormatResponse(
+                    success=r.success,
+                    image_base64=r.image_base64,
+                    original_format=r.original_format,
+                    target_format=r.target_format,
+                    original_size_kb=r.original_size_kb,
+                    converted_size_kb=r.converted_size_kb,
+                    width=r.width,
+                    height=r.height,
+                    transparency_preserved=r.transparency_preserved,
+                    metadata_preserved=r.metadata_preserved,
+                    color_space=r.color_space,
+                )
+                for r in results
+            ],
+            total_images=len(results),
+            successful=successful,
+            failed=failed,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Format Converter] ❌ Batch error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch format conversion failed: {e}")
+
+
+@router.get("/convert-format/supported", response_model=SupportedFormatsResponse, summary="Get supported formats")
+async def get_supported_formats(
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get list of supported conversion formats with their capabilities."""
+    formats = studio_manager.get_supported_formats()
+    return SupportedFormatsResponse(formats=formats)
+
+
+@router.get("/convert-format/recommendations", response_model=FormatRecommendationsResponse, summary="Get format recommendations")
+async def get_format_recommendations(
+    source_format: str = Query(..., description="Source format"),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get format recommendations based on source format."""
+    recommendations = studio_manager.get_format_recommendations(source_format)
+    return FormatRecommendationsResponse(recommendations=recommendations)
+
+
+# ====================
 # HEALTH CHECK
 # ====================
 
@@ -1028,6 +1614,7 @@ async def health_check():
             "create_studio": "available",
             "templates": "available",
             "providers": "available",
+            "compression": "available",
         }
     }
 

@@ -6,6 +6,8 @@ from .edit_service import EditStudioService, EditStudioRequest
 from .upscale_service import UpscaleStudioService, UpscaleStudioRequest
 from .control_service import ControlStudioService, ControlStudioRequest
 from .social_optimizer_service import SocialOptimizerService, SocialOptimizerRequest
+from .compression_service import ImageCompressionService, CompressionRequest, CompressionResult
+from .format_converter_service import ImageFormatConverterService, FormatConversionRequest, FormatConversionResult
 from .transform_service import (
     TransformStudioService,
     TransformImageToVideoRequest,
@@ -25,6 +27,12 @@ __all__ = [
     "ControlStudioRequest",
     "SocialOptimizerService",
     "SocialOptimizerRequest",
+    "ImageCompressionService",
+    "CompressionRequest",
+    "CompressionResult",
+    "ImageFormatConverterService",
+    "FormatConversionRequest",
+    "FormatConversionResult",
     "TransformStudioService",
     "TransformImageToVideoRequest",
     "TalkingAvatarRequest",

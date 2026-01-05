@@ -230,6 +230,14 @@ class ResearchIntent(BaseModel):
         le=1.0,
         description="Confidence in the intent inference"
     )
+    confidence_reason: Optional[str] = Field(
+        None,
+        description="Reason for the confidence level"
+    )
+    great_example: Optional[str] = Field(
+        None,
+        description="Example of what a great input would look like (if confidence is low)"
+    )
     needs_clarification: bool = Field(
         False,
         description="True if AI is uncertain and needs user clarification"
@@ -281,6 +289,8 @@ class IntentInferenceResponse(BaseModel):
         default_factory=list,
         description="Quick options for user to confirm/modify intent"
     )
+    confidence_reason: Optional[str] = Field(None, description="Reason for confidence level")
+    great_example: Optional[str] = Field(None, description="Example of great input (if confidence is low)")
 
 
 # ============================================================================

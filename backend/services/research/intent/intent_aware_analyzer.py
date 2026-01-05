@@ -50,6 +50,7 @@ class IntentAwareAnalyzer:
         raw_results: Dict[str, Any],
         intent: ResearchIntent,
         research_persona: Optional[ResearchPersona] = None,
+        user_id: Optional[str] = None,
     ) -> IntentDrivenResearchResult:
         """
         Analyze raw research results based on user intent.
@@ -84,7 +85,7 @@ class IntentAwareAnalyzer:
             result = llm_text_gen(
                 prompt=prompt,
                 json_struct=analysis_schema,
-                user_id=None
+                user_id=user_id  # Required for subscription checking
             )
             
             if isinstance(result, dict) and "error" in result:

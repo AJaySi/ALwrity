@@ -110,6 +110,11 @@ class ContentAssetService:
         search_query: Optional[str] = None,
         tags: Optional[List[str]] = None,
         favorites_only: bool = False,
+        collection_id: Optional[int] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
         limit: int = 100,
         offset: int = 0,
     ) -> Tuple[List[ContentAsset], int]:
@@ -157,11 +162,37 @@ class ContentAssetService:
                 tag_filters = [ContentAsset.tags.contains([tag]) for tag in tags]
                 query = query.filter(or_(*tag_filters))
             
+            if collection_id:
+                query = query.filter(ContentAsset.collection_id == collection_id)
+            
+            if date_from:
+                query = query.filter(ContentAsset.created_at >= date_from)
+            
+            if date_to:
+                query = query.filter(ContentAsset.created_at <= date_to)
+            
             # Get total count before pagination
             total_count = query.count()
             
-            # Apply ordering and pagination
-            query = query.order_by(desc(ContentAsset.created_at))
+            # Apply ordering
+            order_column = ContentAsset.created_at
+            if sort_by == "created_at":
+                order_column = ContentAsset.created_at
+            elif sort_by == "updated_at":
+                order_column = ContentAsset.updated_at
+            elif sort_by == "cost":
+                order_column = ContentAsset.cost
+            elif sort_by == "file_size":
+                order_column = ContentAsset.file_size
+            elif sort_by == "title":
+                order_column = ContentAsset.title
+            
+            if sort_order.lower() == "asc":
+                query = query.order_by(order_column)
+            else:
+                query = query.order_by(desc(order_column))
+            
+            # Apply pagination
             query = query.limit(limit).offset(offset)
             
             return query.all(), total_count
@@ -319,4 +350,231 @@ class ContentAssetService:
                 "total_cost": 0.0,
                 "favorites_count": 0,
             }
+    
+    # ==================== Collection Management ====================
+    
+    def create_collection(
+        self,
+        user_id: str,
+        name: str,
+        description: Optional[str] = None,
+        is_public: bool = False,
+    ) -> AssetCollection:
+        """Create a new asset collection."""
+        try:
+            collection = AssetCollection(
+                user_id=user_id,
+                name=name,
+                description=description,
+                is_public=is_public,
+            )
+            
+            self.db.add(collection)
+            self.db.commit()
+            self.db.refresh(collection)
+            
+            logger.info(f"Created collection {collection.id} '{name}' for user {user_id}")
+            return collection
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error creating collection: {str(e)}", exc_info=True)
+            raise
+    
+    def get_user_collections(
+        self,
+        user_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Tuple[List[AssetCollection], int]:
+        """Get all collections for a user."""
+        try:
+            query = self.db.query(AssetCollection).filter(
+                AssetCollection.user_id == user_id
+            )
+            
+            total_count = query.count()
+            query = query.order_by(desc(AssetCollection.created_at))
+            query = query.limit(limit).offset(offset)
+            
+            return query.all(), total_count
+            
+        except Exception as e:
+            logger.error(f"Error fetching collections: {str(e)}", exc_info=True)
+            raise
+    
+    def get_collection_by_id(self, collection_id: int, user_id: str) -> Optional[AssetCollection]:
+        """Get a specific collection by ID."""
+        try:
+            return self.db.query(AssetCollection).filter(
+                and_(
+                    AssetCollection.id == collection_id,
+                    AssetCollection.user_id == user_id
+                )
+            ).first()
+        except Exception as e:
+            logger.error(f"Error fetching collection {collection_id}: {str(e)}", exc_info=True)
+            return None
+    
+    def update_collection(
+        self,
+        collection_id: int,
+        user_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        is_public: Optional[bool] = None,
+        cover_asset_id: Optional[int] = None,
+    ) -> Optional[AssetCollection]:
+        """Update collection metadata."""
+        try:
+            collection = self.get_collection_by_id(collection_id, user_id)
+            if not collection:
+                return None
+            
+            if name is not None:
+                collection.name = name
+            if description is not None:
+                collection.description = description
+            if is_public is not None:
+                collection.is_public = is_public
+            if cover_asset_id is not None:
+                # Verify asset belongs to user
+                asset = self.get_asset_by_id(cover_asset_id, user_id)
+                if asset:
+                    collection.cover_asset_id = cover_asset_id
+                else:
+                    collection.cover_asset_id = None
+            
+            collection.updated_at = datetime.utcnow()
+            self.db.commit()
+            self.db.refresh(collection)
+            
+            logger.info(f"Updated collection {collection_id} for user {user_id}")
+            return collection
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating collection: {str(e)}", exc_info=True)
+            return None
+    
+    def delete_collection(self, collection_id: int, user_id: str) -> bool:
+        """Delete a collection (assets are not deleted, just removed from collection)."""
+        try:
+            collection = self.get_collection_by_id(collection_id, user_id)
+            if not collection:
+                return False
+            
+            # Remove assets from collection before deleting
+            self.db.query(ContentAsset).filter(
+                ContentAsset.collection_id == collection_id
+            ).update({ContentAsset.collection_id: None})
+            
+            self.db.delete(collection)
+            self.db.commit()
+            
+            logger.info(f"Deleted collection {collection_id} for user {user_id}")
+            return True
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error deleting collection: {str(e)}", exc_info=True)
+            return False
+    
+    def add_assets_to_collection(
+        self,
+        collection_id: int,
+        user_id: str,
+        asset_ids: List[int],
+    ) -> int:
+        """Add assets to a collection. Returns number of assets added."""
+        try:
+            collection = self.get_collection_by_id(collection_id, user_id)
+            if not collection:
+                return 0
+            
+            # Verify all assets belong to user
+            assets = self.db.query(ContentAsset).filter(
+                and_(
+                    ContentAsset.id.in_(asset_ids),
+                    ContentAsset.user_id == user_id
+                )
+            ).all()
+            
+            count = 0
+            for asset in assets:
+                asset.collection_id = collection_id
+                count += 1
+            
+            collection.updated_at = datetime.utcnow()
+            self.db.commit()
+            
+            logger.info(f"Added {count} assets to collection {collection_id}")
+            return count
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error adding assets to collection: {str(e)}", exc_info=True)
+            return 0
+    
+    def remove_assets_from_collection(
+        self,
+        collection_id: int,
+        user_id: str,
+        asset_ids: List[int],
+    ) -> int:
+        """Remove assets from a collection. Returns number of assets removed."""
+        try:
+            collection = self.get_collection_by_id(collection_id, user_id)
+            if not collection:
+                return 0
+            
+            # Remove assets from collection
+            count = self.db.query(ContentAsset).filter(
+                and_(
+                    ContentAsset.id.in_(asset_ids),
+                    ContentAsset.collection_id == collection_id,
+                    ContentAsset.user_id == user_id
+                )
+            ).update({ContentAsset.collection_id: None})
+            
+            collection.updated_at = datetime.utcnow()
+            self.db.commit()
+            
+            logger.info(f"Removed {count} assets from collection {collection_id}")
+            return count
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error removing assets from collection: {str(e)}", exc_info=True)
+            return 0
+    
+    def get_collection_assets(
+        self,
+        collection_id: int,
+        user_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Tuple[List[ContentAsset], int]:
+        """Get all assets in a collection."""
+        try:
+            collection = self.get_collection_by_id(collection_id, user_id)
+            if not collection:
+                return [], 0
+            
+            query = self.db.query(ContentAsset).filter(
+                and_(
+                    ContentAsset.collection_id == collection_id,
+                    ContentAsset.user_id == user_id
+                )
+            )
+            
+            total_count = query.count()
+            query = query.order_by(desc(ContentAsset.created_at))
+            query = query.limit(limit).offset(offset)
+            
+            return query.all(), total_count
+            
+        except Exception as e:
+            logger.error(f"Error fetching collection assets: {str(e)}", exc_info=True)
+            raise
 

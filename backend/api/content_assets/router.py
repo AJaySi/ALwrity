@@ -12,7 +12,7 @@ from datetime import datetime
 from services.database import get_db
 from middleware.auth_middleware import get_current_user
 from services.content_asset_service import ContentAssetService
-from models.content_asset_models import AssetType, AssetSource
+from models.content_asset_models import AssetType, AssetSource, AssetCollection
 
 router = APIRouter(prefix="/api/content-assets", tags=["Content Assets"])
 
@@ -62,6 +62,11 @@ async def get_assets(
     search: Optional[str] = Query(None, description="Search query"),
     tags: Optional[str] = Query(None, description="Comma-separated tags"),
     favorites_only: bool = Query(False, description="Only favorites"),
+    collection_id: Optional[int] = Query(None, description="Filter by collection ID"),
+    date_from: Optional[str] = Query(None, description="Filter from date (ISO format)"),
+    date_to: Optional[str] = Query(None, description="Filter to date (ISO format)"),
+    sort_by: str = Query("created_at", description="Sort by: created_at, updated_at, cost, file_size, title"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -95,6 +100,29 @@ async def get_assets(
         if tags:
             tags_list = [tag.strip() for tag in tags.split(",")]
         
+        # Parse date filters
+        date_from_obj = None
+        if date_from:
+            try:
+                date_from_obj = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date_from format. Use ISO format.")
+        
+        date_to_obj = None
+        if date_to:
+            try:
+                date_to_obj = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date_to format. Use ISO format.")
+        
+        # Validate sort parameters
+        valid_sort_by = ["created_at", "updated_at", "cost", "file_size", "title"]
+        if sort_by not in valid_sort_by:
+            raise HTTPException(status_code=400, detail=f"Invalid sort_by. Must be one of: {', '.join(valid_sort_by)}")
+        
+        if sort_order not in ["asc", "desc"]:
+            raise HTTPException(status_code=400, detail="Invalid sort_order. Must be 'asc' or 'desc'")
+        
         assets, total = service.get_user_assets(
             user_id=user_id,
             asset_type=asset_type_enum,
@@ -102,6 +130,11 @@ async def get_assets(
             search_query=search,
             tags=tags_list,
             favorites_only=favorites_only,
+            collection_id=collection_id,
+            date_from=date_from_obj,
+            date_to=date_to_obj,
+            sort_by=sort_by,
+            sort_order=sort_order,
             limit=limit,
             offset=offset,
         )
@@ -329,4 +362,304 @@ async def get_statistics(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching statistics: {str(e)}")
+
+
+# ==================== Collection Endpoints ====================
+
+class CollectionResponse(BaseModel):
+    """Response model for collection data."""
+    id: int
+    user_id: str
+    name: str
+    description: Optional[str] = None
+    is_public: bool = False
+    cover_asset_id: Optional[int] = None
+    asset_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class CollectionListResponse(BaseModel):
+    """Response model for collection list."""
+    collections: List[CollectionResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class CollectionCreateRequest(BaseModel):
+    """Request model for creating a collection."""
+    name: str = Field(..., description="Collection name")
+    description: Optional[str] = Field(None, description="Collection description")
+    is_public: bool = Field(False, description="Whether collection is public")
+
+
+class CollectionUpdateRequest(BaseModel):
+    """Request model for updating a collection."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_public: Optional[bool] = None
+    cover_asset_id: Optional[int] = None
+
+
+@router.post("/collections", response_model=CollectionResponse)
+async def create_collection(
+    collection_data: CollectionCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Create a new asset collection."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        collection = service.create_collection(
+            user_id=user_id,
+            name=collection_data.name,
+            description=collection_data.description,
+            is_public=collection_data.is_public,
+        )
+        
+        # Get asset count
+        assets, _ = service.get_collection_assets(collection.id, user_id, limit=1, offset=0)
+        asset_count = len(assets)
+        
+        response = CollectionResponse.model_validate(collection)
+        response.asset_count = asset_count
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating collection: {str(e)}")
+
+
+@router.get("/collections", response_model=CollectionListResponse)
+async def get_collections(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Get user's collections."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        collections, total = service.get_user_collections(user_id, limit=limit, offset=offset)
+        
+        # Get asset counts for each collection
+        collection_responses = []
+        for collection in collections:
+            assets, _ = service.get_collection_assets(collection.id, user_id, limit=1, offset=0)
+            response = CollectionResponse.model_validate(collection)
+            response.asset_count = len(assets)
+            collection_responses.append(response)
+        
+        return CollectionListResponse(
+            collections=collection_responses,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching collections: {str(e)}")
+
+
+@router.get("/collections/{collection_id}", response_model=CollectionResponse)
+async def get_collection(
+    collection_id: int,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Get a specific collection."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        collection = service.get_collection_by_id(collection_id, user_id)
+        
+        if not collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        
+        assets, _ = service.get_collection_assets(collection.id, user_id, limit=1, offset=0)
+        response = CollectionResponse.model_validate(collection)
+        response.asset_count = len(assets)
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching collection: {str(e)}")
+
+
+@router.put("/collections/{collection_id}", response_model=CollectionResponse)
+async def update_collection(
+    collection_id: int,
+    update_data: CollectionUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Update collection metadata."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        collection = service.update_collection(
+            collection_id=collection_id,
+            user_id=user_id,
+            name=update_data.name,
+            description=update_data.description,
+            is_public=update_data.is_public,
+            cover_asset_id=update_data.cover_asset_id,
+        )
+        
+        if not collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        
+        assets, _ = service.get_collection_assets(collection.id, user_id, limit=1, offset=0)
+        response = CollectionResponse.model_validate(collection)
+        response.asset_count = len(assets)
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating collection: {str(e)}")
+
+
+@router.delete("/collections/{collection_id}", response_model=Dict[str, Any])
+async def delete_collection(
+    collection_id: int,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Delete a collection."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        success = service.delete_collection(collection_id, user_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        
+        return {"collection_id": collection_id, "deleted": True}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting collection: {str(e)}")
+
+
+@router.get("/collections/{collection_id}/assets", response_model=AssetListResponse)
+async def get_collection_assets(
+    collection_id: int,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Get all assets in a collection."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        collection = service.get_collection_by_id(collection_id, user_id)
+        
+        if not collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        
+        assets, total = service.get_collection_assets(collection_id, user_id, limit=limit, offset=offset)
+        
+        return AssetListResponse(
+            assets=[AssetResponse.model_validate(asset) for asset in assets],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching collection assets: {str(e)}")
+
+
+class CollectionAssetsRequest(BaseModel):
+    """Request model for adding/removing assets from collection."""
+    asset_ids: List[int] = Field(..., description="List of asset IDs")
+
+
+@router.post("/collections/{collection_id}/assets", response_model=Dict[str, Any])
+async def add_assets_to_collection(
+    collection_id: int,
+    request: CollectionAssetsRequest,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Add assets to a collection."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        count = service.add_assets_to_collection(collection_id, user_id, request.asset_ids)
+        
+        return {
+            "collection_id": collection_id,
+            "assets_added": count,
+            "asset_ids": request.asset_ids,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error adding assets to collection: {str(e)}")
+
+
+@router.delete("/collections/{collection_id}/assets", response_model=Dict[str, Any])
+async def remove_assets_from_collection(
+    collection_id: int,
+    request: CollectionAssetsRequest,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Remove assets from a collection."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        count = service.remove_assets_from_collection(collection_id, user_id, request.asset_ids)
+        
+        return {
+            "collection_id": collection_id,
+            "assets_removed": count,
+            "asset_ids": request.asset_ids,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error removing assets from collection: {str(e)}")
 

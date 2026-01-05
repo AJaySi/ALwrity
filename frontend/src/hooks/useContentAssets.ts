@@ -33,6 +33,11 @@ export interface AssetFilters {
   search?: string;
   tags?: string[];
   favorites_only?: boolean;
+  collection_id?: number;
+  date_from?: string;
+  date_to?: string;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
 }
@@ -63,6 +68,11 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
       search: filters.search,
       tags: filters.tags,
       favorites_only: filters.favorites_only,
+      collection_id: filters.collection_id,
+      date_from: filters.date_from,
+      date_to: filters.date_to,
+      sort_by: filters.sort_by,
+      sort_order: filters.sort_order,
       limit: filters.limit,
       offset: filters.offset,
     };
@@ -72,6 +82,11 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
     filters.search,
     filters.tags?.join(','),
     filters.favorites_only,
+    filters.collection_id,
+    filters.date_from,
+    filters.date_to,
+    filters.sort_by,
+    filters.sort_order,
     filters.limit,
     filters.offset,
   ]);
@@ -131,6 +146,11 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
       if (currentFilters.search) params.append('search', currentFilters.search);
       if (currentFilters.tags && currentFilters.tags.length > 0) params.append('tags', currentFilters.tags.join(','));
       if (currentFilters.favorites_only) params.append('favorites_only', 'true');
+      if (currentFilters.collection_id) params.append('collection_id', String(currentFilters.collection_id));
+      if (currentFilters.date_from) params.append('date_from', currentFilters.date_from);
+      if (currentFilters.date_to) params.append('date_to', currentFilters.date_to);
+      if (currentFilters.sort_by) params.append('sort_by', currentFilters.sort_by);
+      if (currentFilters.sort_order) params.append('sort_order', currentFilters.sort_order);
       params.append('limit', String(currentFilters.limit || 100));
       params.append('offset', String(currentFilters.offset || 0));
 

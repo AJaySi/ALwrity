@@ -36,18 +36,16 @@ class UpscaleStudioService:
         request: UpscaleStudioRequest,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        # Pre-flight validation: Reuse unified helper
+        # Note: Using image-generation validation since upscaling uses same subscription limits
         if user_id:
-            from services.database import get_db
-            from services.subscription import PricingService
-            from services.subscription.preflight_validator import validate_image_upscale_operations
-
-            db = next(get_db())
-            try:
-                pricing_service = PricingService(db)
-                logger.info("[Upscale Studio] 🛂 Running pre-flight validation for user %s", user_id)
-                validate_image_upscale_operations(pricing_service=pricing_service, user_id=user_id)
-            finally:
-                db.close()
+            from services.llm_providers.main_image_generation import _validate_image_operation
+            _validate_image_operation(
+                user_id=user_id,
+                operation_type="image-upscale",
+                num_operations=1,
+                log_prefix="[Upscale Studio]"
+            )
 
         image_bytes = self._decode_base64(request.image_base64)
         if not image_bytes:

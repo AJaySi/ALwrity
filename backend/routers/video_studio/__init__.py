@@ -12,7 +12,7 @@ Uses WaveSpeed AI models for high-quality video generation.
 
 from fastapi import APIRouter
 
-from .endpoints import create, avatar, enhance, extend, transform, models, serve, tasks, prompt, social, face_swap, video_translate, video_background_remover, add_audio_to_video
+from .endpoints import create, avatar, enhance, extend, transform, models, serve, tasks, prompt, social, face_swap, video_translate, video_background_remover, add_audio_to_video, edit
 
 # Create main router
 router = APIRouter(
@@ -32,6 +32,7 @@ router.include_router(face_swap.router)
 router.include_router(video_translate.router)
 router.include_router(video_background_remover.router)
 router.include_router(add_audio_to_video.router)
+router.include_router(edit.router)
 router.include_router(models.router)
 router.include_router(serve.router)
 router.include_router(tasks.router)

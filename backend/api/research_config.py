@@ -236,6 +236,56 @@ async def get_persona_defaults(
         )
 
 
+@router.get("/research-persona/verify")
+async def verify_research_persona_exists(
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Verify if research persona exists in database (for debugging).
+    Returns detailed information about persona status.
+    """
+    try:
+        user_id = str(current_user.get('id'))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User not authenticated")
+        
+        if not db:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        persona_service = ResearchPersonaService(db_session=db)
+        persona_data = persona_service._get_persona_data_record(user_id)
+        
+        if not persona_data:
+            return {
+                "exists": False,
+                "reason": "No persona_data record found",
+                "user_id": user_id
+            }
+        
+        has_persona = (
+            persona_data.research_persona is not None 
+            and persona_data.research_persona != {}
+            and persona_data.research_persona != ""
+            and isinstance(persona_data.research_persona, dict)
+            and len(persona_data.research_persona) > 0
+        )
+        
+        cache_valid = persona_service.is_cache_valid(persona_data) if has_persona else False
+        
+        return {
+            "exists": has_persona,
+            "cache_valid": cache_valid,
+            "generated_at": persona_data.research_persona_generated_at.isoformat() if persona_data.research_persona_generated_at else None,
+            "persona_type": type(persona_data.research_persona).__name__ if persona_data.research_persona else None,
+            "persona_keys": list(persona_data.research_persona.keys()) if has_persona and isinstance(persona_data.research_persona, dict) else None,
+            "user_id": user_id
+        }
+    except Exception as e:
+        logger.error(f"[ResearchConfig] Error verifying research persona: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to verify research persona: {str(e)}")
+
+
 @router.get("/research-persona")
 async def get_research_persona(
     current_user: Dict = Depends(get_current_user),
@@ -261,6 +311,14 @@ async def get_research_persona(
             raise HTTPException(status_code=500, detail="Database not available")
         
         persona_service = ResearchPersonaService(db_session=db)
+        
+        # First check if persona exists (without generating)
+        existing_persona = persona_service.get_cached_only(user_id)
+        if existing_persona and not force_refresh:
+            logger.info(f"[ResearchConfig] Returning existing research persona for user {user_id} (force_refresh={force_refresh})")
+            return existing_persona.dict()
+        
+        # Only generate if persona doesn't exist or force_refresh is True
         research_persona = persona_service.get_or_generate(user_id, force_refresh=force_refresh)
         
         if not research_persona:
@@ -286,8 +344,9 @@ async def get_research_config(
 ):
     """
     Get complete research configuration including provider availability and persona defaults.
+    
+    Requires authentication - user must be logged in.
     """
-    user_id = None
     try:
         user_id = str(current_user.get('id'))
         logger.info(f"[ResearchConfig] Starting get_research_config for user {user_id}")
@@ -378,19 +437,30 @@ async def get_research_config(
         
         # Get research persona (optional, may not exist for all users)
         # CRITICAL: Use get_cached_only() to avoid triggering rate limit checks
-        # Only return persona if it's already cached - don't generate on config load
+        # Returns persona if it exists in database, regardless of cache validity
         research_persona = None
         persona_scheduled = False
         try:
-            logger.debug(f"[ResearchConfig] Getting cached research persona for user {user_id}")
+            logger.info(f"[ResearchConfig] 🔍 Getting research persona for user {user_id}")
             persona_service = ResearchPersonaService(db_session=db)
             research_persona = persona_service.get_cached_only(user_id)
             
-            logger.info(
-                f"[ResearchConfig] Research persona check for user {user_id}: "
-                f"persona_exists={research_persona is not None}, "
-                f"onboarding_completed={onboarding_completed}"
-            )
+            if research_persona:
+                # Check cache validity for logging
+                persona_data_record = persona_service._get_persona_data_record(user_id)
+                cache_valid = persona_data_record and persona_service.is_cache_valid(persona_data_record) if persona_data_record else False
+                logger.info(
+                    f"[ResearchConfig] ✅ Research persona FOUND for user {user_id}: "
+                    f"exists=True, cache_valid={cache_valid}, "
+                    f"industry={research_persona.default_industry}, "
+                    f"onboarding_completed={onboarding_completed}"
+                )
+            else:
+                logger.warning(
+                    f"[ResearchConfig] ⚠️ Research persona NOT FOUND for user {user_id}: "
+                    f"persona_exists=False, "
+                    f"onboarding_completed={onboarding_completed}"
+                )
             
             # If onboarding is completed but persona doesn't exist, schedule generation
             if onboarding_completed and not research_persona:
@@ -412,13 +482,24 @@ async def get_research_config(
             # get_cached_only() never raises HTTPException, but catch any unexpected errors
             logger.warning(f"[ResearchConfig] Could not load cached research persona for user {user_id}: {e}", exc_info=True)
         
-        # FastAPI will automatically serialize the ResearchPersona Pydantic model
+        # Convert ResearchPersona to dict for proper serialization
+        # FastAPI should handle Pydantic models, but explicit conversion ensures compatibility
+        research_persona_dict = None
+        if research_persona:
+            try:
+                research_persona_dict = research_persona.dict() if hasattr(research_persona, 'dict') else research_persona
+                logger.debug(f"[ResearchConfig] Converted research persona to dict for user {user_id}")
+            except Exception as e:
+                logger.warning(f"[ResearchConfig] Failed to convert research persona to dict: {e}")
+                research_persona_dict = None
+        
+        # FastAPI will automatically serialize the ResearchPersona dict
         # If there's a serialization issue, we catch it and log it
         try:
             response = ResearchConfigResponse(
                 provider_availability=provider_availability,
                 persona_defaults=persona_defaults,
-                research_persona=research_persona,
+                research_persona=research_persona_dict,
                 onboarding_completed=onboarding_completed,
                 persona_scheduled=persona_scheduled
             )
@@ -434,9 +515,10 @@ async def get_research_config(
             )
 
         logger.info(
-            f"[ResearchConfig] Response for user {user_id}: "
+            f"[ResearchConfig] 📤 Response for user {user_id}: "
             f"onboarding_completed={onboarding_completed}, "
             f"persona_exists={research_persona is not None}, "
+            f"persona_dict_exists={research_persona_dict is not None}, "
             f"persona_scheduled={persona_scheduled}"
         )
 

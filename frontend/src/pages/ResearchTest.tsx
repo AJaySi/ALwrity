@@ -226,8 +226,11 @@ export const ResearchTest: React.FC = () => {
       console.log('[ResearchTest] Starting persona check...');
       try {
         const config = await getResearchConfig();
-        console.log('[ResearchTest] Config received:', {
+        console.log('[ResearchTest] 📥 Config received:', {
           hasResearchPersona: !!config.research_persona,
+          researchPersonaType: typeof config.research_persona,
+          researchPersonaKeys: config.research_persona ? Object.keys(config.research_persona) : null,
+          hasResearchPersonaFlag: config.persona_defaults?.has_research_persona,
           onboardingCompleted: config.onboarding_completed,
           personaScheduled: config.persona_scheduled,
           personaDefaults: config.persona_defaults
@@ -236,7 +239,19 @@ export const ResearchTest: React.FC = () => {
         setPersonaData(config.persona_defaults || null);
         
         // CASE 1: Research persona exists in database
-        if (config.research_persona) {
+        // Check both research_persona object and has_research_persona flag for robustness
+        const hasPersonaObject = config.research_persona && typeof config.research_persona === 'object' && Object.keys(config.research_persona).length > 0;
+        const hasPersonaFlag = config.persona_defaults?.has_research_persona === true;
+        const hasPersona = hasPersonaObject || hasPersonaFlag;
+        
+        console.log('[ResearchTest] 🔍 Persona check:', {
+          hasPersonaObject,
+          hasPersonaFlag,
+          hasPersona,
+          researchPersona: config.research_persona
+        });
+        
+        if (hasPersona && config.research_persona) {
           console.log('[ResearchTest] ✅ CASE 1: Research persona found in database');
           console.log('[ResearchTest] Persona details:', {
             defaultIndustry: config.research_persona.default_industry,

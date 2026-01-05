@@ -39,6 +39,7 @@ class IntentQueryGenerator:
         self,
         intent: ResearchIntent,
         research_persona: Optional[ResearchPersona] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate targeted research queries based on intent.
@@ -89,7 +90,7 @@ class IntentQueryGenerator:
             result = llm_text_gen(
                 prompt=prompt,
                 json_struct=query_schema,
-                user_id=None
+                user_id=user_id
             )
             
             if isinstance(result, dict) and "error" in result:

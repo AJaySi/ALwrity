@@ -1,19 +1,31 @@
 import React, { useState, useEffect } from 'react';
+import { Tooltip, CircularProgress } from '@mui/material';
+import { Psychology as BrainIcon, Settings as SettingsIcon, Info as InfoIcon } from '@mui/icons-material';
 
 interface ResearchInputContainerProps {
   keywords: string[];
   placeholder: string;
   onKeywordsChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  // New props for unified intent & options
+  onIntentAndOptions?: () => void;
+  isAnalyzingIntent?: boolean;
+  hasIntentAnalysis?: boolean;
+  intentConfidence?: number;
 }
 
 export const ResearchInputContainer: React.FC<ResearchInputContainerProps> = ({
   keywords,
   placeholder,
   onKeywordsChange,
+  onIntentAndOptions,
+  isAnalyzingIntent = false,
+  hasIntentAnalysis = false,
+  intentConfidence = 0,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [wordCount, setWordCount] = useState(0);
   const MAX_WORDS = 1000;
+  const MIN_WORDS_FOR_INTENT = 2; // Enable button after 2+ words
 
   // Initialize input value from keywords only on mount or when keywords are cleared
   useEffect(() => {
@@ -112,17 +124,96 @@ export const ResearchInputContainer: React.FC<ResearchInputContainerProps> = ({
         }}
       />
 
-      {/* Word count indicator */}
+      {/* Bottom bar with word count and Intent & Options button */}
       <div style={{
         display: 'flex',
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingTop: '8px',
-        fontSize: '12px',
-        color: wordCount >= MAX_WORDS ? '#ef4444' : '#64748b',
-        fontWeight: wordCount >= MAX_WORDS ? '600' : '400',
+        paddingTop: '12px',
+        borderTop: '1px solid rgba(14, 165, 233, 0.1)',
+        marginTop: '8px',
       }}>
-        {wordCount} / {MAX_WORDS} words
+        {/* Word count indicator */}
+        <div style={{
+          fontSize: '12px',
+          color: wordCount >= MAX_WORDS ? '#ef4444' : '#64748b',
+          fontWeight: wordCount >= MAX_WORDS ? '600' : '400',
+        }}>
+          {wordCount} / {MAX_WORDS} words
+        </div>
+
+        {/* Intent & Options Button */}
+        <Tooltip
+          title={
+            wordCount < MIN_WORDS_FOR_INTENT
+              ? `Enter at least ${MIN_WORDS_FOR_INTENT} words to analyze intent`
+              : hasIntentAnalysis
+                ? `Intent analyzed with ${Math.round(intentConfidence * 100)}% confidence. Click to re-analyze.`
+                : 'Let AI understand what you want to accomplish and configure optimal settings'
+          }
+          arrow
+          placement="top"
+        >
+          <span>
+            <button
+              onClick={onIntentAndOptions}
+              disabled={wordCount < MIN_WORDS_FOR_INTENT || isAnalyzingIntent}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                background: wordCount >= MIN_WORDS_FOR_INTENT && !isAnalyzingIntent
+                  ? hasIntentAnalysis
+                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  : 'rgba(100, 116, 139, 0.15)',
+                color: wordCount >= MIN_WORDS_FOR_INTENT && !isAnalyzingIntent ? 'white' : '#94a3b8',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: wordCount >= MIN_WORDS_FOR_INTENT && !isAnalyzingIntent ? 'pointer' : 'not-allowed',
+                fontSize: '13px',
+                fontWeight: '600',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: wordCount >= MIN_WORDS_FOR_INTENT && !isAnalyzingIntent
+                  ? '0 2px 8px rgba(102, 126, 234, 0.3)'
+                  : 'none',
+              }}
+              onMouseEnter={(e) => {
+                if (wordCount >= MIN_WORDS_FOR_INTENT && !isAnalyzingIntent) {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (wordCount >= MIN_WORDS_FOR_INTENT && !isAnalyzingIntent) {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+                }
+              }}
+            >
+              {isAnalyzingIntent ? (
+                <>
+                  <CircularProgress size={14} sx={{ color: 'inherit' }} />
+                  Analyzing...
+                </>
+              ) : hasIntentAnalysis ? (
+                <>
+                  <BrainIcon sx={{ fontSize: 16 }} />
+                  ✓ Intent Ready
+                </>
+              ) : (
+                <>
+                  <BrainIcon sx={{ fontSize: 16 }} />
+                  Intent & Options
+                  <Tooltip title="AI analyzes your research goals and configures optimal Exa/Tavily settings automatically" arrow>
+                    <InfoIcon sx={{ fontSize: 12, opacity: 0.7 }} />
+                  </Tooltip>
+                </>
+              )}
+            </button>
+          </span>
+        </Tooltip>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { WizardStepProps } from '../types/research.types';
 import { ResearchProvider, ResearchMode } from '../../../services/blogWriterApi';
 import { getResearchConfig, ProviderAvailability } from '../../../api/researchConfig';
@@ -6,13 +6,6 @@ import {
   getResearchHistory, 
   ResearchHistoryEntry 
 } from '../../../utils/researchHistory';
-import { 
-  expandKeywords,
-  expandKeywordsWithPersona
-} from '../../../utils/keywordExpansion';
-import { 
-  generateResearchAngles
-} from '../../../utils/researchAngles';
 
 // Utilities
 import { parseIntelligentInput } from './utils/inputParser';
@@ -27,11 +20,14 @@ import { SmartInputIndicator } from './components/SmartInputIndicator';
 import { KeywordExpansion } from './components/KeywordExpansion';
 import { CurrentKeywords } from './components/CurrentKeywords';
 import { ResearchAngles } from './components/ResearchAngles';
-import { TavilyOptions } from './components/TavilyOptions';
-import { ExaOptions } from './components/ExaOptions';
-import { PersonalizationIndicator, PersonalizationBadge } from './components/PersonalizationIndicator';
+import { ResearchInputHeader } from './components/ResearchInputHeader';
+import { AdvancedOptionsSection } from './components/AdvancedOptionsSection';
 import { IntentConfirmationPanel } from './components/IntentConfirmationPanel';
 import { ResearchExecution } from '../types/research.types';
+
+// Hooks
+import { useKeywordExpansion } from './hooks/useKeywordExpansion';
+import { useResearchAngles } from './hooks/useResearchAngles';
 
 interface ResearchInputProps extends WizardStepProps {
   advanced?: boolean;
@@ -45,12 +41,6 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [suggestedMode, setSuggestedMode] = useState<ResearchMode | null>(null);
   const [researchHistory, setResearchHistory] = useState<ResearchHistoryEntry[]>([]);
-  const [keywordExpansion, setKeywordExpansion] = useState<{
-    original: string[];
-    expanded: string[];
-    suggestions: string[];
-  } | null>(null);
-  const [researchAngles, setResearchAngles] = useState<string[]>([]);
   const [researchPersona, setResearchPersona] = useState<{
     research_angles?: string[];
     recommended_presets?: Array<{
@@ -355,71 +345,11 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
     }
   }, [state.industry, providerAvailability]);
 
-  // Expand keywords when keywords or industry changes
-  // Enhanced to use research persona data if available
-  useEffect(() => {
-    if (state.keywords.length > 0) {
-      let expansion;
-      
-      // If we have research persona with keyword expansion patterns, use them
-      if (researchPersona?.keyword_expansion_patterns && Object.keys(researchPersona.keyword_expansion_patterns).length > 0) {
-        expansion = expandKeywordsWithPersona(state.keywords, researchPersona.keyword_expansion_patterns, researchPersona.suggested_keywords);
-      } else if (state.industry !== 'General') {
-        // Fallback to industry-based expansion
-        expansion = expandKeywords(state.keywords, state.industry);
-      } else {
-        expansion = { original: state.keywords, expanded: state.keywords, suggestions: [] };
-      }
-      
-      setKeywordExpansion(expansion);
-    } else {
-      setKeywordExpansion(null);
-    }
-  }, [state.keywords, state.industry, researchPersona]);
+  // Use keyword expansion hook
+  const keywordExpansion = useKeywordExpansion(state.keywords, state.industry, researchPersona);
 
-  // Generate research angles when keywords change
-  // Enhanced to prioritize research persona angles if available
-  useEffect(() => {
-    if (state.keywords.length > 0) {
-      const query = state.keywords.join(' ');
-      let angles: string[] = [];
-      
-      // Priority 1: Use research persona angles if available and relevant
-      if (researchPersona?.research_angles && researchPersona.research_angles.length > 0) {
-        // Filter persona angles that are relevant to the current query
-        const relevantPersonaAngles = researchPersona.research_angles
-          .filter(angle => {
-            const angleLower = angle.toLowerCase();
-            const queryLower = query.toLowerCase();
-            // Check if angle contains any keyword from query or vice versa
-            return state.keywords.some(kw => angleLower.includes(kw.toLowerCase()) || queryLower.includes(kw.toLowerCase())) ||
-                   angleLower.includes(queryLower) || queryLower.includes(angleLower);
-          })
-          .slice(0, 3); // Use top 3 relevant persona angles
-        
-        angles.push(...relevantPersonaAngles);
-      }
-      
-      // Priority 2: Generate additional angles using pattern matching
-      const generatedAngles = generateResearchAngles(query, state.industry);
-      
-      // Merge and deduplicate, prioritizing persona angles
-      const allAngles = [...angles, ...generatedAngles];
-      const uniqueAngles = Array.from(new Set(allAngles.map(a => a.toLowerCase())))
-        .slice(0, 5) // Limit to 5 total
-        .map(a => {
-          // Find original casing from persona angles first, then generated
-          const personaMatch = angles.find(pa => pa.toLowerCase() === a);
-          if (personaMatch) return personaMatch;
-          const generatedMatch = generatedAngles.find(ga => ga.toLowerCase() === a);
-          return generatedMatch || a.charAt(0).toUpperCase() + a.slice(1);
-        });
-      
-      setResearchAngles(uniqueAngles);
-    } else {
-      setResearchAngles([]);
-    }
-  }, [state.keywords, state.industry, researchPersona]);
+  // Use research angles hook
+  const researchAngles = useResearchAngles(state.keywords, state.industry, researchPersona);
 
   // Event handlers
   const handleKeywordsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -511,130 +441,13 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
         e.currentTarget.style.boxShadow = 'none';
       }}
       >
-        <div style={{
-          marginBottom: '12px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '12px',
-        }}>
-          <label style={{
-            fontSize: '15px',
-            fontWeight: '600',
-            color: '#0c4a6e',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            flex: '1',
-          }}>
-            <span style={{
-              fontSize: '20px',
-            }}>🔍</span>
-            Research Topic & Keywords
-            <PersonalizationIndicator 
-              type="placeholder" 
-              hasPersona={!!researchPersona}
-              source={researchPersona ? "from your research persona" : undefined}
-            />
-          </label>
-          
-          {/* Advanced Toggle and Upload Button */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            {/* Advanced Toggle */}
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                padding: '6px 10px',
-                borderRadius: '8px',
-                border: `1px solid ${advanced ? 'rgba(14, 165, 233, 0.3)' : 'rgba(15, 23, 42, 0.1)'}`,
-                background: advanced
-                  ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)'
-                  : '#ffffff',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                fontSize: '11px',
-                fontWeight: '600',
-                color: advanced ? '#0369a1' : '#475569',
-                boxShadow: advanced ? '0 1px 3px rgba(14, 165, 233, 0.12)' : '0 1px 2px rgba(0, 0, 0, 0.04)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = advanced ? 'rgba(14, 165, 233, 0.4)' : 'rgba(15, 23, 42, 0.15)';
-                e.currentTarget.style.boxShadow = advanced
-                  ? '0 2px 4px rgba(14, 165, 233, 0.18)'
-                  : '0 1px 3px rgba(0, 0, 0, 0.06)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = advanced ? 'rgba(14, 165, 233, 0.3)' : 'rgba(15, 23, 42, 0.1)';
-                e.currentTarget.style.boxShadow = advanced
-                  ? '0 1px 3px rgba(14, 165, 233, 0.12)'
-                  : '0 1px 2px rgba(0, 0, 0, 0.04)';
-              }}
-              title="Enable advanced research options (Exa and Tavily configurations)"
-            >
-              <input
-                type="checkbox"
-                checked={advanced}
-                onChange={(e) => {
-                  if (onAdvancedChange) {
-                    onAdvancedChange(e.target.checked);
-                  } else {
-                    setLocalAdvanced(e.target.checked);
-                  }
-                }}
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  cursor: 'pointer',
-                  accentColor: '#0ea5e9',
-                }}
-              />
-              <span>Advanced</span>
-            </label>
-
-            {/* Upload Button */}
-            <button
-              onClick={handleFileUpload}
-              type="button"
-              style={{
-                padding: '6px 10px',
-                background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)',
-                border: '1px solid rgba(14, 165, 233, 0.25)',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '11px',
-                fontWeight: '600',
-                color: '#0369a1',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: '0 1px 2px rgba(14, 165, 233, 0.12)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%)';
-                e.currentTarget.style.borderColor = 'rgba(14, 165, 233, 0.35)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(14, 165, 233, 0.18)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)';
-                e.currentTarget.style.borderColor = 'rgba(14, 165, 233, 0.25)';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 2px rgba(14, 165, 233, 0.12)';
-              }}
-              title="Upload Document"
-            >
-              <span style={{ fontSize: '13px' }}>📎</span>
-              <span>Upload</span>
-            </button>
-          </div>
-        </div>
+        {/* Header */}
+        <ResearchInputHeader
+          hasPersona={!!researchPersona}
+          advanced={advanced}
+          onAdvancedChange={setAdvanced}
+          onFileUpload={handleFileUpload}
+        />
         
         {/* Research History */}
         <ResearchHistory
@@ -643,11 +456,55 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
           onHistoryCleared={handleHistoryCleared}
         />
         
-        {/* Main Input Container */}
+        {/* Main Input Container with Intent & Options button */}
         <ResearchInputContainer
           keywords={state.keywords}
           placeholder={placeholderExamples[currentPlaceholder]}
           onKeywordsChange={handleKeywordsChange}
+          onIntentAndOptions={async () => {
+            if (execution?.analyzeIntent) {
+              try {
+                const response = await execution.analyzeIntent(state);
+                
+                // Apply optimized config from intent analysis (if available)
+                if (response?.success && response.optimized_config) {
+                  const optConfig = response.optimized_config;
+                  const configUpdates: any = {};
+                  
+                  // Apply recommended provider
+                  if (response.recommended_provider) {
+                    configUpdates.provider = response.recommended_provider;
+                  }
+                  
+                  // Apply Exa settings (note: backend uses exa_type, but frontend state uses exa_search_type)
+                  if (optConfig.exa_category) configUpdates.exa_category = optConfig.exa_category;
+                  if (optConfig.exa_type) configUpdates.exa_search_type = optConfig.exa_type as 'auto' | 'keyword' | 'neural';
+                  if (optConfig.exa_include_domains) configUpdates.exa_include_domains = optConfig.exa_include_domains;
+                  if (optConfig.exa_num_results) configUpdates.exa_num_results = optConfig.exa_num_results;
+                  
+                  // Apply Tavily settings
+                  if (optConfig.tavily_topic) configUpdates.tavily_topic = optConfig.tavily_topic;
+                  if (optConfig.tavily_search_depth) configUpdates.tavily_search_depth = optConfig.tavily_search_depth;
+                  if (optConfig.tavily_include_answer !== undefined) configUpdates.tavily_include_answer = optConfig.tavily_include_answer;
+                  if (optConfig.tavily_time_range) configUpdates.tavily_time_range = optConfig.tavily_time_range;
+                  
+                  // Update state with optimized config
+                  if (Object.keys(configUpdates).length > 0) {
+                    console.log('[ResearchInput] Applying optimized config from intent:', configUpdates);
+                    onUpdate({ config: { ...state.config, ...configUpdates } });
+                  }
+                }
+                
+                // After analysis, show advanced options
+                setAdvanced(true);
+              } catch (error) {
+                console.error('[ResearchInput] Intent analysis error:', error);
+              }
+            }
+          }}
+          isAnalyzingIntent={execution?.isAnalyzingIntent}
+          hasIntentAnalysis={!!execution?.intentAnalysis}
+          intentConfidence={execution?.intentAnalysis?.intent?.confidence || 0}
         />
         
         {/* Hidden File Input */}
@@ -662,24 +519,71 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
         {/* Smart Input Detection Indicator */}
         <SmartInputIndicator keywords={state.keywords} />
 
-        {/* Intent Analysis Panel - Show when intent analysis is available */}
-        {execution && (execution.isAnalyzingIntent || execution.intentAnalysis) && (
-          <IntentConfirmationPanel
-            isAnalyzing={execution.isAnalyzingIntent}
-            intentAnalysis={execution.intentAnalysis}
-            confirmedIntent={execution.confirmedIntent}
-            onConfirm={execution.confirmIntent}
-            onUpdateField={execution.updateIntentField}
-            onExecute={async () => {
-              const result = await execution.executeIntentResearch(state);
-              if (result?.success) {
-                // Skip to results step
-                onUpdate({ currentStep: 3 });
-              }
-            }}
-            onDismiss={execution.clearIntent}
-            isExecuting={execution.isExecuting}
-          />
+        {/* Error Display */}
+        {execution && execution.error && (
+          <div style={{
+            padding: '16px',
+            marginTop: '16px',
+            backgroundColor: '#fee2e2',
+            border: '1px solid #fca5a5',
+            borderRadius: '8px',
+            color: '#991b1b',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '20px' }}>⚠️</span>
+              <strong>Smart Research Error</strong>
+            </div>
+            <p style={{ margin: 0, fontSize: '14px' }}>{execution.error}</p>
+            <button
+              onClick={() => {
+                if (execution.clearIntent) {
+                  execution.clearIntent();
+                }
+              }}
+              style={{
+                marginTop: '12px',
+                padding: '6px 12px',
+                backgroundColor: '#dc2626',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Intent Analysis Panel - Always inline when available (Unified Design) */}
+        {execution && execution.intentAnalysis && (
+          <div style={{
+            marginTop: '20px',
+            animation: 'fadeIn 0.3s ease-out',
+          }}>
+            <IntentConfirmationPanel
+              isAnalyzing={execution.isAnalyzingIntent}
+              intentAnalysis={execution.intentAnalysis}
+              confirmedIntent={execution.confirmedIntent}
+              onConfirm={execution.confirmIntent}
+              onUpdateField={execution.updateIntentField}
+              onExecute={async (selectedQueries) => {
+                const result = await execution.executeIntentResearch(state, selectedQueries);
+                if (result?.success) {
+                  // Skip to results step
+                  onUpdate({ currentStep: 3 });
+                }
+              }}
+              onDismiss={execution.clearIntent}
+              isExecuting={execution.isExecuting}
+              showAdvancedOptions={advanced}
+              onAdvancedOptionsChange={setAdvanced}
+              providerAvailability={providerAvailability}
+              config={state.config}
+              onConfigUpdate={handleConfigUpdate}
+            />
+          </div>
         )}
 
         {/* Keyword Expansion Suggestions */}
@@ -708,26 +612,13 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
       </div>
 
 
-      {/* Advanced Options - Show when Advanced toggle is ON */}
-      {advanced && (
-        <>
-          {/* Tavily-Specific Options */}
-          {providerAvailability?.tavily_available && (
-            <TavilyOptions
-              config={state.config}
-              onConfigUpdate={handleConfigUpdate}
-            />
-          )}
-
-          {/* Exa-Specific Options */}
-          {providerAvailability?.exa_available && (
-            <ExaOptions
-              config={state.config}
-              onConfigUpdate={handleConfigUpdate}
-            />
-          )}
-        </>
-      )}
+      {/* Advanced Options Section */}
+      <AdvancedOptionsSection
+        advanced={advanced}
+        providerAvailability={providerAvailability}
+        config={state.config}
+        onConfigUpdate={handleConfigUpdate}
+      />
 
     </div>
   );
