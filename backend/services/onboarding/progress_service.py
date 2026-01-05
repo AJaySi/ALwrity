@@ -137,13 +137,13 @@ class OnboardingProgressService:
                 website_analysis = self.db_service.get_website_analysis(user_id, db)
                 research_preferences = self.db_service.get_research_preferences(user_id, db)
                 persona_data = self.db_service.get_persona_data(user_id, db)
-                
+
                 return {
                     "session": session,
-                    "api_keys": api_keys,
-                    "website_analysis": website_analysis,
-                    "research_preferences": research_preferences,
-                    "persona_data": persona_data
+                    "api_keys": api_keys or {},  # Convert None to empty dict
+                    "website_analysis": website_analysis or {},  # Convert None to empty dict
+                    "research_preferences": research_preferences or {},  # Convert None to empty dict
+                    "persona_data": persona_data or {}  # Convert None to empty dict
                 }
             finally:
                 db.close()

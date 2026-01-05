@@ -64,35 +64,27 @@ export const usePersonaInitialization = ({
       return;
     }
 
-    // Check session flag to avoid redundant server cache checks
-    const serverCacheChecked = sessionStorage.getItem('persona_server_cache_checked');
-    
-    // Try to load from server cache first (skip if already checked this session and was 404)
-    let foundCache = false;
-    if (!serverCacheChecked || serverCacheChecked !== '404') {
+    // For fresh loads (not navigation back), always try server cache first
+    // For navigation back, we already have stepData so skip server check
+    if (!stepData?.corePersona) {
       try {
-        console.log('PersonaStep: Checking server cache');
-        foundCache = await loadServerCachedPersonaData();
+        console.log('PersonaStep: Checking server cache (fresh load)');
+        const foundCache = await loadServerCachedPersonaData();
         if (foundCache) {
           console.log('PersonaStep: Server cache found, using it');
-          sessionStorage.setItem('persona_server_cache_checked', 'found');
           setHasCheckedCache(true);
           return;
-        } else {
-          // Mark that we checked and got 404
-          sessionStorage.setItem('persona_server_cache_checked', '404');
         }
       } catch (error: any) {
-        console.warn('PersonaStep: Error loading server cache, trying local cache:', error);
-        sessionStorage.setItem('persona_server_cache_checked', '404');
+        console.warn('PersonaStep: Error loading server cache:', error);
       }
     } else {
-      console.log('PersonaStep: Skipping server cache check (already checked this session, was 404)');
+      console.log('PersonaStep: Skipping server cache check (navigation with stepData)');
     }
 
     // Try local cache
     console.log('PersonaStep: Checking local cache');
-    foundCache = loadCachedPersonaData();
+    const foundCache = loadCachedPersonaData();
     if (foundCache) {
       console.log('PersonaStep: Local cache found, using it');
       setHasCheckedCache(true);

@@ -385,14 +385,62 @@ async def generate_research_report(results: Dict[str, Any]):
 
 # Style Detection Endpoints
 @router.post("/style-detection/analyze", response_model=StyleAnalysisResponse)
-async def analyze_content_style(request: StyleAnalysisRequest):
+async def analyze_content_style(
+    request: StyleAnalysisRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Analyze content style using AI."""
     try:
-        logger.info("[analyze_content_style] Starting style analysis")
-        
+        user_id = str(current_user.get('id'))
+        logger.info(f"[analyze_content_style] Starting style analysis for user: {user_id}")
+
+        # SUBSCRIPTION PRE-FLIGHT CHECK - Required before AI calls
+        try:
+            from services.database import get_db
+            from services.subscription import UsageTrackingService, PricingService
+            from models.subscription_models import UsageSummary
+            from models.enums import APIProvider
+            from datetime import datetime
+
+            db = next(get_db())
+            try:
+                usage_service = UsageTrackingService(db)
+                pricing_service = PricingService(db)
+
+                # Estimate tokens for style analysis (conservative estimate)
+                estimated_total_tokens = 2500
+
+                # Check limits using sync method from pricing service
+                provider_enum = APIProvider.GEMINI  # Use Gemini as default for style analysis
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=user_id,
+                    provider=provider_enum,
+                    tokens_requested=estimated_total_tokens,
+                    actual_provider_name="gemini"
+                )
+
+                if not can_proceed:
+                    logger.warning(f"[analyze_content_style] Subscription limit exceeded for user {user_id}: {message}")
+                    return StyleAnalysisResponse(
+                        success=False,
+                        error=f"Subscription limit exceeded: {message}",
+                        usage_info=usage_info if usage_info else {},
+                        timestamp=datetime.now().isoformat()
+                    )
+
+            finally:
+                db.close()
+        except Exception as sub_error:
+            logger.error(f"[analyze_content_style] Subscription check failed for user {user_id}: {sub_error}")
+            return StyleAnalysisResponse(
+                success=False,
+                error=f"Subscription check failed: {str(sub_error)}",
+                timestamp=datetime.now().isoformat()
+            )
+
         # Initialize style detection logic
         style_logic = StyleDetectionLogic()
-        
+
         # Validate request
         validation = style_logic.validate_style_analysis_request(request.dict())
         if not validation['valid']:
@@ -401,12 +449,12 @@ async def analyze_content_style(request: StyleAnalysisRequest):
                 error=f"Validation failed: {', '.join(validation['errors'])}",
                 timestamp=datetime.now().isoformat()
             )
-        
+
         # Perform style analysis
         if request.analysis_type == "comprehensive":
-            result = style_logic.analyze_content_style(validation['content'])
+            result = style_logic.analyze_content_style(validation['content'], user_id)
         elif request.analysis_type == "patterns":
-            result = style_logic.analyze_style_patterns(validation['content'])
+            result = style_logic.analyze_style_patterns(validation['content'], user_id)
         else:
             return StyleAnalysisResponse(
                 success=False,
@@ -549,6 +597,52 @@ async def complete_style_detection(
                 timestamp=datetime.now().isoformat()
             )
         
+        # SUBSCRIPTION PRE-FLIGHT CHECK - Required before AI calls
+        logger.info(f"[complete_style_detection] Performing subscription check for user: {user_id}")
+        try:
+            from services.database import get_db
+            from services.subscription import UsageTrackingService, PricingService
+            from models.subscription_models import UsageSummary
+            from models.enums import APIProvider
+            from datetime import datetime
+
+            db = next(get_db())
+            try:
+                usage_service = UsageTrackingService(db)
+                pricing_service = PricingService(db)
+
+                # Estimate tokens for style analysis (conservative estimate)
+                # Style analysis typically requires ~1000-2000 tokens for input + output
+                estimated_total_tokens = 2500
+
+                # Check limits using sync method from pricing service
+                provider_enum = APIProvider.GEMINI  # Use Gemini as default for style analysis
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=user_id,
+                    provider=provider_enum,
+                    tokens_requested=estimated_total_tokens,
+                    actual_provider_name="gemini"
+                )
+
+                if not can_proceed:
+                    logger.warning(f"[complete_style_detection] Subscription limit exceeded for user {user_id}: {message}")
+                    return StyleDetectionResponse(
+                        success=False,
+                        error=f"Subscription limit exceeded: {message}",
+                        usage_info=usage_info if usage_info else {},
+                        timestamp=datetime.now().isoformat()
+                    )
+
+            finally:
+                db.close()
+        except Exception as sub_error:
+            logger.error(f"[complete_style_detection] Subscription check failed for user {user_id}: {sub_error}")
+            return StyleDetectionResponse(
+                success=False,
+                error=f"Subscription check failed: {str(sub_error)}",
+                timestamp=datetime.now().isoformat()
+            )
+
         # Step 2-4: Parallelize AI API calls for performance (3 calls → 1 parallel batch)
         import asyncio
         from functools import partial
@@ -559,14 +653,14 @@ async def complete_style_detection(
         async def run_style_analysis():
             """Run style analysis in executor"""
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, partial(style_logic.analyze_content_style, crawl_result['content']))
+            return await loop.run_in_executor(None, partial(style_logic.analyze_content_style, crawl_result['content'], user_id))
         
         async def run_patterns_analysis():
             """Run patterns analysis in executor (if requested)"""
             if not request.include_patterns:
                 return None
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, partial(style_logic.analyze_style_patterns, crawl_result['content']))
+            return await loop.run_in_executor(None, partial(style_logic.analyze_style_patterns, crawl_result['content'], user_id))
         
         # Execute style and patterns analysis in parallel
         style_analysis, patterns_result = await asyncio.gather(

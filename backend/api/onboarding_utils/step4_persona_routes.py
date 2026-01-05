@@ -188,12 +188,84 @@ async def generate_writing_personas_async(
 
 @router.get("/step4/persona-latest", response_model=Dict[str, Any])
 async def get_latest_persona(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Return latest cached persona for the current user if available and fresh."""
+    """Return latest persona for the current user from database, with cache fallback."""
     try:
         user_id = _extract_user_id(current_user)
+
+        # First try to get from database (most authoritative source)
+        from services.persona_analysis_service import PersonaAnalysisService
+        from api.component_logic import clerk_user_id_to_int
+        persona_service = PersonaAnalysisService()
+
+        # Try with Clerk user ID first
+        user_personas = persona_service.get_user_personas(user_id)
+        logger.warning(f"Found {len(user_personas) if user_personas else 0} personas with Clerk user_id {user_id}")
+
+        # If no personas found, try with hashed user_id (backward compatibility)
+        if not user_personas:
+            hashed_user_id = str(clerk_user_id_to_int(user_id))
+            user_personas = persona_service.get_user_personas(hashed_user_id)
+            logger.warning(f"Found {len(user_personas) if user_personas else 0} personas with hashed user_id {hashed_user_id}")
+
+        if user_personas:
+            logger.warning(f"=== PERSONA RETRIEVE START ===")
+            logger.warning(f"Found {len(user_personas)} personas for user {user_id}")
+
+            # Get the most recent persona
+            latest_persona = user_personas[0]  # Already sorted by creation date
+            logger.warning(f"Retrieved persona {latest_persona.get('id')} for user {user_id}")
+
+            # Get the complete core persona data from linguistic_fingerprint
+            stored_core_persona = latest_persona.get("linguistic_fingerprint", {})
+            logger.warning(f"Stored core_persona keys: {list(stored_core_persona.keys()) if stored_core_persona else 'None'}")
+            if stored_core_persona and stored_core_persona.get('identity'):
+                logger.warning(f"Retrieved persona name: {stored_core_persona['identity'].get('persona_name', 'Unknown')}")
+
+            # Also log platform adaptations
+            platform_data = latest_persona.get("platform_adaptations", {})
+            logger.warning(f"Platform adaptations keys: {list(platform_data.keys()) if platform_data else 'None'}")
+            logger.warning(f"=== PERSONA RETRIEVE END ===")
+
+            # Format response with complete data structure
+            core_persona_data = stored_core_persona if stored_core_persona else {
+                "identity": {
+                    "persona_name": latest_persona.get("persona_name", ""),
+                    "archetype": latest_persona.get("archetype", ""),
+                    "core_belief": latest_persona.get("core_belief", ""),
+                    "brand_voice_description": latest_persona.get("brand_voice_description", "")
+                },
+                "linguistic_fingerprint": {},
+                "confidence_score": latest_persona.get("confidence_score", 0.0)
+            }
+
+            persona_data = {
+                "success": True,
+                "persona": {
+                    "core_persona": core_persona_data,
+                    "platform_personas": latest_persona.get("platform_adaptations", {}),
+                    "quality_metrics": {},  # Could be enhanced later
+                    "selected_platforms": [],  # Could be enhanced later
+                    "timestamp": latest_persona.get("updated_at", latest_persona.get("created_at", datetime.now().isoformat()))
+                }
+            }
+
+            logger.warning(f"Returning core_persona with keys: {list(core_persona_data.keys()) if isinstance(core_persona_data, dict) else 'Not dict'}")
+            if isinstance(core_persona_data, dict) and core_persona_data.get('identity'):
+                logger.warning(f"Returning persona name: {core_persona_data['identity'].get('persona_name', 'Unknown')}")
+
+            logger.warning(f"=== PERSONA RETRIEVE END ===")
+
+            # Update cache with fresh database data
+            persona_latest_cache[user_id] = persona_data["persona"]
+            logger.warning(f"Updated cache with database data for user {user_id}")
+            logger.warning(f"Cache now contains persona name: {persona_data['persona']['core_persona'].get('identity', {}).get('persona_name', 'Unknown')}")
+
+            return persona_data
+
+        # Fallback to cache if no database personas found
         cached = persona_latest_cache.get(user_id)
         if not cached:
-            raise HTTPException(status_code=404, detail="No cached persona found")
+            raise HTTPException(status_code=404, detail="No persona data found")
 
         ts = datetime.fromisoformat(cached["timestamp"]) if isinstance(cached.get("timestamp"), str) else None
         if not ts or (datetime.now() - ts) > timedelta(hours=PERSONA_CACHE_TTL_HOURS):
@@ -202,6 +274,7 @@ async def get_latest_persona(current_user: Dict[str, Any] = Depends(get_current_
             raise HTTPException(status_code=404, detail="Cached persona expired")
 
         return {"success": True, "persona": cached}
+
     except HTTPException:
         raise
     except Exception as e:
@@ -213,23 +286,117 @@ async def save_persona_update(
     request: Dict[str, Any],
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Save/overwrite latest persona cache for current user (from edited UI)."""
+    """Save/overwrite latest persona data for current user (from edited UI)."""
     try:
         user_id = _extract_user_id(current_user)
-        payload = {
+
+        # Extract data from request
+        core_persona = request.get("core_persona")
+        platform_personas = request.get("platform_personas", {})
+        quality_metrics = request.get("quality_metrics", {})
+        selected_platforms = request.get("selected_platforms", [])
+
+        logger.warning(f"=== PERSONA SAVE START ===")
+        logger.warning(f"Saving persona for user {user_id}: core_persona keys: {list(core_persona.keys()) if core_persona else 'None'}")
+        if core_persona and core_persona.get('identity'):
+            logger.warning(f"Persona name being saved: {core_persona['identity'].get('persona_name', 'Unknown')}")
+
+        # Log platform personas
+        logger.info(f"Platform personas keys: {list(platform_personas.keys()) if platform_personas else 'None'}")
+
+        if not core_persona:
+            raise HTTPException(status_code=400, detail="core_persona is required")
+
+        # Get persona service
+        from services.persona_analysis_service import PersonaAnalysisService
+        from api.component_logic import clerk_user_id_to_int
+        persona_service = PersonaAnalysisService()
+
+        # Use Clerk user ID directly (it's already a string)
+        logger.info(f"Using Clerk user_id {user_id} directly for persona operations")
+
+        # Get existing personas for this user using the Clerk user ID string
+        existing_personas = persona_service.get_user_personas(user_id)
+        logger.warning(f"Found {len(existing_personas) if existing_personas else 0} existing personas for user {user_id}")
+
+        # Also try with hashed user_id in case personas were stored with hashed IDs
+        if not existing_personas:
+            hashed_user_id = str(clerk_user_id_to_int(user_id))
+            logger.warning(f"Trying with hashed user_id {hashed_user_id}")
+            existing_personas = persona_service.get_user_personas(hashed_user_id)
+            logger.warning(f"Found {len(existing_personas) if existing_personas else 0} existing personas with hashed user_id")
+
+        if existing_personas and len(existing_personas) > 0:
+            # Update the most recent persona
+            latest_persona = existing_personas[0]  # They come ordered by creation date
+            persona_id = latest_persona["id"]
+
+            logger.warning(f"Updating existing persona {persona_id} for user {user_id}")
+
+            update_result = persona_service.update_persona(
+                user_id=user_id,
+                persona_id=persona_id,
+                core_persona=core_persona,
+                platform_personas=platform_personas,
+                quality_metrics=quality_metrics
+            )
+
+            if "error" in update_result:
+                raise HTTPException(status_code=500, detail=update_result["error"])
+
+            logger.warning(f"✅ Updated existing persona {persona_id} for user {user_id}")
+        else:
+            # No existing persona, create a new one
+            logger.warning(f"Creating new persona for user {user_id} (no existing personas found)")
+
+            # Create a new persona record
+            saved_persona = persona_service._save_persona_to_db(
+                user_id, core_persona, platform_personas, {
+                    "session_info": {"session_id": f"manual_{user_id}_{datetime.now().isoformat()}"},
+                    "website_analysis": {},
+                    "research_preferences": {},
+                    "enhanced_analysis": {}
+                }
+            )
+
+            logger.warning(f"✅ Created new persona {saved_persona.id} for user {user_id}")
+
+        # Update the in-memory cache with fresh data for immediate UI feedback
+        fresh_payload = {
             "success": True,
-            "core_persona": request.get("core_persona"),
-            "platform_personas": request.get("platform_personas", {}),
-            "quality_metrics": request.get("quality_metrics", {}),
-            "selected_platforms": request.get("selected_platforms", []),
+            "core_persona": core_persona,
+            "platform_personas": platform_personas,
+            "quality_metrics": quality_metrics,
+            "selected_platforms": selected_platforms,
             "timestamp": datetime.now().isoformat()
         }
-        persona_latest_cache[user_id] = payload
-        logger.info(f"Saved latest persona to cache for user {user_id}")
-        return {"success": True}
+        persona_latest_cache[user_id] = fresh_payload
+        logger.warning(f"Updated cache for user {user_id} with fresh persona data")
+
+        if existing_personas and len(existing_personas) > 0:
+            # Updated existing persona
+            logger.warning(f"Successfully updated existing persona {persona_id} for user {user_id}")
+            return {
+                "success": True,
+                "message": "Persona updated successfully",
+                "persona_id": persona_id,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            # Created new persona
+            logger.warning(f"Successfully created new persona {saved_persona.id} for user {user_id}")
+            return {
+                "success": True,
+                "message": f"Persona created successfully (ID: {saved_persona.id})",
+                "persona_id": saved_persona.id,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error saving latest persona: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error saving persona edits: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save persona: {str(e)}")
 
 @router.get("/step4/persona-task/{task_id}", response_model=PersonaTaskStatus)
 async def get_persona_task_status(task_id: str):

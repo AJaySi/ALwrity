@@ -73,7 +73,51 @@ async def generate_persona(user_id: int, request: PersonaGenerationRequest):
     """Generate a new writing persona from onboarding data."""
     try:
         logger.info(f"Generating persona for user {user_id}")
-        
+
+        # SUBSCRIPTION PRE-FLIGHT CHECK - Required before AI calls
+        try:
+            from services.database import get_db
+            from services.subscription import UsageTrackingService, PricingService
+            from models.subscription_models import UsageSummary
+            from models.enums import APIProvider
+            from datetime import datetime
+
+            db = next(get_db())
+            try:
+                usage_service = UsageTrackingService(db)
+                pricing_service = PricingService(db)
+
+                # Estimate tokens for persona generation (comprehensive analysis)
+                estimated_total_tokens = 8000
+
+                # Check limits using sync method from pricing service
+                provider_enum = APIProvider.GEMINI  # Use Gemini as default for persona generation
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=str(user_id),
+                    provider=provider_enum,
+                    tokens_requested=estimated_total_tokens,
+                    actual_provider_name="gemini"
+                )
+
+                if not can_proceed:
+                    logger.warning(f"[generate_persona] Subscription limit exceeded for user {user_id}: {message}")
+                    return PersonaGenerationResponse(
+                        success=False,
+                        message=f"Subscription limit exceeded: {message}",
+                        usage_info=usage_info if usage_info else {},
+                        timestamp=datetime.now().isoformat()
+                    )
+
+            finally:
+                db.close()
+        except Exception as sub_error:
+            logger.error(f"[generate_persona] Subscription check failed for user {user_id}: {sub_error}")
+            return PersonaGenerationResponse(
+                success=False,
+                message=f"Subscription check failed: {str(sub_error)}",
+                timestamp=datetime.now().isoformat()
+            )
+
         persona_service = get_persona_service()
         
         # Check if persona already exists and force_regenerate is False
@@ -459,11 +503,58 @@ async def validate_persona_generation_readiness(user_id: int):
 async def generate_persona_preview(user_id: int):
     """Generate a preview of what the persona would look like without saving."""
     try:
+        # SUBSCRIPTION PRE-FLIGHT CHECK - Required before AI calls
+        try:
+            from services.database import get_db
+            from services.subscription import UsageTrackingService, PricingService
+            from models.subscription_models import UsageSummary
+            from models.enums import APIProvider
+            from datetime import datetime
+
+            db = next(get_db())
+            try:
+                usage_service = UsageTrackingService(db)
+                pricing_service = PricingService(db)
+
+                # Estimate tokens for persona preview (smaller analysis)
+                estimated_total_tokens = 4000
+
+                # Check limits using sync method from pricing service
+                provider_enum = APIProvider.GEMINI  # Use Gemini as default for persona preview
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=str(user_id),
+                    provider=provider_enum,
+                    tokens_requested=estimated_total_tokens,
+                    actual_provider_name="gemini"
+                )
+
+                if not can_proceed:
+                    logger.warning(f"[generate_persona_preview] Subscription limit exceeded for user {user_id}: {message}")
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            'error': message,
+                            'message': message,
+                            'usage_info': usage_info if usage_info else {}
+                        }
+                    )
+
+            finally:
+                db.close()
+        except HTTPException:
+            raise
+        except Exception as sub_error:
+            logger.error(f"[generate_persona_preview] Subscription check failed for user {user_id}: {sub_error}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Subscription check failed: {str(sub_error)}"
+            )
+
         persona_service = get_persona_service()
-        
+
         # Get onboarding data
         onboarding_data = persona_service._collect_onboarding_data(user_id)
-        
+
         if not onboarding_data:
             raise HTTPException(status_code=400, detail="No onboarding data available")
         

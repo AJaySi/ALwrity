@@ -4,7 +4,7 @@ Onboarding Data Collector
 Handles comprehensive collection of onboarding data for persona generation.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from sqlalchemy.orm import Session
 from loguru import logger
 
@@ -15,7 +15,7 @@ from models.onboarding import OnboardingSession, WebsiteAnalysis, ResearchPrefer
 class OnboardingDataCollector:
     """Collects comprehensive onboarding data for persona analysis."""
     
-    def collect_onboarding_data(self, user_id: int, session_id: int = None) -> Optional[Dict[str, Any]]:
+    def collect_onboarding_data(self, user_id: Union[int, str], session_id: int = None) -> Optional[Dict[str, Any]]:
         """Collect comprehensive onboarding data for persona analysis."""
         try:
             session = get_db_session()

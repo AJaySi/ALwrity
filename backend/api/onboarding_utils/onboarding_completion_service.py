@@ -305,16 +305,17 @@ class OnboardingCompletionService:
             
             # If a persona already exists for this user, skip regeneration
             try:
-                existing = persona_service.get_user_personas(int(user_id))
+                existing = persona_service.get_user_personas(user_id)
                 if existing and len(existing) > 0:
                     logger.info("Persona already exists for user %s; skipping regeneration during completion", user_id)
                     return False
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Error checking existing personas: {e}")
                 # Non-fatal; proceed to attempt generation
                 pass
 
             # Generate persona for this user
-            persona_result = persona_service.generate_persona_from_onboarding(int(user_id))
+            persona_result = persona_service.generate_persona_from_onboarding(user_id)
             
             if "error" not in persona_result:
                 logger.info(f"✅ Writing persona generated during onboarding completion: {persona_result.get('persona_id')}")

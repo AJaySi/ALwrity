@@ -9,7 +9,7 @@ and provides richer persona data from onboarding.
 DEPRECATED: Consider migrating to PersonaDataService for better data richness.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from sqlalchemy.orm import Session
 from loguru import logger
 from datetime import datetime
@@ -44,7 +44,7 @@ class PersonaAnalysisService:
             logger.debug("PersonaAnalysisService initialized")
             self._initialized = True
     
-    def generate_persona_from_onboarding(self, user_id: int, onboarding_session_id: int = None) -> Dict[str, Any]:
+    def generate_persona_from_onboarding(self, user_id: Union[int, str], onboarding_session_id: int = None) -> Dict[str, Any]:
         """
         Generate a comprehensive writing persona from user's onboarding data.
         
@@ -320,7 +320,7 @@ Generate a platform-optimized persona adaptation that maintains brand consistenc
         
         return constraints.get(platform, {})
     
-    def _save_persona_to_db(self, user_id: int, core_persona: Dict[str, Any], platform_personas: Dict[str, Any], onboarding_data: Dict[str, Any]) -> WritingPersona:
+    def _save_persona_to_db(self, user_id: str, core_persona: Dict[str, Any], platform_personas: Dict[str, Any], onboarding_data: Dict[str, Any]) -> WritingPersona:
         """Save generated persona to database."""
         try:
             session = get_db_session()
@@ -332,8 +332,8 @@ Generate a platform-optimized persona adaptation that maintains brand consistenc
                 archetype=core_persona.get("identity", {}).get("archetype"),
                 core_belief=core_persona.get("identity", {}).get("core_belief"),
                 brand_voice_description=core_persona.get("identity", {}).get("brand_voice_description"),
-                linguistic_fingerprint=core_persona.get("linguistic_fingerprint", {}),
-                platform_adaptations={"platforms": list(platform_personas.keys())},
+                linguistic_fingerprint=core_persona,
+                platform_adaptations=platform_personas,
                 onboarding_session_id=onboarding_data.get("session_info", {}).get("session_id"),
                 source_website_analysis=onboarding_data.get("website_analysis") or {},
                 source_research_preferences=onboarding_data.get("research_preferences") or {},
@@ -411,6 +411,129 @@ Generate a platform-optimized persona adaptation that maintains brand consistenc
                 session.close()
             raise
     
+    def update_persona(self, user_id: str, persona_id: int, core_persona: Dict[str, Any],
+                      platform_personas: Dict[str, Any], quality_metrics: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Update an existing persona with edited data."""
+        try:
+            session = get_db_session()
+
+            # Get the existing persona
+            persona = session.query(WritingPersona).filter(
+                WritingPersona.id == persona_id,
+                WritingPersona.user_id == user_id,
+                WritingPersona.is_active == True
+            ).first()
+
+            if not persona:
+                return {"error": "Persona not found"}
+
+            logger.warning(f"=== PERSONA UPDATE DB START ===")
+            logger.warning(f"Updating persona {persona_id} for user {user_id}")
+
+            # Update core persona data - save the complete structure
+            if core_persona:
+                logger.warning(f"Updating persona {persona_id} with core_persona data")
+                # Extract identity fields for individual columns
+                if core_persona.get("identity"):
+                    identity = core_persona["identity"]
+                    persona.persona_name = identity.get("persona_name", persona.persona_name)
+                    persona.archetype = identity.get("archetype", persona.archetype)
+                    persona.core_belief = identity.get("core_belief", persona.core_belief)
+                    persona.brand_voice_description = identity.get("brand_voice_description", persona.brand_voice_description)
+                    logger.warning(f"Updated persona name to: {persona.persona_name}")
+
+                # Update confidence score if provided
+                if core_persona.get("confidence_score"):
+                    persona.confidence_score = core_persona["confidence_score"]
+
+                # Save the complete core_persona structure in linguistic_fingerprint
+                # This preserves all the detailed analysis data
+                persona.linguistic_fingerprint = core_persona
+                logger.warning(f"Saved complete core_persona to linguistic_fingerprint")
+
+            # Update platform adaptations - save the complete platform data
+            if platform_personas:
+                persona.platform_adaptations = platform_personas
+                logger.warning(f"Updated platform adaptations for platforms: {list(platform_personas.keys())}")
+
+            logger.warning(f"=== PERSONA UPDATE DB END ===")
+
+            # Update timestamp
+            persona.updated_at = datetime.utcnow()
+
+            # Update platform personas
+            for platform, platform_data in platform_personas.items():
+                # Find existing platform persona
+                platform_persona = session.query(PlatformPersona).filter(
+                    PlatformPersona.writing_persona_id == persona.id,
+                    PlatformPersona.platform_type == platform
+                ).first()
+
+                if platform_persona:
+                    # Update existing platform persona
+                    platform_persona.sentence_metrics = platform_data.get("sentence_metrics", platform_persona.sentence_metrics)
+                    platform_persona.lexical_features = platform_data.get("lexical_adaptations", platform_persona.lexical_features)
+                    platform_persona.updated_at = datetime.utcnow()
+                else:
+                    # Create new platform persona if it doesn't exist
+                    platform_persona = PlatformPersona(
+                        writing_persona_id=persona.id,
+                        platform_type=platform,
+                        sentence_metrics=platform_data.get("sentence_metrics", {}),
+                        lexical_features=platform_data.get("lexical_adaptations", {}),
+                    )
+                    session.add(platform_persona)
+
+            # Commit the changes
+            try:
+                session.commit()
+                logger.warning(f"✅ Database commit successful for persona {persona_id}")
+
+                # Verify the data was saved by querying it back
+                verification_session = get_db_session()
+                try:
+                    saved_persona = verification_session.query(WritingPersona).filter(
+                        WritingPersona.id == persona_id
+                    ).first()
+
+                    if saved_persona:
+                        logger.warning(f"✅ Verification: Persona {persona_id} found in database")
+                        logger.warning(f"✅ Verification: persona_name = '{saved_persona.persona_name}'")
+                        if saved_persona.linguistic_fingerprint:
+                            identity = saved_persona.linguistic_fingerprint.get('identity', {})
+                            logger.warning(f"✅ Verification: stored persona_name = '{identity.get('persona_name', 'None')}'")
+                    else:
+                        logger.warning(f"❌ Verification: Persona {persona_id} NOT found in database after commit!")
+                finally:
+                    verification_session.close()
+
+            except Exception as commit_error:
+                logger.warning(f"❌ Database commit failed for persona {persona_id}: {commit_error}")
+                session.rollback()
+                session.close()
+                return {"error": f"Failed to commit persona update: {str(commit_error)}"}
+
+            # Store persona_id before closing session
+            updated_persona_id = persona.id
+            session.close()
+
+            logger.warning(f"✅ Persona {persona_id} updated successfully for user {user_id}")
+            return {
+                "success": True,
+                "persona_id": updated_persona_id,
+                "message": "Persona updated successfully"
+            }
+
+        except Exception as e:
+            logger.warning(f"Error updating persona {persona_id}: {str(e)}")
+            try:
+                if session:
+                    session.rollback()
+                    session.close()
+            except Exception:
+                pass  # Ignore session cleanup errors
+            return {"error": f"Failed to update persona: {str(e)}"}
+
     def _calculate_data_sufficiency(self, onboarding_data: Dict[str, Any]) -> float:
         """Calculate how sufficient the onboarding data is for persona generation."""
         score = 0.0

@@ -48,13 +48,14 @@ class StyleDetectionLogic:
             logger.error(f"[StyleDetectionLogic._clean_json_response] Error cleaning response: {str(e)}")
             return ""
     
-    def analyze_content_style(self, content: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_content_style(self, content: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """
         Analyze the style of the provided content using AI with enhanced prompts.
-        
+
         Args:
             content (Dict): Content to analyze, containing main_content, title, etc.
-            
+            user_id (str): Clerk user ID for subscription checking
+
         Returns:
             Dict: Analysis results with writing style, characteristics, and recommendations
         """
@@ -149,7 +150,7 @@ class StyleDetectionLogic:
             
             # Call the LLM for analysis
             logger.debug("[StyleDetectionLogic.analyze_content_style] Sending enhanced prompt to LLM")
-            analysis_text = llm_text_gen(prompt)
+            analysis_text = llm_text_gen(prompt, user_id=user_id)
             
             # Clean and parse the response
             cleaned_json = self._clean_json_response(analysis_text)
@@ -251,7 +252,7 @@ class StyleDetectionLogic:
             }
         }
     
-    def analyze_style_patterns(self, content: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_style_patterns(self, content: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """
         Analyze recurring patterns in the content style.
         
@@ -288,7 +289,7 @@ class StyleDetectionLogic:
             }}
             """
             
-            analysis_text = llm_text_gen(prompt)
+            analysis_text = llm_text_gen(prompt, user_id=user_id)
             cleaned_json = self._clean_json_response(analysis_text)
             
             try:

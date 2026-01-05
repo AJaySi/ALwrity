@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   Box,
   Button,
@@ -21,11 +21,13 @@ import {
   Facebook as FacebookIcon,
   Twitter as TwitterIcon,
   Article as ArticleIcon,
-  Instagram as InstagramIcon
+  Instagram as InstagramIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 import { CorePersonaDisplay } from './sections/CorePersonaDisplay';
 import { PlatformPersonaDisplay } from './sections/PlatformPersonaDisplay';
 import { QualityMetricsDisplay } from './QualityMetricsDisplay';
+import { apiClient } from '../../../api/client';
 
 interface PersonaPreviewSectionProps {
   showPreview: boolean;
@@ -37,6 +39,7 @@ interface PersonaPreviewSectionProps {
   setExpandedAccordion: (accordion: string | false) => void;
   setCorePersona: (persona: any) => void;
   setPlatformPersonas: (personas: Record<string, any>) => void;
+  setQualityMetrics: (metrics: any) => void;
   handleRegenerate: () => void;
 }
 
@@ -58,8 +61,97 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
   setExpandedAccordion,
   setCorePersona,
   setPlatformPersonas,
+  setQualityMetrics,
   handleRegenerate
 }) => {
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  // Debounced auto-save function
+  const debouncedSave = useCallback(async (updatedCorePersona: any, updatedPlatformPersonas: any) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        setIsSaving(true);
+        console.log('Auto-saving persona changes...');
+
+        const saveData = {
+          core_persona: updatedCorePersona,
+          platform_personas: updatedPlatformPersonas,
+          quality_metrics: qualityMetrics,
+          selected_platforms: selectedPlatforms
+        };
+
+        console.log('📤 Sending save data:', JSON.stringify(saveData, null, 2));
+
+        const response = await apiClient.post('/api/onboarding/step4/persona-save', saveData);
+
+        if (response.data.success) {
+          console.log('✅ Persona changes saved successfully');
+
+          // Clear sessionStorage flag to force re-check server cache on next refresh
+          sessionStorage.removeItem('persona_server_cache_checked');
+          console.log('🧹 Cleared server cache check flag - will re-check on refresh');
+
+          // Reload the latest data from server to ensure UI shows the saved changes
+          try {
+            console.log('🔄 Reloading latest persona data from server after save...');
+            const latestResponse = await apiClient.get('/api/onboarding/step4/persona-latest');
+            console.log('📥 Reload response:', latestResponse.data);
+
+            if (latestResponse.data && latestResponse.data.success && latestResponse.data.persona) {
+              const latestData = latestResponse.data.persona;
+              console.log('✅ Latest persona data received:', {
+                core_persona_keys: Object.keys(latestData.core_persona || {}),
+                platform_personas_keys: Object.keys(latestData.platform_personas || {}),
+                persona_name: latestData.core_persona?.identity?.persona_name
+              });
+
+              // Update local state with fresh server data
+              setCorePersona(latestData.core_persona);
+              setPlatformPersonas(latestData.platform_personas || {});
+              setQualityMetrics(latestData.quality_metrics || null);
+
+              console.log('✅ UI state updated with latest server data');
+            } else {
+              console.warn('⚠️ Reload response missing expected data:', latestResponse.data);
+            }
+          } catch (reloadError) {
+            console.warn('⚠️ Failed to reload latest data after save:', reloadError);
+            // Don't fail the save operation if reload fails
+          }
+        } else {
+          console.error('❌ Failed to save persona changes:', response.data);
+        }
+      } catch (error: any) {
+        console.error('❌ Error auto-saving persona changes:', error);
+        // Don't show user error for auto-save failures to avoid interrupting their editing
+      } finally {
+        setIsSaving(false);
+      }
+    }, 2000); // 2 second debounce
+  }, [qualityMetrics, selectedPlatforms]);
+
+  // Handle core persona changes with auto-save
+  const handleCorePersonaChange = useCallback((updatedPersona: any) => {
+    console.log('🔄 Core persona changed:', updatedPersona);
+    setCorePersona(updatedPersona);
+    debouncedSave(updatedPersona, platformPersonas);
+  }, [setCorePersona, debouncedSave, platformPersonas]);
+
+  // Handle platform persona changes with auto-save
+  const handlePlatformPersonaChange = useCallback((platformId: string, updatedPersona: any) => {
+    console.log('🔄 Platform persona changed:', platformId, updatedPersona);
+    const updatedPlatformPersonas = {
+      ...platformPersonas,
+      [platformId]: updatedPersona
+    };
+    setPlatformPersonas(updatedPlatformPersonas);
+    debouncedSave(corePersona, updatedPlatformPersonas);
+  }, [setPlatformPersonas, debouncedSave, corePersona, platformPersonas]);
   if (!showPreview || !corePersona) {
     return null;
   }
@@ -86,13 +178,22 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
               Comprehensive analysis of your unique writing style and brand voice
             </Typography>
           </Box>
-          <Button
-            variant="outlined"
-            startIcon={<RefreshIcon />}
-            onClick={handleRegenerate}
-            size="small"
-            sx={{
-              borderColor: '#e2e8f0',
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {isSaving && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <SaveIcon sx={{ fontSize: 16, color: '#64748b' }} />
+                <Typography variant="caption" sx={{ color: '#64748b' }}>
+                  Saving...
+                </Typography>
+              </Box>
+            )}
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={handleRegenerate}
+              size="small"
+              sx={{
+                borderColor: '#e2e8f0',
               color: '#475569',
               '&:hover': {
                 borderColor: '#3b82f6',
@@ -102,6 +203,7 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
           >
             Regenerate
           </Button>
+          </Box>
         </Box>
 
         {/* Core Persona */}
@@ -173,10 +275,7 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
           <AccordionDetails sx={{ px: 4, pb: 4 }}>
             <CorePersonaDisplay
               persona={corePersona}
-              onChange={(updatedPersona) => {
-                setCorePersona(updatedPersona);
-                // TODO: Add debounced auto-save
-              }}
+              onChange={handleCorePersonaChange}
             />
           </AccordionDetails>
         </Accordion>
@@ -265,13 +364,7 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
                     <PlatformPersonaDisplay
                       platformPersona={platformPersonas[platformId] || {}}
                       platformName={platformId}
-                      onChange={(updatedPersona) => {
-                        setPlatformPersonas({
-                          ...platformPersonas,
-                          [platformId]: updatedPersona
-                        });
-                        // TODO: Add debounced auto-save
-                      }}
+                      onChange={(updatedPersona) => handlePlatformPersonaChange(platformId, updatedPersona)}
                     />
                   </Box>
                 );

@@ -160,9 +160,15 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
   // Load cached persona data from server (24h TTL on backend)
   const loadServerCachedPersonaData = useCallback(async () => {
     try {
+      console.log('🔄 Loading persona data from server...');
       const resp = await apiClient.get('/api/onboarding/step4/persona-latest');
+      console.log('📥 Received persona data:', resp.data);
+
       if (resp.data && resp.data.success && resp.data.persona) {
         const p = resp.data.persona;
+        console.log('✅ Setting core persona:', p.core_persona);
+        console.log('✅ Setting platform personas:', p.platform_personas);
+
         setCorePersona(p.core_persona);
         setPlatformPersonas(p.platform_personas || {});
         setQualityMetrics(p.quality_metrics || null);
@@ -421,6 +427,7 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
         setExpandedAccordion={setExpandedAccordion}
         setCorePersona={setCorePersona}
         setPlatformPersonas={setPlatformPersonas}
+        setQualityMetrics={setQualityMetrics}
         handleRegenerate={handleRegenerate}
       />
 

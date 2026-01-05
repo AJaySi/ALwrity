@@ -14,21 +14,12 @@ def health_check():
 
 async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        # Ensure we always have a valid user dict
-        if not current_user:
-            raise ValueError("Authenticated user context is missing")
-
         user_id = str(current_user.get('id'))
         progress_service = get_onboarding_progress_service()
         status = progress_service.get_onboarding_status(user_id)
 
         # Get completion data for step validation
-        # Defensive: normalize any None values to empty dicts
-        completion_data = progress_service.get_completion_data(user_id) or {}
-        api_keys_data = completion_data.get('api_keys') or {}
-        website_analysis_data = completion_data.get('website_analysis') or {}
-        research_preferences_data = completion_data.get('research_preferences') or {}
-        persona_data = completion_data.get('persona_data') or {}
+        completion_data = progress_service.get_completion_data(user_id)
         
         # Build steps data based on database state
         steps_data = []
@@ -38,19 +29,20 @@ async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_curre
             
             # Check if step is completed based on database data
             if step_num == 1:  # API Keys
-                step_completed = any(v for v in api_keys_data.values() if v)
+                api_keys = completion_data.get('api_keys', {})
+                step_completed = any(v for v in api_keys.values() if v)
             elif step_num == 2:  # Website Analysis
-                website = website_analysis_data
+                website = completion_data.get('website_analysis', {})
                 step_completed = bool(website.get('website_url') or website.get('writing_style'))
                 if step_completed:
                     step_data = website
             elif step_num == 3:  # Research Preferences
-                research = research_preferences_data
+                research = completion_data.get('research_preferences', {})
                 step_completed = bool(research.get('research_depth') or research.get('content_types'))
                 if step_completed:
                     step_data = research
             elif step_num == 4:  # Persona Generation
-                persona = persona_data
+                persona = completion_data.get('persona_data', {})
                 step_completed = bool(persona.get('corePersona') or persona.get('platformPersonas'))
                 if step_completed:
                     step_data = persona
