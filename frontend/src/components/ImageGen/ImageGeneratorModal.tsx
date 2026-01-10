@@ -65,34 +65,37 @@ const ImageGeneratorModal: React.FC<ImageGeneratorModalProps> = ({ isOpen, onClo
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h3 style={{ margin: 0 }}>{sectionTitle}</h3>
-            <span style={{ fontSize: 12, color: '#5f6368' }}>Generate Blog Section Image</span>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#202124' }}>{sectionTitle}</h3>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Tooltip title="Toggle advanced image generation settings. Opens provider selection (Hugging Face, Gemini, Stability AI), model specification, and image dimensions (width/height). Hover or click to show/hide these options." placement="bottom" arrow>
-              <button
-                onMouseEnter={() => imageRef.current?.openAdvanced()}
-                onClick={() => {
-                  // toggle
-                  if (imageRef.current) {
-                    imageRef.current.openAdvanced();
-                  }
-                }}
-                style={{ border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155', borderRadius: 20, padding: '6px 12px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
-              >
-                Advanced Image Options
-              </button>
-            </Tooltip>
-            <Tooltip title="Get AI-powered prompt suggestions tailored to your blog section. Uses section title, subheadings, key points, keywords, and research data to generate multiple hyper-personalized prompts. Suggestions appear as tabs below." placement="bottom" arrow>
-              <button
-                onClick={() => imageRef.current?.suggest()}
-                style={{ border: '1px solid #1976d2', background: '#fff', color: '#1976d2', borderRadius: 20, padding: '6px 12px', cursor: 'pointer' }}
-              >
-                Suggest Prompt
-              </button>
-            </Tooltip>
             <Tooltip title="Close the image generator modal. Any generated images are saved and will appear in your blog section." placement="bottom" arrow>
-              <button onClick={onClose} style={{ border: '1px solid #ddd', background: '#f5f5f5', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>Close</button>
+              <button 
+                onClick={onClose} 
+                style={{ 
+                  border: 'none', 
+                  background: 'linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%)', 
+                  color: '#5f6368',
+                  borderRadius: 8, 
+                  padding: '8px 20px', 
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, #e8eaed 0%, #dadce0 100%)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                }}
+              >
+                Close
+              </button>
             </Tooltip>
           </div>
         </div>

@@ -58,7 +58,47 @@ export const EditableField: React.FC<EditableFieldProps> = ({
               <Select
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                sx={{ backgroundColor: '#ffffff' }}
+                sx={{
+                  backgroundColor: '#ffffff',
+                  color: '#1e293b',
+                  border: '1px solid #0ea5e9',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  '&:hover': {
+                    borderColor: '#0284c7',
+                  },
+                  '& .MuiSelect-select': {
+                    color: '#1e293b',
+                    padding: '6px 14px',
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#0ea5e9',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#0284c7',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#0284c7',
+                    borderWidth: '2px',
+                  },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      backgroundColor: '#ffffff',
+                      '& .MuiMenuItem-root': {
+                        color: '#1e293b',
+                        '&:hover': {
+                          backgroundColor: '#f3f4f6',
+                        },
+                        '&.Mui-selected': {
+                          backgroundColor: '#e0f2fe',
+                          color: '#0284c7',
+                        },
+                      },
+                    },
+                  },
+                }}
                 autoFocus
               >
                 {options.map(opt => (
@@ -72,7 +112,24 @@ export const EditableField: React.FC<EditableFieldProps> = ({
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               fullWidth
-              sx={{ backgroundColor: '#ffffff' }}
+              sx={{
+                backgroundColor: '#ffffff',
+                '& .MuiInputBase-input': {
+                  color: '#1e293b',
+                },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': {
+                    borderColor: '#0ea5e9',
+                  },
+                  '&:hover fieldset': {
+                    borderColor: '#0284c7',
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#0284c7',
+                    borderWidth: '2px',
+                  },
+                },
+              }}
               autoFocus
             />
           )}

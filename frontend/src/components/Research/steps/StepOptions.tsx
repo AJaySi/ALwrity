@@ -1,6 +1,6 @@
 import React from 'react';
 import { WizardStepProps, ModeCardInfo } from '../types/research.types';
-import { ResearchProvider } from '../../../services/blogWriterApi';
+import { ResearchProvider } from '../../../services/researchApi';
 
 const modeCards: ModeCardInfo[] = [
   {

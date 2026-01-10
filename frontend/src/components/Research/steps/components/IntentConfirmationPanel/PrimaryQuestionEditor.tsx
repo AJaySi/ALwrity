@@ -15,7 +15,9 @@ import {
   Edit as EditIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
+import { Tooltip } from '@mui/material';
 import { ResearchIntent } from '../../../types/intent.types';
 
 interface PrimaryQuestionEditorProps {
@@ -57,9 +59,16 @@ export const PrimaryQuestionEditor: React.FC<PrimaryQuestionEditorProps> = ({
       }}
     >
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-        <Typography variant="caption" fontWeight={600} color="#0c4a6e">
-          Main Question:
-        </Typography>
+        <Tooltip
+          title="The primary research question that guides the entire research process. This question will be used to generate targeted search queries and extract relevant information."
+          arrow
+          placement="top"
+        >
+          <Typography variant="caption" fontWeight={600} color="#0c4a6e" sx={{ cursor: 'help', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            Research Question:
+            <InfoIcon sx={{ fontSize: 12, color: '#9ca3af' }} />
+          </Typography>
+        </Tooltip>
         {!isEditing && (
           <IconButton
             size="small"

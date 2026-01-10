@@ -66,6 +66,9 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
 
     switch (phaseId) {
       case 'research':
+        // Always show "Start Research" button when on research phase and no research exists yet
+        // This allows users to manually trigger research form
+        // If research already exists, don't show the button (user can click the phase button to view)
         if (!hasResearch) {
           return { label: 'Start Research', handler: actionHandlers.onResearchAction || null };
         }
@@ -326,10 +329,10 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
           // 2. Action handler exists
           // 3. Phase is not disabled
           // 4. Show for current phase OR next actionable phase (not completed) OR phases with available actions
-          //    For research phase: always show if no research exists
+          //    For research phase: always show button when on research phase (allows manual trigger)
           //    For outline phase: always show if research exists but no outline (like research phase)
           //    For SEO phase: always show if action handler exists (prerequisites are met)
-          const isResearchPhase = phase.id === 'research' && !hasResearch;
+          const isResearchPhase = phase.id === 'research' && action.handler; // Always show if handler exists
           // Outline phase: show action whenever research exists and action handler is available
           // This allows users to create/regenerate outline after research, even if cached one exists
           const isOutlinePhase = phase.id === 'outline' && hasResearch && action.handler;
@@ -368,12 +371,12 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
           // This is critical because SEO prerequisites (hasContent && contentConfirmed) are validated in getActionForPhase,
           // so if action.handler exists, we should show it regardless of phase navigation's disabled state
           // DUAL MODE: Show action buttons even when CopilotKit is available (users can use either method)
+          // For research phase: show action button when on research phase and no research exists yet (to start research)
           const showAction = action.handler && (
-            isCurrent || 
+            (isCurrent && phase.id === 'research' && !hasResearch) || // Show "Start Research" when on research phase with no research
+            (isCurrent && phase.id !== 'research') || // For other phases, show action when current
             (!isCompleted && !isDisabled) ||
-            isResearchPhase ||
-            isOutlinePhase ||
-            isSEOPhase // Show SEO actions when handler exists - handler existence means prerequisites are met, so ignore isDisabled
+            (phase.id !== 'research' && (isResearchPhase || isOutlinePhase || isSEOPhase)) // Show for outline/SEO when appropriate
           );
           
           // Determine chip class

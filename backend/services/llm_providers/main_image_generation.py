@@ -138,7 +138,8 @@ def _track_image_operation_usage(
     prompt: Optional[str] = None,
     endpoint: str = "/image-generation",
     metadata: Optional[Dict[str, Any]] = None,
-    log_prefix: str = "[Image Generation]"
+    log_prefix: str = "[Image Generation]",
+    response_time: float = 0.0
 ) -> Dict[str, Any]:
     """
     Reusable usage tracking helper for all image operations.
@@ -165,6 +166,7 @@ def _track_image_operation_usage(
         db_track = next(get_db_track())
         try:
             from models.subscription_models import UsageSummary, APIUsageLog, APIProvider
+            from services.subscription.provider_detection import detect_actual_provider
             from services.subscription import PricingService
             
             pricing = PricingService(db_track)
@@ -215,6 +217,13 @@ def _track_image_operation_usage(
             # Determine API provider based on actual provider
             api_provider = APIProvider.STABILITY  # Default for image generation
             
+            # Detect actual provider name (WaveSpeed, Stability, HuggingFace, etc.)
+            actual_provider = detect_actual_provider(
+                provider_enum=api_provider,
+                model_name=model,
+                endpoint=endpoint
+            )
+            
             # Create usage log
             request_size = len(prompt.encode("utf-8")) if prompt else 0
             usage_log = APIUsageLog(
@@ -223,13 +232,14 @@ def _track_image_operation_usage(
                 endpoint=endpoint,
                 method="POST",
                 model_used=model or "unknown",
+                actual_provider_name=actual_provider,  # Track actual provider (WaveSpeed, Stability, etc.)
                 tokens_input=0,
                 tokens_output=0,
                 tokens_total=0,
                 cost_input=0.0,
                 cost_output=0.0,
                 cost_total=cost,
-                response_time=0.0,
+                response_time=response_time,  # Use actual response time
                 status_code=200,
                 request_size=request_size,
                 response_size=len(result_bytes),
@@ -327,8 +337,21 @@ def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_i
 
     # Normalize obvious model/provider mismatches
     model_lower = (image_options.model or "").lower()
+    
+    # Detect Wavespeed models and remap provider if needed
+    wavespeed_models = ["qwen-image", "ideogram-v3-turbo", "flux-kontext-pro"]
+    if model_lower in wavespeed_models and provider_name != "wavespeed":
+        logger.info("Remapping provider to wavespeed for model=%s", image_options.model)
+        provider_name = "wavespeed"
+    
+    # Detect HuggingFace models and remap provider if needed
     if provider_name == "stability" and (model_lower.startswith("black-forest-labs/") or model_lower.startswith("runwayml/") or model_lower.startswith("stabilityai/flux")):
         logger.info("Remapping provider to huggingface for model=%s", image_options.model)
+        provider_name = "huggingface"
+    
+    # Detect HuggingFace models when provider is not explicitly set
+    if not opts.get("provider") and (model_lower.startswith("black-forest-labs/") or model_lower.startswith("runwayml/") or model_lower.startswith("stabilityai/flux")):
+        logger.info("Auto-detecting provider as huggingface for model=%s", image_options.model)
         provider_name = "huggingface"
 
     if provider_name == "huggingface" and not image_options.model:
@@ -336,12 +359,17 @@ def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_i
         image_options.model = "black-forest-labs/FLUX.1-Krea-dev"
     
     if provider_name == "wavespeed" and not image_options.model:
-        # Provide a sensible default WaveSpeed model if none specified
-        image_options.model = "ideogram-v3-turbo"
+        # Default to cost-effective model: Qwen Image ($0.05/image, optimized for blog images)
+        image_options.model = "qwen-image"
 
     logger.info("Generating image via provider=%s model=%s", provider_name, image_options.model)
     provider = _get_provider(provider_name)
+    
+    # Track response time
+    import time
+    start_time = time.time()
     result = provider.generate(image_options)
+    response_time = time.time() - start_time
     
     # TRACK USAGE after successful API call - Reuse extracted helper
     if user_id and result and result.image_bytes:
@@ -352,12 +380,14 @@ def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_i
         if result.metadata and "estimated_cost" in result.metadata:
             estimated_cost = float(result.metadata["estimated_cost"])
         else:
-            # Fallback: estimate based on provider/model
+            # Fallback: estimate based on provider/model (OSS-focused pricing)
             if provider_name == "wavespeed":
                 if result.model and "qwen" in result.model.lower():
-                    estimated_cost = 0.05
+                    estimated_cost = 0.05  # Qwen Image: $0.05/image
+                elif result.model and "ideogram" in result.model.lower():
+                    estimated_cost = 0.10  # Ideogram V3 Turbo: $0.10/image
                 else:
-                    estimated_cost = 0.10  # ideogram-v3-turbo default
+                    estimated_cost = 0.05  # Default to Qwen Image pricing
             elif provider_name == "stability":
                 estimated_cost = 0.04
             else:
@@ -374,7 +404,8 @@ def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_i
             prompt=prompt,
             endpoint="/image-generation",
             metadata=result.metadata,
-            log_prefix="[Image Generation]"
+            log_prefix="[Image Generation]",
+            response_time=response_time
         )
     else:
         logger.warning(f"[Image Generation] ⚠️ Skipping usage tracking: user_id={user_id}, image_bytes={len(result.image_bytes) if result.image_bytes else 0} bytes")

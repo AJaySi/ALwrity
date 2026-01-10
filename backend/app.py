@@ -37,7 +37,7 @@ from middleware.auth_middleware import get_current_user
 from api.component_logic import router as component_logic_router
 
 # Import subscription API endpoints
-from api.subscription_api import router as subscription_router
+from api.subscription import router as subscription_router
 
 # Import Step 3 onboarding routes
 from api.onboarding_utils.step3_routes import router as step3_routes
@@ -54,6 +54,7 @@ from api.brainstorm import router as brainstorm_router
 from api.images import router as images_router
 from routers.image_studio import router as image_studio_router
 from routers.product_marketing import router as product_marketing_router
+from routers.campaign_creator import router as campaign_creator_router
 
 # Import hallucination detector router
 from api.hallucination_detector import router as hallucination_detector_router
@@ -300,6 +301,7 @@ app.include_router(platform_analytics_router)
 app.include_router(images_router)
 app.include_router(image_studio_router)
 app.include_router(product_marketing_router)
+app.include_router(campaign_creator_router)
 
 # Include content assets router
 from api.content_assets.router import router as content_assets_router

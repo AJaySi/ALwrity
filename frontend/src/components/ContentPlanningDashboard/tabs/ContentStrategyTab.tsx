@@ -21,6 +21,7 @@ import { StrategyData } from '../components/StrategyIntelligence/types/strategy.
 
 const ContentStrategyTab: React.FC = () => {
   const location = useLocation();
+  
   // Use selective store subscriptions to prevent unnecessary re-renders
   const strategies = useContentPlanningStore(state => state.strategies);
   const currentStrategy = useContentPlanningStore(state => state.currentStrategy);
@@ -51,6 +52,7 @@ const ContentStrategyTab: React.FC = () => {
   const [isFromStrategyBuilder, setIsFromStrategyBuilder] = useState(false);
 
   // Load data on component mount
+  // Note: ProtectedRoute ensures user is authenticated before this component renders
   useEffect(() => {
     loadInitialData();
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -134,7 +134,7 @@ def display_setup_summary(engine):
             logger.info("NEXT STEPS:")
             logger.info("="*60)
             logger.info("1. Update your FastAPI app to include subscription routes:")
-            logger.info("   from api.subscription_api import router as subscription_router")
+            logger.info("   from api.subscription import router as subscription_router")
             logger.info("   app.include_router(subscription_router)")
             logger.info("\n2. Update database service to include subscription models:")
             logger.info("   Add SubscriptionBase.metadata.create_all(bind=engine) to init_database()")

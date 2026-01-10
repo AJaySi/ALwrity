@@ -5,13 +5,15 @@
  * This is specific to IntentConfirmationPanel and includes AI justifications.
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
   Chip,
   Tooltip,
   Button,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   Info as InfoIcon,
@@ -21,7 +23,7 @@ import { ProviderAvailability } from '../../../../../api/researchConfig';
 import { ExaOptions } from '../ExaOptions';
 import { TavilyOptions } from '../TavilyOptions';
 import { ProviderChips } from '../ProviderChips';
-import { ResearchProvider } from '../../../../../services/blogWriterApi';
+import { ResearchProvider } from '../../../../../services/researchApi';
 
 interface AdvancedProviderOptionsSectionProps {
   intentAnalysis: AnalyzeIntentResponse;
@@ -40,6 +42,35 @@ export const AdvancedProviderOptionsSection: React.FC<AdvancedProviderOptionsSec
   showAdvancedOptions,
   onAdvancedOptionsChange,
 }) => {
+  const [activeTab, setActiveTab] = useState<number>(() => {
+    // Initialize tab based on current provider
+    if (config.provider === 'tavily' && providerAvailability.tavily_available) return 1;
+    if (config.provider === 'exa' && providerAvailability.exa_available) return 0;
+    // Default to first available provider
+    if (providerAvailability.exa_available) return 0;
+    if (providerAvailability.tavily_available) return 1;
+    return 0;
+  });
+
+  // Sync active tab when provider changes externally
+  useEffect(() => {
+    if (config.provider === 'tavily' && providerAvailability.tavily_available) {
+      setActiveTab(1);
+    } else if (config.provider === 'exa' && providerAvailability.exa_available) {
+      setActiveTab(0);
+    }
+  }, [config.provider, providerAvailability.exa_available, providerAvailability.tavily_available]);
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+    // Update provider based on selected tab
+    if (newValue === 0 && providerAvailability.exa_available) {
+      onConfigUpdate({ provider: 'exa' });
+    } else if (newValue === 1 && providerAvailability.tavily_available) {
+      onConfigUpdate({ provider: 'tavily' });
+    }
+  };
+
   return (
     <>
       {/* Toggle Advanced Options Button */}
@@ -127,139 +158,60 @@ export const AdvancedProviderOptionsSection: React.FC<AdvancedProviderOptionsSec
               )}
             </Box>
             <ProviderChips providerAvailability={providerAvailability} />
-            {/* Provider Selector */}
-            <Box sx={{ mt: 1 }}>
-              <select
-                value={config.provider || 'exa'}
-                onChange={(e) => onConfigUpdate({ provider: e.target.value as ResearchProvider })}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #e2e8f0',
-                  fontSize: '13px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                {providerAvailability.exa_available && <option value="exa">Exa</option>}
-                {providerAvailability.tavily_available && <option value="tavily">Tavily</option>}
-                <option value="google">Google</option>
-              </select>
-            </Box>
           </Box>
 
-          {/* Provider-specific Options with AI tooltips */}
-          {config.provider === 'exa' && providerAvailability.exa_available && (
-            <>
-              {/* AI Settings Summary for Exa */}
-              {intentAnalysis?.optimized_config && (
-                <Box sx={{
-                  mb: 2,
-                  p: 1.5,
-                  backgroundColor: '#f8fafc',
-                  borderRadius: '6px',
-                  border: '1px solid #e2e8f0',
-                }}>
-                  <Typography variant="caption" color="#666" fontWeight={600} gutterBottom display="block">
-                    AI-Selected Exa Settings
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {intentAnalysis.optimized_config.exa_type && (
-                      <Tooltip title={intentAnalysis.optimized_config.exa_type_justification || 'Search type'} arrow>
-                        <Chip
-                          label={`Type: ${intentAnalysis.optimized_config.exa_type}`}
-                          size="small"
-                          sx={{ fontSize: '11px', backgroundColor: '#e0f2fe', color: '#0369a1' }}
-                        />
-                      </Tooltip>
-                    )}
-                    {intentAnalysis.optimized_config.exa_category && (
-                      <Tooltip title={intentAnalysis.optimized_config.exa_category_justification || 'Category focus'} arrow>
-                        <Chip
-                          label={`Category: ${intentAnalysis.optimized_config.exa_category}`}
-                          size="small"
-                          sx={{ fontSize: '11px', backgroundColor: '#fef3c7', color: '#92400e' }}
-                        />
-                      </Tooltip>
-                    )}
-                    {intentAnalysis.optimized_config.exa_date_filter && (
-                      <Tooltip title={intentAnalysis.optimized_config.exa_date_justification || 'Date filter'} arrow>
-                        <Chip
-                          label={`Since: ${intentAnalysis.optimized_config.exa_date_filter.split('T')[0]}`}
-                          size="small"
-                          sx={{ fontSize: '11px', backgroundColor: '#f3e8ff', color: '#7c3aed' }}
-                        />
-                      </Tooltip>
-                    )}
-                  </Box>
-                </Box>
+          {/* Provider Tabs */}
+          <Box sx={{ mb: 2 }}>
+            <Tabs
+              value={activeTab}
+              onChange={handleTabChange}
+              sx={{
+                borderBottom: 1,
+                borderColor: 'divider',
+                '& .MuiTab-root': {
+                  textTransform: 'none',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  minHeight: '40px',
+                  '&.Mui-selected': {
+                    color: '#0ea5e9',
+                    fontWeight: 600,
+                  },
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: '#0ea5e9',
+                },
+              }}
+            >
+              {providerAvailability.exa_available && (
+                <Tab 
+                  label="Exa Options" 
+                  disabled={!providerAvailability.exa_available}
+                />
               )}
-              <ExaOptions
-                config={config}
-                onConfigUpdate={onConfigUpdate}
-              />
-            </>
+              {providerAvailability.tavily_available && (
+                <Tab 
+                  label="Tavily Options" 
+                  disabled={!providerAvailability.tavily_available}
+                />
+              )}
+            </Tabs>
+          </Box>
+
+          {/* Provider-specific Options */}
+          {activeTab === 0 && providerAvailability.exa_available && (
+            <ExaOptions
+              config={config}
+              onConfigUpdate={onConfigUpdate}
+              optimizedConfig={intentAnalysis?.optimized_config}
+            />
           )}
 
-          {config.provider === 'tavily' && providerAvailability.tavily_available && (
-            <>
-              {/* AI Settings Summary for Tavily */}
-              {intentAnalysis?.optimized_config && (
-                <Box sx={{
-                  mb: 2,
-                  p: 1.5,
-                  backgroundColor: '#f8fafc',
-                  borderRadius: '6px',
-                  border: '1px solid #e2e8f0',
-                }}>
-                  <Typography variant="caption" color="#666" fontWeight={600} gutterBottom display="block">
-                    AI-Selected Tavily Settings
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {intentAnalysis.optimized_config.tavily_topic && (
-                      <Tooltip title={intentAnalysis.optimized_config.tavily_topic_justification || 'Topic category'} arrow>
-                        <Chip
-                          label={`Topic: ${intentAnalysis.optimized_config.tavily_topic}`}
-                          size="small"
-                          sx={{ fontSize: '11px', backgroundColor: '#e0f2fe', color: '#0369a1' }}
-                        />
-                      </Tooltip>
-                    )}
-                    {intentAnalysis.optimized_config.tavily_search_depth && (
-                      <Tooltip title={intentAnalysis.optimized_config.tavily_search_depth_justification || 'Search depth'} arrow>
-                        <Chip
-                          label={`Depth: ${intentAnalysis.optimized_config.tavily_search_depth}`}
-                          size="small"
-                          sx={{ fontSize: '11px', backgroundColor: '#fef3c7', color: '#92400e' }}
-                        />
-                      </Tooltip>
-                    )}
-                    {intentAnalysis.optimized_config.tavily_time_range && (
-                      <Tooltip title={intentAnalysis.optimized_config.tavily_time_range_justification || 'Time filter'} arrow>
-                        <Chip
-                          label={`Time: ${intentAnalysis.optimized_config.tavily_time_range}`}
-                          size="small"
-                          sx={{ fontSize: '11px', backgroundColor: '#dcfce7', color: '#166534' }}
-                        />
-                      </Tooltip>
-                    )}
-                    {intentAnalysis.optimized_config.tavily_include_answer && (
-                      <Tooltip title={intentAnalysis.optimized_config.tavily_include_answer_justification || 'AI answer'} arrow>
-                        <Chip
-                          label="AI Answer ✓"
-                          size="small"
-                          sx={{ fontSize: '11px', backgroundColor: '#f3e8ff', color: '#7c3aed' }}
-                        />
-                      </Tooltip>
-                    )}
-                  </Box>
-                </Box>
-              )}
-              <TavilyOptions
-                config={config}
-                onConfigUpdate={onConfigUpdate}
-              />
-            </>
+          {activeTab === 1 && providerAvailability.tavily_available && (
+            <TavilyOptions
+              config={config}
+              onConfigUpdate={onConfigUpdate}
+            />
           )}
         </Box>
       )}

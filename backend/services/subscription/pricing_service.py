@@ -290,6 +290,40 @@ class PricingService:
                 "cost_per_image": 0.04,  # $0.04 per image
                 "description": "Stability AI Image Generation"
             },
+            # WaveSpeed OSS Image Generation Models
+            {
+                "provider": APIProvider.STABILITY,  # Using STABILITY provider for image generation
+                "model_name": "qwen-image",
+                "cost_per_image": 0.03,  # $0.03 per image (OSS model via WaveSpeed)
+                "cost_per_request": 0.03,  # Also support cost_per_request
+                "description": "WaveSpeed Qwen Image (OSS) - Fast generation, cost-effective"
+            },
+            {
+                "provider": APIProvider.STABILITY,
+                "model_name": "ideogram-v3-turbo",
+                "cost_per_image": 0.05,  # $0.05 per image (OSS model via WaveSpeed)
+                "cost_per_request": 0.05,  # Also support cost_per_request
+                "description": "WaveSpeed Ideogram V3 Turbo (OSS) - Photorealistic, text rendering"
+            },
+            # WaveSpeed OSS Image Editing Models
+            {
+                "provider": APIProvider.IMAGE_EDIT,
+                "model_name": "qwen-edit",
+                "cost_per_request": 0.02,  # $0.02 per edit (OSS model via WaveSpeed)
+                "description": "WaveSpeed Qwen Image Edit (OSS) - Budget editing, bilingual"
+            },
+            {
+                "provider": APIProvider.IMAGE_EDIT,
+                "model_name": "qwen-edit-plus",
+                "cost_per_request": 0.02,  # $0.02 per edit (OSS model via WaveSpeed)
+                "description": "WaveSpeed Qwen Image Edit Plus (OSS) - Multi-image editing"
+            },
+            {
+                "provider": APIProvider.IMAGE_EDIT,
+                "model_name": "flux-kontext-pro",
+                "cost_per_request": 0.04,  # $0.04 per edit (OSS model via WaveSpeed)
+                "description": "WaveSpeed FLUX Kontext Pro (OSS) - Professional editing, typography"
+            },
             {
                 "provider": APIProvider.EXA,
                 "model_name": "exa-search",
@@ -305,8 +339,8 @@ class PricingService:
             {
                 "provider": APIProvider.VIDEO,
                 "model_name": "default",
-                "cost_per_request": 0.10,  # $0.10 per video generation (estimated)
-                "description": "AI Video Generation default pricing"
+                "cost_per_request": 0.25,  # UPDATED: Default to WAN 2.5 OSS model ($0.25)
+                "description": "AI Video Generation default pricing (OSS: WAN 2.5)"
             },
             {
                 "provider": APIProvider.VIDEO,
@@ -325,6 +359,25 @@ class PricingService:
                 "model_name": "wavespeed-ai/infinitetalk",
                 "cost_per_request": 0.30,
                 "description": "WaveSpeed InfiniteTalk (image + audio to talking avatar video)"
+            },
+            # WaveSpeed OSS Video Generation Models
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "wan-2.5",
+                "cost_per_request": 0.25,  # $0.25 per video (~5 seconds, OSS model via WaveSpeed)
+                "description": "WaveSpeed WAN 2.5 (OSS) - Text-to-Video, Image-to-Video, cost-effective"
+            },
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "alibaba/wan-2.5",
+                "cost_per_request": 0.25,  # $0.25 per video (~5 seconds, OSS model via WaveSpeed)
+                "description": "WaveSpeed WAN 2.5 (OSS) - Alternative path, same model"
+            },
+            {
+                "provider": APIProvider.VIDEO,
+                "model_name": "seedance-1.5-pro",
+                "cost_per_request": 0.40,  # $0.40 per video (~5 seconds, OSS model via WaveSpeed)
+                "description": "WaveSpeed Seedance 1.5 Pro (OSS) - Longer duration videos (10-30 sec)"
             },
             # Audio Generation Pricing (Minimax Speech 02 HD via WaveSpeed)
             {
@@ -404,7 +457,7 @@ class PricingService:
                 "tier": SubscriptionTier.BASIC,
                 "price_monthly": 29.0,
                 "price_yearly": 290.0,
-                "ai_text_generation_calls_limit": 10,  # Unified limit for all LLM providers
+                "ai_text_generation_calls_limit": 50,  # INCREASED: Unified limit for all LLM providers (OSS-focused strategy)
                 "gemini_calls_limit": 1000,  # Legacy, kept for backwards compatibility (not used for enforcement)
                 "openai_calls_limit": 500,
                 "anthropic_calls_limit": 200,
@@ -413,18 +466,18 @@ class PricingService:
                 "serper_calls_limit": 200,
                 "metaphor_calls_limit": 100,
                 "firecrawl_calls_limit": 100,
-                "stability_calls_limit": 5,
+                "stability_calls_limit": 50,  # INCREASED: Now includes WaveSpeed OSS models (Qwen Image $0.03)
                 "exa_calls_limit": 500,
-                "video_calls_limit": 20,  # 20 videos/month for basic plan
-                "image_edit_calls_limit": 30,  # 30 AI image editing calls/month
-                "audio_calls_limit": 50,  # 50 AI audio generation calls/month
-                "gemini_tokens_limit": 20000,  # Increased from 5000 for better stability
-                "openai_tokens_limit": 20000,  # Increased from 5000 for better stability
-                "anthropic_tokens_limit": 20000,  # Increased from 5000 for better stability
-                "mistral_tokens_limit": 20000,  # Increased from 5000 for better stability
-                "monthly_cost_limit": 50.0,
-                "features": ["full_content_generation", "advanced_research", "basic_analytics"],
-                "description": "Great for individuals and small teams"
+                "video_calls_limit": 30,  # INCREASED: 30 videos/month (WAN 2.5 OSS $0.25)
+                "image_edit_calls_limit": 50,  # INCREASED: 50 AI image editing calls/month (Qwen Edit OSS $0.02)
+                "audio_calls_limit": 100,  # INCREASED: 100 AI audio generation calls/month (Minimax Speech OSS)
+                "gemini_tokens_limit": 100000,  # INCREASED: 100K tokens per provider (OSS-focused strategy)
+                "openai_tokens_limit": 100000,  # INCREASED: 100K tokens per provider
+                "anthropic_tokens_limit": 100000,  # INCREASED: 100K tokens per provider
+                "mistral_tokens_limit": 100000,  # INCREASED: 100K tokens per provider
+                "monthly_cost_limit": 45.0,  # ADJUSTED: $45 cap (aligns with $40-50 hard limit target)
+                "features": ["full_content_generation", "advanced_research", "basic_analytics", "all_tools_access", "oss_models_priority"],
+                "description": "Perfect for individuals and small teams. Access all ALwrity features with generous limits powered by OSS AI models."
             },
             {
                 "name": "Pro",

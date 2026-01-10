@@ -12,6 +12,7 @@ import {
   AnalyzeIntentResponse,
   ResearchQuery,
   ExpectedDeliverable,
+  TrendsConfig,
 } from '../../../types/intent.types';
 import { ProviderAvailability } from '../../../../../api/researchConfig';
 
@@ -31,7 +32,7 @@ export interface IntentConfirmationPanelProps {
   isAnalyzing: boolean;
   intentAnalysis: AnalyzeIntentResponse | null;
   confirmedIntent: ResearchIntent | null;
-  onConfirm: (intent: ResearchIntent) => void;
+  onConfirm: (intent: ResearchIntent, state?: any) => void; // Added optional state parameter
   onUpdateField: <K extends keyof ResearchIntent>(field: K, value: ResearchIntent[K]) => void;
   onExecute: (selectedQueries?: ResearchQuery[]) => void;
   onDismiss: () => void;
@@ -41,6 +42,7 @@ export interface IntentConfirmationPanelProps {
   providerAvailability?: ProviderAvailability | null;
   config?: any;
   onConfigUpdate?: (updates: any) => void;
+  wizardState?: any; // Add wizard state for draft saving
 }
 
 export const IntentConfirmationPanel: React.FC<IntentConfirmationPanelProps> = ({
@@ -57,6 +59,7 @@ export const IntentConfirmationPanel: React.FC<IntentConfirmationPanelProps> = (
   providerAvailability,
   config,
   onConfigUpdate,
+  wizardState,
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedQueries, setSelectedQueries] = useState<Set<number>>(
@@ -65,12 +68,18 @@ export const IntentConfirmationPanel: React.FC<IntentConfirmationPanelProps> = (
   const [editedQueries, setEditedQueries] = useState<ResearchQuery[]>(
     intentAnalysis?.suggested_queries || []
   );
+  const [editedTrendsConfig, setEditedTrendsConfig] = useState<TrendsConfig | null>(
+    intentAnalysis?.trends_config || null
+  );
 
-  // Update edited queries when intentAnalysis changes
+  // Update edited queries and trends config when intentAnalysis changes
   useEffect(() => {
     if (intentAnalysis?.suggested_queries) {
       setEditedQueries(intentAnalysis.suggested_queries);
       setSelectedQueries(new Set(intentAnalysis.suggested_queries.map((_, idx) => idx)));
+    }
+    if (intentAnalysis?.trends_config) {
+      setEditedTrendsConfig(intentAnalysis.trends_config);
     }
   }, [intentAnalysis]);
 
@@ -96,12 +105,28 @@ export const IntentConfirmationPanel: React.FC<IntentConfirmationPanelProps> = (
 
   const handleExecute = () => {
     const updatedIntent = { ...intent };
-    onConfirm(updatedIntent);
+    // Pass wizard state to onConfirm for draft saving
+    onConfirm(updatedIntent, wizardState);
     const queriesToUse = Array.from(selectedQueries)
       .sort((a, b) => a - b)
       .map(idx => editedQueries[idx])
       .filter(q => q && q.query.trim().length > 0);
+    
+    // Store updated trends config in intentAnalysis for execution
+    // The execution hook will use trends_config from intentAnalysis
+    if (editedTrendsConfig && intentAnalysis) {
+      intentAnalysis.trends_config = editedTrendsConfig;
+    }
+    
     onExecute(queriesToUse);
+  };
+
+  const handleTrendsConfigUpdate = (updatedConfig: TrendsConfig) => {
+    setEditedTrendsConfig(updatedConfig);
+    // Also update intentAnalysis to keep it in sync
+    if (intentAnalysis) {
+      intentAnalysis.trends_config = updatedConfig;
+    }
   };
 
   return (
@@ -152,8 +177,11 @@ export const IntentConfirmationPanel: React.FC<IntentConfirmationPanelProps> = (
         />
 
         {/* Google Trends Section */}
-        {intentAnalysis.trends_config && (
-          <TrendsConfigSection trendsConfig={intentAnalysis.trends_config} />
+        {editedTrendsConfig && (
+          <TrendsConfigSection 
+            trendsConfig={editedTrendsConfig}
+            onUpdate={handleTrendsConfigUpdate}
+          />
         )}
 
         {/* Advanced Options Section */}
@@ -172,6 +200,8 @@ export const IntentConfirmationPanel: React.FC<IntentConfirmationPanelProps> = (
         <ExpandableDetails
           intentAnalysis={intentAnalysis}
           expanded={showDetails}
+          intent={intent}
+          onUpdateField={onUpdateField}
         />
 
         {/* Action Buttons */}

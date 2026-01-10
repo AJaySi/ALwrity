@@ -1,7 +1,13 @@
 """
 Log Wrapping Service
-Intelligently wraps API usage logs when they exceed 5000 records.
+Intelligently wraps API usage logs when they exceed limits (count or time-based).
 Aggregates old logs into cumulative records while preserving historical data.
+
+Features:
+- Count-based retention: Keeps 4,000 most recent detailed logs
+- Time-based retention: Aggregates logs older than 90 days
+- Automatic aggregation: Triggered on log queries
+- Context preservation: Maintains costs, tokens, counts, success rates
 """
 
 from typing import Dict, Any, List, Optional
@@ -18,13 +24,18 @@ class LogWrappingService:
     
     MAX_LOGS_PER_USER = 5000
     AGGREGATION_THRESHOLD_DAYS = 30  # Aggregate logs older than 30 days
+    RETENTION_DAYS = 90  # Time-based retention: aggregate logs older than 90 days
     
     def __init__(self, db: Session):
         self.db = db
     
     def check_and_wrap_logs(self, user_id: str) -> Dict[str, Any]:
         """
-        Check if user has exceeded log limit and wrap if necessary.
+        Check if user has exceeded log limit (count or time-based) and wrap if necessary.
+        
+        Checks both:
+        1. Count-based: If user has more than MAX_LOGS_PER_USER logs
+        2. Time-based: If user has logs older than RETENTION_DAYS
         
         Returns:
             Dict with wrapping status and statistics
@@ -35,18 +46,42 @@ class LogWrappingService:
                 APIUsageLog.user_id == user_id
             ).scalar() or 0
             
-            if total_count <= self.MAX_LOGS_PER_USER:
+            # Check for logs older than retention period
+            retention_cutoff = datetime.utcnow() - timedelta(days=self.RETENTION_DAYS)
+            old_logs_count = self.db.query(func.count(APIUsageLog.id)).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.timestamp < retention_cutoff,
+                APIUsageLog.endpoint != '[AGGREGATED]'  # Don't re-aggregate already aggregated logs
+            ).scalar() or 0
+            
+            # Determine if wrapping is needed
+            count_based_trigger = total_count > self.MAX_LOGS_PER_USER
+            time_based_trigger = old_logs_count > 0
+            
+            if not count_based_trigger and not time_based_trigger:
                 return {
                     'wrapped': False,
                     'total_logs': total_count,
+                    'old_logs': old_logs_count,
                     'max_logs': self.MAX_LOGS_PER_USER,
-                    'message': f'Log count ({total_count}) is within limit ({self.MAX_LOGS_PER_USER})'
+                    'retention_days': self.RETENTION_DAYS,
+                    'message': f'Log count ({total_count}) and age are within limits'
                 }
             
-            # Need to wrap logs - aggregate old logs
-            logger.info(f"[LogWrapping] User {user_id} has {total_count} logs, exceeding limit of {self.MAX_LOGS_PER_USER}. Starting wrap...")
+            # Determine trigger reason
+            trigger_reasons = []
+            if count_based_trigger:
+                trigger_reasons.append(f'count limit ({total_count} > {self.MAX_LOGS_PER_USER})')
+            if time_based_trigger:
+                trigger_reasons.append(f'time-based retention ({old_logs_count} logs older than {self.RETENTION_DAYS} days)')
             
-            wrap_result = self._wrap_old_logs(user_id, total_count)
+            logger.info(
+                f"[LogWrapping] User {user_id} needs log wrapping. "
+                f"Total: {total_count}, Old logs: {old_logs_count}. "
+                f"Triggers: {', '.join(trigger_reasons)}"
+            )
+            
+            wrap_result = self._wrap_old_logs(user_id, total_count, time_based=time_based_trigger)
             
             return {
                 'wrapped': True,
@@ -54,6 +89,8 @@ class LogWrappingService:
                 'total_logs_after': wrap_result['logs_remaining'],
                 'aggregated_logs': wrap_result['aggregated_count'],
                 'aggregated_periods': wrap_result['periods'],
+                'trigger_reasons': trigger_reasons,
+                'old_logs_aggregated': wrap_result.get('old_logs_aggregated', 0),
                 'message': f'Wrapped {wrap_result["aggregated_count"]} logs into {len(wrap_result["periods"])} aggregated records'
             }
             
@@ -65,30 +102,76 @@ class LogWrappingService:
                 'message': f'Error wrapping logs: {str(e)}'
             }
     
-    def _wrap_old_logs(self, user_id: str, total_count: int) -> Dict[str, Any]:
+    def _wrap_old_logs(self, user_id: str, total_count: int, time_based: bool = False) -> Dict[str, Any]:
         """
         Aggregate old logs into cumulative records.
         
         Strategy:
-        1. Keep most recent 4000 logs (detailed)
-        2. Aggregate logs older than 30 days or oldest logs beyond 4000
-        3. Create aggregated records grouped by provider and billing period
-        4. Delete individual logs that were aggregated
+        1. Keep most recent 4000 logs (detailed) - count-based
+        2. Aggregate logs older than RETENTION_DAYS - time-based
+        3. Aggregate oldest logs beyond 4000 limit - count-based
+        4. Create aggregated records grouped by provider and billing period
+        5. Delete individual logs that were aggregated
+        
+        Args:
+            user_id: User ID
+            total_count: Total number of logs for user
+            time_based: If True, prioritize time-based retention over count-based
         """
         try:
-            # Calculate how many logs to keep (4000 detailed, rest aggregated)
+            # Calculate retention cutoff date
+            retention_cutoff = datetime.utcnow() - timedelta(days=self.RETENTION_DAYS)
+            aggregation_cutoff = datetime.utcnow() - timedelta(days=self.AGGREGATION_THRESHOLD_DAYS)
+            
+            # Determine which logs to aggregate
             logs_to_keep = 4000
-            logs_to_aggregate = total_count - logs_to_keep
+            logs_to_aggregate_count = max(0, total_count - logs_to_keep)
             
-            # Get cutoff date (30 days ago)
-            cutoff_date = datetime.utcnow() - timedelta(days=self.AGGREGATION_THRESHOLD_DAYS)
+            if time_based:
+                # Time-based: Aggregate all logs older than retention period
+                # (excluding already aggregated logs)
+                logs_to_process = self.db.query(APIUsageLog).filter(
+                    APIUsageLog.user_id == user_id,
+                    APIUsageLog.timestamp < retention_cutoff,
+                    APIUsageLog.endpoint != '[AGGREGATED]'  # Don't re-aggregate
+                ).order_by(APIUsageLog.timestamp.asc()).all()
+                
+                logger.info(
+                    f"[LogWrapping] Time-based aggregation: Found {len(logs_to_process)} logs "
+                    f"older than {self.RETENTION_DAYS} days"
+                )
+            else:
+                # Count-based: Aggregate oldest logs beyond the keep limit
+                logs_to_process = self.db.query(APIUsageLog).filter(
+                    APIUsageLog.user_id == user_id,
+                    APIUsageLog.endpoint != '[AGGREGATED]'  # Don't re-aggregate
+                ).order_by(APIUsageLog.timestamp.asc()).limit(logs_to_aggregate_count).all()
+                
+                logger.info(
+                    f"[LogWrapping] Count-based aggregation: Processing {len(logs_to_process)} "
+                    f"oldest logs beyond {logs_to_keep} limit"
+                )
             
-            # Get logs to aggregate: oldest logs beyond the keep limit
-            # Order by timestamp ascending to get oldest first
-            # We'll keep the most recent logs_to_keep logs, aggregate the rest
-            logs_to_process = self.db.query(APIUsageLog).filter(
-                APIUsageLog.user_id == user_id
-            ).order_by(APIUsageLog.timestamp.asc()).limit(logs_to_aggregate).all()
+            # Also check for time-based logs even if count-based is primary
+            # This ensures we don't keep very old logs just because they're within the count limit
+            if not time_based and logs_to_aggregate_count > 0:
+                # Get logs that are both old AND beyond count limit
+                old_logs_beyond_limit = self.db.query(APIUsageLog).filter(
+                    APIUsageLog.user_id == user_id,
+                    APIUsageLog.timestamp < retention_cutoff,
+                    APIUsageLog.endpoint != '[AGGREGATED]'
+                ).order_by(APIUsageLog.timestamp.asc()).all()
+                
+                # Merge with count-based logs, prioritizing old logs
+                existing_ids = {log.id for log in logs_to_process}
+                for old_log in old_logs_beyond_limit:
+                    if old_log.id not in existing_ids:
+                        logs_to_process.append(old_log)
+                
+                logger.info(
+                    f"[LogWrapping] Combined aggregation: {len(logs_to_process)} logs to process "
+                    f"({logs_to_aggregate_count} count-based + {len(old_logs_beyond_limit)} time-based)"
+                )
             
             if not logs_to_process:
                 return {
@@ -218,10 +301,18 @@ class LogWrappingService:
                 f"Remaining logs: {remaining_count}"
             )
             
+            # Count how many old logs were aggregated (for reporting)
+            # Count logs that were aggregated based on time (not just count)
+            old_logs_aggregated = 0
+            for log in logs_to_process:
+                if log.timestamp and log.timestamp < retention_cutoff:
+                    old_logs_aggregated += 1
+            
             return {
                 'aggregated_count': aggregated_count,
                 'logs_remaining': remaining_count,
-                'periods': periods_created
+                'periods': periods_created,
+                'old_logs_aggregated': old_logs_aggregated
             }
             
         except Exception as e:

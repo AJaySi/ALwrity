@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { getResearchConfig, ProviderAvailability } from '../../../../api/researchConfig';
 import { WizardState } from '../../types/research.types';
-import { ResearchProvider } from '../../../../services/blogWriterApi';
+import { ResearchProvider } from '../../../../services/researchApi';
 
 interface ResearchPersona {
   research_angles?: string[];

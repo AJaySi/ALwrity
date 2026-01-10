@@ -9,6 +9,8 @@ from dataclasses import dataclass
 
 from services.llm_providers.main_video_generation import ai_video_generate
 from utils.logger_utils import get_service_logger
+from utils.asset_tracker import save_asset_to_library
+from services.database import SessionLocal
 
 logger = get_service_logger("product_marketing.video")
 
@@ -211,6 +213,62 @@ class ProductVideoService:
             result["file_path"] = str(file_path)
             result["file_url"] = file_url
             result["file_size"] = len(video_bytes)
+            
+            # Save to Asset Library
+            db = SessionLocal()
+            try:
+                # Build video prompt for metadata
+                video_prompt = self._build_video_prompt(
+                    video_type=request.video_type,
+                    product_name=request.product_name,
+                    product_description=request.product_description,
+                    brand_context=request.brand_context,
+                    additional_context=request.additional_context
+                )
+                
+                asset_id = save_asset_to_library(
+                    db=db,
+                    user_id=user_id,
+                    asset_type="video",
+                    source_module="product_marketing",
+                    filename=filename,
+                    file_url=file_url,
+                    file_path=str(file_path),
+                    file_size=len(video_bytes),
+                    mime_type="video/mp4",
+                    title=f"{request.product_name} - {request.video_type.replace('_', ' ').title()} Video",
+                    description=f"Product video: {request.product_description or request.product_name}",
+                    prompt=video_prompt,
+                    tags=["product_marketing", "product_video", request.video_type, request.resolution],
+                    provider=result.get("provider", "wavespeed"),
+                    model=result.get("model_name", "alibaba/wan-2.5/text-to-video"),
+                    cost=result.get("cost", 0.0),
+                    generation_time=result.get("generation_time"),
+                    asset_metadata={
+                        "product_name": request.product_name,
+                        "product_description": request.product_description,
+                        "video_type": request.video_type,
+                        "resolution": request.resolution,
+                        "duration": request.duration,
+                        "width": result.get("width"),
+                        "height": result.get("height"),
+                    },
+                )
+                
+                if asset_id:
+                    logger.info(f"[Product Video] ✅ Saved video to Asset Library: ID={asset_id}")
+                else:
+                    logger.warning(f"[Product Video] ⚠️ Asset Library save returned None")
+                    
+            except Exception as db_error:
+                logger.error(f"[Product Video] Database error saving to Asset Library: {str(db_error)}", exc_info=True)
+                # Video is saved, but database tracking failed - not critical
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
             
             logger.info(
                 f"[Product Video] ✅ Product video generated successfully: "

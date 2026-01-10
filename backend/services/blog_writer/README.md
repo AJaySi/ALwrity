@@ -35,7 +35,7 @@ blog_writer/
 - Delegates to specialized modules for specific functionality
 
 ### Research Module (`research/`)
-- **`ResearchService`**: Orchestrates comprehensive research using Google Search grounding
+- **`ResearchService`**: Orchestrates comprehensive research using Exa neural search (currently Exa-only for testing)
 - **`KeywordAnalyzer`**: AI-powered keyword analysis and extraction
 - **`CompetitorAnalyzer`**: Competitor intelligence and market analysis
 - **`ContentAngleGenerator`**: Strategic content angle discovery

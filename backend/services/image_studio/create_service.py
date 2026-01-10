@@ -56,11 +56,11 @@ class CreateStudioService:
         }
     }
     
-    # Quality-to-provider mapping
+    # Quality-to-provider mapping (OSS-focused defaults)
     QUALITY_PROVIDERS = {
-        "draft": ["huggingface", "wavespeed:qwen-image"],  # Fast, low cost
-        "standard": ["stability:core", "wavespeed:ideogram-v3-turbo"],  # Balanced
-        "premium": ["wavespeed:ideogram-v3-turbo", "stability:ultra"],  # Best quality
+        "draft": ["wavespeed:qwen-image", "huggingface"],  # OSS: Qwen Image ($0.03) - Fast, low cost
+        "standard": ["wavespeed:qwen-image", "stability:core"],  # OSS: Qwen Image default
+        "premium": ["wavespeed:ideogram-v3-turbo", "stability:ultra"],  # OSS: Ideogram V3 Turbo ($0.05)
     }
     
     def __init__(self):

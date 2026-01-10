@@ -137,6 +137,11 @@ class IntentQueryGenerator:
                     provider=q.get("provider", "exa"),
                     priority=min(max(int(q.get("priority", 3)), 1), 5),  # Clamp 1-5
                     expected_results=q.get("expected_results", ""),
+                    addresses_primary_question=q.get("addresses_primary_question", False),
+                    addresses_secondary_questions=q.get("addresses_secondary_questions", []),
+                    targets_focus_areas=q.get("targets_focus_areas", []),
+                    covers_also_answering=q.get("covers_also_answering", []),
+                    justification=q.get("justification"),
                 )
                 queries.append(query)
             except Exception as e:
@@ -266,6 +271,10 @@ class IntentQueryGenerator:
             provider=template["provider"],
             priority=template["priority"],
             expected_results=template["expected"],
+            addresses_primary_question=False,
+            addresses_secondary_questions=[],
+            targets_focus_areas=[],
+            covers_also_answering=[],
         )
     
     def _create_fallback_queries(self, intent: ResearchIntent) -> Dict[str, Any]:
@@ -287,6 +296,10 @@ class IntentQueryGenerator:
                 provider="exa",
                 priority=5,
                 expected_results="General information and insights",
+                addresses_primary_question=True,
+                addresses_secondary_questions=[],
+                targets_focus_areas=[],
+                covers_also_answering=[],
             ))
         
         return {
@@ -357,10 +370,17 @@ class QueryOptimizer:
         if ExpectedDeliverable.TRENDS.value in deliverables:
             topic = "news"
         
-        # Determine search depth
-        search_depth = "basic"
-        if intent.depth in ["detailed", "expert"]:
-            search_depth = "advanced"
+        # Determine search depth based on depth and time sensitivity
+        # advanced = 2 credits (best quality), basic/fast/ultra-fast = 1 credit
+        search_depth = "basic"  # Default: balanced
+        if intent.depth == "expert":
+            search_depth = "advanced"  # Best quality for expert research
+        elif intent.depth == "detailed":
+            search_depth = "advanced"  # Better snippets for detailed research
+        elif intent.time_sensitivity == "real_time":
+            search_depth = "ultra-fast"  # Minimize latency for real-time
+        elif intent.time_sensitivity == "recent":
+            search_depth = "fast"  # Good balance for recent content
         
         # Include answer for factual queries
         include_answer = False

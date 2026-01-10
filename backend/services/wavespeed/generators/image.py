@@ -72,6 +72,7 @@ class ImageGenerator:
         model_paths = {
             "ideogram-v3-turbo": "ideogram-ai/ideogram-v3-turbo",
             "qwen-image": "wavespeed-ai/qwen-image/text-to-image",
+            "flux-kontext-pro": "wavespeed-ai/flux-kontext-pro/text-to-image",
         }
         
         model_path = model_paths.get(model)

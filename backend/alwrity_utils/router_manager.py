@@ -49,7 +49,7 @@ class RouterManager:
             self.include_router_safely(component_logic_router, "component_logic")
             
             # Subscription router
-            from api.subscription_api import router as subscription_router
+            from api.subscription import router as subscription_router
             self.include_router_safely(subscription_router, "subscription")
             
             # Step 3 Research router (core onboarding functionality)

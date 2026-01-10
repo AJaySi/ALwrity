@@ -23,9 +23,10 @@ const MONITORING_BASE_URL = API_BASE_URL
   : '/api/content-planning/monitoring';
 
 // Create axios instance for monitoring APIs
+// Use shorter timeout for health checks to prevent blocking dashboard
 const monitoringAPI = axios.create({
   baseURL: MONITORING_BASE_URL,
-  timeout: 10000,
+  timeout: 5000, // Reduced from 10000 to 5000ms for faster failure
   headers: {
     'Content-Type': 'application/json',
   },

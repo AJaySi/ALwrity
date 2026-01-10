@@ -1,9 +1,12 @@
-import { BlogResearchResponse, ResearchMode, ResearchConfig } from '../../../services/blogWriterApi';
+import { ResearchResponse, ResearchMode, ResearchConfig } from '../../../services/researchApi';
 import { 
   ResearchIntent, 
   AnalyzeIntentResponse, 
   IntentDrivenResearchResponse,
   ResearchQuery,
+  ResearchPurpose,
+  ContentOutput,
+  ResearchDepthLevel,
 } from './intent.types';
 
 export interface WizardState {
@@ -13,7 +16,11 @@ export interface WizardState {
   targetAudience: string;
   researchMode: ResearchMode;
   config: ResearchConfig;
-  results: BlogResearchResponse | null;
+  results: ResearchResponse | null;
+  // User-provided intent settings (optional, if not provided, AI will infer)
+  userPurpose?: ResearchPurpose;
+  userContentOutput?: ContentOutput;
+  userDepth?: ResearchDepthLevel;
 }
 
 export interface ResearchExecution {
@@ -34,7 +41,7 @@ export interface ResearchExecution {
   confirmedIntent: ResearchIntent | null;
   intentResult: IntentDrivenResearchResponse | null;
   analyzeIntent: (state: WizardState) => Promise<AnalyzeIntentResponse | null>;
-  confirmIntent: (intent: ResearchIntent) => void;
+  confirmIntent: (intent: ResearchIntent, state?: WizardState) => void;
   updateIntentField: <K extends keyof ResearchIntent>(field: K, value: ResearchIntent[K]) => void;
   executeIntentResearch: (state: WizardState, selectedQueries?: ResearchQuery[]) => Promise<IntentDrivenResearchResponse | null>;
   clearIntent: () => void;
@@ -49,13 +56,14 @@ export interface WizardStepProps {
 }
 
 export interface ResearchWizardProps {
-  onComplete?: (results: BlogResearchResponse) => void;
+  onComplete?: (results: ResearchResponse) => void;
   onCancel?: () => void;
   initialKeywords?: string[];
   initialIndustry?: string;
   initialTargetAudience?: string;
   initialResearchMode?: ResearchMode;
   initialConfig?: ResearchConfig;
+  initialResults?: ResearchResponse | null; // For restoring saved projects
 }
 
 export interface ModeCardInfo {

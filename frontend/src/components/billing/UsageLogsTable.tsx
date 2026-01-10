@@ -324,7 +324,7 @@ const UsageLogsTable: React.FC<UsageLogsTableProps> = ({ initialLimit = 50 }) =>
                         </TerminalTypography>
                       </TerminalTableCell>
                       <TerminalTableCell>
-                        <TerminalTypography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                        <TerminalTypography variant="body2" sx={{ textTransform: 'capitalize', fontWeight: 'bold' }}>
                           {log.provider}
                         </TerminalTypography>
                       </TerminalTableCell>

@@ -7,6 +7,7 @@ import {
   Grid,
   Chip,
   CircularProgress,
+  Tooltip as MuiTooltip,
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
@@ -21,7 +22,7 @@ import {
   XAxis, 
   YAxis, 
   CartesianGrid, 
-  Tooltip, 
+  Tooltip as RechartsTooltip, 
   ResponsiveContainer,
   Area,
   ChartLoadingFallback
@@ -36,6 +37,10 @@ import {
   formatNumber,
   formatPercentage
 } from '../../services/billingService';
+
+// Components
+import CostVelocityChart from './CostVelocityChart';
+import MultiSeriesCostChart from './MultiSeriesCostChart';
 
 interface UsageTrendsProps {
   trends: UsageTrendsType;
@@ -65,6 +70,28 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
     ? chartData[0].calls > 0 
       ? ((chartData[chartData.length - 1].calls - chartData[0].calls) / chartData[0].calls) * 100
       : chartData[chartData.length - 1].calls > 0 ? 100 : 0
+    : 0;
+
+  // Calculate cost velocity (daily spending rate)
+  const currentDate = new Date();
+  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const currentDay = currentDate.getDate();
+  const currentMonthCost = chartData.length > 0 ? chartData[chartData.length - 1].cost : 0;
+  const avgDailyCost = currentDay > 0 ? currentMonthCost / currentDay : 0;
+  const projectedMonthlyCost = avgDailyCost * daysInMonth;
+  const daysRemaining = daysInMonth - currentDay;
+  
+  // Calculate cost velocity trend (comparing recent vs earlier period)
+  const recentPeriods = chartData.slice(-3); // Last 3 periods
+  const earlierPeriods = chartData.slice(0, Math.min(3, chartData.length - 3));
+  const recentAvgCost = recentPeriods.length > 0 
+    ? recentPeriods.reduce((sum, p) => sum + p.cost, 0) / recentPeriods.length 
+    : 0;
+  const earlierAvgCost = earlierPeriods.length > 0
+    ? earlierPeriods.reduce((sum, p) => sum + p.cost, 0) / earlierPeriods.length
+    : 0;
+  const velocityTrend = earlierAvgCost > 0 
+    ? ((recentAvgCost - earlierAvgCost) / earlierAvgCost) * 100 
     : 0;
 
   // Custom tooltip for charts
@@ -121,126 +148,163 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
         </CardContent>
 
         <CardContent sx={{ pt: 0 }}>
-          {/* Growth Indicators */}
+          {/* Growth Indicators & Cost Velocity */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={6}>
+            <Grid item xs={6} sm={4}>
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.3 }}
               >
-                <Box
-                  sx={{
-                    p: 2,
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    borderRadius: 2,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    textAlign: 'center'
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
-                    {costGrowth >= 0 ? (
-                      <TrendingUpIcon sx={{ fontSize: 16, color: '#22c55e' }} />
-                    ) : (
-                      <TrendingDownIcon sx={{ fontSize: 16, color: '#ef4444' }} />
-                    )}
-                    <Typography variant="body2" color="text.secondary">
-                      Cost Growth
-                    </Typography>
-                  </Box>
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      fontWeight: 'bold',
-                      color: costGrowth >= 0 ? '#22c55e' : '#ef4444'
+                <MuiTooltip title="Percentage change in cost compared to first period" arrow>
+                  <Box component="span"
+                    sx={{
+                      p: 2,
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      borderRadius: 2,
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      textAlign: 'center',
+                      cursor: 'help'
                     }}
                   >
-                    {costGrowth >= 0 ? '+' : ''}{costGrowth.toFixed(1)}%
-                  </Typography>
-                </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
+                      {costGrowth >= 0 ? (
+                        <TrendingUpIcon sx={{ fontSize: 16, color: '#22c55e' }} />
+                      ) : (
+                        <TrendingDownIcon sx={{ fontSize: 16, color: '#ef4444' }} />
+                      )}
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                        Cost Growth
+                      </Typography>
+                    </Box>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        color: costGrowth >= 0 ? '#22c55e' : '#ef4444'
+                      }}
+                    >
+                      {costGrowth >= 0 ? '+' : ''}{costGrowth.toFixed(1)}%
+                    </Typography>
+                  </Box>
+                </MuiTooltip>
               </motion.div>
             </Grid>
             
-            <Grid item xs={6}>
+            <Grid item xs={6} sm={4}>
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
               >
-                <Box
-                  sx={{
-                    p: 2,
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    borderRadius: 2,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    textAlign: 'center'
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
-                    {callsGrowth >= 0 ? (
-                      <TrendingUpIcon sx={{ fontSize: 16, color: '#22c55e' }} />
-                    ) : (
-                      <TrendingDownIcon sx={{ fontSize: 16, color: '#ef4444' }} />
-                    )}
-                    <Typography variant="body2" color="text.secondary">
-                      Calls Growth
-                    </Typography>
-                  </Box>
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      fontWeight: 'bold',
-                      color: callsGrowth >= 0 ? '#22c55e' : '#ef4444'
+                <MuiTooltip title="Percentage change in API calls compared to first period" arrow>
+                  <Box component="span"
+                    sx={{
+                      p: 2,
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      borderRadius: 2,
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      textAlign: 'center',
+                      cursor: 'help'
                     }}
                   >
-                    {callsGrowth >= 0 ? '+' : ''}{callsGrowth.toFixed(1)}%
-                  </Typography>
-                </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
+                      {callsGrowth >= 0 ? (
+                        <TrendingUpIcon sx={{ fontSize: 16, color: '#22c55e' }} />
+                      ) : (
+                        <TrendingDownIcon sx={{ fontSize: 16, color: '#ef4444' }} />
+                      )}
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                        Calls Growth
+                      </Typography>
+                    </Box>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        color: callsGrowth >= 0 ? '#22c55e' : '#ef4444'
+                      }}
+                    >
+                      {callsGrowth >= 0 ? '+' : ''}{callsGrowth.toFixed(1)}%
+                    </Typography>
+                  </Box>
+                </MuiTooltip>
+              </motion.div>
+            </Grid>
+
+            <Grid item xs={12} sm={4}>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <MuiTooltip 
+                  title={
+                    <React.Fragment>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                        Daily Spending Rate
+                      </Typography>
+                      <Typography variant="body2" sx={{ display: 'block' }}>
+                        Average: {formatCurrency(avgDailyCost)}/day
+                      </Typography>
+                      <Typography variant="body2" sx={{ display: 'block' }}>
+                        Velocity trend: {velocityTrend >= 0 ? '+' : ''}{velocityTrend.toFixed(1)}%
+                      </Typography>
+                      <Typography variant="caption" sx={{ mt: 1, display: 'block', opacity: 0.8 }}>
+                        Based on current month's spending pattern
+                      </Typography>
+                    </React.Fragment>
+                  }
+                  arrow
+                  placement="top"
+                >
+                  <Box component="span"
+                    sx={{
+                      p: 2,
+                      backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                      borderRadius: 2,
+                      border: '1px solid rgba(102, 126, 234, 0.3)',
+                      textAlign: 'center',
+                      cursor: 'help'
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
+                      <CalendarIcon sx={{ fontSize: 16, color: '#667eea' }} />
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                        Cost Velocity
+                      </Typography>
+                    </Box>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        color: '#667eea'
+                      }}
+                    >
+                      {formatCurrency(avgDailyCost)}/day
+                    </Typography>
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        color: velocityTrend >= 0 ? '#ef4444' : '#22c55e',
+                        display: 'block',
+                        mt: 0.5
+                      }}
+                    >
+                      {velocityTrend >= 0 ? '↑' : '↓'} {Math.abs(velocityTrend).toFixed(1)}% trend
+                    </Typography>
+                  </Box>
+                </MuiTooltip>
               </motion.div>
             </Grid>
           </Grid>
 
-          {/* Cost Trend Chart */}
+          {/* Multi-Series Cost Chart */}
           <Box sx={{ mb: 3 }}>
-            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
-              Monthly Cost Trend
-            </Typography>
-            <Box sx={{ height: 200 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <Suspense fallback={<ChartLoadingFallback />}>
-                  <LazyAreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#667eea" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#667eea" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis 
-                    dataKey="period" 
-                    stroke="rgba(255,255,255,0.9)"
-                    fontSize={12}
-                    tick={{ fill: 'rgba(255,255,255,0.9)' }}
-                  />
-                  <YAxis 
-                    stroke="rgba(255,255,255,0.9)"
-                    fontSize={12}
-                    tick={{ fill: 'rgba(255,255,255,0.9)' }}
-                    tickFormatter={(value) => `$${value.toFixed(0)}`}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="cost"
-                    stroke="#667eea"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#costGradient)"
-                  />
-                </LazyAreaChart>
-                </Suspense>
-              </ResponsiveContainer>
-            </Box>
+            <MultiSeriesCostChart 
+              trends={trends}
+              monthlyLimit={projections.cost_limit || 0}
+            />
           </Box>
 
           {/* API Calls Trend Chart */}
@@ -263,7 +327,7 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
                     fontSize={12}
                     tickFormatter={(value) => formatNumber(value)}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <RechartsTooltip content={<CustomTooltip />} />
                   <Line
                     type="monotone"
                     dataKey="calls"
@@ -271,6 +335,8 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
                     strokeWidth={2}
                     dot={{ fill: '#764ba2', strokeWidth: 2, r: 4 }}
                     activeDot={{ r: 6, stroke: '#764ba2', strokeWidth: 2 }}
+                    animationDuration={1000}
+                    animationBegin={200}
                   />
                 </LazyLineChart>
                 </Suspense>
@@ -278,62 +344,167 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
             </Box>
           </Box>
 
-          {/* Projections */}
+          {/* Enhanced Projections */}
           <Box 
             sx={{ 
-              p: 2, 
+              p: 2.5, 
               backgroundColor: 'rgba(255,255,255,0.05)',
               borderRadius: 2,
               border: '1px solid rgba(255,255,255,0.1)'
             }}
           >
-            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1, color: '#ffffff' }}>
               <CalendarIcon fontSize="small" />
-              Monthly Projections
+              Monthly Projections & Forecast
             </Typography>
             
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                    Projected Cost
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                    {formatCurrency(projections.projected_monthly_cost)}
-                  </Typography>
-                </Box>
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={6} sm={3}>
+                <MuiTooltip 
+                  title={
+                    <React.Fragment>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                        Projected Monthly Cost
+                      </Typography>
+                      <Typography variant="body2" sx={{ display: 'block' }}>
+                        Based on current spending rate: {formatCurrency(avgDailyCost)}/day
+                      </Typography>
+                      <Typography variant="caption" sx={{ mt: 1, display: 'block', opacity: 0.8 }}>
+                        {daysRemaining} days remaining in month
+                      </Typography>
+                    </React.Fragment>
+                  }
+                  arrow
+                  placement="top"
+                >
+                  <Box component="span" sx={{ textAlign: 'center', cursor: 'help' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 0.5 }}>
+                      Projected Cost
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#667eea' }}>
+                      {formatCurrency(Math.max(projectedMonthlyCost, projections.projected_monthly_cost))}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block', mt: 0.5 }}>
+                      {projectedMonthlyCost > projections.projected_monthly_cost ? '(velocity-based)' : '(trend-based)'}
+                    </Typography>
+                  </Box>
+                </MuiTooltip>
               </Grid>
               
-              <Grid item xs={6}>
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                    Usage %
-                  </Typography>
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      fontWeight: 'bold',
-                      color: projections.projected_usage_percentage > 80 ? 'error.main' : 
-                             projections.projected_usage_percentage > 60 ? 'warning.main' : 'success.main'
-                    }}
-                  >
-                    {formatPercentage(projections.projected_usage_percentage)}
-                  </Typography>
-                </Box>
+              <Grid item xs={6} sm={3}>
+                <MuiTooltip 
+                  title={
+                    <React.Fragment>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                        Projected Usage Percentage
+                      </Typography>
+                      <Typography variant="body2" sx={{ display: 'block' }}>
+                        Based on projected cost vs monthly limit
+                      </Typography>
+                    </React.Fragment>
+                  }
+                  arrow
+                  placement="top"
+                >
+                  <Box component="span" sx={{ textAlign: 'center', cursor: 'help' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 0.5 }}>
+                      Usage %
+                    </Typography>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        color: projections.projected_usage_percentage > 80 ? '#ef4444' : 
+                               projections.projected_usage_percentage > 60 ? '#f59e0b' : '#22c55e'
+                      }}
+                    >
+                      {formatPercentage(projections.projected_usage_percentage)}
+                    </Typography>
+                  </Box>
+                </MuiTooltip>
+              </Grid>
+
+              <Grid item xs={6} sm={3}>
+                <MuiTooltip 
+                  title={
+                    <React.Fragment>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                        Estimated Days Until Budget Exhaustion
+                      </Typography>
+                      <Typography variant="body2" sx={{ display: 'block' }}>
+                        Based on current daily spending rate
+                      </Typography>
+                    </React.Fragment>
+                  }
+                  arrow
+                  placement="top"
+                >
+                  <Box component="span" sx={{ textAlign: 'center', cursor: 'help' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 0.5 }}>
+                      Days Remaining
+                    </Typography>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        color: avgDailyCost > 0 && projections.cost_limit > 0
+                          ? (projections.cost_limit / avgDailyCost <= daysRemaining ? '#ef4444' : '#22c55e')
+                          : '#ffffff'
+                      }}
+                    >
+                      {avgDailyCost > 0 && projections.cost_limit > 0
+                        ? Math.min(Math.ceil((projections.cost_limit - currentMonthCost) / avgDailyCost), daysRemaining)
+                        : daysRemaining
+                      }
+                    </Typography>
+                  </Box>
+                </MuiTooltip>
+              </Grid>
+
+              <Grid item xs={6} sm={3}>
+                <MuiTooltip 
+                  title={
+                    <React.Fragment>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, display: 'block' }}>
+                        Monthly Budget Limit
+                      </Typography>
+                      <Typography variant="body2" sx={{ display: 'block' }}>
+                        Maximum spending allowed this month
+                      </Typography>
+                    </React.Fragment>
+                  }
+                  arrow
+                  placement="top"
+                >
+                  <Box component="span" sx={{ textAlign: 'center', cursor: 'help' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 0.5 }}>
+                      Budget Limit
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#ffffff' }}>
+                      {formatCurrency(projections.cost_limit)}
+                    </Typography>
+                  </Box>
+                </MuiTooltip>
               </Grid>
             </Grid>
-            
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Chip
-                label={`Limit: ${formatCurrency(projections.cost_limit)}`}
-                size="small"
-                sx={{
-                  backgroundColor: 'rgba(255,255,255,0.1)',
-                  color: 'text.secondary',
-                  fontWeight: 'bold'
+
+            {/* Cost Velocity Warning */}
+            {avgDailyCost > 0 && projectedMonthlyCost > projections.cost_limit && (
+              <Box 
+                sx={{ 
+                  mt: 2,
+                  p: 1.5,
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  borderRadius: 1,
+                  border: '1px solid rgba(239, 68, 68, 0.3)'
                 }}
-              />
-            </Box>
+              >
+                <Typography variant="caption" sx={{ color: '#ef4444', fontWeight: 500 }}>
+                  ⚠️ At current spending rate ({formatCurrency(avgDailyCost)}/day), you'll exceed your monthly budget 
+                  in ~{Math.ceil((projections.cost_limit - currentMonthCost) / avgDailyCost)} days.
+                </Typography>
+              </Box>
+            )}
           </Box>
         </CardContent>
 
@@ -362,6 +533,15 @@ const UsageTrends: React.FC<UsageTrendsProps> = ({
             pointerEvents: 'none'
           }}
         />
+
+          {/* Cost Velocity Chart */}
+          <Box sx={{ mt: 3 }}>
+            <CostVelocityChart 
+              trends={trends}
+              projections={projections}
+              monthlyLimit={projections.cost_limit || 0}
+            />
+          </Box>
       </Card>
     </motion.div>
   );

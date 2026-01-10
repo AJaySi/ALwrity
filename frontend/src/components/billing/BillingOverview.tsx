@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -28,6 +28,11 @@ import {
   calculateUsagePercentage
 } from '../../services/billingService';
 
+// Shared Components
+import { AnimatedNumber } from '../shared/AnimatedNumber';
+import { AnimatedProgressBar } from '../shared/AnimatedProgressBar';
+import LiveCostCounter from './LiveCostCounter';
+
 // Terminal Theme
 import {
   TerminalCard,
@@ -55,14 +60,20 @@ const BillingOverview: React.FC<BillingOverviewProps> = ({
   const CardComponent = terminalTheme ? TerminalCard : Card;
   const CardContentComponent = terminalTheme ? TerminalCardContent : CardContent;
   const TypographyComponent = terminalTheme ? TerminalTypography : Typography;
-  // Debug logs removed to reduce console noise
+  
+  const [previousCost, setPreviousCost] = useState<number | undefined>(undefined);
+  
+  // Track previous cost for velocity calculation
+  useEffect(() => {
+    if (usageStats.total_cost !== undefined) {
+      setPreviousCost(usageStats.total_cost);
+    }
+  }, [usageStats.total_cost]);
   
   const costUsagePercentage = calculateUsagePercentage(
     usageStats.total_cost, 
     usageStats.limits.limits.monthly_cost || 1
   );
-  
-  // Debug logs removed to reduce console noise
 
   const getStatusChip = () => {
     const status: string = usageStats.usage_status;
@@ -186,28 +197,16 @@ const BillingOverview: React.FC<BillingOverviewProps> = ({
         </CardContentComponent>
 
         <CardContentComponent sx={{ pt: 0 }}>
-          {/* Current Cost */}
-          <Box sx={{ mb: 3, textAlign: 'center' }}>
-            <motion.div
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              <TypographyComponent 
-                variant="h3" 
-                sx={{ 
-                  fontWeight: 'bold',
-                  color: terminalTheme ? terminalColors.text : '#ffffff',
-                  textShadow: terminalTheme ? 'none' : '0 2px 4px rgba(0,0,0,0.3)',
-                  mb: 1
-                }}
-              >
-                {formatCurrency(usageStats.total_cost)}
-              </TypographyComponent>
-              <TypographyComponent variant="body2" sx={{ color: terminalTheme ? terminalColors.textSecondary : 'rgba(255,255,255,0.8)' }}>
-                Total Cost This Month
-              </TypographyComponent>
-            </motion.div>
+          {/* Live Cost Counter */}
+          <Box sx={{ mb: 3 }}>
+            <LiveCostCounter
+              currentCost={usageStats.total_cost}
+              previousCost={previousCost}
+              velocity={0} // TODO: Calculate from trends if available
+              terminalTheme={terminalTheme}
+              terminalColors={terminalColors}
+              TypographyComponent={TypographyComponent}
+            />
           </Box>
 
           {/* Usage Metrics */}
@@ -218,7 +217,10 @@ const BillingOverview: React.FC<BillingOverviewProps> = ({
                   API Calls
                 </TypographyComponent>
                 <TypographyComponent variant="body2" sx={{ fontWeight: 'bold', color: terminalTheme ? terminalColors.text : '#ffffff' }}>
-                  {formatNumber(usageStats.total_calls)}
+                  <AnimatedNumber 
+                    value={usageStats.total_calls}
+                    format={(n) => formatNumber(n)}
+                  />
                 </TypographyComponent>
               </Box>
             </Tooltip>
@@ -229,7 +231,10 @@ const BillingOverview: React.FC<BillingOverviewProps> = ({
                   Tokens Used
                 </TypographyComponent>
                 <TypographyComponent variant="body2" sx={{ fontWeight: 'bold', color: terminalTheme ? terminalColors.text : '#ffffff' }}>
-                  {formatNumber(usageStats.total_tokens)}
+                  <AnimatedNumber 
+                    value={usageStats.total_tokens}
+                    format={(n) => formatNumber(n)}
+                  />
                 </TypographyComponent>
               </Box>
             </Tooltip>
@@ -257,22 +262,16 @@ const BillingOverview: React.FC<BillingOverviewProps> = ({
                   {formatPercentage(costUsagePercentage)}
                 </TypographyComponent>
               </Box>
-              <LinearProgress
-                variant="determinate"
+              <AnimatedProgressBar
                 value={Math.min(costUsagePercentage, 100)}
-                sx={{
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: terminalTheme ? terminalColors.backgroundLight : 'rgba(255,255,255,0.1)',
-                  '& .MuiLinearProgress-bar': {
-                    backgroundColor: terminalTheme
-                      ? (costUsagePercentage > 80 ? terminalColors.error : 
-                         costUsagePercentage > 60 ? terminalColors.warning : terminalColors.success)
-                      : (costUsagePercentage > 80 ? '#ef4444' : 
-                         costUsagePercentage > 60 ? '#f59e0b' : '#22c55e'),
-                    borderRadius: 4,
-                  }
-                }}
+                height={8}
+                color={terminalTheme
+                  ? (costUsagePercentage > 80 ? terminalColors.error : 
+                     costUsagePercentage > 60 ? terminalColors.warning : terminalColors.success)
+                  : (costUsagePercentage > 80 ? '#ef4444' : 
+                     costUsagePercentage > 60 ? '#f59e0b' : '#22c55e')
+                }
+                showPercentage={false}
               />
               <TypographyComponent variant="caption" sx={{ mt: 0.5, display: 'block', color: terminalTheme ? terminalColors.textSecondary : 'rgba(255,255,255,0.7)' }}>
                 {formatCurrency(usageStats.total_cost)} of {formatCurrency(usageStats.limits.limits.monthly_cost)} limit

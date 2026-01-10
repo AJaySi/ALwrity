@@ -14,12 +14,19 @@ from .endpoints.autofill_endpoints import router as autofill_router
 from .endpoints.ai_generation_endpoints import router as ai_generation_router
 
 # Create main router
-router = APIRouter(prefix="/content-strategy", tags=["Content Strategy"])
+# Using /enhanced-strategies prefix for backward compatibility with frontend
+router = APIRouter(prefix="/enhanced-strategies", tags=["Content Strategy"])
 
 # Include all endpoint routers
-router.include_router(crud_router, prefix="/strategies")
+# CRUD endpoints directly under /enhanced-strategies (backward compatibility)
+router.include_router(crud_router, prefix="")
+# Analytics endpoints under /enhanced-strategies/strategies/{id}/...
 router.include_router(analytics_router, prefix="/strategies")
+# Utility endpoints directly under /enhanced-strategies
 router.include_router(utility_router, prefix="")
+# Streaming endpoints directly under /enhanced-strategies
 router.include_router(streaming_router, prefix="")
+# Autofill endpoints under /enhanced-strategies/strategies/{id}/...
 router.include_router(autofill_router, prefix="/strategies")
+# AI generation endpoints under /enhanced-strategies/ai-generation
 router.include_router(ai_generation_router, prefix="/ai-generation") 

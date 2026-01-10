@@ -62,18 +62,24 @@ async def get_cache_statistics(db = None) -> Dict[str, Any]:
 
 @router.get("/health")
 async def get_system_health() -> Dict[str, Any]:
-    """Get overall system health status."""
+    """Get overall system health status.
+    
+    Optimized to fail fast - cache stats are optional and won't block the response.
+    """
     try:
-        # Get lightweight API stats
+        # Get lightweight API stats (this is the critical path)
         api_stats = await get_lightweight_stats()
         
-        # Get cache stats if available
+        # Get cache stats if available (non-blocking - don't fail if unavailable)
         cache_stats = {}
         try:
             db = next(get_db())
             cache_service = ComprehensiveUserDataCacheService(db)
             cache_stats = cache_service.get_cache_stats()
-        except:
+            db.close()
+        except Exception as cache_err:
+            # Cache stats are optional - log at debug level, don't fail
+            logger.debug(f"Cache stats unavailable: {cache_err}")
             cache_stats = {"error": "Cache service unavailable"}
         
         # Determine overall health
@@ -97,7 +103,7 @@ async def get_system_health() -> Dict[str, Any]:
             "message": f"System health: {system_health}"
         }
     except Exception as e:
-        logger.error(f"Error getting system health: {str(e)}")
+        logger.error(f"Error getting system health: {str(e)}", exc_info=True)
         return {
             "status": "error",
             "data": {

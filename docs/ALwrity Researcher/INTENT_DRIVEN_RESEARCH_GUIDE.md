@@ -1,636 +1,656 @@
 # Intent-Driven Research Guide
 
 **Date**: 2025-01-29  
-**Status**: Current Architecture Documentation
+**Status**: Comprehensive Guide to Intent-Driven Research
 
 ---
 
 ## 📋 Overview
 
-Intent-driven research is the core innovation of the ALwrity Research Engine. Instead of generic keyword-based searches, the system **understands what users want to accomplish** before executing research, then delivers exactly what they need.
+Intent-driven research is a paradigm shift from manual research configuration to AI-inferred research goals. Instead of users selecting research modes and configuring providers manually, the AI analyzes user input and automatically determines:
 
-### Key Innovation
+1. **What** the user wants to research (intent inference)
+2. **How** to research it (query generation)
+3. **Where** to search (provider optimization)
+4. **What** to extract (deliverable identification)
 
-**Traditional Research**:
+---
+
+## 🎯 Core Concept
+
+### Traditional Research (Old)
 ```
-User Input → Search → Generic Results → User filters/analyzes
+User Input: "AI marketing tools"
+  ↓
+User selects: Comprehensive mode
+User configures: Exa provider, 20 sources
+  ↓
+Research executes with user's configuration
+  ↓
+Generic results
 ```
 
-**Intent-Driven Research**:
+### Intent-Driven Research (Current)
 ```
-User Input → AI Understands Intent → Targeted Queries → Intent-Aware Analysis → Structured Deliverables
+User Input: "AI marketing tools"
+  ↓
+AI Analyzes:
+  - Intent: "Find and compare AI marketing automation platforms"
+  - Queries: ["AI marketing automation platforms 2025", ...]
+  - Provider: Exa (best for company/product info)
+  - Deliverables: statistics, expert quotes, case studies
+  ↓
+Research executes with AI-optimized configuration
+  ↓
+Intent-aware results (extracted deliverables)
 ```
 
 ---
 
-## 🎯 Core Concepts
+## 🏗️ Architecture
 
-### 1. **Intent Inference**
-Before searching, the AI analyzes user input to understand:
-- **What question** needs answering
-- **What purpose** (learn, create content, make decision, etc.)
-- **What deliverables** are expected (statistics, quotes, case studies, etc.)
-- **What depth** is needed (overview, detailed, expert)
+### Unified Research Analyzer
 
-### 2. **Unified Analysis**
-A single AI call performs:
-- Intent inference
-- Query generation (4-8 targeted queries)
-- Provider parameter optimization (Exa/Tavily settings with justifications)
+**Location**: `backend/services/research/intent/unified_research_analyzer.py`
 
-### 3. **Intent-Aware Result Analysis**
-Results are analyzed through the lens of user intent, extracting:
-- Specific deliverables (statistics, quotes, case studies)
-- Structured answers to user's questions
-- Relevant sources with credibility scores
-- Actionable insights
+**Purpose**: Single AI call that performs:
+1. Intent inference
+2. Query generation
+3. Parameter optimization
+
+**Why Single Call?**
+- Reduces LLM calls from 2-3 to 1
+- Faster response time
+- Lower costs
+- More consistent results
+
+**Input**:
+```python
+{
+  "user_input": "AI marketing tools",
+  "industry": "Technology",
+  "target_audience": "Marketing professionals"
+}
+```
+
+**Output**:
+```python
+{
+  "intent": {
+    "primary_question": "What are the latest AI-powered marketing automation tools?",
+    "research_goals": ["identify tools", "compare features", "analyze trends"],
+    "deliverables": ["statistics", "expert_quotes", "case_studies"],
+    "industry": "Technology",
+    "target_audience": "Marketing professionals"
+  },
+  "queries": [
+    {
+      "query": "AI marketing automation platforms 2025",
+      "provider": "exa",
+      "justification": "Exa excels at finding company and product information"
+    }
+  ],
+  "optimized_config": {
+    "provider": "exa",
+    "exa_category": "company",
+    "exa_search_type": "neural",
+    "provider_justification": "Exa is best for company/product research"
+  },
+  "trends_config": {
+    "keywords": ["AI marketing", "marketing automation"],
+    "enabled": true
+  }
+}
+```
+
+### Intent-Aware Analyzer
+
+**Location**: `backend/services/research/intent/intent_aware_analyzer.py`
+
+**Purpose**: Analyzes raw research results based on user intent to extract specific deliverables
+
+**Why Intent-Aware?**
+- Extracts only relevant information
+- Structures results based on user goals
+- Provides actionable insights
+- Reduces information overload
+
+**Input**:
+```python
+{
+  "raw_results": {
+    "sources": [...],
+    "content": "..."
+  },
+  "intent": {
+    "primary_question": "...",
+    "deliverables": ["statistics", "expert_quotes", "case_studies"]
+  }
+}
+```
+
+**Output**:
+```python
+{
+  "summary": "Comprehensive overview...",
+  "deliverables": {
+    "statistics": [
+      {
+        "value": "85%",
+        "description": "of marketers use AI tools",
+        "citation": {...}
+      }
+    ],
+    "expert_quotes": [
+      {
+        "quote": "...",
+        "author": "...",
+        "source": {...}
+      }
+    ],
+    "case_studies": [...],
+    "trends": [...]
+  },
+  "sources": [...],
+  "analysis": "Deep insights based on intent..."
+}
+```
 
 ---
 
 ## 🔄 Research Flow
 
-### Step 1: Intent Analysis
+### Step-by-Step Flow
 
-**User Action**: Enters keywords/topic and clicks "Intent & Options"
+```
+1. User Input
+   User enters: "AI marketing tools"
+   Industry: "Technology"
+   Target Audience: "Marketing professionals"
+   ↓
 
-**What Happens**:
-1. Frontend calls `/api/research/intent/analyze`
-2. `UnifiedResearchAnalyzer` performs single AI call:
-   - Infers research intent
-   - Generates 4-8 targeted queries
-   - Optimizes Exa/Tavily parameters with justifications
-   - Recommends best provider
-3. Returns `ResearchIntent`, `ResearchQuery[]`, and `OptimizedConfig`
+2. Intent Analysis (UnifiedResearchAnalyzer)
+   POST /api/research/intent/analyze
+   ↓
+   AI analyzes:
+   - What user wants to research
+   - What information they need
+   - Best way to research it
+   ↓
+   Returns:
+   - ResearchIntent
+   - ResearchQuery[]
+   - OptimizedConfig
+   - TrendsConfig (if applicable)
+   ↓
 
-**User Sees**:
-- Inferred intent (editable)
-- Suggested queries (selectable)
-- AI-optimized provider settings with justifications
-- Recommended provider
+3. Intent Confirmation (Frontend)
+   User reviews:
+   - Primary question
+   - Generated queries
+   - Provider settings
+   - Google Trends keywords
+   ↓
+   User can:
+   - Edit primary question
+   - Toggle deliverables
+   - Select/edit queries
+   - Review provider settings
+   ↓
 
-### Step 2: Intent Confirmation
+4. Research Execution
+   POST /api/research/intent/research
+   ↓
+   Execute queries via:
+   - Exa (priority 1)
+   - Tavily (priority 2)
+   - Google (priority 3)
+   ↓
+   Parallel execution:
+   - Core research queries
+   - Google Trends (if enabled)
+   ↓
 
-**User Action**: Reviews and optionally edits intent, then confirms
-
-**What Happens**:
-- User can edit:
-  - Primary question
-  - Purpose
-  - Expected deliverables
-  - Depth level
-  - Content output type
-- User selects which queries to execute
-- User can override AI-optimized settings in Advanced Options
-
-### Step 3: Research Execution
-
-**User Action**: Clicks "Research" button
-
-**What Happens**:
-1. Frontend calls `/api/research/intent/research`
-2. Backend executes selected queries via Exa/Tavily/Google
-3. `IntentAwareAnalyzer` analyzes raw results based on intent
-4. Extracts specific deliverables:
+5. Intent-Aware Analysis (IntentAwareAnalyzer)
+   Analyze raw results based on intent
+   ↓
+   Extract:
    - Statistics with citations
    - Expert quotes
    - Case studies
    - Trends
    - Comparisons
-   - Best practices
-   - Step-by-step guides
-   - Pros/cons
-   - Definitions
-   - Examples
-   - Predictions
+   ↓
 
-### Step 4: Results Display
-
-**User Sees**: Tabbed results organized by deliverable type:
-- **Summary**: AI-generated overview
-- **Deliverables**: Extracted statistics, quotes, case studies, etc.
-- **Sources**: Citations with credibility scores
-- **Analysis**: Deep insights based on intent
+6. Results Display
+   Tabbed view:
+   - Summary: AI-generated overview
+   - Deliverables: Extracted statistics, quotes, etc.
+   - Sources: Citations with credibility scores
+   - Analysis: Deep insights
+```
 
 ---
 
-## 🏗️ Architecture Components
+## 🔌 API Endpoints
 
-### Backend Components
+### 1. Intent Analysis
 
-#### 1. UnifiedResearchAnalyzer
-**Location**: `backend/services/research/intent/unified_research_analyzer.py`
+**Endpoint**: `POST /api/research/intent/analyze`
 
-**Purpose**: Single AI call for intent + queries + params
+**Request**:
+```json
+{
+  "keywords": "AI marketing tools",
+  "industry": "Technology",
+  "target_audience": "Marketing professionals"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "intent": {
+    "primary_question": "What are the latest AI-powered marketing automation tools?",
+    "research_goals": [
+      "identify top AI marketing tools",
+      "compare features and pricing",
+      "analyze market trends"
+    ],
+    "deliverables": [
+      "statistics",
+      "expert_quotes",
+      "case_studies",
+      "trends"
+    ],
+    "industry": "Technology",
+    "target_audience": "Marketing professionals"
+  },
+  "queries": [
+    {
+      "query": "AI marketing automation platforms 2025",
+      "provider": "exa",
+      "justification": "Exa excels at finding company and product information"
+    },
+    {
+      "query": "best AI marketing tools comparison",
+      "provider": "tavily",
+      "justification": "Tavily is best for recent comparisons and reviews"
+    }
+  ],
+  "optimized_config": {
+    "provider": "exa",
+    "exa_category": "company",
+    "exa_search_type": "neural",
+    "max_sources": 20,
+    "include_statistics": true,
+    "include_expert_quotes": true,
+    "include_case_studies": true,
+    "include_trends": true,
+    "provider_justification": "Exa is best for company/product research"
+  },
+  "trends_config": {
+    "keywords": ["AI marketing", "marketing automation", "AI tools"],
+    "enabled": true
+  }
+}
+```
+
+### 2. Intent-Driven Research
+
+**Endpoint**: `POST /api/research/intent/research`
+
+**Request**:
+```json
+{
+  "intent": {
+    "primary_question": "...",
+    "research_goals": [...],
+    "deliverables": [...]
+  },
+  "queries": [
+    {
+      "query": "...",
+      "provider": "exa"
+    }
+  ],
+  "config": {
+    "provider": "exa",
+    "exa_category": "company",
+    "max_sources": 20
+  },
+  "trends_config": {
+    "keywords": [...],
+    "enabled": true
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "summary": "Comprehensive overview of AI marketing tools...",
+    "deliverables": {
+      "statistics": [
+        {
+          "value": "85%",
+          "description": "of marketers use AI tools in their workflow",
+          "citation": {
+            "source": "Marketing AI Report 2025",
+            "url": "https://...",
+            "credibility_score": 0.9
+          }
+        }
+      ],
+      "expert_quotes": [
+        {
+          "quote": "AI marketing tools are transforming how we approach customer engagement...",
+          "author": "John Doe",
+          "title": "CMO at TechCorp",
+          "source": {...}
+        }
+      ],
+      "case_studies": [
+        {
+          "title": "How Company X Increased ROI by 200%",
+          "summary": "...",
+          "source": {...}
+        }
+      ],
+      "trends": [
+        {
+          "trend": "AI personalization",
+          "description": "...",
+          "data": {...}
+        }
+      ]
+    },
+    "sources": [
+      {
+        "title": "...",
+        "url": "...",
+        "credibility_score": 0.9,
+        "relevance_score": 0.95
+      }
+    ],
+    "analysis": "Deep insights based on research intent..."
+  }
+}
+```
+
+---
+
+## 🎨 Frontend Integration
+
+### useIntentResearch Hook
+
+**Location**: `frontend/src/components/Research/hooks/useIntentResearch.ts`
+
+**Usage**:
+```typescript
+import { useIntentResearch } from '../hooks/useIntentResearch';
+
+function ResearchComponent() {
+  const intentResearch = useIntentResearch();
+
+  // Analyze intent
+  const handleAnalyze = async () => {
+    await intentResearch.analyzeIntent(
+      "AI marketing tools",
+      "Technology",
+      "Marketing professionals"
+    );
+  };
+
+  // Confirm intent
+  const handleConfirm = (intent: ResearchIntent) => {
+    intentResearch.confirmIntent(intent);
+  };
+
+  // Execute research
+  const handleExecute = async (queries: ResearchQuery[]) => {
+    const result = await intentResearch.executeResearch(queries);
+    if (result?.success) {
+      // Handle results
+    }
+  };
+
+  return (
+    <div>
+      {/* UI */}
+    </div>
+  );
+}
+```
+
+### IntentConfirmationPanel Component
+
+**Location**: `frontend/src/components/Research/steps/components/IntentConfirmationPanel/`
+
+**Purpose**: Allows users to review and edit AI-inferred intent
+
+**Features**:
+- Editable primary question
+- Toggle deliverables
+- Select/edit queries
+- Review provider settings
+- Google Trends keywords display
+
+**Usage**:
+```typescript
+<IntentConfirmationPanel
+  isAnalyzing={execution.isAnalyzingIntent}
+  intentAnalysis={execution.intentAnalysis}
+  confirmedIntent={execution.confirmedIntent}
+  onConfirm={execution.confirmIntent}
+  onUpdateField={execution.updateIntentField}
+  onExecute={async (selectedQueries) => {
+    await execution.executeIntentResearch(state, selectedQueries);
+  }}
+  onDismiss={execution.clearIntent}
+  isExecuting={execution.isExecuting}
+  showAdvancedOptions={advanced}
+  onAdvancedOptionsChange={setAdvanced}
+  providerAvailability={providerAvailability}
+  config={state.config}
+  onConfigUpdate={handleConfigUpdate}
+/>
+```
+
+---
+
+## 🔧 Backend Implementation
+
+### UnifiedResearchAnalyzer
 
 **Key Method**:
 ```python
 async def analyze(
     user_input: str,
-    keywords: Optional[List[str]] = None,
-    research_persona: Optional[ResearchPersona] = None,
-    competitor_data: Optional[List[Dict]] = None,
     industry: Optional[str] = None,
     target_audience: Optional[str] = None,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]
+    user_id: Optional[str] = None
+) -> UnifiedResearchAnalysis:
+    """
+    Analyzes user input and returns:
+    - Inferred research intent
+    - Generated research queries
+    - Optimized provider configuration
+    - Google Trends keywords (if applicable)
+    """
+    # Build unified prompt
+    prompt = self._build_unified_prompt(
+        user_input, industry, target_audience
+    )
+    
+    # Single LLM call
+    response = await llm_text_gen(
+        prompt=prompt,
+        user_id=user_id,
+        response_format={"type": "json_object"}
+    )
+    
+    # Parse response
+    analysis = UnifiedResearchAnalysis.parse_raw(response)
+    
+    return analysis
 ```
 
-**Returns**:
-- `intent`: ResearchIntent object
-- `queries`: List[ResearchQuery] (4-8 queries)
-- `exa_config`: Dict with settings + justifications
-- `tavily_config`: Dict with settings + justifications
-- `recommended_provider`: str ("exa" | "tavily" | "google")
-- `provider_justification`: str
+**Prompt Structure**:
+1. User input context
+2. Current date/time context (for time-sensitive queries)
+3. Intent inference instructions
+4. Query generation rules
+5. Parameter optimization guidelines
+6. Google Trends keyword suggestions
 
-**Benefits**:
-- 50% reduction in LLM calls (from 2-3 calls to 1)
-- Coherent reasoning across intent, queries, and params
-- User-friendly justifications for all settings
-
-#### 2. IntentAwareAnalyzer
-**Location**: `backend/services/research/intent/intent_aware_analyzer.py`
-
-**Purpose**: Analyzes raw results based on user intent
+### IntentAwareAnalyzer
 
 **Key Method**:
 ```python
 async def analyze(
     raw_results: Dict[str, Any],
     intent: ResearchIntent,
-    research_persona: Optional[ResearchPersona] = None,
-    user_id: Optional[str] = None,
-) -> IntentDrivenResearchResult
-```
-
-**Returns**: `IntentDrivenResearchResult` with:
-- `primary_answer`: str
-- `secondary_answers`: Dict[str, str]
-- `statistics`: List[StatisticWithCitation]
-- `expert_quotes`: List[ExpertQuote]
-- `case_studies`: List[CaseStudySummary]
-- `trends`: List[TrendAnalysis]
-- `comparisons`: List[ComparisonTable]
-- `best_practices`: List[str]
-- `step_by_step`: List[str]
-- `pros_cons`: ProsCons
-- `definitions`: Dict[str, str]
-- `examples`: List[str]
-- `predictions`: List[str]
-- `executive_summary`: str
-- `key_takeaways`: List[str]
-- `suggested_outline`: List[str]
-- `sources`: List[SourceWithRelevance]
-- `confidence`: float
-- `gaps_identified`: List[str]
-- `follow_up_queries`: List[str]
-
-#### 3. Research Engine
-**Location**: `backend/services/research/core/research_engine.py`
-
-**Purpose**: Orchestrates provider calls (Exa → Tavily → Google)
-
-**Provider Priority**:
-1. **Exa** (Primary) - Semantic understanding, academic papers, competitor research
-2. **Tavily** (Secondary) - Real-time news, trending topics, quick facts
-3. **Google** (Fallback) - Basic factual queries via Gemini grounding
-
-### Frontend Components
-
-#### 1. ResearchWizard
-**Location**: `frontend/src/components/Research/ResearchWizard.tsx`
-
-**Purpose**: Main wizard orchestrator (3 steps)
-
-**Steps**:
-1. `ResearchInput` - Input + Intent & Options button
-2. `StepProgress` - Progress/polling
-3. `StepResults` - Results display
-
-#### 2. ResearchInput
-**Location**: `frontend/src/components/Research/steps/ResearchInput.tsx`
-
-**Features**:
-- Keyword/topic input
-- "Intent & Options" button (enabled after 2+ words)
-- Industry and target audience selection
-- Advanced options toggle
-
-#### 3. IntentConfirmationPanel
-**Location**: `frontend/src/components/Research/steps/components/IntentConfirmationPanel.tsx`
-
-**Purpose**: Shows inferred intent and allows editing
-
-**Features**:
-- Displays inferred intent (editable)
-- Shows suggested queries (selectable)
-- Displays AI-optimized provider settings with justifications
-- Advanced options for manual override
-- "Research" button to execute
-
-#### 4. IntentResultsDisplay
-**Location**: `frontend/src/components/Research/steps/components/IntentResultsDisplay.tsx`
-
-**Purpose**: Tabbed results display
-
-**Tabs**:
-- **Summary**: AI-generated overview
-- **Deliverables**: Extracted statistics, quotes, case studies, etc.
-- **Sources**: Citations with credibility scores
-- **Analysis**: Deep insights based on intent
-
-#### 5. AdvancedOptionsSection
-**Location**: `frontend/src/components/Research/steps/components/AdvancedOptionsSection.tsx`
-
-**Purpose**: Shows AI-optimized Exa/Tavily settings with justifications
-
-**Features**:
-- Exa options (type, category, domains, date filters, etc.)
-- Tavily options (topic, search depth, time range, etc.)
-- Each setting shows AI justification in tooltip
-- User can override any setting
-
-### Frontend Hooks
-
-#### 1. useIntentResearch
-**Location**: `frontend/src/components/Research/hooks/useIntentResearch.ts`
-
-**Purpose**: Manages intent-driven research flow
-
-**Key Methods**:
-- `analyzeIntent(userInput: string)` - Analyzes user input
-- `confirmIntent(intent: ResearchIntent)` - Confirms/modifies intent
-- `executeResearch(selectedQueries?: ResearchQuery[])` - Executes research
-- `reset()` - Resets state
-
-**State**:
-- `userInput`: string
-- `intent`: ResearchIntent | null
-- `suggestedQueries`: ResearchQuery[]
-- `selectedQueries`: ResearchQuery[]
-- `isAnalyzing`: boolean
-- `isResearching`: boolean
-- `result`: IntentDrivenResearchResponse | null
-
-#### 2. useResearchExecution
-**Location**: `frontend/src/components/Research/hooks/useResearchExecution.ts`
-
-**Purpose**: Handles research execution and polling
-
-**Key Methods**:
-- `executeIntentResearch(state, queries)` - Executes intent-driven research
-- `executeTraditionalResearch(state)` - Executes traditional research (fallback)
-- `pollStatus(taskId)` - Polls async research status
-
----
-
-## 📡 API Endpoints
-
-### 1. POST `/api/research/intent/analyze`
-
-**Purpose**: Analyze user input to understand research intent
-
-**Request**:
-```typescript
-{
-  user_input: string;
-  keywords?: string[];
-  use_persona?: boolean; // Default: true
-  use_competitor_data?: boolean; // Default: true
-}
-```
-
-**Response**:
-```typescript
-{
-  success: boolean;
-  intent: ResearchIntent;
-  analysis_summary: string;
-  suggested_queries: ResearchQuery[];
-  suggested_keywords: string[];
-  suggested_angles: string[];
-  confidence_reason?: string;
-  great_example?: string;
-  optimized_config: {
-    provider: string;
-    provider_justification: string;
-    exa_type: string;
-    exa_type_justification: string;
-    exa_category?: string;
-    exa_category_justification?: string;
-    // ... more Exa settings with justifications
-    tavily_topic: string;
-    tavily_topic_justification: string;
-    tavily_search_depth: string;
-    tavily_search_depth_justification: string;
-    // ... more Tavily settings with justifications
-  };
-  recommended_provider: string;
-  error_message?: string;
-}
-```
-
-**What It Does**:
-1. Fetches research persona (if `use_persona: true`)
-2. Fetches competitor data (if `use_competitor_data: true`)
-3. Calls `UnifiedResearchAnalyzer.analyze()`
-4. Returns intent, queries, and optimized config with justifications
-
-### 2. POST `/api/research/intent/research`
-
-**Purpose**: Execute research based on confirmed intent
-
-**Request**:
-```typescript
-{
-  user_input: string;
-  confirmed_intent?: ResearchIntent; // If not provided, infers from user_input
-  selected_queries?: ResearchQuery[]; // If not provided, generates from intent
-  max_sources?: number; // Default: 10
-  include_domains?: string[];
-  exclude_domains?: string[];
-  skip_inference?: boolean; // Skip intent inference if intent provided
-}
-```
-
-**Response**:
-```typescript
-{
-  success: boolean;
-  primary_answer: string;
-  secondary_answers: Dict<string, string>;
-  statistics: StatisticWithCitation[];
-  expert_quotes: ExpertQuote[];
-  case_studies: CaseStudySummary[];
-  trends: TrendAnalysis[];
-  comparisons: ComparisonTable[];
-  best_practices: string[];
-  step_by_step: string[];
-  pros_cons?: ProsCons;
-  definitions: Dict<string, string>;
-  examples: string[];
-  predictions: string[];
-  executive_summary: string;
-  key_takeaways: string[];
-  suggested_outline: string[];
-  sources: SourceWithRelevance[];
-  confidence: number;
-  gaps_identified: string[];
-  follow_up_queries: string[];
-  intent?: ResearchIntent;
-  error_message?: string;
-}
-```
-
-**What It Does**:
-1. Uses confirmed intent (or infers if not provided)
-2. Uses selected queries (or generates if not provided)
-3. Executes research via `ResearchEngine`
-4. Analyzes results via `IntentAwareAnalyzer`
-5. Returns structured deliverables
-
----
-
-## 🎨 User Experience Flow
-
-### Example: User wants to research "AI marketing tools"
-
-#### Step 1: User Input
-```
-User enters: "AI marketing tools"
-Clicks: "Intent & Options" button
-```
-
-#### Step 2: Intent Analysis
-```
-AI infers:
-- Primary Question: "What are the best AI marketing tools available?"
-- Purpose: "make_decision"
-- Expected Deliverables: ["key_statistics", "case_studies", "comparisons", "best_practices"]
-- Depth: "detailed"
-- Content Output: "blog"
-
-AI generates queries:
-1. "best AI marketing tools 2024 comparison" (priority: 5)
-2. "AI marketing tools statistics adoption rates" (priority: 4)
-3. "AI marketing tools case studies ROI" (priority: 4)
-4. "AI marketing automation platforms features" (priority: 3)
-
-AI optimizes settings:
-- Provider: Exa (semantic understanding needed)
-- Exa Type: "neural" (for semantic matching)
-- Exa Category: "company" (tool providers)
-- Justification: "Neural search best for finding similar tools and comparisons"
-```
-
-#### Step 3: User Confirmation
-```
-User sees:
-- Inferred intent (can edit)
-- 4 suggested queries (can select/deselect)
-- AI-optimized settings with justifications (can override)
-
-User confirms and clicks "Research"
-```
-
-#### Step 4: Research Execution
-```
-Backend:
-1. Executes 4 queries via Exa
-2. Gets raw results (sources, content)
-3. IntentAwareAnalyzer extracts:
-   - Statistics: "78% of marketers use AI tools"
-   - Case studies: "Company X increased ROI by 40%"
-   - Comparisons: Tool comparison table
-   - Best practices: "5 best practices for AI marketing"
-```
-
-#### Step 5: Results Display
-```
-User sees tabbed results:
-- Summary: Overview of AI marketing tools landscape
-- Deliverables: Statistics, quotes, case studies, comparisons
-- Sources: Citations with credibility scores
-- Analysis: Deep insights and recommendations
-```
-
----
-
-## 🔑 Key Patterns
-
-### Pattern 1: Always Use UnifiedResearchAnalyzer
-
-**✅ Correct**:
-```python
-from services.research.intent.unified_research_analyzer import UnifiedResearchAnalyzer
-
-analyzer = UnifiedResearchAnalyzer()
-result = await analyzer.analyze(
-    user_input=user_input,
-    keywords=keywords,
-    research_persona=research_persona,
-    user_id=user_id,
-)
-```
-
-**❌ Incorrect** (Legacy - Don't Use):
-```python
-# Don't use separate intent inference + query generation
-intent_service = ResearchIntentInference()
-query_generator = IntentQueryGenerator()
-# ... multiple LLM calls
-```
-
-### Pattern 2: Always Pass user_id
-
-**✅ Correct**:
-```python
-result = llm_text_gen(
-    prompt=prompt,
-    json_struct=schema,
-    user_id=user_id  # Required for subscription checks
-)
-```
-
-**❌ Incorrect**:
-```python
-result = llm_text_gen(prompt=prompt, json_struct=schema)  # Missing user_id
-```
-
-### Pattern 3: Intent-Aware Result Analysis
-
-**✅ Correct**:
-```python
-from services.research.intent.intent_aware_analyzer import IntentAwareAnalyzer
-
-analyzer = IntentAwareAnalyzer()
-result = await analyzer.analyze(
-    raw_results=raw_results,
-    intent=research_intent,
-    research_persona=research_persona,
-    user_id=user_id,
-)
-```
-
-**❌ Incorrect** (Generic Analysis):
-```python
-# Don't do generic analysis - always use intent
-summary = analyze_generic(raw_results)  # Wrong approach
-```
-
----
-
-## 🎯 Benefits
-
-### 1. **50% Reduction in LLM Calls**
-- Old: 2-3 separate calls (intent + queries + params)
-- New: 1 unified call
-
-### 2. **Better Results**
-- Intent-aware analysis extracts exactly what users need
-- Structured deliverables instead of generic summaries
-
-### 3. **User-Friendly**
-- AI justifications explain why settings were chosen
-- Users can understand and override AI decisions
-
-### 4. **Coherent Reasoning**
-- Single AI call ensures intent, queries, and params are aligned
-- No inconsistencies between intent and search strategy
-
----
-
-## 🚀 Integration Examples
-
-### Frontend: Using useIntentResearch Hook
-
-```typescript
-import { useIntentResearch } from '../hooks/useIntentResearch';
-
-const MyComponent = () => {
-  const {
-    state,
-    analyzeIntent,
-    confirmIntent,
-    executeResearch,
-    isAnalyzing,
-    isResearching,
-    result,
-  } = useIntentResearch({
-    usePersona: true,
-    useCompetitorData: true,
-    maxSources: 10,
-  });
-
-  const handleAnalyze = async () => {
-    await analyzeIntent("AI marketing tools");
-  };
-
-  const handleResearch = async () => {
-    await executeResearch(state.selectedQueries);
-  };
-
-  return (
-    <div>
-      <button onClick={handleAnalyze} disabled={isAnalyzing}>
-        {isAnalyzing ? 'Analyzing...' : 'Intent & Options'}
-      </button>
-      {state.intent && (
-        <IntentConfirmationPanel
-          intentAnalysis={state.intent}
-          onConfirm={confirmIntent}
-          onExecute={handleResearch}
-        />
-      )}
-      {result && <IntentResultsDisplay result={result} />}
-    </div>
-  );
-};
-```
-
-### Backend: Using UnifiedResearchAnalyzer
-
-```python
-from services.research.intent.unified_research_analyzer import UnifiedResearchAnalyzer
-
-async def analyze_user_request(user_input: str, user_id: str):
-    analyzer = UnifiedResearchAnalyzer()
-    
-    result = await analyzer.analyze(
-        user_input=user_input,
-        keywords=extract_keywords(user_input),
-        research_persona=get_research_persona(user_id),
-        user_id=user_id,
+    user_id: Optional[str] = None
+) -> IntentDrivenResearchResult:
+    """
+    Analyzes raw results based on user intent
+    """
+    # Build analysis prompt
+    prompt = self._build_analysis_prompt(
+        raw_results, intent
     )
     
-    return {
-        "intent": result["intent"],
-        "queries": result["queries"],
-        "exa_config": result["exa_config"],
-        "tavily_config": result["tavily_config"],
-        "recommended_provider": result["recommended_provider"],
-    }
+    # LLM call
+    response = await llm_text_gen(
+        prompt=prompt,
+        user_id=user_id,
+        response_format={"type": "json_object"}
+    )
+    
+    # Parse and structure results
+    result = IntentDrivenResearchResult.parse_raw(response)
+    
+    return result
 ```
 
 ---
 
-## 📚 Related Documentation
+## 📊 Benefits
 
-- **Architecture Rules**: `.cursor/rules/researcher-architecture.mdc` (Authoritative source)
-- **API Reference**: `INTENT_RESEARCH_API_REFERENCE.md`
-- **Architecture Overview**: `CURRENT_ARCHITECTURE_OVERVIEW.md`
+### For Users
+- **Faster**: No manual configuration needed
+- **Smarter**: AI optimizes for best results
+- **Better Results**: Intent-aware extraction
+- **Less Overwhelming**: Structured deliverables
+
+### For Developers
+- **Simpler**: Single API call instead of multiple
+- **Consistent**: AI ensures consistent quality
+- **Maintainable**: Less configuration logic
+- **Extensible**: Easy to add new providers/features
+
+### For Business
+- **Lower Costs**: Fewer LLM calls
+- **Better UX**: Users get results faster
+- **Higher Quality**: AI-optimized research
+- **Scalable**: Handles complex research needs
 
 ---
 
-## ✅ Best Practices
+## 🎯 Best Practices
 
-1. **Always use UnifiedResearchAnalyzer** for new intent-driven research
-2. **Always pass user_id** to all LLM calls for subscription checks
-3. **Always use IntentAwareAnalyzer** for result analysis
-4. **Provide justifications** for all AI-driven settings
-5. **Allow user overrides** in Advanced Options
-6. **Check provider availability** before suggesting/using providers
+### 1. Always Use Intent Analysis First
+```typescript
+// Good: Analyze intent before research
+const analysis = await analyzeIntent(keywords, industry, audience);
+const result = await executeResearch(analysis.queries, analysis.config);
+
+// Avoid: Skip intent analysis
+const result = await executeResearch([keywords], defaultConfig);
+```
+
+### 2. Let Users Review Intent
+```typescript
+// Good: Show IntentConfirmationPanel
+<IntentConfirmationPanel
+  intentAnalysis={analysis}
+  onConfirm={handleConfirm}
+/>
+
+// Avoid: Auto-execute without confirmation
+await executeResearch(analysis.queries); // User can't review
+```
+
+### 3. Use Intent-Aware Results
+```typescript
+// Good: Use structured deliverables
+result.deliverables.statistics.forEach(stat => {
+  // Use structured data
+});
+
+// Avoid: Parse raw results manually
+const stats = parseRawResults(result.raw_content); // Manual parsing
+```
 
 ---
 
-**Status**: Current Architecture - Use this as reference for intent-driven research implementation.
+## 🔄 Migration Guide
+
+### From Traditional Research
+
+**Old Code**:
+```typescript
+// User selects mode
+const mode = 'comprehensive';
+
+// User configures provider
+const config = {
+  provider: 'exa',
+  max_sources: 20
+};
+
+// Execute research
+const result = await executeResearch(keywords, mode, config);
+```
+
+**New Code**:
+```typescript
+// Analyze intent
+const analysis = await analyzeIntent(keywords, industry, audience);
+
+// User reviews (optional)
+// Execute with AI-optimized config
+const result = await executeIntentResearch(
+  analysis.intent,
+  analysis.queries,
+  analysis.optimized_config
+);
+```
+
+---
+
+## 📚 Additional Resources
+
+- **Architecture Rules**: `.cursor/rules/researcher-architecture.mdc`
+- **Implementation Guide**: `RESEARCH_WIZARD_IMPLEMENTATION.md`
+- **Integration Guide**: `RESEARCH_COMPONENT_INTEGRATION.md`
+- **Current Architecture**: `CURRENT_ARCHITECTURE_OVERVIEW.md`
+
+---
+
+## ✅ Implementation Status
+
+- ✅ UnifiedResearchAnalyzer implemented
+- ✅ IntentAwareAnalyzer implemented
+- ✅ Intent-driven API endpoints working
+- ✅ Frontend integration complete
+- ✅ Google Trends integrated
+- ✅ Research persona integrated
+
+---
+
+**Status**: Current and Comprehensive

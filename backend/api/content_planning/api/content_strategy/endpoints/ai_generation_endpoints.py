@@ -726,9 +726,10 @@ async def get_latest_generated_strategy(
         # Fallback: Check in-memory task status
         if not hasattr(generate_comprehensive_strategy_polling, '_task_status'):
             logger.warning("⚠️ No task status storage found")
-            return ResponseBuilder.create_not_found_response(
+            return ResponseBuilder.create_success_response(
+                data={"user_id": user_id, "strategy": None},
                 message="No strategy generation tasks found",
-                data={"user_id": user_id, "strategy": None}
+                status_code=200
             )
         
         # Debug: Log all task statuses
@@ -768,9 +769,10 @@ async def get_latest_generated_strategy(
             )
         else:
             logger.info(f"⚠️ No completed strategies found for user: {user_id}")
-            return ResponseBuilder.create_not_found_response(
+            return ResponseBuilder.create_success_response(
+                data={"user_id": user_id, "strategy": None},
                 message="No completed strategy generation found",
-                data={"user_id": user_id, "strategy": None}
+                status_code=200
             )
         
     except Exception as e:

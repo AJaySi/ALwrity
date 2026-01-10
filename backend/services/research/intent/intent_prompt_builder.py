@@ -11,6 +11,7 @@ Version: 1.0
 """
 
 import json
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
@@ -26,6 +27,14 @@ from models.research_persona_models import ResearchPersona
 
 class IntentPromptBuilder:
     """Builds prompts for intent-driven research."""
+    
+    def _get_current_date_context(self) -> str:
+        """Get current date/time context for prompts."""
+        now = datetime.now()
+        current_year = now.year
+        current_month = now.strftime("%B")  # Full month name
+        current_date = now.strftime("%Y-%m-%d")
+        return f"CURRENT DATE: {current_date} ({current_month} {current_year})\nCURRENT YEAR: {current_year}"
     
     # Purpose explanations for the AI
     PURPOSE_EXPLANATIONS = {
@@ -74,6 +83,11 @@ class IntentPromptBuilder:
         - What specific deliverables they need
         """
         
+        # Get current date context
+        date_context = self._get_current_date_context()
+        now = datetime.now()
+        current_year = now.year
+        
         # Build persona context
         persona_context = self._build_persona_context(research_persona, industry, target_audience)
         
@@ -81,6 +95,11 @@ class IntentPromptBuilder:
         competitor_context = self._build_competitor_context(competitor_data)
         
         prompt = f"""You are an expert research intent analyzer. Your job is to understand what a content creator REALLY needs from their research.
+
+## CURRENT DATE/TIME CONTEXT
+{date_context}
+
+**NOTE**: When user mentions time-sensitive terms (latest, current, recent, trends, predictions), prioritize {current_year} data.
 
 ## USER INPUT
 "{user_input}"
@@ -97,7 +116,7 @@ class IntentPromptBuilder:
 Analyze the user's input and infer their research intent. Determine:
 
 1. **INPUT TYPE**: Is this:
-   - "keywords": Simple topic keywords (e.g., "AI healthcare 2025")
+   - "keywords": Simple topic keywords (e.g., "AI healthcare {current_year}")
    - "question": A specific question (e.g., "What are the best AI tools for healthcare?")
    - "goal": A goal statement (e.g., "I need to write a blog about AI in healthcare")
    - "mixed": Combination of above
@@ -210,7 +229,24 @@ Return a JSON object:
         if research_persona and research_persona.suggested_keywords:
             persona_keywords = f"\nSUGGESTED KEYWORDS FROM PERSONA: {', '.join(research_persona.suggested_keywords[:10])}"
         
+        # Get current date context
+        date_context = self._get_current_date_context()
+        now = datetime.now()
+        current_year = now.year
+        next_year = current_year + 1
+        current_month_year = now.strftime("%B %Y")
+        
         prompt = f"""You are a research query optimizer. Generate multiple targeted search queries based on the user's research intent.
+
+## CURRENT DATE/TIME CONTEXT
+{date_context}
+
+**CRITICAL**: When generating queries:
+- ALWAYS use the CURRENT YEAR ({current_year}) for time-sensitive queries
+- For trends, predictions, or future-looking queries, use {current_year} or {next_year}
+- For recent/real-time queries, use current month/year: {current_month_year}
+- NEVER use outdated years from training data (e.g., 2024, 2025 if we're past those dates)
+- When user mentions "latest", "current", "recent", or time-sensitive terms, prioritize {current_year} data
 
 ## RESEARCH INTENT
 
@@ -256,14 +292,14 @@ Return a JSON object:
 {{
     "queries": [
         {{
-            "query": "Healthcare AI adoption statistics 2025 hospitals implementation data",
+            "query": "Healthcare AI adoption statistics {current_year} hospitals implementation data",
             "purpose": "key_statistics",
             "provider": "exa",
             "priority": 5,
             "expected_results": "Statistics on hospital AI adoption rates"
         }},
         {{
-            "query": "AI healthcare trends predictions future outlook 2025 2026",
+            "query": "AI healthcare trends predictions future outlook {current_year} {next_year}",
             "purpose": "trends",
             "provider": "tavily",
             "priority": 4,
@@ -280,13 +316,14 @@ Return a JSON object:
 
 ## QUERY OPTIMIZATION RULES
 
-1. For STATISTICS: Include words like "statistics", "data", "percentage", "report", "study"
+1. For STATISTICS: Include words like "statistics", "data", "percentage", "report", "study", and CURRENT YEAR ({current_year})
 2. For CASE STUDIES: Include "case study", "success story", "implementation", "example"
-3. For TRENDS: Include "trends", "future", "predictions", "emerging", year numbers
+3. For TRENDS: Include "trends", "future", "predictions", "emerging", and CURRENT YEAR ({current_year}) or {next_year}
 4. For EXPERT QUOTES: Include expert names if known, or "expert opinion", "interview"
 5. For COMPARISONS: Include "vs", "compare", "comparison", "alternative"
-6. For NEWS/REAL-TIME: Use Tavily, include recent year/month
+6. For NEWS/REAL-TIME: Use Tavily, include CURRENT YEAR ({current_year}) and current month/year ({current_month_year})
 7. For ACADEMIC/DEEP: Use Exa with neural search
+8. **CRITICAL**: Always use {current_year} (not outdated years) for time-sensitive queries
 """
 
         return prompt
@@ -314,23 +351,43 @@ Return a JSON object:
         if intent.perspective:
             perspective_instruction = f"\n**PERSPECTIVE**: Analyze results from the viewpoint of: {intent.perspective}"
         
+        # Get current date context
+        date_context = self._get_current_date_context()
+        now = datetime.now()
+        current_year = now.year
+        
         prompt = f"""You are a research analyst helping a content creator find exactly what they need. Your job is to analyze raw research results and extract precisely what the user is looking for.
+
+## CURRENT DATE/TIME CONTEXT
+{date_context}
+
+**CRITICAL**: When analyzing results:
+- Prioritize data from CURRENT YEAR ({current_year}) or recent dates
+- If statistics/quotes mention outdated years, note the recency in context
+- For trends/predictions, ensure timelines reference {current_year} or future years
+- NEVER present outdated data as "current" or "latest" - always check dates
 
 ## USER'S RESEARCH INTENT
 
-PRIMARY QUESTION: {intent.primary_question}
+**PRIMARY QUESTION**: {intent.primary_question}
 
-SECONDARY QUESTIONS:
+**SECONDARY QUESTIONS TO ANSWER**:
 {chr(10).join(f'- {q}' for q in intent.secondary_questions) if intent.secondary_questions else 'None specified'}
 
-PURPOSE: {intent.purpose}
+**FOCUS AREAS** (prioritize information related to these):
+{', '.join(intent.focus_areas) if intent.focus_areas else 'General - no specific focus areas'}
+
+**ALSO ANSWERING** (address these topics if found in results):
+{', '.join(intent.also_answering) if intent.also_answering else 'None specified'}
+
+**PURPOSE**: {intent.purpose}
 → {purpose_explanation}
 
-CONTENT OUTPUT: {intent.content_output}
+**CONTENT OUTPUT**: {intent.content_output}
 
-EXPECTED DELIVERABLES: {', '.join(intent.expected_deliverables)}
+**EXPECTED DELIVERABLES**: {', '.join(intent.expected_deliverables)}
 
-FOCUS AREAS: {', '.join(intent.focus_areas) if intent.focus_areas else 'General'}
+**PERSPECTIVE**: {intent.perspective or 'General audience'}
 {perspective_instruction}
 
 ## RAW RESEARCH RESULTS
@@ -339,7 +396,33 @@ FOCUS AREAS: {', '.join(intent.focus_areas) if intent.focus_areas else 'General'
 
 ## YOUR TASK
 
-Analyze the raw research results and extract EXACTLY what the user needs.
+Analyze the raw research results and extract EXACTLY what the user needs. Use a **generalized approach** - don't over-optimize for specific fields, but ensure all intent aspects are considered naturally.
+
+### ANALYSIS GUIDELINES:
+
+1. **PRIMARY QUESTION**: Always provide a direct, clear answer to the primary question in 2-3 sentences.
+
+2. **SECONDARY QUESTIONS**: For each secondary question, provide an answer if information is available in the results. If not available, note it in gaps_identified. Don't force answers - only include what's actually in the results.
+
+3. **FOCUS AREAS**: When extracting deliverables, prioritize information that relates to the focus areas. If focus areas are specified:
+   - Weight relevance scores higher for sources/content matching focus areas
+   - Include focus area context in extracted statistics, quotes, case studies
+   - If results don't address focus areas, note this in gaps_identified
+   - Provide a brief summary of what was found for each focus area in focus_areas_coverage
+
+4. **ALSO ANSWERING**: If results contain information about "also answering" topics, include it naturally in the analysis. Don't create separate sections unless the information is substantial. Provide a brief summary of what was found for each topic in also_answering_coverage.
+
+5. **GENERALIZED EXTRACTION**: 
+   - Extract deliverables based on expected_deliverables
+   - Use perspective to frame information appropriately
+   - Consider content_output when structuring results
+   - Don't over-optimize - let the results guide what's extracted
+
+6. **CONTEXTUAL LINKING**: When extracting information, consider:
+   - How it relates to the primary question
+   - Which secondary questions it answers
+   - Which focus areas it addresses
+   - This helps create a cohesive research result
 
 {deliverables_instructions}
 
@@ -351,8 +434,16 @@ Provide results in this JSON structure:
 {{
     "primary_answer": "Direct 2-3 sentence answer to the primary question",
     "secondary_answers": {{
-        "Question 1?": "Answer to question 1",
-        "Question 2?": "Answer to question 2"
+        "Secondary Question 1?": "Answer if found in results, or null if not available",
+        "Secondary Question 2?": "Answer if found in results, or null if not available"
+    }},
+    "focus_areas_coverage": {{
+        "Focus Area 1": "Brief summary of what was found related to this focus area, or null if not covered",
+        "Focus Area 2": "Brief summary of what was found related to this focus area, or null if not covered"
+    }},
+    "also_answering_coverage": {{
+        "Topic 1": "Information found about this topic, or null if not found",
+        "Topic 2": "Information found about this topic, or null if not found"
     }},
     "executive_summary": "2-3 sentence executive summary of all findings",
     "key_takeaways": [
@@ -364,13 +455,13 @@ Provide results in this JSON structure:
     ],
     "statistics": [
         {{
-            "statistic": "72% of hospitals plan to adopt AI by 2025",
+            "statistic": "72% of hospitals plan to adopt AI by {current_year}",
             "value": "72%",
-            "context": "Survey of 500 US hospitals in 2024",
-            "source": "Healthcare AI Report 2024",
+            "context": "Survey of 500 US hospitals in {current_year}",
+            "source": "Healthcare AI Report {current_year}",
             "url": "https://example.com/report",
             "credibility": 0.9,
-            "recency": "2024"
+            "recency": "{current_year}"
         }}
     ],
     "expert_quotes": [
@@ -401,7 +492,7 @@ Provide results in this JSON structure:
             "direction": "growing",
             "evidence": ["25% YoY growth", "Major hospital chains investing"],
             "impact": "Could reduce misdiagnosis by 30%",
-            "timeline": "Expected mainstream by 2027",
+            "timeline": "Expected mainstream by {current_year + 2}",
             "sources": ["url1", "url2"]
         }}
     ],
@@ -442,7 +533,7 @@ Provide results in this JSON structure:
         "Example: Hospital X reduced readmissions by 25% using predictive AI"
     ],
     "predictions": [
-        "By 2030, AI will assist in 80% of initial diagnoses"
+        "By {current_year + 5}, AI will assist in 80% of initial diagnoses"
     ],
     "suggested_outline": [
         "1. Introduction: The AI Healthcare Revolution",
@@ -454,7 +545,7 @@ Provide results in this JSON structure:
     ],
     "sources": [
         {{
-            "title": "Healthcare AI Report 2024",
+            "title": "Healthcare AI Report {current_year}",
             "url": "https://example.com",
             "relevance_score": 0.95,
             "relevance_reason": "Directly addresses adoption statistics",
@@ -468,7 +559,7 @@ Provide results in this JSON structure:
         "Limited information on regulatory challenges"
     ],
     "follow_up_queries": [
-        "AI healthcare regulations FDA 2025",
+        "AI healthcare regulations FDA {current_year}",
         "Small clinic AI implementation costs"
     ]
 }}
@@ -486,6 +577,8 @@ Provide results in this JSON structure:
 8. **Suggest follow_up_queries** for gaps or incomplete areas
 9. **Rate confidence** based on how well results match the user's intent
 10. **Include deliverables ONLY if they are in expected_deliverables** or critical to the question
+11. **Don't over-optimize** - use a natural, generalized approach that considers all intent fields without forcing connections
+12. **For focus_areas_coverage and also_answering_coverage**: Only include entries for focus areas/topics that actually have information in the results. Use null for areas/topics not covered.
 """
 
         return prompt

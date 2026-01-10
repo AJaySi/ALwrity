@@ -72,6 +72,7 @@ export {
   Cell,
   PolarGrid,
   PolarAngleAxis,
-  PolarRadiusAxis
+  PolarRadiusAxis,
+  ReferenceLine
 } from 'recharts';
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { blogWriterApi, BlogResearchRequest, BlogResearchResponse } from '../../services/blogWriterApi';
-import { useResearchPolling } from '../../hooks/usePolling';
+import { useBlogWriterResearchPolling } from '../../hooks/usePolling';
 import ResearchProgressModal from './ResearchProgressModal';
 import { researchCache } from '../../services/researchCache';
 
@@ -25,7 +25,7 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
   // Track if we've navigated to research phase for this form display
   const hasNavigatedRef = useRef<boolean>(false);
 
-  const polling = useResearchPolling({
+  const polling = useBlogWriterResearchPolling({
     onProgress: (message) => {
       setCurrentMessage(message);
       setForceUpdate(prev => prev + 1); // Force re-render
@@ -128,40 +128,64 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
       };
     },
     render: ({ status }: any) => {
-      const _ = forceUpdate;
-      
-      // Navigate to research phase when form is rendered (if not already navigated and form is shown)
-      // This ensures phase navigation updates when CopilotKit shows the research form
-      // Only navigate when showing the form (not progress or completion states)
-      const isShowingForm = polling.currentStatus !== 'completed' && 
-                           polling.currentStatus !== 'in_progress' && 
-                           polling.currentStatus !== 'running';
-      
-      if (isShowingForm && !hasNavigatedRef.current && navigateToPhase) {
-        // Use setTimeout to avoid calling during render
-        setTimeout(() => {
-          if (!hasNavigatedRef.current) {
-            navigateToPhase('research');
-            hasNavigatedRef.current = true;
+      try {
+        const _ = forceUpdate;
+        
+        // Safely access polling state with defaults - handle case where polling might not be initialized
+        let currentStatus = 'idle';
+        let progressMessages: Array<{ timestamp: string; message: string }> = [];
+        
+        try {
+          if (polling) {
+            currentStatus = polling.currentStatus || 'idle';
+            progressMessages = polling.progressMessages || [];
           }
-        }, 0);
-      }
-      
-      if (polling.currentStatus === 'completed' && polling.progressMessages.length > 0) {
-        const latestMessage = polling.progressMessages[polling.progressMessages.length - 1];
+        } catch (pollingError) {
+          console.warn('[ResearchAction] Error accessing polling state in render:', pollingError);
+          // Use defaults already set above
+        }
+        
+        // Navigate to research phase when form is rendered (if not already navigated and form is shown)
+        // This ensures phase navigation updates when CopilotKit shows the research form
+        // Only navigate when showing the form (not progress or completion states)
+        const isShowingForm = currentStatus !== 'completed' && 
+                             currentStatus !== 'in_progress' && 
+                             currentStatus !== 'running';
+        
+        if (isShowingForm && !hasNavigatedRef.current && navigateToPhase) {
+          // Use setTimeout to avoid calling during render
+          setTimeout(() => {
+            if (!hasNavigatedRef.current) {
+              navigateToPhase('research');
+              hasNavigatedRef.current = true;
+            }
+          }, 0);
+        }
+        
+        if (currentStatus === 'completed' && progressMessages.length > 0) {
+          const latestMessage = progressMessages[progressMessages.length - 1];
+          return (
+            <div style={{ padding: '16px', backgroundColor: '#e8f5e8', borderRadius: '8px', border: '1px solid #4caf50', margin: '8px 0' }}>
+              <p style={{ margin: 0, color: '#4caf50', fontWeight: '500' }}>✅ Research completed successfully!</p>
+              <p style={{ margin: '8px 0 0 0', color: '#666', fontSize: '14px' }}>{latestMessage?.message || 'Research data is now available for your blog.'}</p>
+            </div>
+          );
+        }
+        
+        if (currentStatus === 'in_progress' || currentStatus === 'running') {
+          return (
+            <div style={{ padding: '16px', backgroundColor: '#fff3e0', borderRadius: '8px', border: '1px solid #ff9800', margin: '8px 0' }}>
+              <p style={{ margin: 0, color: '#ff9800', fontWeight: '500' }}>🔄 Research in progress...</p>
+              <p style={{ margin: '8px 0 0 0', color: '#666', fontSize: '14px' }}>{currentMessage || 'Gathering research data...'}</p>
+            </div>
+          );
+        }
+      } catch (renderError) {
+        console.error('[ResearchAction] Error in render function:', renderError);
+        // Return a safe fallback UI
         return (
-          <div style={{ padding: '16px', backgroundColor: '#e8f5e8', borderRadius: '8px', border: '1px solid #4caf50', margin: '8px 0' }}>
-            <p style={{ margin: 0, color: '#4caf50', fontWeight: '500' }}>✅ Research completed successfully!</p>
-            <p style={{ margin: '8px 0 0 0', color: '#666', fontSize: '14px' }}>{latestMessage?.message || 'Research data is now available for your blog.'}</p>
-          </div>
-        );
-      }
-      
-      if (polling.currentStatus === 'in_progress' || polling.currentStatus === 'running') {
-        return (
-          <div style={{ padding: '16px', backgroundColor: '#fff3e0', borderRadius: '8px', border: '1px solid #ff9800', margin: '8px 0' }}>
-            <p style={{ margin: 0, color: '#ff9800', fontWeight: '500' }}>🔄 Research in progress...</p>
-            <p style={{ margin: '8px 0 0 0', color: '#666', fontSize: '14px' }}>{currentMessage || 'Gathering research data...'}</p>
+          <div style={{ padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #e0e0e0', margin: '8px 0' }}>
+            <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>🔍 Research form is loading...</p>
           </div>
         );
       }

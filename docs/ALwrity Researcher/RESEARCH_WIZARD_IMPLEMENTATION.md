@@ -1,346 +1,434 @@
-# Research Wizard Implementation Summary
+# Research Wizard Implementation Guide
 
-## Implementation Complete
-
-A modular, pluggable research component has been successfully implemented with wizard-based UI that can be tested independently and integrated into the blog writer.
-
----
-
-## Backend Implementation
-
-### 1. Research Models (blog_models.py)
-
-**New Enums:**
-- `ResearchMode`: `BASIC`, `COMPREHENSIVE`, `TARGETED`
-- `SourceType`: `WEB`, `ACADEMIC`, `NEWS`, `INDUSTRY`, `EXPERT`
-- `DateRange`: `LAST_WEEK` through `ALL_TIME`
-
-**New Models:**
-```python
-class ResearchConfig(BaseModel):
-    mode: ResearchMode = ResearchMode.BASIC
-    date_range: Optional[DateRange] = None
-    source_types: List[SourceType] = []
-    max_sources: int = 10
-    include_statistics: bool = True
-    include_expert_quotes: bool = True
-    include_competitors: bool = True
-    include_trends: bool = True
-```
-
-**Enhanced BlogResearchRequest:**
-- Added `research_mode: Optional[ResearchMode]`
-- Added `config: Optional[ResearchConfig]`
-- **Backward compatible** - defaults to existing behavior
-
-### 2. Strategy Pattern (research_strategies.py)
-
-**New file:** `backend/services/blog_writer/research/research_strategies.py`
-
-**Three Strategy Classes:**
-1. **BasicResearchStrategy**: Quick keyword-focused analysis
-2. **ComprehensiveResearchStrategy**: Full analysis with all components
-3. **TargetedResearchStrategy**: Customizable components based on config
-
-**Factory Function:**
-```python
-get_strategy_for_mode(mode: ResearchMode) -> ResearchStrategy
-```
-
-### 3. Service Integration (research_service.py)
-
-**Key Changes:**
-- Imports strategy factory and models
-- Uses strategy pattern in both `research()` and `research_with_progress()` methods
-- Automatically selects strategy based on `research_mode`
-- Backward compatible - defaults to BASIC if not specified
-
-**Line Changes:**
-```python
-# Lines 88-96: Determine research mode and get appropriate strategy
-research_mode = request.research_mode or ResearchMode.BASIC
-config = request.config or ResearchConfig(mode=research_mode)
-strategy = get_strategy_for_mode(research_mode)
-
-logger.info(f"Using research mode: {research_mode.value}")
-
-# Build research prompt based on strategy
-research_prompt = strategy.build_research_prompt(topic, industry, target_audience, config)
-```
+**Date**: 2025-01-29  
+**Status**: Updated for Intent-Driven Research Architecture
 
 ---
 
-## Frontend Implementation
+## 📋 Overview
 
-### 4. Component Structure
+The Research Wizard is a 3-step, intent-driven research system that uses AI to infer user intent, generate targeted queries, and optimize research parameters before executing research operations.
 
-**New Directory:** `frontend/src/components/Research/`
+**Key Features**:
+- Intent-driven research (AI infers what user wants to research)
+- 3-step wizard flow
+- Unified AI analyzer (single call for intent + queries + params)
+- Provider optimization (Exa → Tavily → Google)
+- Research persona integration
+- Google Trends integration
+
+---
+
+## 🏗️ Architecture
+
+### Current 3-Step Wizard Flow
 
 ```
-Research/
-├── index.tsx                          # Main exports
-├── ResearchWizard.tsx                # Main wizard container
+Step 1: ResearchInput
+  ├── User enters keywords/topic
+  ├── Selects industry & target audience
+  ├── Clicks "Intent & Options" button
+  └── Shows IntentConfirmationPanel
+
+Step 2: StepProgress (Auto-navigated)
+  ├── Research execution in progress
+  ├── Polling for completion
+  └── Auto-navigates to Step 3 on completion
+
+Step 3: StepResults
+  ├── IntentResultsDisplay (tabbed view)
+  │   ├── Summary tab
+  │   ├── Deliverables tab
+  │   ├── Sources tab
+  │   └── Analysis tab
+  └── Legacy results (fallback)
+```
+
+### Component Structure
+
+```
+frontend/src/components/Research/
+├── ResearchWizard.tsx                # Main wizard orchestrator
 ├── steps/
-│   ├── StepKeyword.tsx               # Step 1: Keyword input
-│   ├── StepOptions.tsx               # Step 2: Mode selection (3 cards)
-│   ├── StepProgress.tsx              # Step 3: Progress display
-│   └── StepResults.tsx               # Step 4: Results display
+│   ├── ResearchInput.tsx             # Step 1: Input + Intent & Options
+│   ├── StepProgress.tsx              # Step 2: Progress/polling
+│   ├── StepResults.tsx               # Step 3: Results display
+│   └── components/
+│       ├── ResearchInputHeader.tsx   # Header with Advanced toggle
+│       ├── ResearchInputContainer.tsx # Main input with Intent & Options button
+│       ├── IntentConfirmationPanel/  # Intent review/edit panel
+│       │   ├── IntentConfirmationPanel.tsx
+│       │   ├── IntentHeader.tsx
+│       │   ├── PrimaryQuestionEditor.tsx
+│       │   ├── IntentSummaryGrid.tsx
+│       │   ├── DeliverablesSelector.tsx
+│       │   ├── ResearchQueriesSection.tsx
+│       │   ├── TrendsConfigSection.tsx
+│       │   └── AdvancedProviderOptionsSection.tsx
+│       ├── IntentResultsDisplay.tsx # Tabbed results (Summary, Deliverables, Sources, Analysis)
+│       ├── AdvancedOptionsSection.tsx # Exa/Tavily options
+│       ├── ProviderChips.tsx        # Provider availability display
+│       └── ...
 ├── hooks/
-│   ├── useResearchWizard.ts          # Wizard state management
-│   └── useResearchExecution.ts       # API calls and polling
-├── types/
-│   └── research.types.ts             # TypeScript interfaces
-├── utils/
-│   └── researchUtils.ts              # Utility functions
-└── integrations/
-    └── BlogWriterAdapter.tsx         # Blog writer integration adapter
+│   ├── useResearchWizard.ts        # Wizard state management
+│   ├── useResearchExecution.ts     # API calls and polling
+│   └── useIntentResearch.ts         # Intent-driven research flow
+└── types/
+    ├── research.types.ts            # Wizard state types
+    └── intent.types.ts              # Intent-driven types
 ```
-
-### 5. Wizard Components
-
-**ResearchWizard.tsx:**
-- Main container with progress bar
-- Step indicators (Setup → Options → Research → Results)
-- Navigation footer with Back/Next buttons
-- Responsive layout
-
-**StepKeyword.tsx:**
-- Keywords textarea
-- Industry dropdown (16 options)
-- Target audience input
-- Validation for keyword requirements
-
-**StepOptions.tsx:**
-- Three mode cards (Basic, Comprehensive, Targeted)
-- Visual selection feedback
-- Feature lists per mode
-- Hover effects
-
-**StepProgress.tsx:**
-- Real-time progress updates
-- Progress messages display
-- Cancel button
-- Auto-advance to results on completion
-
-**StepResults.tsx:**
-- Displays research results using existing `ResearchResults` component
-- Export JSON button
-- Start new research button
-
-### 6. Hooks
-
-**useResearchWizard.ts:**
-- State management for wizard steps
-- localStorage persistence
-- Step navigation (next/back)
-- Validation per step
-- Reset functionality
-
-**useResearchExecution.ts:**
-- Research execution via API
-- Cache checking
-- Polling integration
-- Error handling
-- Progress tracking
-
-### 7. Test Page (ResearchTest.tsx)
-
-**Location:** `frontend/src/pages/ResearchTest.tsx`  
-**Route:** `/research-test`
-
-**Features:**
-- Quick preset buttons (3 samples)
-- Debug panel with JSON export
-- Performance metrics display
-- Cache state visualization
-- Research statistics summary
-
-**Sample Presets:**
-1. AI Marketing Tools
-2. Small Business SEO
-3. Content Strategy
-
-### 8. Type Definitions
-
-**research.types.ts:**
-- `WizardState`
-- `WizardStepProps`
-- `ResearchWizardProps`
-- `ModeCardInfo`
-
-**blogWriterApi.ts:**
-- `ResearchMode` type union
-- `SourceType` type union
-- `DateRange` type union
-- `ResearchConfig` interface
-- Updated `BlogResearchRequest` interface
 
 ---
 
-## Integration
+## 🔄 Research Flow
 
-### 9. Blog Writer API (blogWriterApi.ts)
+### Step 1: ResearchInput
 
-**Enhanced Interface:**
+**Purpose**: User provides research topic and triggers intent analysis
+
+**User Actions**:
+1. Enter keywords/topic in textarea
+2. Select industry (optional, pre-filled from persona)
+3. Select target audience (optional, pre-filled from persona)
+4. Click "Intent & Options" button (enabled after 2+ words)
+
+**What Happens**:
 ```typescript
-export interface BlogResearchRequest {
-  keywords: string[];
-  topic?: string;
-  industry?: string;
-  target_audience?: string;
-  tone?: string;
-  word_count_target?: number;
-  persona?: PersonaInfo;
-  research_mode?: ResearchMode;      // NEW
-  config?: ResearchConfig;           // NEW
+// User clicks "Intent & Options"
+onClick={() => {
+  execution.analyzeIntent(state.keywords, state.industry, state.target_audience);
+}}
+```
+
+**Backend Call**:
+- `POST /api/research/intent/analyze`
+- `UnifiedResearchAnalyzer` analyzes input
+- Returns: `ResearchIntent`, `ResearchQuery[]`, `OptimizedConfig`
+
+**UI Update**:
+- Shows `IntentConfirmationPanel` below input
+- Displays inferred intent, queries, and optimized config
+
+### Step 2: IntentConfirmationPanel
+
+**Purpose**: User reviews and edits AI-inferred intent before execution
+
+**Components**:
+- **PrimaryQuestionEditor**: Editable primary research question
+- **IntentSummaryGrid**: Quick summary (industry, audience, mode, deliverables)
+- **DeliverablesSelector**: Toggle specific deliverables (statistics, quotes, case studies, etc.)
+- **ResearchQueriesSection**: List of generated queries (selectable, editable)
+- **TrendsConfigSection**: Google Trends keywords (if applicable)
+- **AdvancedProviderOptionsSection**: Exa/Tavily options with AI justifications
+
+**User Actions**:
+1. Review inferred intent
+2. Edit primary question (optional)
+3. Toggle deliverables (optional)
+4. Select/edit queries (optional)
+5. Review provider settings (optional)
+6. Click "Research" button
+
+**What Happens**:
+```typescript
+// User clicks "Research"
+onExecute={async (selectedQueries) => {
+  const result = await execution.executeIntentResearch(state, selectedQueries);
+  if (result?.success) {
+    onUpdate({ currentStep: 3 }); // Navigate to results
+  }
+}}
+```
+
+**Backend Call**:
+- `POST /api/research/intent/research`
+- Executes selected queries via Exa/Tavily/Google
+- `IntentAwareAnalyzer` analyzes results based on intent
+- Returns: `IntentDrivenResearchResult`
+
+**UI Update**:
+- Shows `StepProgress` (auto-navigated)
+- Polls for completion
+- Auto-navigates to Step 3 on completion
+
+### Step 3: StepResults
+
+**Purpose**: Display research results in organized tabs
+
+**Components**:
+- **IntentResultsDisplay**: Tabbed view for intent-driven results
+  - **Summary Tab**: AI-generated overview
+  - **Deliverables Tab**: Extracted statistics, quotes, case studies, trends
+  - **Sources Tab**: Citations with credibility scores
+  - **Analysis Tab**: Deep insights based on intent
+- **Legacy Results**: Fallback for non-intent-driven research
+
+**User Actions**:
+- Browse results in different tabs
+- Export results (future)
+- Start new research
+- Save research project (auto-saved)
+
+---
+
+## 🔌 Backend Integration
+
+### API Endpoints
+
+#### 1. Intent Analysis
+```python
+POST /api/research/intent/analyze
+
+Request:
+{
+  "keywords": "AI marketing tools",
+  "industry": "Technology",
+  "target_audience": "Marketing professionals"
+}
+
+Response:
+{
+  "success": true,
+  "intent": {
+    "primary_question": "...",
+    "research_goals": [...],
+    "deliverables": [...],
+    "industry": "...",
+    "target_audience": "..."
+  },
+  "queries": [
+    {
+      "query": "...",
+      "provider": "exa",
+      "justification": "..."
+    }
+  ],
+  "optimized_config": {
+    "provider": "exa",
+    "exa_category": "company",
+    "provider_justification": "..."
+  },
+  "trends_config": {
+    "keywords": [...],
+    "enabled": true
+  }
 }
 ```
 
-### 10. App Routing (App.tsx)
+#### 2. Intent-Driven Research
+```python
+POST /api/research/intent/research
 
-**New Route:**
-```typescript
-<Route path="/research-test" element={<ResearchTest />} />
+Request:
+{
+  "intent": {...},
+  "queries": [...],
+  "config": {...}
+}
+
+Response:
+{
+  "success": true,
+  "result": {
+    "summary": "...",
+    "deliverables": {
+      "statistics": [...],
+      "expert_quotes": [...],
+      "case_studies": [...],
+      "trends": [...]
+    },
+    "sources": [...],
+    "analysis": "..."
+  }
+}
 ```
 
-### 11. Integration Adapter
+### Backend Services
 
-**BlogWriterAdapter.tsx:**
-- Wrapper component for easy integration
-- Usage examples included
-- Clean interface for BlogWriter
+#### UnifiedResearchAnalyzer
+**Location**: `backend/services/research/intent/unified_research_analyzer.py`
 
----
+**Purpose**: Single AI call for intent inference, query generation, and parameter optimization
 
-## Documentation
+**Key Method**:
+```python
+async def analyze(
+    user_input: str,
+    industry: Optional[str] = None,
+    target_audience: Optional[str] = None,
+    user_id: Optional[str] = None
+) -> UnifiedResearchAnalysis:
+    """
+    Analyzes user input and returns:
+    - Inferred research intent
+    - Generated research queries
+    - Optimized provider configuration
+    - Google Trends keywords (if applicable)
+    """
+```
 
-### 12. Integration Guide
+#### IntentAwareAnalyzer
+**Location**: `backend/services/research/intent/intent_aware_analyzer.py`
 
-**File:** `docs/RESEARCH_COMPONENT_INTEGRATION.md`
+**Purpose**: Analyzes raw research results based on user intent
 
-**Contents:**
-- Architecture overview
-- Usage examples
-- Backend API details
-- Research modes explained
-- Configuration options
-- Testing instructions
-- Migration path
-- Troubleshooting guide
-
----
-
-## Key Features
-
-### Research Modes
-
-**Basic Mode:**
-- Quick keyword analysis
-- Primary & secondary keywords
-- Trends overview
-- Top 5 content angles
-- Key statistics
-
-**Comprehensive Mode:**
-- All basic features
-- Expert quotes & opinions
-- Competitor analysis
-- Market forecasts
-- Best practices & case studies
-- Content gaps identification
-
-**Targeted Mode:**
-- Selectable components
-- Customizable filters
-- Date range options
-- Source type filtering
-
-### User Experience
-
-1. **Step-by-step wizard** with clear progress
-2. **Visual mode selection** with cards
-3. **Real-time progress** with live updates
-4. **Comprehensive results** with export capability
-5. **Error handling** with retry options
-6. **Cache integration** for instant results
-
-### Developer Experience
-
-1. **Modular architecture** - standalone components
-2. **Type safety** - full TypeScript interfaces
-3. **Reusable hooks** - state and execution management
-4. **Test page** - isolated testing environment
-5. **Documentation** - comprehensive guides
+**Key Method**:
+```python
+async def analyze(
+    raw_results: Dict[str, Any],
+    intent: ResearchIntent,
+    user_id: Optional[str] = None
+) -> IntentDrivenResearchResult:
+    """
+    Analyzes raw results and extracts:
+    - Statistics with citations
+    - Expert quotes
+    - Case studies
+    - Trends
+    - Comparisons
+    - Based on user's research intent
+    """
+```
 
 ---
 
-## Testing
+## 🎨 Frontend Hooks
 
-### Quick Test
+### useResearchWizard
+**Location**: `frontend/src/components/Research/hooks/useResearchWizard.ts`
 
-1. Navigate to `http://localhost:3000/research-test`
-2. Click "AI Marketing Tools" preset
-3. Select "Comprehensive" mode
-4. Watch progress updates
-5. Review results with export
+**Purpose**: Manages wizard state (step, keywords, industry, config, results)
 
-### Integration Test
+**Key Methods**:
+```typescript
+const wizard = useResearchWizard(initialKeywords, ...);
 
-1. Compare `/research-test` wizard UI
-2. Compare `/blog-writer` current UI
-3. Test both research workflows
-4. Verify caching works across both
+wizard.state.currentStep;      // Current step (1, 2, or 3)
+wizard.state.keywords;         // Research keywords
+wizard.state.industry;         // Selected industry
+wizard.state.config;           // Research configuration
+wizard.state.results;          // Research results
 
----
+wizard.updateState({ ... });  // Update state
+wizard.nextStep();             // Navigate to next step
+wizard.previousStep();         // Navigate to previous step
+```
 
-## Backward Compatibility
+### useResearchExecution
+**Location**: `frontend/src/components/Research/hooks/useResearchExecution.ts`
 
-- Existing API calls continue working
-- No breaking changes to BlogWriter
-- Optional parameters default to current behavior
-- Cache infrastructure shared
-- All existing features preserved
+**Purpose**: Handles API calls and research execution
 
----
+**Key Methods**:
+```typescript
+const execution = useResearchExecution();
 
-## File Summary
+execution.analyzeIntent(keywords, industry, audience);
+execution.intentAnalysis;      // Result from intent analysis
+execution.confirmIntent(intent); // Confirm/modify intent
+execution.executeIntentResearch(state, queries); // Execute research
+execution.isAnalyzingIntent;    // Loading state
+execution.isExecuting;          // Execution state
+```
 
-**Backend (4 files):**
-- Modified: `blog_models.py`, `research_service.py`
-- Created: `research_strategies.py`
+### useIntentResearch
+**Location**: `frontend/src/components/Research/hooks/useIntentResearch.ts`
 
-**Frontend (13 files):**
-- Created: `ResearchWizard.tsx`, 4 step components, 2 hooks, types, utils, adapter, test page
-- Modified: `App.tsx`, `blogWriterApi.ts`
+**Purpose**: Manages intent-driven research flow
 
-**Documentation (2 files):**
-- Created: `RESEARCH_COMPONENT_INTEGRATION.md`, `RESEARCH_WIZARD_IMPLEMENTATION.md`
+**Key Methods**:
+```typescript
+const intentResearch = useIntentResearch();
 
----
-
-## Next Steps
-
-1. ✅ **Test the wizard** at `/research-test`
-2. ✅ **Review integration guide** in docs
-3. ⏳ **Integrate into BlogWriter** using adapter (optional)
-4. ⏳ **Gather user feedback** on wizard vs CopilotKit UI
-5. ⏳ **Add more presets** if needed
-
----
-
-## Benefits Delivered
-
-- Modular & Pluggable: Standalone component
-- Testable: Dedicated test page
-- Backward Compatible: No breaking changes
-- Reusable: Can be used anywhere in the app
-- Extensible: Easy to add new modes or features
-- Documented: Comprehensive guides
-- Type Safe: Full TypeScript support
-- Production Ready: No linting errors
+intentResearch.analyzeIntent(userInput);
+intentResearch.confirmIntent(intent);
+intentResearch.executeResearch(queries);
+```
 
 ---
 
-Implementation Date: Current Session  
-Status: Complete & Ready for Testing
+## 🔗 Integration Examples
 
+### Standalone Usage
+```typescript
+import { ResearchWizard } from '../components/Research';
+
+<ResearchWizard
+  onComplete={(results) => {
+    console.log('Research complete:', results);
+  }}
+  onCancel={() => {
+    console.log('Research cancelled');
+  }}
+/>
+```
+
+### With Initial Data
+```typescript
+<ResearchWizard
+  initialKeywords={['AI marketing tools']}
+  initialIndustry="Technology"
+  initialTargetAudience="Marketing professionals"
+  initialResearchMode="comprehensive"
+  initialConfig={{
+    provider: 'exa',
+    max_sources: 20,
+    include_statistics: true
+  }}
+  initialResults={savedResults} // For restoring saved projects
+/>
+```
+
+### Blog Writer Integration
+```typescript
+// In BlogWriter component
+import { BlogWriterAdapter } from '../components/Research/integrations/BlogWriterAdapter';
+
+<BlogWriterAdapter
+  onResearchComplete={(researchData) => {
+    // Use research data in blog generation
+  }}
+/>
+```
+
+---
+
+## 🎯 Key Differences from Old Architecture
+
+### Old Architecture (Deprecated)
+- **4-Step Wizard**: StepKeyword → StepOptions → StepProgress → StepResults
+- **Mode Selection**: User manually selects Basic/Comprehensive/Targeted
+- **Strategy Pattern**: Different strategies for different modes
+- **Rule-Based**: Rule-based parameter optimization
+
+### Current Architecture
+- **3-Step Wizard**: ResearchInput → StepProgress → StepResults
+- **Intent-Driven**: AI infers intent, no manual mode selection
+- **Unified Analyzer**: Single AI call for intent + queries + params
+- **AI-Optimized**: AI-driven parameter optimization with justifications
+
+---
+
+## 📝 Notes
+
+- **Backward Compatibility**: Legacy research endpoints still work for non-intent-driven research
+- **Research Persona**: Persona data pre-fills industry, audience, and suggests presets
+- **Google Trends**: Automatically included when relevant to research topic
+- **Auto-Save**: Research projects are automatically saved to Asset Library upon completion
+
+---
+
+## ✅ Implementation Status
+
+- ✅ 3-step wizard implemented
+- ✅ Intent-driven research flow working
+- ✅ UnifiedResearchAnalyzer integrated
+- ✅ IntentAwareAnalyzer integrated
+- ✅ Google Trends integrated
+- ✅ Research persona integration
+- ✅ My Projects feature (auto-save)
+- ✅ Component refactoring complete
+
+---
+
+**Status**: Current and Accurate

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { useLocation } from 'react-router-dom';
 import {
   Box,
@@ -130,6 +131,7 @@ const ContentPlanningDashboard: React.FC = () => {
   }, [location.state]);
 
   // Load dashboard data using orchestrator
+  // Note: ProtectedRoute ensures user is authenticated before this component renders
   useEffect(() => {
     const loadDashboardData = async () => {
       setLoading(true);

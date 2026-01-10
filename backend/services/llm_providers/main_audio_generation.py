@@ -144,6 +144,9 @@ def generate_audio(
             filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
             logger.info(f"[audio_gen] Filtered kwargs (removed None values): {filtered_kwargs}")
 
+            # Track response time
+            import time
+            start_time = time.time()
             client = WaveSpeedClient()
             audio_bytes = client.generate_speech(
                 text=text,
@@ -155,8 +158,9 @@ def generate_audio(
                 enable_sync_mode=enable_sync_mode,
                 **filtered_kwargs
             )
+            response_time = time.time() - start_time
             
-            logger.info(f"[audio_gen] ✅ API call successful, generated {len(audio_bytes)} bytes")
+            logger.info(f"[audio_gen] ✅ API call successful, generated {len(audio_bytes)} bytes in {response_time:.2f}s")
             
         except HTTPException:
             raise
@@ -228,19 +232,29 @@ def generate_audio(
                     # Create usage log
                     # Store the text parameter in a local variable before any imports to prevent shadowing
                     text_param = text  # Capture function parameter before any potential shadowing
+                    
+                    # Detect actual provider name (WaveSpeed, Google, OpenAI, etc.)
+                    from services.subscription.provider_detection import detect_actual_provider
+                    actual_provider = detect_actual_provider(
+                        provider_enum=APIProvider.AUDIO,
+                        model_name="minimax/speech-02-hd",
+                        endpoint="/audio-generation/wavespeed"
+                    )
+                    
                     usage_log = APIUsageLog(
                         user_id=user_id,
                         provider=APIProvider.AUDIO,
                         endpoint="/audio-generation/wavespeed",
                         method="POST",
                         model_used="minimax/speech-02-hd",
+                        actual_provider_name=actual_provider,  # Track actual provider (WaveSpeed, etc.)
                         tokens_input=character_count,
                         tokens_output=0,
                         tokens_total=character_count,
                         cost_input=0.0,
                         cost_output=0.0,
                         cost_total=estimated_cost,
-                        response_time=0.0,
+                        response_time=response_time,  # Use actual response time
                         status_code=200,
                         request_size=len(text_param.encode("utf-8")),  # Use captured parameter
                         response_size=len(audio_bytes),

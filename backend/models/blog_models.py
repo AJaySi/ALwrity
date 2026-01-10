@@ -100,7 +100,8 @@ class ResearchConfig(BaseModel):
     exa_category: Optional[str] = None  # company, research paper, news, linkedin profile, github, tweet, movie, song, personal site, pdf, financial report
     exa_include_domains: List[str] = []  # Domain whitelist
     exa_exclude_domains: List[str] = []  # Domain blacklist
-    exa_search_type: Optional[str] = "auto"  # "auto", "keyword", "neural"
+    exa_search_type: Optional[str] = "auto"  # "auto", "keyword", "neural", "fast", "deep"
+    exa_additional_queries: Optional[List[str]] = None  # Additional query variations for Deep search (only works with type="deep")
     
     # Tavily-specific options
     tavily_topic: Optional[str] = "general"  # general, news, finance

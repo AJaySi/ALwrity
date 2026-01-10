@@ -2,9 +2,10 @@
  * ResearchQueriesSection Component
  * 
  * Accordion section for managing research queries (add, edit, delete, select).
+ * Enhanced with expand/collapse functionality and cost breakdown.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -15,10 +16,12 @@ import {
   Button,
   Divider,
   Chip,
+  Tooltip,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   Search as SearchIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import {
   ResearchQuery,
@@ -32,6 +35,13 @@ interface ResearchQueriesSectionProps {
   onSelectionChange: (selected: Set<number>) => void;
 }
 
+// Cost estimation per provider (approximate)
+const PROVIDER_COST_ESTIMATE = {
+  exa: 0.02, // ~$0.02 per query
+  tavily: 0.015, // ~$0.015 per query
+  google: 0.001, // ~$0.001 per query (Gemini grounding)
+};
+
 export const ResearchQueriesSection: React.FC<ResearchQueriesSectionProps> = ({
   queries,
   selectedQueries,
@@ -39,6 +49,7 @@ export const ResearchQueriesSection: React.FC<ResearchQueriesSectionProps> = ({
   onSelectionChange,
 }) => {
   const [expanded, setExpanded] = useState(true);
+  const [expandedQueries, setExpandedQueries] = useState<Set<number>>(new Set([0])); // First query expanded by default
 
   const handleQueryToggle = (index: number) => {
     const newSelected = new Set(selectedQueries);
@@ -85,7 +96,42 @@ export const ResearchQueriesSection: React.FC<ResearchQueriesSectionProps> = ({
     const newSelected = new Set(selectedQueries);
     newSelected.add(queries.length);
     onSelectionChange(newSelected);
+    // Expand the new query
+    setExpandedQueries(new Set([...expandedQueries, queries.length]));
   };
+
+  const handleToggleQueryExpansion = (index: number) => {
+    const newExpanded = new Set(expandedQueries);
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index);
+    } else {
+      newExpanded.add(index);
+    }
+    setExpandedQueries(newExpanded);
+  };
+
+  // Calculate cost breakdown
+  const costBreakdown = useMemo(() => {
+    const selected = Array.from(selectedQueries);
+    let totalCost = 0;
+    const providerCosts: Record<string, number> = {};
+
+    selected.forEach(idx => {
+      const query = queries[idx];
+      if (query) {
+        const cost = PROVIDER_COST_ESTIMATE[query.provider] || 0.01;
+        totalCost += cost;
+        providerCosts[query.provider] = (providerCosts[query.provider] || 0) + cost;
+      }
+    });
+
+    return {
+      total: totalCost,
+      perQuery: selected.length > 0 ? totalCost / selected.length : 0,
+      providerCosts,
+      queryCount: selected.length,
+    };
+  }, [selectedQueries, queries]);
 
   return (
     <Accordion
@@ -123,6 +169,48 @@ export const ResearchQueriesSection: React.FC<ResearchQueriesSectionProps> = ({
               fontWeight: 500,
             }}
           />
+          {selectedQueries.size > 0 && (
+            <Tooltip
+              title={
+                <Box sx={{ p: 1 }}>
+                  <Typography variant="caption" fontWeight={600} display="block" gutterBottom>
+                    Cost Breakdown
+                  </Typography>
+                  <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>
+                    Estimated cost: ${costBreakdown.total.toFixed(3)}
+                  </Typography>
+                  <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>
+                    Queries to fire: {costBreakdown.queryCount}
+                  </Typography>
+                  {Object.entries(costBreakdown.providerCosts).map(([provider, cost]) => (
+                    <Typography key={provider} variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
+                      {provider}: ${cost.toFixed(3)}
+                    </Typography>
+                  ))}
+                  <Typography variant="caption" display="block" sx={{ mt: 1, fontStyle: 'italic', fontSize: '0.7rem' }}>
+                    * Estimates may vary based on actual API usage
+                  </Typography>
+                </Box>
+              }
+              arrow
+              placement="top"
+            >
+              <Chip
+                size="small"
+                label={`~$${costBreakdown.total.toFixed(3)}`}
+                sx={{
+                  ml: 1,
+                  backgroundColor: '#fef3c7',
+                  color: '#92400e',
+                  fontSize: '0.7rem',
+                  height: 20,
+                  fontWeight: 500,
+                  cursor: 'help',
+                }}
+                icon={<InfoIcon sx={{ fontSize: 12 }} />}
+              />
+            </Tooltip>
+          )}
         </Box>
       </AccordionSummary>
       <AccordionDetails sx={{ p: 0, backgroundColor: '#ffffff' }}>
@@ -133,9 +221,14 @@ export const ResearchQueriesSection: React.FC<ResearchQueriesSectionProps> = ({
                 query={query}
                 index={idx}
                 isSelected={selectedQueries.has(idx)}
+                isExpanded={expandedQueries.has(idx)}
                 onToggle={() => handleQueryToggle(idx)}
                 onEdit={(field, value) => handleQueryEdit(idx, field, value)}
                 onDelete={() => handleDeleteQuery(idx)}
+                onToggleExpansion={() => handleToggleQueryExpansion(idx)}
+                totalQueries={queries.length}
+                selectedCount={selectedQueries.size}
+                estimatedCost={PROVIDER_COST_ESTIMATE[query.provider] || 0.01}
               />
               {idx < queries.length - 1 && <Divider />}
             </React.Fragment>

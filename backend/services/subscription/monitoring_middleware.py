@@ -14,7 +14,7 @@ from collections import defaultdict, deque
 import asyncio
 from loguru import logger
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, case
 import re
 
 from models.api_monitoring import APIRequest, APIEndpointStats, SystemHealth, CachePerformance
@@ -369,19 +369,64 @@ async def get_monitoring_stats(minutes: int = 5) -> Dict[str, Any]:
             db.close()
 
 async def get_lightweight_stats() -> Dict[str, Any]:
-    """Get lightweight stats for dashboard header."""
+    """Get lightweight stats for dashboard header.
+    
+    Optimized single-query approach using conditional aggregation for better performance.
+    """
     db = None
     try:
         db = _get_db_session()
-        # Minimal viable placeholder values
         now = datetime.utcnow()
+        
+        # Get stats from last 5 minutes
+        five_minutes_ago = now - timedelta(minutes=5)
+        
+        # Optimized: Single query with conditional aggregation instead of two separate queries
+        # This is much faster as it only scans the table once
+        stats = db.query(
+            func.count(APIRequest.id).label('total_requests'),
+            func.sum(
+                case((APIRequest.status_code >= 400, 1), else_=0)
+            ).label('total_errors')
+        ).filter(
+            APIRequest.timestamp >= five_minutes_ago
+        ).first()
+        
+        recent_requests = stats.total_requests or 0 if stats else 0
+        recent_errors = int(stats.total_errors or 0) if stats else 0
+        
+        # Calculate error rate
+        error_rate = (recent_errors / recent_requests * 100) if recent_requests > 0 else 0.0
+        
+        # Determine status based on error rate
+        if error_rate > 10:
+            status = 'critical'
+            icon = '🔴'
+        elif error_rate > 5:
+            status = 'warning'
+            icon = '🟡'
+        else:
+            status = 'healthy'
+            icon = '🟢'
+        
+        return {
+            'status': status,
+            'icon': icon,
+            'recent_requests': recent_requests,
+            'recent_errors': recent_errors,
+            'error_rate': round(error_rate, 2),
+            'timestamp': now.isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting lightweight stats: {e}", exc_info=True)
+        # Return default healthy state on error
         return {
             'status': 'healthy',
             'icon': '🟢',
             'recent_requests': 0,
             'recent_errors': 0,
             'error_rate': 0.0,
-            'timestamp': now.isoformat()
+            'timestamp': datetime.utcnow().isoformat()
         }
     finally:
         if db is not None:

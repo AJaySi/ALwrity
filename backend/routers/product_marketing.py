@@ -1,76 +1,31 @@
-"""API endpoints for Product Marketing Suite."""
+"""API endpoints for Product Marketing Suite - Product asset creation only."""
 
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from services.product_marketing import (
-    ProductMarketingOrchestrator,
     BrandDNASyncService,
-    AssetAuditService,
-    ChannelPackService,
     ProductAnimationService,
     ProductAnimationRequest,
     ProductVideoService,
     ProductVideoRequest,
     ProductAvatarService,
     ProductAvatarRequest,
+    IntelligentPromptBuilder,
+    PersonalizationService,
 )
-from services.product_marketing.campaign_storage import CampaignStorageService
+from services.product_marketing.product_marketing_templates import (
+    ProductMarketingTemplates,
+    TemplateCategory,
+)
 from services.product_marketing.product_image_service import ProductImageService, ProductImageRequest
 from middleware.auth_middleware import get_current_user
 from utils.logger_utils import get_service_logger
-from services.database import get_db
-from sqlalchemy.orm import Session
 
 
 logger = get_service_logger("api.product_marketing")
 router = APIRouter(prefix="/api/product-marketing", tags=["product-marketing"])
-
-
-# ====================
-# REQUEST MODELS
-# ====================
-
-class CampaignCreateRequest(BaseModel):
-    """Request to create a new campaign blueprint."""
-    campaign_name: str = Field(..., description="Campaign name")
-    goal: str = Field(..., description="Campaign goal (product_launch, awareness, conversion, etc.)")
-    kpi: Optional[str] = Field(None, description="Key performance indicator")
-    channels: List[str] = Field(..., description="Target channels (instagram, linkedin, tiktok, etc.)")
-    product_context: Optional[Dict[str, Any]] = Field(None, description="Product information")
-
-
-class AssetProposalRequest(BaseModel):
-    """Request to generate asset proposals."""
-    campaign_id: str = Field(..., description="Campaign ID")
-    product_context: Optional[Dict[str, Any]] = Field(None, description="Product information")
-
-
-class AssetGenerateRequest(BaseModel):
-    """Request to generate a specific asset."""
-    asset_proposal: Dict[str, Any] = Field(..., description="Asset proposal from generate_proposals")
-    product_context: Optional[Dict[str, Any]] = Field(None, description="Product information")
-
-
-class AssetAuditRequest(BaseModel):
-    """Request to audit uploaded assets."""
-    image_base64: str = Field(..., description="Base64 encoded image")
-    asset_metadata: Optional[Dict[str, Any]] = Field(None, description="Asset metadata")
-
-
-# ====================
-# DEPENDENCY
-# ====================
-
-def get_orchestrator() -> ProductMarketingOrchestrator:
-    """Get Product Marketing Orchestrator instance."""
-    return ProductMarketingOrchestrator()
-
-
-def get_campaign_storage() -> CampaignStorageService:
-    """Get Campaign Storage Service instance."""
-    return CampaignStorageService()
 
 
 def _require_user_id(current_user: Dict[str, Any], operation: str) -> str:
@@ -86,453 +41,6 @@ def _require_user_id(current_user: Dict[str, Any], operation: str) -> str:
             detail="Authenticated user required for product marketing operations.",
         )
     return str(user_id)
-
-
-# ====================
-# CAMPAIGN ENDPOINTS
-# ====================
-
-@router.post("/campaigns/validate-preflight", summary="Validate Campaign Pre-flight")
-async def validate_campaign_preflight(
-    request: CampaignCreateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    orchestrator: ProductMarketingOrchestrator = Depends(get_orchestrator)
-):
-    """Validate campaign blueprint against subscription limits before creation.
-    
-    This endpoint:
-    - Creates a temporary blueprint to estimate costs
-    - Validates subscription limits
-    - Returns cost estimates and validation results
-    - Does NOT save anything to database
-    """
-    try:
-        user_id = _require_user_id(current_user, "campaign pre-flight validation")
-        logger.info(f"[Product Marketing] Pre-flight validation for user {user_id}")
-        
-        # Create temporary blueprint for validation (not saved)
-        campaign_data = {
-            "campaign_name": request.campaign_name or "Temporary Campaign",
-            "goal": request.goal,
-            "kpi": request.kpi,
-            "channels": request.channels,
-        }
-        
-        blueprint = orchestrator.create_campaign_blueprint(user_id, campaign_data)
-        
-        # Run pre-flight validation
-        validation_result = orchestrator.validate_campaign_preflight(user_id, blueprint)
-        
-        logger.info(f"[Product Marketing] ✅ Pre-flight validation completed: can_proceed={validation_result.get('can_proceed')}")
-        return validation_result
-        
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error in pre-flight validation: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Pre-flight validation failed: {str(e)}")
-
-
-@router.post("/campaigns/create-blueprint", summary="Create Campaign Blueprint")
-async def create_campaign_blueprint(
-    request: CampaignCreateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    orchestrator: ProductMarketingOrchestrator = Depends(get_orchestrator)
-):
-    """Create a campaign blueprint with personalized asset nodes.
-    
-    This endpoint:
-    - Uses onboarding data to personalize the blueprint
-    - Generates campaign phases (teaser, launch, nurture)
-    - Creates asset nodes for each phase and channel
-    - Returns blueprint ready for AI proposal generation
-    """
-    try:
-        user_id = _require_user_id(current_user, "campaign blueprint creation")
-        logger.info(f"[Product Marketing] Creating blueprint for user {user_id}: {request.campaign_name}")
-        
-        campaign_data = {
-            "campaign_name": request.campaign_name,
-            "goal": request.goal,
-            "kpi": request.kpi,
-            "channels": request.channels,
-        }
-        
-        blueprint = orchestrator.create_campaign_blueprint(user_id, campaign_data)
-        
-        # Convert blueprint to dict for JSON response
-        blueprint_dict = {
-            "campaign_id": blueprint.campaign_id,
-            "campaign_name": blueprint.campaign_name,
-            "goal": blueprint.goal,
-            "kpi": blueprint.kpi,
-            "phases": blueprint.phases,
-            "asset_nodes": [
-                {
-                    "asset_id": node.asset_id,
-                    "asset_type": node.asset_type,
-                    "channel": node.channel,
-                    "status": node.status,
-                }
-                for node in blueprint.asset_nodes
-            ],
-            "channels": blueprint.channels,
-            "status": blueprint.status,
-        }
-        
-        # Save to database
-        campaign_storage = get_campaign_storage()
-        campaign_storage.save_campaign(user_id, blueprint_dict)
-        
-        logger.info(f"[Product Marketing] ✅ Blueprint created and saved: {blueprint.campaign_id}")
-        return blueprint_dict
-        
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error creating blueprint: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Campaign blueprint creation failed: {str(e)}")
-
-
-@router.post("/campaigns/{campaign_id}/generate-proposals", summary="Generate Asset Proposals")
-async def generate_asset_proposals(
-    campaign_id: str,
-    request: AssetProposalRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    orchestrator: ProductMarketingOrchestrator = Depends(get_orchestrator)
-):
-    """Generate AI proposals for all assets in a campaign blueprint.
-    
-    This endpoint:
-    - Uses specialized marketing prompts with brand DNA
-    - Recommends templates, providers, and settings
-    - Provides cost estimates
-    - Returns proposals ready for user approval
-    """
-    try:
-        user_id = _require_user_id(current_user, "asset proposal generation")
-        logger.info(f"[Product Marketing] Generating proposals for campaign {campaign_id}")
-        
-        # Fetch blueprint from database
-        campaign_storage = get_campaign_storage()
-        campaign = campaign_storage.get_campaign(user_id, campaign_id)
-        
-        if not campaign:
-            raise HTTPException(status_code=404, detail="Campaign not found")
-        
-        # Reconstruct blueprint from database
-        from services.product_marketing.orchestrator import CampaignBlueprint, CampaignAssetNode
-        
-        asset_nodes = []
-        if campaign.asset_nodes:
-            for node_data in campaign.asset_nodes:
-                asset_nodes.append(CampaignAssetNode(
-                    asset_id=node_data.get('asset_id'),
-                    asset_type=node_data.get('asset_type'),
-                    channel=node_data.get('channel'),
-                    status=node_data.get('status', 'draft'),
-                ))
-        
-        blueprint = CampaignBlueprint(
-            campaign_id=campaign.campaign_id,
-            campaign_name=campaign.campaign_name,
-            goal=campaign.goal,
-            kpi=campaign.kpi,
-            channels=campaign.channels or [],
-            asset_nodes=asset_nodes,
-        )
-        
-        proposals = orchestrator.generate_asset_proposals(
-            user_id=user_id,
-            blueprint=blueprint,
-            product_context=request.product_context,
-        )
-        
-        # Save proposals to database
-        try:
-            campaign_storage.save_proposals(user_id, campaign_id, proposals)
-            logger.info(f"[Product Marketing] ✅ Saved {proposals['total_assets']} proposals to database")
-        except Exception as save_error:
-            logger.error(f"[Product Marketing] ⚠️ Failed to save proposals to database: {str(save_error)}")
-            # Continue even if save fails - proposals are still returned to user
-            # This allows the workflow to continue, but proposals won't persist
-        
-        logger.info(f"[Product Marketing] ✅ Generated {proposals['total_assets']} proposals")
-        return proposals
-        
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error generating proposals: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Asset proposal generation failed: {str(e)}")
-
-
-@router.post("/assets/generate", summary="Generate Asset")
-async def generate_asset(
-    request: AssetGenerateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    orchestrator: ProductMarketingOrchestrator = Depends(get_orchestrator)
-):
-    """Generate a single asset using Image Studio APIs.
-    
-    This endpoint:
-    - Reuses existing Image Studio APIs
-    - Applies specialized marketing prompts
-    - Automatically tracks assets in Asset Library
-    - Validates subscription limits
-    - Updates campaign status after generation
-    """
-    try:
-        user_id = _require_user_id(current_user, "asset generation")
-        logger.info(f"[Product Marketing] Generating asset for user {user_id}")
-        
-        result = await orchestrator.generate_asset(
-            user_id=user_id,
-            asset_proposal=request.asset_proposal,
-            product_context=request.product_context,
-        )
-        
-        # Update campaign status if asset was generated successfully
-        if result.get('success'):
-            campaign_id = request.asset_proposal.get('campaign_id')
-            if not campaign_id:
-                # Try to extract from asset_id
-                asset_id = request.asset_proposal.get('asset_id', '')
-                if asset_id and '_' in asset_id:
-                    parts = asset_id.split('_')
-                    phase_indicators = ['teaser', 'launch', 'nurture', 'prelaunch', 'postlaunch']
-                    for i, part in enumerate(parts):
-                        if part.lower() in phase_indicators and i > 0:
-                            campaign_id = '_'.join(parts[:i])
-                            break
-            
-            if campaign_id:
-                try:
-                    campaign_storage = get_campaign_storage()
-                    campaign = campaign_storage.get_campaign(user_id, campaign_id)
-                    if campaign:
-                        # Update proposal status to 'generating' or 'ready'
-                        asset_node_id = request.asset_proposal.get('asset_id', '')
-                        if asset_node_id:
-                            from models.product_marketing_models import CampaignProposal
-                            from services.database import SessionLocal
-                            db = SessionLocal()
-                            try:
-                                proposal = db.query(CampaignProposal).filter(
-                                    CampaignProposal.campaign_id == campaign_id,
-                                    CampaignProposal.asset_node_id == asset_node_id,
-                                    CampaignProposal.user_id == user_id
-                                ).first()
-                                if proposal:
-                                    proposal.status = 'ready'
-                                    db.commit()
-                                    logger.info(f"[Product Marketing] ✅ Updated proposal status for {asset_node_id}")
-                            finally:
-                                db.close()
-                        
-                        # Check if all assets are ready and update campaign status
-                        # (This could be enhanced to check all proposals)
-                        logger.info(f"[Product Marketing] ✅ Asset generated for campaign {campaign_id}")
-                except Exception as update_error:
-                    logger.warning(f"[Product Marketing] ⚠️ Could not update campaign status: {str(update_error)}")
-                    # Don't fail the request if status update fails
-        
-        logger.info(f"[Product Marketing] ✅ Asset generated successfully")
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error generating asset: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Asset generation failed: {str(e)}")
-
-
-# ====================
-# BRAND DNA ENDPOINTS
-# ====================
-
-@router.get("/brand-dna", summary="Get Brand DNA Tokens")
-async def get_brand_dna(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
-):
-    """Get brand DNA tokens for the authenticated user.
-    
-    Returns normalized brand DNA from onboarding and persona data.
-    """
-    try:
-        user_id = _require_user_id(current_user, "brand DNA retrieval")
-        brand_tokens = brand_dna_sync.get_brand_dna_tokens(user_id)
-        
-        return {"brand_dna": brand_tokens}
-        
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error getting brand DNA: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/brand-dna/channel/{channel}", summary="Get Channel-Specific Brand DNA")
-async def get_channel_brand_dna(
-    channel: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
-):
-    """Get channel-specific brand DNA adaptations."""
-    try:
-        user_id = _require_user_id(current_user, "channel brand DNA retrieval")
-        channel_dna = brand_dna_sync.get_channel_specific_dna(user_id, channel)
-        
-        return {"channel": channel, "brand_dna": channel_dna}
-        
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error getting channel DNA: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ====================
-# ASSET AUDIT ENDPOINTS
-# ====================
-
-@router.post("/assets/audit", summary="Audit Asset")
-async def audit_asset(
-    request: AssetAuditRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    asset_audit: AssetAuditService = Depends(lambda: AssetAuditService())
-):
-    """Audit an uploaded asset and get enhancement recommendations."""
-    try:
-        user_id = _require_user_id(current_user, "asset audit")
-        audit_result = asset_audit.audit_asset(
-            request.image_base64,
-            request.asset_metadata,
-        )
-        
-        return audit_result
-        
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error auditing asset: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ====================
-# CHANNEL PACK ENDPOINTS
-# ====================
-
-@router.get("/channels/{channel}/pack", summary="Get Channel Pack")
-async def get_channel_pack(
-    channel: str,
-    asset_type: str = "social_post",
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    channel_pack: ChannelPackService = Depends(lambda: ChannelPackService())
-):
-    """Get channel-specific pack configuration with templates and optimization tips."""
-    try:
-        pack = channel_pack.get_channel_pack(channel, asset_type)
-        return pack
-        
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error getting channel pack: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ====================
-# CAMPAIGN LISTING & RETRIEVAL
-# ====================
-
-@router.get("/campaigns", summary="List Campaigns")
-async def list_campaigns(
-    status: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    campaign_storage: CampaignStorageService = Depends(get_campaign_storage)
-):
-    """List all campaigns for the authenticated user."""
-    try:
-        user_id = _require_user_id(current_user, "list campaigns")
-        campaigns = campaign_storage.list_campaigns(user_id, status=status)
-        
-        return {
-            "campaigns": [
-                {
-                    "campaign_id": c.campaign_id,
-                    "campaign_name": c.campaign_name,
-                    "goal": c.goal,
-                    "kpi": c.kpi,
-                    "status": c.status,
-                    "channels": c.channels,
-                    "phases": c.phases,
-                    "asset_nodes": c.asset_nodes,
-                    "created_at": c.created_at.isoformat() if c.created_at else None,
-                    "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-                }
-                for c in campaigns
-            ],
-            "total": len(campaigns),
-        }
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error listing campaigns: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/campaigns/{campaign_id}", summary="Get Campaign")
-async def get_campaign(
-    campaign_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    campaign_storage: CampaignStorageService = Depends(get_campaign_storage)
-):
-    """Get a specific campaign by ID."""
-    try:
-        user_id = _require_user_id(current_user, "get campaign")
-        campaign = campaign_storage.get_campaign(user_id, campaign_id)
-        
-        if not campaign:
-            raise HTTPException(status_code=404, detail="Campaign not found")
-        
-        return {
-            "campaign_id": campaign.campaign_id,
-            "campaign_name": campaign.campaign_name,
-            "goal": campaign.goal,
-            "kpi": campaign.kpi,
-            "status": campaign.status,
-            "channels": campaign.channels,
-            "phases": campaign.phases,
-            "asset_nodes": campaign.asset_nodes,
-            "product_context": campaign.product_context,
-            "created_at": campaign.created_at.isoformat() if campaign.created_at else None,
-            "updated_at": campaign.updated_at.isoformat() if campaign.updated_at else None,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error getting campaign: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/campaigns/{campaign_id}/proposals", summary="Get Campaign Proposals")
-async def get_campaign_proposals(
-    campaign_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    campaign_storage: CampaignStorageService = Depends(get_campaign_storage)
-):
-    """Get proposals for a campaign."""
-    try:
-        user_id = _require_user_id(current_user, "get proposals")
-        proposals = campaign_storage.get_proposals(user_id, campaign_id)
-        
-        proposals_dict = {}
-        for proposal in proposals:
-            proposals_dict[proposal.asset_node_id] = {
-                "asset_id": proposal.asset_node_id,
-                "asset_type": proposal.asset_type,
-                "channel": proposal.channel,
-                "proposed_prompt": proposal.proposed_prompt,
-                "recommended_template": proposal.recommended_template,
-                "recommended_provider": proposal.recommended_provider,
-                "cost_estimate": proposal.cost_estimate,
-                "concept_summary": proposal.concept_summary,
-                "status": proposal.status,
-            }
-        
-        return {
-            "proposals": proposals_dict,
-            "total_assets": len(proposals),
-        }
-    except Exception as e:
-        logger.error(f"[Product Marketing] ❌ Error getting proposals: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ====================
@@ -1138,6 +646,613 @@ async def serve_product_video(
 
 
 # ====================
+# PRODUCT AVATAR ENDPOINTS (InfiniteTalk)
+# ====================
+
+class ProductAvatarRequestModel(BaseModel):
+    """Request for product explainer video with talking avatar."""
+    avatar_image_base64: str = Field(..., description="Avatar image (product, spokesperson, or mascot) in base64")
+    script_text: Optional[str] = Field(None, description="Text script to convert to audio (alternative to audio_base64)")
+    audio_base64: Optional[str] = Field(None, description="Pre-generated audio in base64 (alternative to script_text)")
+    product_name: str = Field(..., description="Product name")
+    product_description: Optional[str] = Field(None, description="Product description")
+    explainer_type: str = Field(default="product_overview", description="Explainer type: product_overview, feature_explainer, tutorial, brand_message")
+    resolution: str = Field(default="720p", description="Video resolution: 480p or 720p")
+    prompt: Optional[str] = Field(None, description="Optional prompt for expression/style")
+    mask_image_base64: Optional[str] = Field(None, description="Optional mask image for animatable regions")
+    additional_context: Optional[str] = Field(None, description="Additional context for avatar animation")
+
+
+def get_product_avatar_service() -> ProductAvatarService:
+    """Get Product Avatar Service instance."""
+    return ProductAvatarService()
+
+
+@router.post("/products/avatar/explainer", summary="Create Product Explainer Video (Talking Avatar)")
+async def create_product_explainer(
+    request: ProductAvatarRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    avatar_service: ProductAvatarService = Depends(get_product_avatar_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product explainer video using InfiniteTalk (talking avatar).
+    
+    This endpoint:
+    - Uses InfiniteTalk for precise lip-sync avatar videos
+    - Supports up to 10 minutes duration
+    - Generates audio from text script (or accepts pre-generated audio)
+    - Applies brand DNA for consistent styling
+    - Returns video URL and metadata
+    
+    Use Cases:
+    - Product overview videos
+    - Feature explainer videos
+    - Tutorial videos
+    - Brand message videos
+    """
+    try:
+        user_id = _require_user_id(current_user, "product explainer video")
+        logger.info(f"[Product Marketing] Creating {request.explainer_type} explainer for product '{request.product_name}'")
+        
+        # Validate that either script_text or audio_base64 is provided
+        if not request.script_text and not request.audio_base64:
+            raise HTTPException(
+                status_code=400,
+                detail="Either script_text or audio_base64 must be provided"
+            )
+        
+        # Get brand DNA for personalization
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception as brand_error:
+            logger.warning(f"[Product Marketing] Could not load brand DNA: {str(brand_error)}")
+        
+        # Create avatar request
+        avatar_request = ProductAvatarRequest(
+            avatar_image_base64=request.avatar_image_base64,
+            script_text=request.script_text,
+            audio_base64=request.audio_base64,
+            product_name=request.product_name,
+            product_description=request.product_description,
+            explainer_type=request.explainer_type,
+            resolution=request.resolution,
+            prompt=request.prompt,
+            mask_image_base64=request.mask_image_base64,
+            brand_context=brand_context,
+            additional_context=request.additional_context,
+        )
+        
+        # Generate explainer video
+        result = await avatar_service.generate_product_explainer(avatar_request, user_id)
+        
+        logger.info(f"[Product Marketing] ✅ Product explainer video completed: cost=${result.get('cost', 0):.2f}, duration={result.get('duration', 0):.1f}s")
+        
+        return {
+            "success": True,
+            "product_name": result.get("product_name"),
+            "explainer_type": result.get("explainer_type"),
+            "video_url": result.get("file_url"),
+            "video_filename": result.get("filename"),
+            "cost": result.get("cost", 0.0),
+            "duration": result.get("duration", 0.0),
+            "resolution": request.resolution,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating product explainer: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Product explainer generation failed: {str(e)}")
+
+
+@router.post("/products/avatar/overview", summary="Create Product Overview Explainer")
+async def create_product_overview(
+    request: ProductAvatarRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    avatar_service: ProductAvatarService = Depends(get_product_avatar_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product overview explainer video (professional product presentation)."""
+    try:
+        user_id = _require_user_id(current_user, "product overview explainer")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await avatar_service.create_product_overview(
+            avatar_image_base64=request.avatar_image_base64,
+            script_text=request.script_text or "",
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "explainer_type": "product_overview",
+            "video_url": result.get("file_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating overview: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/avatar/feature", summary="Create Feature Explainer Video")
+async def create_feature_explainer(
+    request: ProductAvatarRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    avatar_service: ProductAvatarService = Depends(get_product_avatar_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product feature explainer video (detailed feature demonstration)."""
+    try:
+        user_id = _require_user_id(current_user, "feature explainer video")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await avatar_service.create_feature_explainer(
+            avatar_image_base64=request.avatar_image_base64,
+            script_text=request.script_text or "",
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "explainer_type": "feature_explainer",
+            "video_url": result.get("file_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating feature explainer: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/avatar/tutorial", summary="Create Product Tutorial Video")
+async def create_tutorial(
+    request: ProductAvatarRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    avatar_service: ProductAvatarService = Depends(get_product_avatar_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create product tutorial video (step-by-step instruction)."""
+    try:
+        user_id = _require_user_id(current_user, "tutorial video")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await avatar_service.create_tutorial(
+            avatar_image_base64=request.avatar_image_base64,
+            script_text=request.script_text or "",
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "explainer_type": "tutorial",
+            "video_url": result.get("file_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating tutorial: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/avatar/brand-message", summary="Create Brand Message Video")
+async def create_brand_message(
+    request: ProductAvatarRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    avatar_service: ProductAvatarService = Depends(get_product_avatar_service),
+    brand_dna_sync: BrandDNASyncService = Depends(lambda: BrandDNASyncService())
+):
+    """Create brand message video (authentic brand storytelling)."""
+    try:
+        user_id = _require_user_id(current_user, "brand message video")
+        
+        # Get brand DNA
+        brand_context = None
+        try:
+            brand_dna = brand_dna_sync.get_brand_dna_tokens(user_id)
+            brand_context = {
+                "visual_identity": brand_dna.get("visual_identity", {}),
+                "persona": brand_dna.get("persona", {}),
+            }
+        except Exception:
+            pass
+        
+        result = await avatar_service.create_brand_message(
+            avatar_image_base64=request.avatar_image_base64,
+            script_text=request.script_text or "",
+            product_name=request.product_name,
+            product_description=request.product_description,
+            user_id=user_id,
+            resolution=request.resolution,
+            audio_base64=request.audio_base64,
+            brand_context=brand_context
+        )
+        
+        return {
+            "success": True,
+            "explainer_type": "brand_message",
+            "video_url": result.get("file_url"),
+            "cost": result.get("cost", 0.0),
+        }
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error creating brand message: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/avatars/{user_id}/{filename}", summary="Serve Product Avatar Video")
+async def serve_product_avatar(
+    user_id: str,
+    filename: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Serve generated product avatar videos."""
+    try:
+        from fastapi.responses import FileResponse
+        from pathlib import Path
+        
+        # Verify user owns the video
+        current_user_id = _require_user_id(current_user, "serving product avatar video")
+        if current_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Locate video file
+        base_dir = Path(__file__).parent.parent.parent
+        video_path = base_dir / "product_avatars" / user_id / filename
+        
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        return FileResponse(
+            path=str(video_path),
+            media_type="video/mp4",
+            filename=filename
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Product Marketing] ❌ Error serving product avatar video: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ====================
+# TEMPLATES LIBRARY
+# ====================
+
+@router.get("/templates", summary="Get Product Marketing Templates")
+async def get_templates(
+    category: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Get available product marketing templates.
+    
+    Templates provide pre-configured settings for common use cases:
+    - Product image templates (e-commerce, lifestyle, luxury, etc.)
+    - Product video templates (demo, storytelling, feature highlight, launch)
+    - Product avatar templates (overview, feature explainer, tutorial, brand message)
+    
+    Args:
+        category: Filter by category (product_image, product_video, product_avatar)
+    
+    Returns:
+        List of templates
+    """
+    try:
+        templates = []
+        
+        if not category or category == "product_image":
+            templates.extend(ProductMarketingTemplates.get_templates_by_category(TemplateCategory.PRODUCT_IMAGE))
+        
+        if not category or category == "product_video":
+            templates.extend(ProductMarketingTemplates.get_templates_by_category(TemplateCategory.PRODUCT_VIDEO))
+        
+        if not category or category == "product_avatar":
+            templates.extend(ProductMarketingTemplates.get_templates_by_category(TemplateCategory.PRODUCT_AVATAR))
+        
+        return {
+            "templates": templates,
+            "total": len(templates),
+            "categories": {
+                "product_image": len(ProductMarketingTemplates.get_product_image_templates()),
+                "product_video": len(ProductMarketingTemplates.get_product_video_templates()),
+                "product_avatar": len(ProductMarketingTemplates.get_product_avatar_templates()),
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"[Templates] ❌ Error getting templates: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/templates/{template_id}", summary="Get Template by ID")
+async def get_template(
+    template_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Get a specific template by ID.
+    
+    Args:
+        template_id: Template ID
+    
+    Returns:
+        Template details
+    """
+    try:
+        template = ProductMarketingTemplates.get_template_by_id(template_id)
+        
+        if not template:
+            raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
+        
+        return template
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Templates] ❌ Error getting template: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/templates/{template_id}/apply", summary="Apply Template")
+async def apply_template(
+    template_id: str,
+    product_name: str,
+    product_description: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Apply a template to product data.
+    
+    This returns a template configuration ready for use with product generation endpoints.
+    
+    Args:
+        template_id: Template ID to apply
+        product_name: Product name
+        product_description: Product description (optional)
+    
+    Returns:
+        Template configuration with formatted prompts/scripts
+    """
+    try:
+        template_config = ProductMarketingTemplates.apply_template(
+            template_id=template_id,
+            product_name=product_name,
+            product_description=product_description,
+        )
+        
+        return {
+            "template_id": template_id,
+            "product_name": product_name,
+            "product_description": product_description,
+            "configuration": template_config,
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[Templates] ❌ Error applying template: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ====================
+# INTELLIGENT PROMPT INFERENCE
+# ====================
+
+class IntelligentPromptRequest(BaseModel):
+    """Request for intelligent prompt inference."""
+    user_input: str = Field(..., description="Minimal user input (e.g., 'iPhone case for my store')")
+    asset_type: Optional[str] = Field(None, description="Optional asset type hint (image, video, animation, avatar)")
+
+
+@router.post("/intelligent-prompt", summary="Infer Requirements from Minimal Input")
+async def infer_requirements(
+    request: IntelligentPromptRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Infer complete requirements from minimal user input.
+    
+    Uses onboarding data and AI to infer:
+    - Product name and description
+    - Asset type and configuration
+    - Style preferences
+    - Platform preferences
+    - Template matching
+    
+    Example:
+        Input: "iPhone case for my store"
+        Output: Complete configuration with all fields pre-filled
+    
+    Args:
+        request: User input and optional asset type hint
+        
+    Returns:
+        Complete configuration dictionary ready for product generation
+    """
+    try:
+        user_id = _require_user_id(current_user, "intelligent prompt inference")
+        logger.info(f"[Intelligent Prompt] Inferring requirements from: '{request.user_input}'")
+        
+        # Initialize intelligent prompt builder
+        prompt_builder = IntelligentPromptBuilder()
+        
+        # Infer requirements
+        inferred_config = prompt_builder.infer_requirements(
+            user_input=request.user_input,
+            user_id=user_id,
+            asset_type=request.asset_type
+        )
+        
+        logger.info(f"[Intelligent Prompt] ✅ Inferred configuration for '{inferred_config.get('product_name', 'Unknown')}'")
+        
+        return {
+            "success": True,
+            "user_input": request.user_input,
+            "configuration": inferred_config,
+            "confidence": inferred_config.get("confidence", 0.5),
+            "inferred_fields": inferred_config.get("inferred_fields", []),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Intelligent Prompt] ❌ Error inferring requirements: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Intelligent prompt inference failed: {str(e)}")
+
+
+# ====================
+# PERSONALIZATION ENDPOINTS
+# ====================
+
+@router.get("/personalization/preferences", summary="Get User Preferences")
+async def get_user_preferences(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Get comprehensive user preferences from onboarding data.
+    
+    Returns personalized preferences including:
+    - Industry and target audience
+    - Platform preferences
+    - Content preferences
+    - Style preferences
+    - Recommended templates and channels
+    """
+    try:
+        user_id = _require_user_id(current_user, "get user preferences")
+        logger.info(f"[Personalization] Getting preferences for user {user_id}")
+        
+        personalization_service = PersonalizationService()
+        preferences = personalization_service.get_user_preferences(user_id)
+        
+        return {
+            "success": True,
+            "preferences": preferences,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Personalization] ❌ Error getting preferences: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get user preferences: {str(e)}")
+
+
+@router.get("/personalization/defaults/{form_type}", summary="Get Personalized Form Defaults")
+async def get_personalized_defaults(
+    form_type: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Get personalized defaults for a specific form type.
+    
+    Form types:
+    - product_photoshoot: Defaults for product image generation
+    - campaign_creator: Defaults for campaign creation
+    - product_video: Defaults for product video generation
+    - product_avatar: Defaults for avatar video generation
+    
+    Returns pre-filled form values based on user's onboarding data.
+    """
+    try:
+        user_id = _require_user_id(current_user, "get personalized defaults")
+        logger.info(f"[Personalization] Getting defaults for form type: {form_type}")
+        
+        personalization_service = PersonalizationService()
+        defaults = personalization_service.get_personalized_defaults(user_id, form_type)
+        
+        return {
+            "success": True,
+            "form_type": form_type,
+            "defaults": defaults,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Personalization] ❌ Error getting defaults: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get personalized defaults: {str(e)}")
+
+
+@router.get("/personalization/recommendations", summary="Get Personalized Recommendations")
+async def get_recommendations(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Get personalized recommendations for user.
+    
+    Returns:
+    - Recommended templates matching user's industry
+    - Recommended channels based on platform personas
+    - Recommended asset types matching content preferences
+    """
+    try:
+        user_id = _require_user_id(current_user, "get recommendations")
+        logger.info(f"[Personalization] Getting recommendations for user {user_id}")
+        
+        personalization_service = PersonalizationService()
+        recommendations = personalization_service.get_recommendations(user_id)
+        
+        return {
+            "success": True,
+            "recommendations": recommendations,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Personalization] ❌ Error getting recommendations: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get recommendations: {str(e)}")
+
+
+# ====================
 # HEALTH CHECK
 # ====================
 
@@ -1149,14 +1264,12 @@ async def health_check():
         "service": "product_marketing",
         "version": "1.0.0",
         "modules": {
-            "orchestrator": "available",
-            "prompt_builder": "available",
             "brand_dna_sync": "available",
-            "asset_audit": "available",
-            "channel_pack": "available",
             "product_image_service": "available",
             "product_animation_service": "available",
             "product_video_service": "available",
+            "product_avatar_service": "available",
+            "templates": "available",
         }
     }
 

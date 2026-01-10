@@ -30,6 +30,13 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
             "cost_per_image": 0.05,  # Estimated, adjust based on actual pricing
             "max_resolution": (1024, 1024),
             "default_steps": 15,
+        },
+        "flux-kontext-pro": {
+            "name": "FLUX Kontext Pro",
+            "description": "Professional typography and text rendering with improved prompt adherence",
+            "cost_per_image": 0.04,  # $0.04 per image
+            "max_resolution": (1024, 1024),
+            "default_steps": 20,
         }
     }
     
@@ -177,6 +184,55 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
             logger.error("[Qwen Image] ❌ Error generating image: %s", str(e), exc_info=True)
             raise RuntimeError(f"Qwen Image generation failed: {str(e)}")
     
+    def _generate_flux_kontext_pro(self, options: ImageGenerationOptions) -> bytes:
+        """Generate image using FLUX Kontext Pro.
+        
+        Args:
+            options: Image generation options
+            
+        Returns:
+            Image bytes
+        """
+        logger.info("[FLUX Kontext Pro] Starting image generation: %s", options.prompt[:100])
+        
+        try:
+            # Prepare parameters for WaveSpeed FLUX Kontext Pro API
+            params = {
+                "model": "flux-kontext-pro",
+                "prompt": options.prompt,
+                "width": options.width,
+                "height": options.height,
+                "num_inference_steps": options.steps or self.SUPPORTED_MODELS["flux-kontext-pro"]["default_steps"],
+            }
+            
+            # Add optional parameters
+            if options.negative_prompt:
+                params["negative_prompt"] = options.negative_prompt
+            
+            if options.guidance_scale:
+                params["guidance_scale"] = options.guidance_scale
+            
+            if options.seed:
+                params["seed"] = options.seed
+            
+            # Call WaveSpeed API
+            result = self.client.generate_image(**params)
+            
+            # Extract image bytes from result
+            if isinstance(result, bytes):
+                image_bytes = result
+            elif isinstance(result, dict) and "image" in result:
+                image_bytes = result["image"]
+            else:
+                raise ValueError(f"Unexpected response format from WaveSpeed API: {type(result)}")
+            
+            logger.info("[FLUX Kontext Pro] ✅ Successfully generated image: %d bytes", len(image_bytes))
+            return image_bytes
+            
+        except Exception as e:
+            logger.error("[FLUX Kontext Pro] ❌ Error generating image: %s", str(e), exc_info=True)
+            raise RuntimeError(f"FLUX Kontext Pro generation failed: {str(e)}")
+    
     def generate(self, options: ImageGenerationOptions) -> ImageGenerationResult:
         """Generate image using WaveSpeed AI models.
         
@@ -201,6 +257,8 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
             image_bytes = self._generate_ideogram_v3(options)
         elif model == "qwen-image":
             image_bytes = self._generate_qwen_image(options)
+        elif model == "flux-kontext-pro":
+            image_bytes = self._generate_flux_kontext_pro(options)
         else:
             raise ValueError(f"Unsupported model: {model}")
         

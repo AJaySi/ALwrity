@@ -30,14 +30,14 @@ import { motion } from 'framer-motion';
 import { ImageStudioLayout } from '../ImageStudio/ImageStudioLayout';
 import { GlassyCard } from '../ImageStudio/ui/GlassyCard';
 import { SectionHeader } from '../ImageStudio/ui/SectionHeader';
-import { useProductMarketing } from '../../hooks/useProductMarketing';
+import { useCampaignCreator } from '../../hooks/useCampaignCreator';
 
 interface AssetAuditPanelProps {
   onClose: () => void;
 }
 
 export const AssetAuditPanel: React.FC<AssetAuditPanelProps> = ({ onClose }) => {
-  const { auditAsset, auditResult, isAuditing, error, clearAuditResult } = useProductMarketing();
+  const { auditAsset, auditResult, isAuditing, error, clearAuditResult } = useCampaignCreator();
   const [dragActive, setDragActive] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);

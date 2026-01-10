@@ -19,6 +19,8 @@ import {
   CircularProgress,
   Divider,
   Grid,
+  Tooltip,
+  IconButton,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -34,7 +36,10 @@ import { GlassyCard } from '../ImageStudio/ui/GlassyCard';
 import { SectionHeader } from '../ImageStudio/ui/SectionHeader';
 import { CampaignFlowIndicator } from './CampaignFlowIndicator';
 import { PreflightValidationAlert } from './PreflightValidationAlert';
-import { useProductMarketing } from '../../hooks/useProductMarketing';
+import { CampaignPreview } from './CampaignPreview';
+import { useCampaignCreator } from '../../hooks/useCampaignCreator';
+import { getSimpleTerm, getTooltipText, getTermExamples, getTermDescription } from '../../utils/terminology';
+import { Info as InfoIcon } from '@mui/icons-material';
 
 const MotionBox = motion(Box);
 
@@ -44,9 +49,9 @@ interface CampaignWizardProps {
 }
 
 const steps = [
-  'Campaign Goal & KPI',
-  'Select Channels',
-  'Product Context',
+  'Campaign Goal & Success Metric',
+  'Select Platforms',
+  'Product Information',
   'Review & Create',
 ];
 
@@ -79,7 +84,9 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
     validateCampaignPreflight,
     preflightResult,
     isValidatingPreflight,
-  } = useProductMarketing();
+    getPersonalizedDefaults,
+    getRecommendations,
+  } = useCampaignCreator();
   const [activeStep, setActiveStep] = useState(0);
   const [campaignName, setCampaignName] = useState('');
   const [goal, setGoal] = useState('');
@@ -94,7 +101,26 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
     if (!brandDNA) {
       getBrandDNA();
     }
-  }, [brandDNA, getBrandDNA]);
+    
+    // Load personalized defaults for campaign creator
+    getPersonalizedDefaults('campaign_creator')
+      .then((defaults) => {
+        if (defaults) {
+          // Pre-select recommended channels
+          if (defaults.channels && defaults.channels.length > 0) {
+            setSelectedChannels(defaults.channels);
+          }
+          // Pre-select goal if available
+          if (defaults.goal) {
+            setGoal(defaults.goal);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load personalized defaults:', err);
+        // Continue without defaults
+      });
+  }, [brandDNA, getBrandDNA, getPersonalizedDefaults]);
 
   // Run pre-flight validation when on review step (step 3) and we have all required data
   useEffect(() => {
@@ -203,11 +229,11 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
         )}
 
         <Stepper activeStep={activeStep} orientation="vertical">
-          {/* Step 1: Campaign Goal & KPI */}
+          {/* Step 1: Campaign Goal & Success Metric */}
           <Step>
             <StepLabel>
               <Typography variant="h6" fontWeight={700}>
-                Campaign Goal & KPI
+                Campaign Goal & Success Metric
               </Typography>
             </StepLabel>
             <StepContent>
@@ -238,13 +264,40 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
                 </FormControl>
 
                 <TextField
-                  label="Key Performance Indicator (Optional)"
+                  label={getSimpleTerm('KPI')}
                   value={kpi}
                   onChange={(e) => setKpi(e.target.value)}
                   fullWidth
                   placeholder="e.g., 10,000 impressions, 500 sign-ups"
-                  helperText="How will you measure campaign success?"
+                  helperText={getTermDescription('KPI')}
+                  InputProps={{
+                    endAdornment: (
+                      <Tooltip title={getTooltipText('KPI')}>
+                        <IconButton size="small" edge="end">
+                          <InfoIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ),
+                  }}
                 />
+                {getTermExamples('KPI') && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                      Examples:
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      {getTermExamples('KPI')?.map((example, idx) => (
+                        <Chip
+                          key={idx}
+                          label={example}
+                          size="small"
+                          onClick={() => setKpi(example)}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
 
                 {brandDNA && (
                   <Alert severity="info">
@@ -267,17 +320,17 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
             </StepContent>
           </Step>
 
-          {/* Step 2: Select Channels */}
+          {/* Step 2: Select Platforms */}
           <Step>
             <StepLabel>
               <Typography variant="h6" fontWeight={700}>
-                Select Channels
+                Select Platforms
               </Typography>
             </StepLabel>
             <StepContent>
               <Stack spacing={3}>
                 <Typography variant="body2" color="text.secondary">
-                  Select the platforms where you want to publish your campaign. AI will generate platform-optimized assets for each.
+                  Select the platforms where you want to publish your campaign. AI will generate platform-optimized content for each.
                 </Typography>
 
                 <Grid container spacing={2}>
@@ -316,7 +369,7 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
 
                 {selectedChannels.length > 0 && (
                   <Alert severity="success">
-                    {selectedChannels.length} channel(s) selected. AI will generate optimized assets for each platform.
+                    {selectedChannels.length} platform(s) selected. AI will generate optimized content for each platform.
                   </Alert>
                 )}
 
@@ -330,18 +383,32 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
             </StepContent>
           </Step>
 
-          {/* Step 3: Product Context */}
+          {/* Step 3: Product Information */}
           <Step>
             <StepLabel>
               <Typography variant="h6" fontWeight={700}>
-                Product Context
+                Product Information
               </Typography>
             </StepLabel>
             <StepContent>
               <Stack spacing={3}>
                 <Typography variant="body2" color="text.secondary">
-                  Provide information about your product. This helps AI generate more accurate and relevant marketing assets.
+                  Provide information about your product. This helps AI generate more accurate and relevant marketing content.
                 </Typography>
+
+                {/* Campaign Preview */}
+                {campaignName && goal && selectedChannels.length > 0 && (
+                  <CampaignPreview
+                    campaignName={campaignName}
+                    goal={goal}
+                    kpi={kpi}
+                    channels={selectedChannels}
+                    productName={productName}
+                    productDescription={productDescription}
+                    goalOptions={goalOptions}
+                    channelOptions={channelOptions}
+                  />
+                )}
 
                 <TextField
                   label="Product Name"
@@ -415,7 +482,7 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
                         <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
                         <Box>
                           <Typography variant="body2" color="text.secondary" gutterBottom>
-                            KPI
+                            {getSimpleTerm('KPI')}
                           </Typography>
                           <Typography variant="body1">{kpi}</Typography>
                         </Box>
@@ -467,7 +534,7 @@ export const CampaignWizard: React.FC<CampaignWizardProps> = ({ onComplete, onCa
                     Next Steps
                   </Typography>
                   <Typography variant="body2">
-                    After creating the blueprint, AI will automatically generate personalized asset proposals. You'll then review and approve them before assets are generated.
+                    After creating your campaign, AI will automatically generate personalized content ideas. You'll then review and approve them before content is generated.
                   </Typography>
                 </Alert>
 

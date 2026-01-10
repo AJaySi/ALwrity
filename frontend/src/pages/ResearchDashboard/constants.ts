@@ -1,0 +1,101 @@
+import { ResearchPreset } from './types';
+
+export const SAMPLE_PRESETS: ResearchPreset[] = [
+  {
+    name: 'AI Marketing Tools',
+    keywords: 'Research latest AI-powered marketing automation tools and customer engagement platforms',
+    industry: 'Technology',
+    targetAudience: 'Marketing professionals and SaaS founders',
+    researchMode: 'comprehensive',
+    icon: '🤖',
+    gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'google' as const,
+      max_sources: 15,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: true,
+      include_trends: true,
+    }
+  },
+  {
+    name: 'Small Business SEO',
+    keywords: 'Write a blog on local SEO strategies for small businesses and Google My Business optimization',
+    industry: 'Marketing',
+    targetAudience: 'Small business owners and local entrepreneurs',
+    researchMode: 'targeted',
+    icon: '📈',
+    gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    config: {
+      mode: 'targeted' as const,
+      provider: 'google' as const,
+      max_sources: 12,
+      include_statistics: true,
+      include_expert_quotes: false,
+      include_competitors: true,
+      include_trends: true,
+    }
+  },
+  {
+    name: 'Content Strategy',
+    keywords: 'Analyze content planning frameworks and editorial calendar best practices for B2B marketing',
+    industry: 'Marketing',
+    targetAudience: 'Content marketers and marketing managers',
+    researchMode: 'comprehensive',
+    icon: '✍️',
+    gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'exa' as const,
+      max_sources: 20,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: false,
+      include_trends: true,
+      exa_category: 'research paper',
+      exa_search_type: 'neural' as const,
+    }
+  },
+  {
+    name: 'Crypto Trends',
+    keywords: 'Explore cryptocurrency market trends and blockchain adoption in enterprise',
+    industry: 'Finance',
+    targetAudience: 'Investors and blockchain developers',
+    researchMode: 'comprehensive',
+    icon: '₿',
+    gradient: 'linear-gradient(135deg, #f7931a 0%, #ffa94d 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'exa' as const,
+      max_sources: 25,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: true,
+      include_trends: true,
+      exa_category: 'news',
+      exa_search_type: 'neural' as const,
+    }
+  },
+  {
+    name: 'Healthcare Tech',
+    keywords: 'Research telemedicine platforms and remote patient monitoring technologies',
+    industry: 'Healthcare',
+    targetAudience: 'Healthcare administrators and medical professionals',
+    researchMode: 'comprehensive',
+    icon: '⚕️',
+    gradient: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+    config: {
+      mode: 'comprehensive' as const,
+      provider: 'exa' as const,
+      max_sources: 20,
+      include_statistics: true,
+      include_expert_quotes: true,
+      include_competitors: false,
+      include_trends: true,
+      exa_category: 'research paper',
+      exa_search_type: 'neural' as const,
+      exa_include_domains: ['pubmed.gov', 'nejm.org', 'thelancet.com'],
+    }
+  },
+];

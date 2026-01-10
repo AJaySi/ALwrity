@@ -79,40 +79,52 @@ export const getIndustryPlaceholders = (
 const getIndustryDefaults = (industry: string): string[] => {
   const industryExamples: Record<string, string[]> = {
     Healthcare: [
-      "AI diagnostic tools and clinical applications",
-      "Telemedicine adoption and patient outcomes",
-      "Personalized medicine and genomic testing",
-      "Healthcare automation and workflow optimization"
+      "AI diagnostic tools: accuracy rates and clinical implementation",
+      "Telemedicine adoption statistics and patient satisfaction outcomes",
+      "Personalized medicine: genomic testing costs and benefits",
+      "Healthcare automation: workflow optimization case studies",
+      "Compare telehealth platforms: features, pricing, and ROI",
+      "Future of healthcare AI: predictions for 2025-2026"
     ],
     Technology: [
-      "Edge computing and IoT deployment strategies",
-      "Cloud provider comparison and cost optimization",
-      "Quantum computing breakthroughs and applications",
-      "AI and machine learning industry trends"
+      "Latest AI advancements in multimodal content generation 2026",
+      "Compare cloud providers: AWS vs Azure vs GCP pricing and features",
+      "Edge computing deployment strategies and IoT best practices",
+      "Quantum computing breakthroughs and real-world applications",
+      "How to implement AI automation in small businesses",
+      "Future of AI: predictions and emerging opportunities 2025-2030"
     ],
     Finance: [
-      "DeFi regulations and compliance strategies",
-      "Digital banking and customer retention",
-      "ESG investing trends and performance",
-      "Fintech innovations and market analysis"
+      "DeFi regulations: compliance strategies and risk management",
+      "Digital banking: customer retention tactics and ROI",
+      "ESG investing trends: performance metrics and market analysis",
+      "Fintech innovations: comparison of top payment platforms",
+      "Cryptocurrency adoption: statistics and future outlook 2025",
+      "How to choose the right financial software for small businesses"
     ],
     Marketing: [
-      "AI marketing automation and personalization",
-      "Influencer marketing ROI and best practices",
-      "Privacy-first marketing in cookieless world",
-      "Content marketing strategies and trends"
+      "AI marketing automation tools: comparison and ROI analysis",
+      "Influencer marketing ROI: statistics and best practices 2025",
+      "Privacy-first marketing strategies in cookieless world",
+      "Content marketing trends: what works in 2025",
+      "How to measure marketing attribution and conversion rates",
+      "Social media marketing: platform comparison and audience insights"
     ],
     Business: [
-      "Remote work policies and hybrid models",
-      "Supply chain resilience and diversification",
-      "Sustainability initiatives and ESG programs",
-      "Business automation and efficiency"
+      "Remote work policies: best practices and productivity metrics",
+      "Supply chain resilience: diversification strategies and case studies",
+      "Sustainability initiatives: ESG programs and ROI analysis",
+      "Business automation: tools comparison and implementation guides",
+      "How to scale a startup: funding strategies and growth tactics",
+      "Customer retention: strategies that work in 2025"
     ],
     Education: [
-      "EdTech tools and personalized learning",
-      "Microlearning and skill-based education",
-      "AI tutoring systems and student support",
-      "Online learning platforms and outcomes"
+      "EdTech tools: comparison of top learning platforms",
+      "Microlearning: effectiveness statistics and best practices",
+      "AI tutoring systems: student outcomes and implementation",
+      "Online learning platforms: ROI and engagement metrics",
+      "How to create effective online courses: step-by-step guide",
+      "Future of education: predictions and emerging technologies"
     ],
     'Real Estate': [
       "PropTech innovations and property management",
@@ -128,12 +140,14 @@ const getIndustryDefaults = (industry: string): string[] => {
     ]
   };
 
-  // Default placeholders - concise and actionable
+  // Default placeholders - diverse, actionable examples that inspire research
   return industryExamples[industry] || [
-    "Latest AI trends and innovations",
-    "Best practices and case studies",
-    "Market analysis and competitor insights",
-    "Emerging technologies and future predictions"
+    "What are the latest trends in [your industry] for 2025-2026?",
+    "Compare top solutions: [solution A] vs [solution B]",
+    "Best practices and real-world case studies",
+    "Expert insights and statistics on [topic]",
+    "How to [achieve goal] - step-by-step guide",
+    "Future predictions and emerging opportunities"
   ];
 };
 

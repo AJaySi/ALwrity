@@ -22,10 +22,34 @@ class EnhancedStrategyDBService:
     def __init__(self, db: Session):
         self.db = db
     
-    async def get_enhanced_strategy(self, strategy_id: int) -> Optional[EnhancedContentStrategy]:
-        """Get an enhanced strategy by ID."""
+    async def get_enhanced_strategy(self, strategy_id: int, user_id: Optional[int] = None) -> Optional[EnhancedContentStrategy]:
+        """
+        Get an enhanced strategy by ID.
+        
+        Args:
+            strategy_id: Strategy ID
+            user_id: User ID for ownership verification (REQUIRED for security)
+            
+        Returns:
+            Strategy if found and user_id matches, None otherwise
+        """
         try:
-            return self.db.query(EnhancedContentStrategy).filter(EnhancedContentStrategy.id == strategy_id).first()
+            query = self.db.query(EnhancedContentStrategy).filter(EnhancedContentStrategy.id == strategy_id)
+            
+            # CRITICAL: Always filter by user_id for security
+            if user_id:
+                query = query.filter(EnhancedContentStrategy.user_id == user_id)
+            else:
+                logger.warning(f"⚠️ get_enhanced_strategy called without user_id for strategy {strategy_id} - security risk")
+            
+            strategy = query.first()
+            
+            # Additional ownership check
+            if strategy and user_id and strategy.user_id != user_id:
+                logger.warning(f"⚠️ User {user_id} attempted to access strategy {strategy_id} owned by {strategy.user_id}")
+                return None
+            
+            return strategy
         except Exception as e:
             logger.error(f"Error getting enhanced strategy {strategy_id}: {str(e)}")
             return None

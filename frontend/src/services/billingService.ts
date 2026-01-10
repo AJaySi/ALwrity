@@ -332,9 +332,9 @@ export const billingService = {
       // Debug: Log cost calculation details
       console.log('💰 [BILLING DEBUG] Cost calculation:', {
         backendTotalCost: coerced.current_usage.total_cost,
-        geminiCost: coerced.current_usage.provider_breakdown.gemini.cost,
-        huggingfaceCost: coerced.current_usage.provider_breakdown.huggingface.cost,
-        calculatedTotal: coerced.current_usage.provider_breakdown.gemini.cost + coerced.current_usage.provider_breakdown.huggingface.cost,
+        geminiCost: coerced.current_usage.provider_breakdown.gemini?.cost ?? 0,
+        huggingfaceCost: coerced.current_usage.provider_breakdown.huggingface?.cost ?? 0,
+        calculatedTotal: (coerced.current_usage.provider_breakdown.gemini?.cost ?? 0) + (coerced.current_usage.provider_breakdown.huggingface?.cost ?? 0),
         providerBreakdown: coerced.current_usage.provider_breakdown,
       });
 

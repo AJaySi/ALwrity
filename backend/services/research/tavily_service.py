@@ -92,21 +92,21 @@ class TavilyService:
         Args:
             query: The search query to execute
             topic: Category of search (general, news, finance)
-            search_depth: Depth of search (basic, advanced) - basic costs 1 credit, advanced costs 2
-            max_results: Maximum number of results to return (0-20)
-            include_domains: List of domains to specifically include
-            exclude_domains: List of domains to specifically exclude
+            search_depth: Depth of search (advanced=2 credits, basic/fast/ultra-fast=1 credit)
+            max_results: Maximum number of results to return (0-20, default: 5)
+            include_domains: List of domains to specifically include (max 300)
+            exclude_domains: List of domains to specifically exclude (max 150)
             include_answer: Include LLM-generated answer (basic/advanced/true/false)
             include_raw_content: Include raw HTML content (markdown/text/true/false)
             include_images: Include image search results
-            include_image_descriptions: Include image descriptions
+            include_image_descriptions: Include image descriptions (requires include_images)
             include_favicon: Include favicon URLs
             time_range: Time range filter (day, week, month, year, d, w, m, y)
             start_date: Start date filter (YYYY-MM-DD)
             end_date: End date filter (YYYY-MM-DD)
-            country: Country filter (boost results from specific country)
-            chunks_per_source: Maximum chunks per source (1-3, only for advanced search)
-            auto_parameters: Auto-configure parameters based on query
+            country: Country filter (lowercase full country name, e.g., "united states" not "US")
+            chunks_per_source: Maximum chunks per source (1-3, only for advanced/fast search, default: 3)
+            auto_parameters: Auto-configure parameters based on query (costs 2 credits)
             
         Returns:
             Dictionary containing search results
@@ -159,7 +159,8 @@ class TavilyService:
             if country and topic == "general":
                 payload["country"] = country
             
-            if search_depth == "advanced" and 1 <= chunks_per_source <= 3:
+            # chunks_per_source only available for advanced and fast search_depth
+            if search_depth in ["advanced", "fast"] and 1 <= chunks_per_source <= 3:
                 payload["chunks_per_source"] = chunks_per_source
             
             if auto_parameters:

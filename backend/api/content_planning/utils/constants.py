@@ -43,6 +43,7 @@ ERROR_MESSAGES = {
 # Success Messages
 SUCCESS_MESSAGES = {
     "strategy_created": "Content strategy created successfully",
+    "strategies_retrieved": "Content strategies retrieved successfully",
     "strategy_updated": "Content strategy updated successfully",
     "strategy_deleted": "Content strategy deleted successfully",
     "calendar_event_created": "Calendar event created successfully",

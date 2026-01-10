@@ -42,13 +42,29 @@ export const setAuthTokenGetter = (getter: () => Promise<string | null>) => {
   authTokenGetter = getter;
 };
 
+export const getAuthTokenGetter = (): (() => Promise<string | null>) | null => {
+  return authTokenGetter;
+};
+
 // Get API URL from environment variables
 export const getApiUrl = () => {
   if (process.env.NODE_ENV === 'production') {
     // In production, use the environment variable or fallback
     return process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL;
   }
-  return ''; // Use proxy in development
+  // In development, prefer the local backend to avoid CORS/proxy header stripping.
+  // If an ngrok URL is set in env but we're on localhost, override to localhost:8000.
+  const envUrl = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL;
+  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+  const isNgrok = envUrl && envUrl.includes('ngrok');
+  if (isLocalhost) {
+    if (isNgrok) {
+      console.warn('[apiClient] ⚠️ Overriding ngrok API URL in dev; using http://localhost:8000 to avoid CORS.');
+    }
+    return 'http://localhost:8000';
+  }
+  // Non-localhost dev (rare): use env if provided, otherwise localhost
+  return envUrl || 'http://localhost:8000';
 };
 
 // Create a shared axios instance for all API calls
@@ -89,32 +105,41 @@ export const pollingApiClient = axios.create({
   },
 });
 
-// Add request interceptor for logging (optional)
+// Add request interceptor for logging and authentication
 apiClient.interceptors.request.use(
   async (config) => {
     console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
     try {
       if (!authTokenGetter) {
-        console.warn(`[apiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
-        console.warn(`[apiClient] This usually means TokenInstaller hasn't run yet. Request will likely fail with 401.`);
-      } else {
-        try {
-          const token = await authTokenGetter();
-      if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
-            console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
-          } else {
-            console.warn(`[apiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
-            console.warn(`[apiClient] User ID from localStorage: ${localStorage.getItem('user_id') || 'none'}`);
-          }
-        } catch (tokenError) {
-          console.error(`[apiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
+        // If authTokenGetter is not set, reject the request to prevent 401 errors
+        // This usually means TokenInstaller hasn't run yet or Clerk isn't ready
+        console.error(`[apiClient] ❌ authTokenGetter not set for ${config.url} - rejecting request`);
+        console.error(`[apiClient] This usually means TokenInstaller hasn't run yet. Please wait for authentication to initialize.`);
+        return Promise.reject(new Error('Authentication not ready. Please wait for sign-in to complete.'));
+      }
+      
+      try {
+        const token = await authTokenGetter();
+        if (token) {
+          config.headers = config.headers || {};
+          (config.headers as any)['Authorization'] = `Bearer ${token}`;
+          console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
+        } else {
+          // Token getter returned null - reject request to prevent 401 errors
+          // ProtectedRoute should ensure user is authenticated before components render
+          console.error(`[apiClient] ❌ authTokenGetter returned null for ${config.url} - rejecting request`);
+          console.error(`[apiClient] User ID from localStorage: ${localStorage.getItem('user_id') || 'none'}`);
+          console.error(`[apiClient] This usually means user is not signed in or token expired. ProtectedRoute should prevent this.`);
+          return Promise.reject(new Error('Authentication token not available. Please sign in to continue.'));
         }
+      } catch (tokenError) {
+        console.error(`[apiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
+        // Reject request if token getter throws an error
+        return Promise.reject(new Error('Failed to get authentication token. Please try signing in again.'));
       }
     } catch (e) {
       console.error(`[apiClient] ❌ Unexpected error in request interceptor for ${config.url}:`, e);
-      // non-fatal - let the request proceed, backend will return 401 if needed
+      return Promise.reject(e);
     }
     return config;
   },
@@ -185,9 +210,11 @@ apiClient.interceptors.response.use(
       // If retry failed, token is expired - sign out user and redirect to sign in
       const isOnboardingRoute = window.location.pathname.includes('/onboarding');
       const isRootRoute = window.location.pathname === '/';
+      const isContentPlanningRoute = window.location.pathname.includes('/content-planning');
       
-      // Don't redirect from root route during app initialization - allow InitialRouteHandler to work
-      if (!isRootRoute && !isOnboardingRoute) {
+      // Don't redirect from root route or content-planning during app initialization
+      // ProtectedRoute should handle authentication state
+      if (!isRootRoute && !isOnboardingRoute && !isContentPlanningRoute) {
         // Token expired - sign out user and redirect to landing/sign-in
         console.warn('401 Unauthorized - token expired, signing out user');
         
@@ -211,6 +238,9 @@ apiClient.interceptors.response.use(
           // Fallback: redirect to landing (will show sign-in if Clerk handles it)
           window.location.assign('/');
         }
+      } else if (isContentPlanningRoute) {
+        // For content-planning, just log the error - ProtectedRoute will handle redirect if needed
+        console.warn('401 Unauthorized for content-planning route - ProtectedRoute should handle this');
       } else {
         console.warn('401 Unauthorized - token refresh failed (during initialization, not redirecting)');
       }
@@ -220,8 +250,11 @@ apiClient.interceptors.response.use(
     if (error?.response?.status === 401 && (originalRequest._retry || !authTokenGetter)) {
       const isOnboardingRoute = window.location.pathname.includes('/onboarding');
       const isRootRoute = window.location.pathname === '/';
+      const isContentPlanningRoute = window.location.pathname.includes('/content-planning');
       
-      if (!isRootRoute && !isOnboardingRoute) {
+      // Don't redirect for content-planning during initial load - let ProtectedRoute handle it
+      // This prevents redirect loops when requests are made before auth is fully ready
+      if (!isRootRoute && !isOnboardingRoute && !isContentPlanningRoute) {
         // Token expired - sign out user and redirect
         console.warn('401 Unauthorized - token expired (not retried), signing out user');
         localStorage.removeItem('user_id');
@@ -234,6 +267,9 @@ apiClient.interceptors.response.use(
         } else {
           window.location.assign('/');
         }
+      } else if (isContentPlanningRoute) {
+        // For content-planning, just log the error - ProtectedRoute will handle redirect if needed
+        console.warn('401 Unauthorized for content-planning route - ProtectedRoute should handle this');
       }
     }
 
@@ -437,10 +473,18 @@ pollingApiClient.interceptors.response.use(
     }
     // Check if it's a subscription-related error and handle it globally
     if (error.response?.status === 429 || error.response?.status === 402) {
+      console.log('Polling API Client: Detected subscription error', {
+        status: error.response?.status,
+        data: error.response?.data,
+        hasHandler: !!globalSubscriptionErrorHandler
+      });
+      
       if (globalSubscriptionErrorHandler) {
         const result = globalSubscriptionErrorHandler(error);
         const wasHandled = result instanceof Promise ? await result : result;
-        if (!wasHandled) {
+        if (wasHandled) {
+          console.log('Polling API Client: Subscription error handled by global handler - modal should be shown');
+        } else {
           console.warn('Polling API Client: Subscription error not handled by global handler');
         }
         // Always reject so the polling hook can also handle it

@@ -29,7 +29,13 @@ import {
   AddAudioToVideo,
   LibraryVideo,
 } from './components/VideoStudio';
-import { ProductMarketingDashboard } from './components/ProductMarketing';
+import {
+  ProductMarketingDashboard,
+  ProductPhotoshootStudio,
+  ProductAnimationStudio,
+  ProductVideoStudio,
+  ProductAvatarStudio,
+} from './components/ProductMarketing';
 import PodcastDashboard from './components/PodcastMaker/PodcastDashboard';
 import PricingPage from './components/Pricing/PricingPage';
 import WixTestPage from './components/WixTestPage/WixTestPage';
@@ -37,7 +43,7 @@ import WixCallbackPage from './components/WixCallbackPage/WixCallbackPage';
 import WordPressCallbackPage from './components/WordPressCallbackPage/WordPressCallbackPage';
 import BingCallbackPage from './components/BingCallbackPage/BingCallbackPage';
 import BingAnalyticsStorage from './components/BingAnalyticsStorage/BingAnalyticsStorage';
-import ResearchTest from './pages/ResearchTest';
+import ResearchDashboard from './pages/ResearchDashboard';
 import IntentResearchTest from './pages/IntentResearchTest';
 import SchedulerDashboard from './pages/SchedulerDashboard';
 import BillingPage from './pages/BillingPage';
@@ -500,11 +506,17 @@ const App: React.FC = () => {
                 <Route path="/image-studio/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
                 <Route path="/asset-library" element={<ProtectedRoute><AssetLibrary /></ProtectedRoute>} />
                 <Route path="/campaign-creator" element={<ProtectedRoute><ProductMarketingDashboard /></ProtectedRoute>} />
+                <Route path="/campaign-creator/photoshoot" element={<ProtectedRoute><ProductPhotoshootStudio /></ProtectedRoute>} />
+                <Route path="/campaign-creator/animation" element={<ProtectedRoute><ProductAnimationStudio /></ProtectedRoute>} />
+                <Route path="/campaign-creator/video" element={<ProtectedRoute><ProductVideoStudio /></ProtectedRoute>} />
+                <Route path="/campaign-creator/avatar" element={<ProtectedRoute><ProductAvatarStudio /></ProtectedRoute>} />
                 <Route path="/product-marketing" element={<Navigate to="/campaign-creator" replace />} />
                 <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />
-                <Route path="/research-test" element={<ResearchTest />} />
+                <Route path="/research-test" element={<ResearchDashboard />} />
+                <Route path="/research-dashboard" element={<ResearchDashboard />} />
+                <Route path="/alwrity-researcher" element={<ResearchDashboard />} />
                 <Route path="/intent-research" element={<IntentResearchTest />} />
                 <Route path="/wix-test" element={<WixTestPage />} />
                 <Route path="/wix-test-direct" element={<WixTestPage />} />

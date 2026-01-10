@@ -35,12 +35,12 @@ const CostBreakdown: React.FC<CostBreakdownProps> = ({
 }) => {
   // Transform data for pie chart
   const chartData = Object.entries(providerBreakdown)
-    .filter(([_, data]) => data.cost > 0)
+    .filter(([_, data]) => data && data.cost > 0)
     .map(([provider, data]) => ({
       name: provider.charAt(0).toUpperCase() + provider.slice(1),
-      value: data.cost,
-      calls: data.calls,
-      tokens: data.tokens,
+      value: data?.cost ?? 0,
+      calls: data?.calls ?? 0,
+      tokens: data?.tokens ?? 0,
       color: getProviderColor(provider),
       icon: getProviderIcon(provider)
     }))
@@ -124,9 +124,14 @@ const CostBreakdown: React.FC<CostBreakdownProps> = ({
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
+                  animationBegin={0}
+                  animationDuration={1000}
                 >
                   {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.color}
+                    />
                   ))}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />

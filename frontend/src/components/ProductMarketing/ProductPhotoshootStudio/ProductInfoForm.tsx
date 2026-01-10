@@ -1,6 +1,7 @@
 import React from 'react';
-import { Box, TextField, Stack, Typography } from '@mui/material';
-import { Inventory2 as ProductIcon } from '@mui/icons-material';
+import { Box, TextField, Stack, Typography, Tooltip, IconButton } from '@mui/material';
+import { Inventory2 as ProductIcon, Info as InfoIcon } from '@mui/icons-material';
+import { getTooltipText } from '../../../utils/terminology';
 
 interface ProductInfoFormProps {
   productName: string;
@@ -32,6 +33,15 @@ export const ProductInfoForm: React.FC<ProductInfoFormProps> = ({
         required
         placeholder="e.g., Premium Wireless Headphones"
         helperText="Enter the name of your product"
+        InputProps={{
+          endAdornment: (
+            <Tooltip title="The name of your product as it will appear in photos and marketing materials">
+              <IconButton size="small" edge="end">
+                <InfoIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ),
+        }}
         sx={{
           '& .MuiOutlinedInput-root': {
             background: 'rgba(255, 255, 255, 0.05)',
@@ -52,6 +62,15 @@ export const ProductInfoForm: React.FC<ProductInfoFormProps> = ({
         rows={4}
         placeholder="Describe your product: features, benefits, target audience..."
         helperText="Provide details about your product to help AI generate accurate images"
+        InputProps={{
+          endAdornment: (
+            <Tooltip title="Describe your product's key features, benefits, and who it's for. The more details you provide, the better the AI can create accurate product photos.">
+              <IconButton size="small" edge="end" sx={{ alignSelf: 'flex-start', mt: 1 }}>
+                <InfoIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ),
+        }}
         sx={{
           '& .MuiOutlinedInput-root': {
             background: 'rgba(255, 255, 255, 0.05)',

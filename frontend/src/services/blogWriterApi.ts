@@ -1,58 +1,15 @@
 import { apiClient, aiApiClient, pollingApiClient } from "../api/client";
+// Import research types for use in this file
+import type { ResearchMode, ResearchProvider, SourceType, DateRange, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
+// Re-export research types for backward compatibility
+// TODO: Update all blog writer code to import from researchApi.ts directly
+export type { ResearchMode, ResearchProvider, SourceType, DateRange, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
 
 export interface PersonaInfo {
   persona_id?: string;
   tone?: string;
   audience?: string;
   industry?: string;
-}
-
-export interface ResearchSource {
-  title: string;
-  url: string;
-  excerpt?: string;
-  credibility_score?: number;
-  published_at?: string;
-  index?: number;
-  source_type?: string;
-}
-
-export type ResearchMode = 'basic' | 'comprehensive' | 'targeted';
-export type ResearchProvider = 'google' | 'exa' | 'tavily';
-export type SourceType = 'web' | 'academic' | 'news' | 'industry' | 'expert';
-export type DateRange = 'last_week' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'all_time';
-
-export interface ResearchConfig {
-  mode?: ResearchMode;
-  provider?: ResearchProvider;
-  date_range?: DateRange;
-  source_types?: SourceType[];
-  max_sources?: number;
-  include_statistics?: boolean;
-  include_expert_quotes?: boolean;
-  include_competitors?: boolean;
-  include_trends?: boolean;
-  // Exa-specific options
-  exa_category?: string;
-  exa_include_domains?: string[];
-  exa_exclude_domains?: string[];
-  exa_search_type?: 'auto' | 'keyword' | 'neural';
-  // Tavily-specific options
-  tavily_topic?: 'general' | 'news' | 'finance';
-  tavily_search_depth?: 'basic' | 'advanced';
-  tavily_include_domains?: string[];
-  tavily_exclude_domains?: string[];
-  tavily_include_answer?: boolean | 'basic' | 'advanced';
-  tavily_include_raw_content?: boolean | 'markdown' | 'text';
-  tavily_include_images?: boolean;
-  tavily_include_image_descriptions?: boolean;
-  tavily_include_favicon?: boolean;
-  tavily_time_range?: 'day' | 'week' | 'month' | 'year' | 'd' | 'w' | 'm' | 'y';
-  tavily_start_date?: string; // YYYY-MM-DD
-  tavily_end_date?: string; // YYYY-MM-DD
-  tavily_country?: string;
-  tavily_chunks_per_source?: number; // 1-3
-  tavily_auto_parameters?: boolean;
 }
 
 export interface BlogResearchRequest {
@@ -98,18 +55,10 @@ export interface GroundingMetadata {
   web_search_queries: string[];
 }
 
-export interface BlogResearchResponse {
-  success: boolean;
-  keywords?: string[];
-  sources: ResearchSource[];
-  keyword_analysis: Record<string, any>;
-  competitor_analysis: Record<string, any>;
-  suggested_angles: string[];
+export interface BlogResearchResponse extends ResearchResponse {
+  // Blog Writer specific extensions
   search_widget?: string;
-  search_queries?: string[];
   grounding_metadata?: GroundingMetadata;
-  original_keywords?: string[];  // Original user-provided keywords for caching
-  error_message?: string;
 }
 
 export interface BlogOutlineSection {

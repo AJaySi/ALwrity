@@ -195,6 +195,8 @@ class ContentPlanningAPI {
   }
 
   async getStrategies(userId?: number) {
+    // Note: apiClient interceptor handles authentication token injection
+    // ProtectedRoute ensures user is authenticated before component renders
     const params = userId ? { user_id: userId } : {};
     const response = await apiClient.get(`${this.baseURL}/enhanced-strategies`, { params });
     return response.data?.data || response.data;
@@ -687,7 +689,21 @@ class ContentPlanningAPI {
 
   // SSE Methods (for Orchestrator - real-time updates needed)
   async streamStrategicIntelligence(userId?: number): Promise<EventSource> {
-    const url = `${this.baseURL}/enhanced-strategies/stream/strategic-intelligence?user_id=${userId || 1}`;
+    // Check if auth token is available before making request
+    const { getAuthTokenGetter } = await import('../api/client');
+    const tokenGetter = getAuthTokenGetter();
+    
+    if (!tokenGetter) {
+      throw new Error('Authentication not ready. Please wait for sign-in to complete.');
+    }
+    
+    const token = await tokenGetter();
+    if (!token) {
+      throw new Error('Authentication required. Please sign in to access content planning features.');
+    }
+    
+    // EventSource doesn't support custom headers, so we pass token as query parameter
+    const url = `${this.baseURL}/enhanced-strategies/stream/strategic-intelligence?user_id=${userId || 1}&token=${encodeURIComponent(token)}`;
     return new EventSource(url);
   }
 
@@ -860,7 +876,21 @@ class ContentPlanningAPI {
 
   // Additional SSE Methods (for other features that need real-time updates)
   async streamKeywordResearch(userId?: number): Promise<EventSource> {
-    const url = `${this.baseURL}/enhanced-strategies/stream/keyword-research?user_id=${userId || 1}`;
+    // Check if auth token is available before making request
+    const { getAuthTokenGetter } = await import('../api/client');
+    const tokenGetter = getAuthTokenGetter();
+    
+    if (!tokenGetter) {
+      throw new Error('Authentication not ready. Please wait for sign-in to complete.');
+    }
+    
+    const token = await tokenGetter();
+    if (!token) {
+      throw new Error('Authentication required. Please sign in to access content planning features.');
+    }
+    
+    // EventSource doesn't support custom headers, so we pass token as query parameter
+    const url = `${this.baseURL}/enhanced-strategies/stream/keyword-research?user_id=${userId || 1}&token=${encodeURIComponent(token)}`;
     return new EventSource(url);
   }
 

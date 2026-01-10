@@ -27,7 +27,7 @@ import {
 import { motion } from 'framer-motion';
 import { GlassyCard } from '../ImageStudio/ui/GlassyCard';
 import { SectionHeader } from '../ImageStudio/ui/SectionHeader';
-import { useProductMarketing } from '../../hooks/useProductMarketing';
+import { useCampaignCreator } from '../../hooks/useCampaignCreator';
 
 interface ChannelPackBuilderProps {
   channels: string[];
@@ -48,7 +48,7 @@ export const ChannelPackBuilder: React.FC<ChannelPackBuilderProps> = ({
   channels,
   onChannelPackReady,
 }) => {
-  const { getChannelPack, channelPack, isLoadingChannelPack, error } = useProductMarketing();
+  const { getChannelPack, channelPack, isLoadingChannelPack, error } = useCampaignCreator();
   const [selectedChannel, setSelectedChannel] = useState<string>(channels[0] || 'instagram');
   const [channelPacks, setChannelPacks] = useState<Record<string, any>>({});
 

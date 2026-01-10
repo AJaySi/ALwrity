@@ -20,24 +20,24 @@ export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> =
   // Only show landing/initial content when no research exists
   // Phase navigation header is always visible, so this is just the initial content
   if (!research) {
+    // Show research form only when user explicitly navigated to research phase (clicked "Start Research")
+    if (currentPhase === 'research') {
+      return <ManualResearchForm onResearchComplete={onResearchComplete} />;
+    }
+    
+    // Default: Always show landing page when no research exists
+    // This ensures landing page is shown on initial load
     return (
-      <>
-        {/* Show manual research form when on research phase and CopilotKit unavailable */}
-        {!copilotKitAvailable && currentPhase === 'research' && (
-          <ManualResearchForm onResearchComplete={onResearchComplete} />
-        )}
-        {/* Show landing page for CopilotKit flow or when not on research phase */}
-        {(!copilotKitAvailable && currentPhase !== 'research') || copilotKitAvailable ? (
-          <BlogWriterLanding 
-            onStartWriting={() => {
-              // Navigate to research phase to start the workflow
-              navigateToPhase('research');
-            }}
-          />
-        ) : null}
-      </>
+      <BlogWriterLanding 
+        onStartWriting={() => {
+          // Navigate to research phase to show the research form
+          navigateToPhase('research');
+        }}
+      />
     );
   }
+  
+  // If research exists, don't show landing section (phase content will be shown instead)
   return null;
 };
 

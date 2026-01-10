@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useResearchPolling } from '../../hooks/usePolling';
+import { useBlogWriterResearchPolling } from '../../hooks/usePolling';
 import ResearchProgressModal from './ResearchProgressModal';
 import { BlogResearchResponse } from '../../services/blogWriterApi';
 import { researchCache } from '../../services/researchCache';
@@ -18,7 +18,7 @@ export const ResearchPollingHandler: React.FC<ResearchPollingHandlerProps> = ({
 }) => {
   const [currentMessage, setCurrentMessage] = useState<string>('');
 
-  const polling = useResearchPolling({
+  const polling = useBlogWriterResearchPolling({
     onProgress: (message) => {
       debug.log('[ResearchPollingHandler] progress', { message });
       setCurrentMessage(message);

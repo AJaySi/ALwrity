@@ -40,11 +40,27 @@ export const DeliverablesSelector: React.FC<DeliverablesSelectorProps> = ({
       }}
     >
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-        <Typography variant="caption" color="#666" fontWeight={600}>
-          What I'll find for you:
-        </Typography>
-        <Tooltip title="Click chips to select/remove deliverables">
-          <InfoIcon sx={{ fontSize: 14, color: '#9ca3af' }} />
+        <Tooltip
+          title={
+            <Box sx={{ p: 0.5 }}>
+              <Typography variant="caption" fontWeight={600} display="block" gutterBottom>
+                Research Deliverables
+              </Typography>
+              <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>
+                These are the specific types of information ALwrity will extract from the research results. Click chips to toggle them on/off.
+              </Typography>
+              <Typography variant="caption" display="block" sx={{ mt: 1, fontStyle: 'italic' }}>
+                Selected deliverables will be highlighted in blue. Unselected ones will be skipped during research analysis.
+              </Typography>
+            </Box>
+          }
+          arrow
+          placement="top"
+        >
+          <Typography variant="caption" color="#666" fontWeight={600} sx={{ cursor: 'help', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            What I'll find for you:
+            <InfoIcon sx={{ fontSize: 14, color: '#9ca3af' }} />
+          </Typography>
         </Tooltip>
       </Box>
       <Box display="flex" flexWrap="wrap" gap={0.5}>

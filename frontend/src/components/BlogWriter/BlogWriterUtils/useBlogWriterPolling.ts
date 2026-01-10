@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  useResearchPolling,
+  useBlogWriterResearchPolling,
   useOutlinePolling,
   useMediumGenerationPolling,
   useRewritePolling,
@@ -24,8 +24,8 @@ export const useBlogWriterPolling = ({
   onContentConfirmed,
   navigateToPhase,
 }: UseBlogWriterPollingProps) => {
-  // Research polling hook (for context awareness)
-  const researchPolling = useResearchPolling({
+  // Research polling hook (for context awareness) - uses blog writer endpoint
+  const researchPolling = useBlogWriterResearchPolling({
     onComplete: onResearchComplete,
     onError: (error) => console.error('Research polling error:', error)
   });

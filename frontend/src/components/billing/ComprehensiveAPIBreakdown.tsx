@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -10,6 +10,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  CircularProgress,
 } from '@mui/material';
 import { ExpandMore } from '@mui/icons-material';
 import { motion } from 'framer-motion';
@@ -20,11 +21,15 @@ import {
   Code,
   Database,
   FileText,
-  BarChart3
+  BarChart3,
+  RefreshCw
 } from 'lucide-react';
 
 // Types
-import { ProviderBreakdown } from '../../types/billing';
+import { ProviderBreakdown, APIPricing } from '../../types/billing';
+
+// Services
+import { billingService } from '../../services/billingService';
 
 interface ComprehensiveAPIBreakdownProps {
   providerBreakdown: ProviderBreakdown;
@@ -151,10 +156,96 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
   providerBreakdown, 
   totalCost 
 }) => {
+  const [pricing, setPricing] = useState<APIPricing[]>([]);
+  const [loadingPricing, setLoadingPricing] = useState(true);
+  const [pricingError, setPricingError] = useState<string | null>(null);
+
+  // Fetch dynamic pricing on mount
+  useEffect(() => {
+    const fetchPricing = async () => {
+      try {
+        setLoadingPricing(true);
+        setPricingError(null);
+        const pricingData = await billingService.getAPIPricing();
+        setPricing(pricingData);
+      } catch (err) {
+        console.error('[ComprehensiveAPIBreakdown] Error fetching pricing:', err);
+        setPricingError(err instanceof Error ? err.message : 'Failed to fetch pricing');
+      } finally {
+        setLoadingPricing(false);
+      }
+    };
+
+    fetchPricing();
+  }, []);
+
   // Get active providers from breakdown
   const activeProviders = Object.entries(providerBreakdown)
-    .filter(([_, data]) => data.cost > 0)
-    .map(([provider, data]) => ({ provider, ...data }));
+    .filter(([_, data]) => data && data.cost > 0)
+    .map(([provider, data]) => ({ 
+      provider, 
+      cost: data?.cost ?? 0,
+      calls: data?.calls ?? 0,
+      tokens: data?.tokens ?? 0
+    }));
+
+  // Helper function to format pricing from API or fallback to static
+  const getPricingDisplay = (apiName: string, fallbackPricing: string): string => {
+    if (loadingPricing) {
+      return 'Loading pricing...';
+    }
+    
+    if (pricingError) {
+      return fallbackPricing; // Fallback to static pricing on error
+    }
+
+    // Find matching pricing by provider name
+    const apiPricing = pricing.find(p => 
+      p.provider.toLowerCase() === apiName.toLowerCase() ||
+      p.model_name.toLowerCase().includes(apiName.toLowerCase())
+    );
+
+    if (apiPricing) {
+      // Format pricing based on what's available
+      const parts: string[] = [];
+      
+      if (apiPricing.cost_per_input_token > 0 || apiPricing.cost_per_output_token > 0) {
+        const inputCost = apiPricing.cost_per_input_token > 0 
+          ? `$${(apiPricing.cost_per_input_token * 1000000).toFixed(2)}/1M input`
+          : '';
+        const outputCost = apiPricing.cost_per_output_token > 0
+          ? `$${(apiPricing.cost_per_output_token * 1000000).toFixed(2)}/1M output`
+          : '';
+        if (inputCost && outputCost) {
+          parts.push(`${inputCost}, ${outputCost}`);
+        } else if (inputCost) {
+          parts.push(inputCost);
+        } else if (outputCost) {
+          parts.push(outputCost);
+        }
+      }
+      
+      if (apiPricing.cost_per_request > 0) {
+        parts.push(`$${apiPricing.cost_per_request.toFixed(4)} per request`);
+      }
+      
+      if (apiPricing.cost_per_search > 0) {
+        parts.push(`$${apiPricing.cost_per_search.toFixed(4)} per search`);
+      }
+      
+      if (apiPricing.cost_per_image > 0) {
+        parts.push(`$${apiPricing.cost_per_image.toFixed(2)} per image`);
+      }
+      
+      if (apiPricing.cost_per_page > 0) {
+        parts.push(`$${apiPricing.cost_per_page.toFixed(4)} per page`);
+      }
+
+      return parts.length > 0 ? parts.join(', ') : fallbackPricing;
+    }
+
+    return fallbackPricing; // Fallback to static pricing if not found
+  };
 
   const getProviderCategory = (providerName: string) => {
     const provider = providerName.toLowerCase();
@@ -180,9 +271,9 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
     
     return {
       count: categoryProviders.length,
-      totalCost: categoryProviders.reduce((sum, p) => sum + p.cost, 0),
-      totalCalls: categoryProviders.reduce((sum, p) => sum + p.calls, 0),
-      totalTokens: categoryProviders.reduce((sum, p) => sum + p.tokens, 0)
+      totalCost: categoryProviders.reduce((sum, p) => sum + (p.cost ?? 0), 0),
+      totalCalls: categoryProviders.reduce((sum, p) => sum + (p.calls ?? 0), 0),
+      totalTokens: categoryProviders.reduce((sum, p) => sum + (p.tokens ?? 0), 0)
     };
   };
 
@@ -210,9 +301,35 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
               <BarChart3 size={20} />
               Comprehensive API Breakdown
             </Typography>
-            <Tooltip title="Detailed breakdown of all API usage across categories">
-              <Info size={16} color="rgba(255,255,255,0.7)" />
-            </Tooltip>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {loadingPricing && (
+                <CircularProgress size={16} sx={{ color: 'rgba(255,255,255,0.7)' }} />
+              )}
+              <Tooltip title={pricingError ? `Pricing error: ${pricingError}. Showing static pricing.` : "Detailed breakdown with real-time pricing from API"}>
+                <Info size={16} color="rgba(255,255,255,0.7)" />
+              </Tooltip>
+              {!loadingPricing && !pricingError && (
+                <Tooltip title="Refresh pricing">
+                  <RefreshCw 
+                    size={16} 
+                    color="rgba(255,255,255,0.7)" 
+                    style={{ cursor: 'pointer' }}
+                    onClick={async () => {
+                      try {
+                        setLoadingPricing(true);
+                        const pricingData = await billingService.getAPIPricing();
+                        setPricing(pricingData);
+                        setPricingError(null);
+                      } catch (err) {
+                        setPricingError(err instanceof Error ? err.message : 'Failed to refresh pricing');
+                      } finally {
+                        setLoadingPricing(false);
+                      }
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
           </Box>
         </CardContent>
 
@@ -253,7 +370,7 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
               <Grid item xs={6} sm={3}>
                 <Box sx={{ textAlign: 'center' }}>
                   <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#ffffff' }}>
-                    {activeProviders.reduce((sum, p) => sum + p.calls, 0)}
+                    {activeProviders.reduce((sum, p) => sum + (p.calls ?? 0), 0)}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                     Total Calls
@@ -352,9 +469,50 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
                               {api.description}
                             </Typography>
                             
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block', mb: 1 }}>
-                              Pricing: {api.pricing}
-                            </Typography>
+                            <Tooltip 
+                              title={
+                                <Box>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                                    Current Pricing
+                                  </Typography>
+                                  <Typography variant="body2">
+                                    {loadingPricing 
+                                      ? 'Loading...'
+                                      : pricingError 
+                                      ? `Using fallback pricing. Error: ${pricingError}`
+                                      : 'Real-time pricing from API'
+                                    }
+                                  </Typography>
+                                  {!loadingPricing && !pricingError && (
+                                    <Typography variant="caption" sx={{ mt: 1, display: 'block', opacity: 0.8 }}>
+                                      Last updated: {pricing.find(p => 
+                                        p.provider.toLowerCase() === api.name.toLowerCase()
+                                      )?.effective_date || 'N/A'}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              }
+                              arrow
+                              placement="top"
+                            >
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  color: loadingPricing 
+                                    ? 'rgba(255,255,255,0.5)' 
+                                    : pricingError 
+                                    ? 'rgba(255,193,7,0.8)'
+                                    : 'rgba(74, 222, 128, 0.9)', 
+                                  display: 'block', 
+                                  mb: 1,
+                                  fontWeight: !loadingPricing && !pricingError ? 500 : 400
+                                }}
+                              >
+                                Pricing: {getPricingDisplay(api.name, api.pricing)}
+                                {!loadingPricing && !pricingError && ' ✓'}
+                                {pricingError && ' (static)'}
+                              </Typography>
+                            </Tooltip>
 
                             {providerData && (
                               <Box sx={{ mt: 2, p: 1, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 1 }}>
@@ -364,7 +522,7 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
                                       Cost
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block', color: '#4ade80', fontWeight: 'bold' }}>
-                                      ${providerData.cost.toFixed(4)}
+                                      ${(providerData.cost ?? 0).toFixed(4)}
                                     </Typography>
                                   </Grid>
                                   <Grid item xs={4}>
@@ -372,7 +530,7 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
                                       Calls
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block', color: '#ffffff', fontWeight: 'bold' }}>
-                                      {providerData.calls}
+                                      {providerData.calls ?? 0}
                                     </Typography>
                                   </Grid>
                                   <Grid item xs={4}>
@@ -380,7 +538,7 @@ const ComprehensiveAPIBreakdown: React.FC<ComprehensiveAPIBreakdownProps> = ({
                                       Tokens
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block', color: '#ffffff', fontWeight: 'bold' }}>
-                                      {providerData.tokens.toLocaleString()}
+                                      {(providerData.tokens ?? 0).toLocaleString()}
                                     </Typography>
                                   </Grid>
                                 </Grid>

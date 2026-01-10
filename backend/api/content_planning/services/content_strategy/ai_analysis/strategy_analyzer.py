@@ -35,16 +35,23 @@ class StrategyAnalyzer:
             'max_response_time': 30.0  # seconds
         }
     
-    async def generate_comprehensive_ai_recommendations(self, strategy: EnhancedContentStrategy, db: Session) -> None:
+    async def generate_comprehensive_ai_recommendations(self, strategy: EnhancedContentStrategy, db: Session, user_id: str) -> None:
         """
         Generate comprehensive AI recommendations using 5 specialized prompts.
         
         Args:
             strategy: The enhanced content strategy object
             db: Database session
+            user_id: Clerk user ID for subscription checking (REQUIRED - no fallback)
+            
+        Raises:
+            RuntimeError: If user_id is not provided
         """
         try:
-            self.logger.info(f"Generating comprehensive AI recommendations for strategy: {strategy.id}")
+            if not user_id:
+                raise RuntimeError("user_id is required for subscription checking. All AI calls must be authenticated.")
+            
+            self.logger.info(f"Generating comprehensive AI recommendations for strategy: {strategy.id}, user_id: {user_id}")
             
             start_time = datetime.utcnow()
             
@@ -64,7 +71,7 @@ class StrategyAnalyzer:
             for analysis_type in analysis_types:
                 try:
                     # Generate recommendations without timeout (allow natural processing time)
-                    recommendations = await self.generate_specialized_recommendations(strategy, analysis_type, db)
+                    recommendations = await self.generate_specialized_recommendations(strategy, analysis_type, db, user_id=user_id)
                     
                     # Validate recommendations before storing
                     if recommendations and (recommendations.get('recommendations') or recommendations.get('insights')):
@@ -130,7 +137,7 @@ class StrategyAnalyzer:
             self.logger.error(f"Error generating comprehensive AI recommendations: {str(e)}")
             # Don't raise error, just log it as this is enhancement, not core functionality
     
-    async def generate_specialized_recommendations(self, strategy: EnhancedContentStrategy, analysis_type: str, db: Session) -> Dict[str, Any]:
+    async def generate_specialized_recommendations(self, strategy: EnhancedContentStrategy, analysis_type: str, db: Session, user_id: str) -> Dict[str, Any]:
         """
         Generate specialized recommendations using specific AI prompts.
         
@@ -138,11 +145,18 @@ class StrategyAnalyzer:
             strategy: The enhanced content strategy object
             analysis_type: Type of analysis to perform
             db: Database session
+            user_id: Clerk user ID for subscription checking (REQUIRED - no fallback)
             
         Returns:
             Dictionary with structured AI recommendations
+            
+        Raises:
+            RuntimeError: If user_id is not provided
         """
         try:
+            if not user_id:
+                raise RuntimeError("user_id is required for subscription checking. All AI calls must be authenticated.")
+            
             # Prepare strategy data for AI analysis
             strategy_data = strategy.to_dict()
             
@@ -152,8 +166,8 @@ class StrategyAnalyzer:
             # Create prompt based on analysis type
             prompt = self.create_specialized_prompt(strategy, analysis_type)
             
-            # Generate AI response (placeholder - integrate with actual AI service)
-            ai_response = await self.call_ai_service(prompt, analysis_type)
+            # Generate AI response with user_id for subscription checks
+            ai_response = await self.call_ai_service(prompt, analysis_type, user_id=user_id)
             
             # Parse and structure the response
             structured_response = self.parse_ai_response(ai_response, analysis_type)
@@ -324,21 +338,25 @@ class StrategyAnalyzer:
         
         return specialized_prompts.get(analysis_type, base_context)
     
-    async def call_ai_service(self, prompt: str, analysis_type: str) -> Dict[str, Any]:
+    async def call_ai_service(self, prompt: str, analysis_type: str, user_id: str) -> Dict[str, Any]:
         """
         Call AI service to generate recommendations.
         
         Args:
             prompt: The AI prompt to send
             analysis_type: Type of analysis being performed
+            user_id: Clerk user ID for subscription checking (REQUIRED - no fallback)
             
         Returns:
             Dictionary with AI response
             
         Raises:
-            RuntimeError: If AI service is not available or fails
+            RuntimeError: If AI service is not available or fails, or if user_id is missing
         """
         try:
+            if not user_id:
+                raise RuntimeError("user_id is required for subscription checking. All AI calls must be authenticated.")
+            
             # Import AI service manager
             from services.ai_service_manager import AIServiceManager, AIServiceType
             
@@ -396,11 +414,12 @@ class StrategyAnalyzer:
                 }
             }
             
-            # Generate AI response using the service manager
+            # Generate AI response using the service manager WITH user_id for subscription checks
             response = await ai_service.execute_structured_json_call(
                 service_type,
                 prompt,
-                schema
+                schema,
+                user_id=user_id  # ✅ Pass user_id for subscription checks
             )
             
             # Validate that we got actual AI response
@@ -581,16 +600,16 @@ class StrategyAnalyzer:
 
 
 # Standalone functions for backward compatibility
-async def generate_comprehensive_ai_recommendations(strategy: EnhancedContentStrategy, db: Session) -> None:
+async def generate_comprehensive_ai_recommendations(strategy: EnhancedContentStrategy, db: Session, user_id: Optional[str] = None) -> None:
     """Generate comprehensive AI recommendations using 5 specialized prompts."""
     analyzer = StrategyAnalyzer()
-    return await analyzer.generate_comprehensive_ai_recommendations(strategy, db)
+    return await analyzer.generate_comprehensive_ai_recommendations(strategy, db, user_id=user_id)
 
 
-async def generate_specialized_recommendations(strategy: EnhancedContentStrategy, analysis_type: str, db: Session) -> Dict[str, Any]:
+async def generate_specialized_recommendations(strategy: EnhancedContentStrategy, analysis_type: str, db: Session, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Generate specialized recommendations using specific AI prompts."""
     analyzer = StrategyAnalyzer()
-    return await analyzer.generate_specialized_recommendations(strategy, analysis_type, db)
+    return await analyzer.generate_specialized_recommendations(strategy, analysis_type, db, user_id=user_id)
 
 
 def create_specialized_prompt(strategy: EnhancedContentStrategy, analysis_type: str) -> str:
@@ -599,10 +618,10 @@ def create_specialized_prompt(strategy: EnhancedContentStrategy, analysis_type: 
     return analyzer.create_specialized_prompt(strategy, analysis_type)
 
 
-async def call_ai_service(prompt: str, analysis_type: str) -> Dict[str, Any]:
+async def call_ai_service(prompt: str, analysis_type: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Call AI service to generate recommendations."""
     analyzer = StrategyAnalyzer()
-    return await analyzer.call_ai_service(prompt, analysis_type)
+    return await analyzer.call_ai_service(prompt, analysis_type, user_id=user_id)
 
 
 def parse_ai_response(ai_response: Dict[str, Any], analysis_type: str) -> Dict[str, Any]:

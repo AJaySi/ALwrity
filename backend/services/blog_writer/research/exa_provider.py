@@ -29,10 +29,15 @@ class ExaResearchProvider(BaseProvider):
         # Determine category: use exa_category if set, otherwise map from source_types
         category = config.exa_category if config.exa_category else self._map_source_type_to_category(config.source_types)
         
+        # Use exa_num_results if available, otherwise fallback to max_sources
+        num_results = config.exa_num_results if hasattr(config, 'exa_num_results') and config.exa_num_results else min(config.max_sources, 25)
+        # Cap at 100 as per Exa API limits
+        num_results = min(num_results, 100)
+        
         # Build search kwargs - use correct Exa API format
         search_kwargs = {
             'type': config.exa_search_type or "auto",
-            'num_results': min(config.max_sources, 25),
+            'num_results': num_results,
             'text': {'max_characters': 1000},
             'summary': {'query': f"Key insights about {topic}"},
             'highlights': {
@@ -49,37 +54,133 @@ class ExaResearchProvider(BaseProvider):
         if config.exa_exclude_domains:
             search_kwargs['exclude_domains'] = config.exa_exclude_domains
         
+        # Add date filters if configured
+        if hasattr(config, 'exa_date_filter') and config.exa_date_filter:
+            search_kwargs['start_published_date'] = config.exa_date_filter
+        if hasattr(config, 'exa_end_published_date') and config.exa_end_published_date:
+            search_kwargs['end_published_date'] = config.exa_end_published_date
+        if hasattr(config, 'exa_start_crawl_date') and config.exa_start_crawl_date:
+            search_kwargs['start_crawl_date'] = config.exa_start_crawl_date
+        if hasattr(config, 'exa_end_crawl_date') and config.exa_end_crawl_date:
+            search_kwargs['end_crawl_date'] = config.exa_end_crawl_date
+        
+        # Add context if configured (supports boolean or object with maxCharacters)
+        if hasattr(config, 'exa_context') and config.exa_context is not None:
+            if config.exa_context:
+                if hasattr(config, 'exa_context_max_characters') and config.exa_context_max_characters:
+                    search_kwargs['context'] = {'maxCharacters': config.exa_context_max_characters}
+                else:
+                    search_kwargs['context'] = True
+            # If False, don't add context parameter (default behavior)
+        
+        # Add text filters if configured
+        if hasattr(config, 'exa_include_text') and config.exa_include_text:
+            search_kwargs['include_text'] = config.exa_include_text
+        if hasattr(config, 'exa_exclude_text') and config.exa_exclude_text:
+            search_kwargs['exclude_text'] = config.exa_exclude_text
+        
         logger.info(f"[Exa Research] Executing search: {query}")
         
         # Execute Exa search - pass contents parameters directly, not nested
         try:
+            # Build optional parameters dict
+            optional_params = {}
+            if category:
+                optional_params['category'] = category
+            if config.exa_include_domains:
+                optional_params['include_domains'] = config.exa_include_domains
+            if config.exa_exclude_domains:
+                optional_params['exclude_domains'] = config.exa_exclude_domains
+            if hasattr(config, 'exa_date_filter') and config.exa_date_filter:
+                optional_params['start_published_date'] = config.exa_date_filter
+            if hasattr(config, 'exa_end_published_date') and config.exa_end_published_date:
+                optional_params['end_published_date'] = config.exa_end_published_date
+            if hasattr(config, 'exa_start_crawl_date') and config.exa_start_crawl_date:
+                optional_params['start_crawl_date'] = config.exa_start_crawl_date
+            if hasattr(config, 'exa_end_crawl_date') and config.exa_end_crawl_date:
+                optional_params['end_crawl_date'] = config.exa_end_crawl_date
+            # Add context if configured (supports boolean or object with maxCharacters)
+            if hasattr(config, 'exa_context') and config.exa_context:
+                if hasattr(config, 'exa_context_max_characters') and config.exa_context_max_characters:
+                    optional_params['context'] = {'maxCharacters': config.exa_context_max_characters}
+                else:
+                    optional_params['context'] = True
+            
+            # Add text filters if configured
+            if hasattr(config, 'exa_include_text') and config.exa_include_text:
+                optional_params['include_text'] = config.exa_include_text
+            if hasattr(config, 'exa_exclude_text') and config.exa_exclude_text:
+                optional_params['exclude_text'] = config.exa_exclude_text
+            
+            # Add additional_queries for Deep search (only works with type="deep")
+            if config.exa_search_type == 'deep' and hasattr(config, 'exa_additional_queries') and config.exa_additional_queries:
+                optional_params['additional_queries'] = config.exa_additional_queries
+            
+            # Build contents parameters (text, summary, highlights)
+            text_params = {}
+            if hasattr(config, 'exa_text_max_characters') and config.exa_text_max_characters:
+                text_params['max_characters'] = config.exa_text_max_characters
+            else:
+                text_params['max_characters'] = 1000  # Default
+            
+            summary_params = {}
+            if hasattr(config, 'exa_summary_query') and config.exa_summary_query:
+                summary_params['query'] = config.exa_summary_query
+            else:
+                summary_params['query'] = f"Key insights about {topic}"  # Default
+            
+            highlights_params = {}
+            if hasattr(config, 'exa_highlights') and config.exa_highlights:
+                if hasattr(config, 'exa_highlights_num_sentences') and config.exa_highlights_num_sentences:
+                    highlights_params['num_sentences'] = config.exa_highlights_num_sentences
+                else:
+                    highlights_params['num_sentences'] = 2  # Default
+                
+                if hasattr(config, 'exa_highlights_per_url') and config.exa_highlights_per_url:
+                    highlights_params['highlights_per_url'] = config.exa_highlights_per_url
+                else:
+                    highlights_params['highlights_per_url'] = 3  # Default
+            
             results = self.exa.search_and_contents(
                 query,
-                text={'max_characters': 1000},
-                summary={'query': f"Key insights about {topic}"},
-                highlights={'num_sentences': 2, 'highlights_per_url': 3},
+                text=text_params,
+                summary=summary_params,
+                highlights=highlights_params if highlights_params else None,
                 type=config.exa_search_type or "auto",
-                num_results=min(config.max_sources, 25),
-                **({k: v for k, v in {
-                    'category': category,
-                    'include_domains': config.exa_include_domains,
-                    'exclude_domains': config.exa_exclude_domains
-                }.items() if v})
+                num_results=num_results,
+                **optional_params
             )
         except Exception as e:
             logger.error(f"[Exa Research] API call failed: {e}")
             # Try simpler call without contents if the above fails
             try:
                 logger.info("[Exa Research] Retrying with simplified parameters")
+                # Build minimal optional parameters for retry
+                optional_params = {}
+                if category:
+                    optional_params['category'] = category
+                if config.exa_include_domains:
+                    optional_params['include_domains'] = config.exa_include_domains
+                if config.exa_exclude_domains:
+                    optional_params['exclude_domains'] = config.exa_exclude_domains
+                if hasattr(config, 'exa_date_filter') and config.exa_date_filter:
+                    optional_params['start_published_date'] = config.exa_date_filter
+                if hasattr(config, 'exa_end_published_date') and config.exa_end_published_date:
+                    optional_params['end_published_date'] = config.exa_end_published_date
+                if hasattr(config, 'exa_start_crawl_date') and config.exa_start_crawl_date:
+                    optional_params['start_crawl_date'] = config.exa_start_crawl_date
+                if hasattr(config, 'exa_end_crawl_date') and config.exa_end_crawl_date:
+                    optional_params['end_crawl_date'] = config.exa_end_crawl_date
+                
+                # Add additional_queries for Deep search (only works with type="deep")
+                if config.exa_search_type == 'deep' and hasattr(config, 'exa_additional_queries') and config.exa_additional_queries:
+                    optional_params['additional_queries'] = config.exa_additional_queries
+                
                 results = self.exa.search_and_contents(
                     query,
                     type=config.exa_search_type or "auto",
-                    num_results=min(config.max_sources, 25),
-                    **({k: v for k, v in {
-                        'category': category,
-                        'include_domains': config.exa_include_domains,
-                        'exclude_domains': config.exa_exclude_domains
-                    }.items() if v})
+                    num_results=num_results,
+                    **optional_params
                 )
             except Exception as retry_error:
                 logger.error(f"[Exa Research] Retry also failed: {retry_error}")

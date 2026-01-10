@@ -31,7 +31,11 @@ from .research_strategies import get_strategy_for_mode
 
 
 class ResearchService:
-    """Service for conducting comprehensive research using Google Search grounding."""
+    """Service for conducting comprehensive research using Exa neural search.
+    
+    Currently supports Exa as the primary and only provider for testing and debugging.
+    Google Search grounding code is preserved for future use.
+    """
     
     def __init__(self):
         self.keyword_analyzer = KeywordAnalyzer()
@@ -43,9 +47,11 @@ class ResearchService:
     async def research(self, request: BlogResearchRequest, user_id: str) -> BlogResearchResponse:
         """
         Stage 1: Research & Strategy (AI Orchestration)
-        Uses ONLY Gemini's native Google Search grounding - ONE API call for everything.
+        Uses Exa neural search as the primary research provider.
         Follows LinkedIn service pattern for efficiency and cost optimization.
         Includes intelligent caching for exact keyword matches.
+        
+        Note: Currently Exa-only for testing. Failures will raise errors instead of falling back.
         """
         try:
             from services.cache.research_cache import research_cache
@@ -88,7 +94,7 @@ class ResearchService:
 
             # Determine research mode and get appropriate strategy
             research_mode = request.research_mode or ResearchMode.BASIC
-            config = request.config or ResearchConfig(mode=research_mode, provider=ResearchProvider.GOOGLE)
+            config = request.config or ResearchConfig(mode=research_mode, provider=ResearchProvider.EXA)
             strategy = get_strategy_for_mode(research_mode)
             
             logger.info(f"Research: mode={research_mode.value}, provider={config.provider.value}")
@@ -96,7 +102,11 @@ class ResearchService:
             # Build research prompt based on strategy
             research_prompt = strategy.build_research_prompt(topic, industry, target_audience, config)
             
-            # Route to appropriate provider
+            # Currently Exa-only for testing - fail if other providers are requested
+            if config.provider != ResearchProvider.EXA:
+                raise ValueError(f"Only Exa provider is currently supported for testing. Requested provider: {config.provider.value}")
+            
+            # Route to Exa provider
             if config.provider == ResearchProvider.EXA:
                 # Exa research workflow
                 from .exa_provider import ExaResearchProvider
@@ -145,13 +155,9 @@ class ResearchService:
                     grounding_metadata = None  # Exa doesn't provide grounding metadata
                     
                 except RuntimeError as e:
-                    if "EXA_API_KEY not configured" in str(e):
-                        logger.warning("Exa not configured, falling back to Google")
-                        config.provider = ResearchProvider.GOOGLE
-                        # Continue to Google flow below
-                        raw_result = None
-                    else:
-                        raise
+                    # Fail fast - no fallback for testing/debugging
+                    logger.error(f"Exa research failed: {e}")
+                    raise RuntimeError(f"Exa research failed: {e}. Please ensure EXA_API_KEY is configured.") from e
             
             elif config.provider == ResearchProvider.TAVILY:
                 # Tavily research workflow
@@ -231,41 +237,13 @@ class ResearchService:
                     grounding_metadata = None  # Tavily doesn't provide grounding metadata
                     
                 except RuntimeError as e:
-                    if "TAVILY_API_KEY not configured" in str(e):
-                        logger.warning("Tavily not configured, falling back to Google")
-                        config.provider = ResearchProvider.GOOGLE
-                        # Continue to Google flow below
-                        raw_result = None
-                    else:
-                        raise
-                
-            if config.provider not in [ResearchProvider.EXA, ResearchProvider.TAVILY]:
-                # Google research (existing flow) or fallback from Exa
-                from .google_provider import GoogleResearchProvider
-                import time
-                
-                api_start_time = time.time()
-                google_provider = GoogleResearchProvider()
-                gemini_result = await google_provider.search(
-                    research_prompt, topic, industry, target_audience, config, user_id
-                )
-                api_duration_ms = (time.time() - api_start_time) * 1000
-                
-                # Log API call performance
-                blog_writer_logger.log_api_call(
-                    "gemini_grounded",
-                    "generate_grounded_content",
-                    api_duration_ms,
-                    token_usage=gemini_result.get("token_usage", {}),
-                    content_length=len(gemini_result.get("content", ""))
-                )
-                
-                # Extract sources and content
-                sources = self._extract_sources_from_grounding(gemini_result)
-                content = gemini_result.get("content", "")
-                search_widget = gemini_result.get("search_widget", "") or ""
-                search_queries = gemini_result.get("search_queries", []) or []
-                grounding_metadata = self._extract_grounding_metadata(gemini_result)
+                    # Fail fast - no fallback for testing/debugging
+                    logger.error(f"Tavily research failed: {e}")
+                    raise RuntimeError(f"Tavily research failed: {e}. Please ensure TAVILY_API_KEY is configured.") from e
+            
+            # Validate that we have content and sources before proceeding
+            if 'content' not in locals() or 'sources' not in locals():
+                raise RuntimeError(f"{config.provider.value} research did not return content or sources. Research failed.")
             
             # Continue with common analysis (same for both providers)
             keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords, user_id=user_id)
@@ -434,7 +412,7 @@ class ResearchService:
             
             # Determine research mode and get appropriate strategy
             research_mode = request.research_mode or ResearchMode.BASIC
-            config = request.config or ResearchConfig(mode=research_mode, provider=ResearchProvider.GOOGLE)
+            config = request.config or ResearchConfig(mode=research_mode, provider=ResearchProvider.EXA)
             strategy = get_strategy_for_mode(research_mode)
             
             logger.info(f"Research: mode={research_mode.value}, provider={config.provider.value}")
@@ -442,7 +420,11 @@ class ResearchService:
             # Build research prompt based on strategy
             research_prompt = strategy.build_research_prompt(topic, industry, target_audience, config)
             
-            # Route to appropriate provider
+            # Currently Exa-only for testing - fail if other providers are requested
+            if config.provider != ResearchProvider.EXA:
+                raise ValueError(f"Only Exa provider is currently supported for testing. Requested provider: {config.provider.value}")
+            
+            # Route to Exa provider
             if config.provider == ResearchProvider.EXA:
                 # Exa research workflow
                 from .exa_provider import ExaResearchProvider
@@ -495,13 +477,10 @@ class ResearchService:
                     grounding_metadata = None  # Exa doesn't provide grounding metadata
                     
                 except RuntimeError as e:
-                    if "EXA_API_KEY not configured" in str(e):
-                        logger.warning("Exa not configured, falling back to Google")
-                        await task_manager.update_progress(task_id, "⚠️ Exa not configured, falling back to Google Search")
-                        config.provider = ResearchProvider.GOOGLE
-                        # Continue to Google flow below
-                    else:
-                        raise
+                    # Fail fast - no fallback for testing/debugging
+                    logger.error(f"Exa research failed: {e}")
+                    await task_manager.update_progress(task_id, f"❌ Exa research failed: {str(e)}")
+                    raise RuntimeError(f"Exa research failed: {e}. Please ensure EXA_API_KEY is configured.") from e
             
             elif config.provider == ResearchProvider.TAVILY:
                 # Tavily research workflow
@@ -581,43 +560,18 @@ class ResearchService:
                     grounding_metadata = None  # Tavily doesn't provide grounding metadata
                     
                 except RuntimeError as e:
-                    if "TAVILY_API_KEY not configured" in str(e):
-                        logger.warning("Tavily not configured, falling back to Google")
-                        await task_manager.update_progress(task_id, "⚠️ Tavily not configured, falling back to Google Search")
-                        config.provider = ResearchProvider.GOOGLE
-                        # Continue to Google flow below
-                    else:
-                        raise
-                
-            if config.provider not in [ResearchProvider.EXA, ResearchProvider.TAVILY]:
-                # Google research (existing flow)
-                from .google_provider import GoogleResearchProvider
-                
-                await task_manager.update_progress(task_id, "🌐 Connecting to Google Search grounding...")
-                google_provider = GoogleResearchProvider()
-                
-                await task_manager.update_progress(task_id, "🤖 Making AI request to Gemini with Google Search grounding...")
-                try:
-                    gemini_result = await google_provider.search(
-                        research_prompt, topic, industry, target_audience, config, user_id
-                    )
-                except HTTPException as http_error:
-                    logger.error(f"Subscription limit exceeded for Google research: {http_error.detail}")
-                    await task_manager.update_progress(task_id, f"❌ Subscription limit exceeded: {http_error.detail.get('message', str(http_error.detail)) if isinstance(http_error.detail, dict) else str(http_error.detail)}")
-                    raise
-                
-                await task_manager.update_progress(task_id, "📊 Processing research results and extracting insights...")
-                # Extract sources and content
-                # Handle None result case
-                if gemini_result is None:
-                    logger.error("gemini_result is None after search - this should not happen if HTTPException was raised")
-                    raise ValueError("Research result is None - search operation failed unexpectedly")
-                
-                sources = self._extract_sources_from_grounding(gemini_result)
-                content = gemini_result.get("content", "") if isinstance(gemini_result, dict) else ""
-                search_widget = gemini_result.get("search_widget", "") or "" if isinstance(gemini_result, dict) else ""
-                search_queries = gemini_result.get("search_queries", []) or [] if isinstance(gemini_result, dict) else []
-                grounding_metadata = self._extract_grounding_metadata(gemini_result)
+                    # Fail fast - no fallback for testing/debugging
+                    logger.error(f"Tavily research failed: {e}")
+                    await task_manager.update_progress(task_id, f"❌ Tavily research failed: {str(e)}")
+                    raise RuntimeError(f"Tavily research failed: {e}. Please ensure TAVILY_API_KEY is configured.") from e
+            
+            # Validate that we have content and sources before proceeding
+            if config.provider == ResearchProvider.EXA and ('content' not in locals() or 'sources' not in locals()):
+                await task_manager.update_progress(task_id, "❌ Exa research did not return content or sources")
+                raise RuntimeError("Exa research did not return content or sources. Research failed.")
+            elif config.provider == ResearchProvider.TAVILY and ('content' not in locals() or 'sources' not in locals()):
+                await task_manager.update_progress(task_id, "❌ Tavily research did not return content or sources")
+                raise RuntimeError("Tavily research did not return content or sources. Research failed.")
             
             # Continue with common analysis (same for both providers)
             await task_manager.update_progress(task_id, "🔍 Analyzing keywords and content angles...")

@@ -2,10 +2,12 @@
 Research module for AI Blog Writer.
 
 This module handles all research-related functionality including:
-- Google Search grounding integration
+- Exa neural search integration (primary provider for testing)
 - Keyword analysis and competitor research
 - Content angle discovery
 - Research caching and optimization
+
+Note: Currently Exa-only for testing. Google Search grounding code preserved for future use.
 """
 
 from .research_service import ResearchService

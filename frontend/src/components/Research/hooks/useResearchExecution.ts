@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { researchCache } from '../../../services/researchCache';
 import { WizardState } from '../types/research.types';
 import { researchEngineApi, ResearchEngineRequest } from '../../../services/researchEngineApi';
@@ -10,6 +10,7 @@ import {
   AnalyzeIntentResponse,
   ResearchQuery,
 } from '../types/intent.types';
+import { autoSaveDraft, restoreDraft } from '../../../utils/researchDraftManager';
 
 export const useResearchExecution = () => {
   const [isExecuting, setIsExecuting] = useState(false);
@@ -22,6 +23,25 @@ export const useResearchExecution = () => {
   const [confirmedIntent, setConfirmedIntent] = useState<ResearchIntent | null>(null);
   const [intentResult, setIntentResult] = useState<IntentDrivenResearchResponse | null>(null);
   const [useIntentMode, setUseIntentMode] = useState(true); // Enable by default
+  
+  // Restore intent analysis and confirmed intent from draft on mount
+  useEffect(() => {
+    const draft = restoreDraft();
+    if (draft) {
+      if (draft.intent_analysis) {
+        setIntentAnalysis(draft.intent_analysis);
+        console.log('[useResearchExecution] 🔄 Restored intent analysis from draft');
+      }
+      if (draft.confirmed_intent) {
+        setConfirmedIntent(draft.confirmed_intent);
+        console.log('[useResearchExecution] 🔄 Restored confirmed intent from draft');
+      }
+      if (draft.intent_result) {
+        setIntentResult(draft.intent_result);
+        console.log('[useResearchExecution] 🔄 Restored intent result from draft');
+      }
+    }
+  }, []);
 
   const polling = useResearchPolling({
     onComplete: (result) => {
@@ -145,6 +165,9 @@ export const useResearchExecution = () => {
         keywords: state.keywords,
         use_persona: true,
         use_competitor_data: true,
+        user_provided_purpose: state.userPurpose,
+        user_provided_content_output: state.userContentOutput,
+        user_provided_depth: state.userDepth,
       });
 
       if (!response.success) {
@@ -160,6 +183,14 @@ export const useResearchExecution = () => {
       if (response.intent.confidence >= 0.85 && !response.intent.needs_clarification) {
         setConfirmedIntent(response.intent);
       }
+
+      // Save draft with intent analysis
+      autoSaveDraft(state, {
+        intentAnalysis: response,
+        confirmedIntent: response.intent.confidence >= 0.85 && !response.intent.needs_clarification ? response.intent : undefined,
+      }).catch(error => {
+        console.warn('[useResearchExecution] Failed to save draft after intent analysis:', error);
+      });
 
       setIsAnalyzingIntent(false);
       return response;
@@ -199,6 +230,7 @@ export const useResearchExecution = () => {
           expected_deliverables: ['key_statistics'],
           depth: 'detailed',
           focus_areas: [],
+          also_answering: [],
           perspective: null,
           time_sensitivity: null,
           input_type: 'keywords',
@@ -220,9 +252,19 @@ export const useResearchExecution = () => {
   /**
    * Confirm the analyzed intent (possibly with user modifications).
    */
-  const confirmIntent = useCallback((intent: ResearchIntent) => {
+  const confirmIntent = useCallback((intent: ResearchIntent, state?: WizardState) => {
     setConfirmedIntent(intent);
-  }, []);
+    
+    // Save draft with confirmed intent
+    if (state) {
+      autoSaveDraft(state, {
+        intentAnalysis: intentAnalysis || undefined,
+        confirmedIntent: intent,
+      }).catch(error => {
+        console.warn('[useResearchExecution] Failed to save draft after intent confirmation:', error);
+      });
+    }
+  }, [intentAnalysis]);
 
   /**
    * Update a specific field in the analyzed intent.
@@ -288,6 +330,15 @@ export const useResearchExecution = () => {
       }
 
       setIntentResult(response);
+      
+      // Save draft with research results
+      autoSaveDraft(state, {
+        intentAnalysis: intentAnalysis || undefined,
+        confirmedIntent: intent,
+        intentResult: response,
+      }).catch(error => {
+        console.warn('[useResearchExecution] Failed to save draft after research completion:', error);
+      });
       
       // Also set the legacy result for backward compatibility with StepResults
       // Transform intent result to match the expected format

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -66,6 +66,7 @@ import {
 } from '@mui/icons-material';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { useContentAssets, AssetFilters, ContentAsset } from '../../hooks/useContentAssets';
+import { intentResearchApi } from '../../api/intentResearchApi';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -122,6 +123,7 @@ const getStatusChip = (status: string) => {
 
 export const AssetLibrary: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   
   // Initialize filters from URL params if present
   const urlSourceModule = searchParams.get('source_module');
@@ -200,6 +202,18 @@ export const AssetLibrary: React.FC = () => {
   }, [debouncedSearch, idSearch, modelSearch, filterType, tabValue, page, pageSize, urlSourceModule]);
 
   const { assets, loading, error, total, toggleFavorite, deleteAsset, trackUsage, refetch } = useContentAssets(filters);
+
+  // Refetch assets when component mounts with research_tools filter to show latest drafts
+  useEffect(() => {
+    if (urlSourceModule === 'research_tools' && urlAssetType === 'text') {
+      console.log('[AssetLibrary] Refetching assets for research_tools/text filter');
+      // Small delay to ensure any recent saves are complete
+      const timer = setTimeout(() => {
+        refetch();
+      }, 1000); // Increased delay to ensure save completes
+      return () => clearTimeout(timer);
+    }
+  }, [urlSourceModule, urlAssetType, refetch]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -312,6 +326,36 @@ export const AssetLibrary: React.FC = () => {
 
   const handleMenuClose = (assetId: number) => {
     setAnchorEl({ ...anchorEl, [assetId]: null });
+  };
+
+  const handleRestoreResearchProject = async (asset: ContentAsset) => {
+    try {
+      // Extract project_id from asset metadata
+      const projectId = asset.asset_metadata?.project_id;
+      if (!projectId) {
+        setSnackbar({ open: true, message: 'Project ID not found', severity: 'error' });
+        return;
+      }
+
+      // Load full project from database
+      const project = await intentResearchApi.getResearchProject(projectId);
+      
+      if (!project) {
+        setSnackbar({ open: true, message: 'Project not found', severity: 'error' });
+        return;
+      }
+
+      // Store project ID for restoration hook to pick up
+      localStorage.setItem('alwrity_research_project_id', projectId);
+      
+      // Navigate to Research Dashboard
+      navigate('/research-dashboard');
+      
+      setSnackbar({ open: true, message: 'Research project restored', severity: 'success' });
+    } catch (error) {
+      console.error('[AssetLibrary] Error restoring research project:', error);
+      setSnackbar({ open: true, message: 'Failed to restore research project', severity: 'error' });
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -1004,6 +1048,21 @@ export const AssetLibrary: React.FC = () => {
                             open={Boolean(anchorEl[asset.id])}
                             onClose={() => handleMenuClose(asset.id)}
                           >
+                            {/* Restore Research Project option for research_tools assets */}
+                            {asset.source_module === 'research_tools' && asset.asset_type === 'text' && asset.asset_metadata?.project_type === 'research_project' && (
+                              <MenuItem 
+                                onClick={() => { 
+                                  handleRestoreResearchProject(asset); 
+                                  handleMenuClose(asset.id); 
+                                }}
+                                sx={{ color: '#667eea' }}
+                              >
+                                <ListItemIcon>
+                                  <Box sx={{ color: '#667eea', fontSize: 20 }}>🔬</Box>
+                                </ListItemIcon>
+                                <ListItemText>Restore in Researcher</ListItemText>
+                              </MenuItem>
+                            )}
                             <MenuItem onClick={() => { handleFavorite(asset.id); handleMenuClose(asset.id); }}>
                               <ListItemIcon>
                                 {asset.is_favorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
@@ -1214,6 +1273,18 @@ export const AssetLibrary: React.FC = () => {
                         {formatDate(asset.created_at)}
                       </Typography>
                       <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        {/* Restore Research Project button for research_tools assets */}
+                        {asset.source_module === 'research_tools' && asset.asset_type === 'text' && asset.asset_metadata?.project_type === 'research_project' && (
+                          <Tooltip title="Restore in Researcher">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleRestoreResearchProject(asset)}
+                              sx={{ color: '#667eea' }}
+                            >
+                              <Box sx={{ fontSize: 20 }}>🔬</Box>
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <IconButton
                           size="small"
                           onClick={() => handleDownload(asset)}

@@ -27,6 +27,7 @@ except ImportError:
 
 from ..onboarding.api_key_manager import APIKeyManager
 from services.subscription import PricingService
+from services.subscription.provider_detection import detect_actual_provider
 from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("video_generation_service")
@@ -508,6 +509,11 @@ async def ai_video_generate(
 
     # Generate video based on operation type
     model_name = kwargs.get("model", _get_default_model(operation_type, provider))
+    
+    # Track response time for video generation
+    import time
+    start_time = time.time()
+    
     try:
         if operation_type == "text-to-video":
             if provider == "huggingface":
@@ -620,6 +626,7 @@ async def ai_video_generate(
         
         # Track usage (same pattern as text generation)
         # Use cost from result_dict if available, otherwise calculate
+        response_time = time.time() - start_time
         cost_override = result_dict.get("cost") if operation_type == "image-to-video" else kwargs.get("cost_override")
         track_video_usage(
             user_id=user_id,
@@ -628,6 +635,7 @@ async def ai_video_generate(
             prompt=result_dict.get("prompt", prompt or ""),
             video_bytes=video_bytes,
             cost_override=cost_override,
+            response_time=response_time,
         )
 
         # Progress callback: Complete
@@ -662,6 +670,7 @@ def track_video_usage(
     prompt: str,
     video_bytes: bytes,
     cost_override: Optional[float] = None,
+    response_time: float = 0.0,
 ) -> Dict[str, Any]:
     """
     Track subscription usage for any video generation (text-to-video or image-to-video).
@@ -732,19 +741,27 @@ def track_video_usage(
         # Only show ∞ for Enterprise tier when limit is 0 (unlimited)
         audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
 
+        # Detect actual provider name (WaveSpeed, HuggingFace, Google, etc.)
+        actual_provider = detect_actual_provider(
+            provider_enum=APIProvider.VIDEO,
+            model_name=model_name,
+            endpoint=f"/video-generation/{provider}"
+        )
+        
         usage_log = APIUsageLog(
             user_id=user_id,
             provider=APIProvider.VIDEO,
             endpoint=f"/video-generation/{provider}",
             method="POST",
             model_used=model_name,
+            actual_provider_name=actual_provider,  # Track actual provider (WaveSpeed, HuggingFace, etc.)
             tokens_input=0,
             tokens_output=0,
             tokens_total=0,
             cost_input=0.0,
             cost_output=0.0,
             cost_total=cost_per_video,
-            response_time=0.0,
+            response_time=response_time,  # Use actual response time
             status_code=200,
             request_size=len((prompt or "").encode("utf-8")),
             response_size=len(video_bytes),

@@ -1053,11 +1053,11 @@ class VideoStudioService:
             return base_cost * duration * model_multiplier * resolution_multiplier
 
     def _get_default_model(self, operation_type: str) -> str:
-        """Get default model for operation type."""
+        """Get default model for operation type (OSS-focused defaults)."""
         defaults = {
-            "text-to-video": "hunyuan-video-1.5",
-            "image-to-video": "alibaba/wan-2.5",
+            "text-to-video": "wan-2.5",  # OSS: WAN 2.5 ($0.25) vs HunyuanVideo ($0.10) - better quality/value
+            "image-to-video": "wan-2.5",  # OSS: WAN 2.5 (same as text-to-video)
             "avatar": "wavespeed/mocha",
             "enhancement": "wavespeed/flashvsr",
         }
-        return defaults.get(operation_type, "hunyuan-video-1.5")
+        return defaults.get(operation_type, "wan-2.5")  # Default to OSS model

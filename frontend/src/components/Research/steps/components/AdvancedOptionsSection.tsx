@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { ProviderAvailability } from '../../../../api/researchConfig';
-import { ResearchConfig } from '../../../../services/blogWriterApi';
+import { ResearchConfig } from '../../../../services/researchApi';
 import { ExaOptions } from './ExaOptions';
 import { TavilyOptions } from './TavilyOptions';
 

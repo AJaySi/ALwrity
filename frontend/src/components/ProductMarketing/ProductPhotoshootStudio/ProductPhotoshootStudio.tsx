@@ -14,7 +14,9 @@ import {
   AutoAwesome,
   PhotoCamera,
   ArrowBack,
+  SmartToy,
 } from '@mui/icons-material';
+import { TextField, Chip } from '@mui/material';
 import { ImageStudioLayout } from '../../ImageStudio/ImageStudioLayout';
 import { GlassyCard } from '../../ImageStudio/ui/GlassyCard';
 import { SectionHeader } from '../../ImageStudio/ui/SectionHeader';
@@ -24,6 +26,7 @@ import { StyleSelector } from './StyleSelector';
 import { ProductVariations } from './ProductVariations';
 import { ProductImagePreview } from './ProductImagePreview';
 import { ProductAssetsGallery } from './ProductAssetsGallery';
+import { ProductImageSettingsPreview } from '../ProductImagePreview';
 import { useNavigate } from 'react-router-dom';
 
 interface ProductPhotoshootStudioProps {
@@ -43,6 +46,10 @@ export const ProductPhotoshootStudio: React.FC<ProductPhotoshootStudioProps> = (
     brandDNA,
     getBrandDNA,
     isLoadingBrandDNA,
+    inferRequirements,
+    isInferringPrompt,
+    inferenceError,
+    getPersonalizedDefaults,
   } = useProductMarketing();
 
   // Product Information
@@ -69,12 +76,37 @@ export const ProductPhotoshootStudio: React.FC<ProductPhotoshootStudioProps> = (
   const [generatedImages, setGeneratedImages] = useState<any[]>([]);
   const [assetsGalleryRefetch, setAssetsGalleryRefetch] = useState(0);
 
-  // Load brand DNA on mount
+  // Intelligent Prompt Input
+  const [intelligentInput, setIntelligentInput] = useState('');
+  const [showIntelligentInput, setShowIntelligentInput] = useState(true);
+
+  // Load brand DNA and personalized defaults on mount
   useEffect(() => {
     if (!brandDNA) {
       getBrandDNA().catch(console.error);
     }
-  }, [brandDNA, getBrandDNA]);
+    
+    // Load personalized defaults
+    getPersonalizedDefaults('product_photoshoot')
+      .then((defaults) => {
+        if (defaults) {
+          // Pre-fill form with personalized defaults
+          if (defaults.environment) setEnvironment(defaults.environment);
+          if (defaults.background_style) setBackgroundStyle(defaults.background_style);
+          if (defaults.lighting) setLighting(defaults.lighting);
+          if (defaults.style) setStyle(defaults.style);
+          if (defaults.resolution) setResolution(defaults.resolution);
+          if (defaults.num_variations) setNumVariations(defaults.num_variations);
+          if (defaults.brand_colors && defaults.brand_colors.length > 0) {
+            setBrandColors(defaults.brand_colors);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load personalized defaults:', err);
+        // Continue without defaults
+      });
+  }, [brandDNA, getBrandDNA, getPersonalizedDefaults]);
 
   // Extract brand colors from brand DNA
   useEffect(() => {
@@ -134,6 +166,56 @@ export const ProductPhotoshootStudio: React.FC<ProductPhotoshootStudioProps> = (
     console.log('Image saved to library:', image.asset_id);
   };
 
+  const handleIntelligentInference = async () => {
+    if (!intelligentInput.trim()) {
+      return;
+    }
+
+    try {
+      const config = await inferRequirements(intelligentInput, 'image');
+      
+      // Pre-fill all fields from inferred configuration
+      if (config.product_name) {
+        setProductName(config.product_name);
+      }
+      if (config.product_description) {
+        setProductDescription(config.product_description);
+      }
+      if (config.environment) {
+        setEnvironment(config.environment);
+      }
+      if (config.background_style) {
+        setBackgroundStyle(config.background_style);
+      }
+      if (config.lighting) {
+        setLighting(config.lighting);
+      }
+      if (config.style) {
+        setStyle(config.style);
+      }
+      if (config.angle) {
+        setAngle(config.angle);
+      }
+      if (config.resolution) {
+        setResolution(config.resolution);
+      }
+      if (config.num_variations) {
+        setNumVariations(config.num_variations);
+      }
+      if (config.brand_colors) {
+        setBrandColors(config.brand_colors);
+      }
+      if (config.additional_context) {
+        setAdditionalContext(config.additional_context);
+      }
+      
+      // Hide intelligent input after successful inference
+      setShowIntelligentInput(false);
+    } catch (error: any) {
+      console.error('Failed to infer requirements:', error);
+    }
+  };
+
   const navigate = useNavigate();
 
   const canGenerate = productName.trim() && productDescription.trim();
@@ -186,6 +268,61 @@ export const ProductPhotoshootStudio: React.FC<ProductPhotoshootStudioProps> = (
           </Alert>
         )}
 
+        {/* Intelligent Prompt Input */}
+        {showIntelligentInput && (
+          <Paper
+            sx={{
+              p: 3,
+              mb: 3,
+              background: 'rgba(124, 58, 237, 0.1)',
+              border: '1px solid rgba(124, 58, 237, 0.3)',
+            }}
+          >
+            <Stack spacing={2}>
+              <Box display="flex" alignItems="center" gap={1}>
+                <SmartToy sx={{ color: '#c4b5fd' }} />
+                <Typography variant="h6" fontWeight={600}>
+                  AI Quick Start
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                Describe your product in a few words, and AI will automatically fill in all the settings for you.
+              </Typography>
+              <Box display="flex" gap={2}>
+                <TextField
+                  fullWidth
+                  placeholder="e.g., iPhone case for my store, luxury watch photoshoot, product demo video"
+                  value={intelligentInput}
+                  onChange={(e) => setIntelligentInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && intelligentInput.trim()) {
+                      handleIntelligentInference();
+                    }
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      background: 'rgba(255, 255, 255, 0.05)',
+                    },
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<SmartToy />}
+                  onClick={handleIntelligentInference}
+                  disabled={!intelligentInput.trim() || isInferringPrompt}
+                >
+                  {isInferringPrompt ? 'Analyzing...' : 'Auto-Fill'}
+                </Button>
+              </Box>
+              {inferenceError && (
+                <Alert severity="error" sx={{ mt: 1 }}>
+                  {inferenceError}
+                </Alert>
+              )}
+            </Stack>
+          </Paper>
+        )}
+
         <Grid container spacing={4}>
           {/* Left Column: Form */}
           <Grid item xs={12} md={5}>
@@ -225,6 +362,27 @@ export const ProductPhotoshootStudio: React.FC<ProductPhotoshootStudioProps> = (
                   onStyleChange={setStyle}
                 />
               </Paper>
+
+              {/* Image Settings Preview */}
+              {productName && (
+                <Paper
+                  sx={{
+                    p: 3,
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                  }}
+                >
+                  <ProductImageSettingsPreview
+                    productName={productName}
+                    environment={environment}
+                    backgroundStyle={backgroundStyle}
+                    lighting={lighting}
+                    style={style}
+                    angle={angle}
+                    resolution={resolution}
+                  />
+                </Paper>
+              )}
 
               {/* Product Variations */}
               <Paper

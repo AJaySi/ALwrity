@@ -203,6 +203,10 @@ class ResearchIntent(BaseModel):
         default_factory=list,
         description="Specific aspects to focus on"
     )
+    also_answering: List[str] = Field(
+        default_factory=list,
+        description="Additional questions or topics that should be addressed in the research results, even if not explicitly asked"
+    )
     
     # Constraints
     perspective: Optional[str] = Field(
@@ -258,6 +262,28 @@ class ResearchQuery(BaseModel):
     provider: str = Field("exa", description="Preferred provider: exa, tavily, google")
     priority: int = Field(1, ge=1, le=5, description="Priority 1-5, higher = more important")
     expected_results: str = Field(..., description="What we expect to find with this query")
+    
+    # Intent field links - which intent aspects this query addresses
+    addresses_primary_question: bool = Field(
+        False, 
+        description="Does this query address the primary question?"
+    )
+    addresses_secondary_questions: List[str] = Field(
+        default_factory=list,
+        description="Which secondary questions does this query answer?"
+    )
+    targets_focus_areas: List[str] = Field(
+        default_factory=list,
+        description="Which focus areas does this query target?"
+    )
+    covers_also_answering: List[str] = Field(
+        default_factory=list,
+        description="Which 'also answering' topics does this query cover?"
+    )
+    justification: Optional[str] = Field(
+        None, 
+        description="Why this query was generated"
+    )
 
 
 class IntentInferenceRequest(BaseModel):
@@ -309,7 +335,15 @@ class IntentDrivenResearchResult(BaseModel):
     primary_answer: str = Field(..., description="Direct answer to primary question")
     secondary_answers: Dict[str, str] = Field(
         default_factory=dict,
-        description="Answers to secondary questions (question → answer)"
+        description="Answers to secondary questions (question → answer, null if not found)"
+    )
+    focus_areas_coverage: Dict[str, Optional[str]] = Field(
+        default_factory=dict,
+        description="Summary of what was found for each focus area (area → summary, null if not covered)"
+    )
+    also_answering_coverage: Dict[str, Optional[str]] = Field(
+        default_factory=dict,
+        description="Information found about each 'also answering' topic (topic → info, null if not found)"
     )
     
     # Deliverables (populated based on user's expected_deliverables)

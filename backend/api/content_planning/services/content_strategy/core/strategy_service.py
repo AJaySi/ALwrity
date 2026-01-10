@@ -148,7 +148,12 @@ class EnhancedStrategyService:
             # Generate comprehensive AI recommendations
             try:
                 # Generate AI recommendations without timeout (allow natural processing time)
-                await self.strategy_analyzer.generate_comprehensive_ai_recommendations(enhanced_strategy, db)
+                # Pass user_id for subscription checks
+                await self.strategy_analyzer.generate_comprehensive_ai_recommendations(
+                    enhanced_strategy, 
+                    db, 
+                    user_id=str(user_id)  # ✅ Pass user_id for subscription checks
+                )
                 logger.info(f"✅ AI recommendations generated successfully for strategy: {enhanced_strategy.id}")
             except Exception as e:
                 logger.warning(f"⚠️ AI recommendations generation failed for strategy: {enhanced_strategy.id}: {str(e)} - continuing without AI recommendations")
@@ -448,7 +453,12 @@ class EnhancedStrategyService:
 
             # Check if AI recommendations should be regenerated
             if self._should_regenerate_ai_recommendations(update_data):
-                await self.strategy_analyzer.generate_comprehensive_ai_recommendations(strategy, db)
+                # Pass user_id for subscription checks
+                await self.strategy_analyzer.generate_comprehensive_ai_recommendations(
+                    strategy, 
+                    db, 
+                    user_id=str(strategy.user_id)  # ✅ Pass user_id for subscription checks
+                )
 
             # Save to database
             db.commit()

@@ -1,5 +1,6 @@
 import React from 'react';
-import { ResearchConfig } from '../../../../services/blogWriterApi';
+import { Tooltip } from '@mui/material';
+import { ResearchConfig } from '../../../../services/researchApi';
 import { 
   tavilyTopics, 
   tavilySearchDepths, 
@@ -7,6 +8,7 @@ import {
   tavilyAnswerOptions, 
   tavilyRawContentOptions 
 } from '../utils/constants';
+import { getTavilyTooltipContent } from './utils/tavilyTooltips';
 
 interface TavilyOptionsProps {
   config: ResearchConfig;
@@ -130,13 +132,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
         {/* Tavily Topic */}
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Search Topic
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('topic', config.tavily_topic)}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <select
             value={config.tavily_topic || 'general'}
@@ -161,13 +172,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
         {/* Tavily Search Depth */}
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Search Depth
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('searchDepth', config.tavily_search_depth)}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <select
             value={config.tavily_search_depth || 'basic'}
@@ -192,13 +212,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
         {/* Tavily Include Answer */}
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             AI Answer
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('includeAnswer', typeof config.tavily_include_answer === 'string' ? config.tavily_include_answer : config.tavily_include_answer ? 'true' : 'false')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <select
             value={config.tavily_include_answer === true ? 'true' : typeof config.tavily_include_answer === 'string' ? config.tavily_include_answer : 'false'}
@@ -223,13 +252,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
         {/* Tavily Time Range */}
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Time Range
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('timeRange', config.tavily_time_range)}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <select
             value={config.tavily_time_range || ''}
@@ -260,13 +298,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
       }}>
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Include Domains (optional)
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('includeDomains')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <input
             type="text"
@@ -287,13 +334,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
 
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Exclude Domains (optional)
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('excludeDomains')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <input
             type="text"
@@ -323,13 +379,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
         {/* Include Raw Content */}
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Raw Content Format
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('includeRawContent', typeof config.tavily_include_raw_content === 'string' ? config.tavily_include_raw_content : config.tavily_include_raw_content ? 'true' : 'false')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <select
             value={config.tavily_include_raw_content === true ? 'true' : typeof config.tavily_include_raw_content === 'string' ? config.tavily_include_raw_content : 'false'}
@@ -354,13 +419,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
         {/* Country */}
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Country Code (optional)
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('country')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <input
             type="text"
@@ -379,17 +453,26 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
           />
         </div>
 
-        {/* Chunks Per Source (only for advanced) */}
-        {config.tavily_search_depth === 'advanced' && (
+        {/* Chunks Per Source (only for advanced or fast) */}
+        {(config.tavily_search_depth === 'advanced' || (config.tavily_search_depth as string) === 'fast') && (
           <div>
             <label style={{
-              display: 'block',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
               marginBottom: '6px',
               fontSize: '12px',
               fontWeight: '600',
               color: '#0ea5e9',
             }}>
               Chunks Per Source (1-3)
+              <Tooltip 
+                title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('chunksPerSource')}</div>} 
+                arrow
+                placement="top"
+              >
+                <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+              </Tooltip>
             </label>
             <input
               type="number"
@@ -420,13 +503,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
       }}>
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             Start Date (YYYY-MM-DD)
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('startDate')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <input
             type="date"
@@ -446,13 +538,22 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
 
         <div>
           <label style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
             marginBottom: '6px',
             fontSize: '12px',
             fontWeight: '600',
             color: '#0ea5e9',
           }}>
             End Date (YYYY-MM-DD)
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('endDate')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
           </label>
           <input
             type="date"
@@ -496,7 +597,16 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
               cursor: 'pointer',
             }}
           />
-          <span>Include Images</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            Include Images
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('includeImages')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
+          </span>
         </label>
 
         <label style={{
@@ -519,7 +629,16 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
               opacity: config.tavily_include_images ? 1 : 0.5,
             }}
           />
-          <span>Include Image Descriptions</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            Include Image Descriptions
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('includeImageDescriptions')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
+          </span>
         </label>
 
         <label style={{
@@ -540,7 +659,16 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
               cursor: 'pointer',
             }}
           />
-          <span>Include Favicon URLs</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            Include Favicon URLs
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('includeFavicon')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
+          </span>
         </label>
 
         <label style={{
@@ -561,7 +689,16 @@ export const TavilyOptions: React.FC<TavilyOptionsProps> = ({ config, onConfigUp
               cursor: 'pointer',
             }}
           />
-          <span>Auto-Configure Parameters</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            Auto-Configure Parameters
+            <Tooltip 
+              title={<div style={{ whiteSpace: 'pre-line', fontSize: '12px', lineHeight: '1.5' }}>{getTavilyTooltipContent('autoParameters')}</div>} 
+              arrow
+              placement="top"
+            >
+              <span style={{ fontSize: '10px', color: '#0ea5e9', cursor: 'help' }}>ℹ️</span>
+            </Tooltip>
+          </span>
         </label>
       </div>
     </div>

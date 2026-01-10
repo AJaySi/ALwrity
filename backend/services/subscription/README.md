@@ -182,4 +182,4 @@ This package consolidates the following previously scattered files:
 
 - `services.onboarding` - Onboarding and user setup
 - `models.subscription_models` - Database models
-- `api.subscription_api` - API endpoints
+- `api.subscription` - API endpoints (modular structure with routes in `api/subscription/routes/`)

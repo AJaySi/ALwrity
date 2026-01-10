@@ -15,6 +15,7 @@ from models.subscription_models import (
     UserSubscription, UsageStatus
 )
 from .pricing_service import PricingService
+from .provider_detection import detect_actual_provider
 
 class UsageTrackingService:
     """Service for tracking API usage and managing subscription limits."""
@@ -67,12 +68,21 @@ class UsageTrackingService:
             
             # Create usage log entry
             billing_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
+            
+            # Detect actual provider name (WaveSpeed, Google, HuggingFace, etc.)
+            actual_provider_name = detect_actual_provider(
+                provider_enum=provider,
+                model_name=model_used,
+                endpoint=endpoint
+            )
+            
             usage_log = APIUsageLog(
                 user_id=user_id,
                 provider=provider,
                 endpoint=endpoint,
                 method=method,
                 model_used=model_used,
+                actual_provider_name=actual_provider_name,  # Track actual provider
                 tokens_input=tokens_input,
                 tokens_output=tokens_output,
                 tokens_total=(tokens_input or 0) + (tokens_output or 0),
@@ -404,18 +414,128 @@ class UsageTrackingService:
             'cost': mistral_cost
         }
         
+        # Add other providers (Video, Audio, Image, Image Edit) for comprehensive breakdown
+        # Video (WaveSpeed, HuggingFace, etc.)
+        video_calls = getattr(summary, "video_calls", 0) or 0
+        video_cost = getattr(summary, "video_cost", 0.0) or 0.0
+        if video_calls > 0 and video_cost == 0.0:
+            video_logs = self.db.query(APIUsageLog).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.provider == APIProvider.VIDEO,
+                APIUsageLog.billing_period == billing_period
+            ).all()
+            if video_logs:
+                video_cost = sum(float(log.cost_total or 0.0) for log in video_logs)
+        
+        provider_breakdown['video'] = {
+            'calls': video_calls,
+            'tokens': 0,
+            'cost': video_cost
+        }
+        
+        # Audio (WaveSpeed, etc.)
+        audio_calls = getattr(summary, "audio_calls", 0) or 0
+        audio_cost = getattr(summary, "audio_cost", 0.0) or 0.0
+        if audio_calls > 0 and audio_cost == 0.0:
+            audio_logs = self.db.query(APIUsageLog).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.provider == APIProvider.AUDIO,
+                APIUsageLog.billing_period == billing_period
+            ).all()
+            if audio_logs:
+                audio_cost = sum(float(log.cost_total or 0.0) for log in audio_logs)
+        
+        provider_breakdown['audio'] = {
+            'calls': audio_calls,
+            'tokens': 0,
+            'cost': audio_cost
+        }
+        
+        # Image Generation (Stability/WaveSpeed)
+        stability_calls = getattr(summary, "stability_calls", 0) or 0
+        stability_cost = getattr(summary, "stability_cost", 0.0) or 0.0
+        if stability_calls > 0 and stability_cost == 0.0:
+            stability_logs = self.db.query(APIUsageLog).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.provider == APIProvider.STABILITY,
+                APIUsageLog.billing_period == billing_period
+            ).all()
+            if stability_logs:
+                stability_cost = sum(float(log.cost_total or 0.0) for log in stability_logs)
+        
+        provider_breakdown['image'] = {
+            'calls': stability_calls,
+            'tokens': 0,
+            'cost': stability_cost
+        }
+        
+        # Image Editing (WaveSpeed)
+        image_edit_calls = getattr(summary, "image_edit_calls", 0) or 0
+        image_edit_cost = getattr(summary, "image_edit_cost", 0.0) or 0.0
+        if image_edit_calls > 0 and image_edit_cost == 0.0:
+            image_edit_logs = self.db.query(APIUsageLog).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.provider == APIProvider.IMAGE_EDIT,
+                APIUsageLog.billing_period == billing_period
+            ).all()
+            if image_edit_logs:
+                image_edit_cost = sum(float(log.cost_total or 0.0) for log in image_edit_logs)
+        
+        provider_breakdown['image_edit'] = {
+            'calls': image_edit_calls,
+            'tokens': 0,
+            'cost': image_edit_cost
+        }
+        
+        # Search APIs
+        tavily_calls = getattr(summary, "tavily_calls", 0) or 0
+        tavily_cost = getattr(summary, "tavily_cost", 0.0) or 0.0
+        provider_breakdown['tavily'] = {
+            'calls': tavily_calls,
+            'tokens': 0,
+            'cost': tavily_cost
+        }
+        
+        serper_calls = getattr(summary, "serper_calls", 0) or 0
+        serper_cost = getattr(summary, "serper_cost", 0.0) or 0.0
+        provider_breakdown['serper'] = {
+            'calls': serper_calls,
+            'tokens': 0,
+            'cost': serper_cost
+        }
+        
+        exa_calls = getattr(summary, "exa_calls", 0) or 0
+        exa_cost = getattr(summary, "exa_cost", 0.0) or 0.0
+        provider_breakdown['exa'] = {
+            'calls': exa_calls,
+            'tokens': 0,
+            'cost': exa_cost
+        }
+        
         # Calculate total cost from provider breakdown if summary total_cost is 0
-        calculated_total_cost = gemini_cost + mistral_cost
+        calculated_total_cost = (
+            gemini_cost + mistral_cost + video_cost + audio_cost + 
+            stability_cost + image_edit_cost + tavily_cost + serper_cost + exa_cost
+        )
         summary_total_cost = summary.total_cost or 0.0
         # Use calculated cost if summary cost is 0, otherwise use summary cost (it's more accurate)
         final_total_cost = summary_total_cost if summary_total_cost > 0 else calculated_total_cost
         
         # If we calculated costs from logs, update the summary for future requests
         if calculated_total_cost > 0 and summary_total_cost == 0.0:
-            logger.info(f"[UsageStats] Updating summary costs: total_cost={final_total_cost:.6f}, gemini_cost={gemini_cost:.6f}, mistral_cost={mistral_cost:.6f}")
+            logger.info(f"[UsageStats] Updating summary costs: total_cost={final_total_cost:.6f}, gemini_cost={gemini_cost:.6f}, mistral_cost={mistral_cost:.6f}, video_cost={video_cost:.6f}, audio_cost={audio_cost:.6f}, image_cost={stability_cost:.6f}")
             summary.total_cost = final_total_cost
             summary.gemini_cost = gemini_cost
             summary.mistral_cost = mistral_cost
+            # Update other provider costs if they exist
+            if hasattr(summary, 'video_cost'):
+                summary.video_cost = video_cost
+            if hasattr(summary, 'audio_cost'):
+                summary.audio_cost = audio_cost
+            if hasattr(summary, 'stability_cost'):
+                summary.stability_cost = stability_cost
+            if hasattr(summary, 'image_edit_cost'):
+                summary.image_edit_cost = image_edit_cost
             try:
                 self.db.commit()
             except Exception as e:

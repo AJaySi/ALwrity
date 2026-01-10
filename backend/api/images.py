@@ -31,7 +31,7 @@ logger = get_service_logger("api.images")
 class ImageGenerateRequest(BaseModel):
     prompt: str
     negative_prompt: Optional[str] = None
-    provider: Optional[str] = Field(None, pattern="^(gemini|huggingface|stability)$")
+    provider: Optional[str] = Field(None, pattern="^(gemini|huggingface|stability|wavespeed)$")
     model: Optional[str] = None
     width: Optional[int] = Field(default=1024, ge=64, le=2048)
     height: Optional[int] = Field(default=1024, ge=64, le=2048)
@@ -246,7 +246,10 @@ def generate(
                         # Non-blocking: log error but don't fail the request
                         logger.error(f"[images.generate] ❌ Failed to track usage: {usage_error}", exc_info=True)
                 
-                return ImageGenerateResponse(
+                # Create response with explicit success field
+                # Note: Asset saving and usage tracking are non-blocking and won't affect this response
+                response = ImageGenerateResponse(
+                    success=True,
                     image_base64=image_b64,
                     image_url=image_url,
                     width=result.width,
@@ -255,6 +258,11 @@ def generate(
                     model=result.model,
                     seed=result.seed,
                 )
+                
+                logger.info(f"[images.generate] ✅ Returning successful response: provider={result.provider}, model={result.model}, size={len(image_b64)} chars")
+                
+                # Return response immediately - any post-processing errors won't affect the response
+                return response
             except Exception as inner:
                 last_error = inner
                 logger.error(f"Image generation attempt {attempt+1} failed: {inner}")
@@ -282,7 +290,9 @@ class PromptSuggestion(BaseModel):
 
 
 class ImagePromptSuggestRequest(BaseModel):
-    provider: Optional[str] = Field(None, pattern="^(gemini|huggingface|stability)$")
+    provider: Optional[str] = Field(None, pattern="^(gemini|huggingface|stability|wavespeed)$")
+    model: Optional[str] = None  # Specific model (e.g., "qwen-image", "ideogram-v3-turbo")
+    image_type: Optional[str] = Field(None, pattern="^(realistic|chart|conceptual|diagram|illustration|background)$")
     title: Optional[str] = None
     section: Optional[Dict[str, Any]] = None
     research: Optional[Dict[str, Any]] = None
@@ -315,6 +325,218 @@ class ImageEditResponse(BaseModel):
     seed: Optional[int] = None
 
 
+# Model-specific guidance for prompt optimization
+MODEL_SPECIFIC_GUIDANCE = {
+    "ideogram-v3-turbo": {
+        "text_overlay": {
+            "guidance": "Ideogram V3 excels at rendering readable text. Use simple, bold text (max 3-5 words). Avoid complex infographics - instead create clean backgrounds with designated text areas.",
+            "best_practices": [
+                "Use high contrast areas (top 20% or bottom 20%) for text placement",
+                "Keep text simple: headlines, statistics, or short phrases only",
+                "Avoid rendering text as part of complex graphics",
+                "Design with 'text overlay zones' in mind, not embedded text"
+            ],
+            "negative_prompt_additions": "complex infographics, detailed charts with text, busy data visualizations"
+        },
+        "realistic": {
+            "guidance": "Photorealistic generation with professional quality. Include camera settings and lighting cues.",
+            "best_practices": [
+                "Include camera settings: '50mm lens, f/2.8, professional photography'",
+                "Specify lighting: 'natural lighting, soft shadows, rim light'",
+                "Add quality descriptors: 'high quality, detailed, sharp focus'"
+            ]
+        },
+        "chart": {
+            "guidance": "Simple bar charts or pie charts with minimal text. Use high contrast areas for labels.",
+            "best_practices": [
+                "Avoid complex infographics - use simple visual representations",
+                "Design with text overlay zones, not embedded text",
+                "Use abstract data visualization elements"
+            ],
+            "warnings": ["Complex infographics are too difficult - use simple charts or conceptual representations"]
+        },
+        "conceptual": {
+            "guidance": "Conceptual imagery with photorealistic elements. Clean compositions with text overlay areas.",
+            "best_practices": [
+                "Focus on visual metaphors and abstract concepts",
+                "Design with text overlay zones in mind (top/bottom 30%)",
+                "Use simple, clear compositions"
+            ]
+        }
+    },
+    "flux-kontext-pro": {
+        "text_overlay": {
+            "guidance": "FLUX Kontext Pro excels at typography and text rendering with improved prompt adherence. Best for professional designs with text elements.",
+            "best_practices": [
+                "Excellent for images requiring clear, readable text",
+                "Superior typography rendering compared to other models",
+                "Improved prompt adherence for consistent results",
+                "Can handle text in various styles and sizes",
+                "Best for professional blog images with embedded text or typography"
+            ],
+            "negative_prompt_additions": ""
+        },
+        "realistic": {
+            "guidance": "Photorealistic generation with professional typography support. Include text elements naturally in the composition.",
+            "best_practices": [
+                "Can render text elements within realistic scenes",
+                "Include typography naturally in the design",
+                "Specify text style, size, and placement in prompts",
+                "Use for professional designs requiring text integration"
+            ]
+        },
+        "chart": {
+            "guidance": "Excellent for data visualizations with text labels. Can render simple charts with clear typography.",
+            "best_practices": [
+                "Can render charts with text labels effectively",
+                "Use for data visualizations requiring clear typography",
+                "Specify chart type and label requirements clearly",
+                "Design with text integration in mind"
+            ],
+            "warnings": ["Complex infographics may still be challenging - start with simple charts"]
+        },
+        "diagram": {
+            "guidance": "Technical diagrams with clear text labels. Excellent typography for professional diagrams.",
+            "best_practices": [
+                "Can render diagrams with embedded text labels",
+                "Specify text requirements clearly in prompts",
+                "Use for technical illustrations requiring typography",
+                "Design with text integration as a core element"
+            ]
+        },
+        "illustration": {
+            "guidance": "Stylized illustrations with typography support. Professional designs with text elements.",
+            "best_practices": [
+                "Can integrate text naturally into illustrations",
+                "Specify typography style and placement",
+                "Use for professional blog illustrations with text",
+                "Design with text as a design element"
+            ]
+        },
+        "conceptual": {
+            "guidance": "Conceptual imagery with typography capabilities. Can include text elements naturally.",
+            "best_practices": [
+                "Can integrate text into conceptual designs",
+                "Use for abstract concepts with text support",
+                "Specify text requirements in prompts",
+                "Design with typography as a visual element"
+            ]
+        }
+    },
+    "qwen-image": {
+        "text_overlay": {
+            "guidance": "Qwen Image does NOT render readable text well. Design for text overlay areas only - never ask for text in the image itself.",
+            "best_practices": [
+                "Create clean backgrounds with high-contrast safe zones",
+                "Design simple compositions with space for text (top/bottom 30%)",
+                "Use abstract or conceptual imagery that supports text",
+                "NEVER request text, words, or labels in the image"
+            ],
+            "negative_prompt_additions": "text, words, letters, numbers, labels, captions, infographics with text"
+        },
+        "conceptual": {
+            "guidance": "Best for abstract concepts, simple diagrams, and background imagery.",
+            "best_practices": [
+                "Focus on visual metaphors and abstract representations",
+                "Use simple compositions with clear focal points",
+                "Avoid complex details or fine textures"
+            ]
+        },
+        "chart": {
+            "guidance": "Abstract representation of data - avoid actual charts. Use shapes, colors, and patterns to represent data concepts.",
+            "best_practices": [
+                "Create visual metaphors for data, not actual charts",
+                "Use abstract patterns and shapes",
+                "Design with text overlay zones for data labels"
+            ],
+            "warnings": ["Do not request actual charts with text - use abstract representations instead"]
+        },
+        "background": {
+            "guidance": "Perfect for background images with text overlay areas. Clean, simple compositions.",
+            "best_practices": [
+                "Focus on clean backgrounds with designated text zones",
+                "Use simple, uncluttered compositions",
+                "High contrast areas for text placement"
+            ]
+        }
+    }
+}
+
+
+def get_model_specific_guidance(model: Optional[str], image_type: Optional[str]) -> Dict[str, Any]:
+    """Get model-specific guidance based on model and image type."""
+    if not model:
+        return {}
+    
+    model_lower = model.lower()
+    image_type_lower = (image_type or "conceptual").lower()
+    
+    # Get model guidance
+    model_guidance = MODEL_SPECIFIC_GUIDANCE.get(model_lower, {})
+    
+    # Get image type specific guidance
+    type_guidance = model_guidance.get(image_type_lower, model_guidance.get("text_overlay", {}))
+    
+    return type_guidance
+
+
+def extract_visual_data(section: Dict[str, Any], research: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Intelligently extract visual-relevant data from section and research."""
+    visual_data = {
+        "visual_keywords": [],
+        "data_points": [],
+        "concepts": [],
+        "statistics": []
+    }
+    
+    # Extract from section
+    if section:
+        # Key points that are visualizable
+        key_points = section.get("key_points", []) or []
+        for point in key_points[:5]:
+            if isinstance(point, str):
+                # Look for numbers, percentages, comparisons
+                if any(char.isdigit() for char in point):
+                    visual_data["statistics"].append(point)
+                # Look for visual concepts
+                elif any(word in point.lower() for word in ["increase", "decrease", "growth", "trend", "pattern", "comparison"]):
+                    visual_data["data_points"].append(point)
+                else:
+                    visual_data["concepts"].append(point)
+        
+        # Subheadings that suggest visuals
+        subheadings = section.get("subheadings", []) or []
+        for subhead in subheadings[:3]:
+            if isinstance(subhead, str):
+                visual_data["concepts"].append(subhead)
+        
+        # Keywords
+        keywords = section.get("keywords", []) or []
+        visual_data["visual_keywords"].extend([str(k) for k in keywords[:8] if k])
+    
+    # Extract from research
+    if research:
+        # Key facts that are visualizable
+        key_facts = research.get("key_facts", []) or research.get("highlights", []) or []
+        for fact in key_facts[:3]:
+            if isinstance(fact, str):
+                if any(char.isdigit() for char in fact):
+                    visual_data["statistics"].append(fact)
+                else:
+                    visual_data["data_points"].append(fact)
+        
+        # Research insights
+        insights = research.get("insights", []) or research.get("summary", "")
+        if isinstance(insights, str) and insights:
+            # Extract key phrases
+            sentences = insights.split('.')[:3]
+            visual_data["concepts"].extend([s.strip() for s in sentences if s.strip()])
+        elif isinstance(insights, list):
+            visual_data["concepts"].extend([str(i) for i in insights[:3]])
+    
+    return visual_data
+
+
 @router.post("/suggest-prompts", response_model=ImagePromptSuggestResponse)
 def suggest_prompts(
     req: ImagePromptSuggestRequest,
@@ -322,6 +544,9 @@ def suggest_prompts(
 ) -> ImagePromptSuggestResponse:
     try:
         provider = (req.provider or ("gemini" if (os.getenv("GPT_PROVIDER") or "").lower().startswith("gemini") else "huggingface")).lower()
+        model = req.model or None
+        image_type = req.image_type or "conceptual"
+        
         section = req.section or {}
         title = (req.title or section.get("heading") or "").strip()
         subheads = section.get("subheadings", []) or []
@@ -338,6 +563,9 @@ def suggest_prompts(
         audience = persona.get("audience", "content creators and digital marketers")
         industry = persona.get("industry", req.research.get("domain") if req.research else "your industry")
         tone = persona.get("tone", "professional, trustworthy")
+        
+        # Extract visual-relevant data intelligently
+        visual_data = extract_visual_data(section, req.research)
 
         schema = {
             "type": "object",
@@ -368,52 +596,129 @@ def suggest_prompts(
             "Return STRICT JSON matching the provided schema, no extra text."
         )
 
-        provider_guidance = {
+        # Get model-specific guidance
+        model_guidance_data = get_model_specific_guidance(model, image_type)
+        model_guidance_text = model_guidance_data.get("guidance", "")
+        model_best_practices = model_guidance_data.get("best_practices", [])
+        model_warnings = model_guidance_data.get("warnings", [])
+        negative_prompt_additions = model_guidance_data.get("negative_prompt_additions", "")
+
+        # Build provider guidance with model-specific details
+        provider_guidance_base = {
             "huggingface": "Photorealistic Flux 1 Krea Dev; include camera/lighting cues (e.g., 50mm, f/2.8, rim light).",
             "gemini": "Editorial, brand-safe, crisp edges, balanced lighting; avoid artifacts.",
-            "stability": "SDXL coherent details, sharp focus, cinematic contrast; readable text if present."
+            "stability": "SDXL coherent details, sharp focus, cinematic contrast; readable text if present.",
+            "wavespeed": "Blog-optimized imagery: focus on data visualization, infographics, clean layouts with text overlay areas, professional diagrams, charts, or conceptual illustrations. Avoid random people or poster-style images. Prefer clean backgrounds suitable for text overlays, data representations, or abstract concepts that support the blog content."
         }.get(provider, "")
+        
+        # Combine provider and model-specific guidance
+        provider_guidance = provider_guidance_base
+        if model_guidance_text:
+            provider_guidance = f"{provider_guidance_base}\n\nMODEL-SPECIFIC GUIDANCE ({model}): {model_guidance_text}"
+            if model_best_practices:
+                provider_guidance += f"\nBest Practices:\n" + "\n".join([f"- {bp}" for bp in model_best_practices])
+            if model_warnings:
+                provider_guidance += f"\n⚠️ WARNINGS:\n" + "\n".join([f"- {w}" for w in model_warnings])
+
+        # Build visual data summary from extracted data
+        visual_summary_parts = []
+        if visual_data["statistics"]:
+            visual_summary_parts.append(f"Key Statistics: {', '.join(visual_data['statistics'][:3])}")
+        if visual_data["data_points"]:
+            visual_summary_parts.append(f"Data Points: {', '.join(visual_data['data_points'][:3])}")
+        if visual_data["concepts"]:
+            visual_summary_parts.append(f"Visual Concepts: {', '.join(visual_data['concepts'][:5])}")
+        if visual_data["visual_keywords"]:
+            visual_summary_parts.append(f"Keywords: {', '.join(visual_data['visual_keywords'][:8])}")
+        
+        visual_summary = "\n".join(visual_summary_parts) if visual_summary_parts else ""
 
         best_practices = (
-            "Best Practices: one clear focal subject; clean, uncluttered background; rule-of-thirds or center-weighted composition; "
-            "text-safe margins if overlay text is included; neutral lighting if unsure; realistic skin tones; avoid busy patterns; "
-            "no brand logos or watermarks; no copyrighted characters; avoid low-res, blur, noise, banding, oversaturation, over-sharpening; "
-            "ensure hands and text are coherent if present; prefer 1024px+ on shortest side for quality."
+            "BLOG IMAGE BEST PRACTICES: Create images optimized for blog content, not social media posters. "
+            "Focus on: data visualization elements (charts, graphs, infographics), clean layouts with designated text overlay areas, "
+            "professional diagrams, conceptual illustrations, or abstract representations of the topic. "
+            "Avoid: random people posing, poster-style compositions, busy social media graphics, or trying to recreate text/words as images. "
+            "Instead: use clean backgrounds, simple compositions, areas reserved for text overlays, data-driven visuals, or conceptual imagery. "
+            "Technical: one clear focal subject; clean, uncluttered background; text-safe margins (20% padding on all sides for overlays); "
+            "neutral or professional lighting; avoid busy patterns; no brand logos or watermarks; no copyrighted characters; "
+            "avoid low-res, blur, noise, banding, oversaturation, over-sharpening; prefer 1024px+ on shortest side for quality."
         )
 
-        # Harvest a few concise facts from research if available
-        facts: list[str] = []
-        try:
-            if req.research:
-                # try common shapes used in research service
-                top_stats = req.research.get("key_facts") or req.research.get("highlights") or []
-                if isinstance(top_stats, list):
-                    facts = [str(x) for x in top_stats[:3]]
-                elif isinstance(top_stats, dict):
-                    facts = [f"{k}: {v}" for k, v in list(top_stats.items())[:3]]
-        except Exception:
-            facts = []
+        overlay_hint = (
+            "IMPORTANT FOR BLOG IMAGES: Design images with text overlay areas in mind. "
+            "Include space for headlines, captions, or data labels. "
+            "Suggest overlay_text (short title or key statistic, <= 8 words) that would work well as a text overlay. "
+            "Ensure clean, high-contrast safe areas (top 20% or bottom 20% of image) for text placement. "
+            "The image should complement text, not replace it - think data visualization, infographics, or clean conceptual imagery."
+            if (req.include_overlay is None or req.include_overlay) 
+            else "Do not include on-image text, but still design with text overlay areas in mind for blog use."
+        )
+        
+        # Image type specific guidance
+        image_type_guidance = {
+            "realistic": "Photorealistic style with professional photography quality. Include camera settings and lighting details.",
+            "chart": "⚠️ IMPORTANT: Complex infographics are too difficult for current AI models. Create simple visual representations with designated text overlay areas instead. Use abstract data visualization elements, not actual charts with embedded text.",
+            "conceptual": "Abstract or conceptual imagery that represents the topic visually. Clean compositions with text overlay zones.",
+            "diagram": "Technical diagrams with simple, clear visual elements. Design for text overlay areas, not embedded labels.",
+            "illustration": "Stylized illustrations that support the content. Professional, clean aesthetic suitable for blog use.",
+            "background": "Background images optimized for text overlays. Clean, uncluttered compositions with high-contrast text zones."
+        }.get(image_type, "General blog image guidance.")
 
-        facts_line = ", ".join(facts) if facts else ""
-
-        overlay_hint = "Include an on-image short title or fact if it improves communication; ensure clean, high-contrast safe area for text." if (req.include_overlay is None or req.include_overlay) else "Do not include on-image text."
-
+        # Build comprehensive prompt with visual data and model-specific guidance
         prompt = f"""
         Provider: {provider}
+        Model: {model or 'auto-selected'}
+        Image Type: {image_type}
         Title: {title}
-        Subheadings: {', '.join(subheads[:5])}
-        Key Points: {', '.join(key_points[:5])}
-        Keywords: {', '.join([str(k) for k in keywords[:8]])}
-        Research Facts: {facts_line}
+        
+        VISUAL DATA EXTRACTED FROM CONTENT:
+        {visual_summary if visual_summary else f"Subheadings: {', '.join(subheads[:5])}\nKey Points: {', '.join(key_points[:5])}\nKeywords: {', '.join([str(k) for k in keywords[:8]])}"}
+        
+        CONTEXT:
         Audience: {audience}
         Industry: {industry}
         Tone: {tone}
 
-        Craft prompts that visually reflect this exact section (not generic blog topic). {provider_guidance}
+        BLOG IMAGE GENERATION TASK: Create image prompts optimized for blog content, NOT social media posters.
+        
+        PROVIDER & MODEL GUIDANCE:
+        {provider_guidance}
+        
+        IMAGE TYPE GUIDANCE:
+        {image_type_guidance}
+        
+        BEST PRACTICES:
         {best_practices}
+        
+        TEXT OVERLAY GUIDANCE:
         {overlay_hint}
-        Include a suitable negative_prompt where helpful. Suggest width/height when relevant (e.g., 1024x1024 or 1920x1080).
-        If including on-image text, return it in overlay_text (short: <= 8 words).
+        
+        PROMPT GENERATION INSTRUCTIONS:
+        Generate 3-5 diverse, well-formed prompt variations that:
+        1. Intelligently use the visual data provided above (statistics, data points, concepts, keywords)
+        2. Focus on the most visually-relevant elements from the section subheadings, key points, and research
+        3. Create prompts that are optimized for the selected image type ({image_type})
+        4. Follow model-specific best practices and avoid model limitations
+        5. Include clean backgrounds suitable for text overlays
+        6. Avoid random people, poster compositions, or trying to render text as images
+        7. Support the blog section's content with relevant visual metaphors or data representations
+        8. Are optimized for blog article use (not social media)
+        
+        PROMPT QUALITY REQUIREMENTS:
+        - Each prompt should be specific and detailed (50-100 words)
+        - Use the visual data intelligently - prioritize statistics and data points for charts, concepts for conceptual images
+        - Include visual composition guidance (layout, colors, style)
+        - Specify lighting and quality descriptors when appropriate
+        - Make prompts actionable and clear for the AI model
+        
+        NEGATIVE PROMPT:
+        Include a suitable negative_prompt that excludes: people posing, social media graphics, posters, text rendered as images, busy compositions, watermarks, logos{f", {negative_prompt_additions}" if negative_prompt_additions else ""}.
+        
+        DIMENSIONS:
+        Suggest width/height when relevant (e.g., 1024x1024 for square, 1920x1080 for landscape blog headers).
+        
+        OVERLAY TEXT:
+        If including overlay text suggestion, return it in overlay_text (short: <= 8 words, typically a key statistic or section title). Use statistics from the visual data when available.
         """
 
         # Get user_id for llm_text_gen subscription check (required)

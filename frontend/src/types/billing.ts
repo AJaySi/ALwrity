@@ -26,8 +26,16 @@ export interface UsageStats {
 }
 
 export interface ProviderBreakdown {
-  gemini: ProviderUsage;
-  huggingface: ProviderUsage;
+  gemini?: ProviderUsage;
+  huggingface?: ProviderUsage;
+  video?: ProviderUsage;
+  audio?: ProviderUsage;
+  image?: ProviderUsage;
+  image_edit?: ProviderUsage;
+  tavily?: ProviderUsage;
+  serper?: ProviderUsage;
+  exa?: ProviderUsage;
+  [key: string]: ProviderUsage | undefined; // Allow dynamic provider keys
 }
 
 export interface ProviderUsage {
@@ -106,7 +114,8 @@ export interface UsageSummary {
 export interface UsageLog {
   id: number;
   timestamp: string;
-  provider: string;
+  provider: string;  // Display provider (uses actual_provider_name if available, otherwise enum value)
+  actual_provider_name?: string | null;  // Actual provider: "wavespeed", "google", "huggingface", etc.
   model_used: string | null;
   endpoint: string;
   method: string;

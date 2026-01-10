@@ -20,7 +20,7 @@ youtube_videos/
 backend/podcast_images/
 backend/podcast_videos/
 
-
+backend/researchtools_text/projects/
 youtube_avatars/
 youtube_avatars/*
 youtube_videos/*
@@ -239,3 +239,5 @@ docs/__pycache__/
 .onboarding_progress.json
 *_onboarding_progress.json
 backend/.onboarding_progress*.json
+backend/researchtools_text/projects/Draft__AI_advanc_c2f90698.json
+backend/researchtools_text/projects/Draft__AI_adv_388d4491.json

@@ -261,6 +261,11 @@ export function useResearchPolling(options: UsePollingOptions = {}) {
   );
 }
 
+export function useBlogWriterResearchPolling(options: UsePollingOptions = {}) {
+  // Use Blog Writer research polling endpoint - direct import (already imported at top)
+  return usePolling(blogWriterApi.pollResearchStatus, options);
+}
+
 export function useOutlinePolling(options: UsePollingOptions = {}) {
   return usePolling(blogWriterApi.pollOutlineStatus, options);
 }

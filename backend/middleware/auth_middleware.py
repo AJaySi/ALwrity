@@ -1,6 +1,7 @@
 """Authentication middleware for ALwrity backend."""
 
 import os
+import inspect
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, Depends, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -216,10 +217,54 @@ async def get_current_user(
         if not credentials:
             # CRITICAL: Log as ERROR since this is a security issue - authenticated endpoint accessed without credentials
             endpoint_path = f"{request.method} {request.url.path}"
+            
+            # DEBUG: Log all headers to see what's actually being received
+            auth_header = request.headers.get('authorization') or request.headers.get('Authorization')
+            all_headers = {k: v[:50] if len(v) > 50 else v for k, v in request.headers.items()}
+            
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: No credentials provided for authenticated endpoint: {endpoint_path} "
-                f"(client_ip={request.client.host if request.client else 'unknown'})"
+                f"(client_ip={request.client.host if request.client else 'unknown'}, "
+                f"auth_header_received={'YES' if auth_header else 'NO'}, "
+                f"auth_header_value={auth_header[:50] + '...' if auth_header and len(auth_header) > 50 else (auth_header or 'None')}, "
+                f"all_headers={list(all_headers.keys())}, "
+                f"user_agent={request.headers.get('user-agent', 'unknown')})"
             )
+            
+            # Get caller information for better debugging
+            caller_frame = inspect.currentframe()
+            caller_info = "unknown"
+            if caller_frame:
+                try:
+                    # Go up the stack to find the actual endpoint function
+                    frame = caller_frame.f_back
+                    if frame:
+                        # Look for the FastAPI endpoint (usually 2-3 frames up)
+                        for _ in range(5):  # Check up to 5 frames
+                            if frame:
+                                func_name = frame.f_code.co_name
+                                module_name = frame.f_globals.get('__name__', 'unknown')
+                                # Skip FastAPI internal frames
+                                if 'fastapi' not in module_name.lower() and 'middleware' not in module_name.lower():
+                                    caller_info = f"{module_name}.{func_name}"
+                                    break
+                                frame = frame.f_back
+                except Exception:
+                    pass  # If we can't get caller info, continue with unknown
+            
+            # If we received an auth header but HTTPBearer didn't extract it, try manual extraction
+            if auth_header and auth_header.startswith('Bearer '):
+                logger.warning(
+                    f"⚠️ WARNING: Authorization header received but HTTPBearer didn't extract it. "
+                    f"Trying manual extraction for endpoint: {endpoint_path}"
+                )
+                # Try to extract token manually
+                token = auth_header.replace('Bearer ', '').strip()
+                if token:
+                    user = await clerk_auth.verify_token(token)
+                    if user:
+                        logger.info(f"✅ Manual token extraction successful for endpoint: {endpoint_path}")
+                        return user
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Not authenticated",
@@ -231,9 +276,30 @@ async def get_current_user(
         if not user:
             # Token verification failed - log with endpoint context for debugging
             endpoint_path = f"{request.method} {request.url.path}"
+            
+            # Get caller information
+            caller_frame = inspect.currentframe()
+            caller_info = "unknown"
+            if caller_frame:
+                try:
+                    frame = caller_frame.f_back
+                    if frame:
+                        for _ in range(5):
+                            if frame:
+                                func_name = frame.f_code.co_name
+                                module_name = frame.f_globals.get('__name__', 'unknown')
+                                if 'fastapi' not in module_name.lower() and 'middleware' not in module_name.lower():
+                                    caller_info = f"{module_name}.{func_name}"
+                                    break
+                                frame = frame.f_back
+                except Exception:
+                    pass
+            
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: Token verification failed for endpoint: {endpoint_path} "
-                f"(client_ip={request.client.host if request.client else 'unknown'})"
+                f"(client_ip={request.client.host if request.client else 'unknown'}, "
+                f"caller={caller_info}, "
+                f"user_agent={request.headers.get('user-agent', 'unknown')})"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -247,8 +313,30 @@ async def get_current_user(
         raise
     except Exception as e:
         endpoint_path = f"{request.method} {request.url.path}"
+        
+        # Get caller information
+        caller_frame = inspect.currentframe()
+        caller_info = "unknown"
+        if caller_frame:
+            try:
+                frame = caller_frame.f_back
+                if frame:
+                    for _ in range(5):
+                        if frame:
+                            func_name = frame.f_code.co_name
+                            module_name = frame.f_globals.get('__name__', 'unknown')
+                            if 'fastapi' not in module_name.lower() and 'middleware' not in module_name.lower():
+                                caller_info = f"{module_name}.{func_name}"
+                                break
+                            frame = frame.f_back
+            except Exception:
+                pass
+        
         logger.error(
-            f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e}",
+            f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e} "
+            f"(client_ip={request.client.host if request.client else 'unknown'}, "
+            f"caller={caller_info}, "
+            f"user_agent={request.headers.get('user-agent', 'unknown')})",
             exc_info=True
         )
         raise HTTPException(
@@ -306,10 +394,31 @@ async def get_current_user_with_query_token(
         if not token_to_verify:
             # CRITICAL: Log as ERROR since this is a security issue
             endpoint_path = f"{request.method} {request.url.path}"
+            
+            # Get caller information
+            caller_frame = inspect.currentframe()
+            caller_info = "unknown"
+            if caller_frame:
+                try:
+                    frame = caller_frame.f_back
+                    if frame:
+                        for _ in range(5):
+                            if frame:
+                                func_name = frame.f_code.co_name
+                                module_name = frame.f_globals.get('__name__', 'unknown')
+                                if 'fastapi' not in module_name.lower() and 'middleware' not in module_name.lower():
+                                    caller_info = f"{module_name}.{func_name}"
+                                    break
+                                frame = frame.f_back
+                except Exception:
+                    pass
+            
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: No credentials provided (neither header nor query parameter) "
                 f"for authenticated endpoint: {endpoint_path} "
-                f"(client_ip={request.client.host if request.client else 'unknown'})"
+                f"(client_ip={request.client.host if request.client else 'unknown'}, "
+                f"caller={caller_info}, "
+                f"user_agent={request.headers.get('user-agent', 'unknown')})"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -321,9 +430,30 @@ async def get_current_user_with_query_token(
         if not user:
             # Token verification failed - log with endpoint context
             endpoint_path = f"{request.method} {request.url.path}"
+            
+            # Get caller information
+            caller_frame = inspect.currentframe()
+            caller_info = "unknown"
+            if caller_frame:
+                try:
+                    frame = caller_frame.f_back
+                    if frame:
+                        for _ in range(5):
+                            if frame:
+                                func_name = frame.f_code.co_name
+                                module_name = frame.f_globals.get('__name__', 'unknown')
+                                if 'fastapi' not in module_name.lower() and 'middleware' not in module_name.lower():
+                                    caller_info = f"{module_name}.{func_name}"
+                                    break
+                                frame = frame.f_back
+                except Exception:
+                    pass
+            
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: Token verification failed for endpoint: {endpoint_path} "
-                f"(client_ip={request.client.host if request.client else 'unknown'})"
+                f"(client_ip={request.client.host if request.client else 'unknown'}, "
+                f"caller={caller_info}, "
+                f"user_agent={request.headers.get('user-agent', 'unknown')})"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -337,8 +467,30 @@ async def get_current_user_with_query_token(
         raise
     except Exception as e:
         endpoint_path = f"{request.method} {request.url.path}"
+        
+        # Get caller information
+        caller_frame = inspect.currentframe()
+        caller_info = "unknown"
+        if caller_frame:
+            try:
+                frame = caller_frame.f_back
+                if frame:
+                    for _ in range(5):
+                        if frame:
+                            func_name = frame.f_code.co_name
+                            module_name = frame.f_globals.get('__name__', 'unknown')
+                            if 'fastapi' not in module_name.lower() and 'middleware' not in module_name.lower():
+                                caller_info = f"{module_name}.{func_name}"
+                                break
+                            frame = frame.f_back
+            except Exception:
+                pass
+        
         logger.error(
-            f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e}",
+            f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e} "
+            f"(client_ip={request.client.host if request.client else 'unknown'}, "
+            f"caller={caller_info}, "
+            f"user_agent={request.headers.get('user-agent', 'unknown')})",
             exc_info=True
         )
         raise HTTPException(

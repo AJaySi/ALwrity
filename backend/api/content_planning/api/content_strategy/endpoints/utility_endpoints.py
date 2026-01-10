@@ -15,6 +15,9 @@ from services.database import get_db_session
 from ....services.enhanced_strategy_service import EnhancedStrategyService
 from ....services.enhanced_strategy_db_service import EnhancedStrategyDBService
 
+# Import authentication
+from middleware.auth_middleware import get_current_user
+
 # Import utilities
 from ....utils.error_handlers import ContentPlanningErrorHandler
 from ....utils.response_builders import ResponseBuilder
@@ -32,36 +35,60 @@ def get_db():
 
 @router.get("/onboarding-data")
 async def get_onboarding_data(
-    user_id: Optional[int] = Query(None, description="User ID to get onboarding data for"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get onboarding data for enhanced strategy auto-population."""
     try:
-        logger.info(f"🚀 Getting onboarding data for user: {user_id}")
+        # Extract authenticated user_id from Clerk
+        clerk_user_id = str(current_user.get('id', ''))
+        if not clerk_user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID in authentication token"
+            )
+        
+        authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+        if not authenticated_user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID format in authentication token"
+            )
+        
+        logger.info(f"🚀 Getting onboarding data for authenticated user: {authenticated_user_id}")
         
         db_service = EnhancedStrategyDBService(db)
         enhanced_service = EnhancedStrategyService(db_service)
         
-        # Ensure we have a valid user_id
-        actual_user_id = user_id or 1
-        onboarding_data = await enhanced_service._get_onboarding_data(actual_user_id)
+        onboarding_data = await enhanced_service._get_onboarding_data(authenticated_user_id)
         
-        logger.info(f"✅ Onboarding data retrieved successfully for user: {actual_user_id}")
+        logger.info(f"✅ Onboarding data retrieved successfully for user: {authenticated_user_id}")
         
         return ResponseBuilder.create_success_response(
             message="Onboarding data retrieved successfully",
             data=onboarding_data
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error getting onboarding data: {str(e)}")
         raise ContentPlanningErrorHandler.handle_general_error(e, "get_onboarding_data")
 
 @router.get("/tooltips")
-async def get_enhanced_strategy_tooltips() -> Dict[str, Any]:
+async def get_enhanced_strategy_tooltips(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Get tooltip data for enhanced strategy fields."""
     try:
-        logger.info("🚀 Getting enhanced strategy tooltips")
+        # Verify authentication (user_id not needed for static data, but auth is required)
+        if not current_user or not current_user.get('id'):
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required"
+            )
+        
+        logger.info(f"🚀 Getting enhanced strategy tooltips for authenticated user: {current_user.get('id')}")
         
         # Mock tooltip data - in real implementation, this would come from a database
         tooltip_data = {
@@ -122,15 +149,26 @@ async def get_enhanced_strategy_tooltips() -> Dict[str, Any]:
             data=tooltip_data
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error getting enhanced strategy tooltips: {str(e)}")
         raise ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_tooltips")
 
 @router.get("/disclosure-steps")
-async def get_enhanced_strategy_disclosure_steps() -> Dict[str, Any]:
+async def get_enhanced_strategy_disclosure_steps(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Get progressive disclosure steps for enhanced strategy."""
     try:
-        logger.info("🚀 Getting enhanced strategy disclosure steps")
+        # Verify authentication (user_id not needed for static data, but auth is required)
+        if not current_user or not current_user.get('id'):
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required"
+            )
+        
+        logger.info(f"🚀 Getting enhanced strategy disclosure steps for authenticated user: {current_user.get('id')}")
         
         # Progressive disclosure steps configuration
         disclosure_steps = [
@@ -197,41 +235,55 @@ async def get_enhanced_strategy_disclosure_steps() -> Dict[str, Any]:
             data=disclosure_steps
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error getting enhanced strategy disclosure steps: {str(e)}")
         raise ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_disclosure_steps")
 
 @router.post("/cache/clear")
 async def clear_streaming_cache(
-    user_id: Optional[int] = Query(None, description="User ID to clear cache for")
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Clear streaming cache for a specific user or all users."""
+    """Clear streaming cache for the authenticated user."""
     try:
-        logger.info(f"🚀 Clearing streaming cache for user: {user_id}")
+        # Extract authenticated user_id from Clerk
+        clerk_user_id = str(current_user.get('id', ''))
+        if not clerk_user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID in authentication token"
+            )
+        
+        authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+        if not authenticated_user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID format in authentication token"
+            )
+        
+        logger.info(f"🚀 Clearing streaming cache for authenticated user: {authenticated_user_id}")
         
         # Import the cache from the streaming endpoints module
         from .streaming_endpoints import streaming_cache
         
-        if user_id:
-            # Clear cache for specific user
-            cache_keys_to_remove = [
-                f"strategic_intelligence_{user_id}",
-                f"keyword_research_{user_id}"
-            ]
-            for key in cache_keys_to_remove:
-                if key in streaming_cache:
-                    del streaming_cache[key]
-                    logger.info(f"✅ Cleared cache for key: {key}")
-        else:
-            # Clear all cache
-            streaming_cache.clear()
-            logger.info("✅ Cleared all streaming cache")
+        # Clear cache for authenticated user only (security: users can only clear their own cache)
+        cache_keys_to_remove = [
+            f"strategic_intelligence_{authenticated_user_id}",
+            f"keyword_research_{authenticated_user_id}"
+        ]
+        for key in cache_keys_to_remove:
+            if key in streaming_cache:
+                del streaming_cache[key]
+                logger.info(f"✅ Cleared cache for key: {key}")
         
         return ResponseBuilder.create_success_response(
             message="Streaming cache cleared successfully",
-            data={"cleared_for_user": user_id}
+            data={"cleared_for_user": authenticated_user_id}
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error clearing streaming cache: {str(e)}")
         raise ContentPlanningErrorHandler.handle_general_error(e, "clear_streaming_cache") 

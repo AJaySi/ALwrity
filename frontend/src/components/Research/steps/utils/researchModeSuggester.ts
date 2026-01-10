@@ -1,4 +1,4 @@
-import { ResearchMode } from '../../../../services/blogWriterApi';
+import { ResearchMode } from '../../../../services/researchApi';
 
 /**
  * Smart mode suggestion based on query complexity

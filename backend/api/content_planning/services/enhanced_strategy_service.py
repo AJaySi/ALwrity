@@ -72,9 +72,12 @@ class EnhancedStrategyService:
         """Enhance strategy with onboarding data - delegates to core service."""
         return await self.core_service._enhance_strategy_with_onboarding_data(strategy, user_id, db)
 
-    async def _generate_comprehensive_ai_recommendations(self, strategy: Any, db: Session) -> None:
+    async def _generate_comprehensive_ai_recommendations(self, strategy: Any, db: Session, user_id: Optional[str] = None) -> None:
         """Generate comprehensive AI recommendations - delegates to core service."""
-        return await self.core_service.strategy_analyzer.generate_comprehensive_ai_recommendations(strategy, db)
+        # Extract user_id from strategy if not provided
+        if not user_id and hasattr(strategy, 'user_id'):
+            user_id = str(strategy.user_id)
+        return await self.core_service.strategy_analyzer.generate_comprehensive_ai_recommendations(strategy, db, user_id=user_id)
 
     async def _generate_specialized_recommendations(self, strategy: Any, analysis_type: str, db: Session) -> Dict[str, Any]:
         """Generate specialized recommendations - delegates to core service."""

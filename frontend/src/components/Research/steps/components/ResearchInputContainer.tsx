@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Tooltip, CircularProgress } from '@mui/material';
+import { Tooltip, CircularProgress, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { Psychology as BrainIcon, Settings as SettingsIcon, Info as InfoIcon } from '@mui/icons-material';
+import { ResearchPurpose, ContentOutput, ResearchDepthLevel } from '../../types/intent.types';
 
 interface ResearchInputContainerProps {
   keywords: string[];
@@ -11,7 +12,45 @@ interface ResearchInputContainerProps {
   isAnalyzingIntent?: boolean;
   hasIntentAnalysis?: boolean;
   intentConfidence?: number;
+  // User-provided intent settings
+  userPurpose?: ResearchPurpose;
+  userContentOutput?: ContentOutput;
+  userDepth?: ResearchDepthLevel;
+  onPurposeChange?: (purpose: ResearchPurpose) => void;
+  onContentOutputChange?: (output: ContentOutput) => void;
+  onDepthChange?: (depth: ResearchDepthLevel) => void;
 }
+
+const PURPOSE_OPTIONS: { value: ResearchPurpose; label: string }[] = [
+  { value: 'learn', label: 'Learn' },
+  { value: 'create_content', label: 'Create Content' },
+  { value: 'make_decision', label: 'Make Decision' },
+  { value: 'compare', label: 'Compare' },
+  { value: 'solve_problem', label: 'Solve Problem' },
+  { value: 'find_data', label: 'Find Data' },
+  { value: 'explore_trends', label: 'Explore Trends' },
+  { value: 'validate', label: 'Validate' },
+  { value: 'generate_ideas', label: 'Generate Ideas' },
+];
+
+const CONTENT_OUTPUT_OPTIONS: { value: ContentOutput; label: string }[] = [
+  { value: 'blog', label: 'Blog Post' },
+  { value: 'podcast', label: 'Podcast' },
+  { value: 'video', label: 'Video' },
+  { value: 'social_post', label: 'Social Post' },
+  { value: 'newsletter', label: 'Newsletter' },
+  { value: 'presentation', label: 'Presentation' },
+  { value: 'report', label: 'Report' },
+  { value: 'whitepaper', label: 'Whitepaper' },
+  { value: 'email', label: 'Email' },
+  { value: 'general', label: 'General' },
+];
+
+const DEPTH_OPTIONS: { value: ResearchDepthLevel; label: string }[] = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'detailed', label: 'Detailed' },
+  { value: 'expert', label: 'Expert-Level' },
+];
 
 export const ResearchInputContainer: React.FC<ResearchInputContainerProps> = ({
   keywords,
@@ -21,6 +60,12 @@ export const ResearchInputContainer: React.FC<ResearchInputContainerProps> = ({
   isAnalyzingIntent = false,
   hasIntentAnalysis = false,
   intentConfidence = 0,
+  userPurpose,
+  userContentOutput,
+  userDepth,
+  onPurposeChange,
+  onContentOutputChange,
+  onDepthChange,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [wordCount, setWordCount] = useState(0);
@@ -106,7 +151,7 @@ export const ResearchInputContainer: React.FC<ResearchInputContainerProps> = ({
         style={{
           width: '100%',
           flex: '1',
-          minHeight: '195px', // Reduced by 35% from 300px
+          minHeight: '150px', // Reduced to make room for controls
           padding: '12px',
           fontSize: '15px',
           lineHeight: '1.7',
@@ -123,6 +168,187 @@ export const ResearchInputContainer: React.FC<ResearchInputContainerProps> = ({
           boxSizing: 'border-box',
         }}
       />
+
+      {/* Compact Select Controls - Purpose, Creating, Depth */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        padding: '8px 0',
+        borderTop: '1px solid rgba(14, 165, 233, 0.1)',
+        borderBottom: '1px solid rgba(14, 165, 233, 0.1)',
+        marginTop: '8px',
+      }}>
+        {/* Purpose */}
+        <FormControl size="small" sx={{ flex: 1, minWidth: 100 }}>
+          <Select
+            value={userPurpose || ''}
+            onChange={(e) => onPurposeChange?.(e.target.value as ResearchPurpose)}
+            displayEmpty
+            sx={{
+              backgroundColor: '#ffffff',
+              color: '#1e293b',
+              fontSize: '0.75rem',
+              height: '32px',
+              '& .MuiSelect-select': {
+                padding: '6px 10px',
+                color: '#1e293b',
+              },
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#d1d5db',
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#9ca3af',
+              },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#0ea5e9',
+                borderWidth: '1.5px',
+              },
+              '& .MuiSelect-icon': {
+                color: '#64748b',
+              },
+            }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  backgroundColor: '#ffffff',
+                  '& .MuiMenuItem-root': {
+                    color: '#1e293b',
+                    fontSize: '0.75rem',
+                    '&:hover': {
+                      backgroundColor: '#f3f4f6',
+                    },
+                    '&.Mui-selected': {
+                      backgroundColor: '#e0f2fe',
+                      color: '#0284c7',
+                    },
+                  },
+                },
+              },
+            }}
+          >
+            <MenuItem value="" disabled>
+              <em style={{ color: '#9ca3af', fontSize: '0.75rem' }}>Purpose</em>
+            </MenuItem>
+            {PURPOSE_OPTIONS.map(opt => (
+              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* Creating (Content Output) */}
+        <FormControl size="small" sx={{ flex: 1, minWidth: 100 }}>
+          <Select
+            value={userContentOutput || ''}
+            onChange={(e) => onContentOutputChange?.(e.target.value as ContentOutput)}
+            displayEmpty
+            sx={{
+              backgroundColor: '#ffffff',
+              color: '#1e293b',
+              fontSize: '0.75rem',
+              height: '32px',
+              '& .MuiSelect-select': {
+                padding: '6px 10px',
+                color: '#1e293b',
+              },
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#d1d5db',
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#9ca3af',
+              },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#0ea5e9',
+                borderWidth: '1.5px',
+              },
+              '& .MuiSelect-icon': {
+                color: '#64748b',
+              },
+            }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  backgroundColor: '#ffffff',
+                  '& .MuiMenuItem-root': {
+                    color: '#1e293b',
+                    fontSize: '0.75rem',
+                    '&:hover': {
+                      backgroundColor: '#f3f4f6',
+                    },
+                    '&.Mui-selected': {
+                      backgroundColor: '#e0f2fe',
+                      color: '#0284c7',
+                    },
+                  },
+                },
+              },
+            }}
+          >
+            <MenuItem value="" disabled>
+              <em style={{ color: '#9ca3af', fontSize: '0.75rem' }}>Creating</em>
+            </MenuItem>
+            {CONTENT_OUTPUT_OPTIONS.map(opt => (
+              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* Depth */}
+        <FormControl size="small" sx={{ flex: 1, minWidth: 100 }}>
+          <Select
+            value={userDepth || ''}
+            onChange={(e) => onDepthChange?.(e.target.value as ResearchDepthLevel)}
+            displayEmpty
+            sx={{
+              backgroundColor: '#ffffff',
+              color: '#1e293b',
+              fontSize: '0.75rem',
+              height: '32px',
+              '& .MuiSelect-select': {
+                padding: '6px 10px',
+                color: '#1e293b',
+              },
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#d1d5db',
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#9ca3af',
+              },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#0ea5e9',
+                borderWidth: '1.5px',
+              },
+              '& .MuiSelect-icon': {
+                color: '#64748b',
+              },
+            }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  backgroundColor: '#ffffff',
+                  '& .MuiMenuItem-root': {
+                    color: '#1e293b',
+                    fontSize: '0.75rem',
+                    '&:hover': {
+                      backgroundColor: '#f3f4f6',
+                    },
+                    '&.Mui-selected': {
+                      backgroundColor: '#e0f2fe',
+                      color: '#0284c7',
+                    },
+                  },
+                },
+              },
+            }}
+          >
+            <MenuItem value="" disabled>
+              <em style={{ color: '#9ca3af', fontSize: '0.75rem' }}>Depth</em>
+            </MenuItem>
+            {DEPTH_OPTIONS.map(opt => (
+              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </div>
 
       {/* Bottom bar with word count and Intent & Options button */}
       <div style={{

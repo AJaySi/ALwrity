@@ -11,7 +11,11 @@ import {
   Grid,
   Card,
   CardContent,
+  Tooltip,
 } from '@mui/material';
+import {
+  Info as InfoIcon,
+} from '@mui/icons-material';
 import {
   ResearchIntent,
   ResearchPurpose,
@@ -38,11 +42,18 @@ export const IntentSummaryGrid: React.FC<IntentSummaryGridProps> = ({
     <Grid container spacing={2} mb={2}>
       {/* Purpose */}
       <Grid item xs={6} sm={3}>
-        <Card variant="outlined" sx={{ height: '100%', backgroundColor: '#ffffff', border: '1px solid #e5e7eb' }}>
+        <Card variant="outlined" sx={{ height: '100%', backgroundColor: '#ffffff', border: '1px solid #e5e7eb', '&:hover': { borderColor: '#0ea5e9', boxShadow: '0 2px 4px rgba(14, 165, 233, 0.1)' }, transition: 'all 0.2s ease' }}>
           <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
-            <Typography variant="caption" color="#666" fontWeight={500} display="block" mb={0.5}>
-              Purpose
-            </Typography>
+            <Tooltip
+              title="The primary goal of your research. This helps ALwrity understand what you're trying to accomplish (e.g., learning, comparing options, making decisions, creating content)."
+              arrow
+              placement="top"
+            >
+              <Typography variant="caption" color="#666" fontWeight={500} display="flex" alignItems="center" gap={0.5} mb={0.5} sx={{ cursor: 'help' }}>
+                Purpose
+                <InfoIcon sx={{ fontSize: 12, color: '#9ca3af' }} />
+              </Typography>
+            </Tooltip>
             <EditableField
               field="purpose"
               value={intent.purpose}
@@ -56,11 +67,18 @@ export const IntentSummaryGrid: React.FC<IntentSummaryGridProps> = ({
 
       {/* Content Type */}
       <Grid item xs={6} sm={3}>
-        <Card variant="outlined" sx={{ height: '100%', backgroundColor: '#ffffff', border: '1px solid #e5e7eb' }}>
+        <Card variant="outlined" sx={{ height: '100%', backgroundColor: '#ffffff', border: '1px solid #e5e7eb', '&:hover': { borderColor: '#0ea5e9', boxShadow: '0 2px 4px rgba(14, 165, 233, 0.1)' }, transition: 'all 0.2s ease' }}>
           <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
-            <Typography variant="caption" color="#666" fontWeight={500} display="block" mb={0.5}>
-              Creating
-            </Typography>
+            <Tooltip
+              title="The type of content you're creating with this research. This helps ALwrity tailor the research results and format them appropriately (e.g., blog post, report, presentation, video script)."
+              arrow
+              placement="top"
+            >
+              <Typography variant="caption" color="#666" fontWeight={500} display="flex" alignItems="center" gap={0.5} mb={0.5} sx={{ cursor: 'help' }}>
+                Creating
+                <InfoIcon sx={{ fontSize: 12, color: '#9ca3af' }} />
+              </Typography>
+            </Tooltip>
             <EditableField
               field="content_output"
               value={intent.content_output}
@@ -74,11 +92,18 @@ export const IntentSummaryGrid: React.FC<IntentSummaryGridProps> = ({
 
       {/* Depth */}
       <Grid item xs={6} sm={3}>
-        <Card variant="outlined" sx={{ height: '100%', backgroundColor: '#ffffff', border: '1px solid #e5e7eb' }}>
+        <Card variant="outlined" sx={{ height: '100%', backgroundColor: '#ffffff', border: '1px solid #e5e7eb', '&:hover': { borderColor: '#0ea5e9', boxShadow: '0 2px 4px rgba(14, 165, 233, 0.1)' }, transition: 'all 0.2s ease' }}>
           <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
-            <Typography variant="caption" color="#666" fontWeight={500} display="block" mb={0.5}>
-              Depth
-            </Typography>
+            <Tooltip
+              title="How deep and comprehensive you want the research to be. Overview = quick summary, Detailed = thorough analysis, Expert = in-depth with advanced insights and multiple perspectives."
+              arrow
+              placement="top"
+            >
+              <Typography variant="caption" color="#666" fontWeight={500} display="flex" alignItems="center" gap={0.5} mb={0.5} sx={{ cursor: 'help' }}>
+                Depth
+                <InfoIcon sx={{ fontSize: 12, color: '#9ca3af' }} />
+              </Typography>
+            </Tooltip>
             <EditableField
               field="depth"
               value={intent.depth}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WizardStepProps, ResearchExecution } from '../types/research.types';
 import { ResearchResults } from '../../BlogWriter/ResearchResults';
+import { ResearchResponse } from '../../../services/researchApi';
 import { BlogResearchResponse } from '../../../services/blogWriterApi';
 import { IntentResultsDisplay } from './components/IntentResultsDisplay';
 import { IntentDrivenResearchResponse } from '../types/intent.types';
@@ -332,7 +333,7 @@ export const StepResults: React.FC<StepResultsProps> = ({ state, onUpdate, onBac
               {activeTab === 'analysis' && (
                 <div style={{ animation: 'fadeIn 0.3s ease' }}>
                   {state.results ? (
-                    <ResearchResults research={state.results} showAnalysisOnly />
+                    <ResearchResults research={state.results as BlogResearchResponse} showAnalysisOnly />
                   ) : (
                     <div>
                       {intentResult.suggested_outline && intentResult.suggested_outline.length > 0 && (
@@ -372,7 +373,7 @@ export const StepResults: React.FC<StepResultsProps> = ({ state, onUpdate, onBac
             </>
           ) : state.results ? (
             // Traditional results display (no tabs)
-            <ResearchResults research={state.results} />
+            <ResearchResults research={state.results as BlogResearchResponse} />
           ) : (
             <p style={{ color: '#666', textAlign: 'center', padding: '40px' }}>
               No results available

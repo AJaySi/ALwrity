@@ -137,6 +137,7 @@ class APIUsageLog(Base):
     endpoint = Column(String(200), nullable=False)
     method = Column(String(10), nullable=False)
     model_used = Column(String(100), nullable=True)  # e.g., "gemini-2.5-flash"
+    actual_provider_name = Column(String(50), nullable=True)  # e.g., "wavespeed", "google", "huggingface" - tracks real provider behind generic enum
     
     # Usage Metrics
     tokens_input = Column(Integer, default=0)

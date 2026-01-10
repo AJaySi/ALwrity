@@ -11,10 +11,7 @@ from loguru import logger
 # Import route modules
 from .routes import strategies, calendar_events, gap_analysis, ai_analytics, calendar_generation, health_monitoring, monitoring
 
-# Import enhanced strategy routes
-from .enhanced_strategy_routes import router as enhanced_strategy_router
-
-# Import content strategy routes
+# Import content strategy routes (modular endpoints)
 from .content_strategy.routes import router as content_strategy_router
 
 # Import quality analysis routes
@@ -35,10 +32,7 @@ router.include_router(calendar_generation.router)
 router.include_router(health_monitoring.router)
 router.include_router(monitoring.router)
 
-# Include enhanced strategy routes with correct prefix
-router.include_router(enhanced_strategy_router, prefix="/enhanced-strategies")
-
-# Include content strategy routes
+# Include content strategy routes (modular endpoints)
 router.include_router(content_strategy_router)
 
 # Include quality analysis routes

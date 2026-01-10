@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { WizardState, WizardStepProps } from '../types/research.types';
-import { ResearchMode, ResearchConfig, BlogResearchResponse } from '../../../services/blogWriterApi';
+import { ResearchMode, ResearchConfig, ResearchResponse } from '../../../services/researchApi';
+import { restoreDraft, autoSaveDraft } from '../../../utils/researchDraftManager';
 
 const WIZARD_STATE_KEY = 'alwrity_research_wizard_state';
 const MAX_STEPS = 3; // Input (combined) -> Progress -> Results
@@ -34,7 +35,7 @@ export const useResearchWizard = (
   initialConfig?: ResearchConfig
 ) => {
   const [state, setState] = useState<WizardState>(() => {
-    // If initial values are provided (preset clicked), clear localStorage and use them
+    // If initial values are provided (preset clicked), clear drafts and use them
     if (initialKeywords || initialIndustry || initialTargetAudience || initialResearchMode || initialConfig) {
       localStorage.removeItem(WIZARD_STATE_KEY);
       return {
@@ -47,7 +48,27 @@ export const useResearchWizard = (
       };
     }
     
-    // Try to load from localStorage only if no initial values
+    // Try to restore from draft first (more comprehensive)
+    const draft = restoreDraft();
+    if (draft && ((draft.keywords && draft.keywords.length > 0) || draft.intent_analysis || draft.confirmed_intent)) {
+      console.log('[useResearchWizard] 🔄 Restoring from draft:', {
+        step: draft.current_step,
+        keywords: draft.keywords?.length || 0,
+        hasIntentAnalysis: !!draft.intent_analysis,
+        hasConfirmedIntent: !!draft.confirmed_intent,
+      });
+      return {
+        currentStep: draft.current_step || 1,
+        keywords: draft.keywords || [],
+        industry: draft.industry || defaultState.industry,
+        targetAudience: draft.target_audience || defaultState.targetAudience,
+        researchMode: (draft.research_mode as ResearchMode) || defaultState.researchMode,
+        config: draft.config || defaultState.config,
+        results: draft.legacy_result || null, // Only restore legacy_result for WizardState.results
+      };
+    }
+    
+    // Fallback to localStorage (legacy)
     const saved = localStorage.getItem(WIZARD_STATE_KEY);
     if (saved) {
       try {
@@ -78,11 +99,16 @@ export const useResearchWizard = (
     }
   }, [initialKeywords, initialIndustry, initialTargetAudience, initialResearchMode, initialConfig]);
 
-  // Persist state to localStorage
+  // Persist state to localStorage only (no database save until intent analysis)
   useEffect(() => {
-    if (state.currentStep > 1) {
+    // Always save to localStorage for backward compatibility
+    if (state.keywords.length > 0 || state.currentStep > 1) {
       localStorage.setItem(WIZARD_STATE_KEY, JSON.stringify(state));
     }
+    
+    // NOTE: Database draft saving only happens after user clicks "intent and options"
+    // This is handled in useResearchExecution.analyzeIntent()
+    // We only save to localStorage here to preserve state across refreshes
   }, [state]);
 
   const updateState = useCallback((updates: Partial<WizardState>) => {

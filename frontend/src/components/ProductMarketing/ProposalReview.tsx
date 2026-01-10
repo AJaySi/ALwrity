@@ -39,7 +39,7 @@ import { ImageStudioLayout } from '../ImageStudio/ImageStudioLayout';
 import { GlassyCard } from '../ImageStudio/ui/GlassyCard';
 import { SectionHeader } from '../ImageStudio/ui/SectionHeader';
 import { CampaignFlowIndicator } from './CampaignFlowIndicator';
-import { useProductMarketing, AssetProposal } from '../../hooks/useProductMarketing';
+import { useCampaignCreator, AssetProposal } from '../../hooks/useCampaignCreator';
 
 interface ProposalReviewProps {
   campaignId: string;
@@ -59,7 +59,7 @@ export const ProposalReview: React.FC<ProposalReviewProps> = ({
     generateAsset,
     isGeneratingAsset,
     error,
-  } = useProductMarketing();
+  } = useCampaignCreator();
 
   const [selectedProposals, setSelectedProposals] = useState<Set<string>>(new Set());
   const [editingProposal, setEditingProposal] = useState<string | null>(null);
@@ -249,7 +249,7 @@ export const ProposalReview: React.FC<ProposalReviewProps> = ({
                 const isSelected = selectedProposals.has(assetId);
                 const isGenerating = generationProgress[assetId];
                 const isEditing = editingProposal === assetId;
-                const editedPrompt = editedPrompts[assetId] || proposal.proposed_prompt;
+                const editedPrompt = editedPrompts[assetId] || proposal.proposed_prompt || '';
 
                 return (
                   <Grid item xs={12} key={assetId}>

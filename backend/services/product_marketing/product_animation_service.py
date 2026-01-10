@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from services.image_studio.transform_service import TransformStudioService, TransformImageToVideoRequest
 from services.image_studio.studio_manager import ImageStudioManager
 from utils.logger_utils import get_service_logger
+from utils.asset_tracker import save_asset_to_library
+from services.database import SessionLocal
 
 logger = get_service_logger("product_marketing.animation")
 
@@ -140,6 +142,63 @@ class ProductAnimationService:
             result["product_name"] = request.product_name
             result["animation_type"] = request.animation_type
             result["source_module"] = "product_marketing"
+            
+            # Save to Asset Library
+            if result.get("file_url") and result.get("filename"):
+                db = SessionLocal()
+                try:
+                    # Build animation prompt for metadata
+                    animation_prompt = self._build_animation_prompt(
+                        animation_type=request.animation_type,
+                        product_name=request.product_name,
+                        product_description=request.product_description,
+                        brand_context=request.brand_context,
+                        additional_context=request.additional_context
+                    )
+                    
+                    asset_id = save_asset_to_library(
+                        db=db,
+                        user_id=user_id,
+                        asset_type="video",
+                        source_module="product_marketing",
+                        filename=result.get("filename"),
+                        file_url=result.get("file_url"),
+                        file_path=result.get("file_path"),
+                        file_size=result.get("file_size"),
+                        mime_type="video/mp4",
+                        title=f"{request.product_name} - {request.animation_type.title()} Animation",
+                        description=f"Product animation: {request.product_description or request.product_name}",
+                        prompt=animation_prompt,
+                        tags=["product_marketing", "product_animation", request.animation_type, request.resolution],
+                        provider=result.get("provider", "wavespeed"),
+                        model=result.get("model_name", "alibaba/wan-2.5/image-to-video"),
+                        cost=result.get("cost", 0.0),
+                        generation_time=result.get("generation_time"),
+                        asset_metadata={
+                            "product_name": request.product_name,
+                            "product_description": request.product_description,
+                            "animation_type": request.animation_type,
+                            "resolution": request.resolution,
+                            "duration": request.duration,
+                            "width": result.get("width"),
+                            "height": result.get("height"),
+                        },
+                    )
+                    
+                    if asset_id:
+                        logger.info(f"[Product Animation] ✅ Saved animation to Asset Library: ID={asset_id}")
+                    else:
+                        logger.warning(f"[Product Animation] ⚠️ Asset Library save returned None")
+                        
+                except Exception as db_error:
+                    logger.error(f"[Product Animation] Database error saving to Asset Library: {str(db_error)}", exc_info=True)
+                    # Video is saved, but database tracking failed - not critical
+                finally:
+                    if db:
+                        try:
+                            db.close()
+                        except Exception:
+                            pass
             
             logger.info(
                 f"[Product Animation] ✅ Product animation completed: "

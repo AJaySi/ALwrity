@@ -275,6 +275,12 @@ export const BlogWriter: React.FC = () => {
 
   const handlePhaseClick = useCallback((phaseId: string) => {
     navigateToPhase(phaseId);
+    // When clicking Research phase, ensure we navigate to research phase (this will trigger research form to show)
+    if (phaseId === 'research' && !research) {
+      debug.log('[BlogWriter] Research phase clicked - navigating to research phase to show form');
+      // navigateToPhase already called above, which will set currentPhase to 'research'
+      // BlogWriterLandingSection will detect currentPhase === 'research' and show ManualResearchForm
+    }
     if (phaseId === 'seo') {
       if (seoAnalysis) {
         setIsSEOAnalysisModalOpen(true);
@@ -283,7 +289,7 @@ export const BlogWriter: React.FC = () => {
         runSEOAnalysisDirect();
       }
     }
-  }, [navigateToPhase, seoAnalysis, runSEOAnalysisDirect, setIsSEOAnalysisModalOpen]);
+  }, [navigateToPhase, seoAnalysis, research, runSEOAnalysisDirect, setIsSEOAnalysisModalOpen]);
 
   const outlineGenRef = useRef<any>(null);
 

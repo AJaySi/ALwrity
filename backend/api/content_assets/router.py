@@ -306,6 +306,7 @@ class AssetUpdateRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
+    asset_metadata: Optional[Dict[str, Any]] = None
 
 
 @router.put("/{asset_id}", response_model=AssetResponse)
@@ -329,6 +330,7 @@ async def update_asset(
             title=update_data.title,
             description=update_data.description,
             tags=update_data.tags,
+            asset_metadata=update_data.asset_metadata,
         )
         
         if not asset:

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { blogWriterApi, BlogResearchRequest, BlogResearchResponse } from '../../services/blogWriterApi';
-import { useResearchPolling } from '../../hooks/usePolling';
+import { useBlogWriterResearchPolling } from '../../hooks/usePolling';
 import ResearchProgressModal from './ResearchProgressModal';
 import { researchCache } from '../../services/researchCache';
 
@@ -22,7 +22,7 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
   const keywordsRef = useRef<HTMLInputElement | null>(null);
   const blogLengthRef = useRef<HTMLSelectElement | null>(null);
 
-  const polling = useResearchPolling({
+  const polling = useBlogWriterResearchPolling({
     onProgress: (message) => {
       setCurrentMessage(message);
     },

@@ -105,7 +105,7 @@ export const toolCategories: ToolCategories = {
             name: 'SEO Dashboard',
             description: 'AI-powered SEO analysis and actionable insights',
             icon: React.createElement(AnalyticsIcon),
-            status: 'premium',
+            status: 'beta',
             path: '/seo-dashboard',
             features: ['AI Insights', 'Performance Tracking', 'Actionable Recommendations'],
             isPinned: true,
@@ -115,11 +115,19 @@ export const toolCategories: ToolCategories = {
             name: 'Content Planning Dashboard',
             description: 'AI-powered content strategy and planning with gap analysis',
             icon: React.createElement(PsychologyIcon),
-            status: 'premium',
+            status: 'beta',
             path: '/content-planning',
             features: ['Content Strategy', 'Gap Analysis', 'AI Recommendations', 'Calendar Management'],
             isPinned: true,
             isHighlighted: true
+          },
+          {
+            name: 'AI Content Strategy Generator',
+            description: 'Comprehensive content planning with market intelligence',
+            icon: React.createElement(PsychologyIcon),
+            status: 'beta',
+            path: '/content-planning',
+            features: ['Market Intelligence', 'Topic Clusters', 'Implementation Roadmaps']
           },
           {
             name: 'Enterprise SEO Suite',
@@ -136,14 +144,6 @@ export const toolCategories: ToolCategories = {
             status: 'premium',
             path: '/gsc-intelligence',
             features: ['Content Opportunities', 'Search Intelligence', 'Competitive Analysis']
-          },
-          {
-            name: 'AI Content Strategy Generator',
-            description: 'Comprehensive content planning with market intelligence',
-            icon: React.createElement(PsychologyIcon),
-            status: 'premium',
-            path: '/ai-content-strategy',
-            features: ['Market Intelligence', 'Topic Clusters', 'Implementation Roadmaps']
           }
         ]
       },
@@ -369,15 +369,6 @@ export const toolCategories: ToolCategories = {
         status: 'pro',
         path: '/website-dashboard',
         features: ['Traffic Analysis', 'Page Performance', 'User Behavior', 'Conversion Tracking', 'Site Speed']
-      },
-      {
-        name: 'Strategy Dashboard',
-        description: 'Content strategy planning and performance overview',
-        icon: React.createElement(StrategyIcon),
-        status: 'beta',
-        path: '/strategy-dashboard',
-        features: ['Content Planning', 'Performance Overview', 'Goal Tracking', 'ROI Analysis', 'Strategic Insights'],
-        isHighlighted: true
       },
       {
         name: 'Calendar Dashboard',

@@ -23,6 +23,8 @@ import {
 } from '@mui/icons-material';
 import { apiClient } from '../../api/client';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { usePriority2Alerts } from '../../hooks/usePriority2Alerts';
+import Priority2AlertBanner from './Priority2AlertBanner';
 
 interface UsageStats {
   total_calls: number;
@@ -83,6 +85,13 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const userId = localStorage.getItem('user_id');
+
+  // Priority 2 Alerts - automatically appears in all tool headers
+  const { alerts: priority2Alerts, dismissAlert: dismissPriority2Alert } = usePriority2Alerts({
+    userId: userId || undefined,
+    enabled: !!userId && subscription?.active,
+    checkInterval: 120000, // Check every 2 minutes
+  });
 
   const fetchUsageData = async () => {
     if (!userId) return;
@@ -175,19 +184,34 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
       );
     }
     
-    return null;
+    return <Box />; // Return empty box instead of null
   }
 
   if (compact) {
     // Compact view - show key metrics as chips
-    const totalCalls = dashboardData.summary.total_api_calls_this_month;
-    const totalCost = dashboardData.summary.total_cost_this_month;
+    // Use current_usage for accurate cost (properly coerced from provider breakdown)
+    // Fallback to summary if current_usage is not available
+    const totalCalls = dashboardData.current_usage?.total_calls ?? dashboardData.summary.total_api_calls_this_month;
+    const totalCost = dashboardData.current_usage?.total_cost ?? dashboardData.summary.total_cost_this_month ?? 0;
     const monthlyLimit = dashboardData.limits.limits.monthly_cost;
-    const usagePercentage = (totalCost / monthlyLimit) * 100;
+    const usagePercentage = monthlyLimit > 0 ? (totalCost / monthlyLimit) * 100 : 0;
 
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {/* Total API Calls */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {/* Priority 2 Alerts - Shows cost trends, OSS recommendations, spending velocity */}
+        {priority2Alerts.length > 0 && (
+          <Box sx={{ mb: 0.5 }}>
+            <Priority2AlertBanner
+              alerts={priority2Alerts}
+              onDismiss={dismissPriority2Alert}
+              maxAlerts={1} // Show only 1 alert in compact view
+            />
+          </Box>
+        )}
+        
+        {/* Usage Statistics */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Total API Calls */}
         <Tooltip title={`${totalCalls.toLocaleString()} API calls this month`}>
           <Chip
             icon={getUsageStatusIcon(dashboardData.summary.usage_status)}
@@ -298,6 +322,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             </Box>
           )}
         </Menu>
+        </Box>
       </Box>
     );
   }
@@ -316,7 +341,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             Total API Calls
           </Typography>
           <Typography variant="h4" color="primary">
-            {dashboardData.summary.total_api_calls_this_month.toLocaleString()}
+            {(dashboardData.current_usage?.total_calls ?? dashboardData.summary.total_api_calls_this_month).toLocaleString()}
           </Typography>
         </Box>
 
@@ -326,7 +351,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             Monthly Cost
           </Typography>
           <Typography variant="h4" color="secondary">
-            ${dashboardData.summary.total_cost_this_month.toFixed(2)}
+            ${(dashboardData.current_usage?.total_cost ?? dashboardData.summary.total_cost_this_month ?? 0).toFixed(2)}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             of ${dashboardData.limits.limits.monthly_cost} limit

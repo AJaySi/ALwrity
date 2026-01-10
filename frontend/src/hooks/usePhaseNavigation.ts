@@ -22,14 +22,26 @@ export const usePhaseNavigation = (
   seoRecommendationsApplied?: boolean
 ) => {
   // Initialize from localStorage if available
+  // If no research exists, default to empty string to show landing page
+  // Only default to 'research' if research already exists (resuming a session)
   const getInitialPhase = (): string => {
     try {
       if (typeof window !== 'undefined') {
         const stored = window.localStorage.getItem('blogwriter_current_phase');
-        if (stored) return stored;
+        if (stored) {
+          // If stored phase is 'research' but no research exists, show landing page instead
+          if (stored === 'research' && !research) {
+            return ''; // Return empty to show landing page
+          }
+          // For other phases, use stored value (user might be in middle of outline/content/seo/publish)
+          // Even if research doesn't exist, allow other phases to be restored (edge case)
+          return stored;
+        }
       }
     } catch {}
-    return 'research';
+    // Default to empty string to show landing page when no research exists
+    // Will be set to 'research' when user clicks "Start Research"
+    return research ? 'research' : '';
   };
 
   const [currentPhase, setCurrentPhase] = useState<string>(getInitialPhase());
@@ -113,24 +125,37 @@ export const usePhaseNavigation = (
 
   // Validate stored phase against current availability (quiet)
   useEffect(() => {
+    // Allow empty string as a valid phase (landing page state)
+    if (currentPhase === '') {
+      return; // Don't validate empty phase - it's intentional for landing page
+    }
+    
     const current = phases.find(p => p.id === currentPhase);
     if (!current) {
-      setCurrentPhase('research');
+      // If phase not found and no research exists, go to landing (empty string)
+      // Otherwise, default to research
+      setCurrentPhase(research ? 'research' : '');
       return;
     }
     if (current.disabled) {
       // Find the first non-disabled phase in order of progression the user qualifies for
-      const fallback = phases.find(p => !p.disabled) || ({ id: 'research' } as Phase);
+      // If no research exists, default to landing (empty string) instead of research
+      const fallback = phases.find(p => !p.disabled) || ({ id: research ? 'research' : '' } as Phase);
       if (fallback.id !== currentPhase) {
         setCurrentPhase(fallback.id);
       }
     }
-  }, [phases, currentPhase]);
+  }, [phases, currentPhase, research]);
 
   // Auto-update current phase based on completion status (only if user hasn't manually selected a phase)
   useEffect(() => {
     if (userSelectedPhase) {
       return; // Don't auto-update if user has manually selected a phase
+    }
+    
+    // If no research exists and phase is empty/landing, stay on landing
+    if (!research && currentPhase === '') {
+      return; // Keep showing landing page
     }
 
     // Auto-progress to the next available phase when conditions are met

@@ -111,7 +111,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   }
 
   // All checks passed - render protected component
-  console.log('ProtectedRoute: Access granted (context/local), rendering component');
   return <>{children}</>;
 };
 

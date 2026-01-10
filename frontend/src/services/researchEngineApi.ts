@@ -1,5 +1,5 @@
 import { apiClient } from '../api/client';
-import { ResearchConfig, BlogResearchResponse } from './blogWriterApi';
+import { ResearchConfig, ResearchResponse } from './researchApi';
 
 export interface ResearchEngineRequest {
   query: string;
@@ -25,12 +25,11 @@ export interface ResearchEngineRequest {
   tavily_include_raw_content?: boolean | string;
   tavily_time_range?: string;
   tavily_country?: string;
-  config?: ResearchConfig; // keep compatibility
+  config?: ResearchConfig;
 }
 
-export interface ResearchEngineResponse extends BlogResearchResponse {
+export interface ResearchEngineResponse extends ResearchResponse {
   provider_used?: string;
-  search_queries?: string[];
 }
 
 export interface ResearchTaskResponse {

@@ -19,7 +19,7 @@ import {
   TextFields,
   AttachMoney,
 } from '@mui/icons-material';
-import { PreflightValidationResult } from '../../hooks/useProductMarketing';
+import { PreflightValidationResult } from '../../hooks/useCampaignCreator';
 
 interface PreflightValidationAlertProps {
   validationResult: PreflightValidationResult | null;

@@ -64,6 +64,7 @@ export interface ResearchIntent {
   expected_deliverables: ExpectedDeliverable[];
   depth: ResearchDepthLevel;
   focus_areas: string[];
+  also_answering: string[];
   perspective: string | null;
   time_sensitivity: string | null;
   input_type: InputType;
@@ -210,9 +211,13 @@ export interface SourceWithRelevance {
 
 export interface AnalyzeIntentRequest {
   user_input: string;
-  keywords: string[];
-  use_persona: boolean;
-  use_competitor_data: boolean;
+  keywords?: string[];
+  use_persona?: boolean;
+  use_competitor_data?: boolean;
+  // User-provided intent settings (optional - if provided, use these instead of inferring)
+  user_provided_purpose?: ResearchPurpose;
+  user_provided_content_output?: ContentOutput;
+  user_provided_depth?: ResearchDepthLevel;
 }
 
 // Optimized provider configuration with AI-driven justifications
@@ -231,10 +236,33 @@ export interface OptimizedConfig {
   exa_num_results_justification?: string;
   exa_date_filter?: string;
   exa_date_justification?: string;
+  exa_end_published_date?: string;
+  exa_end_published_date_justification?: string;
+  exa_start_crawl_date?: string;
+  exa_start_crawl_date_justification?: string;
+  exa_end_crawl_date?: string;
+  exa_end_crawl_date_justification?: string;
+  exa_include_text?: string[];
+  exa_include_text_justification?: string;
+  exa_exclude_text?: string[];
+  exa_exclude_text_justification?: string;
   exa_highlights?: boolean;
   exa_highlights_justification?: string;
-  exa_context?: boolean;
+  exa_highlights_num_sentences?: number;
+  exa_highlights_num_sentences_justification?: string;
+  exa_highlights_per_url?: number;
+  exa_highlights_per_url_justification?: string;
+  exa_context?: boolean | { maxCharacters?: number };
   exa_context_justification?: string;
+  exa_context_max_characters?: number;
+  exa_context_max_characters_justification?: string;
+  exa_text_max_characters?: number;
+  exa_text_max_characters_justification?: string;
+  exa_summary_query?: string;
+  exa_summary_query_justification?: string;
+  exa_additional_queries?: string[];
+  exa_additional_queries_justification?: string;
+  // Note: exa_search_type is mapped from exa_type in the backend
   
   // Tavily settings with justifications
   tavily_topic?: string;

@@ -34,20 +34,20 @@ export const exaCategories = [
   { value: 'company', label: 'Company Profiles' },
   { value: 'research paper', label: 'Research Papers' },
   { value: 'news', label: 'News Articles' },
-  { value: 'linkedin profile', label: 'LinkedIn Profiles' },
+  { value: 'pdf', label: 'PDF Documents' },
   { value: 'github', label: 'GitHub Repos' },
   { value: 'tweet', label: 'Tweets' },
-  { value: 'movie', label: 'Movies' },
-  { value: 'song', label: 'Songs' },
   { value: 'personal site', label: 'Personal Sites' },
-  { value: 'pdf', label: 'PDF Documents' },
+  { value: 'linkedin profile', label: 'LinkedIn Profiles' },
   { value: 'financial report', label: 'Financial Reports' },
 ];
 
 export const exaSearchTypes = [
-  { value: 'auto', label: 'Auto - Let AI decide' },
-  { value: 'keyword', label: 'Keyword - Precise matching' },
-  { value: 'neural', label: 'Neural - Semantic search' },
+  { value: 'auto', label: 'Auto (Default) - Best of all worlds' },
+  { value: 'fast', label: 'Fast - <500ms, speed-critical' },
+  { value: 'deep', label: 'Deep - ~5000ms, comprehensive research' },
+  { value: 'neural', label: 'Neural - Embeddings-based semantic' },
+  { value: 'keyword', label: 'Keyword - Traditional search' },
 ];
 
 export const tavilyTopics = [

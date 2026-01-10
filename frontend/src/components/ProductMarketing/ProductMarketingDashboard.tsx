@@ -23,15 +23,20 @@ import {
   RadioButtonUnchecked,
   PhotoCamera,
 } from '@mui/icons-material';
+import Joyride, { CallBackProps, STATUS } from 'react-joyride';
 import { motion } from 'framer-motion';
 import { ImageStudioLayout } from '../ImageStudio/ImageStudioLayout';
 import { GlassyCard } from '../ImageStudio/ui/GlassyCard';
 import { SectionHeader } from '../ImageStudio/ui/SectionHeader';
+import { useCampaignCreator } from '../../hooks/useCampaignCreator';
 import { useProductMarketing } from '../../hooks/useProductMarketing';
 import { CampaignWizard } from './CampaignWizard';
 import { AssetAuditPanel } from './AssetAuditPanel';
 import { ProposalReview } from './ProposalReview';
+import { PersonalizedRecommendations } from './PersonalizedRecommendations';
 import { useNavigate } from 'react-router-dom';
+import { productMarketingSteps } from '../../utils/walkthroughs/productMarketingSteps';
+import { campaignCreatorSteps } from '../../utils/walkthroughs/campaignCreatorSteps';
 
 const MotionCard = motion(Card);
 
@@ -53,10 +58,12 @@ export const ProductMarketingDashboard: React.FC = () => {
     listCampaigns,
     campaigns: apiCampaigns,
     isLoadingCampaigns,
-  } = useProductMarketing();
+  } = useCampaignCreator();
   const [showWizard, setShowWizard] = useState(false);
   const [showAssetAudit, setShowAssetAudit] = useState(false);
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
+  const [runTour, setRunTour] = useState(false);
+  const [tourType, setTourType] = useState<'campaign' | 'product'>('campaign');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -66,7 +73,28 @@ export const ProductMarketingDashboard: React.FC = () => {
     }
     // Load campaigns on mount
     listCampaigns();
+    // Auto-run campaign tour for first-time visitors
+    const hasSeenCampaignTour = localStorage.getItem('pm_campaign_tour_seen');
+    if (!hasSeenCampaignTour) {
+      setTourType('campaign');
+      setRunTour(true);
+    }
   }, [brandDNA, getBrandDNA, listCampaigns]);
+
+  const handleJoyrideCallback = (data: CallBackProps) => {
+    const { status } = data;
+    const finished = status === STATUS.FINISHED || status === STATUS.SKIPPED;
+    if (finished) {
+      setRunTour(false);
+      const key = tourType === 'campaign' ? 'pm_campaign_tour_seen' : 'pm_product_tour_seen';
+      localStorage.setItem(key, 'true');
+    }
+  };
+
+  const startTour = (type: 'campaign' | 'product') => {
+    setTourType(type);
+    setRunTour(true);
+  };
 
   const handleCreateCampaign = () => {
     setShowWizard(true);
@@ -77,6 +105,12 @@ export const ProductMarketingDashboard: React.FC = () => {
       setShowWizard(true);
     } else if (journey === 'photoshoot') {
       navigate('/campaign-creator/photoshoot');
+    } else if (journey === 'animation') {
+      navigate('/campaign-creator/animation');
+    } else if (journey === 'video') {
+      navigate('/campaign-creator/video');
+    } else if (journey === 'avatar') {
+      navigate('/campaign-creator/avatar');
     } else if (journey === 'optimize') {
       // TODO: Show optimization insights
       alert('Optimization insights coming soon!');
@@ -118,9 +152,9 @@ export const ProductMarketingDashboard: React.FC = () => {
   return (
     <ImageStudioLayout
       headerProps={{
-        title: 'AI Campaign Creator',
+        title: 'Campaign Creator & Product Marketing',
         subtitle:
-          'Create consistent, personalized marketing campaigns across all digital platforms. AI handles the heavy lifting—you just approve.',
+          'Create multi-channel campaigns or generate individual product assets. Choose your workflow below.',
       }}
     >
       <GlassyCard
@@ -130,30 +164,62 @@ export const ProductMarketingDashboard: React.FC = () => {
           p: { xs: 3, md: 5 },
         }}
       >
-        {/* Brand DNA Status */}
-        {isLoadingBrandDNA ? (
-          <Box display="flex" justifyContent="center" py={4}>
-            <CircularProgress />
-          </Box>
-        ) : brandDNA ? (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            Brand DNA loaded: {brandDNA.persona?.persona_name || 'Default Persona'} •{' '}
-            {brandDNA.writing_style?.tone || 'professional'} tone • {brandDNA.target_audience?.industry_focus || 'general'} industry
-          </Alert>
-        ) : (
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Brand DNA not available. Complete onboarding to enable personalized campaigns.
-          </Alert>
-        )}
+        {/* Walkthrough Controls */}
+        <Box display="flex" justifyContent="flex-end" gap={1} mb={2}>
+          <Button size="small" variant="outlined" onClick={() => startTour('campaign')}>
+            Show Campaign Tour
+          </Button>
+          <Button size="small" variant="outlined" onClick={() => startTour('product')}>
+            Show Product Tour
+          </Button>
+        </Box>
 
-        {/* User Journey Selection */}
+        <Joyride
+          steps={tourType === 'campaign' ? campaignCreatorSteps : productMarketingSteps}
+          continuous
+          showSkipButton
+          showProgress
+          run={runTour}
+          scrollToFirstStep
+          disableScrolling={false}
+          styles={{
+            options: {
+              primaryColor: '#7c3aed',
+              zIndex: 3000,
+            },
+          }}
+          callback={handleJoyrideCallback}
+        />
+
+        {/* Brand DNA Status */}
+        <Box data-tour="cc-recommendations">
+          {isLoadingBrandDNA ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : brandDNA ? (
+            <Alert severity="success" sx={{ mb: 3 }}>
+              Your Brand Style loaded: {brandDNA.persona?.persona_name || 'Default Persona'} •{' '}
+              {brandDNA.writing_style?.tone || 'professional'} tone • {brandDNA.target_audience?.industry_focus || 'general'} industry
+            </Alert>
+          ) : (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              Complete onboarding to enable personalized campaigns with your brand style.
+            </Alert>
+          )}
+
+          {/* Personalized Recommendations */}
+          <PersonalizedRecommendations variant="campaign_creator" />
+        </Box>
+
+        {/* Campaign Creator Section */}
         <SectionHeader
-          title="Choose Your Journey"
-          subtitle="Select how you want to create marketing assets"
+          title="Campaign Creator"
+          subtitle="Create multi-channel marketing campaigns with AI-generated assets"
           sx={{ mb: 3 }}
         />
 
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid container spacing={3} sx={{ mb: 4 }} data-tour="cc-journeys">
           <Grid item xs={12} md={4}>
             <MotionCard
               whileHover={{ scale: 1.02 }}
@@ -243,6 +309,52 @@ export const ProductMarketingDashboard: React.FC = () => {
               </CardContent>
             </MotionCard>
           </Grid>
+        </Grid>
+
+        <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+        {/* Personalized Recommendations for Product Marketing */}
+        <Box data-tour="pm-recommendations">
+          <PersonalizedRecommendations variant="product_marketing" />
+        </Box>
+
+        {/* Product Marketing Section */}
+        <SectionHeader
+          title="Product Marketing Suite"
+          subtitle="Generate individual product assets: images, animations, videos, and avatars"
+          sx={{ mb: 3 }}
+        />
+
+        <Grid container spacing={3} sx={{ mb: 4 }} data-tour="pm-product-grid">
+          <Grid item xs={12} md={4}>
+            <MotionCard
+              whileHover={{ scale: 1.02 }}
+              sx={{
+                height: '100%',
+                cursor: 'pointer',
+                background: 'rgba(251, 191, 36, 0.1)',
+                border: '1px solid rgba(251, 191, 36, 0.3)',
+              }}
+              onClick={() => handleJourneySelect('animation')}
+            >
+              <CardContent>
+                <Stack spacing={2}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <PhotoCamera sx={{ color: '#fbbf24', fontSize: 32 }} />
+                    <Typography variant="h6" fontWeight={700}>
+                      Product Animation Studio
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Transform product images into engaging animations. Create reveal animations, 360° rotations, and product demos.
+                  </Typography>
+                  <Button variant="contained" startIcon={<PhotoCamera />} fullWidth>
+                    Launch Animation Studio
+                  </Button>
+                </Stack>
+              </CardContent>
+            </MotionCard>
+          </Grid>
 
           <Grid item xs={12} md={4}>
             <MotionCard
@@ -250,24 +362,54 @@ export const ProductMarketingDashboard: React.FC = () => {
               sx={{
                 height: '100%',
                 cursor: 'pointer',
-                background: 'rgba(191, 219, 254, 0.1)',
-                border: '1px solid rgba(191, 219, 254, 0.3)',
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
               }}
-              onClick={() => handleJourneySelect('optimize')}
+              onClick={() => handleJourneySelect('video')}
             >
               <CardContent>
                 <Stack spacing={2}>
                   <Box display="flex" alignItems="center" gap={1}>
-                    <TrendingUp sx={{ color: '#bfdbfe', fontSize: 32 }} />
+                    <PhotoLibrary sx={{ color: '#93c5fd', fontSize: 32 }} />
                     <Typography variant="h6" fontWeight={700}>
-                      Journey D: Optimize
+                      Product Video Studio
                     </Typography>
                   </Box>
                   <Typography variant="body2" color="text.secondary">
-                    Get AI-powered insights and suggestions to optimize your existing campaigns and assets.
+                    Create product demo videos from text descriptions. Generate demo videos, storytelling content, and feature highlights.
                   </Typography>
-                  <Button variant="contained" startIcon={<TrendingUp />} fullWidth>
-                    View Insights
+                  <Button variant="contained" startIcon={<PhotoLibrary />} fullWidth>
+                    Launch Video Studio
+                  </Button>
+                </Stack>
+              </CardContent>
+            </MotionCard>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <MotionCard
+              whileHover={{ scale: 1.02 }}
+              sx={{
+                height: '100%',
+                cursor: 'pointer',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+              }}
+              onClick={() => handleJourneySelect('avatar')}
+            >
+              <CardContent>
+                <Stack spacing={2}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <PhotoCamera sx={{ color: '#6ee7b7', fontSize: 32 }} />
+                    <Typography variant="h6" fontWeight={700}>
+                      Product Avatar Studio
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Create product explainer videos with talking avatars. Generate overview videos, tutorials, and brand messages.
+                  </Typography>
+                  <Button variant="contained" startIcon={<PhotoCamera />} fullWidth>
+                    Launch Avatar Studio
                   </Button>
                 </Stack>
               </CardContent>
@@ -278,13 +420,14 @@ export const ProductMarketingDashboard: React.FC = () => {
         <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
 
         {/* Quick Actions */}
-        <SectionHeader
-          title="Quick Actions"
-          subtitle="Start a new campaign or enhance existing assets"
-          sx={{ mb: 3 }}
-        />
+        <Box data-tour="quick-actions">
+          <SectionHeader
+            title="Quick Actions"
+            subtitle="Start a new campaign or enhance existing assets"
+            sx={{ mb: 3 }}
+          />
 
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} md={6}>
             <MotionCard
               whileHover={{ scale: 1.02 }}
@@ -344,22 +487,24 @@ export const ProductMarketingDashboard: React.FC = () => {
               </CardContent>
             </MotionCard>
           </Grid>
-        </Grid>
+          </Grid>
+        </Box>
 
         <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.08)' }} />
 
         {/* Active Campaigns */}
-        <SectionHeader
-          title="Active Campaigns"
-          subtitle={
-            isLoadingCampaigns
-              ? 'Loading campaigns...'
-              : apiCampaigns.length === 0
-              ? 'No active campaigns. Create your first campaign to get started.'
-              : `${apiCampaigns.length} campaign(s) in progress`
-          }
-          sx={{ mb: 3 }}
-        />
+        <Box data-tour="active-campaigns">
+          <SectionHeader
+            title="Active Campaigns"
+            subtitle={
+              isLoadingCampaigns
+                ? 'Loading campaigns...'
+                : apiCampaigns.length === 0
+                ? 'No active campaigns. Create your first campaign to get started.'
+                : `${apiCampaigns.length} campaign(s) in progress`
+            }
+            sx={{ mb: 3 }}
+          />
 
         {isLoadingCampaigns ? (
           <Box display="flex" justifyContent="center" py={4}>
@@ -466,6 +611,7 @@ export const ProductMarketingDashboard: React.FC = () => {
             ))}
           </Grid>
         )}
+        </Box>
       </GlassyCard>
     </ImageStudioLayout>
   );

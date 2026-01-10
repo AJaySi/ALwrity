@@ -448,7 +448,7 @@ Format as structured JSON with detailed assessment and optimization guidance.
             }
         }
     
-    async def _execute_ai_call(self, service_type: AIServiceType, prompt: str, schema: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_ai_call(self, service_type: AIServiceType, prompt: str, schema: Dict[str, Any], user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Execute AI call with comprehensive error handling and monitoring.
         
@@ -456,26 +456,35 @@ Format as structured JSON with detailed assessment and optimization guidance.
             service_type: Type of AI service being called
             prompt: The prompt to send to AI
             schema: Expected response schema
+            user_id: Clerk user ID for subscription checking (REQUIRED - no fallback)
             
         Returns:
             Dictionary with AI response or error information
+            
+        Raises:
+            RuntimeError: If user_id is not provided
         """
+        if not user_id:
+            raise RuntimeError("user_id is required for subscription checking. All AI calls must be authenticated.")
+        
         start_time = datetime.utcnow()
         success = False
         error_message = None
         
         try:
-            logger.info(f"🤖 Executing AI call for {service_type.value}")
+            logger.info(f"🤖 Executing AI call for {service_type.value}, user_id={user_id}")
             
             # Emit educational content for frontend
             await self._emit_educational_content(service_type, "start")
             
-            # Execute the AI call
+            # Execute the AI call through llm_text_gen for subscription checks
+            # Use llm_text_gen which has subscription checks and usage tracking
             response = await asyncio.wait_for(
                 asyncio.to_thread(
-                    self._call_gemini_structured,
+                    self._call_llm_with_checks,
                     prompt,
                     schema,
+                    user_id,
                 ),
                 timeout=self.config['timeout_seconds']
             )
@@ -531,9 +540,48 @@ Format as structured JSON with detailed assessment and optimization guidance.
                 "success": False
             }
     
+    def _call_llm_with_checks(self, prompt: str, schema: Dict[str, Any], user_id: str):
+        """
+        Call LLM through main_text_generation with subscription checks.
+        
+        Args:
+            prompt: The prompt to send to AI
+            schema: Expected response schema
+            user_id: Clerk user ID for subscription checking (required)
+            
+        Returns:
+            Dictionary with AI response
+        """
+        if not user_id:
+            raise RuntimeError("user_id is required for subscription checking")
+        
+        # Use llm_text_gen which has subscription checks and usage tracking
+        from services.llm_providers.main_text_generation import llm_text_gen
+        
+        logger.info(f"[AIServiceManager] Calling llm_text_gen with user_id={user_id} for subscription checks")
+        
+        # Call through main_text_generation for subscription checks
+        result = llm_text_gen(
+            prompt=prompt,
+            json_struct=schema,
+            user_id=user_id  # Pass user_id for subscription checks
+        )
+        
+        # llm_text_gen returns string or dict, ensure we return dict
+        if isinstance(result, str):
+            try:
+                return json.loads(result)
+            except json.JSONDecodeError:
+                logger.warning(f"[AIServiceManager] Failed to parse JSON from llm_text_gen response")
+                return {"error": "Failed to parse AI response", "raw_response": result}
+        
+        return result if isinstance(result, dict) else {"data": result}
+    
     def _call_gemini_structured(self, prompt: str, schema: Dict[str, Any]):
-        """Call gemini structured JSON with flexible signature support.
-        Tries extended signature first; falls back to minimal signature to avoid TypeError.
+        """
+        Call gemini structured JSON directly (backward compatibility only).
+        
+        ⚠️ WARNING: This bypasses subscription checks. Use _call_llm_with_checks() instead.
         """
         try:
             # Attempt extended signature (temperature/top_p/top_k/max_tokens/system_prompt)
@@ -550,9 +598,25 @@ Format as structured JSON with detailed assessment and optimization guidance.
             logger.debug("Falling back to base gemini provider signature (prompt, schema)")
             return _gemini_fn(prompt, schema)
 
-    async def execute_structured_json_call(self, service_type: AIServiceType, prompt: str, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """Public wrapper to execute a structured JSON AI call with a provided schema."""
-        return await self._execute_ai_call(service_type, prompt, schema)
+    async def execute_structured_json_call(self, service_type: AIServiceType, prompt: str, schema: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+        """
+        Public wrapper to execute a structured JSON AI call with a provided schema.
+        
+        Args:
+            service_type: Type of AI service being called
+            prompt: The prompt to send to AI
+            schema: Expected response schema
+            user_id: Clerk user ID for subscription checking (REQUIRED - no fallback)
+            
+        Returns:
+            Dictionary with AI response or error information
+            
+        Raises:
+            RuntimeError: If user_id is not provided
+        """
+        if not user_id:
+            raise RuntimeError("user_id is required for subscription checking. All AI calls must be authenticated.")
+        return await self._execute_ai_call(service_type, prompt, schema, user_id=user_id)
     
     async def generate_content_gap_analysis(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
         """

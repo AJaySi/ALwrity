@@ -96,9 +96,40 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         return;
       }
 
-      // Wait a moment to ensure auth token getter is installed
-      // This prevents 401 errors during app initialization
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Wait for authentication to be ready
+      // The apiClient interceptor needs authTokenGetter to be set by TokenInstaller
+      // Wait up to 2 seconds for token getter to be installed (TokenInstaller runs in App.tsx)
+      let authReady = false;
+      let attempts = 0;
+      const maxAttempts = 20; // 20 * 100ms = 2 seconds max wait
+      
+      while (attempts < maxAttempts && !authReady) {
+        // Wait for TokenInstaller to set the authTokenGetter in api/client.ts
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Check if user_id exists (indicates user is authenticated)
+        const storedUserId = localStorage.getItem('user_id');
+        if (storedUserId && storedUserId !== 'anonymous') {
+          // After a few attempts, assume token getter should be ready
+          // The apiClient interceptor will add the token if authTokenGetter is set
+          if (attempts >= 5) { // After 500ms, proceed with the request
+            authReady = true;
+            break;
+          }
+        } else {
+          // No user_id means user is not authenticated, exit early
+          console.log('SubscriptionContext: No user_id found, user not authenticated');
+          setLoading(false);
+          return;
+        }
+        
+        attempts++;
+      }
+
+      if (!authReady) {
+        console.warn('SubscriptionContext: Auth token getter may not be ready, but proceeding with request. apiClient will handle 401 gracefully.');
+        // Continue anyway - apiClient interceptor will handle missing token gracefully
+      }
 
       console.log('SubscriptionContext: Checking subscription for user:', userId);
       const response = await apiClient.get(`/api/subscription/status/${userId}`);
@@ -304,11 +335,24 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     // Check if it's a subscription-related error
     const status = error.response?.status;
     
+    console.log('SubscriptionContext: globalSubscriptionErrorHandler called', {
+      status,
+      hasResponse: !!error.response,
+      dataKeys: error.response?.data ? Object.keys(error.response.data) : null,
+      data: error.response?.data
+    });
+    
     if (status === 429 || status === 402) {
       const now = Date.now();
 
       // Check if this is a usage limit error (status 429) vs subscription expired (402)
       let errorData = error.response?.data || {};
+      
+      console.log('SubscriptionContext: Processing subscription error', {
+        originalErrorData: errorData,
+        isArray: Array.isArray(errorData),
+        hasDetail: errorData.detail !== undefined
+      });
       
       // If errorData is an array, extract the first element (common FastAPI response format)
       if (Array.isArray(errorData)) {
@@ -317,9 +361,17 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       
       // CRITICAL: FastAPI wraps HTTPException detail in a 'detail' field
       // If errorData has a 'detail' field, extract it (this is the actual error data)
+      // BUT: JSONResponse returns data directly, not wrapped in 'detail'
       if (errorData.detail && typeof errorData.detail === 'object') {
         errorData = errorData.detail;
       }
+      
+      console.log('SubscriptionContext: Processed errorData', {
+        errorData,
+        hasUsageInfo: !!errorData.usage_info,
+        provider: errorData.provider,
+        message: errorData.message
+      });
       
       // Check for usage_info in various possible locations (now that we've unwrapped FastAPI detail)
       const usageInfo = errorData.usage_info || 

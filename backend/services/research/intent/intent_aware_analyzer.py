@@ -154,7 +154,17 @@ class IntentAwareAnalyzer:
                 "primary_answer": {"type": "string"},
                 "secondary_answers": {
                     "type": "object",
-                    "additionalProperties": {"type": "string"}
+                    "additionalProperties": {"oneOf": [{"type": "string"}, {"type": "null"}]}
+                },
+                "focus_areas_coverage": {
+                    "type": "object",
+                    "additionalProperties": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+                    "description": "Summary of what was found for each focus area, or null if not covered"
+                },
+                "also_answering_coverage": {
+                    "type": "object",
+                    "additionalProperties": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+                    "description": "Information found about each 'also answering' topic, or null if not found"
                 },
                 "executive_summary": {"type": "string"},
                 "key_takeaways": {
@@ -469,10 +479,21 @@ class IntentAwareAnalyzer:
         if not sources:
             sources = self._extract_sources_from_raw(raw_results)
         
+        # Parse coverage fields (handle null values)
+        focus_areas_coverage = {}
+        for area, coverage in result.get("focus_areas_coverage", {}).items():
+            focus_areas_coverage[area] = coverage if coverage else None
+        
+        also_answering_coverage = {}
+        for topic, coverage in result.get("also_answering_coverage", {}).items():
+            also_answering_coverage[topic] = coverage if coverage else None
+        
         return IntentDrivenResearchResult(
             success=True,
             primary_answer=result.get("primary_answer", ""),
             secondary_answers=result.get("secondary_answers", {}),
+            focus_areas_coverage=focus_areas_coverage,
+            also_answering_coverage=also_answering_coverage,
             statistics=statistics,
             expert_quotes=expert_quotes,
             case_studies=case_studies,
@@ -534,6 +555,8 @@ class IntentAwareAnalyzer:
             success=True,
             primary_answer=f"Research findings for: {intent.primary_question}",
             secondary_answers={},
+            focus_areas_coverage={area: None for area in intent.focus_areas} if intent.focus_areas else {},
+            also_answering_coverage={topic: None for topic in intent.also_answering} if intent.also_answering else {},
             executive_summary=content[:300] if content else "Research completed",
             key_takeaways=key_takeaways,
             sources=sources,

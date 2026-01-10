@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { WizardStepProps } from '../types/research.types';
-import { ResearchProvider, ResearchMode } from '../../../services/blogWriterApi';
+import { ResearchProvider, ResearchMode } from '../../../services/researchApi';
 import { getResearchConfig, ProviderAvailability } from '../../../api/researchConfig';
 import { 
   getResearchHistory, 
@@ -18,16 +18,16 @@ import { ResearchHistory } from './components/ResearchHistory';
 import { ResearchInputContainer } from './components/ResearchInputContainer';
 import { SmartInputIndicator } from './components/SmartInputIndicator';
 import { KeywordExpansion } from './components/KeywordExpansion';
-import { CurrentKeywords } from './components/CurrentKeywords';
-import { ResearchAngles } from './components/ResearchAngles';
+// Removed: CurrentKeywords - keywords now managed in IntentConfirmationPanel
+// Removed: ResearchAngles - intent-driven research already generates targeted queries
 import { ResearchInputHeader } from './components/ResearchInputHeader';
-import { AdvancedOptionsSection } from './components/AdvancedOptionsSection';
+// Removed: AdvancedOptionsSection - now handled by AdvancedProviderOptionsSection in IntentConfirmationPanel
 import { IntentConfirmationPanel } from './components/IntentConfirmationPanel';
 import { ResearchExecution } from '../types/research.types';
 
 // Hooks
 import { useKeywordExpansion } from './hooks/useKeywordExpansion';
-import { useResearchAngles } from './hooks/useResearchAngles';
+// Removed: useResearchAngles - ResearchAngles component removed
 
 interface ResearchInputProps extends WizardStepProps {
   advanced?: boolean;
@@ -140,7 +140,7 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
             onUpdate({
               config: {
                 ...state.config,
-                exa_search_type: defaults.suggested_exa_search_type as 'auto' | 'keyword' | 'neural'
+                exa_search_type: defaults.suggested_exa_search_type as 'auto' | 'keyword' | 'neural' | 'fast'
               }
             });
           }
@@ -348,9 +348,6 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
   // Use keyword expansion hook
   const keywordExpansion = useKeywordExpansion(state.keywords, state.industry, researchPersona);
 
-  // Use research angles hook
-  const researchAngles = useResearchAngles(state.keywords, state.industry, researchPersona);
-
   // Event handlers
   const handleKeywordsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -372,16 +369,8 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
     }
   };
 
-  const handleRemoveKeyword = (keywordToRemove: string) => {
-    const currentKeywords = state.keywords.filter(k => k.toLowerCase() !== keywordToRemove.toLowerCase());
-    onUpdate({ keywords: currentKeywords });
-  };
-
-  const handleUseAngle = (angle: string) => {
-    // Parse the angle as a new research query
-    const keywords = parseIntelligentInput(angle);
-    onUpdate({ keywords });
-  };
+  // Removed: handleRemoveKeyword - keywords now managed in IntentConfirmationPanel
+  // Removed: handleUseAngle - intent-driven research already generates targeted queries
 
   const handleIndustryChange = (industry: string) => {
     onUpdate({ industry });
@@ -461,6 +450,12 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
           keywords={state.keywords}
           placeholder={placeholderExamples[currentPlaceholder]}
           onKeywordsChange={handleKeywordsChange}
+          userPurpose={state.userPurpose}
+          userContentOutput={state.userContentOutput}
+          userDepth={state.userDepth}
+          onPurposeChange={(purpose) => onUpdate({ userPurpose: purpose })}
+          onContentOutputChange={(output) => onUpdate({ userContentOutput: output })}
+          onDepthChange={(depth) => onUpdate({ userDepth: depth })}
           onIntentAndOptions={async () => {
             if (execution?.analyzeIntent) {
               try {
@@ -478,9 +473,25 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
                   
                   // Apply Exa settings (note: backend uses exa_type, but frontend state uses exa_search_type)
                   if (optConfig.exa_category) configUpdates.exa_category = optConfig.exa_category;
-                  if (optConfig.exa_type) configUpdates.exa_search_type = optConfig.exa_type as 'auto' | 'keyword' | 'neural';
+                  if (optConfig.exa_type) configUpdates.exa_search_type = optConfig.exa_type as 'auto' | 'keyword' | 'neural' | 'fast' | 'deep';
                   if (optConfig.exa_include_domains) configUpdates.exa_include_domains = optConfig.exa_include_domains;
-                  if (optConfig.exa_num_results) configUpdates.exa_num_results = optConfig.exa_num_results;
+                  if (optConfig.exa_num_results !== undefined) configUpdates.exa_num_results = optConfig.exa_num_results;
+                  if (optConfig.exa_date_filter) configUpdates.exa_date_filter = optConfig.exa_date_filter;
+                  if (optConfig.exa_end_published_date) configUpdates.exa_end_published_date = optConfig.exa_end_published_date;
+                  if (optConfig.exa_start_crawl_date) configUpdates.exa_start_crawl_date = optConfig.exa_start_crawl_date;
+                  if (optConfig.exa_end_crawl_date) configUpdates.exa_end_crawl_date = optConfig.exa_end_crawl_date;
+                  if (optConfig.exa_include_text) configUpdates.exa_include_text = optConfig.exa_include_text;
+                  if (optConfig.exa_exclude_text) configUpdates.exa_exclude_text = optConfig.exa_exclude_text;
+                  if (optConfig.exa_highlights !== undefined) configUpdates.exa_highlights = optConfig.exa_highlights;
+                  if (optConfig.exa_highlights_num_sentences !== undefined) configUpdates.exa_highlights_num_sentences = optConfig.exa_highlights_num_sentences;
+                  if (optConfig.exa_highlights_per_url !== undefined) configUpdates.exa_highlights_per_url = optConfig.exa_highlights_per_url;
+                  if (optConfig.exa_context !== undefined) configUpdates.exa_context = optConfig.exa_context;
+                  if (optConfig.exa_context_max_characters !== undefined) configUpdates.exa_context_max_characters = optConfig.exa_context_max_characters;
+                  if (optConfig.exa_text_max_characters !== undefined) configUpdates.exa_text_max_characters = optConfig.exa_text_max_characters;
+                  if (optConfig.exa_summary_query) configUpdates.exa_summary_query = optConfig.exa_summary_query;
+                  if (optConfig.exa_additional_queries && optConfig.exa_additional_queries.length > 0) {
+                    configUpdates.exa_additional_queries = optConfig.exa_additional_queries;
+                  }
                   
                   // Apply Tavily settings
                   if (optConfig.tavily_topic) configUpdates.tavily_topic = optConfig.tavily_topic;
@@ -566,7 +577,8 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
               isAnalyzing={execution.isAnalyzingIntent}
               intentAnalysis={execution.intentAnalysis}
               confirmedIntent={execution.confirmedIntent}
-              onConfirm={execution.confirmIntent}
+              onConfirm={(intent, wizardState) => execution.confirmIntent(intent, wizardState || state)}
+              wizardState={state}
               onUpdateField={execution.updateIntentField}
               onExecute={async (selectedQueries) => {
                 const result = await execution.executeIntentResearch(state, selectedQueries);
@@ -596,29 +608,10 @@ export const ResearchInput: React.FC<ResearchInputProps> = ({ state, onUpdate, o
           />
         )}
 
-        {/* Current Keywords Display */}
-        <CurrentKeywords
-          keywords={state.keywords}
-          onRemoveKeyword={handleRemoveKeyword}
-        />
-
-        {/* Alternative Research Angles */}
-        <ResearchAngles
-          angles={researchAngles}
-          onUseAngle={handleUseAngle}
-          hasPersona={!!researchPersona}
-        />
+        {/* Note: Current Keywords removed - keywords are now managed in IntentConfirmationPanel */}
+        {/* Note: Research Angles removed - intent-driven research already generates targeted queries */}
 
       </div>
-
-
-      {/* Advanced Options Section */}
-      <AdvancedOptionsSection
-        advanced={advanced}
-        providerAvailability={providerAvailability}
-        config={state.config}
-        onConfigUpdate={handleConfigUpdate}
-      />
 
     </div>
   );

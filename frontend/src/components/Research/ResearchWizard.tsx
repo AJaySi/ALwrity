@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useResearchWizard } from './hooks/useResearchWizard';
 import { useResearchExecution } from './hooks/useResearchExecution';
 import { ResearchInput } from './steps/ResearchInput';
@@ -7,11 +7,18 @@ import { StepResults } from './steps/StepResults';
 import { ResearchWizardProps } from './types/research.types';
 import { addResearchHistory } from '../../utils/researchHistory';
 import { getResearchConfig, ProviderAvailability } from '../../api/researchConfig';
-import { ProviderChips } from './steps/components/ProviderChips';
 import { AdvancedChip } from './steps/components/AdvancedChip';
 import { SmartResearchInfo } from './steps/components/SmartResearchInfo';
+import { intentResearchApi } from '../../api/intentResearchApi';
+import { clearDraftFromStorage } from '../../utils/researchDraftManager';
 
-export const ResearchWizard: React.FC<ResearchWizardProps> = ({ 
+export interface ResearchWizardHeaderActions {
+  onOpenPersona?: () => void;
+  onOpenCompetitors?: () => void;
+  personaExists?: boolean;
+}
+
+export const ResearchWizard: React.FC<ResearchWizardProps & { headerActions?: ResearchWizardHeaderActions }> = ({ 
   onComplete,
   onCancel,
   initialKeywords,
@@ -19,6 +26,8 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
   initialTargetAudience,
   initialResearchMode,
   initialConfig,
+  initialResults,
+  headerActions,
 }) => {
   const wizard = useResearchWizard(
     initialKeywords, 
@@ -30,6 +39,30 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
   const execution = useResearchExecution();
   const [providerAvailability, setProviderAvailability] = useState<ProviderAvailability | null>(null);
   const [advanced, setAdvanced] = useState<boolean>(false);
+  const hasSavedProject = useRef(false); // Track if we've already saved this project
+  
+  // Restore initial results if provided (e.g., from saved project)
+  useEffect(() => {
+    if (initialResults && !wizard.state.results) {
+      wizard.updateState({ results: initialResults });
+      // Navigate to results step if results are available
+      if (wizard.state.currentStep < 3) {
+        wizard.updateState({ currentStep: 3 });
+      }
+    }
+  }, [initialResults]); // Only run once on mount
+  
+  // Restore intent analysis and confirmed intent from draft
+  useEffect(() => {
+    if (execution.intentAnalysis && wizard.state.keywords.length > 0) {
+      // Intent analysis already restored by useResearchExecution hook
+      console.log('[ResearchWizard] ✅ Intent analysis restored from draft');
+    }
+    if (execution.confirmedIntent && wizard.state.keywords.length > 0) {
+      // Confirmed intent already restored by useResearchExecution hook
+      console.log('[ResearchWizard] ✅ Confirmed intent restored from draft');
+    }
+  }, [execution.intentAnalysis, execution.confirmedIntent, wizard.state.keywords]);
 
   // Load provider availability on mount
   useEffect(() => {
@@ -67,6 +100,61 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
       }
     }
   }, [execution.result, execution.isExecuting]); // Don't depend on currentStep to avoid loops
+
+  // Auto-save research project when research completes
+  useEffect(() => {
+    // Save when intent-driven research completes
+    if (execution.intentResult?.success && !hasSavedProject.current && wizard.state.keywords.length > 0) {
+      hasSavedProject.current = true;
+      
+      // Generate project title from keywords
+      const projectTitle = `Research: ${wizard.state.keywords.slice(0, 3).join(', ')}`;
+      
+      // Save project to Asset Library
+      intentResearchApi.saveResearchProject(wizard.state, {
+        intentAnalysis: execution.intentAnalysis,
+        confirmedIntent: execution.confirmedIntent,
+        intentResult: execution.intentResult,
+        title: projectTitle,
+        description: `Research project on ${wizard.state.keywords.join(', ')}. ` +
+          `Industry: ${wizard.state.industry}, Target Audience: ${wizard.state.targetAudience}`,
+      }).then((response) => {
+        if (response.success) {
+          console.log('[ResearchWizard] ✅ Final research project saved to Asset Library:', response.asset_id);
+          // Clear draft after successful final save
+          clearDraftFromStorage();
+        } else {
+          console.warn('[ResearchWizard] ⚠️ Failed to save final research project:', response.message);
+        }
+      }).catch((error) => {
+        console.error('[ResearchWizard] ❌ Error saving final research project:', error);
+      });
+    }
+    
+    // Save when legacy research completes (fallback)
+    if (wizard.state.results && !hasSavedProject.current && wizard.state.keywords.length > 0 && !execution.intentResult) {
+      hasSavedProject.current = true;
+      
+      const projectTitle = `Research: ${wizard.state.keywords.slice(0, 3).join(', ')}`;
+      
+      intentResearchApi.saveResearchProject(wizard.state, {
+        legacyResult: wizard.state.results,
+        title: projectTitle,
+        description: `Completed research project on ${wizard.state.keywords.join(', ')}. ` +
+          `Industry: ${wizard.state.industry}, Target Audience: ${wizard.state.targetAudience}`,
+      }).then((response) => {
+        if (response.success) {
+          console.log('[ResearchWizard] ✅ Final research project saved to Asset Library:', response.asset_id);
+          // Clear draft after successful final save
+          clearDraftFromStorage();
+        } else {
+          console.warn('[ResearchWizard] ⚠️ Failed to save final research project:', response.message);
+        }
+      }).catch((error) => {
+        console.error('[ResearchWizard] ❌ Error saving final research project:', error);
+      });
+    }
+  }, [execution.intentResult, wizard.state.results, wizard.state.keywords, wizard.state.industry, wizard.state.targetAudience, execution.intentAnalysis, execution.confirmedIntent]);
 
   // Handle completion callback and track history
   useEffect(() => {
@@ -144,8 +232,91 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
                   Research Wizard
                 </h1>
                 
-                {/* Provider Status Chips */}
-                <ProviderChips providerAvailability={providerAvailability} advanced={advanced} />
+                {/* Persona Button */}
+                {headerActions?.onOpenPersona && (
+                  <button
+                    onClick={headerActions.onOpenPersona}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: headerActions.personaExists ? '#22c55e' : '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: headerActions.personaExists 
+                        ? '0 0 12px rgba(34, 197, 94, 0.4), 0 1px 4px rgba(34, 197, 94, 0.2)'
+                        : '0 0 12px rgba(239, 68, 68, 0.4), 0 1px 4px rgba(239, 68, 68, 0.2)',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      if (headerActions.personaExists) {
+                        e.currentTarget.style.boxShadow = '0 0 16px rgba(34, 197, 94, 0.5), 0 2px 6px rgba(34, 197, 94, 0.3)';
+                      } else {
+                        e.currentTarget.style.boxShadow = '0 0 16px rgba(239, 68, 68, 0.5), 0 2px 6px rgba(239, 68, 68, 0.3)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      if (headerActions.personaExists) {
+                        e.currentTarget.style.boxShadow = '0 0 12px rgba(34, 197, 94, 0.4), 0 1px 4px rgba(34, 197, 94, 0.2)';
+                      } else {
+                        e.currentTarget.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.4), 0 1px 4px rgba(239, 68, 68, 0.2)';
+                      }
+                    }}
+                    title={headerActions.personaExists ? 'View Research Persona' : 'Create Research Persona'}
+                  >
+                    <span style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: 'white',
+                      boxShadow: '0 0 4px rgba(255, 255, 255, 0.8)',
+                    }} />
+                    <span>Persona</span>
+                  </button>
+                )}
+                
+                {/* Competitors Button */}
+                {headerActions?.onOpenCompetitors && (
+                  <button
+                    onClick={headerActions.onOpenCompetitors}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#0284c7',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.2)',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#0369a1';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#0284c7';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.2)';
+                    }}
+                    title="View Competitor Analysis"
+                  >
+                    <span>📊</span>
+                    <span>Competitors</span>
+                  </button>
+                )}
                 
                 {/* Advanced Chip */}
                 <AdvancedChip advanced={advanced} />
@@ -337,106 +508,60 @@ export const ResearchWizard: React.FC<ResearchWizardProps> = ({
               ← Back
             </button>
 
-            {/* Research Button (Unified - enabled only after intent analysis on Step 1) */}
-            <button
-              onClick={() => {
-                if (wizard.state.currentStep === 1) {
-                  // On Step 1: If intent is analyzed with high confidence, execute directly
-                  if (execution.intentAnalysis?.success && 
-                      execution.intentAnalysis.intent.confidence >= 0.7) {
-                    const queriesToUse = execution.intentAnalysis.suggested_queries?.slice(0, 5) || [];
-                    execution.executeIntentResearch(wizard.state, queriesToUse).then(result => {
-                      if (result?.success) {
-                        wizard.updateState({ currentStep: 3 }); // Skip to results
-                      }
-                    });
+            {/* Research Button - Hidden on Step 1 when IntentConfirmationPanel is visible (has its own "Start Research" button) */}
+            {!(wizard.state.currentStep === 1 && execution.intentAnalysis) && (
+              <button
+                onClick={() => {
+                  if (wizard.state.currentStep === 1) {
+                    // On Step 1: No intent analysis - go to progress step for traditional research
+                    wizard.nextStep();
                   } else {
-                    // No intent or low confidence - go to progress step for traditional research
                     wizard.nextStep();
                   }
-                } else {
-                  wizard.nextStep();
-                }
-              }}
-              disabled={
-                wizard.state.currentStep === 1 
-                  ? !wizard.canGoNext() || !execution.intentAnalysis || execution.isExecuting
-                  : !wizard.canGoNext()
-              }
-              style={{
-                padding: '10px 24px',
-                background: (() => {
-                  const canProceed = wizard.state.currentStep === 1 
-                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
-                    : wizard.canGoNext();
-                  return canProceed 
+                }}
+                disabled={!wizard.canGoNext()}
+                style={{
+                  padding: '10px 24px',
+                  background: wizard.canGoNext()
                     ? 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)'
-                    : 'rgba(100, 116, 139, 0.2)';
-                })(),
-                color: (() => {
-                  const canProceed = wizard.state.currentStep === 1 
-                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
-                    : wizard.canGoNext();
-                  return canProceed ? 'white' : '#94a3b8';
-                })(),
-                border: 'none',
-                borderRadius: '10px',
-                cursor: (() => {
-                  const canProceed = wizard.state.currentStep === 1 
-                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
-                    : wizard.canGoNext();
-                  return canProceed ? 'pointer' : 'not-allowed';
-                })(),
-                fontSize: '13px',
-                fontWeight: '600',
-                transition: 'all 0.2s ease',
-                boxShadow: (() => {
-                  const canProceed = wizard.state.currentStep === 1 
-                    ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
-                    : wizard.canGoNext();
-                  return canProceed ? '0 2px 8px rgba(14, 165, 233, 0.3)' : 'none';
-                })(),
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-              onMouseEnter={(e) => {
-                const canProceed = wizard.state.currentStep === 1 
-                  ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
-                  : wizard.canGoNext();
-                if (canProceed) {
-                  e.currentTarget.style.transform = 'translateX(4px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.4)';
+                    : 'rgba(100, 116, 139, 0.2)',
+                  color: wizard.canGoNext() ? 'white' : '#94a3b8',
+                  border: 'none',
+                  borderRadius: '10px',
+                  cursor: wizard.canGoNext() ? 'pointer' : 'not-allowed',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease',
+                  boxShadow: wizard.canGoNext() ? '0 2px 8px rgba(14, 165, 233, 0.3)' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+                onMouseEnter={(e) => {
+                  if (wizard.canGoNext()) {
+                    e.currentTarget.style.transform = 'translateX(4px)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.4)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (wizard.canGoNext()) {
+                    e.currentTarget.style.transform = 'translateX(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(14, 165, 233, 0.3)';
+                  }
+                }}
+                title={
+                  wizard.isLastStep ? 'Complete research' : 'Continue to next step'
                 }
-              }}
-              onMouseLeave={(e) => {
-                const canProceed = wizard.state.currentStep === 1 
-                  ? wizard.canGoNext() && execution.intentAnalysis && !execution.isExecuting
-                  : wizard.canGoNext();
-                if (canProceed) {
-                  e.currentTarget.style.transform = 'translateX(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(14, 165, 233, 0.3)';
-                }
-              }}
-              title={
-                wizard.state.currentStep === 1 && !execution.intentAnalysis
-                  ? 'Click "Intent & Options" in the text area to analyze your research first'
-                  : wizard.isLastStep ? 'Complete research' : 'Start research'
-              }
-            >
-              {execution.isExecuting ? (
-                <>
-                  <span style={{ animation: 'pulse 1.5s ease-in-out infinite' }}>🔍</span>
-                  Researching...
-                </>
-              ) : wizard.isLastStep ? (
-                'Finish'
-              ) : (
-                <>
-                  🚀 Research
-                </>
-              )}
-            </button>
+              >
+                {wizard.isLastStep ? (
+                  'Finish'
+                ) : (
+                  <>
+                    → Next
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>

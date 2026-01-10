@@ -14,6 +14,8 @@ import base64
 from services.image_studio.infinitetalk_adapter import InfiniteTalkService
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
 from utils.logger_utils import get_service_logger
+from utils.asset_tracker import save_asset_to_library
+from services.database import SessionLocal
 
 logger = get_service_logger("product_marketing.avatar")
 
@@ -270,6 +272,65 @@ class ProductAvatarService:
             result["file_url"] = file_url
             result["file_size"] = file_size
             result["duration"] = result.get("duration", 0.0)
+            
+            # Save to Asset Library
+            db = SessionLocal()
+            try:
+                # Build avatar prompt for metadata
+                avatar_prompt = request.prompt
+                if not avatar_prompt:
+                    avatar_prompt = self._build_avatar_prompt(
+                        explainer_type=request.explainer_type,
+                        product_name=request.product_name,
+                        product_description=request.product_description,
+                        brand_context=request.brand_context,
+                        additional_context=request.additional_context
+                    )
+                
+                asset_id = save_asset_to_library(
+                    db=db,
+                    user_id=user_id,
+                    asset_type="video",
+                    source_module="product_marketing",
+                    filename=filename,
+                    file_url=file_url,
+                    file_path=str(file_path),
+                    file_size=file_size,
+                    mime_type="video/mp4",
+                    title=f"{request.product_name} - {request.explainer_type.replace('_', ' ').title()} Explainer",
+                    description=f"Product explainer: {request.product_description or request.product_name}",
+                    prompt=avatar_prompt,
+                    tags=["product_marketing", "product_avatar", "explainer", request.explainer_type, request.resolution],
+                    provider=result.get("provider", "infinitetalk"),
+                    model=result.get("model_name", "infinitetalk"),
+                    cost=result.get("cost", 0.0),
+                    generation_time=result.get("generation_time"),
+                    asset_metadata={
+                        "product_name": request.product_name,
+                        "product_description": request.product_description,
+                        "explainer_type": request.explainer_type,
+                        "resolution": request.resolution,
+                        "duration": result.get("duration", 0.0),
+                        "script_text": request.script_text,
+                        "width": result.get("width"),
+                        "height": result.get("height"),
+                    },
+                )
+                
+                if asset_id:
+                    logger.info(f"[Product Avatar] ✅ Saved explainer video to Asset Library: ID={asset_id}")
+                else:
+                    logger.warning(f"[Product Avatar] ⚠️ Asset Library save returned None")
+                    
+            except Exception as db_error:
+                logger.error(f"[Product Avatar] Database error saving to Asset Library: {str(db_error)}", exc_info=True)
+                # Video is saved, but database tracking failed - not critical
+            finally:
+                if db:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
             
             logger.info(
                 f"[Product Avatar] ✅ Product explainer video generated successfully: "

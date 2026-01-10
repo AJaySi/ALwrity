@@ -6,6 +6,7 @@ Handles streaming endpoints for enhanced content strategies.
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from starlette.requests import Request
 from sqlalchemy.orm import Session
 from loguru import logger
 import json
@@ -16,6 +17,9 @@ import time
 
 # Import database
 from services.database import get_db_session
+
+# Import authentication middleware
+from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 
 # Import services
 from ....services.enhanced_strategy_service import EnhancedStrategyService
@@ -66,15 +70,26 @@ async def stream_data(data_generator):
 
 @router.get("/stream/strategies")
 async def stream_enhanced_strategies(
-    user_id: Optional[int] = Query(None, description="User ID to filter strategies"),
     strategy_id: Optional[int] = Query(None, description="Specific strategy ID"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Stream enhanced strategies with real-time updates."""
     
     async def strategy_generator():
         try:
-            logger.info(f"🚀 Starting strategy stream for user: {user_id}, strategy: {strategy_id}")
+            # Extract authenticated user_id from Clerk
+            clerk_user_id = str(current_user.get('id', ''))
+            if not clerk_user_id:
+                yield {"type": "error", "message": "Invalid user ID in authentication token", "timestamp": datetime.utcnow().isoformat()}
+                return
+            
+            authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+            if not authenticated_user_id:
+                yield {"type": "error", "message": "Invalid user ID format", "timestamp": datetime.utcnow().isoformat()}
+                return
+            
+            logger.info(f"🚀 Starting strategy stream for authenticated user: {authenticated_user_id}, strategy: {strategy_id}")
             
             # Send initial status
             yield {"type": "status", "message": "Starting strategy retrieval...", "timestamp": datetime.utcnow().isoformat()}
@@ -85,7 +100,8 @@ async def stream_enhanced_strategies(
             # Send progress update
             yield {"type": "progress", "message": "Querying database...", "progress": 25}
             
-            strategies_data = await enhanced_service.get_enhanced_strategies(user_id, strategy_id, db)
+            # Use authenticated user_id to ensure users can only see their own strategies
+            strategies_data = await enhanced_service.get_enhanced_strategies(authenticated_user_id, strategy_id, db)
             
             # Send progress update
             yield {"type": "progress", "message": "Processing strategies...", "progress": 50}
@@ -100,7 +116,7 @@ async def stream_enhanced_strategies(
             # Send final result
             yield {"type": "result", "status": "success", "data": strategies_data, "progress": 100}
             
-            logger.info(f"✅ Strategy stream completed for user: {user_id}")
+            logger.info(f"✅ Strategy stream completed for user: {authenticated_user_id}")
             
         except Exception as e:
             logger.error(f"❌ Error in strategy stream: {str(e)}")
@@ -121,20 +137,32 @@ async def stream_enhanced_strategies(
 
 @router.get("/stream/strategic-intelligence")
 async def stream_strategic_intelligence(
-    user_id: Optional[int] = Query(None, description="User ID"),
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
     db: Session = Depends(get_db)
 ):
     """Stream strategic intelligence data with real-time updates."""
     
     async def intelligence_generator():
         try:
-            logger.info(f"🚀 Starting strategic intelligence stream for user: {user_id}")
+            # Extract authenticated user_id from Clerk
+            clerk_user_id = str(current_user.get('id', ''))
+            if not clerk_user_id:
+                yield {"type": "error", "message": "Invalid user ID in authentication token", "timestamp": datetime.utcnow().isoformat()}
+                return
+            
+            authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+            if not authenticated_user_id:
+                yield {"type": "error", "message": "Invalid user ID format", "timestamp": datetime.utcnow().isoformat()}
+                return
+            
+            logger.info(f"🚀 Starting strategic intelligence stream for authenticated user: {authenticated_user_id}")
             
             # Check cache first
-            cache_key = f"strategic_intelligence_{user_id}"
+            cache_key = f"strategic_intelligence_{authenticated_user_id}"
             cached_data = get_cached_data(cache_key)
             if cached_data:
-                logger.info(f"✅ Returning cached strategic intelligence data for user: {user_id}")
+                logger.info(f"✅ Returning cached strategic intelligence data for user: {authenticated_user_id}")
                 yield {"type": "result", "status": "success", "data": cached_data, "progress": 100}
                 return
             
@@ -147,7 +175,8 @@ async def stream_strategic_intelligence(
             # Send progress update
             yield {"type": "progress", "message": "Retrieving strategies...", "progress": 20}
             
-            strategies_data = await enhanced_service.get_enhanced_strategies(user_id, None, db)
+            # Use authenticated user_id to ensure users can only see their own strategies
+            strategies_data = await enhanced_service.get_enhanced_strategies(authenticated_user_id, None, db)
             
             # Send progress update
             yield {"type": "progress", "message": "Analyzing market positioning...", "progress": 40}
@@ -228,7 +257,7 @@ async def stream_strategic_intelligence(
             # Send final result
             yield {"type": "result", "status": "success", "data": strategic_intelligence, "progress": 100}
             
-            logger.info(f"✅ Strategic intelligence stream completed for user: {user_id}")
+            logger.info(f"✅ Strategic intelligence stream completed for user: {authenticated_user_id}")
             
         except Exception as e:
             logger.error(f"❌ Error in strategic intelligence stream: {str(e)}")
@@ -249,20 +278,32 @@ async def stream_strategic_intelligence(
 
 @router.get("/stream/keyword-research")
 async def stream_keyword_research(
-    user_id: Optional[int] = Query(None, description="User ID"),
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
     db: Session = Depends(get_db)
 ):
     """Stream keyword research data with real-time updates."""
     
     async def keyword_generator():
         try:
-            logger.info(f"🚀 Starting keyword research stream for user: {user_id}")
+            # Extract authenticated user_id from Clerk
+            clerk_user_id = str(current_user.get('id', ''))
+            if not clerk_user_id:
+                yield {"type": "error", "message": "Invalid user ID in authentication token", "timestamp": datetime.utcnow().isoformat()}
+                return
+            
+            authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+            if not authenticated_user_id:
+                yield {"type": "error", "message": "Invalid user ID format", "timestamp": datetime.utcnow().isoformat()}
+                return
+            
+            logger.info(f"🚀 Starting keyword research stream for authenticated user: {authenticated_user_id}")
             
             # Check cache first
-            cache_key = f"keyword_research_{user_id}"
+            cache_key = f"keyword_research_{authenticated_user_id}"
             cached_data = get_cached_data(cache_key)
             if cached_data:
-                logger.info(f"✅ Returning cached keyword research data for user: {user_id}")
+                logger.info(f"✅ Returning cached keyword research data for user: {authenticated_user_id}")
                 yield {"type": "result", "status": "success", "data": cached_data, "progress": 100}
                 return
             
@@ -276,7 +317,8 @@ async def stream_keyword_research(
             yield {"type": "progress", "message": "Retrieving gap analyses...", "progress": 20}
             
             gap_service = GapAnalysisService()
-            gap_analyses = await gap_service.get_gap_analyses(user_id)
+            # Use authenticated user_id to ensure users can only see their own data
+            gap_analyses = await gap_service.get_gap_analyses(authenticated_user_id)
             
             # Send progress update
             yield {"type": "progress", "message": "Analyzing keyword opportunities...", "progress": 40}
@@ -337,7 +379,7 @@ async def stream_keyword_research(
             # Send final result
             yield {"type": "result", "status": "success", "data": keyword_data, "progress": 100}
             
-            logger.info(f"✅ Keyword research stream completed for user: {user_id}")
+            logger.info(f"✅ Keyword research stream completed for user: {authenticated_user_id}")
             
         except Exception as e:
             logger.error(f"❌ Error in keyword research stream: {str(e)}")

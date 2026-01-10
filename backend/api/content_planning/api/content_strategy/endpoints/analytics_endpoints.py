@@ -39,51 +39,34 @@ async def get_enhanced_strategy_analytics(
     strategy_id: int,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Get analytics data for an enhanced strategy."""
+    """Get comprehensive analytics for an enhanced strategy."""
     try:
-        logger.info(f"Getting analytics for strategy: {strategy_id}")
+        logger.info(f"🚀 Getting analytics for enhanced strategy: {strategy_id}")
         
-        # Check if strategy exists
-        strategy = db.query(EnhancedContentStrategy).filter(
-            EnhancedContentStrategy.id == strategy_id
-        ).first()
+        db_service = EnhancedStrategyDBService(db)
         
-        if not strategy:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Enhanced strategy with ID {strategy_id} not found"
-            )
+        # Get strategy with analytics
+        strategies_with_analytics = await db_service.get_enhanced_strategies_with_analytics(
+            strategy_id=strategy_id
+        )
         
-        # Calculate completion statistics
-        strategy.calculate_completion_percentage()
+        if not strategies_with_analytics:
+            raise ContentPlanningErrorHandler.handle_not_found_error("Enhanced strategy", strategy_id)
         
-        # Get AI analysis results
-        ai_analyses = db.query(EnhancedAIAnalysisResult).filter(
-            EnhancedAIAnalysisResult.strategy_id == strategy_id
-        ).order_by(EnhancedAIAnalysisResult.created_at.desc()).all()
+        strategy_analytics = strategies_with_analytics[0]
         
-        analytics_data = {
-            "strategy_id": strategy_id,
-            "completion_percentage": strategy.completion_percentage,
-            "total_fields": 30,
-            "completed_fields": len([f for f in strategy.get_field_values() if f is not None and f != ""]),
-            "ai_analyses_count": len(ai_analyses),
-            "last_ai_analysis": ai_analyses[0].to_dict() if ai_analyses else None,
-            "created_at": strategy.created_at.isoformat() if strategy.created_at else None,
-            "updated_at": strategy.updated_at.isoformat() if strategy.updated_at else None
-        }
+        logger.info(f"✅ Enhanced strategy analytics retrieved successfully: {strategy_id}")
         
-        logger.info(f"Retrieved analytics for strategy: {strategy_id}")
-        return ResponseBuilder.success_response(
-            message=SUCCESS_MESSAGES['analytics_retrieved'],
-            data=analytics_data
+        return ResponseBuilder.create_success_response(
+            message="Enhanced strategy analytics retrieved successfully",
+            data=strategy_analytics
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting strategy analytics: {str(e)}")
-        return ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_analytics")
+        logger.error(f"❌ Error getting enhanced strategy analytics: {str(e)}")
+        raise ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_analytics")
 
 @router.get("/{strategy_id}/ai-analyses")
 async def get_enhanced_strategy_ai_analysis(
@@ -91,43 +74,36 @@ async def get_enhanced_strategy_ai_analysis(
     limit: int = Query(10, description="Number of AI analysis results to return"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Get AI analysis results for an enhanced strategy."""
+    """Get AI analysis history for an enhanced strategy."""
     try:
-        logger.info(f"Getting AI analyses for strategy: {strategy_id}, limit: {limit}")
+        logger.info(f"🚀 Getting AI analysis for enhanced strategy: {strategy_id}")
         
-        # Check if strategy exists
-        strategy = db.query(EnhancedContentStrategy).filter(
-            EnhancedContentStrategy.id == strategy_id
-        ).first()
+        db_service = EnhancedStrategyDBService(db)
         
+        # Verify strategy exists
+        strategy = await db_service.get_enhanced_strategy(strategy_id)
         if not strategy:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Enhanced strategy with ID {strategy_id} not found"
-            )
+            raise ContentPlanningErrorHandler.handle_not_found_error("Enhanced strategy", strategy_id)
         
-        # Get AI analysis results
-        ai_analyses = db.query(EnhancedAIAnalysisResult).filter(
-            EnhancedAIAnalysisResult.strategy_id == strategy_id
-        ).order_by(EnhancedAIAnalysisResult.created_at.desc()).limit(limit).all()
+        # Get AI analysis history
+        ai_analysis_history = await db_service.get_ai_analysis_history(strategy_id, limit)
         
-        analyses_data = [analysis.to_dict() for analysis in ai_analyses]
+        logger.info(f"✅ AI analysis history retrieved successfully: {strategy_id}")
         
-        logger.info(f"Retrieved {len(analyses_data)} AI analyses for strategy: {strategy_id}")
-        return ResponseBuilder.success_response(
-            message=SUCCESS_MESSAGES['ai_analyses_retrieved'],
+        return ResponseBuilder.create_success_response(
+            message="Enhanced strategy AI analysis retrieved successfully",
             data={
                 "strategy_id": strategy_id,
-                "analyses": analyses_data,
-                "total_count": len(analyses_data)
+                "ai_analysis_history": ai_analysis_history,
+                "total_analyses": len(ai_analysis_history)
             }
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting AI analyses: {str(e)}")
-        return ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_ai_analysis")
+        logger.error(f"❌ Error getting enhanced strategy AI analysis: {str(e)}")
+        raise ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_ai_analysis")
 
 @router.get("/{strategy_id}/completion")
 async def get_enhanced_strategy_completion_stats(
@@ -136,99 +112,67 @@ async def get_enhanced_strategy_completion_stats(
 ) -> Dict[str, Any]:
     """Get completion statistics for an enhanced strategy."""
     try:
-        logger.info(f"Getting completion stats for strategy: {strategy_id}")
+        logger.info(f"🚀 Getting completion stats for enhanced strategy: {strategy_id}")
         
-        # Check if strategy exists
-        strategy = db.query(EnhancedContentStrategy).filter(
-            EnhancedContentStrategy.id == strategy_id
-        ).first()
+        db_service = EnhancedStrategyDBService(db)
         
+        # Get strategy
+        strategy = await db_service.get_enhanced_strategy(strategy_id)
         if not strategy:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Enhanced strategy with ID {strategy_id} not found"
-            )
+            raise ContentPlanningErrorHandler.handle_not_found_error("Enhanced strategy", strategy_id)
         
-        # Calculate completion statistics
-        strategy.calculate_completion_percentage()
-        
-        # Get field values and categorize them
-        field_values = strategy.get_field_values()
-        completed_fields = []
-        incomplete_fields = []
-        
-        for field_name, value in field_values.items():
-            if value is not None and value != "":
-                completed_fields.append(field_name)
-            else:
-                incomplete_fields.append(field_name)
-        
+        # Calculate completion stats
         completion_stats = {
             "strategy_id": strategy_id,
             "completion_percentage": strategy.completion_percentage,
-            "total_fields": 30,
-            "completed_fields_count": len(completed_fields),
-            "incomplete_fields_count": len(incomplete_fields),
-            "completed_fields": completed_fields,
-            "incomplete_fields": incomplete_fields,
+            "total_fields": 30,  # 30+ strategic inputs
+            "filled_fields": len([f for f in strategy.__dict__.keys() if getattr(strategy, f) is not None]),
+            "missing_fields": 30 - len([f for f in strategy.__dict__.keys() if getattr(strategy, f) is not None]),
             "last_updated": strategy.updated_at.isoformat() if strategy.updated_at else None
         }
         
-        logger.info(f"Retrieved completion stats for strategy: {strategy_id}")
-        return ResponseBuilder.success_response(
-            message=SUCCESS_MESSAGES['completion_stats_retrieved'],
+        logger.info(f"✅ Completion stats retrieved successfully: {strategy_id}")
+        
+        return ResponseBuilder.create_success_response(
+            message="Enhanced strategy completion stats retrieved successfully",
             data=completion_stats
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting completion stats: {str(e)}")
-        return ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_completion_stats")
+        logger.error(f"❌ Error getting enhanced strategy completion stats: {str(e)}")
+        raise ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_completion_stats")
 
 @router.get("/{strategy_id}/onboarding-integration")
 async def get_enhanced_strategy_onboarding_integration(
     strategy_id: int,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Get onboarding integration data for an enhanced strategy."""
+    """Get onboarding data integration for an enhanced strategy."""
     try:
-        logger.info(f"Getting onboarding integration for strategy: {strategy_id}")
+        logger.info(f"🚀 Getting onboarding integration for enhanced strategy: {strategy_id}")
         
-        # Check if strategy exists
-        strategy = db.query(EnhancedContentStrategy).filter(
-            EnhancedContentStrategy.id == strategy_id
-        ).first()
+        db_service = EnhancedStrategyDBService(db)
+        onboarding_integration = await db_service.get_onboarding_integration(strategy_id)
         
-        if not strategy:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Enhanced strategy with ID {strategy_id} not found"
+        if not onboarding_integration:
+            return ResponseBuilder.create_success_response(
+                data={"strategy_id": strategy_id, "onboarding_integration": None},
+                message="No onboarding integration found for this strategy",
+                status_code=200
             )
         
-        # Get onboarding integration data
-        onboarding_data = strategy.onboarding_data_used if hasattr(strategy, 'onboarding_data_used') else {}
+        logger.info(f"✅ Onboarding integration retrieved successfully: {strategy_id}")
         
-        integration_data = {
-            "strategy_id": strategy_id,
-            "onboarding_integration": onboarding_data,
-            "has_onboarding_data": bool(onboarding_data),
-            "auto_populated_fields": onboarding_data.get('auto_populated_fields', {}),
-            "data_sources": onboarding_data.get('data_sources', []),
-            "integration_id": onboarding_data.get('integration_id')
-        }
-        
-        logger.info(f"Retrieved onboarding integration for strategy: {strategy_id}")
-        return ResponseBuilder.success_response(
-            message=SUCCESS_MESSAGES['onboarding_integration_retrieved'],
-            data=integration_data
+        return ResponseBuilder.create_success_response(
+            message="Enhanced strategy onboarding integration retrieved successfully",
+            data=onboarding_integration
         )
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error getting onboarding integration: {str(e)}")
-        return ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_onboarding_integration")
+        logger.error(f"❌ Error getting onboarding integration: {str(e)}")
+        raise ContentPlanningErrorHandler.handle_general_error(e, "get_enhanced_strategy_onboarding_integration")
 
 @router.post("/{strategy_id}/ai-recommendations")
 async def generate_enhanced_ai_recommendations(
@@ -237,50 +181,36 @@ async def generate_enhanced_ai_recommendations(
 ) -> Dict[str, Any]:
     """Generate AI recommendations for an enhanced strategy."""
     try:
-        logger.info(f"Generating AI recommendations for strategy: {strategy_id}")
+        logger.info(f"🚀 Generating AI recommendations for enhanced strategy: {strategy_id}")
         
-        # Check if strategy exists
-        strategy = db.query(EnhancedContentStrategy).filter(
-            EnhancedContentStrategy.id == strategy_id
-        ).first()
+        # Get strategy
+        db_service = EnhancedStrategyDBService(db)
+        strategy = await db_service.get_enhanced_strategy(strategy_id)
         
         if not strategy:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Enhanced strategy with ID {strategy_id} not found"
-            )
+            raise ContentPlanningErrorHandler.handle_not_found_error("Enhanced strategy", strategy_id)
         
         # Generate AI recommendations
-        db_service = EnhancedStrategyDBService(db)
         enhanced_service = EnhancedStrategyService(db_service)
+        # Pass user_id for subscription checks
+        user_id = str(strategy.user_id) if hasattr(strategy, 'user_id') else None
+        await enhanced_service._generate_comprehensive_ai_recommendations(strategy, db, user_id=user_id)
         
-        # This would call the AI service to generate recommendations
-        # For now, we'll return a placeholder
-        recommendations = {
-            "strategy_id": strategy_id,
-            "recommendations": [
-                {
-                    "type": "content_optimization",
-                    "title": "Optimize Content Strategy",
-                    "description": "Based on your current strategy, consider focusing on pillar content and topic clusters.",
-                    "priority": "high",
-                    "estimated_impact": "Increase organic traffic by 25%"
-                }
-            ],
-            "generated_at": datetime.utcnow().isoformat()
-        }
+        # Get updated strategy data
+        updated_strategy = await db_service.get_enhanced_strategy(strategy_id)
         
-        logger.info(f"Generated AI recommendations for strategy: {strategy_id}")
-        return ResponseBuilder.success_response(
-            message=SUCCESS_MESSAGES['ai_recommendations_generated'],
-            data=recommendations
+        logger.info(f"✅ AI recommendations generated successfully: {strategy_id}")
+        
+        return ResponseBuilder.create_success_response(
+            message="Enhanced strategy AI recommendations generated successfully",
+            data=updated_strategy.to_dict()
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating AI recommendations: {str(e)}")
-        return ContentPlanningErrorHandler.handle_general_error(e, "generate_enhanced_ai_recommendations")
+        logger.error(f"❌ Error generating AI recommendations: {str(e)}")
+        raise ContentPlanningErrorHandler.handle_general_error(e, "generate_enhanced_ai_recommendations")
 
 @router.post("/{strategy_id}/ai-analysis/regenerate")
 async def regenerate_enhanced_strategy_ai_analysis(
@@ -290,44 +220,33 @@ async def regenerate_enhanced_strategy_ai_analysis(
 ) -> Dict[str, Any]:
     """Regenerate AI analysis for an enhanced strategy."""
     try:
-        logger.info(f"Regenerating AI analysis for strategy: {strategy_id}, type: {analysis_type}")
+        logger.info(f"🚀 Regenerating AI analysis for enhanced strategy: {strategy_id}, type: {analysis_type}")
         
-        # Check if strategy exists
-        strategy = db.query(EnhancedContentStrategy).filter(
-            EnhancedContentStrategy.id == strategy_id
-        ).first()
+        # Get strategy
+        db_service = EnhancedStrategyDBService(db)
+        strategy = await db_service.get_enhanced_strategy(strategy_id)
         
         if not strategy:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Enhanced strategy with ID {strategy_id} not found"
-            )
+            raise ContentPlanningErrorHandler.handle_not_found_error("Enhanced strategy", strategy_id)
         
         # Regenerate AI analysis
-        db_service = EnhancedStrategyDBService(db)
         enhanced_service = EnhancedStrategyService(db_service)
+        # Pass user_id for subscription checks
+        user_id = str(strategy.user_id) if hasattr(strategy, 'user_id') else None
+        await enhanced_service._generate_specialized_recommendations(strategy, analysis_type, db, user_id=user_id)
         
-        # This would call the AI service to regenerate analysis
-        # For now, we'll return a placeholder
-        analysis_result = {
-            "strategy_id": strategy_id,
-            "analysis_type": analysis_type,
-            "status": "regenerated",
-            "regenerated_at": datetime.utcnow().isoformat(),
-            "result": {
-                "insights": ["New insight 1", "New insight 2"],
-                "recommendations": ["New recommendation 1", "New recommendation 2"]
-            }
-        }
+        # Get updated strategy data
+        updated_strategy = await db_service.get_enhanced_strategy(strategy_id)
         
-        logger.info(f"Regenerated AI analysis for strategy: {strategy_id}")
-        return ResponseBuilder.success_response(
-            message=SUCCESS_MESSAGES['ai_analysis_regenerated'],
-            data=analysis_result
+        logger.info(f"✅ AI analysis regenerated successfully: {strategy_id}")
+        
+        return ResponseBuilder.create_success_response(
+            message="Enhanced strategy AI analysis regenerated successfully",
+            data=updated_strategy.to_dict()
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error regenerating AI analysis: {str(e)}")
-        return ContentPlanningErrorHandler.handle_general_error(e, "regenerate_enhanced_strategy_ai_analysis") 
+        logger.error(f"❌ Error regenerating AI analysis: {str(e)}")
+        raise ContentPlanningErrorHandler.handle_general_error(e, "regenerate_enhanced_strategy_ai_analysis") 

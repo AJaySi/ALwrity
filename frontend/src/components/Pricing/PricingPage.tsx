@@ -38,7 +38,7 @@ import {
   Info as InfoIcon,
   Warning,
   Psychology,
-  Search,
+  Search as SearchIcon,
   FactCheck,
   Edit,
   Assistant,
@@ -49,6 +49,10 @@ import {
   Business,
   Group,
 } from '@mui/icons-material';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
+import ImageIcon from '@mui/icons-material/Image';
+import VideoIcon from '@mui/icons-material/VideoLibrary';
+import AudioIcon from '@mui/icons-material/Audiotrack';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import { restoreNavigationState, saveCurrentPhaseForTool } from '../../utils/navigationState';
@@ -72,6 +76,11 @@ interface SubscriptionPlan {
     firecrawl_calls: number;
     stability_calls: number;
     monthly_cost: number;
+    // New limit fields (optional for backward compatibility)
+    image_edit_calls?: number;
+    video_calls?: number;
+    audio_calls?: number;
+    ai_text_generation_calls_limit?: number; // Unified limit for Basic tier
   };
 }
 
@@ -350,9 +359,18 @@ const PricingPage: React.FC = () => {
         <Typography variant="h3" component="h1" gutterBottom>
           Choose Your Plan
         </Typography>
-        <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
           Select the perfect plan for your AI content creation needs
         </Typography>
+        <Alert severity="info" sx={{ maxWidth: 800, mx: 'auto', mb: 4, textAlign: 'left' }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            💡 Perfect for Content Creators, Marketers, Solopreneurs & Startups
+          </Typography>
+          <Typography variant="caption">
+            All plans include access to every ALwrity tool. Limits reset monthly, and you're protected by automatic cost caps.
+            {yearlyBilling && ' Save 20% with yearly billing!'}
+          </Typography>
+        </Alert>
 
         {/* Billing Toggle */}
         <FormControlLabel
@@ -427,12 +445,12 @@ const PricingPage: React.FC = () => {
 
                 {/* Features */}
                 <List dense>
-                  {/* Platform Access - Free & Basic */}
+                  {/* All Tools Access - Free & Basic */}
                   {(plan.tier === 'free' || plan.tier === 'basic') && (
                     <>
                       <Divider sx={{ my: 1 }} />
-                      <Typography variant="caption" color="text.secondary" sx={{ px: 2 }}>
-                        Platform Access:
+                      <Typography variant="caption" color="text.secondary" sx={{ px: 2, fontWeight: 600 }}>
+                        ✨ All ALwrity Tools Included:
                       </Typography>
 
                       <ListItem>
@@ -538,6 +556,66 @@ const PricingPage: React.FC = () => {
                             </IconButton>
                           </Tooltip>
                         </Box>
+                      </ListItem>
+
+                      <ListItem>
+                        <ListItemIcon sx={{ minWidth: 24 }}>
+                          <MenuBookIcon color="primary" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Story Writer"
+                          secondary="Create stories with AI: outline, images, narration, and video"
+                        />
+                      </ListItem>
+
+                      <ListItem>
+                        <ListItemIcon sx={{ minWidth: 24 }}>
+                          <AudioIcon color="primary" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Podcast Maker"
+                          secondary="AI-powered research, scriptwriting, and voice narration"
+                        />
+                      </ListItem>
+
+                      <ListItem>
+                        <ListItemIcon sx={{ minWidth: 24 }}>
+                          <ImageIcon color="primary" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Image Generator & Editor"
+                          secondary="AI image creation and editing (background removal, inpainting)"
+                        />
+                      </ListItem>
+
+                      <ListItem>
+                        <ListItemIcon sx={{ minWidth: 24 }}>
+                          <VideoIcon color="primary" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Video Studio & YouTube Creator"
+                          secondary="AI video creation for social media and YouTube"
+                        />
+                      </ListItem>
+
+                      <ListItem>
+                        <ListItemIcon sx={{ minWidth: 24 }}>
+                          <SearchIcon color="primary" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="All SEO Tools & Dashboards"
+                          secondary="Keyword research, content optimization, SEO analytics"
+                        />
+                      </ListItem>
+
+                      <ListItem>
+                        <ListItemIcon sx={{ minWidth: 24 }}>
+                          <Timeline color="primary" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary="Content Planning & Strategy"
+                          secondary="Content calendars, strategy planning, and analytics"
+                        />
                       </ListItem>
                     </>
                   )}
@@ -807,26 +885,32 @@ const PricingPage: React.FC = () => {
                     </Box>
                   </ListItem>
 
-                  {/* Audio/Video for Pro & Enterprise */}
-                  {(plan.tier === 'pro' || plan.tier === 'enterprise') && (
+                  {/* Audio/Video for Basic, Pro & Enterprise */}
+                  {(plan.tier === 'basic' || plan.tier === 'pro' || plan.tier === 'enterprise') && (
                     <>
                       <ListItem>
                         <ListItemIcon sx={{ minWidth: 24 }}>
-                          <Assistant color="secondary" fontSize="small" />
+                          <AudioIcon color="primary" fontSize="small" />
                         </ListItemIcon>
                         <ListItemText
                           primary="Audio Generation"
-                          secondary="AI-powered audio content creation and voice synthesis"
+                          secondary={plan.tier === 'basic' 
+                            ? "AI voice synthesis for podcasts, stories, and narration"
+                            : "AI-powered audio content creation and voice synthesis"
+                          }
                         />
                       </ListItem>
 
                       <ListItem>
                         <ListItemIcon sx={{ minWidth: 24 }}>
-                          <Assistant color="secondary" fontSize="small" />
+                          <VideoIcon color="primary" fontSize="small" />
                         </ListItemIcon>
                         <ListItemText
                           primary="Video Generation"
-                          secondary="AI video creation with script writing and editing"
+                          secondary={plan.tier === 'basic'
+                            ? "Create AI videos for YouTube, social media, and stories"
+                            : "AI video creation with script writing and editing"
+                          }
                         />
                       </ListItem>
                     </>
@@ -875,32 +959,144 @@ const PricingPage: React.FC = () => {
                     </>
                   )}
 
-                  {/* API Limits */}
+                  {/* Usage Limits - User-Friendly Display */}
                   <Divider sx={{ my: 1 }} />
-                  <Typography variant="caption" color="text.secondary" sx={{ px: 2 }}>
-                    Monthly Limits:
+                  <Typography variant="caption" color="text.secondary" sx={{ px: 2, fontWeight: 600 }}>
+                    Monthly Usage Limits:
                   </Typography>
 
-                  <ListItem>
-                    <ListItemText
-                      primary={`${plan.limits.gemini_calls} AI content generations`}
-                      sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
-                    />
-                  </ListItem>
+                  {/* For Basic tier, show unified AI text generation limit */}
+                  {plan.tier === 'basic' && (
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 24 }}>
+                        <Psychology color="primary" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary="50 AI Text Generations"
+                        secondary="~16-25 blog posts or ~25-50 social posts per month"
+                        sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem', fontWeight: 500 } }}
+                      />
+                    </ListItem>
+                  )}
 
-                  <ListItem>
-                    <ListItemText
-                      primary={`${plan.limits.openai_calls} Advanced AI calls`}
-                      sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
-                    />
-                  </ListItem>
+                  {/* For other tiers, show provider-specific limits */}
+                  {plan.tier !== 'basic' && (
+                    <>
+                      {plan.limits.gemini_calls > 0 && (
+                        <ListItem>
+                          <ListItemText
+                            primary={`${plan.limits.gemini_calls === 0 ? '∞' : plan.limits.gemini_calls} Gemini AI calls`}
+                            sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
+                          />
+                        </ListItem>
+                      )}
+                      {plan.limits.openai_calls > 0 && (
+                        <ListItem>
+                          <ListItemText
+                            primary={`${plan.limits.openai_calls === 0 ? '∞' : plan.limits.openai_calls} OpenAI calls`}
+                            sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
+                          />
+                        </ListItem>
+                      )}
+                    </>
+                  )}
 
-                  <ListItem>
-                    <ListItemText
-                      primary={`${plan.limits.tavily_calls} Research queries`}
-                      sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
-                    />
-                  </ListItem>
+                  {/* Image Generation */}
+                  {plan.limits.stability_calls > 0 && (
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 24 }}>
+                        <ImageIcon color="primary" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`${plan.limits.stability_calls} AI Images`}
+                        secondary={plan.tier === 'basic' ? "Powered by open-source models (25% cost savings)" : undefined}
+                        sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem', fontWeight: plan.tier === 'basic' ? 500 : 400 } }}
+                      />
+                    </ListItem>
+                  )}
+
+                  {/* Image Editing */}
+                  {(plan.limits.image_edit_calls ?? 0) > 0 && (
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 24 }}>
+                        <Edit color="primary" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`${plan.limits.image_edit_calls ?? 0} Image Edits`}
+                        secondary={plan.tier === 'basic' ? "Background removal, inpainting, recolor (50% cost savings with OSS)" : undefined}
+                        sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem', fontWeight: plan.tier === 'basic' ? 500 : 400 } }}
+                      />
+                    </ListItem>
+                  )}
+
+                  {/* Video Generation */}
+                  {(plan.limits.video_calls ?? 0) > 0 && (
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 24 }}>
+                        <VideoIcon color="primary" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`${plan.limits.video_calls ?? 0} AI Videos`}
+                        secondary={plan.tier === 'basic' ? "~5-6 full video projects (5 scenes each) per month" : undefined}
+                        sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem', fontWeight: plan.tier === 'basic' ? 500 : 400 } }}
+                      />
+                    </ListItem>
+                  )}
+
+                  {/* Audio Generation */}
+                  {(plan.limits.audio_calls ?? 0) > 0 && (
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 24 }}>
+                        <AudioIcon color="primary" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`${plan.limits.audio_calls ?? 0} Audio Generations`}
+                        secondary={plan.tier === 'basic' ? "Podcast narration, story audio, voice synthesis" : undefined}
+                        sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem', fontWeight: plan.tier === 'basic' ? 500 : 400 } }}
+                      />
+                    </ListItem>
+                  )}
+
+                  {/* Research Queries */}
+                  {plan.limits.tavily_calls > 0 && (
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 24 }}>
+                        <SearchIcon color="primary" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`${plan.limits.tavily_calls} Research Searches`}
+                        secondary="Web research, fact-checking, content discovery"
+                        sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
+                      />
+                    </ListItem>
+                  )}
+
+                  {/* Cost Cap Protection */}
+                  {plan.limits.monthly_cost > 0 && (
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 24 }}>
+                        <Verified color="success" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`$${plan.limits.monthly_cost} Monthly Cost Cap`}
+                        secondary="Automatic protection - you'll never exceed this amount"
+                        sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem', fontWeight: 500, color: 'success.main' } }}
+                      />
+                    </ListItem>
+                  )}
+
+                  {/* OSS Model Notice for Basic Tier */}
+                  {plan.tier === 'basic' && (
+                    <Box sx={{ mt: 1, p: 1.5, bgcolor: 'info.lighter', borderRadius: 1, mx: 2 }}>
+                      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 500 }}>
+                        <StarIcon fontSize="small" sx={{ color: 'info.main' }} />
+                        Powered by Open-Source AI Models
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                        We use cost-effective open-source models to give you more value. 25-50% savings vs proprietary models.
+                      </Typography>
+                    </Box>
+                  )}
                 </List>
               </CardContent>
 

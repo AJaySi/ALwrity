@@ -2,65 +2,65 @@
  * ExpandableDetails Component
  * 
  * Collapsible section showing secondary questions, focus areas, and research angles.
+ * Now with editable "Also Answering" and "Focus Areas" sections.
  */
 
 import React from 'react';
 import {
   Box,
   Typography,
-  Chip,
   Collapse,
 } from '@mui/material';
-import { AnalyzeIntentResponse } from '../../../types/intent.types';
+import { AnalyzeIntentResponse, ResearchIntent } from '../../../types/intent.types';
+import { EditableListField } from './EditableListField';
 
 interface ExpandableDetailsProps {
   intentAnalysis: AnalyzeIntentResponse;
   expanded: boolean;
+  intent: ResearchIntent;
+  onUpdateField: <K extends keyof ResearchIntent>(field: K, value: ResearchIntent[K]) => void;
 }
 
 export const ExpandableDetails: React.FC<ExpandableDetailsProps> = ({
   intentAnalysis,
   expanded,
+  intent,
+  onUpdateField,
 }) => {
-  const intent = intentAnalysis.intent;
-
   return (
     <Collapse in={expanded}>
       <Box sx={{ pt: 2, borderTop: '1px solid #e5e7eb', mt: 2 }}>
-        {/* Secondary Questions */}
+        {/* Also Answering (Secondary Questions) - Editable */}
+        <EditableListField
+          label="Also Answering"
+          items={intent.also_answering || []}
+          onUpdate={(items) => onUpdateField('also_answering', items)}
+          placeholder="Add a question or topic to also answer..."
+          tooltip="Additional questions or topics that should be addressed in the research results, even if not explicitly asked."
+          maxItems={10}
+        />
+
+        {/* Focus Areas - Editable */}
+        <EditableListField
+          label="Focus Areas"
+          items={intent.focus_areas || []}
+          onUpdate={(items) => onUpdateField('focus_areas', items)}
+          placeholder="Add a focus area..."
+          tooltip="Specific aspects or areas to focus on during research (e.g., 'academic research', 'industry trends', 'company analysis')."
+          maxItems={10}
+        />
+
+        {/* Secondary Questions (Read-only, for reference) */}
         {intent.secondary_questions.length > 0 && (
           <Box mb={2}>
             <Typography variant="caption" color="#666" fontWeight={600} gutterBottom display="block">
-              Also answering:
+              Secondary Questions:
             </Typography>
-            {intent.secondary_questions.slice(0, 3).map((q, idx) => (
+            {intent.secondary_questions.map((q, idx) => (
               <Typography key={idx} variant="body2" color="#333" sx={{ ml: 1, mb: 0.5 }}>
                 • {q}
               </Typography>
             ))}
-          </Box>
-        )}
-
-        {/* Focus Areas */}
-        {intent.focus_areas.length > 0 && (
-          <Box mb={2}>
-            <Typography variant="caption" color="#666" fontWeight={600} gutterBottom display="block">
-              Focus areas:
-            </Typography>
-            <Box display="flex" flexWrap="wrap" gap={0.5}>
-              {intent.focus_areas.map((area, idx) => (
-                <Chip
-                  key={idx}
-                  label={area}
-                  size="small"
-                  sx={{
-                    backgroundColor: '#f3f4f6',
-                    border: '1px solid #d1d5db',
-                    color: '#374151',
-                  }}
-                />
-              ))}
-            </Box>
           </Box>
         )}
 
