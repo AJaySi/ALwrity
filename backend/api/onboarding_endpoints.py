@@ -82,8 +82,8 @@ async def complete_onboarding(current_user: Dict[str, Any]):
     return await _complete_onboarding_impl(current_user)
 
 
-async def reset_onboarding():
-    return await _reset_onboarding_impl()
+async def reset_onboarding(current_user: Dict[str, Any]):
+    return await _reset_onboarding_impl(current_user)
 
 
 async def get_resume_info():
@@ -91,5 +91,3 @@ async def get_resume_info():
 
 
 __all__ = [name for name in globals().keys() if not name.startswith('_')]
-
-

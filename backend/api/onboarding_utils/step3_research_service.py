@@ -17,6 +17,7 @@ Last Updated: January 2025
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import traceback
 from loguru import logger
 from services.research.exa_service import ExaService
 from services.database import get_db_session
@@ -427,13 +428,25 @@ class Step3ResearchService:
                 # Store each competitor in CompetitorAnalysis table
                 from models.onboarding import CompetitorAnalysis
 
-                for competitor in competitors:
-                    # Create competitor analysis record
-                    competitor_record = CompetitorAnalysis(
-                        session_id=session.id,
-                        competitor_url=competitor.get("url", ""),
-                        competitor_domain=competitor.get("domain", ""),
-                        analysis_data={
+                logger.warning(f"🔍 COMPETITOR SAVE: Starting to save {len(competitors)} competitors for session {session_id}")
+                logger.warning(f"  Session ID: {session.id}")
+                logger.warning(f"  Session user_id: {session.user_id}")
+                
+                saved_count = 0
+                failed_count = 0
+                
+                for idx, competitor in enumerate(competitors):
+                    try:
+                        logger.warning(f"🔍 COMPETITOR SAVE: Saving competitor {idx + 1}/{len(competitors)}")
+                        logger.warning(f"  Competitor URL: {competitor.get('url', 'N/A')}")
+                        logger.warning(f"  Competitor Domain: {competitor.get('domain', 'N/A')}")
+                        logger.warning(f"  Has title: {bool(competitor.get('title'))}")
+                        logger.warning(f"  Has summary: {bool(competitor.get('summary'))}")
+                        logger.warning(f"  Has competitive_insights: {bool(competitor.get('competitive_insights'))}")
+                        logger.warning(f"  Has content_insights: {bool(competitor.get('content_insights'))}")
+                        
+                        # Create competitor analysis record
+                        analysis_data = {
                             "title": competitor.get("title", ""),
                             "summary": competitor.get("summary", ""),
                             "relevance_score": competitor.get("relevance_score", 0.5),
@@ -448,9 +461,27 @@ class Step3ResearchService:
                             "analysis_metadata": analysis_metadata,
                             "completed_at": datetime.utcnow().isoformat()
                         }
-                    )
+                        
+                        logger.warning(f"  analysis_data keys: {list(analysis_data.keys())}")
+                        logger.warning(f"  competitive_analysis type: {type(analysis_data.get('competitive_analysis'))}")
+                        logger.warning(f"  content_insights type: {type(analysis_data.get('content_insights'))}")
+                        
+                        competitor_record = CompetitorAnalysis(
+                            session_id=session.id,
+                            competitor_url=competitor.get("url", ""),
+                            competitor_domain=competitor.get("domain", ""),
+                            analysis_data=analysis_data,
+                            status="completed"
+                        )
 
-                    db.add(competitor_record)
+                        db.add(competitor_record)
+                        saved_count += 1
+                        logger.warning(f"  ✅ Added competitor record {idx + 1} to session")
+                        
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f"  ❌ Failed to save competitor {idx + 1}: {str(e)}")
+                        logger.error(f"  Traceback: {traceback.format_exc()}")
 
                 # Store summary in session for quick access (backward compatibility)
                 research_summary = {
@@ -465,9 +496,25 @@ class Step3ResearchService:
                 # For now, we'll skip this since the model doesn't have step_data
                 # TODO: Add step_data JSON column to OnboardingSession model if needed
 
-                db.commit()
-                logger.info(f"Stored {len(competitors)} competitors in CompetitorAnalysis table for session {session_id}")
-                return True
+                try:
+                    db.commit()
+                    logger.warning(f"🔍 COMPETITOR SAVE: ✅ Committed {saved_count} competitors to database")
+                    logger.warning(f"  Failed: {failed_count}")
+                    
+                    # Verify the save by querying back
+                    from models.onboarding import CompetitorAnalysis
+                    verify_count = db.query(CompetitorAnalysis).filter(
+                        CompetitorAnalysis.session_id == session.id
+                    ).count()
+                    logger.warning(f"🔍 COMPETITOR SAVE: Verification - {verify_count} competitors found in DB for session {session.id}")
+                    
+                    logger.info(f"Stored {len(competitors)} competitors in CompetitorAnalysis table for session {session_id}")
+                    return True
+                except Exception as e:
+                    db.rollback()
+                    logger.error(f"❌ COMPETITOR SAVE: Failed to commit competitors: {str(e)}")
+                    logger.error(f"  Traceback: {traceback.format_exc()}")
+                    return False
 
         except Exception as e:
             logger.error(f"Error storing research data: {str(e)}", exc_info=True)

@@ -139,11 +139,9 @@ def start_backend(enable_reload=False, production_mode=False):
     try:
         # Import and run the app
         from app import app
-        from services.database import init_database
         import uvicorn
-        
-        # Explicitly initialize database before starting server
-        init_database()
+
+        # Note: Database already initialized by DatabaseSetup in main()
         
         print("\n🌐 ALwrity Backend Server")
         print("=" * 50)

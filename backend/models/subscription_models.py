@@ -3,12 +3,15 @@ Subscription and Usage Tracking Models
 Comprehensive models for usage-based subscription system with API cost tracking.
 """
 
+# Ensure Optional is available in global scope for dynamic imports
+from typing import Optional
+
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, JSON, Text, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime, timedelta
 import enum
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 Base = declarative_base()
 

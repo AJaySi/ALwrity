@@ -18,6 +18,9 @@ export interface OnboardingStepResponse {
   step: number;
   data?: any;
   validation_errors?: string[];
+  detail?: string; // Error detail from HTTP responses
+  message?: string; // Success message
+  warnings?: string[]; // Warning messages
 }
 
 export interface OnboardingSessionResponse {
@@ -50,12 +53,24 @@ export async function getCurrentStep() {
 export async function setCurrentStep(step: number, stepData?: any) {
   // Complete the current step to move to the next one
   console.log('setCurrentStep: Completing step', step, 'with data:', stepData);
-  const res: AxiosResponse<OnboardingStepResponse> = await apiClient.post(`/api/onboarding/step/${step}/complete`, {
-    data: stepData || {},
-    validation_errors: []
-  });
-  console.log('setCurrentStep: Backend response:', res.data);
-  return { step };
+  try {
+    const res: AxiosResponse<OnboardingStepResponse> = await apiClient.post(`/api/onboarding/step/${step}/complete`, {
+      data: stepData || {},
+      validation_errors: []
+    });
+    console.log('setCurrentStep: Backend response:', res.data);
+    return { step, response: res.data }; // Include the full response data including warnings
+  } catch (error: any) {
+    // Handle HTTP errors from the backend
+    console.error('setCurrentStep: Backend error:', error);
+    if (error.response?.status >= 400) {
+      const errorData = error.response.data;
+      const errorMessage = errorData?.detail || errorData?.message || `Step completion failed with status ${error.response.status}`;
+      throw new Error(errorMessage);
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 export async function getApiKeys() {

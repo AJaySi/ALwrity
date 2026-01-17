@@ -118,22 +118,22 @@ apiClient.interceptors.request.use(
         return Promise.reject(new Error('Authentication not ready. Please wait for sign-in to complete.'));
       }
       
-      try {
-        const token = await authTokenGetter();
-        if (token) {
-          config.headers = config.headers || {};
-          (config.headers as any)['Authorization'] = `Bearer ${token}`;
-          console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
-        } else {
+        try {
+          const token = await authTokenGetter();
+      if (token) {
+        config.headers = config.headers || {};
+        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+            console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
+          } else {
           // Token getter returned null - reject request to prevent 401 errors
           // ProtectedRoute should ensure user is authenticated before components render
           console.error(`[apiClient] ❌ authTokenGetter returned null for ${config.url} - rejecting request`);
           console.error(`[apiClient] User ID from localStorage: ${localStorage.getItem('user_id') || 'none'}`);
           console.error(`[apiClient] This usually means user is not signed in or token expired. ProtectedRoute should prevent this.`);
           return Promise.reject(new Error('Authentication token not available. Please sign in to continue.'));
-        }
-      } catch (tokenError) {
-        console.error(`[apiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
+          }
+        } catch (tokenError) {
+          console.error(`[apiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
         // Reject request if token getter throws an error
         return Promise.reject(new Error('Failed to get authentication token. Please try signing in again.'));
       }

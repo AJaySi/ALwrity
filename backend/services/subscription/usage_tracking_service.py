@@ -3,8 +3,11 @@ Usage Tracking Service
 Comprehensive tracking of API usage, costs, and subscription limits.
 """
 
+# Ensure Optional is available in global scope for dynamic imports
+from typing import Optional
+
 import asyncio
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, List, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from loguru import logger

@@ -4,12 +4,15 @@ Database-backed monitoring for API calls, errors, performance metrics, and usage
 Includes comprehensive subscription-based usage monitoring and cost tracking.
 """
 
+# Ensure Optional is available in global scope for dynamic imports
+from typing import Optional
+
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 import time
 import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from collections import defaultdict, deque
 import asyncio
 from loguru import logger

@@ -250,10 +250,10 @@ class OnboardingManager:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/api/onboarding/reset")
-        async def onboarding_reset():
+        async def onboarding_reset(current_user: dict = Depends(get_current_user)):
             """Reset the onboarding progress."""
             try:
-                return await reset_onboarding()
+                return await reset_onboarding(current_user)
             except Exception as e:
                 logger.error(f"Error in onboarding_reset: {e}")
                 raise HTTPException(status_code=500, detail=str(e))

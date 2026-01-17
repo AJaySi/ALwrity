@@ -12,7 +12,7 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Edit as EditIcon
 } from '@mui/icons-material';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useContentPlanningStore } from '../../../stores/contentPlanningStore';
 import { contentPlanningApi } from '../../../services/contentPlanningApi';
 import StrategyIntelligenceTab from '../components/StrategyIntelligence/StrategyIntelligenceTab';
@@ -21,6 +21,7 @@ import { StrategyData } from '../components/StrategyIntelligence/types/strategy.
 
 const ContentStrategyTab: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   
   // Use selective store subscriptions to prevent unnecessary re-renders
   const strategies = useContentPlanningStore(state => state.strategies);
@@ -443,14 +444,14 @@ const ContentStrategyTab: React.FC = () => {
 
   const handleEditStrategy = () => {
     setShowOnboarding(false);
-    // Navigate to Create tab to edit strategy
-    // This would typically involve changing the active tab in the parent component
+    // Navigate to Create tab (index 4) to edit strategy
+    navigate('/content-planning', { state: { activeTab: 4 } });
   };
 
   const handleCreateNewStrategy = () => {
     setShowOnboarding(false);
-    // Navigate to Create tab to create new strategy
-    // This would typically involve changing the active tab in the parent component
+    // Navigate to Create tab (index 4) to create new strategy
+    navigate('/content-planning', { state: { activeTab: 4 } });
   };
 
   const handleCloseOnboarding = () => {

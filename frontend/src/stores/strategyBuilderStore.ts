@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { contentPlanningApi } from '../services/contentPlanningApi';
 
 // Global flag to prevent multiple simultaneous auto-population calls
@@ -195,6 +196,7 @@ interface StrategyBuilderStore {
   
   // Auto-Population Actions
   autoPopulateFromOnboarding: (forceRefresh?: boolean) => Promise<void>;
+  smartAutofill: () => Promise<void>;
   updateAutoPopulatedField: (fieldId: string, value: any, source: string) => void;
   overrideAutoPopulatedField: (fieldId: string, value: any) => void;
   
@@ -525,8 +527,16 @@ export const STRATEGIC_INPUT_FIELDS: StrategicInputField[] = [
   }
 ];
 
+// Storage keys for persistence
+const STORAGE_KEYS = {
+  STRATEGY_BUILDER: 'strategy_builder_store',
+  REVIEWED_CATEGORIES: 'strategy_reviewed_categories'
+};
+
 // Strategy Builder Store Implementation
-export const useStrategyBuilderStore = create<StrategyBuilderStore>((set, get) => ({
+export const useStrategyBuilderStore = create<StrategyBuilderStore>()(
+  persist(
+    (set, get) => ({
   // Initial State
   strategies: [],
   currentStrategy: null,
@@ -702,20 +712,23 @@ export const useStrategyBuilderStore = create<StrategyBuilderStore>((set, get) =
       // Add a longer delay to prevent rate limiting
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      set({ loading: true });
+      // Clear error state when starting new autofill operation
+      set({ loading: true, error: null });
       
       console.log('🔄 Starting auto-population from onboarding data...');
       
       // Optionally clear backend caches to force fresh values
+      // Note: Cache clear gets user_id from authentication, no need to pass it
       if (forceRefresh) {
         try {
-          await contentPlanningApi.clearEnhancedCache(1);
+          await contentPlanningApi.clearEnhancedCache();
         } catch (e) {
           console.warn('Cache clear failed (non-blocking):', e);
         }
       }
 
       // Fetch onboarding data to auto-populate fields
+      // Note: Endpoint gets user_id from authentication, no need to pass it
       const response = await contentPlanningApi.getOnboardingData();
       
       // Enhanced logging for autofill data
@@ -751,21 +764,28 @@ export const useStrategyBuilderStore = create<StrategyBuilderStore>((set, get) =
         }))
       });
       
-      // Validate AI generation success
+      // Validate response meta (for database autofill, ai_used will be false)
       const meta = response.meta || {};
-      console.log('🤖 AI Generation Meta:', {
+      console.log('📊 Autofill Meta:', {
         aiUsed: meta.ai_used,
         aiOverridesCount: meta.ai_overrides_count,
+        dataSource: meta.data_source,
         error: meta.error,
         processingTime: meta.processing_time
       });
       
-      if (meta.ai_used === false || meta.ai_overrides_count === 0) {
-        console.log('❌ AI generation failed - no real AI values produced');
-        throw new Error(meta.error || 'AI generation failed to produce strategy fields. Please try again.');
+      // Database autofill does NOT use AI - only validate if AI was expected
+      // For database autofill, we expect ai_used: false, which is correct
+      if (meta.ai_used === false && meta.data_source === 'database') {
+        console.log('✅ Database autofill successful (no AI used):', Object.keys(fields).length, 'fields');
+        // Continue processing - database autofill is valid
+      } else if (meta.ai_used === false && meta.error) {
+        // Only throw error if AI was expected but failed
+        console.log('❌ Autofill failed:', meta.error);
+        throw new Error(meta.error || 'Autofill failed. Please try again.');
+      } else if (meta.ai_used === true) {
+        console.log('✅ AI autofill successful:', Object.keys(fields).length, 'fields');
       }
-      
-      console.log('✅ AI generation successful:', Object.keys(fields).length, 'fields');
       
       // Transform the fields object to extract values for formData
       const fieldValues: Record<string, any> = {};
@@ -870,6 +890,9 @@ export const useStrategyBuilderStore = create<StrategyBuilderStore>((set, get) =
        // Store the autofill completion time
        sessionStorage.setItem('lastAutofillTime', new Date().toISOString());
        
+       // Persist autofill data to localStorage (handled by zustand persist middleware)
+       console.log('💾 Autofill data persisted to localStorage');
+       
      } catch (error: any) {
        console.error('❌ Auto-population error:', error);
        const errorMessage = error.message || 'Failed to auto-populate from onboarding';
@@ -949,5 +972,197 @@ export const useStrategyBuilderStore = create<StrategyBuilderStore>((set, get) =
        completion_percentage: completionPercentage,
        category_completion: categoryCompletion
      };
+   },
+   
+   smartAutofill: async () => {
+     // Global protection against multiple simultaneous calls
+     if (isAutoPopulating) {
+       console.log('⏸️ Smart autofill skipped - already running globally');
+       return;
+     }
+     
+     isAutoPopulating = true;
+     
+     try {
+       // Skip if already loading
+       if (get().loading) {
+         console.log('⏸️ Smart autofill skipped - already loading');
+         return;
+       }
+
+       // Skip if auto-population is blocked
+       if (get().autoPopulationBlocked) {
+         console.log('⏸️ Smart autofill skipped - blocked due to previous errors');
+         return;
+       }
+
+      // Add a delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Clear error state when starting new autofill operation
+      set({ loading: true, error: null });
+      
+      console.log('🚀 Starting smart autofill (DB + AI combined)...');
+       
+       // Call smart autofill endpoint (combines DB + AI)
+       const response = await contentPlanningApi.smartAutofill(1);
+       
+       // Enhanced logging for smart autofill data
+       console.log('📊 Smart Autofill Response Structure:', {
+         hasResponse: !!response,
+         responseKeys: response ? Object.keys(response) : [],
+         fieldsCount: response?.fields ? Object.keys(response.fields).length : 0,
+         sourcesCount: response?.sources ? Object.keys(response.sources).length : 0,
+         inputDataPointsCount: response?.input_data_points ? Object.keys(response.input_data_points).length : 0,
+         hasMeta: !!response?.meta
+       });
+       
+       // Validate response structure
+       if (!response) {
+         throw new Error('Invalid response structure from backend');
+       }
+       
+       // Extract field values and sources
+       const fields = response.fields || {};
+       const sources = response.sources || {};
+       const inputDataPoints = response.input_data_points || {};
+       
+       // Log detailed field information
+       console.log('🎯 Smart Autofill Field Details:', {
+         totalFields: Object.keys(fields).length,
+         fieldIds: Object.keys(fields),
+         sampleFieldData: Object.keys(fields).slice(0, 3).map(id => ({
+           id,
+           hasValue: !!fields[id]?.value,
+           hasPersonalization: !!fields[id]?.personalization_data,
+           hasConfidence: !!fields[id]?.confidence_score,
+           valueType: typeof fields[id]?.value
+         }))
+       });
+       
+       // Validate smart autofill success
+       const meta = response.meta || {};
+       console.log('🤖 Smart Autofill Meta:', {
+         aiUsed: meta.ai_used,
+         aiOverridesCount: meta.ai_overrides_count,
+         dbFieldsCount: meta.db_fields_count,
+         aiFieldsCount: meta.ai_fields_count,
+         totalFields: meta.total_fields,
+         dataSource: meta.data_source,
+         error: meta.error,
+         processingTime: meta.processing_time_ms
+       });
+       
+       // Check if we have any fields generated
+       if (Object.keys(fields).length === 0) {
+         console.log('❌ No fields found in smart autofill response');
+         set({ 
+           loading: false, 
+           error: 'Smart autofill failed to produce strategy fields. Please try again.',
+           autoPopulatedFields: {},
+           personalizationData: {},
+           dataSources: {},
+           inputDataPoints: {}
+         });
+         return;
+       }
+       
+       console.log('✅ Smart autofill successful:', Object.keys(fields).length, 'fields');
+       
+       // Transform the fields object to extract values for formData
+       const fieldValues: Record<string, any> = {};
+       const autoPopulatedFields: Record<string, any> = {};
+       const personalizationData: Record<string, any> = {};
+       const confidenceScores: Record<string, number> = {};
+       
+       // Process fields from backend
+       let processedFields = 0;
+       let skippedFields = 0;
+       let fieldsWithPersonalization = 0;
+       let fieldsWithConfidence = 0;
+       
+       Object.keys(fields).forEach(fieldId => {
+         const fieldData = fields[fieldId];
+         
+         if (fieldData && typeof fieldData === 'object' && 'value' in fieldData) {
+           const value = fieldData.value;
+           
+           // Store field value
+           fieldValues[fieldId] = value;
+           autoPopulatedFields[fieldId] = {
+             source: fieldData.source || sources[fieldId] || 'smart_autofill',
+             timestamp: new Date().toISOString(),
+             method: 'smart_autofill' // Combined DB + AI
+           };
+           
+           // Store personalization data if available
+           if (fieldData.personalization_data) {
+             personalizationData[fieldId] = fieldData.personalization_data;
+             fieldsWithPersonalization++;
+           }
+           
+           // Store confidence score if available
+           if (fieldData.confidence_score !== undefined) {
+             confidenceScores[fieldId] = fieldData.confidence_score;
+             fieldsWithConfidence++;
+           }
+           
+           processedFields++;
+         } else {
+           skippedFields++;
+         }
+       });
+       
+       console.log('📊 Smart Autofill Processing Summary:', {
+         processedFields,
+         skippedFields,
+         fieldsWithPersonalization,
+         fieldsWithConfidence,
+         dbFieldsCount: meta.db_fields_count,
+         aiFieldsCount: meta.ai_fields_count
+       });
+       
+       // Update store with populated fields
+       set({
+         formData: { ...get().formData, ...fieldValues },
+         autoPopulatedFields,
+         dataSources: sources,
+         inputDataPoints,
+         personalizationData,
+         confidenceScores,
+         loading: false,
+         error: null
+       });
+       
+       console.log('✅ Smart autofill completed successfully');
+       
+     } catch (error: any) {
+       console.error('❌ Smart autofill error:', error);
+       set({ 
+         loading: false,
+         error: error.message || 'Smart autofill failed. Please try again.',
+         autoPopulationBlocked: true // Block further attempts
+       });
+     } finally {
+       isAutoPopulating = false;
+     }
    }
- }));
+    }),
+    {
+      name: STORAGE_KEYS.STRATEGY_BUILDER,
+      // Only persist user-editable data, not loading/error states
+      partialize: (state) => ({
+        // Persist form data (user edits)
+        formData: state.formData,
+        formErrors: state.formErrors,
+        // Persist autofill data
+        autoPopulatedFields: state.autoPopulatedFields,
+        dataSources: state.dataSources,
+        inputDataPoints: state.inputDataPoints,
+        personalizationData: state.personalizationData,
+        confidenceScores: state.confidenceScores,
+        // Don't persist loading, error, saving states
+      }),
+    }
+  )
+);

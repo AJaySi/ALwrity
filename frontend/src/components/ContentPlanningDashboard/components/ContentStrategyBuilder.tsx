@@ -26,7 +26,7 @@ import EnterpriseDatapointsModal from './EnterpriseDatapointsModal';
 // Import extracted hooks
 import { useCategoryReview } from './ContentStrategyBuilder/hooks/useCategoryReview';
 import { useProgressTracking } from './ContentStrategyBuilder/hooks/useProgressTracking';
-import { useAutoPopulation } from './ContentStrategyBuilder/hooks/useAutoPopulation';
+// import { useAutoPopulation } from './ContentStrategyBuilder/hooks/useAutoPopulation'; // Removed - now handled by consent modal
 import { useModalManagement } from './ContentStrategyBuilder/hooks/useModalManagement';
 import { useAIRefresh } from './ContentStrategyBuilder/hooks/useAIRefresh';
 import { useEventHandlers } from './ContentStrategyBuilder/hooks/useEventHandlers';
@@ -75,6 +75,7 @@ const ContentStrategyBuilder: React.FC = () => {
     validateFormField,
     validateAllFields,
     autoPopulateFromOnboarding,
+    smartAutofill,
     createStrategy: createEnhancedStrategy,
     calculateCompletionPercentage,
     getCompletionStats,
@@ -140,38 +141,38 @@ const ContentStrategyBuilder: React.FC = () => {
     handleShowEducationalInfo
   } = useEventHandlers();
 
-    // Provide context to CopilotKit for intelligent assistance
-  console.log("🚀 Initializing CopilotKit context provision...");
-
-  // Provide form state context
-  useCopilotReadable({
-    description: "Current strategy form state and field data. This shows the current state of the 30+ strategy form fields.",
-    value: {
+  // Memoize form state context to prevent re-renders
+  const formStateContext = useMemo(() => {
+    const filledFields = Object.keys(formData).filter(key => {
+      const value = formData[key];
+      return value && typeof value === 'string' && value.trim() !== '';
+    });
+    const emptyFields = Object.keys(formData).filter(key => {
+      const value = formData[key];
+      return !value || typeof value !== 'string' || value.trim() === '';
+    });
+    return {
       formData,
       completionPercentage: calculateCompletionPercentage(),
-      filledFields: Object.keys(formData).filter(key => {
-        const value = formData[key];
-        return value && typeof value === 'string' && value.trim() !== '';
-      }),
-      emptyFields: Object.keys(formData).filter(key => {
-        const value = formData[key];
-        return !value || typeof value !== 'string' || value.trim() === '';
-      }),
+      filledFields,
+      emptyFields,
       categoryProgress: getCompletionStats().category_completion,
       activeCategory,
       formErrors,
       totalFields: 30,
-      filledCount: Object.keys(formData).filter(key => {
-        const value = formData[key];
-        return value && typeof value === 'string' && value.trim() !== '';
-      }).length
-    }
+      filledCount: filledFields.length
+    };
+  }, [formData, activeCategory, formErrors, calculateCompletionPercentage, getCompletionStats]);
+
+  // Provide form state context
+  useCopilotReadable({
+    description: "Current strategy form state and field data. This shows the current state of the 30+ strategy form fields.",
+    value: formStateContext
   });
 
-  // Provide field definitions context
-  useCopilotReadable({
-    description: "Strategy field definitions and requirements. This contains all 30+ form fields with their descriptions, requirements, and categories.",
-    value: STRATEGIC_INPUT_FIELDS.map(field => ({
+  // Memoize field definitions context to prevent re-renders
+  const fieldDefinitionsContext = useMemo(() => {
+    return STRATEGIC_INPUT_FIELDS.map(field => ({
       id: field.id,
       label: field.label,
       description: field.description,
@@ -181,38 +182,52 @@ const ContentStrategyBuilder: React.FC = () => {
       options: field.options,
       category: field.category,
       currentValue: formData[field.id] || null
-    }))
+    }));
+  }, [formData]);
+
+  // Provide field definitions context
+  useCopilotReadable({
+    description: "Strategy field definitions and requirements. This contains all 30+ form fields with their descriptions, requirements, and categories.",
+    value: fieldDefinitionsContext
   });
 
-  // Provide onboarding data context
-  useCopilotReadable({
-    description: "User onboarding data for personalization. This contains the user's website analysis, research preferences, and profile information.",
-    value: {
+  // Memoize onboarding data context to prevent re-renders
+  const onboardingDataContext = useMemo(() => {
+    return {
       websiteAnalysis: personalizationData?.website_analysis,
       researchPreferences: personalizationData?.research_preferences,
       apiKeys: personalizationData?.api_keys,
       userProfile: personalizationData?.user_profile,
       hasOnboardingData: !!personalizationData
-    }
+    };
+  }, [personalizationData]);
+
+  // Provide onboarding data context
+  useCopilotReadable({
+    description: "User onboarding data for personalization. This contains the user's website analysis, research preferences, and profile information.",
+    value: onboardingDataContext
   });
 
-  // Provide dynamic instructions
-  useCopilotAdditionalInstructions({
-    instructions: `
+  // Memoize instructions to prevent re-renders
+  const completionPercentage = calculateCompletionPercentage();
+  const filledCount = Object.keys(formData).filter(k => {
+    const value = formData[k];
+    return value && typeof value === 'string' && value.trim() !== '';
+  }).length;
+  const emptyCount = Object.keys(formData).filter(k => {
+    const value = formData[k];
+    return !value || typeof value !== 'string' || value.trim() === '';
+  }).length;
+
+  const copilotInstructions = useMemo(() => `
       You are ALwrity's Strategy Assistant, helping users create comprehensive content strategies.
       
       IMPORTANT CONTEXT:
       - You are working with a form that has 30+ strategy fields
-      - Current form completion: ${calculateCompletionPercentage()}%
+      - Current form completion: ${completionPercentage}%
       - Active category: ${activeCategory}
-      - Filled fields: ${Object.keys(formData).filter(k => {
-        const value = formData[k];
-        return value && typeof value === 'string' && value.trim() !== '';
-      }).length}/30
-      - Empty fields: ${Object.keys(formData).filter(k => {
-        const value = formData[k];
-        return !value || typeof value !== 'string' || value.trim() === '';
-      }).length}/30
+      - Filled fields: ${filledCount}/30
+      - Empty fields: ${emptyCount}/30
       
       AVAILABLE ACTIONS:
       - testAction: Test if actions are working
@@ -240,10 +255,12 @@ const ContentStrategyBuilder: React.FC = () => {
       - Be specific about which fields you're referring to
       - When users click suggestions, immediately execute the requested action
       - Provide clear feedback on what you're doing and why
-    `
-  });
+    `, [completionPercentage, activeCategory, filledCount, emptyCount]);
 
-  console.log("✅ CopilotKit context provision initialized successfully");
+  // Provide dynamic instructions
+  useCopilotAdditionalInstructions({
+    instructions: copilotInstructions
+  });
 
   // Create a state for educational modal that can be passed to both hooks
   const [showEducationalModal, setShowEducationalModal] = useState(false);
@@ -334,15 +351,18 @@ const ContentStrategyBuilder: React.FC = () => {
     totalCategories,
     reviewedCategoriesCount,
     reviewProgressPercentage,
-    getCategoryProgress,
-    getCategoryStatus: getCategoryStatusFromHook,
+    // getCategoryProgress, // Unused - commented out to fix linting error
+    // getCategoryStatus: getCategoryStatusFromHook, // Unused - commented out to fix linting error
     isNextInSequence
   } = useProgressTracking({ completionStats, reviewedCategories });
 
-  const { autoPopulateAttempted, setAutoPopulateAttempted } = useAutoPopulation({
-    autoPopulateFromOnboarding,
-    completionStats
-  });
+  // Remove automatic auto-population hook - now handled by consent modal
+  // const { autoPopulateAttempted, setAutoPopulateAttempted } = useAutoPopulation({
+  //   autoPopulateFromOnboarding,
+  //   completionStats
+  // });
+  
+  // Removed: Auto-population consent state (replaced with buttons in HeaderSection)
 
   // Add ref for scroll to review section
   const reviewSectionRef = useRef<HTMLDivElement>(null);
@@ -372,19 +392,28 @@ const ContentStrategyBuilder: React.FC = () => {
   // Get data source from store
   const dataSource = Object.keys(dataSources).length > 0 ? 'Onboarding Database' : undefined;
 
-  // Log autofill data status for debugging
+  // Log autofill data status for debugging (only log when values actually change)
+  const autoPopulatedFieldsCount = Object.keys(autoPopulatedFields).length;
+  const dataSourcesCount = Object.keys(dataSources).length;
+  const inputDataPointsCount = Object.keys(inputDataPoints).length;
+  const personalizationDataCount = Object.keys(personalizationData || {}).length;
+  const confidenceScoresCount = Object.keys(confidenceScores).length;
+
   useEffect(() => {
-    console.log('📋 StrategyBuilder: Autofill data status:', {
-      hasAutofillData,
-      autoPopulatedFieldsCount: Object.keys(autoPopulatedFields).length,
-      dataSourcesCount: Object.keys(dataSources).length,
-      inputDataPointsCount: Object.keys(inputDataPoints).length,
-      personalizationDataCount: Object.keys(personalizationData).length,
-      confidenceScoresCount: Object.keys(confidenceScores).length,
-      lastAutofillTime,
-      dataSource
-    });
-  }, [hasAutofillData, autoPopulatedFields, dataSources, inputDataPoints, personalizationData, confidenceScores, lastAutofillTime, dataSource]);
+    // Only log in development and when there's meaningful data change
+    if (process.env.NODE_ENV === 'development' && (autoPopulatedFieldsCount > 0 || dataSourcesCount > 0)) {
+      console.log('📋 StrategyBuilder: Autofill data status:', {
+        hasAutofillData,
+        autoPopulatedFieldsCount,
+        dataSourcesCount,
+        inputDataPointsCount,
+        personalizationDataCount,
+        confidenceScoresCount,
+        lastAutofillTime,
+        dataSource
+      });
+    }
+  }, [hasAutofillData, autoPopulatedFieldsCount, dataSourcesCount, inputDataPointsCount, personalizationDataCount, confidenceScoresCount, lastAutofillTime, dataSource]);
 
 
 
@@ -430,12 +459,7 @@ const ContentStrategyBuilder: React.FC = () => {
 
 
 
-  // Auto-populate from onboarding on first load
-  useEffect(() => {
-    if (!autoPopulateAttempted) {
-      autoPopulateFromOnboarding();
-    }
-  }, [autoPopulateAttempted]); // Removed autoPopulateFromOnboarding from dependencies
+  // Removed: Auto-population consent modal (replaced with buttons in HeaderSection)
 
   // Set default category selection
   useEffect(() => {
@@ -450,7 +474,7 @@ const ContentStrategyBuilder: React.FC = () => {
       setActiveCategory(firstCategory);
       hasSetDefaultCategory.current = true;
     }
-  }, [completionStats.category_completion]); // Removed activeCategory dependency
+  }, [completionStats.category_completion, setActiveCategory]); // Added setActiveCategory dependency
 
   // Monitor enterprise modal state for debugging
   useEffect(() => {
@@ -477,8 +501,8 @@ const ContentStrategyBuilder: React.FC = () => {
     handleConfirmCategoryReview(activeCategory);
   };
 
-  // Generate comprehensive suggestions for all 7 CopilotKit actions
-  const getSuggestions = () => {
+  // Memoize suggestions to prevent unnecessary re-renders
+  const suggestions = useMemo(() => {
     const filledFields = Object.keys(formData).filter(key => {
       const value = formData[key];
       return value && typeof value === 'string' && value.trim() !== '';
@@ -550,10 +574,7 @@ const ContentStrategyBuilder: React.FC = () => {
     
     // Return all suggestions (no limit) to show full CopilotKit capabilities
     return combinedSuggestions;
-  };
-
-  // Memoize suggestions to prevent unnecessary re-renders
-  const suggestions = useMemo(() => getSuggestions(), [formData, activeCategory, calculateCompletionPercentage]);
+  }, [formData, activeCategory, calculateCompletionPercentage]);
 
   return (
     <CopilotSidebar
@@ -579,6 +600,8 @@ const ContentStrategyBuilder: React.FC = () => {
               loading={loading}
               error={error}
               onRefreshAutofill={handleAIRefresh}
+              onDatabaseAutofill={autoPopulateFromOnboarding}
+              onSmartAutofill={smartAutofill}
               onContinueWithPresent={handleContinueWithPresent}
               onScrollToReview={handleScrollToReview}
               hasAutofillData={hasAutofillData}

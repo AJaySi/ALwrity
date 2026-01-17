@@ -18,15 +18,19 @@ from .endpoints.ai_generation_endpoints import router as ai_generation_router
 router = APIRouter(prefix="/enhanced-strategies", tags=["Content Strategy"])
 
 # Include all endpoint routers
-# CRUD endpoints directly under /enhanced-strategies (backward compatibility)
-router.include_router(crud_router, prefix="")
-# Analytics endpoints under /enhanced-strategies/strategies/{id}/...
-router.include_router(analytics_router, prefix="/strategies")
-# Utility endpoints directly under /enhanced-strategies
+# IMPORTANT: Specific routes (like /onboarding-data) must come BEFORE parameterized routes (like /{strategy_id})
+# to avoid route conflicts where FastAPI tries to parse "onboarding-data" as strategy_id
+
+# Utility endpoints directly under /enhanced-strategies (must come first - has /onboarding-data)
 router.include_router(utility_router, prefix="")
 # Streaming endpoints directly under /enhanced-strategies
 router.include_router(streaming_router, prefix="")
-# Autofill endpoints under /enhanced-strategies/strategies/{id}/...
-router.include_router(autofill_router, prefix="/strategies")
 # AI generation endpoints under /enhanced-strategies/ai-generation
-router.include_router(ai_generation_router, prefix="/ai-generation") 
+router.include_router(ai_generation_router, prefix="/ai-generation")
+# CRUD endpoints directly under /enhanced-strategies (backward compatibility)
+# This includes /{strategy_id} route, so it must come AFTER specific routes
+router.include_router(crud_router, prefix="")
+# Analytics endpoints under /enhanced-strategies/strategies/{id}/...
+router.include_router(analytics_router, prefix="/strategies")
+# Autofill endpoints under /enhanced-strategies/strategies/{id}/...
+router.include_router(autofill_router, prefix="/strategies") 

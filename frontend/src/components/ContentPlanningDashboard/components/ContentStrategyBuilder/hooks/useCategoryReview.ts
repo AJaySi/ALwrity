@@ -6,8 +6,33 @@ interface UseCategoryReviewProps {
   setActiveCategory: (category: string | null) => void;
 }
 
+const STORAGE_KEY = 'strategy_reviewed_categories';
+
+// Helper functions for localStorage persistence
+const loadReviewedCategories = (): Set<string> => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const categories = JSON.parse(stored);
+      return new Set(Array.isArray(categories) ? categories : []);
+    }
+  } catch (error) {
+    console.warn('Failed to load reviewed categories from localStorage:', error);
+  }
+  return new Set();
+};
+
+const saveReviewedCategories = (categories: Set<string>) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(categories)));
+  } catch (error) {
+    console.warn('Failed to save reviewed categories to localStorage:', error);
+  }
+};
+
 export const useCategoryReview = ({ completionStats, setError, setActiveCategory }: UseCategoryReviewProps) => {
-  const [reviewedCategories, setReviewedCategories] = useState<Set<string>>(new Set());
+  // Load reviewed categories from localStorage on mount
+  const [reviewedCategories, setReviewedCategories] = useState<Set<string>>(() => loadReviewedCategories());
   const [isMarkingReviewed, setIsMarkingReviewed] = useState(false);
   const [categoryCompletionMessage, setCategoryCompletionMessage] = useState<string | null>(null);
 
@@ -32,7 +57,12 @@ export const useCategoryReview = ({ completionStats, setError, setActiveCategory
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Mark category as reviewed
-      setReviewedCategories(prev => new Set([...Array.from(prev), activeCategory]));
+      setReviewedCategories(prev => {
+        const updated = new Set([...Array.from(prev), activeCategory]);
+        // Persist to localStorage
+        saveReviewedCategories(updated);
+        return updated;
+      });
       
       // Get category name for display
       const categoryName = activeCategory.split('_').map(word => 

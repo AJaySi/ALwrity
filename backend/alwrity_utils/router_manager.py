@@ -20,7 +20,7 @@ class RouterManager:
         """Include a router safely with error handling."""
         import os
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
-        
+
         try:
             self.app.include_router(router)
             router_name = router_name or getattr(router, 'prefix', 'unknown')
@@ -39,11 +39,11 @@ class RouterManager:
         """Include core application routers."""
         import os
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
-        
+
         try:
             if verbose:
                 logger.info("Including core routers...")
-            
+
             # Component logic router
             from api.component_logic import router as component_logic_router
             self.include_router_safely(component_logic_router, "component_logic")
@@ -87,31 +87,31 @@ class RouterManager:
             # LinkedIn routers
             from routers.linkedin import router as linkedin_router
             self.include_router_safely(linkedin_router, "linkedin")
-            
+
             from api.linkedin_image_generation import router as linkedin_image_router
             self.include_router_safely(linkedin_image_router, "linkedin_image")
             
             # Brainstorm router
             from api.brainstorm import router as brainstorm_router
             self.include_router_safely(brainstorm_router, "brainstorm")
-            
+
             # Hallucination detector and writing assistant
             from api.hallucination_detector import router as hallucination_detector_router
             self.include_router_safely(hallucination_detector_router, "hallucination_detector")
-            
+
             from api.writing_assistant import router as writing_assistant_router
             self.include_router_safely(writing_assistant_router, "writing_assistant")
             
             # Content planning and user data
             from api.content_planning.api.router import router as content_planning_router
             self.include_router_safely(content_planning_router, "content_planning")
-            
+
             from api.user_data import router as user_data_router
             self.include_router_safely(user_data_router, "user_data")
-            
+
             from api.user_environment import router as user_environment_router
             self.include_router_safely(user_environment_router, "user_environment")
-            
+
             # Strategy copilot
             from api.content_planning.strategy_copilot import router as strategy_copilot_router
             self.include_router_safely(strategy_copilot_router, "strategy_copilot")

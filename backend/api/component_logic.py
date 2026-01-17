@@ -22,6 +22,7 @@ from models.component_logic import (
     WebCrawlRequest, WebCrawlResponse,
     StyleDetectionRequest, StyleDetectionResponse
 )
+from models.onboarding import OnboardingSession
 
 from services.component_logic.ai_research_logic import AIResearchLogic
 from services.component_logic.personalization_logic import PersonalizationLogic
@@ -30,6 +31,7 @@ from services.component_logic.style_detection_logic import StyleDetectionLogic
 from services.component_logic.web_crawler_logic import WebCrawlerLogic
 from services.research_preferences_service import ResearchPreferencesService
 from services.database import get_db
+from services.onboarding import OnboardingDatabaseService
 
 # Import authentication for user isolation
 from middleware.auth_middleware import get_current_user
@@ -62,6 +64,15 @@ def clerk_user_id_to_int(user_id: str) -> int:
     user_id_hash = hashlib.sha256(user_id.encode()).hexdigest()
     # Take first 8 characters of hex and convert to int, mod to fit in INT range
     return int(user_id_hash[:8], 16) % 2147483647
+
+
+def _get_onboarding_session(db_session: Session, user_id: str, create_if_missing: bool = False) -> Optional[OnboardingSession]:
+    """Fetch onboarding session for a user, optionally creating one."""
+    db_service = OnboardingDatabaseService(db_session)
+    session = db_service.get_session_by_user(user_id, db_session)
+    if not session and create_if_missing:
+        session = db_service.get_or_create_session(user_id, db_session)
+    return session
 
 # AI Research Endpoints
 
@@ -115,13 +126,12 @@ async def configure_research_preferences(
             try:
                 # Save to database
                 preferences_service = ResearchPreferencesService(db)
-                
-                # Use authenticated Clerk user ID for proper user isolation
-                # Use consistent SHA256-based conversion
-                user_id_int = clerk_user_id_to_int(user_id)
-                
-                # Save preferences with user ID (not session_id)
-                preferences_id = preferences_service.save_preferences_with_style_data(user_id_int, preferences)
+                session = _get_onboarding_session(db, user_id, create_if_missing=True)
+                if not session:
+                    logger.warning(f"Could not resolve onboarding session for user {user_id}")
+                else:
+                    # Save preferences with onboarding session ID
+                    preferences_id = preferences_service.save_preferences_with_style_data(session.id, preferences)
                 
                 if preferences_id:
                     logger.info(f"Research preferences saved to database with ID: {preferences_id}")
@@ -518,14 +528,18 @@ async def complete_style_detection(
         style_logic = StyleDetectionLogic()
         analysis_service = WebsiteAnalysisService(db_session)
         
-        # Use authenticated Clerk user ID for proper user isolation
-        # Use consistent SHA256-based conversion
-        user_id_int = clerk_user_id_to_int(user_id)
+        session = _get_onboarding_session(db_session, user_id, create_if_missing=True)
+        if not session:
+            return StyleDetectionResponse(
+                success=False,
+                error="Onboarding session not available",
+                timestamp=datetime.now().isoformat()
+            )
         
         # Check for existing analysis if URL is provided
         existing_analysis = None
         if request.url:
-            existing_analysis = analysis_service.check_existing_analysis(user_id_int, request.url)
+            existing_analysis = analysis_service.check_existing_analysis(session.id, request.url)
         
         # Step 1: Crawl content
         if request.url:
@@ -541,7 +555,7 @@ async def complete_style_detection(
         
         if not crawl_result['success']:
             # Save error analysis
-            analysis_service.save_error_analysis(user_id_int, request.url or "text_sample", 
+            analysis_service.save_error_analysis(session.id, request.url or "text_sample", 
                                               crawl_result.get('error', 'Crawling failed'))
             return StyleDetectionResponse(
                 success=False,
@@ -579,7 +593,7 @@ async def complete_style_detection(
         if isinstance(style_analysis, Exception):
             error_msg = str(style_analysis)
             logger.error(f"Style analysis failed with exception: {error_msg}")
-            analysis_service.save_error_analysis(user_id_int, request.url or "text_sample", error_msg)
+            analysis_service.save_error_analysis(session.id, request.url or "text_sample", error_msg)
             return StyleDetectionResponse(
                 success=False,
                 error=f"Style analysis failed: {error_msg}",
@@ -595,7 +609,7 @@ async def complete_style_detection(
                     timestamp=datetime.now().isoformat()
                 )
             else:
-                analysis_service.save_error_analysis(user_id_int, request.url or "text_sample", error_msg)
+                analysis_service.save_error_analysis(session.id, request.url or "text_sample", error_msg)
                 return StyleDetectionResponse(
                     success=False,
                     error=f"Style analysis failed: {error_msg}",
@@ -635,7 +649,7 @@ async def complete_style_detection(
         
         # Save analysis to database
         if request.url:  # Only save for URL-based analysis
-            analysis_id = analysis_service.save_analysis(user_id_int, request.url, response_data)
+            analysis_id = analysis_service.save_analysis(session.id, request.url, response_data)
             if analysis_id:
                 response_data['analysis_id'] = analysis_id
         

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@clerk/clerk-react';
 import { useLocation } from 'react-router-dom';
 import {
   Box,
@@ -13,7 +12,9 @@ import {
   Alert,
   Drawer,
   Button,
-  Badge
+  Badge,
+  ThemeProvider,
+  createTheme
 } from '@mui/material';
 import {
   Psychology as StrategyIcon,
@@ -41,6 +42,189 @@ import {
 import { StrategyCalendarProvider } from '../../contexts/StrategyCalendarContext';
 
 // CopilotKit actions will be initialized in a separate component
+
+// Scoped light theme for Content Planning - matches ENHANCED_STYLES
+const contentPlanningTheme = createTheme({
+  palette: {
+    mode: 'light',  // Light theme for content-planning
+    primary: {
+      main: '#667eea',  // Matches ENHANCED_STYLES gradient start
+      light: '#a78bfa',
+      dark: '#4f46e5',
+      contrastText: '#ffffff',
+    },
+    secondary: {
+      main: '#764ba2',  // Matches ENHANCED_STYLES gradient end
+      light: '#a78bfa',
+      dark: '#5a3d7f',
+      contrastText: '#ffffff',
+    },
+    background: {
+      default: '#f5f7fa',  // Light background (matches common light theme)
+      paper: '#ffffff',    // White cards (matches ENHANCED_STYLES.card)
+    },
+    text: {
+      primary: '#2c3e50',  // Dark text for headers (matches ENHANCED_STYLES.sectionHeader)
+      secondary: '#555',   // Medium gray for secondary text (matches ENHANCED_STYLES.formControl)
+    },
+    divider: 'rgba(0, 0, 0, 0.1)',  // Light divider (matches ENHANCED_STYLES.card.border)
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h4: {
+      fontWeight: 700,
+      letterSpacing: '-0.025em',
+      color: '#2c3e50',
+    },
+    h5: {
+      fontWeight: 600,
+      letterSpacing: '-0.025em',
+      color: '#2c3e50',
+    },
+    h6: {
+      fontWeight: 600,
+      letterSpacing: '-0.025em',
+      color: '#2c3e50',
+    },
+    body1: {
+      lineHeight: 1.6,
+      color: '#333',
+    },
+    body2: {
+      lineHeight: 1.6,
+      color: '#555',
+    },
+  },
+  shape: {
+    borderRadius: 8,  // Matches ENHANCED_STYLES.card.borderRadius
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          fontWeight: 600,
+          borderRadius: 8,
+          padding: '10px 24px',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          backgroundImage: 'none',
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+          border: '1px solid rgba(0, 0, 0, 0.1)',
+          color: '#333',
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiInputLabel-root': {
+            color: '#555',
+            fontWeight: 500,
+            '&.Mui-focused': {
+              color: '#667eea',
+            },
+          },
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 8,
+            color: '#333',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            '& fieldset': {
+              borderColor: 'rgba(0, 0, 0, 0.2)',
+              borderWidth: '2px',
+            },
+            '&:hover fieldset': {
+              borderColor: 'rgba(102, 126, 234, 0.5)',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: '#667eea',
+              borderWidth: '2px',
+            },
+          },
+        },
+      },
+    },
+    MuiFormControl: {
+      styleOverrides: {
+        root: {
+          '& .MuiInputLabel-root': {
+            color: '#555',
+            fontWeight: 500,
+            '&.Mui-focused': {
+              color: '#667eea',
+            },
+          },
+          '& .MuiOutlinedInput-root': {
+            color: '#333',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            '& fieldset': {
+              borderColor: 'rgba(0, 0, 0, 0.2)',
+              borderWidth: '2px',
+            },
+            '&:hover fieldset': {
+              borderColor: 'rgba(102, 126, 234, 0.5)',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: '#667eea',
+              borderWidth: '2px',
+            },
+          },
+          '& .MuiSelect-icon': {
+            color: '#555',
+          },
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+          backgroundColor: '#ffffff',
+        },
+      },
+    },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#ffffff',
+          color: '#2c3e50',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+        },
+      },
+    },
+    MuiTabs: {
+      styleOverrides: {
+        root: {
+          '& .MuiTab-root': {
+            color: '#555',
+            '&.Mui-selected': {
+              color: '#667eea',
+            },
+          },
+          '& .MuiTabs-indicator': {
+            backgroundColor: '#667eea',
+          },
+        },
+      },
+    },
+    MuiCheckbox: {
+      styleOverrides: {
+        root: {
+          color: '#b0b0b0',
+          '&.Mui-checked': {
+            color: '#667eea',
+          },
+        },
+      },
+    },
+  },
+});
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -172,8 +356,9 @@ const ContentPlanningDashboard: React.FC = () => {
   const totalAIItems = (dashboardData.aiInsights?.length || 0) + (dashboardData.aiRecommendations?.length || 0);
 
   return (
-    <StrategyCalendarProvider>
-      <Container maxWidth={false} sx={{ height: '100vh', p: 0 }}>
+    <ThemeProvider theme={contentPlanningTheme}>
+      <StrategyCalendarProvider>
+        <Container maxWidth={false} sx={{ height: '100vh', p: 0, bgcolor: 'background.default' }}>
       <AppBar position="static" color="default" elevation={1}>
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
@@ -199,7 +384,7 @@ const ContentPlanningDashboard: React.FC = () => {
                   color: 'primary.main',
                   '&:hover': {
                     borderColor: 'primary.dark',
-                    backgroundColor: 'primary.50'
+                    backgroundColor: 'rgba(102, 126, 234, 0.08)'
                   }
                 }}
               >
@@ -300,8 +485,9 @@ const ContentPlanningDashboard: React.FC = () => {
         </Box>
         <AIInsightsPanel />
       </Drawer>
-    </Container>
-    </StrategyCalendarProvider>
+        </Container>
+      </StrategyCalendarProvider>
+    </ThemeProvider>
   );
 };
 

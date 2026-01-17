@@ -29,7 +29,15 @@ def validate_output(payload: Dict[str, Any]) -> None:
         for k in ('value', 'source', 'confidence'):
             if k not in spec:
                 raise ValueError(f"Field '{field_id}' missing '{k}'")
-        if spec['source'] not in ('website_analysis', 'research_preferences', 'api_keys_data', 'onboarding_session'):
+        if spec['source'] not in (
+            'website_analysis',
+            'research_preferences',
+            'api_keys_data',
+            'onboarding_session',
+            'persona_data',
+            'competitor_analysis',
+            'analytics_data'
+        ):
             raise ValueError(f"Field '{field_id}' has invalid source: {spec['source']}")
         try:
             c = float(spec['confidence'])

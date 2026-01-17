@@ -1,3 +1,18 @@
+# Ensure typing constructs and models are available globally for FastAPI type annotation evaluation
+import typing
+import builtins
+
+# Make common typing constructs available globally
+builtins.Optional = typing.Optional
+builtins.List = typing.List
+builtins.Dict = typing.Dict
+builtins.Any = typing.Any
+builtins.Union = typing.Union
+
+# Import onboarding models VERY early to ensure they're available before any services
+from models.onboarding import APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
+
+
 from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -9,11 +24,18 @@ from loguru import logger
 from dotenv import load_dotenv
 import asyncio
 from datetime import datetime
+
+# Import OnboardingSession right after basic imports to ensure it's available
+from models.onboarding import OnboardingSession
+
 from services.subscription import monitoring_middleware
 
+# Import remaining onboarding models
+from models import APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
 
 # Import modular utilities
-from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager, OnboardingManager
+from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager
+from alwrity_utils import OnboardingManager
 
 # Load environment variables
 # Try multiple locations for .env file
@@ -33,7 +55,7 @@ setup_clean_logging()
 # Import middleware
 from middleware.auth_middleware import get_current_user
 
-# Import component logic endpoints
+# Import component logic endpoints (needs OnboardingSession, so import after models)
 from api.component_logic import router as component_logic_router
 
 # Import subscription API endpoints
@@ -141,6 +163,7 @@ health_checker = HealthChecker()
 rate_limiter = RateLimiter(window_seconds=60, max_requests=200)
 frontend_serving = FrontendServing(app)
 router_manager = RouterManager(app)
+
 onboarding_manager = OnboardingManager(app)
 
 # Middleware Order (FastAPI executes in REVERSE order of registration - LIFO):

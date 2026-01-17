@@ -22,7 +22,9 @@ import {
   DataUsage as DataUsageIcon,
   TrendingUp as TrendingUpIcon,
   Security as SecurityIcon,
-  AutoAwesome as AutoAwesomeIcon
+  AutoAwesome as AutoAwesomeIcon,
+  Storage as StorageIcon,
+  SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import AutofillDataTransparency from './AutofillDataTransparency';
@@ -36,6 +38,8 @@ interface HeaderSectionProps {
   loading: boolean;
   error: string | null;
   onRefreshAutofill: () => void;
+  onDatabaseAutofill: () => void;
+  onSmartAutofill: () => void;
   onContinueWithPresent: () => void;
   onScrollToReview: () => void;
   hasAutofillData: boolean;
@@ -52,6 +56,8 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   loading,
   error,
   onRefreshAutofill,
+  onDatabaseAutofill,
+  onSmartAutofill,
   onContinueWithPresent,
   onScrollToReview,
   hasAutofillData,
@@ -61,6 +67,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const [showTransparencyModal, setShowTransparencyModal] = useState(false);
   const [showDataInfo, setShowDataInfo] = useState(false);
   const [showNextButton, setShowNextButton] = useState(false);
+  const [showEducationalInfo, setShowEducationalInfo] = useState<Record<string, boolean>>({});
 
   // Show next button when autofill is complete
   useEffect(() => {
@@ -172,98 +179,209 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           <Grid container spacing={2} sx={{ mb: 3 }}>
             {/* Auto-populated Fields Count */}
             <Grid item xs={6} sm={3}>
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 1,
-                p: 1.5,
-                borderRadius: 2,
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <DataUsageIcon sx={{ fontSize: 20, color: 'rgba(255, 255, 255, 0.8)' }} />
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                    {Object.keys(autoPopulatedFields).length}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem' }}>
-                    Fields Auto-populated
-                  </Typography>
+              <Tooltip 
+                title="Number of strategy fields automatically populated from your onboarding data. These fields are ready to use or can be edited."
+                arrow
+              >
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 1,
+                  p: 1.5,
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  cursor: 'help',
+                  transition: 'all 0.2s ease',
+                  position: 'relative',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                  }
+                }}>
+                  <DataUsageIcon sx={{ fontSize: 24, color: 'rgba(102, 126, 234, 0.9)' }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.2rem', lineHeight: 1.2 }}>
+                      {Object.keys(autoPopulatedFields).length}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.9, fontSize: '0.75rem', lineHeight: 1.2 }}>
+                      Fields Auto-populated
+                    </Typography>
+                  </Box>
+                  <InfoIcon 
+                    sx={{ 
+                      fontSize: 16, 
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      cursor: 'pointer',
+                      '&:hover': { color: 'white' }
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowEducationalInfo(prev => ({ ...prev, fieldsCount: !prev.fieldsCount }));
+                    }}
+                  />
                 </Box>
-              </Box>
+              </Tooltip>
+              <Collapse in={showEducationalInfo.fieldsCount}>
+                <Alert 
+                  severity="info" 
+                  sx={{ 
+                    mt: 1, 
+                    backgroundColor: 'rgba(33, 150, 243, 0.15)',
+                    border: '1px solid rgba(33, 150, 243, 0.3)',
+                    color: 'white',
+                    '& .MuiAlert-icon': { color: 'rgba(144, 202, 249, 0.9)' }
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                    <strong>What are auto-populated fields?</strong><br />
+                    These are strategy inputs automatically filled from your onboarding data, including website analysis, research preferences, and API integrations. You can review and edit any field before creating your strategy.
+                  </Typography>
+                </Alert>
+              </Collapse>
             </Grid>
 
             {/* Data Quality Score */}
             <Grid item xs={6} sm={3}>
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 1,
-                p: 1.5,
-                borderRadius: 2,
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <TrendingUpIcon sx={{ fontSize: 20, color: 'rgba(255, 255, 255, 0.8)' }} />
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                    {dataQualityScore}%
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem' }}>
-                    Data Quality
-                  </Typography>
+              <Tooltip 
+                title="Overall confidence score based on data completeness and reliability. Higher scores indicate more reliable autofilled data."
+                arrow
+              >
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 1,
+                  p: 1.5,
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  cursor: 'help',
+                  transition: 'all 0.2s ease',
+                  position: 'relative',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                  }
+                }}>
+                  <TrendingUpIcon sx={{ fontSize: 24, color: dataQualityScore >= 80 ? 'rgba(76, 175, 80, 0.9)' : dataQualityScore >= 60 ? 'rgba(255, 152, 0, 0.9)' : 'rgba(244, 67, 54, 0.9)' }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.2rem', lineHeight: 1.2 }}>
+                      {dataQualityScore}%
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.9, fontSize: '0.75rem', lineHeight: 1.2 }}>
+                      Data Quality
+                    </Typography>
+                  </Box>
+                  <InfoIcon 
+                    sx={{ 
+                      fontSize: 16, 
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      cursor: 'pointer',
+                      '&:hover': { color: 'white' }
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowEducationalInfo(prev => ({ ...prev, dataQuality: !prev.dataQuality }));
+                    }}
+                  />
                 </Box>
-              </Box>
+              </Tooltip>
+              <Collapse in={showEducationalInfo.dataQuality}>
+                <Alert 
+                  severity="info" 
+                  sx={{ 
+                    mt: 1, 
+                    backgroundColor: 'rgba(33, 150, 243, 0.15)',
+                    border: '1px solid rgba(33, 150, 243, 0.3)',
+                    color: 'white',
+                    '& .MuiAlert-icon': { color: 'rgba(144, 202, 249, 0.9)' }
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                    <strong>Understanding Data Quality:</strong><br />
+                    This score reflects the reliability of your autofilled data. Scores above 80% indicate high-quality data from reliable sources. Scores below 60% suggest you may want to review and manually update some fields for better accuracy.
+                  </Typography>
+                </Alert>
+              </Collapse>
             </Grid>
 
             {/* Last Updated */}
             <Grid item xs={6} sm={3}>
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 1,
-                p: 1.5,
-                borderRadius: 2,
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <ScheduleIcon sx={{ fontSize: 20, color: 'rgba(255, 255, 255, 0.8)' }} />
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                    {lastAutofillTime ? formatTimeAgo(lastAutofillTime).split(' ')[0] : 'N/A'}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem' }}>
-                    Last Updated
-                  </Typography>
+              <Tooltip 
+                title={lastAutofillTime 
+                  ? `Data was last refreshed ${formatTimeAgo(lastAutofillTime)}. Click Database Autofill to refresh with latest onboarding data.`
+                  : 'No data has been loaded yet. Click Database Autofill to populate fields from your onboarding data.'
+                }
+                arrow
+              >
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 1,
+                  p: 1.5,
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  cursor: 'help',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)'
+                  }
+                }}>
+                  <ScheduleIcon sx={{ fontSize: 20, color: 'rgba(255, 255, 255, 0.8)' }} />
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.1rem', lineHeight: 1.2 }}>
+                      {lastAutofillTime ? formatTimeAgo(lastAutofillTime) : 'Never'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem', lineHeight: 1.2 }}>
+                      Last Updated
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
+              </Tooltip>
             </Grid>
 
             {/* Data Sources */}
             <Grid item xs={6} sm={3}>
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 1,
-                p: 1.5,
-                borderRadius: 2,
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <SecurityIcon sx={{ fontSize: 20, color: 'rgba(255, 255, 255, 0.8)' }} />
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                    {Object.keys(dataSources).length}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem' }}>
-                    Data Sources
-                  </Typography>
+              <Tooltip 
+                title={`${Object.keys(dataSources).length} unique data sources were used to populate your strategy fields. These include website analysis, research preferences, and API integrations from your onboarding data.`}
+                arrow
+              >
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 1,
+                  p: 1.5,
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  cursor: 'help',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)'
+                  }
+                }}>
+                  <SecurityIcon sx={{ fontSize: 20, color: 'rgba(255, 255, 255, 0.8)' }} />
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '1.1rem', lineHeight: 1.2 }}>
+                      {Object.keys(dataSources).length}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem', lineHeight: 1.2 }}>
+                      Data Sources
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
+              </Tooltip>
             </Grid>
           </Grid>
 
@@ -301,35 +419,57 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           {/* Enhanced Status Chips */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
               {cacheStatus === 'cached' && (
-                <Chip
-                  icon={<CheckCircleIcon />}
-                  label={`${Object.keys(autoPopulatedFields).length} fields auto-populated`}
-                  sx={{
-                    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-                    color: 'white',
-                    border: '1px solid rgba(76, 175, 80, 0.3)',
-                  '& .MuiChip-icon': { color: 'rgba(76, 175, 80, 0.8)' },
-                  fontWeight: 500,
-                  fontSize: '0.8rem'
-                  }}
-                />
+                <Tooltip 
+                  title={`${Object.keys(autoPopulatedFields).length} fields have been automatically populated from your onboarding data. These fields are ready to use or can be edited before creating your strategy.`}
+                  arrow
+                >
+                  <Chip
+                    icon={<CheckCircleIcon />}
+                    label={`${Object.keys(autoPopulatedFields).length} fields auto-populated`}
+                    sx={{
+                      backgroundColor: 'rgba(76, 175, 80, 0.25)',
+                      color: 'white',
+                      border: '1px solid rgba(76, 175, 80, 0.4)',
+                      '& .MuiChip-icon': { color: 'rgba(129, 199, 132, 0.9)', fontSize: '18px' },
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      height: '32px',
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        backgroundColor: 'rgba(76, 175, 80, 0.35)',
+                        borderColor: 'rgba(76, 175, 80, 0.5)',
+                        transform: 'translateY(-1px)',
+                        boxShadow: '0 2px 8px rgba(76, 175, 80, 0.3)'
+                      }
+                    }}
+                  />
+                </Tooltip>
               )}
               
               {dataSource && (
-                <Tooltip title="Click to view data source information">
+                <Tooltip 
+                  title={`Data source: ${dataSource}. Click to view detailed information about where your autofilled data comes from.`}
+                  arrow
+                >
                   <Chip
                     icon={<InfoIcon />}
                     label={`Source: ${dataSource}`}
                     onClick={() => setShowDataInfo(!showDataInfo)}
                     sx={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.15)',
                       color: 'white',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
                       cursor: 'pointer',
-                    fontWeight: 500,
-                    fontSize: '0.8rem',
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      height: '32px',
+                      transition: 'all 0.2s ease',
+                      '& .MuiChip-icon': { color: 'rgba(255, 255, 255, 0.9)', fontSize: '18px' },
                       '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.2)'
+                        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                        borderColor: 'rgba(255, 255, 255, 0.4)',
+                        transform: 'translateY(-1px)',
+                        boxShadow: '0 2px 8px rgba(255, 255, 255, 0.2)'
                       }
                     }}
                   />
@@ -338,18 +478,31 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
             {/* Category Distribution Chips */}
             {Object.keys(fieldCountByCategory).length > 0 && (
-              <Chip
-                icon={<AutoAwesomeIcon />}
-                label={`${Object.keys(fieldCountByCategory).length} categories`}
-                sx={{
-                  backgroundColor: 'rgba(156, 39, 176, 0.2)',
-                  color: 'white',
-                  border: '1px solid rgba(156, 39, 176, 0.3)',
-                  '& .MuiChip-icon': { color: 'rgba(156, 39, 176, 0.8)' },
-                  fontWeight: 500,
-                  fontSize: '0.8rem'
-                }}
-              />
+              <Tooltip 
+                title={`Your autofilled fields are distributed across ${Object.keys(fieldCountByCategory).length} strategic categories: Business Context, Audience Intelligence, Competitive Intelligence, Content Strategy, and Performance & Analytics.`}
+                arrow
+              >
+                <Chip
+                  icon={<AutoAwesomeIcon />}
+                  label={`${Object.keys(fieldCountByCategory).length} categories`}
+                  sx={{
+                    backgroundColor: 'rgba(156, 39, 176, 0.25)',
+                    color: 'white',
+                    border: '1px solid rgba(156, 39, 176, 0.4)',
+                    '& .MuiChip-icon': { color: 'rgba(186, 104, 200, 0.9)', fontSize: '18px' },
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    height: '32px',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      backgroundColor: 'rgba(156, 39, 176, 0.35)',
+                      borderColor: 'rgba(156, 39, 176, 0.5)',
+                      transform: 'translateY(-1px)',
+                      boxShadow: '0 2px 8px rgba(156, 39, 176, 0.3)'
+                    }
+                  }}
+                />
+              </Tooltip>
             )}
             </Box>
 
@@ -377,83 +530,150 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               </Alert>
             </Collapse>
 
-            {/* Conditional Action Buttons */}
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              {cacheStatus === 'cached' ? (
-                // Case 1: Data exists in cache - show refresh vs continue options
-                <>
-                  <Tooltip title="Refresh with latest database data and AI analysis">
-                    <Button
-                      variant="outlined"
-                      startIcon={<RefreshIcon />}
-                      onClick={onRefreshAutofill}
-                      disabled={loading}
-                      sx={{
-                        color: 'white',
-                        borderColor: 'rgba(255, 255, 255, 0.3)',
-                        '&:hover': {
-                          borderColor: 'rgba(255, 255, 255, 0.5)',
-                          backgroundColor: 'rgba(255, 255, 255, 0.1)'
-                        }
-                      }}
-                    >
-                      {loading ? 'Refreshing...' : 'Refresh & Autofill Inputs'}
-                    </Button>
-                  </Tooltip>
-                  
-                  <Tooltip title="Continue with current autofilled values">
-                    <Button
-                      variant="contained"
-                      startIcon={<PlayArrowIcon />}
-                      onClick={onContinueWithPresent}
-                      sx={{
-                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                        color: 'white',
-                        '&:hover': {
-                          backgroundColor: 'rgba(255, 255, 255, 0.3)'
-                        }
-                      }}
-                    >
-                      Continue with Present Values
-                    </Button>
-                  </Tooltip>
-                </>
-              ) : cacheStatus === 'partial' ? (
-                // Case 2: Partial data - show refresh option
-                <Tooltip title="Refresh with latest database data and AI analysis">
+            {/* Action Buttons - Smart, Database, and AI Autofill */}
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+              <Tooltip 
+                title="Smart Autofill combines the speed of database autofill with AI personalization. It uses your onboarding data for 18-19 fields and AI analysis for 11-12 additional fields, providing the best of both worlds. Recommended for most users."
+                arrow
+                placement="top"
+              >
+                <Button
+                  variant="contained"
+                  startIcon={<AutoAwesomeIcon />}
+                  onClick={onSmartAutofill}
+                  disabled={loading}
+                  sx={{
+                    backgroundColor: 'rgba(102, 126, 234, 0.95)',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    px: 3,
+                    py: 1.2,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      backgroundColor: 'rgba(102, 126, 234, 1)',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 6px 16px rgba(102, 126, 234, 0.5)'
+                    },
+                    '&:disabled': {
+                      backgroundColor: 'rgba(102, 126, 234, 0.5)',
+                      color: 'rgba(255, 255, 255, 0.7)'
+                    }
+                  }}
+                >
+                  {loading ? 'Processing...' : 'Smart Autofill (Recommended)'}
+                </Button>
+              </Tooltip>
+              
+              <Tooltip 
+                title="Database Autofill quickly populates 18-19 fields directly from your onboarding data (website analysis, research preferences, API integrations). Fast and free - no AI processing required. Best for users who want quick results from existing data."
+                arrow
+                placement="top"
+              >
+                <Button
+                  variant="outlined"
+                  startIcon={<StorageIcon />}
+                  onClick={onDatabaseAutofill}
+                  disabled={loading}
+                  sx={{
+                    color: 'white',
+                    borderColor: 'rgba(255, 255, 255, 0.4)',
+                    borderWidth: 2,
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    px: 3,
+                    py: 1.2,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      borderColor: 'rgba(255, 255, 255, 0.6)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 4px 12px rgba(255, 255, 255, 0.2)'
+                    },
+                    '&:disabled': {
+                      borderColor: 'rgba(255, 255, 255, 0.2)',
+                      color: 'rgba(255, 255, 255, 0.5)'
+                    }
+                  }}
+                >
+                  {loading ? 'Loading...' : 'Database Autofill'}
+                </Button>
+              </Tooltip>
+              
+              <Tooltip 
+                title="AI Autofill uses advanced AI analysis to generate personalized strategy fields based on your onboarding data. This provides deeper insights and recommendations but takes longer and uses AI credits. Best for users who want AI-powered strategic insights."
+                arrow
+                placement="top"
+              >
+                <Button
+                  variant="outlined"
+                  startIcon={<SmartToyIcon />}
+                  onClick={onRefreshAutofill}
+                  disabled={loading}
+                  sx={{
+                    color: 'white',
+                    borderColor: 'rgba(255, 255, 255, 0.4)',
+                    borderWidth: 2,
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    px: 3,
+                    py: 1.2,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      borderColor: 'rgba(255, 255, 255, 0.6)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 4px 12px rgba(255, 255, 255, 0.2)'
+                    },
+                    '&:disabled': {
+                      borderColor: 'rgba(255, 255, 255, 0.2)',
+                      color: 'rgba(255, 255, 255, 0.5)'
+                    }
+                  }}
+                >
+                  {loading ? 'Processing...' : 'AI Autofill'}
+                </Button>
+              </Tooltip>
+              
+              {cacheStatus === 'cached' && (
+                <Tooltip 
+                  title="Continue editing your strategy with the current autofilled values. You can review and modify any field before creating your strategy."
+                  arrow
+                  placement="top"
+                >
                   <Button
                     variant="contained"
-                    startIcon={<RefreshIcon />}
-                    onClick={onRefreshAutofill}
-                    disabled={loading}
+                    startIcon={<PlayArrowIcon />}
+                    onClick={onContinueWithPresent}
                     sx={{
-                      backgroundColor: 'rgba(255, 193, 7, 0.8)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.25)',
                       color: 'white',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      px: 3,
+                      py: 1.2,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      transition: 'all 0.3s ease',
                       '&:hover': {
-                        backgroundColor: 'rgba(255, 193, 7, 0.9)'
+                        backgroundColor: 'rgba(255, 255, 255, 0.35)',
+                        borderColor: 'rgba(255, 255, 255, 0.4)',
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 4px 12px rgba(255, 255, 255, 0.2)'
                       }
                     }}
                   >
-                    {loading ? 'Refreshing...' : 'Refresh & Autofill Strategy Inputs'}
-                  </Button>
-                </Tooltip>
-              ) : (
-                // Case 3: No data - show initial autofill
-                <Tooltip title="Fetch latest data from database and autofill strategy inputs">
-                  <Button
-                    variant="contained"
-                    startIcon={<RefreshIcon />}
-                    onClick={onRefreshAutofill}
-                    disabled={loading}
-                    sx={{
-                      backgroundColor: 'rgba(76, 175, 80, 0.8)',
-                      color: 'white',
-                      '&:hover': {
-                        backgroundColor: 'rgba(76, 175, 80, 0.9)'
-                      }
-                    }}
-                  >
-                    {loading ? 'Autofilling...' : 'Refresh & Autofill Strategy Inputs'}
+                    Continue with Present Values
                   </Button>
                 </Tooltip>
               )}

@@ -5,7 +5,7 @@ import { useStrategyBuilderStore } from '../../../../stores/strategyBuilderStore
 import { useEnhancedStrategyStore } from '../../../../stores/enhancedStrategyStore';
 
 export const useCopilotActions = () => {
-  console.log("CopilotActions hook initialized");
+  // Hook initialized - actions are available
 
   // Get store methods for updating form state
   const {
@@ -186,7 +186,7 @@ export const useCopilotActions = () => {
       setTransparencyGenerating(false);
       return { success: false, message: error.message || 'Unknown error' };
     }
-  }, [formData, updateFormField, setError, calculateCompletionPercentage, setTransparencyModalOpen, setTransparencyGenerating, setTransparencyGenerationProgress, setCurrentPhase, clearTransparencyMessages, addTransparencyMessage, setAIGenerating, triggerTransparencyFlow]);
+  }, [formData, updateFormField, setError, calculateCompletionPercentage, setTransparencyModalOpen, setTransparencyGenerating, setTransparencyGenerationProgress, setCurrentPhase, addTransparencyMessage, setAIGenerating, triggerTransparencyFlow]);
 
   // Action 4: Validate field
   const validateStrategyField = useCallback(async ({ fieldId }: any) => {
@@ -423,7 +423,7 @@ export const useCopilotActions = () => {
       setTransparencyGenerating(false);
       return { success: false, message: error.message || 'Unknown error' };
     }
-  }, [formData, updateFormField, calculateCompletionPercentage, setError, setTransparencyModalOpen, setTransparencyGenerating, setTransparencyGenerationProgress, setCurrentPhase, clearTransparencyMessages, addTransparencyMessage, setAIGenerating, triggerTransparencyFlow]);
+  }, [formData, calculateCompletionPercentage, setError, setTransparencyModalOpen, setTransparencyGenerating, setTransparencyGenerationProgress, setCurrentPhase, addTransparencyMessage, setAIGenerating, triggerTransparencyFlow]);
 
   // Call useCopilotAction hooks unconditionally - they will handle context availability internally
   // This is the only way to comply with React hooks rules

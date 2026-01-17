@@ -474,8 +474,13 @@ class EnhancedStrategyService:
             db.rollback()
             raise
 
-    async def get_onboarding_data(self, user_id: int, db: Session) -> Dict[str, Any]:
-        """Get onboarding data for a user."""
+    async def get_onboarding_data(self, user_id: str, db: Session) -> Dict[str, Any]:
+        """Get onboarding data for a user.
+        
+        Args:
+            user_id: Clerk user ID (string format, e.g., 'user_xxx')
+            db: Database session
+        """
         try:
             return await self.data_processor_service.get_onboarding_data(user_id)
         except Exception as e:

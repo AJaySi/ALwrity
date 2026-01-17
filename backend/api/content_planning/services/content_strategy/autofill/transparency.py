@@ -1,19 +1,23 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 
-def build_data_sources_map(website: Dict[str, Any], research: Dict[str, Any], api_keys: Dict[str, Any]) -> Dict[str, str]:
+def build_data_sources_map(website: Dict[str, Any], research: Dict[str, Any], api_keys: Dict[str, Any], persona: Dict[str, Any] = None, competitor: Dict[str, Any] = None, analytics: Dict[str, Any] = None) -> Dict[str, str]:
     sources: Dict[str, str] = {}
 
     website_fields = ['business_objectives', 'target_metrics', 'content_budget', 'team_size',
                       'implementation_timeline', 'market_share', 'competitive_position',
-                      'performance_metrics', 'engagement_metrics', 'top_competitors',
-                      'competitor_content_strategies', 'market_gaps', 'industry_trends',
-                      'emerging_trends', 'traffic_sources', 'conversion_rates', 'content_roi_targets']
+                      'conversion_rates', 'content_roi_targets']
+    
+    analytics_fields = ['performance_metrics', 'engagement_metrics', 'traffic_sources']
 
     research_fields = ['content_preferences', 'consumption_patterns', 'audience_pain_points',
                        'buying_journey', 'seasonal_trends', 'preferred_formats', 'content_mix',
-                       'content_frequency', 'optimal_timing', 'quality_metrics', 'editorial_guidelines',
-                       'brand_voice']
+                       'content_frequency', 'optimal_timing', 'quality_metrics', 'editorial_guidelines']
+
+    competitor_fields = ['top_competitors', 'competitor_content_strategies', 'market_gaps', 
+                         'industry_trends', 'emerging_trends']
+
+    persona_fields = ['brand_voice']
 
     api_fields = ['ab_testing_capabilities']
 
@@ -21,13 +25,19 @@ def build_data_sources_map(website: Dict[str, Any], research: Dict[str, Any], ap
         sources[f] = 'website_analysis'
     for f in research_fields:
         sources[f] = 'research_preferences'
+    for f in competitor_fields:
+        sources[f] = 'competitor_analysis' if competitor else 'onboarding_session'
+    for f in persona_fields:
+        sources[f] = 'persona_data' if persona else 'research_preferences'
+    for f in analytics_fields:
+        sources[f] = 'analytics_data' if analytics else 'website_analysis'
     for f in api_fields:
         sources[f] = 'api_keys_data'
 
     return sources
 
 
-def build_input_data_points(*, website_raw: Dict[str, Any], research_raw: Dict[str, Any], api_raw: Dict[str, Any]) -> Dict[str, Any]:
+def build_input_data_points(*, website_raw: Dict[str, Any], research_raw: Dict[str, Any], api_raw: Dict[str, Any], persona_raw: Dict[str, Any] = None, competitor_raw: List[Dict[str, Any]] = None, gsc_raw: Dict[str, Any] = None, bing_raw: Dict[str, Any] = None) -> Dict[str, Any]:
     input_data_points: Dict[str, Any] = {}
 
     if website_raw:
@@ -94,5 +104,48 @@ def build_input_data_points(*, website_raw: Dict[str, Any], research_raw: Dict[s
             'industry_timeline': research_raw.get('industry_timeline', 'Not available'),
             'complexity_assessment': research_raw.get('complexity_assessment', 'Not available')
         }
+
+    if competitor_raw:
+        input_data_points['top_competitors'] = {
+            'competitor_analysis': competitor_raw,
+            'analysis_count': len(competitor_raw),
+            'competitor_urls': [c.get('competitor_url') or c.get('url', '') for c in competitor_raw]
+        }
+
+    if persona_raw:
+        input_data_points['brand_voice'] = {
+            'core_persona': persona_raw.get('core_persona') or persona_raw.get('corePersona', 'Not available'),
+            'platform_personas': persona_raw.get('platform_personas') or persona_raw.get('platformPersonas', 'Not available'),
+            'quality_metrics': persona_raw.get('quality_metrics') or persona_raw.get('qualityMetrics', 'Not available')
+        }
+
+    if gsc_raw:
+        input_data_points['traffic_sources'] = {
+            'gsc_analytics': gsc_raw.get('data', 'Not available'),
+            'gsc_metrics': gsc_raw.get('metrics', 'Not available'),
+            'gsc_date_range': gsc_raw.get('date_range', 'Not available')
+        }
+        input_data_points['performance_metrics'] = {
+            'gsc_clicks': gsc_raw.get('metrics', {}).get('total_clicks', 'Not available') if isinstance(gsc_raw.get('metrics'), dict) else 'Not available',
+            'gsc_impressions': gsc_raw.get('metrics', {}).get('total_impressions', 'Not available') if isinstance(gsc_raw.get('metrics'), dict) else 'Not available',
+            'gsc_ctr': gsc_raw.get('metrics', {}).get('avg_ctr', 'Not available') if isinstance(gsc_raw.get('metrics'), dict) else 'Not available'
+        }
+
+    if bing_raw:
+        bing_summary = bing_raw.get('summary', {})
+        if bing_summary and not bing_summary.get('error'):
+            input_data_points['traffic_sources'] = {
+                **input_data_points.get('traffic_sources', {}),
+                'bing_analytics': bing_summary,
+                'bing_total_clicks': bing_summary.get('total_clicks', 'Not available'),
+                'bing_total_impressions': bing_summary.get('total_impressions', 'Not available'),
+                'bing_avg_ctr': bing_summary.get('avg_ctr', 'Not available')
+            }
+            input_data_points['performance_metrics'] = {
+                **input_data_points.get('performance_metrics', {}),
+                'bing_clicks': bing_summary.get('total_clicks', 'Not available'),
+                'bing_impressions': bing_summary.get('total_impressions', 'Not available'),
+                'bing_ctr': bing_summary.get('avg_ctr', 'Not available')
+            }
 
     return input_data_points 

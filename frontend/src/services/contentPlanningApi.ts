@@ -608,10 +608,10 @@ class ContentPlanningAPI {
   }
 
   // Clear enhanced strategy streaming/cache for a user (best-effort refresh)
+  // Note: Endpoint gets user_id from authentication, query params are ignored
   async clearEnhancedCache(userId?: number): Promise<any> {
-    const params: any = {};
-    if (userId) params.user_id = userId;
-    const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/cache/clear`, null, { params });
+    // Don't pass user_id as query param - endpoint gets it from authentication
+    const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/cache/clear`, null);
     return response.data?.data || response.data;
   }
 
@@ -648,10 +648,20 @@ class ContentPlanningAPI {
   }
 
   // Onboarding Data Methods
+  // Note: Endpoint gets user_id from authentication, query params are ignored
   async getOnboardingData(userId?: number): Promise<any> {
     return this.handleRequest(async () => {
-      const params = userId ? { user_id: userId } : {};
-      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/onboarding-data`, { params });
+      // Don't pass user_id as query param - endpoint gets it from authentication
+      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/onboarding-data`);
+      return response.data?.data || response.data;
+    });
+  }
+
+  async smartAutofill(userId?: number): Promise<any> {
+    return this.handleRequest(async () => {
+      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/smart-autofill`, null, {
+        params: userId ? { user_id: userId } : {}
+      });
       return response.data?.data || response.data;
     });
   }

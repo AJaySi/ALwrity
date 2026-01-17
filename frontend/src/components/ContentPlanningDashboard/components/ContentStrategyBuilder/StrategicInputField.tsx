@@ -30,6 +30,8 @@ import {
   ExpandLess as ExpandLessIcon
 } from '@mui/icons-material';
 import { useStrategyBuilderStore } from '../../../../stores/strategyBuilderStore';
+import StructuredJsonField from './components/StructuredJsonField';
+import { JSON_FIELD_SCHEMAS } from './utils/jsonFieldSchemas';
 
 interface StrategicInputFieldProps {
   fieldId: string;
@@ -574,24 +576,89 @@ const StrategicInputField: React.FC<StrategicInputFieldProps> = ({
         );
 
       case 'json':
+        // Check if we have a schema for this field - use structured form
+        const jsonSchema = JSON_FIELD_SCHEMAS[fieldId];
+        if (jsonSchema) {
+          return (
+            <Box sx={{ width: '100%' }}>
+              <StructuredJsonField
+                fieldId={fieldId}
+                value={value}
+                onChange={handleChange}
+                schema={jsonSchema}
+                label={config.label || fieldId}
+                error={error}
+              />
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                <Tooltip title="Get help with this field">
+                  <IconButton onClick={onShowTooltip} size="small">
+                    <HelpIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
+          );
+        }
+
+        // Fallback to raw JSON textarea for fields without schemas
+        const formatJsonValue = (val: any): string => {
+          if (val === null || val === undefined) {
+            return '';
+          }
+          if (typeof val === 'string') {
+            try {
+              const parsed = JSON.parse(val);
+              return JSON.stringify(parsed, null, 2);
+            } catch {
+              return val;
+            }
+          }
+          if (typeof val === 'object') {
+            if (Array.isArray(val) && val.length === 0) {
+              return '';
+            }
+            if (!Array.isArray(val) && Object.keys(val).length === 0) {
+              return '';
+            }
+          }
+          return JSON.stringify(val, null, 2);
+        };
+
+        const displayValue = formatJsonValue(value);
+        const isEmpty = !displayValue || displayValue.trim() === '' || 
+                       displayValue === '{}' || displayValue === '[]';
+
         return (
           <TextField
             fullWidth
             multiline
-            rows={3}
+            rows={isEmpty ? 2 : 4}
             label={config.label || fieldId}
-            value={typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+            value={displayValue}
             onChange={(e) => {
-              try {
-                const parsed = JSON.parse(e.target.value);
-                handleChange(parsed);
-              } catch {
-                handleChange(e.target.value);
+              const inputValue = e.target.value.trim();
+              if (!inputValue || inputValue === '' || inputValue === '{}' || inputValue === '[]') {
+                if (fieldId === 'audience_pain_points' || fieldId.includes('trends') || fieldId.includes('competitors')) {
+                  handleChange([]);
+                } else {
+                  handleChange({});
+                }
+              } else {
+                try {
+                  const parsed = JSON.parse(inputValue);
+                  handleChange(parsed);
+                } catch {
+                  handleChange(inputValue);
+                }
               }
             }}
-            placeholder={(config as TextFieldConfig).placeholder || `Enter ${fieldId} as JSON`}
+            placeholder={
+              isEmpty 
+                ? (config as TextFieldConfig).placeholder || `Enter ${fieldId.replace(/_/g, ' ')} as JSON`
+                : (config as TextFieldConfig).placeholder || `Enter ${fieldId.replace(/_/g, ' ')} as JSON`
+            }
             error={!!error}
-            helperText={error}
+            helperText={error || (isEmpty ? 'No data available. Please enter values or use autofill.' : '')}
             required={config.required || false}
             InputProps={{
               endAdornment: (
@@ -601,6 +668,13 @@ const StrategicInputField: React.FC<StrategicInputFieldProps> = ({
                   </IconButton>
                 </InputAdornment>
               )
+            }}
+            sx={{
+              '& .MuiInputBase-input': {
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                lineHeight: 1.5
+              }
             }}
           />
         );

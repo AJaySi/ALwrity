@@ -172,8 +172,12 @@ class EnhancedStrategyService:
         """Get onboarding integration - delegates to core service."""
         return await self.core_service.strategy_analyzer.get_onboarding_integration(strategy_id, db)
 
-    async def _get_onboarding_data(self, user_id: int) -> Dict[str, Any]:
-        """Get comprehensive onboarding data - delegates to core service."""
+    async def _get_onboarding_data(self, user_id: str) -> Dict[str, Any]:
+        """Get comprehensive onboarding data - delegates to core service.
+        
+        Args:
+            user_id: Clerk user ID (string format, e.g., 'user_xxx')
+        """
         return await self.core_service.data_processor_service.get_onboarding_data(user_id)
 
     def _transform_onboarding_data_to_fields(self, processed_data: Dict[str, Any]) -> Dict[str, Any]:

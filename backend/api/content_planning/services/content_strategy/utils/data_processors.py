@@ -20,7 +20,7 @@ class DataProcessorService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
     
-    async def get_onboarding_data(self, user_id: int) -> Dict[str, Any]:
+    async def get_onboarding_data(self, user_id: str) -> Dict[str, Any]:
         """
         Get comprehensive onboarding data for intelligent auto-population via AutoFillService.
         
@@ -491,8 +491,12 @@ class DataProcessorService:
 
 
 # Standalone functions for backward compatibility
-async def get_onboarding_data(user_id: int) -> Dict[str, Any]:
-    """Get comprehensive onboarding data for intelligent auto-population via AutoFillService."""
+async def get_onboarding_data(user_id: str) -> Dict[str, Any]:
+    """Get comprehensive onboarding data for intelligent auto-population via AutoFillService.
+    
+    Args:
+        user_id: Clerk user ID (string format, e.g., 'user_xxx')
+    """
     processor = DataProcessorService()
     return await processor.get_onboarding_data(user_id)
 

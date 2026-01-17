@@ -278,9 +278,22 @@ class OnboardingDatabaseService:
             return True
             
         except SQLAlchemyError as e:
-            logger.error(f"Error saving API key: {e}")
+            error_msg = f"Database error saving API key for user {user_id}, provider {provider}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             session_db.rollback()
-            return False
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical database error: API key for {provider} could not be saved. Please try again or contact support.") from e
+        except Exception as e:
+            error_msg = f"Unexpected error saving API key for user {user_id}, provider {provider}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            if session_db:
+                session_db.rollback()
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical error: API key for {provider} could not be saved. Please try again or contact support.") from e
     
     def get_api_keys(self, user_id: str, db: Session = None) -> Dict[str, str]:
         """Get all API keys for user."""
@@ -308,13 +321,23 @@ class OnboardingDatabaseService:
         session_db = db or self.db
         if not session_db:
             raise ValueError("Database session required")
-        
+
+        logger.info(f"🔍 save_website_analysis: Received analysis_data keys: {list(analysis_data.keys()) if analysis_data else 'None'}")
+        logger.info(f"🔍 save_website_analysis: analysis_data.website: {analysis_data.get('website') if analysis_data else 'None'}")
+        logger.info(f"🔍 save_website_analysis: analysis_data.analysis exists: {bool(analysis_data.get('analysis')) if analysis_data else 'None'}")
+
         try:
             session = self.get_or_create_session(user_id, session_db)
             # Normalize payload. Step 2 sometimes sends { website, analysis: {...} }
             # while DB expects flattened fields. Support both shapes.
             incoming = analysis_data or {}
             nested = incoming.get('analysis') if isinstance(incoming.get('analysis'), dict) else None
+
+            logger.info(f"🔍 save_website_analysis: incoming keys: {list(incoming.keys()) if incoming else 'None'}")
+            logger.info(f"🔍 save_website_analysis: nested (analysis) exists: {bool(nested)}")
+            if nested:
+                logger.info(f"🔍 save_website_analysis: nested keys: {list(nested.keys()) if nested else 'None'}")
+
             normalized = {
                 'website_url': incoming.get('website') or incoming.get('website_url') or '',
                 'writing_style': (nested or incoming).get('writing_style'),
@@ -329,6 +352,13 @@ class OnboardingDatabaseService:
                 'style_guidelines': (nested or incoming).get('style_guidelines'),
                 'status': (nested or incoming).get('status', incoming.get('status', 'completed')),
             }
+
+            logger.info(f"🔍 save_website_analysis: normalized.website_url: {normalized.get('website_url')}")
+            logger.info(f"🔍 save_website_analysis: normalized.writing_style: {bool(normalized.get('writing_style'))}")
+            logger.info(f"🔍 save_website_analysis: normalized.content_characteristics: {bool(normalized.get('content_characteristics'))}")
+            logger.info(f"🔍 save_website_analysis: normalized.target_audience: {bool(normalized.get('target_audience'))}")
+            logger.info(f"🔍 save_website_analysis: normalized.content_type: {bool(normalized.get('content_type'))}")
+            logger.info(f"🔍 save_website_analysis: normalized.recommended_settings: {bool(normalized.get('recommended_settings'))}")
             
             # Check if analysis already exists
             existing = session_db.query(WebsiteAnalysis).filter(
@@ -385,9 +415,23 @@ class OnboardingDatabaseService:
             return True
             
         except SQLAlchemyError as e:
-            logger.error(f"Error saving website analysis: {e}")
+            error_msg = f"Database error saving website analysis for user {user_id}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"   Data keys: {list(analysis_data.keys()) if analysis_data else 'None'}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             session_db.rollback()
-            return False
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical database error: Website analysis could not be saved. Please try again or contact support.") from e
+        except Exception as e:
+            error_msg = f"Unexpected error saving website analysis for user {user_id}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            if session_db:
+                session_db.rollback()
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical error: Website analysis could not be saved. Please try again or contact support.") from e
     
     def get_website_analysis(self, user_id: str, db: Session = None) -> Optional[Dict[str, Any]]:
         """Get website analysis for user."""
@@ -419,7 +463,12 @@ class OnboardingDatabaseService:
         session_db = db or self.db
         if not session_db:
             raise ValueError("Database session required")
-        
+
+        logger.info(f"🔍 save_research_preferences: Received preferences keys: {list(preferences.keys()) if preferences else 'None'}")
+        logger.info(f"🔍 save_research_preferences: preferences.research_depth: {preferences.get('research_depth') if preferences else 'None'}")
+        logger.info(f"🔍 save_research_preferences: preferences.content_types: {preferences.get('content_types') if preferences else 'None'}")
+        logger.info(f"🔍 save_research_preferences: preferences.target_audience: {preferences.get('target_audience') if preferences else 'None'}")
+
         try:
             session = self.get_or_create_session(user_id, session_db)
             
@@ -460,9 +509,23 @@ class OnboardingDatabaseService:
             return True
             
         except SQLAlchemyError as e:
-            logger.error(f"Error saving research preferences: {e}")
+            error_msg = f"Database error saving research preferences for user {user_id}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"   Data keys: {list(preferences.keys()) if preferences else 'None'}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             session_db.rollback()
-            return False
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical database error: Research preferences could not be saved. Please try again or contact support.") from e
+        except Exception as e:
+            error_msg = f"Unexpected error saving research preferences for user {user_id}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            if session_db:
+                session_db.rollback()
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical error: Research preferences could not be saved. Please try again or contact support.") from e
     
     def save_persona_data(self, user_id: str, persona_data: Dict[str, Any], db: Session = None) -> bool:
         """Save persona data for user."""
@@ -502,9 +565,23 @@ class OnboardingDatabaseService:
             return True
             
         except SQLAlchemyError as e:
-            logger.error(f"Error saving persona data: {e}")
+            error_msg = f"Database error saving persona data for user {user_id}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"   Data keys: {list(persona_data.keys()) if persona_data else 'None'}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             session_db.rollback()
-            return False
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical database error: Persona data could not be saved. Please try again or contact support.") from e
+        except Exception as e:
+            error_msg = f"Unexpected error saving persona data for user {user_id}: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            if session_db:
+                session_db.rollback()
+            # BLOCKING ERROR: Raise exception to prevent step completion
+            raise Exception(f"Critical error: Persona data could not be saved. Please try again or contact support.") from e
     
     def get_research_preferences(self, user_id: str, db: Session = None) -> Optional[Dict[str, Any]]:
         """Get research preferences for user."""

@@ -520,12 +520,38 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
       console.log('Wizard: Completing current step:', currentStepNumber, 'with data:', currentStepData);
 
       try {
-        await setCurrentStep(currentStepNumber, currentStepData);
-      } catch (error) {
-        console.error('Wizard: Failed to complete step with backend. Aborting progression.', error);
-        setShowProgressMessage(false);
-        setProgressMessage('');
+        const stepResult = await setCurrentStep(currentStepNumber, currentStepData);
+        console.log('Wizard: Step completion result:', stepResult);
+
+        // Check for warnings in the response (legacy support)
+        const responseData = stepResult.response || stepResult;
+        if (responseData.warnings && responseData.warnings.length > 0) {
+          console.warn('Wizard: Step completed with warnings:', responseData.warnings);
+          // Show warnings to user - could add a toast notification or alert here
+          setShowProgressMessage(true);
+          setProgressMessage(`Step completed but with issues: ${responseData.warnings.join(', ')}`);
+          setTimeout(() => {
+            setShowProgressMessage(false);
+            setProgressMessage(`Your data is saved, moving to the next step. Progress is ${Math.round(newProgress)}%`);
+          }, 4000); // Show warnings for longer
+        }
+      } catch (error: any) {
+        console.error('Wizard: BLOCKING ERROR - Failed to complete step with backend. Aborting progression.', error);
+
+        // Handle blocking database errors
+        let errorMessage = 'Failed to complete step. Please try again.';
+        if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+
+        // Show blocking error message
+        setShowProgressMessage(true);
+        setProgressMessage(`❌ CRITICAL ERROR: ${errorMessage}`);
         setLoading(false);
+
+        // Don't proceed to next step on blocking errors
         return;
       }
 

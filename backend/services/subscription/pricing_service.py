@@ -3,7 +3,10 @@ Pricing Service for API Usage Tracking
 Manages API pricing, cost calculation, and subscription limits.
 """
 
-from typing import Dict, Any, Optional, List, Tuple, Union
+# Ensure Optional is available in global scope for dynamic imports
+from typing import Optional
+
+from typing import Dict, Any, List, Tuple, Union
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session

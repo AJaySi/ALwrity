@@ -31,17 +31,23 @@ class OnboardingControlService:
             logger.error(f"Error starting onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    async def reset_onboarding(self) -> Dict[str, Any]:
-        """Reset the onboarding progress."""
+    async def reset_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
+        """Reset the onboarding progress for a specific user."""
         try:
-            progress = get_onboarding_progress()
-            progress.reset_progress()
-            
-            return {
-                "message": "Onboarding progress reset successfully",
-                "current_step": progress.current_step,
-                "started_at": progress.started_at
-            }
+            from services.onboarding.progress_service import get_onboarding_progress_service
+            user_id = str(current_user.get('id'))
+            progress_service = get_onboarding_progress_service()
+            success = progress_service.reset_onboarding(user_id)
+
+            if success:
+                return {
+                    "message": "Onboarding progress reset successfully",
+                    "current_step": 1,
+                    "started_at": None,
+                    "user_id": user_id
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Failed to reset onboarding progress")
         except Exception as e:
             logger.error(f"Error resetting onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
