@@ -145,30 +145,16 @@ async def get_scheduler_dashboard(
                 OAuthTokenMonitoringTask.status == 'active'
             ).all()
             
+            # Consolidated OAuth logging - only log if there are issues
             oauth_tasks_count = len(oauth_tasks)
-            if oauth_tasks_count > 0:
-                # Log platform breakdown for debugging
-                platforms = {}
-                for task in oauth_tasks:
-                    platforms[task.platform] = platforms.get(task.platform, 0) + 1
-                
-                platform_summary = ", ".join([f"{platform}: {count}" for platform, count in platforms.items()])
-                logger.warning(
-                    f"[Dashboard] OAuth Monitoring: Found {oauth_tasks_count} active OAuth token monitoring tasks "
-                    f"({platform_summary})"
-                )
-            else:
-                # Check if there are any inactive tasks
+            if oauth_tasks_count == 0:
+                # Check if there are failed tasks that need attention
                 all_oauth_tasks = db.query(OAuthTokenMonitoringTask).all()
-                if all_oauth_tasks:
-                    inactive_by_status = {}
-                    for task in all_oauth_tasks:
-                        status = task.status
-                        inactive_by_status[status] = inactive_by_status.get(status, 0) + 1
-                    logger.warning(
-                        f"[Dashboard] OAuth Monitoring: Found {len(all_oauth_tasks)} total OAuth tasks, "
-                        f"but {oauth_tasks_count} are active. Status breakdown: {inactive_by_status}"
-                    )
+                failed_count = sum(1 for task in all_oauth_tasks if task.status == 'failed')
+                if failed_count > 0:
+                    logger.warning(f"[Dashboard] OAuth: {failed_count} failed tasks need attention")
+            elif oauth_tasks_count > 0 and len(oauth_tasks) > 10:  # Only log if unusually high count
+                logger.info(f"[Dashboard] OAuth: {oauth_tasks_count} active monitoring tasks")
             
             for task in oauth_tasks:
                 try:
@@ -752,26 +738,13 @@ async def get_recent_scheduler_logs(
         
         events = query.all()
         
-        # Log for debugging - show more details
-        logger.warning(
-            f"[Dashboard] Recent scheduler logs query: found {len(events)} events"
-        )
-        if events:
-            for e in events:
-                logger.warning(
-                    f"[Dashboard]   - Event: {e.event_type} | "
-                    f"Job ID: {e.job_id} | User: {e.user_id} | "
-                    f"Date: {e.event_date} | Error: {bool(e.error_message)}"
-                )
-        else:
-            # Check if there are ANY events of these types
+        # Only log if there are issues (no events when expected)
+        if not events:
             total_count = db.query(func.count(SchedulerEventLog.id)).filter(
                 SchedulerEventLog.event_type.in_(['job_scheduled', 'job_completed', 'job_failed'])
             ).scalar() or 0
-            logger.warning(
-                f"[Dashboard] No recent scheduler logs found (query returned 0). "
-                f"Total events of these types in DB: {total_count}"
-            )
+            if total_count > 0:  # Only log if there should be events
+                logger.debug(f"[Dashboard] No recent scheduler events found (expected {total_count})")
         
         # Format as execution log-like entries
         formatted_logs = []
@@ -817,11 +790,7 @@ async def get_recent_scheduler_logs(
             
             formatted_logs.append(log_entry)
         
-        # Log the formatted response for debugging
-        logger.warning(
-            f"[Dashboard] Formatted {len(formatted_logs)} scheduler logs for response. "
-            f"Sample log entry keys: {list(formatted_logs[0].keys()) if formatted_logs else 'none'}"
-        )
+        # No need to log every response - this is normal operation
         
         return {
             'logs': formatted_logs,
@@ -1159,10 +1128,10 @@ async def get_tasks_needing_intervention(
 ):
     """
     Get all tasks that need human intervention.
-    
+
     Args:
         user_id: User ID
-        
+
     Returns:
         List of tasks needing intervention with failure pattern details
     """
@@ -1170,12 +1139,12 @@ async def get_tasks_needing_intervention(
         # Verify user access
         if str(current_user.get('id')) != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
-        
+
         from services.scheduler.core.failure_detection_service import FailureDetectionService
         detection_service = FailureDetectionService(db)
-        
+
         tasks = detection_service.get_tasks_needing_intervention(user_id=user_id)
-        
+
         return {
             "success": True,
             "tasks": tasks,
@@ -1186,6 +1155,131 @@ async def get_tasks_needing_intervention(
     except Exception as e:
         logger.error(f"Error getting tasks needing intervention: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get tasks needing intervention: {str(e)}")
+
+
+@router.post("/cleanup-event-logs")
+async def cleanup_old_scheduler_event_logs(
+    days_to_keep: int = Query(90, ge=7, le=365, description="Number of days of logs to keep (7-365)"),
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Clean up old scheduler event logs based on retention policy.
+
+    This endpoint removes event logs older than the specified number of days.
+    Default retention is 90 days, which is suitable for monitoring and troubleshooting.
+
+    Args:
+        days_to_keep: Number of days of logs to retain (minimum 7, maximum 365)
+
+    Returns:
+        Cleanup statistics
+    """
+    try:
+        # Only allow admin/system access for cleanup operations
+        # For now, allow any authenticated user, but log the operation
+        logger.info(f"Event log cleanup requested by user {current_user.get('id')} - keeping {days_to_keep} days")
+
+        # Calculate cutoff date
+        from datetime import datetime, timedelta
+        cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+
+        # Count records before deletion
+        total_before = db.query(func.count(SchedulerEventLog.id)).scalar() or 0
+
+        # Delete old records
+        deleted_count = db.query(SchedulerEventLog).filter(
+            SchedulerEventLog.created_at < cutoff_date
+        ).delete(synchronize_session=False)
+
+        # Commit the changes
+        db.commit()
+
+        # Count records after deletion
+        total_after = db.query(func.count(SchedulerEventLog.id)).scalar() or 0
+
+        logger.info(f"Event log cleanup completed: deleted {deleted_count} records, {total_after} remaining")
+
+        return {
+            "success": True,
+            "message": f"Successfully cleaned up {deleted_count} old scheduler event logs",
+            "statistics": {
+                "total_before_cleanup": total_before,
+                "deleted_count": deleted_count,
+                "total_after_cleanup": total_after,
+                "retention_days": days_to_keep,
+                "cutoff_date": cutoff_date.isoformat()
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during event log cleanup: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup event logs: {str(e)}")
+
+
+@router.get("/event-logs/stats")
+async def get_scheduler_event_logs_stats(
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get statistics about scheduler event logs for monitoring retention policies.
+
+    Returns:
+        Statistics about event log counts by age and type
+    """
+    try:
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
+        total_count = db.query(func.count(SchedulerEventLog.id)).scalar() or 0
+
+        # Count by age ranges
+        stats = {
+            "total_records": total_count,
+            "retention_policy": {
+                "recommended_days": 90,
+                "minimum_days": 30,
+                "maximum_days": 365
+            },
+            "age_distribution": {
+                "last_24h": db.query(func.count(SchedulerEventLog.id)).filter(
+                    SchedulerEventLog.created_at >= now - timedelta(hours=24)
+                ).scalar() or 0,
+                "last_7d": db.query(func.count(SchedulerEventLog.id)).filter(
+                    SchedulerEventLog.created_at >= now - timedelta(days=7)
+                ).scalar() or 0,
+                "last_30d": db.query(func.count(SchedulerEventLog.id)).filter(
+                    SchedulerEventLog.created_at >= now - timedelta(days=30)
+                ).scalar() or 0,
+                "last_90d": db.query(func.count(SchedulerEventLog.id)).filter(
+                    SchedulerEventLog.created_at >= now - timedelta(days=90)
+                ).scalar() or 0,
+                "older_than_90d": db.query(func.count(SchedulerEventLog.id)).filter(
+                    SchedulerEventLog.created_at < now - timedelta(days=90)
+                ).scalar() or 0,
+                "older_than_180d": db.query(func.count(SchedulerEventLog.id)).filter(
+                    SchedulerEventLog.created_at < now - timedelta(days=180)
+                ).scalar() or 0
+            },
+            "event_type_distribution": {}
+        }
+
+        # Count by event type
+        event_types = db.query(
+            SchedulerEventLog.event_type,
+            func.count(SchedulerEventLog.id)
+        ).group_by(SchedulerEventLog.event_type).all()
+
+        for event_type, count in event_types:
+            stats["event_type_distribution"][event_type] = count
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error getting event log statistics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get event log statistics: {str(e)}")
 
 
 @router.post("/tasks/{task_type}/{task_id}/manual-trigger")

@@ -108,16 +108,6 @@ journey
 - Implement multi-platform publishing
 - Track performance and ROI
 
-## 🎯 Success Stories
-
-### Sarah - Lifestyle Blogger
-*"I went from publishing once a week to three times a week, and my traffic increased by 200%. ALwrity's research integration helps me create factually accurate content that my audience trusts."*
-
-### Mike - Small Business Owner
-*"As a restaurant owner, I never had time for marketing content. Now I publish weekly blog posts and social media content that brings in new customers every week. The SEO tools help me rank higher in local searches."*
-
-### Lisa - Freelance Writer
-*"ALwrity helps me create high-quality content for my clients faster than ever. The hallucination detection ensures accuracy, and my clients love the research-backed content."*
 
 ## 🚀 Ready to Start?
 

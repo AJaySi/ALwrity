@@ -14,7 +14,7 @@ This guide provides a comprehensive overview of all ALwrity features available t
 - **Multiple Formats**: Support for various blog post formats and styles
 
 **Key Benefits**:
-- Save 70% of your content creation time
+- Save time on content creation tasks
 - Generate research-backed, fact-checked content
 - Optimize content for search engines automatically
 - Create professional-quality content consistently
@@ -70,6 +70,32 @@ This guide provides a comprehensive overview of all ALwrity features available t
 - Create shareable, viral content
 - Optimize for Facebook's algorithm
 - Drive community engagement and interaction
+
+### YouTube Studio
+**AI-Powered Video Content Creation**
+- **Intelligent Planning**: AI-generated video concepts and audience analysis
+- **Scene Building**: Convert scripts into structured video segments
+- **Professional Rendering**: WAN 2.5 video generation with multiple resolutions
+- **Cost Optimization**: Intelligent batching to minimize AI calls and costs
+
+**Key Benefits**:
+- Create professional YouTube videos without video editing skills
+- Optimize for YouTube algorithm with AI-powered insights
+- Reduce production time from days to hours
+- Maintain consistent quality across all video content
+
+### Podcast Maker
+**AI-Powered Audio Content Creation**
+- **Multi-Source Research**: Google Grounding and Exa AI integration
+- **Scene-Based Scripting**: Professional podcast scripts with approval workflow
+- **Voice Synthesis**: Minimax voice cloning with WaveSpeed audio enhancement
+- **HD Audio Production**: Professional quality audio with multiple voice options
+
+**Key Benefits**:
+- Create professional podcasts from concept to publication
+- Generate research-backed, engaging audio content
+- Support for interviews, solo shows, and narrative formats
+- Automatic audio enhancement and optimization
 
 ## 🛠️ Advanced Features
 
@@ -129,13 +155,13 @@ This guide provides a comprehensive overview of all ALwrity features available t
 
 ### Content Creation Features
 
-| Feature | Blog Writer | LinkedIn Writer | Facebook Writer |
-|---------|-------------|-----------------|-----------------|
-| **Content Types** | Blog posts, articles | LinkedIn posts, articles | Facebook posts, stories |
-| **AI Assistance** | ✅ Full AI generation | ✅ Professional optimization | ✅ Engagement optimization |
-| **Research Integration** | ✅ Multi-source research | ✅ Industry research | ✅ Community insights |
-| **SEO Optimization** | ✅ Built-in SEO analysis | ✅ LinkedIn algorithm | ✅ Facebook algorithm |
-| **Templates** | ✅ Multiple formats | ✅ Professional templates | ✅ Social media templates |
+| Feature | Blog Writer | LinkedIn Writer | Facebook Writer | YouTube Studio | Podcast Maker |
+|---------|-------------|-----------------|-----------------|---------------|---------------|
+| **Content Types** | Blog posts, articles | LinkedIn posts, articles | Facebook posts, stories | YouTube videos, shorts | Podcast episodes, audio |
+| **AI Assistance** | ✅ Full AI generation | ✅ Professional optimization | ✅ Engagement optimization | ✅ Video planning & rendering | ✅ Audio scripting & production |
+| **Research Integration** | ✅ Multi-source research | ✅ Industry research | ✅ Community insights | ✅ Audience & trend analysis | ✅ Multi-source research |
+| **Platform Optimization** | ✅ SEO-focused | ✅ LinkedIn algorithm | ✅ Facebook algorithm | ✅ YouTube algorithm | ✅ Audio quality optimization |
+| **Templates** | ✅ Multiple formats | ✅ Professional templates | ✅ Social media templates | ✅ Video structure templates | ✅ Podcast format templates |
 
 ### Analytics and Optimization
 
@@ -166,22 +192,24 @@ This guide provides a comprehensive overview of all ALwrity features available t
 ### For Intermediate Users
 **Add these advanced features**:
 1. **LinkedIn Writer** - Expand to professional platforms
-2. **Research Integration** - Create more credible content
-3. **Analytics Dashboard** - Track your performance
+2. **YouTube Studio** - Create professional video content
+3. **Research Integration** - Create more credible content
+4. **Analytics Dashboard** - Track your performance
 
 ### For Advanced Users
 **Leverage these expert features**:
-1. **Assistive Writing** - Real-time writing assistance
-2. **Content Strategy Tools** - Strategic content planning
-3. **Competitive Analysis** - Stay ahead of competitors
+1. **Podcast Maker** - Create professional audio content
+2. **Assistive Writing** - Real-time writing assistance
+3. **Content Strategy Tools** - Strategic content planning
+4. **Competitive Analysis** - Stay ahead of competitors
 
 ## 🎯 Feature Roadmap
 
 ### Coming Soon
 - **Instagram Writer** - Instagram-optimized content creation
 - **Twitter Writer** - Twitter-specific content optimization
-- **Video Script Generator** - AI-powered video content creation
-- **Podcast Script Writer** - Podcast content generation
+- **Advanced Video Effects** - Enhanced video editing capabilities
+- **Multi-Language Audio** - Podcast creation in multiple languages
 
 ### Future Enhancements
 - **Multi-Language Support** - Content creation in multiple languages
@@ -208,16 +236,16 @@ This guide provides a comprehensive overview of all ALwrity features available t
 ## 📊 Feature Performance
 
 ### Usage Statistics
-- **Blog Writer**: Used by 95% of content creators
-- **SEO Dashboard**: 80% of users see ranking improvements
-- **Content Calendar**: 70% reduction in planning time
-- **LinkedIn Writer**: 60% increase in professional engagement
+- **Blog Writer**: Popular choice for content creators
+- **SEO Dashboard**: Helps improve search rankings
+- **Content Calendar**: Streamlines content planning
+- **LinkedIn Writer**: Enhances professional engagement
 
 ### Success Metrics
-- **Content Quality**: 85% improvement in content quality scores
-- **Time Savings**: 70% reduction in content creation time
-- **SEO Performance**: 50% improvement in search rankings
-- **Engagement**: 40% increase in audience engagement
+- **Content Quality**: Improved content quality scores
+- **Time Savings**: Reduced content creation time
+- **SEO Performance**: Better search rankings
+- **Engagement**: Increased audience engagement
 
 ## 🎯 Best Practices
 

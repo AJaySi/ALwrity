@@ -106,16 +106,6 @@ journey
 - Set up quality control processes
 - Train team on brand standards
 
-## 🎯 Success Stories
-
-### Sarah - Marketing Team Lead
-*"ALwrity transformed our content team's productivity. We went from 5 blog posts per month to 20, while maintaining higher quality and brand consistency across all content."*
-
-### Mike - Content Agency Owner
-*"The collaboration features in ALwrity helped us manage content for 15+ clients efficiently. Our team productivity increased by 80%, and client satisfaction improved significantly."*
-
-### Lisa - Editorial Director
-*"The approval workflows and brand consistency tools in ALwrity ensure our content always meets our standards. We've reduced revision cycles by 60% and improved content quality."*
 
 ## 🚀 Ready to Start?
 

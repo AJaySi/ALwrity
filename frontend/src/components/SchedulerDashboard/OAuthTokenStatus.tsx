@@ -51,6 +51,7 @@ import {
   TerminalTableRow,
   terminalColors,
 } from './terminalTheme';
+import { getCachedApiCall } from '../../utils/cacheUtils';
 
 interface OAuthTokenStatusProps {
   compact?: boolean;
@@ -76,11 +77,15 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
   
   const fetchStatus = async () => {
     if (!userId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      const response = await getOAuthTokenStatus(userId);
+      const response = await getCachedApiCall(
+        `oauth-token-status-${userId}`,
+        () => getOAuthTokenStatus(userId),
+        300 // Cache for 5 minutes
+      );
       setStatus(response);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch token status');
@@ -134,9 +139,9 @@ const OAuthTokenStatus: React.FC<OAuthTokenStatusProps> = ({ compact = true }) =
   
   useEffect(() => {
     fetchStatus();
-    
-    // Poll for status updates every 2 minutes
-    const interval = setInterval(fetchStatus, 120000);
+
+    // Poll for status updates every 10 minutes (reduced frequency)
+    const interval = setInterval(fetchStatus, 600000); // 10 minutes
     return () => clearInterval(interval);
   }, [userId]);
 

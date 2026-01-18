@@ -109,16 +109,6 @@ journey
 - Build your content library
 - Develop your content strategy
 
-## 🎯 Success Stories
-
-### Sarah - Lifestyle Blogger
-*"I went from publishing once a week to three times a week, and my traffic increased by 200%. ALwrity helped me find my voice and create content my audience loves."*
-
-### Mike - Small Business Owner
-*"As a restaurant owner, I never had time for marketing content. Now I publish weekly blog posts and social media content that brings in new customers every week."*
-
-### Lisa - Freelance Writer
-*"ALwrity helps me create high-quality content for my clients faster than ever. I can take on more projects and deliver better results."*
 
 ## 🚀 Ready to Start?
 

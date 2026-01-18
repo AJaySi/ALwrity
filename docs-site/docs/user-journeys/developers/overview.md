@@ -116,16 +116,6 @@ journey
 - Help improve documentation
 - Participate in the community
 
-## 🎯 Success Stories
-
-### Alex - Full-Stack Developer
-*"I integrated ALwrity into our CMS and reduced content creation time by 80%. The API is well-designed and the documentation is excellent."*
-
-### Maria - Technical Writer
-*"ALwrity's API helps me automate documentation generation for our software products. It's a game-changer for technical writing."*
-
-### David - Dev Team Lead
-*"Our team uses ALwrity to generate content for multiple client projects. The API integration is seamless and reliable."*
 
 ## 🚀 Ready to Start?
 

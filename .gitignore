@@ -20,6 +20,9 @@ youtube_videos/
 backend/podcast_images/
 backend/podcast_videos/
 
+backend\alwrity.db
+
+
 backend/researchtools_text/projects/
 youtube_avatars/
 youtube_avatars/*

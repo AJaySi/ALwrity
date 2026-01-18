@@ -10,14 +10,20 @@
 
 **Create, optimize, and publish high‑quality content across platforms — in minutes, not months.**
 
-[🌐 Live Demo](https://www.alwrity.com) • [📚 Docs Site](https://ajaysi.github.io/ALwrity/) • [📖 Wiki](https://github.com/AJaySi/AI-Writer/wiki) • [💬 Discussions](https://github.com/AJaySi/AI-Writer/discussions) • [🐛 Issues](https://github.com/AJaySi/AI-Writer/issues)
+[🌐 Live Demo](https://www.alwrity.com) • [📚 Docs Site](https://ajaysi.github.io/ALwrity/) • [📖 Wiki](https://github.com/AJaySi/ALwrity/wiki) • [💬 Discussions](https://github.com/AJaySi/AI-Writer/discussions) • [🐛 Issues](https://github.com/AJaySi/AI-Writer/issues)
 
 </div>
 
 <p align="center">
-  <a href="https://ajaysi.github.io/ALwrity/"><img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-1.jpg" alt="ALwrity dashboard overview" width="30%"/></a>
-  <a href="https://ajaysi.github.io/ALwrity/features/blog-writer/overview/"><img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-2.png" alt="Story Writer workflow" width="30%"/></a>
-  <a href="https://ajaysi.github.io/ALwrity/features/seo-dashboard/overview/"><img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-3.png" alt="SEO dashboard insights" width="30%"/></a>
+  <img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-1.jpg" alt="ALwrity dashboard overview" width="30%"/>
+  <img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-2.png" alt="Blog Writer workflow" width="30%"/>
+  <img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/hero-3.png" alt="SEO dashboard insights" width="30%"/>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/podcast-maker.png" alt="Podcast Maker - AI Audio Content" width="30%"/>
+  <img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/video-studio.png" alt="Video Studio - AI Video Creation" width="30%"/>
+  <img src="https://raw.githubusercontent.com/AJaySi/AI-Writer/main/docs-site/docs/assests/instagram-editor.png" alt="Instagram Editor - Social Media Content" width="30%"/>
 </p>
 
 ---
@@ -27,6 +33,7 @@
 - **Grounded & reliable**: Google grounding, Exa/Tavily research, citation management.
 - **Secure & scalable**: JWT auth, OAuth2, rate limiting, monitoring, subscription/usage tracking.
 - **Built for solopreneurs**: Enterprise-grade capabilities with a fast, friendly UI.
+- **Comprehensive documentation**: Detailed guides, user journeys, and contextual help throughout the platform.
 
 ---
 
@@ -40,13 +47,17 @@
 ---
 
 ### What’s functional now
-- **AI Blog Writer (Phases)**: Research → Outline → Content → SEO → Publish, with guarded navigation and local persistence (`frontend/src/hooks/usePhaseNavigation.ts`).
-- **SEO Dashboard**: Analysis, metadata, and Google Search Console insights (see docs under `docs-site/docs/features/seo-dashboard`).
-- **Story Writer**: Setup (premise) → Outline → Writing → Export with phase navigation and reset (`frontend/src/hooks/useStoryWriterPhaseNavigation.ts`).
-- **LinkedIn (Factual, Google‑Grounded)**: Real Google grounding + citations + quality metrics for posts/articles/carousels/scripts (see `frontend/docs/linkedin_factual_google_grounded_url_content.md`).
-- **Persona System**: Core personas and platform adaptations via APIs (`backend/api/persona.py`).
-- **Facebook Persona Service**: Gemini structured JSON for Facebook‑specific persona optimization (`backend/services/persona/facebook/facebook_persona_service.py`).
-- **Personalization & Brand Voice**: Validation and configuration of writing style, tone, structure (`backend/services/component_logic/personalization_logic.py`).
+- **AI Blog Writer (Phases)**: Research → Outline → Content → SEO → Publish, with guarded navigation and local persistence.
+- **SEO Dashboard**: Analysis, metadata, and Google Search Console insights with comprehensive optimization tools.
+- **Story Writer**: Setup (premise) → Outline → Writing → Export with phase navigation and multimedia integration.
+- **LinkedIn Writer**: Factual, Google‑grounded content with citations and quality metrics for posts/articles/carousels/scripts.
+- **Instagram Editor**: Multi-format content creation with CopilotKit integration for Feed, Stories, and Reels.
+- **Podcast Maker**: AI-powered audio content creation with research, scripting, and voice synthesis.
+- **Video Studio**: Comprehensive video creation with WaveSpeed AI integration and multiple modules.
+- **YouTube Studio**: AI-powered YouTube content planning, scene building, and optimization.
+- **Content Calendar**: AI-powered content planning and scheduling across all platforms.
+- **ALwrity Researcher**: Intent-driven research with multi-source integration and structured outputs.
+- **Persona System**: Core personas with platform-specific adaptations and brand voice management.
 
 See details in the Wiki: [Docs Home](https://github.com/AJaySi/AI-Writer/wiki)
 
@@ -117,14 +128,31 @@ For module details, see `backend/services/llm_providers/README.md`.
 ---
 
 ### Documentation
-- Docs Site (MkDocs): https://ajaysi.github.io/ALwrity/
-- Blog Writer (phases and UI): `docs-site/docs/features/blog-writer/overview.md`
-- SEO Dashboard overview: `docs-site/docs/features/seo-dashboard/overview.md`
-- SEO Dashboard GSC integration: `docs-site/docs/features/seo-dashboard/gsc-integration.md`
-- LinkedIn factual, Google-grounded content: `frontend/docs/linkedin_factual_google_grounded_url_content.md`
-- Persona Development (docs-site): `docs-site/docs/features/content-strategy/personas.md`
+- **[📖 GitHub Wiki](https://github.com/AJaySi/ALwrity/wiki)**: Complete documentation, guides, and tutorials
+- **[📚 Docs Site](https://ajaysi.github.io/ALwrity/)**: Interactive documentation with search
 
-For additional pages, browse the `docs-site/docs/` folder.
+#### 📖 **Wiki Documentation**
+- **[Getting Started](https://github.com/AJaySi/ALwrity/wiki/Getting-started-with-ALwrity-AI-writer)**
+- **[Configuration Options](https://github.com/AJaySi/ALwrity/wiki/Alwrity-AI-Writer-Configuration-options)**
+- **[Interface Overview](https://github.com/AJaySi/ALwrity/wiki/ALwrity-Interface-first-page-explanation)**
+- **[AI Web Research](https://github.com/AJaySi/ALwrity/wiki/Alwrity-AI-Web-Research-Details-for-content-writing)**
+- **[Blog from Audio](https://github.com/AJaySi/ALwrity/wiki/How-to-use-AI-to-blog-from-Audio)**
+- **[LLM Models](https://github.com/AJaySi/ALwrity/wiki/Changing-LLM-Models-in-Alwrity-AI-Writer)**
+
+#### 📖 **Internal Documentation**
+For developers and contributors:
+- **[Frontend Documentation Integration](docs/frontend-documentation-integration.md)**: Guide for implementing contextual help links
+- **[Implementation Guides](docs/)**: Technical specifications and implementation details
+- **[API Documentation](docs/Onboarding/README.md)**: Backend API and service documentation
+
+---
+
+### 🎯 **Recent Updates**
+- **📚 Enhanced Documentation**: Comprehensive GitHub Wiki with detailed feature guides and tutorials
+- **🔗 Contextual Help**: Integrated documentation links throughout the frontend UI
+- **📱 Multi-Platform Support**: Expanded content creation for YouTube, Instagram, LinkedIn, and more
+- **🎙️ Audio & Video**: Podcast Maker and Video Studio with AI-powered creation tools
+- **🤖 Advanced AI**: WaveSpeed AI integration for cutting-edge content generation
 
 ---
 
@@ -134,9 +162,6 @@ ALwrity generates a core writing persona from onboarding data, then adapts it pe
 - Core Persona & API: `backend/api/persona.py`
 - Facebook Persona Service (Gemini structured JSON): `backend/services/persona/facebook/facebook_persona_service.py`
 - Personalization/Brand Voice logic: `backend/services/component_logic/personalization_logic.py`
-- Docs (GitHub paths):
-  - Personas (docs-site): https://github.com/AJaySi/AI-Writer/blob/main/docs-site/docs/features/content-strategy/personas.md
-  - LinkedIn Grounded Content plan: https://github.com/AJaySi/AI-Writer/blob/main/frontend/docs/linkedin_factual_google_grounded_url_content.md
 
 At a glance:
 - Data → Persona: Onboarding + website analysis → core persona

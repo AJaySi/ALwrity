@@ -287,11 +287,11 @@ export const getTasksNeedingIntervention = async (userId: string): Promise<TaskN
       tasks: TaskNeedingIntervention[];
       count: number;
     }>(`/api/scheduler/tasks-needing-intervention/${userId}`);
-    
+
     if (!response.data.success) {
       throw new Error('Failed to fetch tasks needing intervention');
     }
-    
+
     return response.data.tasks || [];
   } catch (error: any) {
     console.error('Error fetching tasks needing intervention:', error);
@@ -303,3 +303,69 @@ export const getTasksNeedingIntervention = async (userId: string): Promise<TaskN
   }
 };
 
+// Event log management interfaces
+export interface EventLogCleanupResult {
+  success: boolean;
+  message: string;
+  statistics: {
+    total_before_cleanup: number;
+    deleted_count: number;
+    total_after_cleanup: number;
+    retention_days: number;
+    cutoff_date: string;
+  };
+}
+
+export interface EventLogStats {
+  total_records: number;
+  retention_policy: {
+    recommended_days: number;
+    minimum_days: number;
+    maximum_days: number;
+  };
+  age_distribution: {
+    last_24h: number;
+    last_7d: number;
+    last_30d: number;
+    last_90d: number;
+    older_than_90d: number;
+    older_than_180d: number;
+  };
+  event_type_distribution: Record<string, number>;
+}
+
+/**
+ * Clean up old scheduler event logs based on retention policy.
+ */
+export const cleanupSchedulerEventLogs = async (daysToKeep: number = 90): Promise<EventLogCleanupResult> => {
+  try {
+    const response = await apiClient.post<EventLogCleanupResult>('/api/scheduler/cleanup-event-logs', null, {
+      params: { days_to_keep: daysToKeep }
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error cleaning up scheduler event logs:', error);
+    throw new Error(
+      error.response?.data?.detail ||
+      error.message ||
+      'Failed to cleanup scheduler event logs'
+    );
+  }
+};
+
+/**
+ * Get statistics about scheduler event logs for monitoring retention.
+ */
+export const getSchedulerEventLogsStats = async (): Promise<EventLogStats> => {
+  try {
+    const response = await apiClient.get<EventLogStats>('/api/scheduler/event-logs/stats');
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching scheduler event log statistics:', error);
+    throw new Error(
+      error.response?.data?.detail ||
+      error.message ||
+      'Failed to fetch scheduler event log statistics'
+    );
+  }
+};
