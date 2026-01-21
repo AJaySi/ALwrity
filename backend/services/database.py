@@ -27,6 +27,17 @@ from models.product_marketing_models import Campaign, CampaignProposal, Campaign
 from models.product_asset_models import ProductAsset, ProductStyleTemplate, EcommerceExport
 # Podcast Maker models use SubscriptionBase, but import to ensure models are registered
 from models.podcast_models import PodcastProject
+# Backlinking models
+from models.backlinking import (
+    Base as BacklinkingBase,
+    BacklinkingCampaign,
+    BacklinkOpportunity,
+    BacklinkingEmail,
+    BacklinkingResponse,
+    BacklinkingAnalytics,
+    AILearningData,
+    BacklinkingTemplate,
+)
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')

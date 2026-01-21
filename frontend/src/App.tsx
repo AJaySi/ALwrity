@@ -12,6 +12,7 @@ import FacebookWriter from './components/FacebookWriter/FacebookWriter';
 import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
 import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
+import { BacklinkingFeature } from './components/Backlinking/BacklinkingFeature';
 import YouTubeCreator from './components/YouTubeCreator/YouTubeCreator';
 import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard, FaceSwapStudio, CompressionStudio, ImageProcessingStudio } from './components/ImageStudio';
 import {
@@ -476,6 +477,7 @@ const App: React.FC = () => {
                 <Route path="/seo" element={<ProtectedRoute><SEODashboard /></ProtectedRoute>} />
                 <Route path="/seo-dashboard" element={<ProtectedRoute><SEODashboard /></ProtectedRoute>} />
                 <Route path="/content-planning" element={<ProtectedRoute><ContentPlanningDashboard /></ProtectedRoute>} />
+                <Route path="/backlinking" element={<ProtectedRoute><BacklinkingFeature /></ProtectedRoute>} />
                 <Route path="/facebook-writer" element={<ProtectedRoute><FacebookWriter /></ProtectedRoute>} />
                 <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                 <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />

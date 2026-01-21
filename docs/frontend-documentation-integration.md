@@ -26,7 +26,7 @@ This document outlines a comprehensive strategy for integrating ALwrity's docume
   title={
     <Box>
       <Typography>Brief explanation</Typography>
-      <Link href="/docs/feature-url" target="_blank">
+      <Link href="https://ajaysi.github.io/ALwrity/features/feature-url/" target="_blank">
         Learn more →
       </Link>
     </Box>
@@ -45,7 +45,7 @@ This document outlines a comprehensive strategy for integrating ALwrity's docume
     <IconButton
       size="small"
       component="a"
-      href="/docs/feature-url"
+      href="https://ajaysi.github.io/ALwrity/features/feature-url/"
       target="_blank"
     >
       <HelpOutlineIcon fontSize="small" />
@@ -63,8 +63,8 @@ This document outlines a comprehensive strategy for integrating ALwrity's docume
   </AccordionSummary>
   <AccordionDetails>
     <Typography>Brief explanation with links to:</Typography>
-    <Link href="/docs/feature-url">Complete Guide</Link>
-    <Link href="/docs/feature-examples">Examples</Link>
+    <Link href="https://ajaysi.github.io/ALwrity/features/feature-url/">Complete Guide</Link>
+    <Link href="https://ajaysi.github.io/ALwrity/features/feature-examples/">Examples</Link>
   </AccordionDetails>
 </Accordion>
 ```
@@ -82,9 +82,9 @@ Current: Basic input fields with validation
 Enhancement: Add help tooltips with documentation links
 
 Suggested Tooltips:
-- Gemini API Key: "Learn about Gemini API setup → [docs/features/ai/gemini-setup.md]"
-- Exa AI Key: "Configure research capabilities → [docs/features/researcher/setup.md]"
-- CopilotKit Key: "Enable AI assistance → [docs/features/copilot/getting-started.md]"
+- Gemini API Key: "Learn about Gemini API setup → [https://ajaysi.github.io/ALwrity/features/ai/grounding-ui/]"
+- Exa AI Key: "Configure research capabilities → [https://ajaysi.github.io/ALwrity/features/researcher/overview/]"
+- CopilotKit Key: "Enable AI assistance → [https://ajaysi.github.io/ALwrity/features/copilot/getting-started/]"
 ```
 
 #### Validation Messages
@@ -109,7 +109,7 @@ Current: Basic URL input
 Enhancement: Add help tooltip
 
 Suggested Tooltip:
-"Learn how website analysis works → [docs/features/onboarding/website-analysis.md]"
+"Learn how website analysis works → [https://ajaysi.github.io/ALwrity/getting-started/first-steps/]"
 ```
 
 #### Analysis Progress
@@ -119,8 +119,8 @@ Current: Progress indicators only
 Enhancement: Add informational tooltips
 
 Suggested Tooltips:
-- "Style Detection": "How we analyze your writing style → [docs/features/onboarding/style-detection.md]"
-- "Content Analysis": "What we look for in your content → [docs/features/onboarding/content-analysis.md]"
+- "Style Detection": "How we analyze your writing style → [https://ajaysi.github.io/ALwrity/getting-started/first-steps/]"
+- "Content Analysis": "What we look for in your content → [https://ajaysi.github.io/ALwrity/features/content-strategy/overview/]"
 ```
 
 ### Step 3: AI Research Configuration
@@ -134,10 +134,10 @@ Current: Basic radio buttons
 Enhancement: Add detailed help tooltips
 
 Suggested Tooltips:
-- Basic: "Quick research for simple topics → [docs/features/researcher/basic-research.md]"
-- Standard: "Balanced research approach → [docs/features/researcher/standard-research.md]"
-- Comprehensive: "In-depth analysis → [docs/features/researcher/comprehensive-research.md]"
-- Expert: "Academic-level research → [docs/features/researcher/expert-research.md]"
+- Basic: "Quick research for simple topics → [https://ajaysi.github.io/ALwrity/features/researcher/overview/]"
+- Standard: "Balanced research approach → [https://ajaysi.github.io/ALwrity/features/researcher/overview/]"
+- Comprehensive: "In-depth analysis → [https://ajaysi.github.io/ALwrity/features/researcher/overview/]"
+- Expert: "Academic-level research → [https://ajaysi.github.io/ALwrity/features/researcher/overview/]"
 ```
 
 ### Step 4: Personalization Setup
@@ -151,9 +151,9 @@ Current: Checkbox selections
 Enhancement: Add feature overview links
 
 Suggested Links:
-- Blog Posts: "Blog Writer overview → [docs/features/blog-writer/overview.md]"
-- Social Media: "Social media features → [docs/user-journeys/content-creators/multi-platform.md]"
-- Research: "Research capabilities → [docs/features/researcher/overview.md]"
+- Blog Posts: "Blog Writer overview → [https://ajaysi.github.io/ALwrity/features/blog-writer/overview/]"
+- Social Media: "Social media features → [https://ajaysi.github.io/ALwrity/user-journeys/content-creators/multi-platform/]"
+- Research: "Research capabilities → [https://ajaysi.github.io/ALwrity/features/researcher/overview/]"
 ```
 
 ### Step 5: Integrations Setup
@@ -167,9 +167,9 @@ Current: Basic connection cards
 Enhancement: Add integration guide links
 
 Suggested Links:
-- Wix: "Wix integration guide → [docs/features/integrations/wix/overview.md]"
-- LinkedIn: "LinkedIn Writer setup → [docs/features/linkedin-writer/overview.md]"
-- WordPress: "WordPress integration → [docs/features/integrations/wordpress/overview.md]"
+- Wix: "Wix integration guide → [https://ajaysi.github.io/ALwrity/features/integrations/wix/overview/]"
+- LinkedIn: "LinkedIn Writer setup → [https://ajaysi.github.io/ALwrity/features/linkedin-writer/overview/]"
+- WordPress: "WordPress integration → [https://ajaysi.github.io/ALwrity/features/integrations/wordpress/overview/]"
 ```
 
 ## 🚀 Feature-Specific Integration Points
@@ -185,10 +185,10 @@ Current: Phase buttons with basic tooltips
 Enhancement: Add documentation links
 
 Suggested Links:
-- Research Phase: "Research setup guide → [docs/features/blog-writer/research.md]"
-- Outline Phase: "Content planning → [docs/features/blog-writer/workflow-guide.md]"
-- Writing Phase: "Content generation → [docs/features/blog-writer/workflow-guide.md]"
-- SEO Phase: "SEO optimization → [docs/features/blog-writer/seo-analysis.md]"
+- Research Phase: "Research setup guide → [https://ajaysi.github.io/ALwrity/features/blog-writer/research/]"
+- Outline Phase: "Content planning → [https://ajaysi.github.io/ALwrity/features/blog-writer/workflow-guide/]"
+- Writing Phase: "Content generation → [https://ajaysi.github.io/ALwrity/features/blog-writer/workflow-guide/]"
+- SEO Phase: "SEO optimization → [https://ajaysi.github.io/ALwrity/features/blog-writer/seo-analysis/]"
 ```
 
 #### SEO Analysis Modal
@@ -199,7 +199,7 @@ Enhancement: Add "Learn More" links to detailed guides
 
 Suggested Enhancement:
 Each metric tooltip could include:
-"Learn more about [metric] → [docs/features/blog-writer/seo-analysis.md#[metric]]"
+"Learn more about [metric] → [https://ajaysi.github.io/ALwrity/features/blog-writer/seo-analysis/]"
 ```
 
 ### Copilot Integration
@@ -213,7 +213,7 @@ Current: Basic activation
 Enhancement: Add help links
 
 Suggested Links:
-- First-time activation: "Copilot getting started → [docs/features/copilot/getting-started.md]"
+- First-time activation: "Copilot getting started → [https://ajaysi.github.io/ALwrity/features/copilot/getting-started/]"
 - Feature-specific help: Context-aware documentation links
 ```
 
@@ -228,10 +228,10 @@ Current: Step indicators
 Enhancement: Add help tooltips with documentation links
 
 Suggested Links:
-- Research: "Research setup → [docs/features/podcast-maker/overview.md#research-phase]"
-- Script: "Script generation → [docs/features/podcast-maker/overview.md#script-phase]"
-- Production: "Audio creation → [docs/features/podcast-maker/overview.md#production-phase]"
-- Publish: "Publishing guide → [docs/features/podcast-maker/overview.md#publishing]"
+- Research: "Research setup → [https://ajaysi.github.io/ALwrity/features/podcast-maker/overview/]"
+- Script: "Script generation → [https://ajaysi.github.io/ALwrity/features/podcast-maker/overview/]"
+- Production: "Audio creation → [https://ajaysi.github.io/ALwrity/features/podcast-maker/overview/]"
+- Publish: "Publishing guide → [https://ajaysi.github.io/ALwrity/features/podcast-maker/overview/]"
 ```
 
 ### Video Studio
@@ -245,9 +245,9 @@ Current: Module cards
 Enhancement: Add documentation links
 
 Suggested Links:
-- Create Studio: "Video creation guide → [docs/features/video-studio/create-studio.md]"
-- Transform Studio: "Video transformation → [docs/features/video-studio/transform-studio.md]"
-- Edit Studio: "Video editing → [docs/features/video-studio/edit-studio.md]"
+- Create Studio: "Video creation guide → [https://ajaysi.github.io/ALwrity/features/video-studio/create-studio/]"
+- Transform Studio: "Video transformation → [https://ajaysi.github.io/ALwrity/features/video-studio/transform-studio/]"
+- Edit Studio: "Video editing → [https://ajaysi.github.io/ALwrity/features/video-studio/edit-studio/]"
 ```
 
 ### Content Calendar
@@ -261,9 +261,9 @@ Current: Planning interfaces
 Enhancement: Add contextual help
 
 Suggested Links:
-- Strategy Builder: "Content strategy → [docs/features/content-strategy/overview.md]"
-- Calendar Management: "Calendar setup → [docs/features/content-calendar/overview.md]"
-- Analytics: "Performance tracking → [docs/features/content-calendar/overview.md#analytics]"
+- Strategy Builder: "Content strategy → [https://ajaysi.github.io/ALwrity/features/content-strategy/overview/]"
+- Calendar Management: "Calendar setup → [https://ajaysi.github.io/ALwrity/features/content-calendar/overview/]"
+- Analytics: "Performance tracking → [https://ajaysi.github.io/ALwrity/features/content-calendar/overview/]"
 ```
 
 ### Instagram Editor
@@ -277,9 +277,9 @@ Current: Format tabs
 Enhancement: Add format-specific help
 
 Suggested Links:
-- Feed Posts: "Feed optimization → [docs/features/instagram-editor/overview.md#feed-posts]"
-- Stories: "Stories creation → [docs/features/instagram-editor/overview.md#stories]"
-- Reels: "Reels production → [docs/features/instagram-editor/overview.md#reels]"
+- Feed Posts: "Feed optimization → [https://ajaysi.github.io/ALwrity/features/instagram-editor/overview/]"
+- Stories: "Stories creation → [https://ajaysi.github.io/ALwrity/features/instagram-editor/overview/]"
+- Reels: "Reels production → [https://ajaysi.github.io/ALwrity/features/instagram-editor/overview/]"
 ```
 
 ## 🔧 Technical Implementation
@@ -290,16 +290,16 @@ Suggested Links:
 export const DOCS_URLS = {
   // Onboarding
   onboarding: {
-    overview: '/docs/features/onboarding/overview.md',
-    apiSetup: '/docs/features/onboarding/api-setup.md',
-    websiteAnalysis: '/docs/features/onboarding/website-analysis.md'
+    overview: 'https://ajaysi.github.io/ALwrity/getting-started/first-steps/',
+    apiSetup: 'https://ajaysi.github.io/ALwrity/getting-started/first-steps/',
+    websiteAnalysis: 'https://ajaysi.github.io/ALwrity/getting-started/first-steps/'
   },
 
   // Features
   blogWriter: {
-    overview: '/docs/features/blog-writer/overview.md',
-    research: '/docs/features/blog-writer/research.md',
-    seo: '/docs/features/blog-writer/seo-analysis.md'
+    overview: 'https://ajaysi.github.io/ALwrity/features/blog-writer/overview/',
+    research: 'https://ajaysi.github.io/ALwrity/features/blog-writer/research/',
+    seo: 'https://ajaysi.github.io/ALwrity/features/blog-writer/seo-analysis/'
   },
 
   // Add more feature mappings...
@@ -406,41 +406,41 @@ export const useContextualHelp = (feature: string, context: string) => {
 ## 🔗 Documentation URL Mapping
 
 ### Core Features
-- **Blog Writer**: `/docs/features/blog-writer/overview.md`
-- **Story Writer**: `/docs/features/story-writer/overview.md`
-- **Podcast Maker**: `/docs/features/podcast-maker/overview.md`
-- **Video Studio**: `/docs/features/video-studio/overview.md`
-- **Instagram Editor**: `/docs/features/instagram-editor/overview.md`
-- **LinkedIn Writer**: `/docs/features/linkedin-writer/overview.md`
-- **Facebook Writer**: `/docs/features/facebook-writer/overview.md`
+- **Blog Writer**: `https://ajaysi.github.io/ALwrity/features/blog-writer/overview/`
+- **Story Writer**: `https://ajaysi.github.io/ALwrity/features/story-writer/overview/`
+- **Podcast Maker**: `https://ajaysi.github.io/ALwrity/features/podcast-maker/overview/`
+- **Video Studio**: `https://ajaysi.github.io/ALwrity/features/video-studio/overview/`
+- **Instagram Editor**: `https://ajaysi.github.io/ALwrity/features/instagram-editor/overview/`
+- **LinkedIn Writer**: `https://ajaysi.github.io/ALwrity/features/linkedin-writer/overview/`
+- **Facebook Writer**: `https://ajaysi.github.io/ALwrity/features/facebook-writer/overview/`
 
 ### AI Features
-- **ALwrity Copilot**: `/docs/features/copilot/overview.md`
-- **ALwrity Researcher**: `/docs/features/researcher/overview.md`
-- **WaveSpeed AI**: `/docs/features/wavespeed/overview.md`
+- **ALwrity Copilot**: `https://ajaysi.github.io/ALwrity/features/copilot/overview/`
+- **ALwrity Researcher**: `https://ajaysi.github.io/ALwrity/features/researcher/overview/`
+- **WaveSpeed AI**: `https://ajaysi.github.io/ALwrity/features/wavespeed/overview/`
 
 ### Planning & Management
-- **Content Calendar**: `/docs/features/content-calendar/overview.md`
-- **Content Strategy**: `/docs/features/content-strategy/overview.md`
-- **SEO Dashboard**: `/docs/features/seo-dashboard/overview.md`
+- **Content Calendar**: `https://ajaysi.github.io/ALwrity/features/content-calendar/overview/`
+- **Content Strategy**: `https://ajaysi.github.io/ALwrity/features/content-strategy/overview/`
+- **SEO Dashboard**: `https://ajaysi.github.io/ALwrity/features/seo-dashboard/overview/`
 
 ### User Journeys
-- **Content Creators**: `/docs/user-journeys/content-creators/overview.md`
-- **Solopreneurs**: `/docs/user-journeys/solopreneurs/overview.md`
-- **Tech Marketers**: `/docs/user-journeys/tech-marketers/overview.md`
-- **Developers**: `/docs/user-journeys/developers/overview.md`
+- **Content Creators**: `https://ajaysi.github.io/ALwrity/user-journeys/content-creators/overview/`
+- **Solopreneurs**: `https://ajaysi.github.io/ALwrity/user-journeys/solopreneurs/overview/`
+- **Tech Marketers**: `https://ajaysi.github.io/ALwrity/user-journeys/tech-marketers/overview/`
+- **Developers**: `https://ajaysi.github.io/ALwrity/user-journeys/developers/overview/`
 
 ### Integrations
-- **Wix**: `/docs/features/integrations/wix/overview.md`
-- **WordPress**: `/docs/features/integrations/wordpress/overview.md`
+- **Wix**: `https://ajaysi.github.io/ALwrity/features/integrations/wix/overview/`
+- **WordPress**: `https://ajaysi.github.io/ALwrity/features/integrations/wordpress/overview/`
 
 ## 🚀 Getting Started
 
 ### Immediate Actions
-1. **Create Documentation URL Constants**: Centralize all documentation URLs
+1. **Create Documentation URL Constants**: Centralize all documentation URLs using the live docs site
 2. **Enhance Onboarding Tooltips**: Add documentation links to key onboarding steps
 3. **Update Blog Writer Tooltips**: Add "Learn more" links to SEO analysis tooltips
-4. **Test Implementation**: Verify all links work correctly
+4. **Test Implementation**: Verify all links work correctly on the live documentation site
 
 ### Development Guidelines
 1. **Consistent Patterns**: Use standardized tooltip and link patterns

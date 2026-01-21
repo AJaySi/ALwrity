@@ -144,6 +144,15 @@ export const toolCategories: ToolCategories = {
             status: 'premium',
             path: '/gsc-intelligence',
             features: ['Content Opportunities', 'Search Intelligence', 'Competitive Analysis']
+          },
+          {
+            name: 'AI Backlinking',
+            description: 'AI-powered backlink building with automated research, outreach, and campaign management',
+            icon: React.createElement(WebIcon),
+            status: 'beta',
+            path: '/backlinking',
+            features: ['AI Prospect Discovery', 'Personalized Outreach', 'Campaign Analytics', 'Email Automation', 'Performance Tracking'],
+            isHighlighted: true
           }
         ]
       },

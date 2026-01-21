@@ -35,11 +35,18 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 react-scripts build",
+    "build:fast": "cross-env NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false react-scripts build",
+    "build:analyze": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npm run build && npx source-map-explorer 'build/static/js/*.js' --html bundle-report.html",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "analyze": "npm run build && npx source-map-explorer 'build/static/js/*.js' --html bundle-report.html",
-    "analyze:size": "npm run build && npx bundlesize"
+    "analyze:size": "npm run build && npx bundlesize",
+    "build:monitor": "cross-env NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false react-scripts build --profile",
+    "bundle:analyze": "npm run build:fast && npx webpack-bundle-analyzer build/static/js/*.js --port 8888",
+    "perf:monitor": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npm run build:fast && node scripts/build-monitor.js",
+    "memory:check": "node scripts/memory-check.js",
+    "build:check": "npm run perf:monitor && npm run memory:check && echo '✅ Build completed with full monitoring'"
   },
   "eslintConfig": {
     "extends": [
@@ -60,6 +67,7 @@
     ]
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "source-map-explorer": "^2.5.2",
     "typescript": "^4.9.5"
   },
