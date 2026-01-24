@@ -12,7 +12,7 @@ import re
 from urllib.parse import urlparse, urljoin
 from loguru import logger
 
-from .backlinking_service import BacklinkOpportunity
+from .models import BacklinkOpportunity
 from .cache_utils import get_cache_manager, get_async_manager, timed_operation
 from .logging_utils import scraping_logger, log_scraping_action
 from services.research_service import ResearchService

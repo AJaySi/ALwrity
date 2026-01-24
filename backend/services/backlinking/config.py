@@ -49,6 +49,18 @@ class ScrapingConfig:
 
 
 @dataclass
+class ProspectAnalysisConfig:
+    """Configuration for enhanced prospect analysis features."""
+    enable_enhanced_analysis: bool = True
+    deep_analysis_threshold: int = 10  # Max prospects for deep analysis
+    cache_analysis_results: bool = True
+    analysis_cache_ttl_hours: int = 24
+    max_competitors_for_analysis: int = 3
+    analysis_timeout_seconds: int = 120
+    enable_competitor_discovery: bool = False  # Disabled by default for performance
+
+
+@dataclass
 class AIConfig:
     """AI service configuration."""
     text_generation_timeout: int = 60
@@ -81,6 +93,7 @@ class BacklinkingConfig:
     scraping: ScrapingConfig = field(default_factory=ScrapingConfig)
     ai: AIConfig = field(default_factory=AIConfig)
     campaign: CampaignConfig = field(default_factory=CampaignConfig)
+    prospect_analysis: ProspectAnalysisConfig = field(default_factory=ProspectAnalysisConfig)
 
     # Service-wide settings
     debug_mode: bool = False

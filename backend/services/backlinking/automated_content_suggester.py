@@ -46,7 +46,9 @@ class AutomatedContentSuggester:
         prospect_profile: Dict[str, Any],
         max_suggestions: int = 20,
         trend_data: Optional[Dict[str, Any]] = None,
-        enable_trend_analysis: bool = False
+        enable_trend_analysis: bool = False,
+        user_id: Optional[str] = None,
+        enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Generate comprehensive content suggestions for backlinking outreach.
@@ -59,9 +61,8 @@ class AutomatedContentSuggester:
             max_suggestions: Maximum number of suggestions to generate
             trend_data: Optional Google Trends data for enhanced suggestions
             enable_trend_analysis: Whether to include trend-based content ideas
-            competitor_analysis: Analysis of competitor content strategies
-            prospect_profile: Profile information about the target prospect
-            max_suggestions: Maximum number of suggestions to generate
+            user_id: User ID for subscription checks and AI calls
+            enhanced_prospect_intelligence: Optional enhanced analysis data from prospect website analysis
 
         Returns:
             Dictionary containing suggestions and metadata
@@ -74,7 +75,7 @@ class AutomatedContentSuggester:
 
             # Phase 1: Strategic Context Synthesis
             strategic_context = await self._synthesize_strategic_context(
-                campaign_keywords, prospect_gaps, competitor_analysis, prospect_profile
+                campaign_keywords, prospect_gaps, competitor_analysis, prospect_profile, user_id, enhanced_prospect_intelligence
             )
 
             # Phase 1.5: Trend Context Integration (if enabled)
@@ -86,7 +87,7 @@ class AutomatedContentSuggester:
                 )
 
             # Phase 2: Multi-Perspective Idea Generation
-            raw_ideas = await self._generate_multi_perspective_ideas(strategic_context)
+            raw_ideas = await self._generate_multi_perspective_ideas(strategic_context, user_id, enhanced_prospect_intelligence)
 
             # Phase 2.5: Trend-Enhanced Idea Generation (if enabled)
             trend_enhanced_ideas = []
@@ -176,27 +177,34 @@ class AutomatedContentSuggester:
         campaign_keywords: List[str],
         prospect_gaps: List[Dict[str, Any]],
         competitor_analysis: Dict[str, Any],
-        prospect_profile: Dict[str, Any]
+        prospect_profile: Dict[str, Any],
+        user_id: Optional[str] = None,
+        enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Create comprehensive strategic context for content generation.
         """
         context = {
-            'campaign_objectives': await self._analyze_campaign_objectives(campaign_keywords),
+            'campaign_objectives': await self._analyze_campaign_objectives(campaign_keywords, user_id),
             'prospect_gaps': await self._quantify_prospect_gaps(prospect_gaps),
             'competitor_landscape': await self._analyze_competitive_positioning(competitor_analysis),
             'prospect_preferences': await self._understand_prospect_profile(prospect_profile),
-            'market_trends': await self._incorporate_market_trends(campaign_keywords),
+            'market_trends': await self._incorporate_market_trends(campaign_keywords, user_id),
             'seo_opportunities': await self._identify_seo_opportunities(campaign_keywords, prospect_gaps),
-            'content_constraints': await self._assess_content_constraints(prospect_profile)
+            'content_constraints': await self._assess_content_constraints(prospect_profile),
+            'enhanced_prospect_intelligence': enhanced_prospect_intelligence or {}
         }
 
         campaign_logger.debug(f"Strategic context synthesized with {len(context)} dimensions")
         return context
 
-    async def _analyze_campaign_objectives(self, keywords: List[str]) -> Dict[str, Any]:
+    async def _analyze_campaign_objectives(self, keywords: List[str], user_id: Optional[str] = None) -> Dict[str, Any]:
         """Analyze campaign objectives from keywords."""
-        if not self.llm_provider:
+        # Use centralized llm_text_gen with subscription checks
+        from services.llm_providers.main_text_generation import llm_text_gen
+
+        if not user_id:
+            campaign_logger.warning("No user_id available for campaign objective analysis - using defaults")
             return {'primary_objective': 'brand_awareness', 'secondary_objectives': ['lead_generation']}
 
         prompt = f"""
@@ -214,8 +222,17 @@ class AutomatedContentSuggester:
         """
 
         try:
-            analysis = await self.llm_provider.generate_json(prompt)
-            return analysis
+            analysis = llm_text_gen(
+                prompt=prompt,
+                json_struct={
+                    "primary_objective": "string",
+                    "secondary_objectives": ["string"],
+                    "target_audience_characteristics": ["string"],
+                    "content_themes": ["string"]
+                },
+                user_id=user_id
+            )
+            return analysis if analysis else {'primary_objective': 'brand_awareness', 'secondary_objectives': ['lead_generation']}
         except Exception as e:
             campaign_logger.warning(f"Campaign objective analysis failed: {e}")
             return {'primary_objective': 'brand_awareness', 'error': str(e)}
@@ -268,9 +285,13 @@ class AutomatedContentSuggester:
             'publishing_frequency': profile.get('publishing_frequency', 'weekly')
         }
 
-    async def _incorporate_market_trends(self, keywords: List[str]) -> List[str]:
+    async def _incorporate_market_trends(self, keywords: List[str], user_id: Optional[str] = None) -> List[str]:
         """Identify current market trends related to campaign keywords."""
-        if not self.llm_provider:
+        # Use centralized llm_text_gen with subscription checks
+        from services.llm_providers.main_text_generation import llm_text_gen
+
+        if not user_id:
+            campaign_logger.warning("No user_id available for market trends analysis - using defaults")
             return ['industry_best_practices', 'emerging_technologies']
 
         prompt = f"""
@@ -285,8 +306,12 @@ class AutomatedContentSuggester:
         """
 
         try:
-            trends = await self.llm_provider.generate_json(prompt)
-            return trends.get('trends', [])
+            trends = llm_text_gen(
+                prompt=prompt,
+                json_struct=["string"],
+                user_id=user_id
+            )
+            return trends if trends else ['industry_best_practices', 'emerging_technologies']
         except Exception:
             return ['industry_best_practices', 'emerging_technologies']
 
@@ -307,7 +332,7 @@ class AutomatedContentSuggester:
             'brand_restrictions': profile.get('brand_restrictions', [])
         }
 
-    async def _generate_multi_perspective_ideas(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_multi_perspective_ideas(self, context: Dict[str, Any], user_id: Optional[str] = None, enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Generate content ideas from multiple strategic perspectives.
         """
@@ -323,7 +348,7 @@ class AutomatedContentSuggester:
 
         for perspective_name, generator_func in perspectives:
             try:
-                ideas = await generator_func(context)
+                ideas = await generator_func(context, user_id, enhanced_prospect_intelligence)
                 for idea in ideas:
                     idea['perspective'] = perspective_name
                     idea['strategic_fit'] = await self._calculate_strategic_fit(idea, context)
@@ -335,40 +360,77 @@ class AutomatedContentSuggester:
         campaign_logger.info(f"Generated {len(all_ideas)} raw content ideas across {len(perspectives)} perspectives")
         return all_ideas
 
-    async def _generate_problem_solution_angles(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_problem_solution_angles(self, context: Dict[str, Any], user_id: Optional[str] = None, enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Generate problem-solution content angles."""
-        if not self.llm_provider:
+        # Use centralized llm_text_gen with subscription checks
+        from services.llm_providers.main_text_generation import llm_text_gen
+
+        if not user_id:
+            campaign_logger.warning("No user_id available for problem-solution content generation - skipping")
             return []
 
         campaign_objectives = context.get('campaign_objectives', {})
         prospect_gaps = context.get('prospect_gaps', {})
 
+        # Add enhanced prospect intelligence to the prompt
+        enhanced_context = ""
+        if enhanced_prospect_intelligence:
+            website_profile = enhanced_prospect_intelligence.get('website_profile', {})
+            outreach_insights = enhanced_prospect_intelligence.get('outreach_insights', {})
+
+            # Add writing style and audience insights
+            writing_style = website_profile.get('content_analysis', {}).get('writing_style')
+            if writing_style:
+                enhanced_context += f"\nProspect Writing Style: {writing_style}"
+
+            target_audience = website_profile.get('ai_insights', {}).get('target_audience')
+            if target_audience:
+                enhanced_context += f"\nTarget Audience: {target_audience}"
+
+            # Add content opportunities from outreach insights
+            content_opportunities = outreach_insights.get('content_opportunities', [])
+            if content_opportunities:
+                enhanced_context += f"\nSpecific Content Gaps: {', '.join(content_opportunities[:2])}"
+
         prompt = f"""
         Generate 5 problem-solution content ideas for guest posting that address:
 
         Campaign Context: {campaign_objectives}
-        Prospect Gaps: {prospect_gaps.get('top_gaps', [])[:3]}
+        Prospect Gaps: {prospect_gaps.get('top_gaps', [])[:3]}{enhanced_context}
 
         Each idea should:
         1. Identify a specific problem the target audience faces
         2. Provide a practical solution
         3. Include actionable steps or strategies
-        4. Be optimized for the prospect's content needs
+        4. Be optimized for the prospect's content needs and audience
+        5. Match the prospect's writing style and content approach
 
         Return as JSON array with title, description, and target_problem fields.
         """
 
         try:
-            ideas = await self.llm_provider.generate_json(prompt)
+            ideas = llm_text_gen(
+                prompt=prompt,
+                json_struct=[{
+                    "title": "string",
+                    "description": "string",
+                    "target_problem": "string"
+                }],
+                user_id=user_id
+            )
             return ideas.get('ideas', [])
         except Exception:
             return []
 
-    async def _generate_trend_based_ideas(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_trend_based_ideas(self, context: Dict[str, Any], user_id: Optional[str] = None, enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Generate trend-based content ideas."""
+        # Use centralized llm_text_gen with subscription checks
+        from services.llm_providers.main_text_generation import llm_text_gen
+
         market_trends = context.get('market_trends', [])
 
-        if not self.llm_provider or not market_trends:
+        if not user_id or not market_trends:
+            campaign_logger.warning("No user_id or market trends available for trend-based ideas - skipping")
             return []
 
         prompt = f"""
@@ -387,16 +449,28 @@ class AutomatedContentSuggester:
         """
 
         try:
-            ideas = await self.llm_provider.generate_json(prompt)
-            return ideas.get('ideas', [])
+            ideas = llm_text_gen(
+                prompt=prompt,
+                json_struct=[{
+                    "title": "string",
+                    "description": "string",
+                    "trend_addressed": "string"
+                }],
+                user_id=user_id
+            )
+            return ideas if ideas else []
         except Exception:
             return []
 
-    async def _generate_competitive_angles(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_competitive_angles(self, context: Dict[str, Any], user_id: Optional[str] = None, enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Generate competitive differentiation content angles."""
+        # Use centralized llm_text_gen with subscription checks
+        from services.llm_providers.main_text_generation import llm_text_gen
+
         competitor_landscape = context.get('competitor_landscape', {})
 
-        if not competitor_landscape.get('content_strategies'):
+        if not user_id or not competitor_landscape.get('content_strategies'):
+            campaign_logger.warning("No user_id or competitor landscape available for competitive angles - skipping")
             return []
 
         prompt = f"""
@@ -415,13 +489,28 @@ class AutomatedContentSuggester:
         """
 
         try:
-            ideas = await self.llm_provider.generate_json(prompt)
-            return ideas.get('ideas', [])
+            ideas = llm_text_gen(
+                prompt=prompt,
+                json_struct=[{
+                    "title": "string",
+                    "description": "string",
+                    "differentiation_factor": "string"
+                }],
+                user_id=user_id
+            )
+            return ideas if ideas else []
         except Exception:
             return []
 
-    async def _generate_audience_centric_ideas(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_audience_centric_ideas(self, context: Dict[str, Any], user_id: Optional[str] = None, enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Generate audience-centric content ideas."""
+        # Use centralized llm_text_gen with subscription checks
+        from services.llm_providers.main_text_generation import llm_text_gen
+
+        if not user_id:
+            campaign_logger.warning("No user_id available for audience-centric ideas - skipping")
+            return []
+
         prospect_preferences = context.get('prospect_preferences', {})
 
         prompt = f"""
@@ -440,13 +529,28 @@ class AutomatedContentSuggester:
         """
 
         try:
-            ideas = await self.llm_provider.generate_json(prompt)
-            return ideas.get('ideas', [])
+            ideas = llm_text_gen(
+                prompt=prompt,
+                json_struct=[{
+                    "title": "string",
+                    "description": "string",
+                    "audience_benefit": "string"
+                }],
+                user_id=user_id
+            )
+            return ideas if ideas else []
         except Exception:
             return []
 
-    async def _generate_data_backed_content(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_data_backed_content(self, context: Dict[str, Any], user_id: Optional[str] = None, enhanced_prospect_intelligence: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Generate data-driven content ideas."""
+        # Use centralized llm_text_gen with subscription checks
+        from services.llm_providers.main_text_generation import llm_text_gen
+
+        if not user_id:
+            campaign_logger.warning("No user_id available for data-backed content - skipping")
+            return []
+
         prompt = f"""
         Create 3 data-driven content ideas:
 
@@ -463,8 +567,16 @@ class AutomatedContentSuggester:
         """
 
         try:
-            ideas = await self.llm_provider.generate_json(prompt)
-            return ideas.get('ideas', [])
+            ideas = llm_text_gen(
+                prompt=prompt,
+                json_struct=[{
+                    "title": "string",
+                    "description": "string",
+                    "data_source": "string"
+                }],
+                user_id=user_id
+            )
+            return ideas if ideas else []
         except Exception:
             return []
 

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from services.database import SessionLocal
-from .backlinking_service import BacklinkingCampaign, BacklinkOpportunity
+from .models import BacklinkingCampaign, BacklinkOpportunity
 from .database_service import BacklinkingDatabaseService
 
 

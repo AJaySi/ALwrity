@@ -335,7 +335,7 @@ from api.podcast.router import router as podcast_router
 app.include_router(podcast_router)
 
 # Include YouTube Creator Studio router
-from api.youtube.router import router as youtube_router
+from api.youtube import router as youtube_router
 app.include_router(youtube_router, prefix="/api")
 
 # Include research configuration router
@@ -346,8 +346,8 @@ from api.research.router import router as research_engine_router
 app.include_router(research_engine_router, tags=["Research Engine"])
 
 # Scheduler dashboard routes
-from api.scheduler_dashboard import router as scheduler_dashboard_router
-app.include_router(scheduler_dashboard_router)
+from api.scheduler import router as scheduler_router
+app.include_router(scheduler_router)
 app.include_router(oauth_token_monitoring_router)
 
 # Setup frontend serving using modular utilities

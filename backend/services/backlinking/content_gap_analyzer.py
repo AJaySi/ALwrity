@@ -70,7 +70,8 @@ class SitemapContentGapAnalyzer:
         campaign_keywords: List[str],
         industry: str = "general",
         trend_data: Optional[Dict[str, Any]] = None,
-        enable_trend_analysis: bool = False
+        enable_trend_analysis: bool = False,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Comprehensive content gap analysis for a prospect website.
@@ -101,7 +102,7 @@ class SitemapContentGapAnalyzer:
 
             # Phase 4: Gap identification with AI
             content_gaps = await self._identify_content_gaps_with_ai(
-                content_analysis, campaign_keywords, industry
+                content_analysis, campaign_keywords, industry, user_id
             )
 
             # Phase 5: Strategic recommendations
@@ -505,15 +506,19 @@ class SitemapContentGapAnalyzer:
         self,
         content_analysis: Dict[str, Any],
         campaign_keywords: List[str],
-        industry: str
+        industry: str,
+        user_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Use AI to identify content gaps and opportunities.
         """
         try:
-            # Get LLM provider
-            from services.llm_providers.gemini_grounded_provider import GeminiGroundedProvider
-            llm_provider = GeminiGroundedProvider()
+            # Use centralized llm_text_gen with subscription checks
+            from services.llm_providers.main_text_generation import llm_text_gen
+
+            if not user_id:
+                campaign_logger.warning("No user_id available for content gap analysis - skipping AI analysis")
+                return []
 
             # Prepare context for AI analysis
             context = {
@@ -550,9 +555,19 @@ class SitemapContentGapAnalyzer:
             Return as JSON array of gap objects.
             """
 
-            ai_response = await llm_provider.generate_json(prompt)
+            ai_response = llm_text_gen(
+                prompt=prompt,
+                json_struct=[{
+                    "gap_type": "string",
+                    "description": "string",
+                    "opportunity_rationale": "string",
+                    "suggested_topics": ["string"],
+                    "estimated_value": "string"
+                }],
+                user_id=user_id
+            )
 
-            gaps = ai_response.get('content_gaps', [])
+            gaps = ai_response if ai_response else []
 
             # Enhance gaps with scoring
             for gap in gaps:

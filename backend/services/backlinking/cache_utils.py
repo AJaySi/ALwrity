@@ -7,7 +7,7 @@ and API response caching to improve performance.
 
 import asyncio
 import time
-from typing import Any, Dict, Optional, Callable, Awaitable
+from typing import Any, Dict, Optional, Callable, Awaitable, List
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 import hashlib

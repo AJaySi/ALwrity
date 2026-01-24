@@ -19,6 +19,8 @@ from .logging_utils import campaign_logger
 
 # Import Google Trends service for trend analysis
 from ..research.trends.google_trends_service import GoogleTrendsService
+# Import Enhanced Prospect Analyzer for comprehensive analysis
+from .enhanced_prospect_analyzer import EnhancedProspectAnalyzer
 
 
 class BacklinkingResearchService:
@@ -46,6 +48,7 @@ class BacklinkingResearchService:
         self.email_extractor = EmailExtractionService()
         self.db_service = db_service or BacklinkingDatabaseService()
         self.google_trends = GoogleTrendsService()  # Initialize Google Trends service
+        self.enhanced_analyzer = EnhancedProspectAnalyzer()  # Initialize enhanced prospect analyzer
 
         campaign_logger.info("BacklinkingResearchService initialized")
 
@@ -58,7 +61,9 @@ class BacklinkingResearchService:
         max_opportunities: int = 50,
         enable_partial_results: bool = True,
         ai_enhanced: bool = False,
-        enable_trend_analysis: bool = False
+        enable_trend_analysis: bool = False,
+        enable_enhanced_analysis: bool = True,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Main entry point for opportunity discovery.
@@ -72,6 +77,8 @@ class BacklinkingResearchService:
             enable_partial_results: Whether to enable partial results (default: True)
             ai_enhanced: Whether to use AI-enhanced mode (default: False)
             enable_trend_analysis: Whether to include Google Trends analysis (default: False)
+            enable_enhanced_analysis: Whether to use comprehensive website analysis (default: True)
+            user_id: User ID for subscription checks and AI calls
 
         Returns:
             Dictionary containing discovery results and metadata
@@ -90,6 +97,8 @@ class BacklinkingResearchService:
                     "target_audience": target_audience,
                     "ai_enhanced_mode": ai_enhanced,
                     "trend_analysis_enabled": enable_trend_analysis,
+                    "enhanced_analysis_enabled": enable_enhanced_analysis,
+                    "user_id": user_id,
                     "timestamp": start_time.isoformat(),
                     "max_opportunities": max_opportunities
                 },
@@ -103,7 +112,8 @@ class BacklinkingResearchService:
                 keywords=user_keywords,
                 industry=industry,
                 use_ai_enhancement=use_ai_enhancement,
-                trend_data=trend_data if enable_trend_analysis else None
+                trend_data=trend_data if enable_trend_analysis else None,
+                user_id=user_id
             )
 
             total_queries = sum(len(queries) for queries in query_categories.values())
@@ -214,7 +224,8 @@ class BacklinkingResearchService:
                 user_keywords=user_keywords,
                 max_opportunities=max_opportunities,
                 prospecting_context=prospecting_context,
-                trend_data=trend_data if enable_trend_analysis else None
+                trend_data=trend_data if enable_trend_analysis else None,
+                user_id=user_id
             )
 
             # Calculate execution statistics
@@ -404,7 +415,8 @@ class BacklinkingResearchService:
         user_keywords: List[str],
         max_opportunities: int,
         prospecting_context: Optional[Dict[str, Any]] = None,
-        trend_data: Optional[Dict[str, Any]] = None
+        trend_data: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Analyze search results and store valid opportunities in database.
@@ -430,7 +442,8 @@ class BacklinkingResearchService:
                     result=result,
                     user_keywords=user_keywords,
                     prospecting_context=prospecting_context,
-                    trend_data=trend_data
+                    trend_data=trend_data,
+                    user_id=user_id
                 )
 
                 # Only create opportunity if it passes quality thresholds
@@ -476,7 +489,8 @@ class BacklinkingResearchService:
         result: Dict[str, Any],
         user_keywords: List[str],
         prospecting_context: Optional[Dict[str, Any]] = None,
-        trend_data: Optional[Dict[str, Any]] = None
+        trend_data: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Analyze a search result for backlinking potential.
@@ -531,6 +545,38 @@ class BacklinkingResearchService:
 
         # Set confidence level
         analysis["confidence_level"] = self._determine_confidence_level(analysis)
+
+        # Enhanced analysis for prospects with emails (if enabled)
+        enhanced_analysis_enabled = prospecting_context.get("campaign_metadata", {}).get("enhanced_analysis_enabled", True) if prospecting_context else True
+        prospect_email = result.get("contact_email")
+
+        if enhanced_analysis_enabled and prospect_email and user_id:
+            try:
+                campaign_logger.info(f"Performing enhanced analysis for prospect: {url}")
+
+                # Perform comprehensive website analysis
+                enhanced_analysis = await self.enhanced_analyzer.analyze_prospect_comprehensive(
+                    prospect_url=url,
+                    campaign_keywords=user_keywords,
+                    user_id=user_id,
+                    enable_deep_analysis=True,  # Enable deep analysis for prospects with emails
+                    industry=prospecting_context.get("campaign_metadata", {}).get("industry", "general") if prospecting_context else "general"
+                )
+
+                # Merge enhanced insights into analysis
+                analysis.update({
+                    'enhanced_analysis': enhanced_analysis,
+                    'personalization_score': enhanced_analysis.get('personalization_opportunities', {}),
+                    'outreach_insights': enhanced_analysis.get('outreach_insights', {}),
+                    'website_profile': enhanced_analysis.get('website_profile', {}),
+                    'content_intelligence': enhanced_analysis.get('content_intelligence', {})
+                })
+
+                campaign_logger.info(f"Enhanced analysis completed for {url}")
+
+            except Exception as e:
+                campaign_logger.warning(f"Enhanced analysis failed for {url}: {e}")
+                # Continue with basic analysis - enhanced analysis is not critical
 
         # Add trend-enhanced scoring if trend data is available
         if trend_data:
@@ -587,7 +633,7 @@ class BacklinkingResearchService:
 
         # Strategic AI enhancement: Use AI for complex content analysis when programmatic detection is uncertain
         if user_keywords and self._should_use_ai_for_content_analysis(signals, content):
-            ai_signals = await self._ai_enhance_guest_post_detection(content, title, user_keywords)
+            ai_signals = await self._ai_enhance_guest_post_detection(content, title, user_keywords, user_id)
             signals.update(ai_signals)
 
         return signals
@@ -616,7 +662,8 @@ class BacklinkingResearchService:
         self,
         content: str,
         title: str,
-        user_keywords: List[str]
+        user_keywords: List[str],
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Use AI strategically for complex content analysis where programmatic methods struggle.
@@ -624,13 +671,12 @@ class BacklinkingResearchService:
         Focus: Subtle guest post signals that require semantic understanding.
         """
         try:
-            # Lazy load LLM provider
-            if not hasattr(self, '_llm_provider'):
-                try:
-                    from services.llm_providers.gemini_grounded_provider import GeminiGroundedProvider
-                    self._llm_provider = GeminiGroundedProvider()
-                except ImportError:
-                    return {}  # Skip AI if not available
+            # Use centralized llm_text_gen with subscription checks
+            from services.llm_providers.main_text_generation import llm_text_gen
+
+            if not user_id:
+                campaign_logger.warning("No user_id available for AI guest post detection - skipping")
+                return {}
 
             # Strategic AI prompt: focused analysis of content for guest posting potential
             prompt = f"""
@@ -651,7 +697,15 @@ class BacklinkingResearchService:
             - detected_signals: array of specific signals found
             """
 
-            ai_analysis = await self._llm_provider.generate_json(prompt)
+            ai_analysis = llm_text_gen(
+                prompt=prompt,
+                json_struct={
+                    "accepts_guest_posts": ["string"],
+                    "confidence_reason": "string",
+                    "detected_signals": ["string"]
+                },
+                user_id=user_id
+            )
 
             # Convert AI analysis to signal format
             ai_signals = {

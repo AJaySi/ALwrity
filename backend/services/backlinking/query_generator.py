@@ -6,7 +6,7 @@ Uses AI for semantic understanding and programmatic patterns for efficiency.
 """
 
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from loguru import logger
 
@@ -159,7 +159,8 @@ class BacklinkingQueryGenerator:
         max_queries_per_category: int = 10,
         include_secondary_patterns: bool = True,
         use_ai_enhancement: bool = False,
-        trend_data: Optional[Dict[str, Any]] = None
+        trend_data: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, List[str]]:
         """
         Generate comprehensive query set for backlinking discovery with enhanced validation.
@@ -453,7 +454,8 @@ class BacklinkingQueryGenerator:
         self,
         query_categories: Dict[str, List[str]],
         keywords: List[str],
-        industry: str = None
+        industry: str = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, List[str]]:
         """
         Apply AI where it matters most: semantic query enhancement for long-tail discovery.
@@ -464,14 +466,14 @@ class BacklinkingQueryGenerator:
             # Only enhance semantic queries - where AI semantic understanding matters most
             if "long_tail_semantic" in query_categories:
                 enhanced_semantic = await self._enhance_semantic_queries_with_ai(
-                    query_categories["long_tail_semantic"], keywords, industry
+                    query_categories["long_tail_semantic"], keywords, industry, user_id
                 )
                 query_categories["long_tail_semantic"] = enhanced_semantic
 
             # Generate AI-powered industry-specific variations (low cost, high value)
             if industry and "industry_specific" in query_categories:
                 ai_industry_queries = await self._generate_ai_industry_queries(
-                    keywords, industry
+                    keywords, industry, user_id
                 )
                 if ai_industry_queries:
                     # Merge with existing, keeping only the best
@@ -488,7 +490,8 @@ class BacklinkingQueryGenerator:
         self,
         existing_queries: List[str],
         keywords: List[str],
-        industry: str = None
+        industry: str = None,
+        user_id: Optional[str] = None
     ) -> List[str]:
         """
         Use AI to generate semantically diverse long-tail queries.
@@ -496,14 +499,12 @@ class BacklinkingQueryGenerator:
         This is where AI matters: understanding semantic relationships between keywords.
         """
         try:
-            # Lazy load LLM provider (only when needed)
-            if self.llm_provider is None:
-                try:
-                    from services.llm_providers.gemini_grounded_provider import GeminiGroundedProvider
-                    self.llm_provider = GeminiGroundedProvider()
-                except ImportError:
-                    campaign_logger.warning("LLM provider not available, skipping AI enhancement")
-                    return existing_queries
+            # Use centralized llm_text_gen with subscription checks
+            from services.llm_providers.main_text_generation import llm_text_gen
+
+            if not user_id:
+                campaign_logger.warning("No user_id available for AI query enhancement - using existing queries")
+                return existing_queries
 
             # Strategic AI prompt: focused on semantic understanding
             prompt = f"""
@@ -523,7 +524,11 @@ class BacklinkingQueryGenerator:
             Return only the search queries as a JSON array of strings.
             """
 
-            ai_response = await self.llm_provider.generate_json(prompt)
+            ai_response = llm_text_gen(
+                prompt=prompt,
+                json_struct=["string"],  # Array of strings
+                user_id=user_id
+            )
             ai_queries = ai_response.get("queries", [])
 
             # Merge with existing, removing duplicates
@@ -545,7 +550,8 @@ class BacklinkingQueryGenerator:
     async def _generate_ai_industry_queries(
         self,
         keywords: List[str],
-        industry: str
+        industry: str,
+        user_id: Optional[str] = None
     ) -> List[str]:
         """
         Generate industry-specific queries using AI understanding of industry context.
@@ -553,8 +559,12 @@ class BacklinkingQueryGenerator:
         Low-cost, high-value AI usage for industry-specific search patterns.
         """
         try:
-            if self.llm_provider is None:
-                return []  # Skip if no LLM available
+            # Use centralized llm_text_gen with subscription checks
+            from services.llm_providers.main_text_generation import llm_text_gen
+
+            if not user_id:
+                campaign_logger.warning("No user_id available for AI industry queries - skipping")
+                return []
 
             prompt = f"""
             Generate 4 industry-specific search queries for guest posts in {industry} about: {', '.join(keywords)}
@@ -564,8 +574,12 @@ class BacklinkingQueryGenerator:
             Return as JSON array of strings with industry-specific search operators and terms.
             """
 
-            ai_response = await self.llm_provider.generate_json(prompt)
-            return ai_response.get("queries", [])[:4]  # Limit to 4 high-quality queries
+            ai_response = llm_text_gen(
+                prompt=prompt,
+                json_struct=["string"],  # Array of strings
+                user_id=user_id
+            )
+            return ai_response[:4] if ai_response else []  # Limit to 4 high-quality queries
 
         except Exception as e:
             campaign_logger.warning(f"AI industry query generation failed: {e}")

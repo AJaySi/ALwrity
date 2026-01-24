@@ -384,6 +384,20 @@ export const AIEnhancementModal: React.FC<AIEnhancementModalProps> = ({
                   </CardContent>
                 </Card>
 
+                <Card sx={{ bgcolor: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#06B6D4', mb: 1 }}>
+                      🚀 Trend Analysis Integration
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#94A3B8', fontSize: '0.8rem', mb: 1 }}>
+                      Google Trends data enhances prospect discovery with seasonal patterns and emerging topics
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#06B6D4', fontSize: '0.8rem' }}>
+                      Cost: $0.02-0.04 | Value: 25-40% better prospect quality
+                    </Typography>
+                  </CardContent>
+                </Card>
+
                 <Card sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
                   <CardContent sx={{ p: 2 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: '#EF4444', mb: 1 }}>

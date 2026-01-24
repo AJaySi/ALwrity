@@ -18,6 +18,7 @@ from .query_generator import BacklinkingQueryGenerator
 from .dual_api_executor import DualAPISearchExecutor
 from .cost_optimizer import BacklinkingCostOptimizer
 from .email_extraction import EmailExtractionService
+from .enhanced_prospect_analyzer import EnhancedProspectAnalyzer
 from .config import get_config, reload_config, BacklinkingConfig
 from .logging_utils import (
     BacklinkingLogger,
@@ -85,6 +86,7 @@ __all__ = [
     'DualAPISearchExecutor',
     'BacklinkingCostOptimizer',
     'EmailExtractionService',
+    'EnhancedProspectAnalyzer',
 
     # Configuration
     'get_config',

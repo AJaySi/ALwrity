@@ -12,7 +12,7 @@ from ...models.content_asset_models import AssetSource, AssetType
 from ...services.video_studio import VideoStudioService
 from ...services.asset_service import ContentAssetService
 from ...utils.auth import get_current_user, require_authenticated_user
-from ...utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("video_studio.endpoints.transform")
 

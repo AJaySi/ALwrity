@@ -4,7 +4,7 @@ from typing import Dict, Any
 from fastapi import HTTPException
 from starlette import status
 
-from ...utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("api.image_studio")
 

@@ -103,10 +103,12 @@ export const deleteCampaign = async (campaignId: string): Promise<{ message: str
 
 export const discoverOpportunities = async (
   campaignId: string,
-  keywords: string[]
+  keywords: string[],
+  enableTrendAnalysis: boolean = false
 ): Promise<Opportunity[]> => {
   const response = await apiClient.post(`/backlinking/campaigns/${campaignId}/discover`, {
-    keywords
+    keywords,
+    enable_trend_analysis: enableTrendAnalysis
   });
   return response.data;
 };

@@ -13,7 +13,7 @@ from ...services.video_studio import VideoStudioService
 from ...services.video_studio.video_translate_service import VideoTranslateService
 from ...services.asset_service import ContentAssetService
 from ...utils.auth import get_current_user, require_authenticated_user
-from ...utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("video_studio.endpoints.video_translate")
 

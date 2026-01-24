@@ -18,6 +18,7 @@ from .scraping_service import WebScrapingService
 from .email_service import EmailAutomationService
 from .campaign_service import CampaignManagementService
 from .research_service import BacklinkingResearchService
+from .models import BacklinkOpportunity, BacklinkingCampaign
 from .config import get_config
 from .logging_utils import backlinking_logger, log_operation, log_campaign_action
 from .exceptions import (
@@ -29,35 +30,8 @@ from .exceptions import (
     handle_service_error,
 )
 from services.database import SessionLocal
-from services.llm_providers import get_llm_provider
+from services.llm_providers.main_text_generation import llm_text_gen
 from services.research_service import ResearchService
-
-
-@dataclass
-class BacklinkOpportunity:
-    """Represents a potential backlinking opportunity."""
-    url: str
-    title: str
-    description: str
-    contact_email: Optional[str] = None
-    contact_name: Optional[str] = None
-    domain_authority: Optional[int] = None
-    content_topics: List[str] = None
-    submission_guidelines: Optional[str] = None
-    status: str = "discovered"  # discovered, contacted, responded, published
-
-
-@dataclass
-class BacklinkingCampaign:
-    """Represents a backlinking campaign."""
-    campaign_id: str
-    user_id: int
-    name: str
-    keywords: List[str]
-    status: str = "active"  # active, paused, completed
-    created_at: datetime = None
-    opportunities: List[BacklinkOpportunity] = None
-    email_stats: Dict[str, int] = None
 
 
 class BacklinkingService:
@@ -75,7 +49,7 @@ class BacklinkingService:
         self.campaign_service = CampaignManagementService()
         self.backlinking_research_service = BacklinkingResearchService()
         self.research_service = ResearchService()
-        self.llm_provider = get_llm_provider()
+        # LLM provider initialized via llm_text_gen calls
 
     @log_operation("create_campaign")
     async def create_campaign(
@@ -134,7 +108,9 @@ class BacklinkingService:
         industry: Optional[str] = None,
         target_audience: Optional[str] = None,
         max_opportunities: int = 50,
-        enable_trend_analysis: bool = False
+        enable_trend_analysis: bool = False,
+        enable_enhanced_analysis: bool = True,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Discover backlinking opportunities using AI-powered research.
@@ -146,6 +122,8 @@ class BacklinkingService:
             target_audience: Target audience for relevance
             max_opportunities: Maximum opportunities to discover
             enable_trend_analysis: Whether to include Google Trends analysis
+            enable_enhanced_analysis: Whether to use comprehensive website analysis
+            user_id: User ID for subscription checks and AI calls
 
         Returns:
             Dictionary with discovery results and metadata
@@ -164,7 +142,9 @@ class BacklinkingService:
                 industry=industry,
                 target_audience=target_audience,
                 max_opportunities=max_opportunities,
-                enable_trend_analysis=enable_trend_analysis
+                enable_trend_analysis=enable_trend_analysis,
+                enable_enhanced_analysis=enable_enhanced_analysis,
+                user_id=user_id
             )
 
             if not discovery_result.get("success"):
@@ -213,7 +193,8 @@ class BacklinkingService:
     async def generate_outreach_emails(
         self,
         campaign_id: str,
-        user_proposal: Dict[str, Any]
+        user_proposal: Dict[str, Any],
+        user_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Generate personalized outreach emails for campaign opportunities.
@@ -233,10 +214,22 @@ class BacklinkingService:
 
             for opportunity in opportunities:
                 if opportunity.contact_email and opportunity.status == "discovered":
-                    # Generate personalized email
+                    # Get enhanced analysis if available
+                    enhanced_analysis = None
+                    if hasattr(opportunity, 'enhanced_analysis') and opportunity.enhanced_analysis:
+                        enhanced_analysis = opportunity.enhanced_analysis
+                    elif hasattr(opportunity, 'analysis_data') and opportunity.analysis_data:
+                        # Check if analysis_data contains enhanced analysis
+                        analysis_data = opportunity.analysis_data
+                        if isinstance(analysis_data, dict) and 'enhanced_analysis' in analysis_data:
+                            enhanced_analysis = analysis_data['enhanced_analysis']
+
+                    # Generate personalized email with enhanced insights
                     email_content = await self._generate_personalized_email(
                         opportunity=opportunity,
-                        user_proposal=user_proposal
+                        user_proposal=user_proposal,
+                        user_id=user_id,
+                        enhanced_analysis=enhanced_analysis
                     )
 
                     # Save email to campaign
@@ -322,6 +315,9 @@ class BacklinkingService:
 
             logger.info(f"Processed {len(processed_responses)} responses for campaign {campaign_id}")
             return processed_responses
+        except Exception as e:
+            logger.error(f"Failed to check responses for campaign {campaign_id}: {e}")
+            raise
 
     def _validate_campaign_data(self, name: str, keywords: List[str], user_proposal: Dict[str, Any]) -> None:
         """
@@ -378,10 +374,6 @@ class BacklinkingService:
         if len(topic) > 200:
             raise CampaignValidationError("user_proposal.topic", topic, "Topic cannot exceed 200 characters")
 
-        except Exception as e:
-            logger.error(f"Failed to check responses: {e}")
-            raise
-
     async def get_campaign_analytics(self, campaign_id: str) -> Dict[str, Any]:
         """
         Get analytics for a backlinking campaign.
@@ -414,9 +406,42 @@ class BacklinkingService:
     async def _generate_personalized_email(
         self,
         opportunity: BacklinkOpportunity,
-        user_proposal: Dict[str, Any]
+        user_proposal: Dict[str, Any],
+        user_id: Optional[str] = None,
+        enhanced_analysis: Optional[Dict[str, Any]] = None
     ) -> str:
         """Generate a personalized outreach email using AI."""
+
+        # Build enhanced context from analysis
+        enhanced_context = ""
+        if enhanced_analysis:
+            outreach_insights = enhanced_analysis.get('outreach_insights', {})
+
+            # Add personalization insights
+            personalization_angles = outreach_insights.get('personalization_angles', [])
+            if personalization_angles:
+                enhanced_context += f"\nPersonalization Insights: {', '.join(personalization_angles[:2])}"
+
+            # Add content opportunities
+            content_opportunities = outreach_insights.get('content_opportunities', [])
+            if content_opportunities:
+                enhanced_context += f"\nContent Opportunities: {', '.join(content_opportunities[:2])}"
+
+            # Add tone recommendations
+            tone_recommendations = outreach_insights.get('tone_recommendations', [])
+            if tone_recommendations:
+                enhanced_context += f"\nCommunication Style: {', '.join(tone_recommendations[:2])}"
+
+            # Add subject line suggestions
+            subject_suggestions = outreach_insights.get('subject_line_suggestions', [])
+            if subject_suggestions:
+                enhanced_context += f"\nSuggested Subject Lines: {', '.join(subject_suggestions[:3])}"
+
+            # Add website profile insights
+            website_profile = enhanced_analysis.get('website_profile', {})
+            if website_profile.get('content_analysis', {}).get('writing_style'):
+                writing_style = website_profile['content_analysis']['writing_style']
+                enhanced_context += f"\nWebsite Writing Style: {writing_style}"
 
         prompt = f"""
         Compose a professional and personalized outreach email for guest posting.
@@ -427,7 +452,7 @@ class BacklinkingService:
         Contact Name: {opportunity.contact_name or 'Webmaster'}
         Proposed Topic: {user_proposal.get('topic', 'a guest post')}
         User Name: {user_proposal.get('user_name', 'Your Name')}
-        User Email: {user_proposal.get('user_email', 'your_email@example.com')}
+        User Email: {user_proposal.get('user_email', 'your_email@example.com')}{enhanced_context}
 
         Guidelines:
         1. Professional and personalized introduction
@@ -435,12 +460,19 @@ class BacklinkingService:
         3. Clearly state the proposed guest post topic
         4. Include a call to action
         5. Keep the email concise but compelling
-        6. End with professional contact information
+        6. Match the website's communication style and tone
+        7. End with professional contact information
 
-        Write the complete email including subject line.
+        Write the complete email including subject line. Use the personalization insights to make this email more compelling and relevant to the recipient.
         """
 
-        return await self.llm_provider.generate_text(prompt)
+        if not user_id:
+            raise ValueError("user_id is required for email generation")
+
+        return llm_text_gen(
+            prompt=prompt,
+            user_id=user_id
+        )
 
     async def _process_responses(
         self,

@@ -201,6 +201,7 @@ async def discover_opportunities(
     campaign_id: str,
     keywords: List[str],
     enable_trend_analysis: bool = False,
+    enable_enhanced_analysis: bool = True,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> List[OpportunityResponse]:
     """
@@ -213,13 +214,47 @@ async def discover_opportunities(
         campaign_id: The ID of the campaign to discover opportunities for
         keywords: List of keywords to search for guest post opportunities
         enable_trend_analysis: Whether to include Google Trends analysis for enhanced prospecting
+        enable_enhanced_analysis: Whether to use comprehensive website analysis for prospects
     """
     user_id = _require_user_id(current_user, "discover_opportunities")
+
+    # Preflight validations
+    if not campaign_id or not isinstance(campaign_id, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Valid campaign_id is required."
+        )
+
+    if not keywords or not isinstance(keywords, list) or len(keywords) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one keyword is required."
+        )
+
+    if len(keywords) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 50 keywords allowed."
+        )
+
+    # Validate keyword format
+    for keyword in keywords:
+        if not isinstance(keyword, str) or len(keyword.strip()) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All keywords must be non-empty strings."
+            )
+        if len(keyword) > 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Keywords must be 100 characters or less."
+            )
 
     try:
         service = BacklinkingService()
         opportunities = await service.discover_opportunities(
-            campaign_id, keywords, enable_trend_analysis=enable_trend_analysis
+            campaign_id, keywords, enable_trend_analysis=enable_trend_analysis,
+            enable_enhanced_analysis=enable_enhanced_analysis, user_id=user_id
         )
 
         return [
@@ -319,11 +354,25 @@ async def generate_outreach_emails(
     """
     user_id = _require_user_id(current_user, "generate_emails")
 
+    # Preflight validations
+    if not campaign_id or not isinstance(campaign_id, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Valid campaign_id is required."
+        )
+
+    if not request.user_proposal or not isinstance(request.user_proposal, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Valid user_proposal is required."
+        )
+
     try:
         service = BacklinkingService()
         generated_emails = await service.generate_outreach_emails(
             campaign_id=campaign_id,
-            user_proposal=request.user_proposal
+            user_proposal=request.user_proposal,
+            user_id=user_id
         )
 
         return [

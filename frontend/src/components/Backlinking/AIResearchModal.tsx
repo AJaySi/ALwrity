@@ -43,6 +43,7 @@ interface AIResearchModalProps {
   keywords?: string[];
   targetIndustry?: string;
   aiEnhanced?: boolean;
+  enableTrendAnalysis?: boolean;
   onComplete?: (results: AIResearchResults) => void;
 }
 
@@ -67,6 +68,21 @@ const researchSteps = [
     details: (aiEnhanced: boolean) => ({
       programmatic: "Generated 45+ queries across semantic, industry, and operator categories",
       ai_enhanced: "AI enhanced queries with semantic understanding and industry expertise"
+    })
+  },
+  {
+    title: "Phase 1.5: Trend Analysis",
+    description: (aiEnhanced: boolean, enableTrendAnalysis: boolean) =>
+      enableTrendAnalysis
+        ? "Google Trends analysis for seasonal patterns, emerging topics, and geographic insights"
+        : "Trend analysis skipped - using standard discovery methods",
+    icon: <TrendingUpIcon />,
+    duration: 1500,
+    phase: 1.5,
+    details: (aiEnhanced: boolean, enableTrendAnalysis: boolean) => ({
+      trend_insights: enableTrendAnalysis ? "Analyzing seasonal patterns and emerging topics" : "Not enabled",
+      geographic_data: enableTrendAnalysis ? "Regional interest distribution analysis" : "Skipped",
+      query_enhancement: enableTrendAnalysis ? "Trend-based query optimization applied" : "Standard queries used"
     })
   },
   {
@@ -149,6 +165,7 @@ export const AIResearchModal: React.FC<AIResearchModalProps> = ({
   keywords = [],
   targetIndustry,
   aiEnhanced = false,
+  enableTrendAnalysis = false,
   onComplete,
 }) => {
   const theme = useTheme();
@@ -372,7 +389,7 @@ export const AIResearchModal: React.FC<AIResearchModalProps> = ({
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(203, 213, 225, 0.7)' }}>
                         {typeof currentStepData?.description === 'function'
-                          ? currentStepData.description(aiEnhanced)
+                          ? currentStepData.description(aiEnhanced, enableTrendAnalysis)
                           : currentStepData?.description}
                       </Typography>
                     </Box>
