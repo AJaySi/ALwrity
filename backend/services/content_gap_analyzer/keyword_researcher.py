@@ -1,6 +1,7 @@
 """
 Keyword Researcher Service
-Converted from keyword_researcher.py for FastAPI integration.
+
+Refactored service with modular architecture using extracted components.
 """
 
 from typing import Dict, Any, List, Optional
@@ -11,11 +12,44 @@ import asyncio
 import json
 from collections import Counter, defaultdict
 
-# Import AI providers
+# Import extracted modules
+from .models import KeywordAnalysisRequest, KeywordAnalysisResponse
+from .config import get_config
+from .constants import (
+    MIN_OPPORTUNITY_SCORE, MAX_DIFFICULTY_SCORE, DEFAULT_CONFIDENCE_SCORE,
+    OPTIMAL_META_DESCRIPTION_LENGTH, KEYWORD_DENSITY_TARGET
+)
+from .enums import IntentType, PriorityLevel, AnalysisStatus
+from .utils import (
+    # Keyword utils
+    generate_keyword_variations, generate_long_tail_keywords, generate_semantic_variations,
+    generate_related_keywords, categorize_keywords_by_intent, analyze_single_keyword_intent,
+    calculate_keyword_metrics, remove_duplicate_keywords, sort_keywords_by_relevance,
+    extract_keywords_from_text, merge_keyword_lists,
+    
+    # Analysis utils
+    analyze_intent_patterns, map_user_journey, calculate_opportunity_score,
+    categorize_opportunity_type, analyze_keyword_distribution, generate_summary_metrics,
+    
+    # AI prompt utils
+    generate_trend_analysis_prompt, generate_trend_analysis_schema,
+    generate_intent_analysis_prompt, generate_intent_analysis_schema,
+    generate_opportunity_identification_prompt, generate_opportunity_identification_schema,
+    generate_insights_prompt, generate_insights_schema,
+    parse_ai_response, create_fallback_response, get_content_recommendations_by_intent,
+    get_opportunity_recommendation,
+    
+    # Data transformers
+    transform_legacy_analysis_to_modern, transform_analysis_summary,
+    transform_health_check_results, validate_analysis_results
+)
+from .dependencies import get_dependencies
+
+# Import AI providers (for backward compatibility)
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.llm_providers.gemini_provider import gemini_structured_json_response
 
-# Import existing modules (will be updated to use FastAPI services)
+# Import existing modules
 from services.database import get_db_session
 from .ai_engine_service import AIEngineService
 
@@ -90,118 +124,27 @@ class KeywordResearcher:
         try:
             logger.info(f"🤖 Analyzing keyword trends for {industry} industry using AI")
             
-            # Create comprehensive prompt for keyword trend analysis
-            prompt = f"""
-            Analyze keyword opportunities for {industry} industry:
-
-            Target Keywords: {target_keywords or []}
+            # Use extracted utility for prompt generation
+            prompt = generate_trend_analysis_prompt(industry, target_keywords)
+            schema = generate_trend_analysis_schema()
             
-            Provide comprehensive keyword analysis including:
-            1. Search volume estimates
-            2. Competition levels
-            3. Trend analysis
-            4. Opportunity scoring
-            5. Content format recommendations
-            6. Keyword difficulty assessment
-            7. Seasonal trends
+            # Use dependency injection for AI provider
+            dependencies = get_dependencies()
+            ai_provider = dependencies.get_ai_provider()
             
-            Format as structured JSON with detailed analysis.
-            """
+            try:
+                response = await ai_provider.generate_response(prompt, schema)
+                trend_analysis = parse_ai_response(response)
+            except Exception as e:
+                logger.error(f"AI provider error: {e}")
+                trend_analysis = create_fallback_response("trend", industry)
             
-            # Use structured JSON response for better parsing
-            response = gemini_structured_json_response(
-                prompt=prompt,
-                schema={
-                    "type": "object",
-                    "properties": {
-                        "trends": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "object",
-                                "properties": {
-                                    "search_volume": {"type": "number"},
-                                    "difficulty": {"type": "number"},
-                                    "trend": {"type": "string"},
-                                    "competition": {"type": "string"},
-                                    "intent": {"type": "string"},
-                                    "cpc": {"type": "number"},
-                                    "seasonal_factor": {"type": "number"}
-                                }
-                            }
-                        },
-                        "summary": {
-                            "type": "object",
-                            "properties": {
-                                "total_keywords": {"type": "number"},
-                                "high_volume_keywords": {"type": "number"},
-                                "low_competition_keywords": {"type": "number"},
-                                "trending_keywords": {"type": "number"},
-                                "opportunity_score": {"type": "number"}
-                            }
-                        },
-                        "recommendations": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "keyword": {"type": "string"},
-                                    "recommendation": {"type": "string"},
-                                    "priority": {"type": "string"},
-                                    "estimated_impact": {"type": "string"}
-                                }
-                            }
-                        }
-                    }
-                }
-            )
-            
-            # Handle response - gemini_structured_json_response returns dict directly
-            if isinstance(response, dict):
-                trend_analysis = response
-            elif isinstance(response, str):
-                # If it's a string, try to parse as JSON
-                try:
-                    trend_analysis = json.loads(response)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse AI response as JSON: {e}")
-                    raise Exception(f"Invalid AI response format: {str(e)}")
-            else:
-                logger.error(f"Unexpected response type from AI service: {type(response)}")
-                raise Exception(f"Unexpected response type from AI service: {type(response)}")
             logger.info("✅ AI keyword trend analysis completed")
             return trend_analysis
             
         except Exception as e:
             logger.error(f"Error analyzing keyword trends: {str(e)}")
-            # Return fallback response if AI fails
-            return {
-                'trends': {
-                    f"{industry} trends": {
-                        'search_volume': 5000,
-                        'difficulty': 45,
-                        'trend': 'rising',
-                        'competition': 'medium',
-                        'intent': 'informational',
-                        'cpc': 2.5,
-                        'seasonal_factor': 1.2
-                    }
-                },
-                'summary': {
-                    'total_keywords': 1,
-                    'high_volume_keywords': 1,
-                    'low_competition_keywords': 0,
-                    'trending_keywords': 1,
-                    'opportunity_score': 75
-                },
-                'recommendations': [
-                    {
-                        'keyword': f"{industry} trends",
-                        'recommendation': 'Create comprehensive trend analysis content',
-                        'priority': 'high',
-                        'estimated_impact': 'High traffic potential'
-                    }
-                ]
-            }
+            return create_fallback_response("trend", industry)
     
     async def _evaluate_search_intent(self, trend_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1258,201 +1201,44 @@ class KeywordResearcher:
     # Helper methods for keyword expansion
     
     async def _generate_keyword_variations(self, seed_keyword: str, industry: str) -> List[str]:
-        """Generate keyword variations."""
-        variations = [
-            f"{seed_keyword} guide",
-            f"best {seed_keyword}",
-            f"how to {seed_keyword}",
-            f"{seed_keyword} tips",
-            f"{seed_keyword} tutorial",
-            f"{seed_keyword} examples",
-            f"{seed_keyword} vs",
-            f"{seed_keyword} review",
-            f"{seed_keyword} comparison",
-            f"{industry} {seed_keyword}",
-            f"{seed_keyword} {industry}",
-            f"{seed_keyword} strategies",
-            f"{seed_keyword} techniques",
-            f"{seed_keyword} tools"
-        ]
-        return variations
+        """Generate keyword variations using extracted utility."""
+        return generate_keyword_variations(seed_keyword, industry)
     
     async def _generate_long_tail_keywords(self, seed_keyword: str, industry: str) -> List[str]:
-        """Generate long-tail keywords."""
-        long_tail = [
-            f"how to {seed_keyword} for beginners",
-            f"best {seed_keyword} strategies for {industry}",
-            f"{seed_keyword} vs alternatives comparison",
-            f"advanced {seed_keyword} techniques",
-            f"{seed_keyword} case studies examples",
-            f"step by step {seed_keyword} guide",
-            f"{seed_keyword} best practices 2024",
-            f"{seed_keyword} tools and resources",
-            f"{seed_keyword} implementation guide",
-            f"{seed_keyword} optimization tips"
-        ]
-        return long_tail
+        """Generate long-tail keywords using extracted utility."""
+        return generate_long_tail_keywords(seed_keyword, industry)
     
     async def _generate_semantic_variations(self, seed_keyword: str, industry: str) -> List[str]:
-        """Generate semantic variations."""
-        semantic = [
-            f"{seed_keyword} alternatives",
-            f"{seed_keyword} solutions",
-            f"{seed_keyword} methods",
-            f"{seed_keyword} approaches",
-            f"{seed_keyword} systems",
-            f"{seed_keyword} platforms",
-            f"{seed_keyword} software",
-            f"{seed_keyword} tools",
-            f"{seed_keyword} services",
-            f"{seed_keyword} providers"
-        ]
-        return semantic
+        """Generate semantic variations using extracted utility."""
+        return generate_semantic_variations(seed_keyword, industry)
     
     async def _generate_related_keywords(self, seed_keyword: str, industry: str) -> List[str]:
-        """Generate related keywords."""
-        related = [
-            f"{seed_keyword} optimization",
-            f"{seed_keyword} improvement",
-            f"{seed_keyword} enhancement",
-            f"{seed_keyword} development",
-            f"{seed_keyword} implementation",
-            f"{seed_keyword} execution",
-            f"{seed_keyword} management",
-            f"{seed_keyword} planning",
-            f"{seed_keyword} strategy",
-            f"{seed_keyword} framework"
-        ]
-        return related
+        """Generate related keywords using extracted utility."""
+        return generate_related_keywords(seed_keyword, industry)
     
     async def _categorize_expanded_keywords(self, keywords: List[str]) -> Dict[str, List[str]]:
-        """Categorize expanded keywords."""
-        categories = {
-            'informational': [],
-            'commercial': [],
-            'navigational': [],
-            'transactional': []
-        }
-        
-        for keyword in keywords:
-            keyword_lower = keyword.lower()
-            if any(word in keyword_lower for word in ['how', 'what', 'why', 'guide', 'tips', 'tutorial']):
-                categories['informational'].append(keyword)
-            elif any(word in keyword_lower for word in ['best', 'top', 'review', 'comparison', 'vs']):
-                categories['commercial'].append(keyword)
-            elif any(word in keyword_lower for word in ['buy', 'purchase', 'price', 'cost']):
-                categories['transactional'].append(keyword)
-            else:
-                categories['navigational'].append(keyword)
-        
-        return categories
-    
+        """Categorize expanded keywords using extracted utility."""
+        return categorize_keywords_by_intent(keywords)
     async def _analyze_single_keyword_intent(self, keyword: str) -> Dict[str, Any]:
-        """Analyze intent for a single keyword."""
-        keyword_lower = keyword.lower()
-        
-        if any(word in keyword_lower for word in ['how', 'what', 'why', 'guide', 'tips']):
-            intent_type = 'informational'
-            content_type = 'educational'
-        elif any(word in keyword_lower for word in ['best', 'top', 'review', 'comparison']):
-            intent_type = 'commercial'
-            content_type = 'comparison'
-        elif any(word in keyword_lower for word in ['buy', 'purchase', 'price', 'cost']):
-            intent_type = 'transactional'
-            content_type = 'product'
-        else:
-            intent_type = 'navigational'
-            content_type = 'brand'
-        
-        return {
-            'keyword': keyword,
-            'intent_type': intent_type,
-            'content_type': content_type,
-            'confidence': 0.8
-        }
+        """Analyze intent for a single keyword using extracted utility."""
+        return analyze_single_keyword_intent(keyword)
     
     async def _generate_content_recommendations(self, keyword: str, intent_analysis: Dict[str, Any]) -> List[str]:
-        """Generate content recommendations for a keyword."""
+        """Generate content recommendations for a keyword using extracted utility."""
         intent_type = intent_analysis.get('intent_type', 'informational')
-        
-        recommendations = {
-            'informational': [
-                'Create comprehensive guide',
-                'Add step-by-step instructions',
-                'Include examples and case studies',
-                'Provide expert insights'
-            ],
-            'commercial': [
-                'Create comparison content',
-                'Add product reviews',
-                'Include pricing information',
-                'Provide buying guides'
-            ],
-            'transactional': [
-                'Create product pages',
-                'Add pricing information',
-                'Include purchase options',
-                'Provide customer testimonials'
-            ],
-            'navigational': [
-                'Create brand pages',
-                'Add company information',
-                'Include contact details',
-                'Provide about us content'
-            ]
-        }
-        
-        return recommendations.get(intent_type, [])
+        return get_content_recommendations_by_intent(intent_type)
     
     async def _analyze_intent_patterns(self, keyword_intents: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze patterns in keyword intents."""
-        intent_counts = Counter(intent['intent_type'] for intent in keyword_intents.values())
-        total_keywords = len(keyword_intents)
-        
-        patterns = {
-            'intent_distribution': {intent: count/total_keywords for intent, count in intent_counts.items()},
-            'dominant_intent': intent_counts.most_common(1)[0][0] if intent_counts else 'informational',
-            'intent_mix': 'balanced' if len(intent_counts) >= 3 else 'focused'
-        }
-        
-        return patterns
+        """Analyze patterns in keyword intents using extracted utility."""
+        return analyze_intent_patterns(keyword_intents)
     
     async def _map_user_journey(self, keyword_intents: Dict[str, Any]) -> Dict[str, Any]:
-        """Map user journey based on keyword intents."""
-        journey_stages = {
-            'awareness': [],
-            'consideration': [],
-            'decision': []
-        }
-        
-        for keyword, intent in keyword_intents.items():
-            intent_type = intent.get('intent_type', 'informational')
-            
-            if intent_type == 'informational':
-                journey_stages['awareness'].append(keyword)
-            elif intent_type == 'commercial':
-                journey_stages['consideration'].append(keyword)
-            elif intent_type == 'transactional':
-                journey_stages['decision'].append(keyword)
-        
-        return {
-            'journey_stages': journey_stages,
-            'content_strategy': {
-                'awareness': 'Educational content and guides',
-                'consideration': 'Comparison and review content',
-                'decision': 'Product and pricing content'
-            }
-        }
+        """Map user journey based on keyword intents using extracted utility."""
+        return map_user_journey(keyword_intents)
     
     def _get_opportunity_recommendation(self, opportunity_type: str) -> str:
-        """Get recommendation for opportunity type."""
-        recommendations = {
-            'high_volume_low_competition': 'Create comprehensive content targeting this keyword',
-            'medium_volume_medium_competition': 'Develop competitive content with unique angle',
-            'trending_keyword': 'Create timely content to capitalize on trend',
-            'high_value_commercial': 'Focus on conversion-optimized content'
-        }
-        return recommendations.get(opportunity_type, 'Create relevant content for this keyword')
+        """Get recommendation for opportunity type using extracted utility."""
+        return get_opportunity_recommendation(opportunity_type)
     
     async def get_keyword_summary(self, analysis_id: str) -> Dict[str, Any]:
         """
