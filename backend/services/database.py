@@ -20,29 +20,11 @@ from models.monitoring_models import Base as MonitoringBase
 from models.persona_models import Base as PersonaBase
 from models.subscription_models import Base as SubscriptionBase
 from models.user_business_info import Base as UserBusinessInfoBase
-from models.content_asset_models import Base as ContentAssetBase
-# Product Marketing models use SubscriptionBase, but import to ensure models are registered
-from models.product_marketing_models import Campaign, CampaignProposal, CampaignAsset
-# Product Asset models (Product Marketing Suite - product assets, not campaigns)
-from models.product_asset_models import ProductAsset, ProductStyleTemplate, EcommerceExport
-# Podcast Maker models use SubscriptionBase, but import to ensure models are registered
-from models.podcast_models import PodcastProject
-# Backlinking models
-from models.backlinking import (
-    Base as BacklinkingBase,
-    BacklinkingCampaign,
-    BacklinkOpportunity,
-    BacklinkingEmail,
-    BacklinkingResponse,
-    BacklinkingAnalytics,
-    AILearningData,
-    BacklinkingTemplate,
-)
 
-# Database configuration
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')
+# Database configuration - PostgreSQL only (Clean Architecture)
+# Legacy DATABASE_URL removed - no longer supported
 
-# Create engine with safer pooling defaults and SQLite-friendly settings
+# Create engine with safer pooling defaults for PostgreSQL
 engine_kwargs = {
     "echo": False,                 # Set to True for SQL debugging
     "pool_pre_ping": True,        # Detect stale connections
@@ -52,69 +34,219 @@ engine_kwargs = {
     "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
 }
 
-# SQLite needs special handling for multithreaded FastAPI
-if DATABASE_URL.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
+# Backward compatibility: SessionLocal function for existing code
+def SessionLocal():
+    """
+    Backward compatible SessionLocal function.
+    Returns user data database session for PostgreSQL-only architecture.
+    """
+    platform_db_url = os.getenv("PLATFORM_DATABASE_URL")
+    user_data_db_url = os.getenv("USER_DATA_DATABASE_URL")
+    
+    if not platform_db_url or not user_data_db_url:
+        raise ValueError(
+            """
+ POSTGRESQL REQUIRED - Clean Architecture
+            
+ALwrity requires PostgreSQL environment variables to be set:
+- PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+- USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
 
-engine = create_engine(
-    DATABASE_URL,
-    **engine_kwargs,
-)
+This is intentional - we no longer support SQLite or single database setups.
+"""
+        )
+    
+    # Create user data database engine and session
+    user_data_engine = create_engine(user_data_db_url, **engine_kwargs)
+    UserDataSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=user_data_engine)
+    return UserDataSessionLocal()
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Backward compatibility: engine for existing scripts and tests
+def engine():
+    """
+    Backward compatible engine function.
+    Returns user data database engine for PostgreSQL-only architecture.
+    """
+    user_data_db_url = os.getenv("USER_DATA_DATABASE_URL")
+    
+    if not user_data_db_url:
+        raise ValueError(
+            """
+ POSTGRESQL REQUIRED - Clean Architecture
+            
+ALwrity requires PostgreSQL environment variables to be set:
+- USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+This is intentional - we no longer support SQLite or single database setups.
+"""
+        )
+    
+    return create_engine(user_data_db_url, **engine_kwargs)
 
 def get_db_session() -> Optional[Session]:
     """
-    Get a database session.
+    Get a database session using dual database architecture.
+    PostgreSQL-only implementation.
     
     Returns:
         Database session or None if connection fails
     """
     try:
-        db = SessionLocal()
+        # Require dual database environment variables
+        platform_db_url = os.getenv("PLATFORM_DATABASE_URL")
+        user_data_db_url = os.getenv("USER_DATA_DATABASE_URL")
+        
+        if not platform_db_url or not user_data_db_url:
+            raise ValueError(
+                """
+ POSTGRESQL REQUIRED - Clean Architecture
+                
+ALwrity requires PostgreSQL environment variables to be set:
+- PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+- USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+This is intentional - we no longer support SQLite or single database setups.
+"""
+            )
+        
+        # Use dual database architecture
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        
+        # Create user data database engine
+        user_data_engine = create_engine(user_data_db_url, **engine_kwargs)
+        UserDataSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=user_data_engine)
+        
+        db = UserDataSessionLocal()
+        logger.info("Using dual PostgreSQL database architecture")
         return db
+            
     except SQLAlchemyError as e:
         logger.error(f"Error creating database session: {str(e)}")
         return None
 
 def init_database():
     """
-    Initialize the database by creating all tables.
+    Initialize the database using dual database architecture.
+    PostgreSQL-only implementation.
     """
     try:
-        # Create all tables for all models
-        OnboardingBase.metadata.create_all(bind=engine)
-        SEOAnalysisBase.metadata.create_all(bind=engine)
-        ContentPlanningBase.metadata.create_all(bind=engine)
-        EnhancedStrategyBase.metadata.create_all(bind=engine)
-        MonitoringBase.metadata.create_all(bind=engine)
-        PersonaBase.metadata.create_all(bind=engine)
-        SubscriptionBase.metadata.create_all(bind=engine)  # Includes product_marketing models
-        UserBusinessInfoBase.metadata.create_all(bind=engine)
-        ContentAssetBase.metadata.create_all(bind=engine)
-        logger.info("Database initialized successfully with all models including subscription system, product marketing, business info, and content assets")
+        # Require dual database environment variables
+        platform_db_url = os.getenv("PLATFORM_DATABASE_URL")
+        user_data_db_url = os.getenv("USER_DATA_DATABASE_URL")
+        
+        if not platform_db_url or not user_data_db_url:
+            raise ValueError(
+                """
+ POSTGRESQL REQUIRED - Clean Architecture
+                
+ALwrity requires PostgreSQL environment variables to be set:
+- PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+- USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+This is intentional - we no longer support SQLite or single database setups.
+"""
+            )
+        
+        # Use dual database architecture
+        from sqlalchemy import create_engine
+        
+        # Create platform database engine
+        platform_engine = create_engine(platform_db_url, **engine_kwargs)
+        
+        # Create user data database engine
+        user_data_engine = create_engine(user_data_db_url, **engine_kwargs)
+        
+        # Create tables on appropriate databases
+        # Platform database tables
+        OnboardingBase.metadata.create_all(bind=platform_engine)
+        SEOAnalysisBase.metadata.create_all(bind=platform_engine)
+        SubscriptionBase.metadata.create_all(bind=platform_engine)
+        UserBusinessInfoBase.metadata.create_all(bind=platform_engine)
+        
+        # User data database tables
+        ContentPlanningBase.metadata.create_all(bind=user_data_engine)
+        EnhancedStrategyBase.metadata.create_all(bind=user_data_engine)
+        MonitoringBase.metadata.create_all(bind=user_data_engine)
+        PersonaBase.metadata.create_all(bind=user_data_engine)
+        
+        logger.info("Dual PostgreSQL database initialized successfully with all models")
+            
     except SQLAlchemyError as e:
         logger.error(f"Error initializing database: {str(e)}")
         raise
 
 def close_database():
     """
-    Close database connections.
+    Close database connections using dual database architecture.
+    PostgreSQL-only implementation.
     """
     try:
-        engine.dispose()
-        logger.info("Database connections closed")
+        # Require dual database environment variables
+        platform_db_url = os.getenv("PLATFORM_DATABASE_URL")
+        user_data_db_url = os.getenv("USER_DATA_DATABASE_URL")
+        
+        if not platform_db_url or not user_data_db_url:
+            raise ValueError(
+                """
+ POSTGRESQL REQUIRED - Clean Architecture
+                
+ALwrity requires PostgreSQL environment variables to be set:
+- PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+- USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+This is intentional - we no longer support SQLite or single database setups.
+"""
+            )
+        
+        # Use dual database architecture
+        from sqlalchemy import create_engine
+        
+        # Create and dispose both database engines
+        platform_engine = create_engine(platform_db_url, **engine_kwargs)
+        user_data_engine = create_engine(user_data_db_url, **engine_kwargs)
+        
+        platform_engine.dispose()
+        user_data_engine.dispose()
+        logger.info("Dual PostgreSQL database connections closed")
+            
     except Exception as e:
         logger.error(f"Error closing database connections: {str(e)}")
 
 # Database dependency for FastAPI
 def get_db():
     """
-    Database dependency for FastAPI endpoints.
+    Database dependency for FastAPI endpoints using dual database architecture.
+    PostgreSQL-only implementation.
     """
-    db = SessionLocal()
+    # Require dual database environment variables
+    platform_db_url = os.getenv("PLATFORM_DATABASE_URL")
+    user_data_db_url = os.getenv("USER_DATA_DATABASE_URL")
+    
+    if not platform_db_url or not user_data_db_url:
+        raise ValueError(
+            """
+ POSTGRESQL REQUIRED - Clean Architecture
+            
+ALwrity requires PostgreSQL environment variables to be set:
+- PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+- USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+This is intentional - we no longer support SQLite or single database setups.
+"""
+        )
+    
+    # Use dual database architecture
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    
+    # Create user data database engine
+    user_data_engine = create_engine(user_data_db_url, **engine_kwargs)
+    UserDataSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=user_data_engine)
+    
+    db = UserDataSessionLocal()
+    
     try:
         yield db
     finally:
-        db.close() 
+        db.close()
