@@ -17,7 +17,6 @@ def _raise_postgresql_required():
  POSTGRESQL REQUIRED - Clean Architecture
         
     ALwrity requires PostgreSQL environment variables to be set:
-    - DATABASE_URL=postgresql://user:pass@host:port/database_name
     - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
     - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
 
@@ -35,22 +34,6 @@ from services.bing_analytics_storage_service import BingAnalyticsStorageService
 import os
 
 
-def _raise_postgresql_required():
-    """Raise error if PostgreSQL not configured."""
-    raise ValueError(
-        """
- POSTGRESQL REQUIRED - Clean Architecture
-        
-    ALwrity requires PostgreSQL environment variables to be set:
-    - DATABASE_URL=postgresql://user:pass@host:port/database_name
-    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
-    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
-
-    This is intentional - we no longer support SQLite or single database setups.
-    """
-    )
-
-
 class BingAnalyticsHandler(BaseAnalyticsHandler):
     """Handler for Bing Webmaster Tools analytics"""
     
@@ -58,10 +41,10 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
         super().__init__(PlatformType.BING)
         self.bing_service = BingOAuthService()
         # Initialize insights service
-        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
+        database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
         self.insights_service = BingInsightsService(database_url)
         # Storage service used in onboarding step 5
-        self.storage_service = BingAnalyticsStorageService(os.getenv('DATABASE_URL') or _raise_postgresql_required())
+        self.storage_service = BingAnalyticsStorageService(os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required())
     
     async def get_analytics(self, user_id: str) -> AnalyticsData:
         """

@@ -21,7 +21,6 @@ def _raise_postgresql_required():
  POSTGRESQL REQUIRED - Clean Architecture
         
     ALwrity requires PostgreSQL environment variables to be set:
-    - DATABASE_URL=postgresql://user:pass@host:port/database_name
     - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
     - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
 
@@ -31,27 +30,12 @@ def _raise_postgresql_required():
 
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
 from middleware.auth_middleware import get_current_user
-
-
-def _raise_postgresql_required():
-    """Raise error if PostgreSQL not configured."""
-    raise ValueError(
-        """
- POSTGRESQL REQUIRED - Clean Architecture
-        
-    ALwrity requires PostgreSQL environment variables to be set:
-    - DATABASE_URL=postgresql://user:pass@host:port/database_name
-    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
-    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
-
-    This is intentional - we no longer support SQLite or single database setups.
-    """
-    )
+import os
 
 router = APIRouter(prefix="/bing-analytics", tags=["Bing Analytics Storage"])
 
 # Initialize storage service
-DATABASE_URL = os.getenv('DATABASE_URL') or _raise_postgresql_required()
+DATABASE_URL = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
 storage_service = BingAnalyticsStorageService(DATABASE_URL)
 
 
