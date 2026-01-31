@@ -116,7 +116,8 @@ class ContentAsset(Base):
     __table_args__ = (
         Index('idx_user_type_source', 'user_id', 'asset_type', 'source_module'),
         Index('idx_user_favorite_created', 'user_id', 'is_favorite', 'created_at'),
-        Index('idx_user_tags', 'user_id', 'tags'),
+        # JSON columns need GIN indexes in PostgreSQL, not B-tree
+        # Index('idx_user_tags', 'user_id', 'tags'),  # Removed - JSON doesn't support B-tree index
     )
 
 
