@@ -20,6 +20,8 @@ from models.monitoring_models import Base as MonitoringBase
 from models.persona_models import Base as PersonaBase
 from models.subscription_models import Base as SubscriptionBase
 from models.user_business_info import Base as UserBusinessInfoBase
+from models.content_asset_models import Base as ContentAssetBase
+from models.product_asset_models import Base as ProductAssetBase
 
 # Database configuration - PostgreSQL only (Clean Architecture)
 # Legacy DATABASE_URL removed - no longer supported
@@ -159,16 +161,18 @@ This is intentional - we no longer support SQLite or single database setups.
         
         # Create tables on appropriate databases
         # Platform database tables
-        OnboardingBase.metadata.create_all(bind=platform_engine)
-        SEOAnalysisBase.metadata.create_all(bind=platform_engine)
-        SubscriptionBase.metadata.create_all(bind=platform_engine)
-        UserBusinessInfoBase.metadata.create_all(bind=platform_engine)
+        OnboardingBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+        SEOAnalysisBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+        SubscriptionBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+        UserBusinessInfoBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+        ContentAssetBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+        ProductAssetBase.metadata.create_all(bind=platform_engine, checkfirst=True)
         
         # User data database tables
-        ContentPlanningBase.metadata.create_all(bind=user_data_engine)
-        EnhancedStrategyBase.metadata.create_all(bind=user_data_engine)
-        MonitoringBase.metadata.create_all(bind=user_data_engine)
-        PersonaBase.metadata.create_all(bind=user_data_engine)
+        ContentPlanningBase.metadata.create_all(bind=user_data_engine, checkfirst=True)
+        EnhancedStrategyBase.metadata.create_all(bind=user_data_engine, checkfirst=True)
+        MonitoringBase.metadata.create_all(bind=user_data_engine, checkfirst=True)
+        PersonaBase.metadata.create_all(bind=user_data_engine, checkfirst=True)
         
         logger.info("Dual PostgreSQL database initialized successfully with all models")
             
