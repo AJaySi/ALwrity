@@ -10,10 +10,14 @@ from .config import get_config
 from .utils import *
 from .dependencies import get_dependencies
 
+# Import the main class for backward compatibility
+from .keyword_researcher import KeywordResearcher
+
 # Export configuration and utilities
 __all__ = [
     'get_config',
     'get_dependencies',
+    'KeywordResearcher'
 ]
 
 # Add all utility exports
@@ -24,7 +28,7 @@ __all__.extend(utils_all)
 from .models import __all__ as models_all
 __all__.extend(models_all)
 
-# Import the main class after avoiding circular import
+# Import function for avoiding circular imports
 def get_keyword_researcher():
     """Get KeywordResearcher instance to avoid circular imports."""
     from .keyword_researcher import KeywordResearcher as KR

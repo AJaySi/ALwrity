@@ -7,16 +7,33 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from loguru import logger
 import os
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 def create_monitoring_tables():
     """Create the API monitoring tables."""
     try:
         # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
+        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
         
         # Create engine
         engine = create_engine(database_url)
@@ -142,7 +159,7 @@ def drop_monitoring_tables():
     """Drop the API monitoring tables (for testing)."""
     try:
         # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
+        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
         
         # Create engine
         engine = create_engine(database_url)

@@ -7,17 +7,49 @@ import sqlite3
 import os
 import sys
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 # Add parent directory to path to import migration
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
 
 def run_migration():
     """Run the failure tracking migration."""
     # Get database path
-    db_path = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
+    db_path = os.getenv('DATABASE_URL') or _raise_postgresql_required()
     
     # Extract path from SQLite URL if needed
-    if db_path.startswith('sqlite:///'):
-        db_path = db_path.replace('sqlite:///', '')
+    if db_path.startswith(_raise_postgresql_required()):
+        db_path = db_path.replace(_raise_postgresql_required(), '')
     
     if not os.path.exists(db_path):
         print(f"Database not found at {db_path}")
@@ -78,6 +110,22 @@ def run_migration():
         import traceback
         traceback.print_exc()
         return False
+
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
 
 if __name__ == "__main__":
     success = run_migration()

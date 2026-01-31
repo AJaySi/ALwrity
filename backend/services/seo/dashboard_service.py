@@ -11,6 +11,22 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from loguru import logger
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 from utils.logger_utils import get_service_logger
 from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
@@ -19,6 +35,22 @@ from services.analytics_cache_service import AnalyticsCacheService
 from services.onboarding.data_service import OnboardingDataService
 from .analytics_aggregator import AnalyticsAggregator
 from .competitive_analyzer import CompetitiveAnalyzer
+
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
 
 logger = get_service_logger("seo_dashboard")
 
@@ -30,7 +62,7 @@ class SEODashboardService:
         self.db = db
         self.gsc_service = GSCService()
         self.bing_oauth = BingOAuthService()
-        self.bing_storage = BingAnalyticsStorageService("sqlite:///alwrity.db")
+        self.bing_storage = BingAnalyticsStorageService(_raise_postgresql_required())
         self.analytics_cache = AnalyticsCacheService()
         self.user_data_service = OnboardingDataService(db)
         self.analytics_aggregator = AnalyticsAggregator()

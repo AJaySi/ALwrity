@@ -12,6 +12,22 @@ import subprocess
 import time
 from pathlib import Path
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 def print_banner():
     """Print service banner."""
     print("""
@@ -52,6 +68,22 @@ def check_dependencies():
     print("✅ All dependencies installed!")
     return True
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 def check_environment():
     """Check environment configuration."""
     print("\n🔍 Checking environment configuration...")
@@ -70,7 +102,7 @@ def check_environment():
         print("  ✅ GEMINI_API_KEY configured")
     
     # Check database
-    db_url = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')
+    db_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
     print(f"  ✅ Database URL: {db_url}")
     
     # Check log level

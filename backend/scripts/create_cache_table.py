@@ -7,16 +7,48 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from loguru import logger
 import os
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 def create_cache_table():
     """Create the comprehensive user data cache table."""
     try:
         # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
+        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
         
         # Create engine
         engine = create_engine(database_url)
@@ -91,7 +123,7 @@ def drop_cache_table():
     """Drop the comprehensive user data cache table (for testing)."""
     try:
         # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
+        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
         
         # Create engine
         engine = create_engine(database_url)

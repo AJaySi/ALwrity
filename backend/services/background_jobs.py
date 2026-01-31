@@ -14,6 +14,22 @@ from enum import Enum
 import json
 
 
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
+
 class JobStatus(Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -230,7 +246,7 @@ class BackgroundJobService:
             from services.analytics.insights.bing_insights_service import BingInsightsService
             import os
             
-            database_url = os.getenv('DATABASE_URL', 'sqlite:///./bing_analytics.db')
+            database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
             insights_service = BingInsightsService(database_url)
             
             job.progress = 10
@@ -295,7 +311,7 @@ class BackgroundJobService:
             from services.bing_analytics_storage_service import BingAnalyticsStorageService
             import os
             
-            database_url = os.getenv('DATABASE_URL', 'sqlite:///./bing_analytics.db')
+            database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
             storage_service = BingAnalyticsStorageService(database_url)
             
             job.progress = 20
@@ -370,6 +386,22 @@ class BackgroundJobService:
         except Exception as e:
             logger.error(f"Error refreshing analytics: {e}")
             raise
+
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
 
 
 # Global instance
