@@ -9,7 +9,7 @@ from typing import List
 from sqlalchemy.orm import Session
 from utils.logger_utils import get_service_logger
 
-from services.database import get_db_session
+from services.database import get_platform_db_session
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
 from services.oauth_token_monitoring_service import get_connected_platforms, create_oauth_monitoring_tasks
 
@@ -31,9 +31,9 @@ async def restore_oauth_monitoring_tasks(scheduler):
     """
     try:
         logger.warning("[OAuth Task Restoration] Starting OAuth monitoring task restoration...")
-        db = get_db_session()
+        db = get_platform_db_session()
         if not db:
-            logger.warning("[OAuth Task Restoration] Could not get database session")
+            logger.warning("[OAuth Task Restoration] Could not get platform database session")
             return
         
         try:

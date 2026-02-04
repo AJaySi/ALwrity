@@ -7,7 +7,7 @@ Preserves original scheduled times from database to avoid rescheduling on server
 from typing import TYPE_CHECKING
 from datetime import datetime, timezone, timedelta
 from utils.logger_utils import get_service_logger
-from services.database import get_db_session
+from services.database import get_platform_db_session
 from models.scheduler_models import SchedulerEventLog
 
 if TYPE_CHECKING:
@@ -28,9 +28,9 @@ async def restore_persona_jobs(scheduler: 'TaskScheduler'):
         scheduler: TaskScheduler instance
     """
     try:
-        db = get_db_session()
+        db = get_platform_db_session()
         if not db:
-            logger.warning("Could not get database session to restore persona jobs")
+            logger.warning("Could not get platform database session to restore persona jobs")
             return
         
         try:

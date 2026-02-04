@@ -8,7 +8,7 @@ from typing import List
 from sqlalchemy.orm import Session
 from utils.logger_utils import get_service_logger
 
-from services.database import get_db_session
+from services.database import get_platform_db_session
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask
 from services.website_analysis_monitoring_service import create_website_analysis_tasks
 from models.onboarding import OnboardingSession
@@ -32,9 +32,9 @@ async def restore_website_analysis_tasks(scheduler):
     """
     try:
         logger.warning("[Website Analysis Restoration] Starting website analysis task restoration...")
-        db = get_db_session()
+        db = get_platform_db_session()
         if not db:
-            logger.warning("[Website Analysis Restoration] Could not get database session")
+            logger.warning("[Website Analysis Restoration] Could not get platform database session")
             return
         
         try:

@@ -150,7 +150,7 @@ class EcommerceExport(Base):
     
     # Composite indexes
     __table_args__ = (
-        Index('idx_user_platform', 'user_id', 'platform'),
+        # Index('idx_user_platform', 'user_id', 'platform'),  # Already exists in database
         Index('idx_product_platform', 'product_id', 'platform'),
     )
 

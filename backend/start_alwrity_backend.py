@@ -105,7 +105,7 @@ from alwrity_utils import (
 
 def start_backend(enable_reload=False, production_mode=False):
     """Start the backend server."""
-    print("🚀 Starting ALwrity Backend...")
+    print("Starting ALwrity Backend...")
     
     # Set host based on environment and mode
     # Use 127.0.0.1 for local production testing on Windows
@@ -123,18 +123,18 @@ def start_backend(enable_reload=False, production_mode=False):
     # Set reload based on argument or environment variable
     if enable_reload and not production_mode:
         os.environ.setdefault("RELOAD", "true")
-        print("   🔄 Development mode: Auto-reload enabled")
+        print("   Development mode: Auto-reload enabled")
     else:
         os.environ.setdefault("RELOAD", "false")
-        print("   🏭 Production mode: Auto-reload disabled")
+        print("   Production mode: Auto-reload disabled")
     
     host = os.getenv("HOST")
     port = int(os.getenv("PORT", "8000"))
     reload = os.getenv("RELOAD", "false").lower() == "true"
     
-    print(f"   📍 Host: {host}")
-    print(f"   🔌 Port: {port}")
-    print(f"   🔄 Reload: {reload}")
+    print(f"   Host: {host}")
+    print(f"   Port: {port}")
+    print(f"   Reload: {reload}")
     
     try:
         # Import and run the app
@@ -250,7 +250,7 @@ def main():
     # Set global verbose flag for utilities
     os.environ["ALWRITY_VERBOSE"] = "true" if verbose_mode else "false"
     
-    print("🚀 ALwrity Backend Server")
+    print("ALwrity Backend Server")
     print("=" * 40)
     print(f"Mode: {'PRODUCTION' if production_mode else 'DEVELOPMENT'}")
     print(f"Auto-reload: {'ENABLED' if enable_reload else 'DISABLED'}")

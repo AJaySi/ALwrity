@@ -203,6 +203,7 @@ class TaskScheduler:
             
             # Count OAuth token monitoring tasks from database (recurring weekly tasks)
             oauth_tasks_count = 0
+            total_oauth_tasks = 0
             oauth_tasks_details = []
             try:
                 db = get_db_session()

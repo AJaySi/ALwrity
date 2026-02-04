@@ -66,7 +66,7 @@ class BingInsightsExecutor(TaskExecutor):
     def __init__(self):
         self.logger = logger
         self.exception_handler = SchedulerExceptionHandler()
-        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
+        database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
         self.storage_service = BingAnalyticsStorageService(database_url)
         self.bing_oauth = BingOAuthService()
     

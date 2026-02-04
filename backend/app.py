@@ -350,6 +350,10 @@ from api.scheduler import router as scheduler_router
 app.include_router(scheduler_router)
 app.include_router(oauth_token_monitoring_router)
 
+# Include scheduler monitoring API
+from api.scheduler_monitoring import router as scheduler_monitoring_router
+app.include_router(scheduler_monitoring_router)
+
 # Setup frontend serving using modular utilities
 frontend_serving.setup_frontend_serving()
 

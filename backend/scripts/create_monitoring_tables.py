@@ -21,7 +21,6 @@ def _raise_postgresql_required():
  POSTGRESQL REQUIRED - Clean Architecture
         
     ALwrity requires PostgreSQL environment variables to be set:
-    - DATABASE_URL=postgresql://user:pass@host:port/database_name
     - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
     - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
 
@@ -33,7 +32,7 @@ def create_monitoring_tables():
     """Create the API monitoring tables."""
     try:
         # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
+        database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
         
         # Create engine
         engine = create_engine(database_url)
@@ -133,10 +132,10 @@ def create_monitoring_tables():
         # Commit changes
         db.commit()
         
-        # Verify table creation
+        # Verify table creation (PostgreSQL compatible)
         tables_to_check = ['api_requests', 'api_endpoint_stats', 'system_health', 'cache_performance']
         for table_name in tables_to_check:
-            result = db.execute(text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';"))
+            result = db.execute(text(f"SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='{table_name}';"))
             table_exists = result.fetchone()
             
             if table_exists:
@@ -159,7 +158,7 @@ def drop_monitoring_tables():
     """Drop the API monitoring tables (for testing)."""
     try:
         # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
+        database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
         
         # Create engine
         engine = create_engine(database_url)

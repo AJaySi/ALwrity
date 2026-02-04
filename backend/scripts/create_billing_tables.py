@@ -18,23 +18,23 @@ import traceback
 
 # Import models
 from models.subscription_models import Base as SubscriptionBase
-from services.database import DATABASE_URL
+from services.database import engine
 from services.subscription.pricing_service import PricingService
 
 def create_billing_tables():
     """Create all billing and subscription-related tables."""
     
     try:
-        # Create engine
-        engine = create_engine(DATABASE_URL, echo=False)
+        # Create engine using dual database architecture
+        db_engine = engine()
         
         # Create all tables
         logger.debug("Creating billing and subscription system tables...")
-        SubscriptionBase.metadata.create_all(bind=engine)
+        SubscriptionBase.metadata.create_all(bind=db_engine)
         logger.debug("✅ Billing and subscription tables created successfully")
         
         # Create session for data initialization
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
         db = SessionLocal()
         
         try:
@@ -60,7 +60,7 @@ def create_billing_tables():
         logger.info("✅ Billing system setup completed successfully!")
         
         # Display summary
-        display_setup_summary(engine)
+        display_setup_summary(db_engine)
         
     except Exception as e:
         logger.error(f"❌ Error creating billing tables: {e}")
@@ -71,22 +71,27 @@ def display_setup_summary(engine):
     """Display a summary of the created tables and data."""
     
     try:
-        with engine.connect() as conn:
+        # Handle both engine function and engine object
+        if callable(engine):
+            db_engine = engine()
+        else:
+            db_engine = engine
+            
+        with db_engine.connect() as conn:
             logger.info("\n" + "="*60)
             logger.info("BILLING SYSTEM SETUP SUMMARY")
             logger.info("="*60)
             
-            # Check tables
+            # Check tables (PostgreSQL compatible)
             tables_query = text("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND (
-                    name LIKE '%subscription%' OR 
-                    name LIKE '%usage%' OR 
-                    name LIKE '%billing%' OR
-                    name LIKE '%pricing%' OR
-                    name LIKE '%alert%'
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'public' AND (
+                    table_name LIKE '%subscription%' OR 
+                    table_name LIKE '%usage%' OR
+                    table_name LIKE '%pricing%' OR
+                    table_name LIKE '%alert%'
                 )
-                ORDER BY name
+                ORDER BY table_name
             """)
             
             result = conn.execute(tables_query)
@@ -164,17 +169,23 @@ def check_existing_tables(engine):
     """Check if billing tables already exist."""
     
     try:
-        with engine.connect() as conn:
-            # Check for billing tables
+        # Handle both engine function and engine object
+        if callable(engine):
+            db_engine = engine()
+        else:
+            db_engine = engine
+            
+        with db_engine.connect() as conn:
+            # Check for billing tables (PostgreSQL compatible)
             check_query = text("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND (
-                    name = 'subscription_plans' OR 
-                    name = 'user_subscriptions' OR 
-                    name = 'api_usage_logs' OR
-                    name = 'usage_summaries' OR
-                    name = 'api_provider_pricing' OR
-                    name = 'usage_alerts'
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'public' AND (
+                    table_name = 'subscription_plans' OR 
+                    table_name = 'user_subscriptions' OR 
+                    table_name = 'api_usage_logs' OR
+                    table_name = 'usage_summaries' OR
+                    table_name = 'api_provider_pricing' OR
+                    table_name = 'usage_alerts'
                 )
             """)
             
@@ -196,11 +207,12 @@ if __name__ == "__main__":
     logger.debug("🚀 Starting billing system database migration...")
     
     try:
-        # Create engine to check existing tables
-        engine = create_engine(DATABASE_URL, echo=False)
+        # Create engine to check existing tables using dual database architecture
+        from services.database import engine
+        db_engine = engine()
         
         # Check existing tables
-        if not check_existing_tables(engine):
+        if not check_existing_tables(db_engine):
             logger.debug("✅ Billing tables already exist, skipping creation")
             sys.exit(0)
         
