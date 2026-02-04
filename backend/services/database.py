@@ -24,6 +24,7 @@ from models.monitoring_models import Base as MonitoringBase
 from models.persona_models import Base as PersonaBase
 from models.subscription_models import Base as SubscriptionBase
 from models.user_business_info import Base as UserBusinessInfoBase
+from models.user_website import Base as UserWebsiteBase
 from models.content_asset_models import Base as ContentAssetBase
 from models.product_asset_models import Base as ProductAssetBase
 # Additional monitoring models (use EnhancedStrategyBase)
@@ -232,6 +233,7 @@ This is intentional - we no longer support SQLite or single database setups.
             SEOAnalysisBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             SubscriptionBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             UserBusinessInfoBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+            UserWebsiteBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             ContentAssetBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             ProductAssetBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             
