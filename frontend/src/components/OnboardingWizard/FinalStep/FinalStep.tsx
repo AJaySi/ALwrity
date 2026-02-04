@@ -7,19 +7,39 @@ import {
   Container,
   Fade,
   Zoom,
-  CircularProgress
+  CircularProgress,
+  Card,
+  CardContent,
+  Divider,
+  Grid
 } from '@mui/material';
 import { 
   Rocket,
   Star,
-  CheckCircle,
-  CreditCard,
-  Warning
+  CheckCircle
 } from '@mui/icons-material';
+<<<<<<< HEAD
 import OnboardingButton from '../common/OnboardingButton';
+import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, generateWebsitePreview, deployWebsite, setCurrentStep } from '../../../api/onboarding';
+import { SetupSummary, CapabilitiesOverview } from './components';
+import { FinalStepProps, OnboardingData, Capability } from './types';
+import { onboardingCache } from '../../../services/onboardingCache';
+=======
 import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, setCurrentStep } from '../../../api/onboarding';
 import { SetupSummary, CapabilitiesOverview } from './components';
 import { FinalStepProps, OnboardingData, Capability } from './types';
+import ImageGeneratorModal from '../../ImageGen/ImageGeneratorModal';
+import { onboardingCache, PageImages, WebsiteIntakeCache } from '../../../services/onboardingCache';
+
+type PageKey = keyof PageImages;
+
+const pageDefinitions: Array<{ key: PageKey; label: string; goal: string }> = [
+  { key: 'home', label: 'Home', goal: 'Introduce the brand and primary value proposition.' },
+  { key: 'about', label: 'About', goal: 'Share the brand story, mission, and credibility.' },
+  { key: 'contact', label: 'Contact', goal: 'Encourage visitors to reach out or request more info.' },
+  { key: 'products', label: 'Products', goal: 'Highlight featured offerings and benefits.' }
+];
+>>>>>>> main
 
 const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }) => {
   const [loading, setLoading] = useState(false);
@@ -28,8 +48,15 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({
     apiKeys: {}
   });
+  const [previewData, setPreviewData] = useState<{ previewHtml?: string; previewUrl?: string } | null>(null);
+  const [deploying, setDeploying] = useState(false);
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [deploySuccess, setDeploySuccess] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>('summary');
   const [validationStatus, setValidationStatus] = useState<{isValid: boolean, missingSteps: string[]} | null>(null);
+  const [pageImages, setPageImages] = useState<PageImages>({});
+  const [websiteIntake, setWebsiteIntake] = useState<WebsiteIntakeCache | null>(null);
+  const [imageModalState, setImageModalState] = useState<{ open: boolean; page?: PageKey }>({ open: false });
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -40,6 +67,16 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
     // Always attempt to load data once on mount
     loadOnboardingData();
   }, [updateHeaderContent]);
+
+  useEffect(() => {
+    const cachedIntake = onboardingCache.getStepData(2) as WebsiteIntakeCache | undefined;
+    if (cachedIntake) {
+      setWebsiteIntake(cachedIntake);
+      if (cachedIntake.page_images) {
+        setPageImages(cachedIntake.page_images);
+      }
+    }
+  }, []);
 
   // Remove the DOM manipulation approach - we'll use React's built-in event handling
 
@@ -79,6 +116,17 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
       };
       
       setOnboardingData(newOnboardingData);
+
+      const cachedStep2 = onboardingCache.getStepData(2);
+      if (cachedStep2?.websiteIntake) {
+        const previewResponse = await generateWebsitePreview(cachedStep2.websiteIntake);
+        if (previewResponse?.preview_html) {
+          setPreviewData({
+            previewHtml: previewResponse.preview_html,
+            previewUrl: previewResponse.preview_url
+          });
+        }
+      }
       
       // Validate completion status after data is loaded
       console.log('FinalStep: Data loaded, running validation...');
@@ -188,6 +236,44 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
 
   const validateOnboardingCompletion = async (): Promise<{isValid: boolean, missingSteps: string[]}> => {
     return validateOnboardingCompletionWithData(onboardingData);
+  };
+
+  const buildDefaultPrompt = (page: PageKey): string => {
+    const businessInfo = websiteIntake?.businessInfo || {};
+    const analysis = websiteIntake?.analysis || {};
+    const websiteUrl = websiteIntake?.website || onboardingData.websiteUrl;
+    const rawBusinessName =
+      businessInfo.business_name ||
+      businessInfo.company_name ||
+      businessInfo.brand_name ||
+      analysis?.brand_analysis?.brand_name ||
+      analysis?.recommended_settings?.brand_alignment;
+    const businessName = rawBusinessName || (websiteUrl ? websiteUrl.replace(/^https?:\/\//, '').split('/')[0] : 'your business');
+    const offerings = [
+      businessInfo.business_description,
+      businessInfo.business_goals,
+      analysis?.content_type?.purpose,
+      analysis?.content_strategy
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const audience = businessInfo.target_audience || analysis?.target_audience?.demographics?.join(', ') || 'prospective customers';
+    const industry = businessInfo.industry || analysis?.target_audience?.industry_focus || 'your industry';
+    const pageGoal = pageDefinitions.find((item) => item.key === page)?.goal || 'Highlight the brand.';
+
+    return `Hero image for ${businessName}'s ${page} page. Goal: ${pageGoal} Offerings: ${offerings || 'core products and services'}. Audience: ${audience}. Industry: ${industry}.`;
+  };
+
+  const normalizeImageSource = (imageBase64?: string) => {
+    if (!imageBase64) return '';
+    return imageBase64.startsWith('data:') ? imageBase64 : `data:image/png;base64,${imageBase64}`;
+  };
+
+  const handlePageImageGenerated = (imageBase64: string) => {
+    if (!imageModalState.page) return;
+    const updatedImages: PageImages = { ...pageImages, [imageModalState.page]: imageBase64 };
+    setPageImages(updatedImages);
+    onboardingCache.saveStepData(2, { page_images: updatedImages });
   };
 
   const handleLaunch = async () => {
@@ -349,6 +435,19 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
   return (
     <Fade in={true} timeout={500}>
       <Container maxWidth="lg" sx={{ py: 2 }}>
+        {imageModalState.open && imageModalState.page && (
+          <ImageGeneratorModal
+            isOpen={imageModalState.open}
+            onClose={() => setImageModalState({ open: false })}
+            defaultPrompt={buildDefaultPrompt(imageModalState.page)}
+            context={{
+              title: `${pageDefinitions.find((item) => item.key === imageModalState.page)?.label || 'Page'} Image`,
+              page: imageModalState.page,
+              intake: websiteIntake
+            }}
+            onImageGenerated={handlePageImageGenerated}
+          />
+        )}
         {/* Loading State */}
         {dataLoading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
@@ -375,8 +474,146 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
               setExpandedSection={setExpandedSection}
             />
 
+            <Card sx={{ mb: 4 }}>
+              <CardContent>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+                  Website Page Images
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Generate page-specific imagery for your website. Each image is saved with your onboarding intake.
+                </Typography>
+                <Divider sx={{ mb: 3 }} />
+                <Grid container spacing={3}>
+                  {pageDefinitions.map((page) => {
+                    const imageBase64 = pageImages[page.key];
+                    return (
+                      <Grid item xs={12} md={6} key={page.key}>
+                        <Box
+                          sx={{
+                            border: '1px solid #e5e7eb',
+                            borderRadius: 2,
+                            p: 2,
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Box>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                                {page.label} Page
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {page.goal}
+                              </Typography>
+                            </Box>
+                            <Button
+                              variant="outlined"
+                              onClick={() => setImageModalState({ open: true, page: page.key })}
+                            >
+                              Generate Image
+                            </Button>
+                          </Box>
+                          {imageBase64 ? (
+                            <Box
+                              component="img"
+                              src={normalizeImageSource(imageBase64)}
+                              alt={`${page.label} page image preview`}
+                              sx={{
+                                width: '100%',
+                                maxHeight: 240,
+                                objectFit: 'cover',
+                                borderRadius: 2,
+                                border: '1px solid #e5e7eb'
+                              }}
+                            />
+                          ) : (
+                            <Box
+                              sx={{
+                                border: '1px dashed #cbd5f5',
+                                borderRadius: 2,
+                                p: 3,
+                                textAlign: 'center',
+                                color: 'text.secondary'
+                              }}
+                            >
+                              <Typography variant="body2">No image generated yet.</Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </CardContent>
+            </Card>
+
             {/* Capabilities Overview */}
             <CapabilitiesOverview capabilities={capabilities} />
+
+            {previewData?.previewHtml && (
+              <Box sx={{ mt: 4, mb: 4 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Your AI website preview
+                </Typography>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  This is a generated preview based on your onboarding inputs. We’ll keep improving it as you continue.
+                </Alert>
+                <Box sx={{ border: '1px solid #E5E7EB', borderRadius: 2, overflow: 'hidden', mb: 2 }}>
+                  <iframe
+                    title="Website Preview"
+                    srcDoc={previewData.previewHtml}
+                    style={{ width: '100%', height: '480px', border: 'none' }}
+                  />
+                </Box>
+                {previewData.previewUrl && (
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    href={previewData.previewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open preview in new tab
+                  </Button>
+                )}
+                <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={async () => {
+                      setDeployError(null);
+                      setDeploySuccess(null);
+                      setDeploying(true);
+                      try {
+                        const cachedStep2 = onboardingCache.getStepData(2);
+                        const response = await deployWebsite(cachedStep2?.websiteIntake || {});
+                        setDeploySuccess(response?.live_url || 'Deployment started');
+                      } catch (err) {
+                        console.error('Deploy failed', err);
+                        setDeployError('Deployment failed. Please try again.');
+                      } finally {
+                        setDeploying(false);
+                      }
+                    }}
+                    disabled={deploying}
+                  >
+                    {deploying ? 'Deploying...' : 'Deploy website'}
+                  </Button>
+                  {deploySuccess && (
+                    <Typography variant="body2" color="success.main">
+                      Live URL: {deploySuccess}
+                    </Typography>
+                  )}
+                </Box>
+                {deployError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {deployError}
+                  </Alert>
+                )}
+              </Box>
+            )}
 
             {/* Missing Requirements Warning */}
             {missingRequirements.length > 0 && (

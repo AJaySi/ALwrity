@@ -1,51 +1,42 @@
-from __future__ import annotations
+"""
+Website Automation Service
+Renders HTML pages and injects generated page imagery.
+"""
 
-from html import escape
-from typing import Iterable
+from typing import Any, Dict
+import re
 
 
 class WebsiteAutomationService:
-    def _render_shop_assets_html(self, product_assets: Iterable[object]) -> str:
-        if not product_assets:
-            return ""
+    """Service for rendering website pages with optional page imagery."""
 
-        rendered_assets: list[str] = []
-        for asset in product_assets:
-            url, alt_text, caption = self._normalize_asset(asset)
-            if not url:
-                continue
-            img_tag = (
-                f'<a href="{escape(url)}" target="_blank" rel="noopener noreferrer">'
-                f'<img src="{escape(url)}" alt="{escape(alt_text)}" loading="lazy" />'
-                "</a>"
+    def _render_page_html(self, page: str, content_html: str, site_brief: Dict[str, Any]) -> str:
+        """Render HTML for a page and inject an image if available."""
+        page_images = (site_brief or {}).get("page_images") or {}
+        image_base64 = page_images.get(page)
+        html = content_html or ""
+
+        if not image_base64:
+            return html
+
+        image_src = image_base64 if image_base64.startswith("data:") else f"data:image/png;base64,{image_base64}"
+        img_tag = (
+            f'<img src="{image_src}" alt="{page} page image" '
+            'style="width:100%;max-height:420px;object-fit:cover;border-radius:12px;" />'
+        )
+        html = f"{img_tag}\n{html}"
+        return self._inject_og_image(html, image_src)
+
+    def _inject_og_image(self, html: str, image_src: str) -> str:
+        """Ensure og:image is set to the generated page image."""
+        og_tag = f'<meta property="og:image" content="{image_src}" />'
+        if "property=\"og:image\"" in html:
+            return re.sub(
+                r'<meta\\s+property=\"og:image\"\\s+content=\"[^\"]*\"\\s*/?>',
+                og_tag,
+                html,
+                flags=re.IGNORECASE,
             )
-            if caption:
-                rendered_assets.append(
-                    f'<figure class="product-asset">{img_tag}'
-                    f"<figcaption>{escape(caption)}</figcaption>"
-                    "</figure>"
-                )
-            else:
-                rendered_assets.append(f'<figure class="product-asset">{img_tag}</figure>')
-
-        if not rendered_assets:
-            return ""
-
-        return '<div class="shop-assets">' + "".join(rendered_assets) + "</div>"
-
-    @staticmethod
-    def _normalize_asset(asset: object) -> tuple[str, str, str | None]:
-        if isinstance(asset, str):
-            return asset, "Product image", None
-        if isinstance(asset, dict):
-            url = (
-                asset.get("url")
-                or asset.get("asset_url")
-                or asset.get("image_url")
-                or asset.get("image")
-                or ""
-            )
-            alt_text = asset.get("alt") or asset.get("title") or asset.get("name") or "Product image"
-            caption = asset.get("caption") or asset.get("label")
-            return url, alt_text, caption
-        return "", "Product image", None
+        if "</head>" in html:
+            return html.replace("</head>", f"  {og_tag}\n</head>")
+        return f"{og_tag}\n{html}"
