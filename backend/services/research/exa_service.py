@@ -720,7 +720,101 @@ class ExaService:
             ]
         
         return insights
-    
+
+    async def search_with_contents(
+        self,
+        query: str,
+        user_id: str,
+        search_type: str = "auto",
+        category: Optional[str] = None,
+        num_results: int = 10,
+        include_domains: Optional[List[str]] = None,
+        exclude_domains: Optional[List[str]] = None,
+        include_text: Optional[List[str]] = None,
+        exclude_text: Optional[List[str]] = None,
+        summary_query: Optional[str] = None,
+        highlights_query: Optional[str] = None,
+        max_age_hours: Optional[int] = None,
+        user_location: Optional[str] = None,
+        text_max_characters: int = 1500,
+        context_max_characters: int = 10000
+    ) -> Dict[str, Any]:
+        """
+        Execute an Exa /search query with contents, aligned with Exa Search API.
+
+        Reference: https://exa.ai/docs/llms.txt (Search endpoint)
+        """
+        try:
+            self._try_initialize()
+            if not self.enabled:
+                raise ValueError("Exa Service is not enabled - API key missing")
+
+            from services.subscription.preflight_validator import validate_exa_research_operations
+            from services.subscription import PricingService
+            from services.database import get_db
+            from services.blog_writer.research.exa_provider import ExaResearchProvider
+
+            db = next(get_db())
+            try:
+                pricing_service = PricingService(db)
+                validate_exa_research_operations(pricing_service, user_id)
+            finally:
+                db.close()
+
+            sanitized_include_text = include_text[:1] if include_text else None
+            sanitized_exclude_text = exclude_text[:1] if exclude_text else None
+            if category in {"company", "people"}:
+                exclude_domains = None
+                sanitized_exclude_text = None
+                sanitized_include_text = None
+
+            contents_payload = {
+                "text": {"maxCharacters": text_max_characters},
+                "highlights": {
+                    "numSentences": 1,
+                    "highlightsPerUrl": 2,
+                    "query": highlights_query or "Key information"
+                },
+                "summary": {"query": summary_query or "Summarize the key facts"},
+                "context": {"maxCharacters": context_max_characters}
+            }
+
+            search_payload = {
+                "query": query,
+                "type": search_type,
+                "category": category,
+                "numResults": min(num_results, 100),
+                "includeDomains": include_domains,
+                "excludeDomains": exclude_domains,
+                "includeText": sanitized_include_text,
+                "excludeText": sanitized_exclude_text,
+                "userLocation": user_location,
+                "maxAgeHours": max_age_hours,
+                "contents": contents_payload,
+            }
+
+            search_func = getattr(self.exa, "search_and_contents", None) or getattr(self.exa, "search", None)
+            if not search_func:
+                raise RuntimeError("Exa SDK does not support search methods")
+
+            search_result = search_func(**{k: v for k, v in search_payload.items() if v is not None})
+
+            results = getattr(search_result, "results", [])
+            cost_total = getattr(getattr(search_result, "cost_dollars", None), "total", 0)
+            ExaResearchProvider().track_exa_usage(user_id, cost_total or 0.005)
+            return {
+                "success": True,
+                "query": query,
+                "results": results,
+                "total_results": len(results),
+                "request_id": getattr(search_result, "request_id", None),
+                "search_type": getattr(search_result, "search_type", search_type),
+                "cost": cost_total,
+            }
+        except Exception as e:
+            logger.error(f"Error in Exa search_with_contents: {str(e)}")
+            return {"success": False, "error": str(e)}
+
     def health_check(self) -> Dict[str, Any]:
         """
         Check the health of the Exa service.

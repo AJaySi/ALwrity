@@ -12,6 +12,7 @@ interface OnboardingCacheData {
     website?: string;
     analysis?: any;
     businessInfo?: any;
+    websiteIntake?: any;
     hasWebsite?: boolean;
   };
   step3?: {

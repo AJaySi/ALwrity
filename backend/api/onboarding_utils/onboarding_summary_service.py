@@ -13,6 +13,7 @@ from services.onboarding.database_service import OnboardingDatabaseService
 from services.website_analysis_service import WebsiteAnalysisService
 from services.research_preferences_service import ResearchPreferencesService
 from services.persona_analysis_service import PersonaAnalysisService
+from services.user_website_service import user_website_service
 
 class OnboardingSummaryService:
     """Service for handling onboarding summary generation with user isolation."""
@@ -50,9 +51,13 @@ class OnboardingSummaryService:
             # Determine capabilities
             capabilities = self._determine_capabilities(api_keys, website_analysis, research_preferences, personalization_settings, persona_readiness)
             
+            user_website = user_website_service.get_user_website_by_user(self.user_id) if self.user_id else None
+
             return {
                 "api_keys": api_keys,
                 "website_url": website_analysis.get('website_url') if website_analysis else None,
+                "preview_url": user_website.preview_url if user_website else None,
+                "live_url": user_website.netlify_site_url if user_website else None,
                 "style_analysis": website_analysis.get('style_analysis') if website_analysis else None,
                 "research_preferences": research_preferences,
                 "personalization_settings": personalization_settings,
