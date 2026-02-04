@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Button, TextField, Typography, Card, CardContent, CircularProgress, Alert, MenuItem, Divider } from '@mui/material';
 import { ArrowBack as ArrowBackIcon, Save as SaveIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { businessInfoApi, BusinessInfo } from '../../api/businessInfo';
-import { onboardingCache } from '../../services/onboardingCache';
+import { onboardingCache, WebsiteIntakeCache } from '../../services/onboardingCache';
 
 interface BusinessDescriptionStepProps {
   onBack: () => void;
@@ -82,8 +82,12 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
 
   useEffect(() => {
     console.log('🔄 BusinessDescriptionStep mounted. Loading cached data...');
+<<<<<<< HEAD
     const cachedData = onboardingCache.getStepData(2)?.businessInfo;
     const cachedIntake = onboardingCache.getStepData(2)?.websiteIntake;
+=======
+    const cachedData = (onboardingCache.getStepData(2) as WebsiteIntakeCache | undefined)?.businessInfo;
+>>>>>>> main
     if (cachedData) {
       console.log('✅ Loaded cached business info:', cachedData);
     } else {
