@@ -23,7 +23,6 @@ interface OnboardingCacheData {
     apiKeys?: Record<string, string>;
     providers?: string[];
   };
-<<<<<<< HEAD
   step2?: {
     website?: string;
     analysis?: any;
@@ -31,9 +30,6 @@ interface OnboardingCacheData {
     websiteIntake?: any;
     hasWebsite?: boolean;
   };
-=======
-  step2?: WebsiteIntakeCache;
->>>>>>> main
   step3?: {
     researchPreferences?: any;
   };
