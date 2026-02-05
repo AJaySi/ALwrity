@@ -7,12 +7,15 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
-from loguru import logger
+from utils.logger_utils import get_service_logger
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
 # Load environment variables to ensure they're available
 load_dotenv()
+
+# Use service logger for consistent logging
+logger = get_service_logger("database")
 
 # Import models
 from models.onboarding import Base as OnboardingBase
