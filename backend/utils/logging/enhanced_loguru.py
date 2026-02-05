@@ -29,14 +29,15 @@ class EnhancedLoguruLogger:
     - Multi-threaded async support
     """
     
-    def = self, service_name: str, environment: str = "development"):
+    def __init__(self, service_name: str, environment: str = "development"):
         self.service_name = service_name
         self.environment = environment
     
-    def self():
+    def setup_enhanced_logging(self):
         """Setup enhanced Loguru configuration with advanced features."""
         try:
-            # Remove default handler to avoid duplicates = logger.)
+            # Remove default handler to avoid duplicates
+            logger.remove()
             
             # Setup console handler with enhanced formatting
             if self.environment == "production":
@@ -62,16 +63,18 @@ class EnhancedLoguruLogger:
                     diagnose=True
                 )
             
-            # Setup structured file handlers = self.)
+            # Setup structured file handlers
+            self.setup_structured_logging()
             
-            # Setup performance monitoring = self.)
+            # Setup performance monitoring
+            self.setup_performance_monitoring()
             
             logger.info(f"Enhanced Loguru logger configured for {self.service_name}")
             
         except Exception as e:
             print(f"Failed to configure enhanced logger: {e}")
     
-    def self():
+    def setup_structured_logging(self):
         """Setup structured file handlers."""
         # Structured logs (JSON format)
         logger.add(
@@ -85,9 +88,9 @@ class EnhancedLoguruLogger:
             filter=lambda record: "enhanced_logging" in record["extra"]
         )
     
-    def self():
+    def setup_performance_monitoring(self):
         """Setup performance monitoring with lazy evaluation."""
-        def record():
+        def performance_patcher(record):
             """Add performance monitoring with lazy evaluation."""
             # Lazy evaluation of performance metrics
             if "execution_time_ms" in record["extra"]:
@@ -99,11 +102,11 @@ class EnhancedLoguruLogger:
         
         logger.patch(performance_patcher)
     
-    def = self, **context):
+    def bind_request_context(self, **context):
         """Bind request context for structured logging."""
-        return = logger.**context, enhanced_logging=True)
+        return logger.bind(**context, enhanced_logging=True)
     
-    def = self, event_type: str, data: Dict[str, Any]):
+    def log_structured_event(self, event_type: str, data: Dict[str, Any]):
         """Log structured event with JSON serialization."""
         structured_data = {
             "event_type": event_type,
@@ -116,7 +119,7 @@ class EnhancedLoguruLogger:
         bound_logger.info(f"Structured Event: {event_type}")
     
     @asynccontextmanager
-    async def = self, operation_name: str):
+    async def async_operation_logger(self, operation_name: str):
         """Context manager for async operation logging."""
         start_time = datetime.now()
         
@@ -133,11 +136,12 @@ class EnhancedLoguruLogger:
             bound_logger.error(f"Async operation failed: {operation_name}", error=str(e))
             raise
         finally:
-            duration = (datetime.now() - start_time).total_seconds() * 1000 = bound_logger.f"Completed async operation: {operation_name} ({duration:.2f}ms)")
+            duration = (datetime.now() - start_time).total_seconds() * 1000
+            bound_logger.info(f"Completed async operation: {operation_name} ({duration:.2f}ms)")
     
-    def = self, sink_path: str):
+    def create_performance_sink(self, sink_path: str):
         """Create custom performance sink."""
-        def record():
+        def performance_filter(record):
             return "performance" in record["extra"].get("log_type", "")
         
         logger.add(
@@ -149,7 +153,7 @@ class EnhancedLoguruLogger:
             filter=performance_filter
         )
     
-    def = self) -> Dict[str, Any]:
+    def get_logger_stats(self) -> Dict[str, Any]:
         """Get logger statistics and performance metrics."""
         return {
             "service": self.service_name,

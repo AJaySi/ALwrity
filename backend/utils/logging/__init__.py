@@ -27,46 +27,18 @@ Architecture:
 - middleware_logging.py: Middleware-specific logging
 """
 
-# Import core components
-from .core import (
-    UnifiedLogger,
-    get_logger,
-    get_service_logger,
-    ContextLogger,
-    PerformanceLogger,
-    StructuredLogger,
-    safe_logger_config,
-    log_execution_time,
-    save_to_file,
-    performance_logger,
-    structured_logger
-)
+# Simplified logging system - use working components only
+from ..logger_utils import get_service_logger
 
-# Import enhanced features
-from .enhanced_loguru import EnhancedLoguruLogger
+# Import enhanced features that work
 from .middleware_logging import log_api_call, MiddlewareLogger
 
 # Re-export for backward compatibility
 __all__ = [
-    # Core functions
-    'get_logger',
+    # Core functions from utils.logger_utils
     'get_service_logger',
-    'safe_logger_config',
-    'log_execution_time',
-    
-    # Core classes
-    'UnifiedLogger',
-    'ContextLogger',
-    'PerformanceLogger',
-    'StructuredLogger',
-    'EnhancedLoguruLogger',
-    'MiddlewareLogger',
-    
-    # Global instances
-    'performance_logger',
-    'structured_logger',
     
     # Utility functions
-    'save_to_file',
-    'log_api_call'
+    'log_api_call',
+    'MiddlewareLogger'
 ]

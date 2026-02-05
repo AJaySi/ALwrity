@@ -30,7 +30,7 @@ class UnifiedLogger:
     - Structured file logging for analysis
     """
     
-    def = self, service_name: str, db_session=None):
+    def __init__(self, service_name: str, db_session=None):
         """
         Initialize unified logger with Loguru integration.
         

@@ -2,7 +2,6 @@
 Middleware Logging - Structured API and Performance Logging
 
 This module provides middleware-specific logging functionality for API calls,
-performance monitoring, and structured file logging.
 """
 
 import json
@@ -27,7 +26,32 @@ from .unified_logger import (
 )
 
 
-def = func: Callable) -> Callable:
+def log_api_call(func: Callable) -> Callable:
+    """
+    Simple decorator for logging API calls.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.info(f"API call: {func.__name__}")
+        return func(*args, **kwargs)
+    return wrapper
+
+
+class MiddlewareLogger:
+    """Simple middleware logger class."""
+    
+    def __init__(self, service_name: str):
+        self.service_name = service_name
+        self.logger = logger.bind(service=service_name)
+    
+    def info(self, message: str):
+        self.logger.info(message)
+    
+    def error(self, message: str):
+        self.logger.error(message)
+
+
+def log_api_call(func: Callable) -> Callable:
     """
     Decorator for logging API calls with performance tracking.
     
