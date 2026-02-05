@@ -204,10 +204,10 @@ class DatabaseSetup:
         try:
             sys.path.append(str(Path(__file__).parent.parent))
             from scripts.create_billing_tables import create_billing_tables, check_existing_tables
-            from services.database import engine
+            from services.database import get_user_data_engine
             
             # Check if tables already exist
-            if check_existing_tables(engine):
+            if check_existing_tables(get_user_data_engine()):
                 logger.debug("✅ Billing tables already exist")
                 return True
             
