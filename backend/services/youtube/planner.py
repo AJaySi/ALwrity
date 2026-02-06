@@ -11,7 +11,7 @@ from fastapi import HTTPException
 import os
 
 from services.llm_providers.main_text_generation import llm_text_gen
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("youtube.planner")
 

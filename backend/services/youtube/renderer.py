@@ -18,7 +18,7 @@ from services.story_writer.video_generation_service import StoryVideoGenerationS
 from services.subscription import PricingService
 from services.subscription.preflight_validator import validate_scene_animation_operation
 from services.llm_providers.main_video_generation import track_video_usage
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from utils.asset_tracker import save_asset_to_library
 
 logger = get_service_logger("youtube.renderer")

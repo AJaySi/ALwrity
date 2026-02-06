@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from services.image_studio.transform_service import TransformStudioService, TransformImageToVideoRequest
 from services.image_studio.studio_manager import ImageStudioManager
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from utils.asset_tracker import save_asset_to_library
 from services.database import SessionLocal
 

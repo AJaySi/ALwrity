@@ -12,7 +12,7 @@ import hashlib
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask
 from models.onboarding import OnboardingSession
 from services.onboarding.database_service import OnboardingDatabaseService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("website_analysis_monitoring")
 
