@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from loguru import logger
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from services.onboarding.data_service import OnboardingDataService
 from services.calendar_generation_datasource_framework.data_processing.comprehensive_user_data import ComprehensiveUserDataProcessor
 

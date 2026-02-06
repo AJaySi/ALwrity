@@ -27,7 +27,7 @@ def _raise_postgresql_required():
     """
     )
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
