@@ -23,7 +23,7 @@ from ..wavespeed.client import WaveSpeedClient
 from ..llm_providers.main_video_generation import ai_video_generate
 from ..subscription.pricing_service import PricingService
 from ..database import get_db
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from utils.file_storage import save_file_safely, sanitize_filename
 from .video_processors import (
     convert_format,

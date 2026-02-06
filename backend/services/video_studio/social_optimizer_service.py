@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from .platform_specs import Platform, PlatformSpec, get_platform_spec, get_platform_specs
 from .video_processors import (
     convert_aspect_ratio,
