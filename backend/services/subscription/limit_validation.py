@@ -7,7 +7,8 @@ Extracted from pricing_service.py for better modularity.
 from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta
 from sqlalchemy import text
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("subscription_limit_validation", migration_mode=True)
 
 from models.subscription_models import (
     UserSubscription, UsageSummary, SubscriptionPlan, 

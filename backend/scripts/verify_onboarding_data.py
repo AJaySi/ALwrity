@@ -17,7 +17,8 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("onboarding_data_verification", migration_mode=True)
 from sqlalchemy import inspect, text
 from typing import Optional
 import json

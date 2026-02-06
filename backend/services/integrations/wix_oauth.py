@@ -7,7 +7,8 @@ import os
 import sqlite3
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("wix_oauth_integration", migration_mode=True)
 
 
 class WixOAuthService:
