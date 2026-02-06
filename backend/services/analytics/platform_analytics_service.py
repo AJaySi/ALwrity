@@ -5,7 +5,8 @@ Streamlined orchestrator service for platform analytics with modular architectur
 """
 
 from typing import Dict, Any, List, Optional
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("platform_analytics", migration_mode=True)
 
 from .models.analytics_data import AnalyticsData
 from .models.platform_types import PlatformType, DEFAULT_PLATFORMS
@@ -56,7 +57,7 @@ class PlatformAnalyticsService:
         if platforms is None:
             platforms = [p.value for p in DEFAULT_PLATFORMS]
         
-        logger.info(f"Getting comprehensive analytics for user {user_id}, platforms: {platforms}")
+        logger.log_performance("Getting comprehensive analytics for user {user_id}, platforms: {platforms}", 100, operation_type="analytics", service="analytics")
         analytics_data = {}
         
         for platform_name in platforms:

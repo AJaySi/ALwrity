@@ -9,7 +9,8 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, Callable
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("background_jobs", migration_mode=True)
 from enum import Enum
 import json
 
@@ -82,13 +83,13 @@ class BackgroundJobService:
         job = BackgroundJob(job_id, job_type, user_id, data)
         self.jobs[job_id] = job
         
-        logger.info(f"Created background job: {job_id} for user {user_id}")
+        logger.info("Created background job: {job_id} for user {user_id}", job_type="background", service="background_jobs", operation_type="job_execution")
         
         # Start the job if we have capacity
         if len(self.workers) < self.max_concurrent_jobs:
             self._start_job(job_id)
         else:
-            logger.info(f"Job {job_id} queued - max concurrent jobs reached")
+            logger.info("Job {job_id} queued - max concurrent jobs reached", job_type="background", service="background_jobs", operation_type="job_execution")
         
         return job_id
     
@@ -117,7 +118,7 @@ class BackgroundJobService:
         job.message = "Job started"
         
         worker.start()
-        logger.info(f"Started background job: {job_id}")
+        logger.info("Started background job: {job_id}", job_type="background", service="background_jobs", operation_type="job_execution")
     
     def _run_job(self, job_id: str):
         """Run a background job in a separate thread"""
@@ -128,7 +129,7 @@ class BackgroundJobService:
             if not handler:
                 raise ValueError(f"No handler registered for job type: {job.job_type}")
             
-            logger.info(f"Running job {job_id}: {job.job_type}")
+            logger.info("Running job {job_id}: {job.job_type}", job_type="background", service="background_jobs", operation_type="job_execution")
             
             # Run the job handler
             result = handler(job)
@@ -140,7 +141,7 @@ class BackgroundJobService:
             job.progress = 100
             job.message = "Job completed successfully"
             
-            logger.info(f"Completed job {job_id} in {(job.completed_at - job.started_at).total_seconds():.2f}s")
+            logger.info("Completed job {job_id} in {(job.completed_at - job.started_at)", job_type="background", service="background_jobs", operation_type="job_execution").total_seconds():.2f}s")
             
         except Exception as e:
             logger.error(f"Job {job_id} failed: {e}")
@@ -209,7 +210,7 @@ class BackgroundJobService:
         if job.status == JobStatus.PENDING:
             job.status = JobStatus.CANCELLED
             job.message = "Job cancelled"
-            logger.info(f"Cancelled job {job_id}")
+            logger.info("Cancelled job {job_id}", job_type="background", service="background_jobs", operation_type="job_execution")
             return True
         
         return False
@@ -228,7 +229,7 @@ class BackgroundJobService:
             del self.jobs[job_id]
         
         if jobs_to_remove:
-            logger.info(f"Cleaned up {len(jobs_to_remove)} old jobs")
+            logger.info("Cleaned up {len(jobs_to_remove)", job_type="background", service="background_jobs", operation_type="job_execution")} old jobs")
     
     # Job Handlers
     

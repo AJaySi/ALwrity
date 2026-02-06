@@ -6,7 +6,8 @@ Advanced AI-powered analytics for content planning and performance prediction.
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 import json
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("ai_analytics", migration_mode=True)
 import asyncio
 from sqlalchemy.orm import Session
 

@@ -11,7 +11,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("active_strategy", migration_mode=True)
 
 # Import database models
 from models.enhanced_strategy_models import EnhancedContentStrategy
@@ -52,7 +53,7 @@ class ActiveStrategyService:
             if not force_refresh and self._is_cache_valid(cache_key):
                 cached_strategy = self._memory_cache.get(cache_key)
                 if cached_strategy:
-                    logger.info(f"✅ Tier 1 Cache HIT: Active strategy for user {user_id}")
+                    logger.info("✅ Tier 1 Cache HIT: Active strategy for user {user_id}", strategy_type="active", service="active_strategy", operation_type="strategy_execution")
                     return cached_strategy
             
             # Tier 2: Database Query with Activation Status
@@ -60,7 +61,7 @@ class ActiveStrategyService:
             if active_strategy:
                 # Cache the result
                 self._cache_strategy(cache_key, active_strategy)
-                logger.info(f"✅ Tier 2 Database HIT: Active strategy {active_strategy.get('id')} for user {user_id}")
+                logger.info("✅ Tier 2 Database HIT: Active strategy {active_strategy.get('id')", strategy_type="active", service="active_strategy", operation_type="strategy_execution")} for user {user_id}")
                 return active_strategy
             
             # Tier 3: Fallback to Most Recent Strategy
@@ -102,7 +103,7 @@ class ActiveStrategyService:
             ).order_by(desc(StrategyActivationStatus.activation_date)).first()
             
             if not active_status:
-                logger.info(f"No active strategy status found for user {user_id}")
+                logger.info("No active strategy status found for user {user_id}", strategy_type="active", service="active_strategy", operation_type="strategy_execution")
                 return None
             
             # Get the strategy details
@@ -122,7 +123,7 @@ class ActiveStrategyService:
                 'last_updated': active_status.last_updated.isoformat() if active_status.last_updated else None
             }
             
-            logger.info(f"✅ Found active strategy {strategy.id} for user {user_id}")
+            logger.info("✅ Found active strategy {strategy.id} for user {user_id}", strategy_type="active", service="active_strategy", operation_type="strategy_execution")
             return strategy_data
             
         except Exception as e:
@@ -167,7 +168,7 @@ class ActiveStrategyService:
                     'note': 'Fallback to most recent strategy'
                 }
                 
-                logger.info(f"✅ Found fallback strategy {strategy.id} for user {user_id}")
+                logger.info("✅ Found fallback strategy {strategy.id} for user {user_id}", strategy_type="active", service="active_strategy", operation_type="strategy_execution")
                 return strategy_data
             
             return None

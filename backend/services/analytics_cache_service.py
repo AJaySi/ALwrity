@@ -7,7 +7,8 @@ import time
 import json
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("analytics_cache", migration_mode=True)
 import hashlib
 
 
@@ -198,4 +199,4 @@ def cleanup_worker():
 # Start cleanup thread
 cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
 cleanup_thread.start()
-logger.info("Analytics cache cleanup thread started")
+logger.log_performance("Analytics cache cleanup thread started", 50, operation_type="cache", service="analytics_cache", cache_hit=True)
