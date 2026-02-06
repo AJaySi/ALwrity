@@ -5,7 +5,8 @@ Manages platform connection status checking and caching across all analytics pla
 """
 
 from typing import Dict, Any, List
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("analytics_connection_manager", migration_mode=True)
 
 from ..analytics_cache_service import analytics_cache
 from .handlers import (

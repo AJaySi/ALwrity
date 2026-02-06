@@ -7,7 +7,8 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from datetime import datetime, timedelta
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("ai_analysis_db_service", migration_mode=True)
 
 from models.content_planning import AIAnalysisResult, ContentStrategy
 from services.database import get_db_session

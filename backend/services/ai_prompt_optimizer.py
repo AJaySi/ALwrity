@@ -4,7 +4,8 @@ Advanced AI prompt optimization and management for content planning system.
 """
 
 from typing import Dict, Any, List, Optional
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("ai_prompt_optimizer", migration_mode=True)
 from datetime import datetime
 import json
 import re

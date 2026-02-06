@@ -5,7 +5,8 @@ Handles content strategy development, calendar management, and gap analysis.
 
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("content_planning_service", migration_mode=True)
 from datetime import datetime
 
 from services.database import get_db_session

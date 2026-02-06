@@ -6,7 +6,8 @@ Generates comprehensive summaries and aggregations of analytics data across plat
 
 from typing import Dict, Any, List
 from datetime import datetime
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("analytics_summary_generator", migration_mode=True)
 
 from .models.analytics_data import AnalyticsData
 from .models.platform_types import PlatformType
