@@ -10,7 +10,7 @@ from typing import Any, Dict, Literal, Optional
 from PIL import Image
 
 from services.stability_service import StabilityAIService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 
 logger = get_service_logger("image_studio.control")

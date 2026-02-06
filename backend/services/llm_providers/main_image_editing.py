@@ -9,7 +9,7 @@ from .image_generation import (
     ImageGenerationOptions,
     ImageGenerationResult,
 )
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 try:
     from huggingface_hub import InferenceClient

@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 import os
 import json
 from datetime import datetime
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from PIL import Image, ImageCms
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 
 logger = get_service_logger("image_studio.format_converter")
