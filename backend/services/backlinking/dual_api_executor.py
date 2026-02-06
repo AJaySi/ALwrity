@@ -7,7 +7,7 @@ query distribution based on API strengths and cost optimization.
 
 import asyncio
 from typing import Dict, List, Any, Optional
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 # Use service logger for consistent logging
 logger = get_service_logger("dual_api_executor")

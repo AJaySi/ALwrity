@@ -6,7 +6,7 @@ Service for creating and managing OAuth token monitoring tasks.
 from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 import os
 
 # Use service logger for consistent logging (WARNING level visible in production)

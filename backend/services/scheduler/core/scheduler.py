@@ -20,7 +20,7 @@ from .exception_handler import (
     TaskLoaderError, SchedulerConfigError
 )
 from services.database import get_db_session
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from ..utils.user_job_store import get_user_job_store_name
 from models.scheduler_models import SchedulerEventLog
 from .interval_manager import determine_optimal_interval, adjust_check_interval_if_needed
