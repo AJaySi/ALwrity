@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 
 from models.platform_insights_monitoring_models import PlatformInsightsTask
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("platform_insights_monitoring")
 

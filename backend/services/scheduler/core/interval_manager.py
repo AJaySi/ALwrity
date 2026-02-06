@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from services.database import get_db_session
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from models.scheduler_models import SchedulerEventLog
 
 if TYPE_CHECKING:
