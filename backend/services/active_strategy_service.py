@@ -61,7 +61,7 @@ class ActiveStrategyService:
             if active_strategy:
                 # Cache the result
                 self._cache_strategy(cache_key, active_strategy)
-                logger.info("✅ Tier 2 Database HIT: Active strategy {active_strategy.get('id')", strategy_type="active", service="active_strategy", operation_type="strategy_execution")} for user {user_id}")
+                logger.info(f"✅ Tier 2 Database HIT: Active strategy {active_strategy.get('id')} for user {user_id}", strategy_type="active", service="active_strategy", operation_type="strategy_execution")
                 return active_strategy
             
             # Tier 3: Fallback to Most Recent Strategy

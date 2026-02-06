@@ -9,8 +9,7 @@ import sqlite3
 import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from utils.logging import get_logger
-logger = get_logger("bing_oauth_integration", migration_mode=True)
+from loguru import logger
 import json
 from urllib.parse import quote
 from ..analytics_cache_service import analytics_cache

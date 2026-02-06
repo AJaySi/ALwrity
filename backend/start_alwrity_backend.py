@@ -158,7 +158,7 @@ def start_backend(enable_reload=False, production_mode=False):
         print("=" * 50)
         
         # Set up clean logging for end users
-        from logging_config import setup_clean_logging, get_uvicorn_log_level
+        from utils.logging import setup_clean_logging, get_uvicorn_log_level
         # Video stack preflight (diagnostics + version assert)
         try:
             from services.story_writer.video_preflight import (

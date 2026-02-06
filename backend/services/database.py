@@ -7,7 +7,7 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 

@@ -32,6 +32,8 @@ Architecture:
 # Core unified logging system
 from .core.unified_logger import get_logger as _get_unified_logger, get_service_logger as _get_service_logger
 from .enhanced_loguru import EnhancedLoguruLogger
+from .config import setup_clean_logging, get_uvicorn_log_level
+from .utils import safe_logger_config, get_service_logger as _get_legacy_service_logger
 
 # Migration support
 import os
@@ -56,7 +58,7 @@ def get_logger(service_name: str, migration_mode: bool = False):
     Main entry point with migration support.
     
     Args:
-        service_name: Name of the service
+        service_name: Name of service
         migration_mode: Whether to use unified logging system
         
     Returns:
@@ -75,7 +77,12 @@ def get_logger(service_name: str, migration_mode: bool = False):
 # Service logger function (backward compatibility)
 def get_service_logger(service_name: str, format_string: str = None):
     """Get service logger with backward compatibility."""
-    return _get_service_logger(service_name, None, format_string)
+    return _get_service_logger(service_name, format_string)
+
+# Legacy service logger (for gradual migration)
+def get_legacy_service_logger(service_name: str, format_string: str = None):
+    """Get legacy service logger for backward compatibility during migration."""
+    return _get_legacy_service_logger(service_name, format_string)
 
 # Enhanced features
 def get_enhanced_logger(service_name: str):
@@ -87,11 +94,17 @@ __all__ = [
     # Core functions
     'get_logger',
     'get_service_logger',
+    'get_legacy_service_logger',
     'get_enhanced_logger',
     
     # Migration support
     'get_migration_status',
     'log_migration_progress',
+    
+    # Configuration functions
+    'setup_clean_logging',
+    'get_uvicorn_log_level',
+    'safe_logger_config',
     
     # Enhanced classes
     'EnhancedLoguruLogger',

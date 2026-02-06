@@ -6,7 +6,7 @@ Handles database initialization and table creation.
 from typing import List, Tuple
 import sys
 from pathlib import Path
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 # Use service logger for consistent logging
 logger = get_service_logger("database_setup")
