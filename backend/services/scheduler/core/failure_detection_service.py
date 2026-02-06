@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from enum import Enum
 import json
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("failure_detection")
 

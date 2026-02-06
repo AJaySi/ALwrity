@@ -8,7 +8,7 @@ from loguru import logger
 from dataclasses import dataclass
 
 from services.llm_providers.main_video_generation import ai_video_generate
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from utils.asset_tracker import save_asset_to_library
 from services.database import SessionLocal
 
