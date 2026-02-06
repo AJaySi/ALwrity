@@ -5,7 +5,7 @@ Handles fetching user data from the onboarding database.
 
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from loguru import logger
+from utils.logging import get_logger\nlogger = get_logger("user_data_service", migration_mode=True)
 
 from models.onboarding import OnboardingSession, WebsiteAnalysis, APIKey, ResearchPreferences
 

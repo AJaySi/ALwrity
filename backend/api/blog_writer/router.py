@@ -8,7 +8,8 @@ content creation, SEO analysis, and publishing.
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("blog_writer", migration_mode=True)
 from middleware.auth_middleware import get_current_user
 from sqlalchemy.orm import Session
 from services.database import get_db as get_db_dependency

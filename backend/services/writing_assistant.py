@@ -3,7 +3,8 @@ import asyncio
 from typing import Any, Dict, List
 from dataclasses import dataclass
 import requests
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("writing_assistant", migration_mode=True)
 import time
 import random
 
