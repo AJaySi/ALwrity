@@ -4,6 +4,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import { CopilotKit } from "@copilotkit/react-core";
 import { ClerkProvider, useAuth } from '@clerk/clerk-react';
 import "@copilotkit/react-ui/styles.css";
+import { getFeatureFlag } from './utils/feature-flags';
 import Wizard from './components/OnboardingWizard/Wizard';
 import MainDashboard from './components/MainDashboard/MainDashboard';
 import SEODashboard from './components/SEODashboard/SEODashboard';
@@ -379,7 +380,19 @@ const TokenInstaller: React.FC = () => {
 const App: React.FC = () => {
   // React Hooks MUST be at the top before any conditionals
   const [loading, setLoading] = useState(true);
-  
+
+  // Performance monitoring (additive, no breaking changes)
+  useEffect(() => {
+    if (getFeatureFlag('performanceMonitoring')) {
+      console.log('🔍 Performance monitoring enabled');
+      console.log('🚀 Feature flags:', {
+        lazyLoading: getFeatureFlag('lazyLoading'),
+        performanceMonitoring: getFeatureFlag('performanceMonitoring'),
+        bundleOptimization: getFeatureFlag('bundleOptimization')
+      });
+    }
+  }, []);
+
   // Get CopilotKit key from localStorage or .env
   const [copilotApiKey, setCopilotApiKey] = useState(() => {
     const savedKey = localStorage.getItem('copilotkit_api_key');
