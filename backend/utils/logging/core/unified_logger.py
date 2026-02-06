@@ -22,7 +22,7 @@ class UnifiedLogger:
     Enhanced unified logger with Loguru integration and dashboard compatibility.
     
     This class provides:
-    - Loguru integration with = None, patch(), and)
+    - Loguru integration with bind(), patch(), and contextualize()
     - Unified log format with service context
     - Dashboard compatibility with SchedulerEventLog
     - Performance monitoring with automatic thresholds
@@ -41,14 +41,15 @@ class UnifiedLogger:
         self.service_name = service_name
         self.db_session = db_session
         
-        # Use Loguru's = None to add service context to all log records
+        # Use Loguru's bind() to add service context to all log records
         self.logger = logger.bind(service=service_name)
         
-        # Apply performance monitoring patch to this logger instance = self.)
+        # Apply performance monitoring patch to this logger instance
+        self.apply_performance_patch()
     
-    def self():
+    def apply_performance_patch(self):
         """Apply performance monitoring patch to this logger instance."""
-        def record():
+        def performance_patcher(record):
             """Add performance monitoring to log records."""
             # Add performance warnings for slow operations
             execution_time = record["extra"].get("execution_time_ms", 0)
@@ -60,32 +61,32 @@ class UnifiedLogger:
         # Apply patch only to this logger instance
         self.logger = self.logger.patch(performance_patcher)
     
-    def = self, message: str, **context):
+    def debug(self, message: str, **context):
         """Debug level logging (only in verbose mode) using Loguru"""
-        # Use Loguru's = None to add context to this specific call
+        # Use Loguru's bind() to add context to this specific call
         bound_logger = self.logger.bind(**context, structured_logging=False)
         bound_logger.debug(message)
     
-    def = self, message: str, create_event_log: bool = False, event_type: str = None, **context):
+    def info(self, message: str, create_event_log: bool = False, event_type: str = None, **context):
         """Info level logging with optional SchedulerEventLog creation using Loguru"""
-        # Use Loguru's = None to add context to this specific call
+        # Use Loguru's bind() to add context to this specific call
         bound_logger = self.logger.bind(**context, structured_logging=False)
         bound_logger.info(message)
         
         if create_event_log and event_type and SCHEDULER_EVENT_LOG_AVAILABLE:
             self._create_scheduler_event_log(event_type, **context)
     
-    def = self, message: str, **context):
+    def warning(self, message: str, **context):
         """Warning level logging using Loguru"""
         bound_logger = self.logger.bind(**context, structured_logging=False)
         bound_logger.warning(message)
     
-    def = self, message: str, exc_info: bool = True, **context):
+    def error(self, message: str, exc_info: bool = True, **context):
         """Error level logging with exception details using Loguru"""
         bound_logger = self.logger.bind(**context, structured_logging=False)
         bound_logger.error(message, exc_info=exc_info)
     
-    def = self, message: str, create_event_log: bool = False, event_type: str = None, **context):
+    def critical(self, message: str, create_event_log: bool = False, event_type: str = None, **context):
         """Critical level logging with optional SchedulerEventLog creation using Loguru"""
         bound_logger = self.logger.bind(**context, structured_logging=False)
         bound_logger.critical(message)
@@ -93,7 +94,7 @@ class UnifiedLogger:
         if create_event_log and event_type and SCHEDULER_EVENT_LOG_AVAILABLE:
             self._create_scheduler_event_log(event_type, **context)
     
-    def = self, message: str, error_details: Dict[str, Any] = None):
+    def log_critical_alert(self, message: str, error_details: Dict[str, Any] = None):
         """Log critical alerts with enhanced context and alerting."""
         alert_context = {
             "alert_type": "critical_error",
@@ -110,7 +111,7 @@ class UnifiedLogger:
         # Additional alerting mechanisms could be added here
         # (email, Slack, PagerDuty, etc.)
     
-    def = self, event_type: str, **context):
+    def _create_scheduler_event_log(self, event_type: str, **context):
         """Create SchedulerEventLog entry for dashboard compatibility."""
         if not SCHEDULER_EVENT_LOG_AVAILABLE or not self.db_session:
             return
@@ -126,14 +127,16 @@ class UnifiedLogger:
                     "timestamp": datetime.now().isoformat(),
                     "context": context
                 })
+            )
             
             self.db_session.add(event_log)
             self.db_session.commit()
             
         except Exception as e:
-            # Don't let logging errors break the application = self.f"Failed to create SchedulerEventLog: {e}", exc_info=False)
+            # Don't let logging errors break the application
+            logger.error(f"Failed to create SchedulerEventLog: {e}", exc_info=False)
     
-    def = self, method: str, endpoint: str, status_code: int, 
+    def log_api_call(self, method: str, endpoint: str, status_code: int, 
                     duration_ms: int, user_id: str = None, **context):
         """Log API call with structured context."""
         api_context = {
@@ -151,7 +154,7 @@ class UnifiedLogger:
             **api_context
         )
     
-    def = self, operation: str, duration_ms: int, **context):
+    def log_performance(self, operation: str, duration_ms: int, **context):
         """Log performance metrics with automatic threshold warnings."""
         perf_context = {
             "operation": operation,
@@ -168,38 +171,44 @@ class UnifiedLogger:
             perf_warning = None
             
         if perf_warning:
-            perf_context["performance_warning"] = perf_warning = self.
-            f"Performance: {operation} took {duration_ms}ms",
-            **perf_context
-        )
+            perf_context["performance_warning"] = perf_warning
+            self.warning(
+                f"Performance: {operation} took {duration_ms}ms",
+                **perf_context
+            )
+        else:
+            self.info(
+                f"Performance: {operation} took {duration_ms}ms",
+                **perf_context
+            )
     
-    def = self, **context):
+    def bind_context(self, **context):
         """Return a new logger bound with additional context."""
         return self.logger.bind(**context)
     
-    def = self, **context):
+    def context(self, **context):
         """Context manager for temporary context binding."""
-        return = self, context)
+        return _ContextManager(self, context)
 
 
 class _ContextManager:
     """Context manager for temporary logger context binding."""
     
-    def = self, unified_logger: UnifiedLogger, context: Dict[str, Any]):
+    def __init__(self, unified_logger: UnifiedLogger, context: Dict[str, Any]):
         self.unified_logger = unified_logger
         self.context = context
         self.bound_logger = None
     
-    def self():
+    def __enter__(self):
         self.bound_logger = self.unified_logger.bind_context(**self.context)
         return self.bound_logger
     
-    def = self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         # Context is automatically cleaned up when exiting
         pass
 
 
-def = service_name: str, db_session=None, format_string: str = None):
+def get_logger(service_name: str, db_session=None, format_string: str = None):
     """
     Get a configured unified logger instance.
     
@@ -216,9 +225,9 @@ def = service_name: str, db_session=None, format_string: str = None):
     if format_string:
         safe_logger_config(format_string)
     
-    return = service_name, db_session)
+    return UnifiedLogger(service_name, db_session)
 
 
-def = service_name: str, format_string: str = None):
+def get_service_logger(service_name: str, format_string: str = None):
     """Backward compatibility function"""
-    return = service_name, None, format_string)
+    return get_logger(service_name, None, format_string)
