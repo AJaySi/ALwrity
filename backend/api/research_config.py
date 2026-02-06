@@ -5,7 +5,8 @@ Provides provider availability and persona-aware defaults for research.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional, List
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("research_config_api", migration_mode=True)
 from pydantic import BaseModel
 
 from middleware.auth_middleware import get_current_user

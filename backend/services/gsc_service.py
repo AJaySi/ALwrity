@@ -9,7 +9,8 @@ from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("gsc_service", migration_mode=True)
 
 class GSCService:
     """Service for Google Search Console integration."""

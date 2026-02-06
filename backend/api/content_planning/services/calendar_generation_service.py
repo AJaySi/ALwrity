@@ -5,7 +5,8 @@ Extracted business logic from the calendar generation route for better separatio
 
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("calendar_generation_service", migration_mode=True)
 from sqlalchemy.orm import Session
 import time
 

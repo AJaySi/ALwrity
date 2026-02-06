@@ -6,7 +6,8 @@ Handles AI-powered strategy generation endpoints.
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("ai_generation_endpoints", migration_mode=True)
 from datetime import datetime
 
 # Import database
