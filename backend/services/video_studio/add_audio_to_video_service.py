@@ -11,7 +11,7 @@ import base64
 from typing import Dict, Any, Optional, Callable
 from fastapi import HTTPException
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from ..wavespeed.client import WaveSpeedClient
 
 logger = get_service_logger("video_studio.add_audio_to_video")

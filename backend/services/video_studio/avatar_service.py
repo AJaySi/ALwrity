@@ -11,7 +11,7 @@ from loguru import logger
 
 from services.image_studio.infinitetalk_adapter import InfiniteTalkService
 from services.video_studio.hunyuan_avatar_adapter import HunyuanAvatarService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("video_studio.avatar")
 

@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Callable
 from fastapi import HTTPException
 
 from services.onboarding.api_key_manager import APIKeyManager
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from .polling import WaveSpeedPolling
 from .generators.prompt import PromptGenerator
 from .generators.image import ImageGenerator
