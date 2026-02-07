@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import os
-from loguru import logger
+from utils.logging import get_logger
 from dotenv import load_dotenv
 import asyncio
 from datetime import datetime
@@ -51,6 +51,9 @@ load_dotenv()  # CWD .env (fallback)
 # Set up clean logging for end users
 from logging_config import setup_clean_logging
 setup_clean_logging()
+
+# Initialize unified logger for main application
+logger = get_logger("main_app", migration_mode=True)
 
 # Import middleware
 from middleware.auth_middleware import get_current_user
