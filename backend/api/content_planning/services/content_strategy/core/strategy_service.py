@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 # Import database models
 from models.enhanced_strategy_models import EnhancedContentStrategy, EnhancedAIAnalysisResult, OnboardingDataIntegration
-from models.onboarding import OnboardingSession, WebsiteAnalysis, ResearchPreferences, APIKey
 
 # Import modular services
 from ..ai_analysis.ai_recommendations import AIRecommendationsService
@@ -177,7 +176,7 @@ class EnhancedStrategyService:
             db.rollback()
             raise
 
-    async def get_enhanced_strategies(self, user_id: Optional[int] = None, strategy_id: Optional[int] = None, db: Session = None) -> Dict[str, Any]:
+    async def get_enhanced_strategies(self, user_id: Optional[str] = None, strategy_id: Optional[int] = None, db: Session = None) -> Dict[str, Any]:
         """Get enhanced content strategies with comprehensive data and AI recommendations."""
         try:
             logger.info(f"🚀 Starting enhanced strategy analysis for user: {user_id}, strategy: {strategy_id}")
@@ -261,102 +260,115 @@ class EnhancedStrategyService:
             logger.error(f"❌ Error retrieving enhanced strategies: {str(e)}")
             raise
 
-    async def _enhance_strategy_with_onboarding_data(self, strategy: EnhancedContentStrategy, user_id: int, db: Session) -> None:
-        """Enhance strategy with intelligent auto-population from onboarding data."""
+    async def _enhance_strategy_with_onboarding_data(self, strategy: EnhancedContentStrategy, user_id: str, db: Session) -> None:
+        """Enhance strategy with intelligent auto-population from canonical onboarding data."""
         try:
             logger.info(f"Enhancing strategy with onboarding data for user: {user_id}")
-            
-            # Get onboarding session
-            onboarding_session = db.query(OnboardingSession).filter(
-                OnboardingSession.user_id == user_id
-            ).first()
-            
-            if not onboarding_session:
-                logger.info("No onboarding session found for user")
-                return
-            
-            # Get website analysis data
-            website_analysis = db.query(WebsiteAnalysis).filter(
-                WebsiteAnalysis.session_id == onboarding_session.id
-            ).first()
-            
-            # Get research preferences data
-            research_preferences = db.query(ResearchPreferences).filter(
-                ResearchPreferences.session_id == onboarding_session.id
-            ).first()
-            
-            # Get API keys data
-            api_keys = db.query(APIKey).filter(
-                APIKey.session_id == onboarding_session.id
-            ).all()
-            
-            # Auto-populate fields from onboarding data
+
+            integrated_data = await self.onboarding_data_service.process_onboarding_data(user_id, db)
+            canonical_profile = integrated_data.get('canonical_profile') or {}
+
+            website_analysis = integrated_data.get('website_analysis') or {}
+            research_preferences = integrated_data.get('research_preferences') or {}
+            competitor_analysis = integrated_data.get('competitor_analysis') or []
+            api_keys_data = integrated_data.get('api_keys_data') or {}
+
             auto_populated_fields = {}
             data_sources = {}
-            
-            if website_analysis:
-                # Extract content preferences from writing style
-                if website_analysis.writing_style:
-                    strategy.content_preferences = extract_content_preferences_from_style(
-                        website_analysis.writing_style
-                    )
+
+            # Prioritize Canonical Profile for merged insights
+            if canonical_profile:
+                if canonical_profile.get('target_audience'):
+                    strategy.target_audience = canonical_profile.get('target_audience')
+                    auto_populated_fields['target_audience'] = 'canonical_profile'
+                
+                if canonical_profile.get('industry'):
+                    strategy.industry = canonical_profile.get('industry')
+                    auto_populated_fields['industry'] = 'canonical_profile'
+
+                if canonical_profile.get('content_types'):
+                    strategy.preferred_formats = canonical_profile.get('content_types')
+                    auto_populated_fields['preferred_formats'] = 'canonical_profile'
+
+            if isinstance(website_analysis, dict) and website_analysis:
+                writing_style = website_analysis.get('writing_style') or {}
+                if isinstance(writing_style, dict) and writing_style:
+                    strategy.content_preferences = extract_content_preferences_from_style(writing_style)
                     auto_populated_fields['content_preferences'] = 'website_analysis'
-                
-                # Extract target audience from analysis
-                if website_analysis.target_audience:
-                    strategy.target_audience = website_analysis.target_audience
-                    auto_populated_fields['target_audience'] = 'website_analysis'
-                
-                # Extract brand voice from style guidelines
-                if website_analysis.style_guidelines:
-                    strategy.brand_voice = extract_brand_voice_from_guidelines(
-                        website_analysis.style_guidelines
-                    )
+
+                # Fallback to website_analysis if not in canonical_profile
+                if 'target_audience' not in auto_populated_fields:
+                    target_audience = website_analysis.get('target_audience')
+                    if target_audience:
+                        strategy.target_audience = target_audience
+                        auto_populated_fields['target_audience'] = 'website_analysis'
+
+                style_guidelines = website_analysis.get('style_guidelines') or {}
+                if isinstance(style_guidelines, dict) and style_guidelines:
+                    strategy.brand_voice = extract_brand_voice_from_guidelines(style_guidelines)
                     auto_populated_fields['brand_voice'] = 'website_analysis'
-                
-                data_sources['website_analysis'] = website_analysis.to_dict()
-            
-            if research_preferences:
-                # Extract content types from research preferences
-                if research_preferences.content_types:
-                    strategy.preferred_formats = research_preferences.content_types
-                    auto_populated_fields['preferred_formats'] = 'research_preferences'
-                
-                # Extract writing style from preferences
-                if research_preferences.writing_style:
-                    strategy.editorial_guidelines = extract_editorial_guidelines_from_style(
-                        research_preferences.writing_style
-                    )
+
+                data_sources['website_analysis'] = website_analysis
+
+            if isinstance(research_preferences, dict) and research_preferences:
+                # Fallback to research_preferences if not in canonical_profile
+                if 'preferred_formats' not in auto_populated_fields:
+                    content_types = research_preferences.get('content_types')
+                    if content_types:
+                        strategy.preferred_formats = content_types
+                        auto_populated_fields['preferred_formats'] = 'research_preferences'
+
+                prefs_writing_style = research_preferences.get('writing_style') or {}
+                if isinstance(prefs_writing_style, dict) and prefs_writing_style:
+                    strategy.editorial_guidelines = extract_editorial_guidelines_from_style(prefs_writing_style)
                     auto_populated_fields['editorial_guidelines'] = 'research_preferences'
+
+                data_sources['research_preferences'] = research_preferences
+
+            # Integrate Competitor Analysis (Step 3)
+            if competitor_analysis:
+                competitors = []
+                for comp in competitor_analysis:
+                    # Prefer domain, then title, then url
+                    # Handle both dict and object (though integrated_data usually returns dicts via to_dict)
+                    if isinstance(comp, dict):
+                        name = comp.get('competitor_domain') or comp.get('title') or comp.get('competitor_url')
+                    else:
+                        name = getattr(comp, 'competitor_domain', None) or getattr(comp, 'competitor_url', None)
+                    
+                    if name:
+                        competitors.append(name)
                 
-                data_sources['research_preferences'] = research_preferences.to_dict()
-            
-            # Create onboarding data integration record
+                if competitors:
+                    # Limit to top 10 to avoid overwhelming the strategy
+                    strategy.top_competitors = competitors[:10]
+                    auto_populated_fields['top_competitors'] = 'competitor_analysis'
+                    data_sources['competitor_analysis'] = competitor_analysis
+
             integration = OnboardingDataIntegration(
                 user_id=user_id,
                 strategy_id=strategy.id,
                 website_analysis_data=data_sources.get('website_analysis'),
                 research_preferences_data=data_sources.get('research_preferences'),
-                api_keys_data=[key.to_dict() for key in api_keys] if api_keys else None,
+                api_keys_data=api_keys_data,
                 auto_populated_fields=auto_populated_fields,
                 field_mappings=create_field_mappings(),
                 data_quality_scores=calculate_data_quality_scores(data_sources),
-                confidence_levels={},  # Will be calculated by data quality service
-                data_freshness={}  # Will be calculated by data quality service
+                confidence_levels={},
+                data_freshness={}
             )
-            
+
             db.add(integration)
             db.commit()
-            
-            # Update strategy with onboarding data used
+
             strategy.onboarding_data_used = {
                 'auto_populated_fields': auto_populated_fields,
                 'data_sources': list(data_sources.keys()),
                 'integration_id': integration.id
             }
-            
+
             logger.info(f"Strategy enhanced with onboarding data: {len(auto_populated_fields)} fields auto-populated")
-            
+
         except Exception as e:
             logger.error(f"Error enhancing strategy with onboarding data: {str(e)}")
             # Don't raise error, just log it as this is enhancement, not core functionality

@@ -18,6 +18,8 @@ from services.story_writer.video_generation_service import StoryVideoGenerationS
 from services.subscription import PricingService
 from services.subscription.preflight_validator import validate_scene_animation_operation
 from services.llm_providers.main_video_generation import track_video_usage
+from services.user_workspace_manager import UserWorkspaceManager
+from sqlalchemy.orm import Session
 from utils.logger_utils import get_service_logger
 from utils.asset_tracker import save_asset_to_library
 
@@ -32,12 +34,54 @@ class YouTubeVideoRendererService:
         self.wavespeed_client = WaveSpeedClient()
         
         # Video output directory
-        base_dir = Path(__file__).parent.parent.parent.parent
-        self.output_dir = base_dir / "youtube_videos"
+        # services/youtube/renderer.py -> youtube -> services -> backend -> root
+        base_dir = Path(__file__).resolve().parents[4]
+        self.output_dir = base_dir / "workspace" / "media" / "youtube_videos"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         logger.info(f"[YouTubeRenderer] Initialized with output directory: {self.output_dir}")
     
+    def _get_user_video_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
+        """
+        Get the video directory for a specific user.
+        Falls back to default output_dir if workspace not found.
+        """
+        if db and user_id:
+            try:
+                workspace_manager = UserWorkspaceManager(db)
+                workspace = workspace_manager.get_user_workspace(user_id)
+                if workspace:
+                    # Use media/youtube_videos inside user workspace
+                    user_video_dir = Path(workspace['workspace_path']) / "media" / "youtube_videos"
+                    user_video_dir.mkdir(parents=True, exist_ok=True)
+                    return user_video_dir
+            except Exception as e:
+                logger.warning(f"[YouTubeRenderer] Failed to resolve user workspace path for {user_id}: {e}")
+        
+        return self.output_dir
+
+    def _get_user_audio_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
+        """
+        Get the audio directory for a specific user.
+        """
+        base_dir = Path(__file__).resolve().parents[3]
+        default_audio_dir = base_dir / "workspace" / "media" / "youtube_audio"
+        
+        if db and user_id:
+            try:
+                workspace_manager = UserWorkspaceManager(db)
+                workspace = workspace_manager.get_user_workspace(user_id)
+                if workspace:
+                    # Use media/youtube_audio inside user workspace
+                    user_audio_dir = Path(workspace['workspace_path']) / "media" / "youtube_audio"
+                    user_audio_dir.mkdir(parents=True, exist_ok=True)
+                    return user_audio_dir
+            except Exception as e:
+                logger.warning(f"[YouTubeRenderer] Failed to resolve user workspace path for {user_id}: {e}")
+        
+        default_audio_dir.mkdir(parents=True, exist_ok=True)
+        return default_audio_dir
+
     def render_scene_video(
         self,
         scene: Dict[str, Any],
@@ -46,6 +90,7 @@ class YouTubeVideoRendererService:
         resolution: str = "720p",
         generate_audio_enabled: bool = True,
         voice_id: str = "Wise_Woman",
+        db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         """
         Render a single scene into a video.
@@ -304,11 +349,15 @@ class YouTubeVideoRendererService:
                 ) from e
             
             # Save scene video
-            video_service = StoryVideoGenerationService(output_dir=str(self.output_dir))
+            # Resolve user-specific output directory for video service initialization
+            user_video_dir = self._get_user_video_dir(user_id, db)
+            video_service = StoryVideoGenerationService(output_dir=str(user_video_dir))
+            
             save_result = video_service.save_scene_video(
                 video_bytes=video_result["video_bytes"],
                 scene_number=scene_number,
                 user_id=user_id,
+                db=db
             )
             
             # Update video URL to use YouTube API endpoint
@@ -386,6 +435,7 @@ class YouTubeVideoRendererService:
         resolution: str = "720p",
         combine_scenes: bool = True,
         voice_id: str = "Wise_Woman",
+        db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         """
         Render a complete video from multiple scenes.
@@ -397,6 +447,7 @@ class YouTubeVideoRendererService:
             resolution: Video resolution
             combine_scenes: Whether to combine scenes into single video
             voice_id: Voice ID for narration
+            db: Database session for workspace resolution
             
         Returns:
             Dictionary with video metadata and scene results
@@ -429,6 +480,7 @@ class YouTubeVideoRendererService:
                     resolution=resolution,
                     generate_audio_enabled=True,
                     voice_id=voice_id,
+                    db=db,
                 )
                 
                 scene_results.append(scene_result)
@@ -445,7 +497,9 @@ class YouTubeVideoRendererService:
                 scene_audio_paths = [r.get("audio_path") for r in scene_results if r.get("audio_path")]
                 
                 # Use StoryVideoGenerationService to combine
-                video_service = StoryVideoGenerationService(output_dir=str(self.output_dir))
+                # Resolve user-specific output directory
+                user_video_dir = self._get_user_video_dir(user_id, db)
+                video_service = StoryVideoGenerationService(output_dir=str(user_video_dir))
                 
                 # Create scene dicts for concatenation
                 scene_dicts = [

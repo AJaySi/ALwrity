@@ -13,13 +13,16 @@ import {
   Menu,
   MenuItem,
   Divider,
-  Avatar
+  Avatar,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  CircularProgress
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-react';
 import { apiClient } from '../../api/client';
 import {
-  Search as SearchIcon,
   Refresh as RefreshIcon,
   Person as PersonIcon,
   ExitToApp as ExitIcon,
@@ -27,7 +30,9 @@ import {
   MoreVert as MoreVertIcon,
   CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  ExpandMore as ExpandMoreIcon,
+  AutoAwesome as AIIcon
 } from '@mui/icons-material';
 
 // Shared components
@@ -36,9 +41,6 @@ import SEOAnalyzerPanel from './components/SEOAnalyzerPanel';
 import { SEOCopilotKitProvider, SEOCopilotSuggestions } from './index';
 // Removed SEOCopilotTest
 import useSEOCopilotStore from '../../stores/seoCopilotStore';
-
-// GSC Components
-import GSCLoginButton from './components/GSCLoginButton';
 
 // Zustand store
 import { useSEODashboardStore } from '../../stores/seoDashboardStore';
@@ -55,6 +57,14 @@ import { useBingOAuth } from '../../hooks/useBingOAuth';
 import { useGSCConnection } from '../OnboardingWizard/common/useGSCConnection';
 
 // SEO Dashboard component
+import { SitemapBenchmarkResults } from '../OnboardingWizard/CompetitorAnalysisStep/SitemapBenchmarkResults';
+import { StrategicInsightsResults } from '../OnboardingWizard/CompetitorAnalysisStep/StrategicInsightsResults';
+import { AdvertoolsInsights } from './components/AdvertoolsInsights';
+
+// Phase 2B: Semantic Dashboard components
+import SemanticHealthCard from './components/SemanticHealthCard';
+import SemanticInsights from './components/SemanticInsights';
+
 const SEODashboard: React.FC = () => {
   // Clerk authentication hooks
   const { isSignedIn, isLoaded } = useAuth();
@@ -102,6 +112,12 @@ const SEODashboard: React.FC = () => {
   
   // Competitor analysis data from onboarding step 3
   const [competitorAnalysisData, setCompetitorAnalysisData] = useState<any>(null);
+  const [deepCompetitorAnalysisData, setDeepCompetitorAnalysisData] = useState<any>(null);
+  const [strategicInsightsHistory, setStrategicInsightsHistory] = useState<any[]>([]);
+  const [strategicInsightsLoading, setStrategicInsightsLoading] = useState(false);
+  const [competitiveSitemapBenchmarkingReport, setCompetitiveSitemapBenchmarkingReport] = useState<any>(null);
+  const [competitiveSitemapBenchmarkingLoading, setCompetitiveSitemapBenchmarkingLoading] = useState(false);
+  const [competitiveSitemapBenchmarkingError, setCompetitiveSitemapBenchmarkingError] = useState<string | null>(null);
 
   // PlatformAnalytics refresh handle
   const platformRefreshRef = useRef<(() => Promise<void>) | null>(null);
@@ -120,7 +136,22 @@ const SEODashboard: React.FC = () => {
   // Load competitor analysis data on component mount
   useEffect(() => {
     loadCompetitorAnalysisData();
+    fetchStrategicInsightsHistory();
   }, []);
+
+  const fetchStrategicInsightsHistory = async () => {
+    setStrategicInsightsLoading(true);
+    try {
+      const res = await apiClient.get('/api/seo-dashboard/strategic-insights/history');
+      if (res.data?.history?.length > 0) {
+        setStrategicInsightsHistory(res.data.history);
+      }
+    } catch (e) {
+      console.error("Failed to fetch strategic insights history", e);
+    } finally {
+      setStrategicInsightsLoading(false);
+    }
+  };
 
   // Reconnect handlers using existing OAuth hooks
   const handleGSCReconnect = async () => {
@@ -220,6 +251,35 @@ const SEODashboard: React.FC = () => {
         console.log('SEO overview response:', response.status, response.statusText);
         console.log('Real SEO data received:', response.data);
         setData(response.data);
+
+        try {
+          const deepResponse = await apiClient.get('/api/seo-dashboard/deep-competitor-analysis', {
+            params: { site_url: websiteUrl }
+          });
+          setDeepCompetitorAnalysisData(deepResponse.data);
+        } catch (e) {
+          console.warn('Deep competitor analysis not available yet:', e);
+          setDeepCompetitorAnalysisData(null);
+        }
+
+        try {
+          const sitemapBenchResponse = await apiClient.get('/api/seo/competitive-sitemap-benchmarking');
+          const report = sitemapBenchResponse?.data?.data?.report ?? null;
+          setCompetitiveSitemapBenchmarkingReport(report);
+        } catch (e) {
+          console.warn('Competitive sitemap benchmarking not available yet:', e);
+          setCompetitiveSitemapBenchmarkingReport(null);
+        }
+
+        try {
+          setStrategicInsightsLoading(true);
+          const strategicHistoryRes = await apiClient.get('/api/seo-dashboard/strategic-insights/history');
+          setStrategicInsightsHistory(strategicHistoryRes.data?.history || []);
+        } catch (e) {
+          console.warn('Strategic insights history not available yet:', e);
+        } finally {
+          setStrategicInsightsLoading(false);
+        }
       } catch (error) {
         console.error('Error fetching SEO dashboard data:', error);
         // Fallback to mock data on error
@@ -269,6 +329,8 @@ const SEODashboard: React.FC = () => {
           website_url: websiteUrl || undefined // Convert null to undefined for TypeScript
         };
         setData(mockData);
+        setDeepCompetitorAnalysisData(null);
+        setCompetitiveSitemapBenchmarkingReport(null);
       } finally {
         setLoading(false);
       }
@@ -318,11 +380,24 @@ const SEODashboard: React.FC = () => {
       setLoading(true);
       await refreshSEOAnalysis();
       await fetchPlatformStatus();
-      setLastRefresh(new Date());
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runStrategicInsights = async () => {
+    setStrategicInsightsLoading(true);
+    try {
+      const res = await apiClient.post('/api/seo-dashboard/strategic-insights/run');
+      if (res.data?.success) {
+        setStrategicInsightsHistory(prev => [res.data.report, ...prev]);
+      }
+    } catch (e: any) {
+      console.error('Failed to run strategic insights:', e);
+    } finally {
+      setStrategicInsightsLoading(false);
     }
   };
 
@@ -365,6 +440,21 @@ const SEODashboard: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading competitor analysis data:', error);
+    }
+  };
+
+  const runCompetitiveSitemapBenchmarking = async () => {
+    setCompetitiveSitemapBenchmarkingError(null);
+    setCompetitiveSitemapBenchmarkingLoading(true);
+    try {
+      await apiClient.post('/api/seo/competitive-sitemap-benchmarking/run', { max_competitors: null });
+      const sitemapBenchResponse = await apiClient.get('/api/seo/competitive-sitemap-benchmarking');
+      const report = sitemapBenchResponse?.data?.data?.report ?? null;
+      setCompetitiveSitemapBenchmarkingReport(report);
+    } catch (e: any) {
+      setCompetitiveSitemapBenchmarkingError(e?.response?.data?.detail || e?.message || 'Failed to run benchmark');
+    } finally {
+      setCompetitiveSitemapBenchmarkingLoading(false);
     }
   };
 
@@ -764,6 +854,123 @@ const SEODashboard: React.FC = () => {
                 </Box>
               </Box>
 
+              {/* Full Site Technical SEO Audit (from onboarding background job) */}
+              {data.technical_seo_audit && (
+                <Box sx={{ mb: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                      🧩 Technical SEO Audit
+                    </Typography>
+                    <Tooltip title="Full-site audit runs automatically after onboarding. Low-scoring pages are marked as Fix Scheduled.">
+                      <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
+                    </Tooltip>
+                    <Box sx={{ flexGrow: 1 }} />
+                    {data.technical_seo_audit.status === 'scheduled' && (
+                      <Chip
+                        icon={<ScheduleIcon />}
+                        label={`Scheduled${data.technical_seo_audit.next_execution ? ` • ${new Date(data.technical_seo_audit.next_execution).toLocaleString()}` : ''}`}
+                        sx={{ bgcolor: 'rgba(255, 193, 7, 0.15)', color: '#FFC107' }}
+                      />
+                    )}
+                    {data.technical_seo_audit.status === 'ready' && (
+                      <Chip
+                        icon={<CheckCircleIcon />}
+                        label="Results Available"
+                        sx={{ bgcolor: 'rgba(76, 175, 80, 0.15)', color: '#4CAF50' }}
+                      />
+                    )}
+                    {data.technical_seo_audit.status === 'error' && (
+                      <Chip
+                        label="Audit Error"
+                        sx={{ bgcolor: 'rgba(244, 67, 54, 0.15)', color: '#F44336' }}
+                      />
+                    )}
+                  </Box>
+
+                  {data.technical_seo_audit.status === 'scheduled' && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      Full-site audit runs automatically after onboarding. This may take a few minutes depending on how many pages we discover.
+                    </Alert>
+                  )}
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <GlassCard sx={{ p: 2 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                          Pages Audited
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>
+                          {data.technical_seo_audit.pages_audited}
+                        </Typography>
+                      </GlassCard>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <GlassCard sx={{ p: 2 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                          Average Score
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: '#2196F3', fontWeight: 700 }}>
+                          {data.technical_seo_audit.avg_score}/100
+                        </Typography>
+                      </GlassCard>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <GlassCard sx={{ p: 2 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                          Fix Scheduled
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: '#FF9800', fontWeight: 700 }}>
+                          {data.technical_seo_audit.fix_scheduled_pages}
+                        </Typography>
+                      </GlassCard>
+                    </Grid>
+                  </Grid>
+
+                  {data.technical_seo_audit.worst_pages?.length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <GlassCard sx={{ p: 2 }}>
+                        <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600, mb: 1 }}>
+                          Lowest Scoring Pages
+                        </Typography>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          {data.technical_seo_audit.worst_pages.slice(0, 5).map((p) => (
+                            <Box
+                              key={p.page_url}
+                              sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
+                            >
+                              <Typography
+                                variant="body2"
+                                sx={{ color: 'rgba(255, 255, 255, 0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                title={p.page_url}
+                              >
+                                {p.page_url}
+                              </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Chip
+                                  size="small"
+                                  label={`${p.overall_score}/100`}
+                                  sx={{ bgcolor: 'rgba(33, 150, 243, 0.15)', color: '#90CAF9' }}
+                                />
+                                <Chip
+                                  size="small"
+                                  label={p.status === 'fix_scheduled' ? 'Fix Scheduled' : p.status}
+                                  sx={{ bgcolor: 'rgba(255, 152, 0, 0.15)', color: '#FFB74D' }}
+                                />
+                              </Box>
+                            </Box>
+                          ))}
+                        </Box>
+                      </GlassCard>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* Data-Driven Content Intelligence (Advertools) */}
+              {data.advertools_insights && (
+                <AdvertoolsInsights data={data.advertools_insights} />
+              )}
+
               {/* Competitive Analysis from Onboarding Step 3 */}
               {competitorAnalysisData && (
                 <Box sx={{ mb: 4 }}>
@@ -869,6 +1076,359 @@ const SEODashboard: React.FC = () => {
                       </GlassCard>
                     </Box>
                   )}
+                </Box>
+              )}
+
+              {/* Strategic Insights (Winning Moves) */}
+              {strategicInsightsHistory.length > 0 && (
+                <Box sx={{ mb: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                      🏆 Strategic Insights (Winning Moves)
+                    </Typography>
+                    <Tooltip title="AI-generated weekly strategic briefs to outperform competitors.">
+                      <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
+                    </Tooltip>
+                    <Box sx={{ flexGrow: 1 }} />
+                    <Chip
+                      label={`Latest: ${new Date(strategicInsightsHistory[0].generated_at).toLocaleDateString()}`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa' }}
+                    />
+                  </Box>
+                  
+                  <StrategicInsightsResults 
+                    report={strategicInsightsHistory[0]} 
+                    hideCreateContent={false} 
+                  />
+                </Box>
+              )}
+
+              {/* Phase 2B: Semantic Intelligence Dashboard */}
+              <Box sx={{ mb: 4 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                  <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                    🧠 Semantic Intelligence
+                  </Typography>
+                  <Tooltip title="Real-time semantic analysis powered by AI. Updates every 24 hours.">
+                    <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
+                  </Tooltip>
+                </Box>
+
+                {/* Semantic Health Overview */}
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} md={6}>
+                    <SemanticHealthCard compact />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    {/* Placeholder for additional semantic metrics */}
+                    <SemanticInsights maxInsights={2} />
+                  </Grid>
+                </Grid>
+
+                {/* Full Semantic Dashboard */}
+                <SemanticInsights />
+              </Box>
+
+              {/* Deep Competitor Analysis (auto-scheduled) */}
+              {deepCompetitorAnalysisData && (
+                <Box sx={{ mb: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                      🔍 Deep Competitor Analysis
+                    </Typography>
+                    <Tooltip title="Auto-scheduled after onboarding completion. Uses Step 2 website insights and Step 3 competitors.">
+                      <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
+                    </Tooltip>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <GlassCard sx={{ p: 2 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                          Status
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={(deepCompetitorAnalysisData.status || 'unknown').toString()}
+                          sx={{ bgcolor: 'rgba(34, 197, 94, 0.15)', color: '#86efac', fontWeight: 700 }}
+                        />
+                        {deepCompetitorAnalysisData.last_status && (
+                          <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'rgba(255, 255, 255, 0.6)' }}>
+                            Last run: {deepCompetitorAnalysisData.last_status}
+                          </Typography>
+                        )}
+                      </GlassCard>
+                    </Grid>
+
+                    <Grid item xs={12} md={4}>
+                      <GlassCard sx={{ p: 2 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                          Competitors
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: '#4CAF50', fontWeight: 700 }}>
+                          {deepCompetitorAnalysisData.competitors_count ?? (deepCompetitorAnalysisData.report?.competitors?.length || 0)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                          analyzed
+                        </Typography>
+                      </GlassCard>
+                    </Grid>
+
+                    <Grid item xs={12} md={4}>
+                      <GlassCard sx={{ p: 2 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                          Schedule
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <ScheduleIcon sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 18 }} />
+                          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.85)' }}>
+                            {deepCompetitorAnalysisData.next_execution
+                              ? deepCompetitorAnalysisData.next_execution
+                              : (deepCompetitorAnalysisData.last_run ? 'Completed' : 'Pending')}
+                          </Typography>
+                        </Box>
+                        {deepCompetitorAnalysisData.last_run && (
+                          <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'rgba(255, 255, 255, 0.6)' }}>
+                            Last run: {deepCompetitorAnalysisData.last_run}
+                          </Typography>
+                        )}
+                      </GlassCard>
+                    </Grid>
+                  </Grid>
+
+                  {!deepCompetitorAnalysisData.report && (
+                    <Box sx={{ mt: 3 }}>
+                      <Alert severity="info">
+                        Deep competitor analysis is scheduled or running. Once complete, the full per-competitor extraction, AI analysis, and aggregated insights will appear here.
+                      </Alert>
+                    </Box>
+                  )}
+
+                  {deepCompetitorAnalysisData.report?.aggregation && (
+                    <Box sx={{ mt: 3 }}>
+                      <Typography variant="h6" sx={{ color: 'white', fontWeight: 600, mb: 2 }}>
+                        Aggregated Insights
+                      </Typography>
+                      <GlassCard sx={{ p: 3 }}>
+                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 700, mb: 1 }}>
+                          Common Themes
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 2 }}>
+                          {(deepCompetitorAnalysisData.report.aggregation.common_patterns?.common_themes || []).slice(0, 8).join(' • ') || '—'}
+                        </Typography>
+
+                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 700, mb: 1 }}>
+                          Top Opportunities
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 2 }}>
+                          {(deepCompetitorAnalysisData.report.aggregation.content_gaps_and_opportunities || [])
+                            .slice(0, 5)
+                            .map((g: any) => g.gap)
+                            .filter(Boolean)
+                            .join(' • ') || '—'}
+                        </Typography>
+
+                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 700, mb: 1 }}>
+                          Recommended Actions
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                          {(deepCompetitorAnalysisData.report.aggregation.strategic_recommendations || [])
+                            .slice(0, 5)
+                            .map((r: any) => r.action)
+                            .filter(Boolean)
+                            .join(' • ') || '—'}
+                        </Typography>
+                      </GlassCard>
+                    </Box>
+                  )}
+
+                  {deepCompetitorAnalysisData.report?.competitors?.length > 0 && (
+                    <Box sx={{ mt: 3 }}>
+                      <Typography variant="h6" sx={{ color: 'white', fontWeight: 600, mb: 2 }}>
+                        Per-Competitor Details
+                      </Typography>
+                      {deepCompetitorAnalysisData.report.competitors.slice(0, 25).map((c: any, idx: number) => {
+                        const input = c?.input || {};
+                        const extraction = c?.extraction || {};
+                        const ai = c?.ai_analysis || {};
+                        const title = input.name || input.domain || `Competitor ${idx + 1}`;
+                        const domain = input.domain || input.url || '';
+                        return (
+                          <Accordion key={`${domain}-${idx}`} sx={{ bgcolor: 'rgba(255,255,255,0.06)', mb: 1, borderRadius: 2 }}>
+                            <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'rgba(255,255,255,0.8)' }} />}>
+                              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>
+                                  {title}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                                  {domain}
+                                </Typography>
+                              </Box>
+                            </AccordionSummary>
+                            <AccordionDetails>
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} md={6}>
+                                  <GlassCard sx={{ p: 2 }}>
+                                    <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700, mb: 1 }}>
+                                      Extraction
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 1 }}>
+                                      {extraction.page_meta?.title || '—'}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                                      {(extraction.page_meta?.meta_description || '').slice(0, 220) || '—'}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mt: 2 }}>
+                                      CTA signals: {(extraction.signals?.cta_signals?.keyword_hits || []).slice(0, 8).join(', ') || '—'}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mt: 1 }}>
+                                      Proof signals: {(extraction.signals?.proof_signals?.keyword_hits || []).slice(0, 6).join(', ') || '—'}
+                                    </Typography>
+                                  </GlassCard>
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <GlassCard sx={{ p: 2 }}>
+                                    <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700, mb: 1 }}>
+                                      AI Analysis
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', mb: 1 }}>
+                                      Value prop: {ai.positioning?.value_prop || '—'}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', mb: 1 }}>
+                                      Primary offer: {ai.positioning?.primary_offer || '—'}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', mb: 1 }}>
+                                      Themes: {(ai.content_strategy?.themes || []).slice(0, 6).join(' • ') || '—'}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+                                      Opportunities vs you: {(ai.comparison_to_user_baseline?.opportunities || []).slice(0, 4).join(' • ') || '—'}
+                                    </Typography>
+                                  </GlassCard>
+                                </Grid>
+                              </Grid>
+                            </AccordionDetails>
+                          </Accordion>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* Weekly Strategic Brief */}
+              <Box sx={{ mb: 4 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                      🧠 Weekly Strategy Brief
+                    </Typography>
+                    <Tooltip title="AI-powered strategic insights based on competitor content velocity and market shifts.">
+                      <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
+                    </Tooltip>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    startIcon={strategicInsightsLoading ? <CircularProgress size={20} color="inherit" /> : <AIIcon />}
+                    onClick={runStrategicInsights}
+                    disabled={strategicInsightsLoading}
+                    sx={{
+                      bgcolor: '#8b5cf6',
+                      '&:hover': { bgcolor: '#7c3aed' },
+                      textTransform: 'none',
+                      fontWeight: 700
+                    }}
+                  >
+                    {strategicInsightsLoading ? 'Analyzing...' : 'Run Analysis Now'}
+                  </Button>
+                </Box>
+
+                {strategicInsightsHistory.length > 0 ? (
+                  <GlassCard sx={{ p: 0, overflow: 'hidden', border: 'none', bgcolor: 'transparent' }}>
+                    <StrategicInsightsResults report={strategicInsightsHistory[0]} />
+                  </GlassCard>
+                ) : (
+                  <GlassCard sx={{ p: 4, textAlign: 'center' }}>
+                    <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
+                      No strategic insights generated yet. Run your first analysis to see "The Big Move" and market opportunities.
+                    </Typography>
+                    <Button 
+                      variant="outlined" 
+                      onClick={runStrategicInsights}
+                      sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.3)' }}
+                    >
+                      Get Started
+                    </Button>
+                  </GlassCard>
+                )}
+              </Box>
+
+              {(competitiveSitemapBenchmarkingReport || competitorAnalysisData) && (
+                <Box sx={{ mb: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 3 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                        🗺️ Competitive Sitemap Benchmarking (No AI)
+                      </Typography>
+                      <Tooltip title="Uses public sitemaps and deterministic rules (no LLM calls) to compare structure, coverage, and publishing signals.">
+                        <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
+                      </Tooltip>
+                    </Box>
+
+                    <Button
+                      variant="contained"
+                      onClick={runCompetitiveSitemapBenchmarking}
+                      disabled={competitiveSitemapBenchmarkingLoading}
+                      sx={{
+                        bgcolor: '#10b981',
+                        '&:hover': { bgcolor: '#059669' },
+                        textTransform: 'none',
+                        fontWeight: 700
+                      }}
+                    >
+                      {competitiveSitemapBenchmarkingLoading ? 'Running…' : 'Run Benchmark'}
+                    </Button>
+                  </Box>
+
+                  {competitiveSitemapBenchmarkingError && (
+                    <Box sx={{ mb: 2 }}>
+                      <Alert severity="error">{competitiveSitemapBenchmarkingError}</Alert>
+                    </Box>
+                  )}
+
+                  {!competitiveSitemapBenchmarkingReport && (
+                    <Box sx={{ mt: 2 }}>
+                      <Alert severity="info">
+                        No benchmarking report yet. Run it to compare your sitemap structure against competitors and discover missing sections.
+                      </Alert>
+                    </Box>
+                  )}
+
+                  {competitiveSitemapBenchmarkingReport && competitiveSitemapBenchmarkingReport.benchmark && (
+                    <SitemapBenchmarkResults
+                      data={{
+                        user_summary: competitiveSitemapBenchmarkingReport.benchmark.user?.summary || {},
+                        competitor_summaries: competitiveSitemapBenchmarkingReport.benchmark.competitors?.summaries || {},
+                        timestamp: competitiveSitemapBenchmarkingReport.timestamp,
+                        benchmark: competitiveSitemapBenchmarkingReport.benchmark
+                      }}
+                    />
+                  )}
+                </Box>
+              )}
+
+              {/* Strategic Insights Section */}
+              {strategicInsightsHistory.length > 0 && (
+                <Box sx={{ mb: 4 }} id="strategic-insights-results">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                      🧠 AI-Powered Strategic Insights
+                    </Typography>
+                    <Tooltip title="Weekly strategic briefs generated by AI analysis of competitor content moves and market shifts.">
+                      <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
+                    </Tooltip>
+                  </Box>
+                  <StrategicInsightsResults report={strategicInsightsHistory[0]} />
                 </Box>
               )}
 

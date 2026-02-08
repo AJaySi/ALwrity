@@ -7,7 +7,16 @@ import {
   Tooltip, 
   CircularProgress,
   Divider,
-  Button
+  Button,
+  Menu,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -21,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import useBlogTextSelectionHandler from './BlogTextSelectionHandler';
 import { ContinuityBadge } from '../ContinuityBadge';
+import { blogWriterApi } from '../../../services/blogWriterApi';
 
 interface BlogSectionProps {
   id: any;
@@ -64,6 +74,11 @@ const BlogSection: React.FC<BlogSectionProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const [toolsAnchorEl, setToolsAnchorEl] = useState<HTMLElement | null>(null);
+  const [activeTool, setActiveTool] = useState<null | 'originality' | 'optimize' | 'fact' | 'links' | 'flow'>(null);
+  const [toolLoading, setToolLoading] = useState(false);
+  const [toolResult, setToolResult] = useState<any>(null);
+  const [toolDialogOpen, setToolDialogOpen] = useState(false);
 
   // Initialize assistive writing handler
   const assistiveWriting = useBlogTextSelectionHandler(
@@ -133,6 +148,106 @@ const BlogSection: React.FC<BlogSectionProps> = ({
   
   const handleFocus = () => setIsFocused(true);
   const handleBlur = () => setIsFocused(false);
+
+  const openToolsMenu = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setToolsAnchorEl(event.currentTarget);
+  };
+
+  const closeToolsMenu = () => {
+    setToolsAnchorEl(null);
+  };
+
+  const closeToolDialog = () => {
+    setToolDialogOpen(false);
+    setToolLoading(false);
+  };
+
+  const runSectionTool = async (tool: 'originality' | 'optimize' | 'fact' | 'links' | 'flow') => {
+    closeToolsMenu();
+    setActiveTool(tool);
+    setToolResult(null);
+    setToolLoading(true);
+    setToolDialogOpen(true);
+
+    try {
+      if (tool === 'originality') {
+        const res = await blogWriterApi.sectionOriginalityTools({
+          section_id: String(id),
+          title: sectionTitle,
+          content
+        });
+        setToolResult(res);
+        return;
+      }
+
+      if (tool === 'links') {
+        const res = await blogWriterApi.sectionInternalLinkTools({
+          section_id: String(id),
+          title: sectionTitle,
+          content
+        });
+        setToolResult(res);
+        return;
+      }
+
+      if (tool === 'fact') {
+        const res = await blogWriterApi.sectionFactCheckTools({
+          section_id: String(id),
+          title: sectionTitle,
+          content
+        });
+        setToolResult(res);
+        return;
+      }
+
+      if (tool === 'optimize') {
+        const res = await blogWriterApi.sectionOptimizeTools({
+          section_id: String(id),
+          title: sectionTitle,
+          content,
+          keywords: outlineData?.keywords || [],
+          goal: 'readability'
+        });
+        setToolResult(res);
+        return;
+      }
+
+      if (tool === 'flow') {
+        const res = await blogWriterApi.analyzeFlowAdvanced({
+          title: sectionTitle,
+          sections: [{ id: String(id), heading: sectionTitle, content }]
+        });
+        setToolResult(res);
+        return;
+      }
+    } catch (error: any) {
+      setToolResult({ success: false, error: error?.message || 'Request failed' });
+    } finally {
+      setToolLoading(false);
+    }
+  };
+
+  const applyOptimizedContent = () => {
+    const next = toolResult?.optimized_content;
+    if (!next) return;
+    setContent(next);
+    if (onContentUpdate) {
+      onContentUpdate([{ id, content: next }]);
+    }
+    closeToolDialog();
+  };
+
+  const insertLinkSuggestion = (url: string) => {
+    if (!url) return;
+    const insertion = `\n\n[Related](${url})`;
+    const next = `${content || ''}${insertion}`;
+    setContent(next);
+    if (onContentUpdate) {
+      onContentUpdate([{ id, content: next }]);
+    }
+  };
   
 
   const handleGenerateContent = async () => {
@@ -410,11 +525,145 @@ const BlogSection: React.FC<BlogSectionProps> = ({
           disabled={!flowAnalysisResults}
           flowAnalysisResults={flowAnalysisResults}
         />
+
+        <Tooltip title="Section Tools">
+          <IconButton size="small" onClick={openToolsMenu}>
+            <InfoIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         
         <Tooltip title="Copy Section"><IconButton size="small"><FileCopyOutlinedIcon fontSize="small" /></IconButton></Tooltip>
         <Tooltip title="Edit Metadata"><IconButton size="small"><EditIcon fontSize="small" /></IconButton></Tooltip>
         <Tooltip title="Delete Section"><IconButton size="small" className="text-red-500"><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>
       </div>
+
+      <Menu
+        anchorEl={toolsAnchorEl}
+        open={Boolean(toolsAnchorEl)}
+        onClose={closeToolsMenu}
+      >
+        <MenuItem onClick={() => runSectionTool('originality')}>Originality Check</MenuItem>
+        <MenuItem onClick={() => runSectionTool('optimize')}>Optimize Section</MenuItem>
+        <MenuItem onClick={() => runSectionTool('fact')}>SIF Fact Check</MenuItem>
+        <MenuItem onClick={() => runSectionTool('links')}>Internal Link Suggestions</MenuItem>
+        <MenuItem onClick={() => runSectionTool('flow')}>Flow Analysis</MenuItem>
+      </Menu>
+
+      <Dialog open={toolDialogOpen} onClose={closeToolDialog} fullWidth maxWidth="md">
+        <DialogTitle>
+          {activeTool === 'originality' && 'Originality Check'}
+          {activeTool === 'optimize' && 'Optimize Section'}
+          {activeTool === 'fact' && 'SIF Fact Check'}
+          {activeTool === 'links' && 'Internal Link Suggestions'}
+          {activeTool === 'flow' && 'Flow Analysis'}
+        </DialogTitle>
+        <DialogContent dividers>
+          {toolLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={18} />
+              <div>Working…</div>
+            </div>
+          )}
+
+          {!toolLoading && toolResult?.error && (
+            <div style={{ color: '#b91c1c', fontWeight: 600 }}>{toolResult.error}</div>
+          )}
+
+          {!toolLoading && activeTool === 'optimize' && toolResult?.optimized_content && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {toolResult?.diff_summary && (
+                <div style={{ fontWeight: 600 }}>{toolResult.diff_summary}</div>
+              )}
+              {Array.isArray(toolResult?.changes_made) && toolResult.changes_made.length > 0 && (
+                <List dense>
+                  {toolResult.changes_made.map((c: string, idx: number) => (
+                    <ListItem key={idx}>
+                      <ListItemText primary={c} />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+              <TextField
+                multiline
+                minRows={10}
+                value={toolResult.optimized_content}
+                fullWidth
+                InputProps={{ readOnly: true }}
+              />
+            </div>
+          )}
+
+          {!toolLoading && activeTool === 'links' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {Array.isArray(toolResult?.suggestions) && toolResult.suggestions.length > 0 ? (
+                <List>
+                  {toolResult.suggestions.map((s: any, idx: number) => (
+                    <ListItem key={idx} secondaryAction={
+                      <Button size="small" onClick={() => insertLinkSuggestion(s.url)}>Insert</Button>
+                    }>
+                      <ListItemText
+                        primary={s.url}
+                        secondary={`confidence: ${(s.confidence ?? 0).toFixed?.(2) ?? s.confidence} • ${s.reason ?? ''}`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <div>No suggestions yet. Make sure SIF index has your website content.</div>
+              )}
+            </div>
+          )}
+
+          {!toolLoading && activeTool === 'originality' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {toolResult?.cannibalization && (
+                <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(toolResult.cannibalization, null, 2)}</pre>
+              )}
+              {Array.isArray(toolResult?.matches) && toolResult.matches.length > 0 ? (
+                <List>
+                  {toolResult.matches.map((m: any, idx: number) => (
+                    <ListItem key={idx}>
+                      <ListItemText
+                        primary={`${m.id ?? 'unknown'} (${(m.score ?? 0).toFixed?.(3) ?? m.score})`}
+                        secondary={m.excerpt}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <div>No close matches found.</div>
+              )}
+            </div>
+          )}
+
+          {!toolLoading && activeTool === 'fact' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {toolResult?.verification && (
+                <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(toolResult.verification, null, 2)}</pre>
+              )}
+              {Array.isArray(toolResult?.citations) && toolResult.citations.length > 0 && (
+                <List>
+                  {toolResult.citations.map((c: any, idx: number) => (
+                    <ListItem key={idx}>
+                      <ListItemText primary={c.citation_text || c.title || c.source} secondary={c.source} />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </div>
+          )}
+
+          {!toolLoading && activeTool === 'flow' && (
+            <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(toolResult, null, 2)}</pre>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeToolDialog}>Close</Button>
+          {activeTool === 'optimize' && toolResult?.optimized_content && (
+            <Button variant="contained" onClick={applyOptimizedContent}>Replace Section Content</Button>
+          )}
+        </DialogActions>
+      </Dialog>
       
       {/* Section Divider */}
       <Divider sx={{ mt: 1.2, mb: 1, opacity: 0.3 }} />

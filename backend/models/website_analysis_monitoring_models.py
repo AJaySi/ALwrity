@@ -107,3 +107,344 @@ class WebsiteAnalysisExecutionLog(Base):
     def __repr__(self):
         return f"<WebsiteAnalysisExecutionLog(id={self.id}, task_id={self.task_id}, status={self.status}, execution_date={self.execution_date})>"
 
+
+class OnboardingFullWebsiteAnalysisTask(Base):
+    __tablename__ = "onboarding_full_website_analysis_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(String(255), nullable=False, index=True)
+    website_url = Column(String(500), nullable=False, index=True)
+
+    status = Column(String(50), default='active', index=True)
+
+    last_executed = Column(DateTime, nullable=True)
+    last_success = Column(DateTime, nullable=True)
+    last_failure = Column(DateTime, nullable=True)
+    failure_reason = Column(Text, nullable=True)
+
+    consecutive_failures = Column(Integer, default=0)
+    failure_pattern = Column(JSON, nullable=True)
+
+    next_execution = Column(DateTime, nullable=True, index=True)
+
+    payload = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    execution_logs = relationship(
+        "OnboardingFullWebsiteAnalysisExecutionLog",
+        back_populates="task",
+        cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index('idx_onboarding_full_website_analysis_tasks_user_site', 'user_id', 'website_url'),
+        Index('idx_onboarding_full_website_analysis_tasks_next_execution', 'next_execution'),
+        Index('idx_onboarding_full_website_analysis_tasks_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<OnboardingFullWebsiteAnalysisTask(id={self.id}, user_id={self.user_id}, url={self.website_url}, status={self.status})>"
+
+
+class OnboardingFullWebsiteAnalysisExecutionLog(Base):
+    __tablename__ = "onboarding_full_website_analysis_execution_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    task_id = Column(Integer, ForeignKey("onboarding_full_website_analysis_tasks.id"), nullable=False, index=True)
+
+    execution_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(50), nullable=False)
+
+    result_data = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    execution_time_ms = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("OnboardingFullWebsiteAnalysisTask", back_populates="execution_logs")
+
+    __table_args__ = (
+        Index('idx_onboarding_full_website_analysis_execution_logs_task_date', 'task_id', 'execution_date'),
+        Index('idx_onboarding_full_website_analysis_execution_logs_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<OnboardingFullWebsiteAnalysisExecutionLog(id={self.id}, task_id={self.task_id}, status={self.status}, execution_date={self.execution_date})>"
+
+
+class DeepCompetitorAnalysisTask(Base):
+    __tablename__ = "deep_competitor_analysis_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(String(255), nullable=False, index=True)
+    website_url = Column(String(500), nullable=False, index=True)
+
+    status = Column(String(50), default='active', index=True)
+
+    last_executed = Column(DateTime, nullable=True)
+    last_success = Column(DateTime, nullable=True)
+    last_failure = Column(DateTime, nullable=True)
+    failure_reason = Column(Text, nullable=True)
+
+    consecutive_failures = Column(Integer, default=0)
+    failure_pattern = Column(JSON, nullable=True)
+
+    next_execution = Column(DateTime, nullable=True, index=True)
+
+    payload = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    execution_logs = relationship(
+        "DeepCompetitorAnalysisExecutionLog",
+        back_populates="task",
+        cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index('idx_deep_competitor_analysis_tasks_user_site', 'user_id', 'website_url'),
+        Index('idx_deep_competitor_analysis_tasks_next_execution', 'next_execution'),
+        Index('idx_deep_competitor_analysis_tasks_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<DeepCompetitorAnalysisTask(id={self.id}, user_id={self.user_id}, url={self.website_url}, status={self.status})>"
+
+
+class DeepCompetitorAnalysisExecutionLog(Base):
+    __tablename__ = "deep_competitor_analysis_execution_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    task_id = Column(Integer, ForeignKey("deep_competitor_analysis_tasks.id"), nullable=False, index=True)
+
+    execution_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(50), nullable=False)
+
+    result_data = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    execution_time_ms = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("DeepCompetitorAnalysisTask", back_populates="execution_logs")
+
+    __table_args__ = (
+        Index('idx_deep_competitor_analysis_execution_logs_task_date', 'task_id', 'execution_date'),
+        Index('idx_deep_competitor_analysis_execution_logs_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<DeepCompetitorAnalysisExecutionLog(id={self.id}, task_id={self.task_id}, status={self.status}, execution_date={self.execution_date})>"
+
+
+class DeepWebsiteCrawlTask(Base):
+    __tablename__ = "deep_website_crawl_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(String(255), nullable=False, index=True)
+    website_url = Column(String(500), nullable=False, index=True)
+
+    status = Column(String(50), default='active', index=True)
+
+    last_executed = Column(DateTime, nullable=True)
+    last_success = Column(DateTime, nullable=True)
+    last_failure = Column(DateTime, nullable=True)
+    failure_reason = Column(Text, nullable=True)
+
+    consecutive_failures = Column(Integer, default=0)
+    failure_pattern = Column(JSON, nullable=True)
+
+    next_execution = Column(DateTime, nullable=True, index=True)
+
+    payload = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    execution_logs = relationship(
+        "DeepWebsiteCrawlExecutionLog",
+        back_populates="task",
+        cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index('idx_deep_website_crawl_tasks_user_site', 'user_id', 'website_url'),
+        Index('idx_deep_website_crawl_tasks_next_execution', 'next_execution'),
+        Index('idx_deep_website_crawl_tasks_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<DeepWebsiteCrawlTask(id={self.id}, user_id={self.user_id}, url={self.website_url}, status={self.status})>"
+
+
+class DeepWebsiteCrawlExecutionLog(Base):
+    __tablename__ = "deep_website_crawl_execution_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    task_id = Column(Integer, ForeignKey("deep_website_crawl_tasks.id"), nullable=False, index=True)
+
+    execution_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(50), nullable=False)
+
+    result_data = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    execution_time_ms = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("DeepWebsiteCrawlTask", back_populates="execution_logs")
+
+    __table_args__ = (
+        Index('idx_deep_website_crawl_execution_logs_task_date', 'task_id', 'execution_date'),
+        Index('idx_deep_website_crawl_execution_logs_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<DeepWebsiteCrawlExecutionLog(id={self.id}, task_id={self.task_id}, status={self.status}, execution_date={self.execution_date})>"
+
+
+class SIFIndexingTask(Base):
+    __tablename__ = "sif_indexing_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(String(255), nullable=False, index=True)
+    website_url = Column(String(500), nullable=False, index=True)
+
+    status = Column(String(50), default='active', index=True)
+
+    last_executed = Column(DateTime, nullable=True)
+    last_success = Column(DateTime, nullable=True)
+    last_failure = Column(DateTime, nullable=True)
+    failure_reason = Column(Text, nullable=True)
+
+    consecutive_failures = Column(Integer, default=0)
+    failure_pattern = Column(JSON, nullable=True)
+
+    next_execution = Column(DateTime, nullable=True, index=True)
+    frequency_hours = Column(Integer, default=48)  # Default 48 hours
+
+    payload = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    execution_logs = relationship(
+        "SIFIndexingExecutionLog",
+        back_populates="task",
+        cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index('idx_sif_indexing_tasks_user_site', 'user_id', 'website_url'),
+        Index('idx_sif_indexing_tasks_next_execution', 'next_execution'),
+        Index('idx_sif_indexing_tasks_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<SIFIndexingTask(id={self.id}, user_id={self.user_id}, url={self.website_url}, status={self.status})>"
+
+
+class SIFIndexingExecutionLog(Base):
+    __tablename__ = "sif_indexing_execution_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    task_id = Column(Integer, ForeignKey("sif_indexing_tasks.id"), nullable=False, index=True)
+
+    execution_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(50), nullable=False)
+
+    result_data = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    execution_time_ms = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("SIFIndexingTask", back_populates="execution_logs")
+
+    __table_args__ = (
+        Index('idx_sif_indexing_execution_logs_task_date', 'task_id', 'execution_date'),
+        Index('idx_sif_indexing_execution_logs_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<SIFIndexingExecutionLog(id={self.id}, task_id={self.task_id}, status={self.status}, execution_date={self.execution_date})>"
+
+
+class MarketTrendsTask(Base):
+    __tablename__ = "market_trends_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(String(255), nullable=False, index=True)
+    website_url = Column(String(500), nullable=False, index=True)
+
+    status = Column(String(50), default="active", index=True)
+
+    last_executed = Column(DateTime, nullable=True)
+    last_success = Column(DateTime, nullable=True)
+    last_failure = Column(DateTime, nullable=True)
+    failure_reason = Column(Text, nullable=True)
+
+    consecutive_failures = Column(Integer, default=0)
+    failure_pattern = Column(JSON, nullable=True)
+
+    next_execution = Column(DateTime, nullable=True, index=True)
+    frequency_hours = Column(Integer, default=72)
+
+    payload = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    execution_logs = relationship(
+        "MarketTrendsExecutionLog",
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        Index("idx_market_trends_tasks_user_site", "user_id", "website_url"),
+        Index("idx_market_trends_tasks_next_execution", "next_execution"),
+        Index("idx_market_trends_tasks_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<MarketTrendsTask(id={self.id}, user_id={self.user_id}, url={self.website_url}, status={self.status})>"
+
+
+class MarketTrendsExecutionLog(Base):
+    __tablename__ = "market_trends_execution_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    task_id = Column(Integer, ForeignKey("market_trends_tasks.id"), nullable=False, index=True)
+
+    execution_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(50), nullable=False)
+
+    result_data = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    execution_time_ms = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("MarketTrendsTask", back_populates="execution_logs")
+
+    __table_args__ = (
+        Index("idx_market_trends_execution_logs_task_date", "task_id", "execution_date"),
+        Index("idx_market_trends_execution_logs_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<MarketTrendsExecutionLog(id={self.id}, task_id={self.task_id}, status={self.status}, execution_date={self.execution_date})>"

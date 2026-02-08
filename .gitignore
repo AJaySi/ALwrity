@@ -4,6 +4,22 @@ __pycache__/
 *.db
 *.sqlite*
 
+.trae/
+.trae
+
+workspace/ 
+workspace/*
+
+.trae/
+/backend/database/migrations/*
+/backend/.db
+backend/*.db
+backend\youtube_audio
+youtube_avatars
+backend\youtube_images
+
+backend/.trae_*
+
 # Onboarding progress files
 .onboarding_progress.json
 backend/.onboarding_progress.json

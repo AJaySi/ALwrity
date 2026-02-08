@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from loguru import logger
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
+from services.user_workspace_manager import UserWorkspaceManager
 
 
 class StoryVideoGenerationService:
@@ -26,14 +28,34 @@ class StoryVideoGenerationService:
         if output_dir:
             self.output_dir = Path(output_dir)
         else:
-            # Default to backend/story_videos directory
-            base_dir = Path(__file__).parent.parent.parent
-            self.output_dir = base_dir / "story_videos"
+            # Default to root/workspace/media/story_videos directory
+            # services/story_writer/video_generation_service.py -> services -> backend -> root
+            root_dir = Path(__file__).parent.parent.parent.parent
+            self.output_dir = root_dir / "workspace" / "media" / "story_videos"
         
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"[StoryVideoGeneration] Initialized with output directory: {self.output_dir}")
     
+    def _get_user_video_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
+        """
+        Get the video directory for a specific user.
+        Falls back to default output_dir if workspace not found.
+        """
+        if db and user_id:
+            try:
+                workspace_manager = UserWorkspaceManager(db)
+                workspace = workspace_manager.get_user_workspace(user_id)
+                if workspace:
+                    # Use media/story_videos inside user workspace
+                    user_video_dir = Path(workspace['workspace_path']) / "media" / "story_videos"
+                    user_video_dir.mkdir(parents=True, exist_ok=True)
+                    return user_video_dir
+            except Exception as e:
+                logger.warning(f"[StoryVideoGeneration] Failed to resolve user workspace path for {user_id}: {e}")
+        
+        return self.output_dir
+
     def _generate_video_filename(self, story_title: str = "story") -> str:
         """Generate a unique filename for a story video."""
         # Clean story title for filename
@@ -41,7 +63,7 @@ class StoryVideoGenerationService:
         unique_id = str(uuid.uuid4())[:8]
         return f"story_{clean_title}_{unique_id}.mp4"
     
-    def save_scene_video(self, video_bytes: bytes, scene_number: int, user_id: str) -> Dict[str, str]:
+    def save_scene_video(self, video_bytes: bytes, scene_number: int, user_id: str, db: Optional[Session] = None) -> Dict[str, str]:
         """
         Save individual scene video bytes to file.
         
@@ -49,6 +71,7 @@ class StoryVideoGenerationService:
             video_bytes: Raw video file bytes (mp4/webm format)
             scene_number: Scene number for naming
             user_id: Clerk user ID for naming
+            db: Database session for workspace resolution
         
         Returns:
             Dict[str, str]: Video metadata with video_url and video_filename
@@ -59,7 +82,9 @@ class StoryVideoGenerationService:
             timestamp = str(uuid.uuid4())[:8]
             filename = f"scene_{scene_number}_{clean_user_id}_{timestamp}.mp4"
             
-            video_path = self.output_dir / filename
+            # Resolve output directory (user workspace or default)
+            output_dir = self._get_user_video_dir(user_id, db)
+            video_path = output_dir / filename
             
             # Write video bytes to file
             with open(video_path, 'wb') as f:
@@ -89,7 +114,8 @@ class StoryVideoGenerationService:
         audio_path: str,
         user_id: str,
         duration: Optional[float] = None,
-        fps: int = 24
+        fps: int = 24,
+        db: Optional[Session] = None
     ) -> Dict[str, Any]:
         """
         Generate a video clip for a single story scene.
@@ -101,6 +127,7 @@ class StoryVideoGenerationService:
             user_id (str): Clerk user ID for subscription checking (for future usage tracking).
             duration (float, optional): Video duration in seconds. If None, uses audio duration.
             fps (int): Frames per second for video (default: 24).
+            db (Session, optional): Database session.
         
         Returns:
             Dict[str, Any]: Video metadata including file path, URL, and scene info.
@@ -175,7 +202,10 @@ class StoryVideoGenerationService:
             
             # Generate video filename
             video_filename = f"scene_{scene_number}_{scene_title.replace(' ', '_').replace('/', '_')[:50]}_{uuid.uuid4().hex[:8]}.mp4"
-            video_path = self.output_dir / video_filename
+            
+            # Determine output directory (user workspace or default)
+            output_dir = self._get_user_video_dir(user_id, db)
+            video_path = output_dir / video_filename
             
             # Write video file
             video_clip.write_videofile(

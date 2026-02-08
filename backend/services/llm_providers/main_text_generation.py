@@ -119,11 +119,14 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
             raise RuntimeError("user_id is required for subscription checking. Please provide Clerk user ID.")
         
         try:
-            from services.database import get_db
+            from services.database import get_session_for_user
             from services.subscription import UsageTrackingService, PricingService
             from models.subscription_models import UsageSummary
             
-            db = next(get_db())
+            db = get_session_for_user(user_id)
+            if not db:
+                 logger.error(f"[llm_text_gen] Could not get database session for user {user_id}")
+                 raise RuntimeError("Database connection failed")
             try:
                 
                 usage_service = UsageTrackingService(db)
@@ -257,7 +260,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
             if response_text:
                 logger.info(f"[llm_text_gen] ✅ API call successful, tracking usage for user {user_id}, provider {provider_enum.value}")
                 try:
-                    db_track = next(get_db())
+                    db_track = get_session_for_user(user_id)
                     try:
                         # Estimate tokens from prompt and response
                         # Recalculate input tokens from prompt (consistent with pre-flight estimation)
@@ -658,7 +661,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                     if response_text:
                         logger.info(f"[llm_text_gen] ✅ Fallback API call successful, tracking usage for user {user_id}, provider {provider_enum.value}")
                         try:
-                            db_track = next(get_db())
+                            db_track = get_session_for_user(user_id)
                             try:
                                 # Estimate tokens from prompt and response
                                 # Recalculate input tokens from prompt (consistent with pre-flight estimation)

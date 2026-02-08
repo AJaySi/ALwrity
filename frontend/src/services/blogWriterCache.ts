@@ -5,20 +5,6 @@
  * and avoid unnecessary API calls. Shared by both CopilotKit and manual flows.
  */
 
-interface CachedOutlineEntry {
-  outline: any[];
-  title_options?: string[];
-  research_keywords: string[];
-  created_at: string;
-}
-
-interface CachedContentEntry {
-  sections: Record<string, string>;
-  outline_ids: string[];
-  research_keywords: string[];
-  created_at: string;
-}
-
 class BlogWriterCacheService {
   private readonly OUTLINE_CACHE_KEY = 'blog_outline';
   private readonly TITLE_OPTIONS_CACHE_KEY = 'blog_title_options';

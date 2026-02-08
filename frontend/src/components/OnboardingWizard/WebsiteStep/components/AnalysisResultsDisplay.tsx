@@ -3,7 +3,7 @@
  * Displays the comprehensive website analysis results
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
@@ -14,7 +14,14 @@ import {
   Checkbox,
   FormControlLabel,
   Alert,
-  Paper
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  Link,
+  Collapse,
+  Switch,
+  Button
 } from '@mui/material';
 import {
   AutoAwesome as AutoAwesomeIcon,
@@ -22,29 +29,40 @@ import {
   Analytics as AnalyticsIcon,
   TrendingUp as TrendingUpIcon,
   Business as BusinessIcon,
+  Info as InfoIcon,
+  Link as LinkIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
   Lightbulb as LightbulbIcon
 } from '@mui/icons-material';
 
 // Import rendering utilities
 import {
-  renderKeyInsight,
   renderProUpgradeAlert,
-  renderBrandAnalysisSection,
-  renderContentStrategyInsightsSection,
-  renderAIGenerationTipsSection,
   renderBestPracticesSection,
   renderAvoidElementsSection,
-  renderStylePatternsSection
+  renderBrandAnalysisSection
 } from '../utils/renderUtils';
 
 // Import extracted components
 import { 
   EnhancedGuidelinesSection, 
   KeyInsightsGrid,
-  ContentCharacteristicsSection,
-  TargetAudienceAnalysisSection
+  ContentStrategyInsightsSection,
+  StrategicInsightsSection,
+  SEOAuditSection,
+  SitemapAnalysisSection,
+  CombinedAnalysisSection,
+  CombinedStrategySection,
+  TargetAudienceAnalysisSection,
+  ContentCharacteristicsSection
 } from './index';
+import SectionHeader from './SectionHeader';
 import { useOnboardingStyles } from '../../common/useOnboardingStyles';
+
+import { apiClient } from '../../../../api/client';
 
 interface StyleAnalysis {
   writing_style?: {
@@ -89,56 +107,22 @@ interface StyleAnalysis {
     competitive_differentiation: string;
     trust_signals: string[];
     authority_indicators: string[];
+    brand_story?: string;
+    unique_selling_propositions?: string[];
   };
-  content_strategy_insights?: {
-    strengths: string[];
-    weaknesses: string[];
-    opportunities: string[];
-    threats: string[];
-    recommended_improvements: string[];
-    content_gaps: string[];
+  strategic_insights?: {
+    content_strategy: string;
+    competitive_advantages: string[];
+    content_calendar_suggestions: string[];
+    ai_generation_tips: string[];
   };
-  recommended_settings?: {
-    writing_tone: string;
-    target_audience: string;
-    content_type: string;
-    creativity_level: string;
-    geographic_location: string;
-    industry_context?: string;
-    brand_alignment?: string;
-  };
-  guidelines?: {
-    tone_recommendations: string[];
-    structure_guidelines: string[];
-    vocabulary_suggestions: string[];
-    engagement_tips: string[];
-    audience_considerations: string[];
-    brand_alignment?: string[];
-    seo_optimization?: string[];
-    conversion_optimization?: string[];
-  };
+  content_strategy_insights?: any;
+  style_guidelines?: any;
+  style_patterns?: any;
+  seo_audit?: any;
+  sitemap_analysis?: any;
   best_practices?: string[];
   avoid_elements?: string[];
-  content_strategy?: string;
-  ai_generation_tips?: string[];
-  competitive_advantages?: string[];
-  content_calendar_suggestions?: string[];
-  style_patterns?: {
-    sentence_length: string;
-    vocabulary_patterns: string[];
-    rhetorical_devices: string[];
-    paragraph_structure: string;
-    transition_phrases: string[];
-  };
-  patterns?: {
-    sentence_length: string;
-    vocabulary_patterns: string[];
-    rhetorical_devices: string[];
-    paragraph_structure: string;
-    transition_phrases: string[];
-  };
-  style_consistency?: string;
-  unique_elements?: string[];
 }
 
 interface AnalysisResultsDisplayProps {
@@ -146,15 +130,80 @@ interface AnalysisResultsDisplayProps {
   domainName: string;
   useAnalysisForGenAI: boolean;
   onUseAnalysisChange: (use: boolean) => void;
+  crawlResult?: any;
+  onAnalysisUpdate?: (updatedAnalysis: StyleAnalysis) => void;
+  onSave?: () => void;
 }
 
 const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
   analysis,
   domainName,
   useAnalysisForGenAI,
-  onUseAnalysisChange
+  onUseAnalysisChange,
+  crawlResult,
+  onAnalysisUpdate,
+  onSave
 }) => {
   const styles = useOnboardingStyles();
+  const [isCrawlExpanded, setIsCrawlExpanded] = useState(false);
+  const [isEditable, setIsEditable] = useState(false);
+
+  // Helper to handle section updates
+  const handleSectionUpdate = (section: string, fieldPath: string, value: any) => {
+    if (!onAnalysisUpdate) return;
+    
+    const newAnalysis = { ...analysis };
+    
+    // Check if we are updating a nested field or the section itself
+    // If section and fieldPath are same, it's a direct update of a top-level property
+    if (section === fieldPath) {
+        (newAnalysis as any)[section] = value;
+    } else {
+        // Nested update
+        // Handle style_patterns specifically as it might be undefined initially
+        if (section === 'style_patterns' || section === 'patterns') {
+            const sectionData: any = { ...((newAnalysis as any)[section] || {}) };
+            sectionData[fieldPath] = value;
+            (newAnalysis as any)[section] = sectionData;
+        } 
+        // Handle guidelines specifically
+        else if (section === 'guidelines') {
+            const sectionData: any = { ...((newAnalysis as any)[section] || {}) };
+            sectionData[fieldPath] = value;
+            (newAnalysis as any)[section] = sectionData;
+        }
+        else if (
+          typeof (newAnalysis as any)[section] === 'object' &&
+          (newAnalysis as any)[section] !== null &&
+          !Array.isArray((newAnalysis as any)[section])
+        ) {
+            // Generic object update
+            const sectionData: any = { ...((newAnalysis as any)[section] || {}) };
+            sectionData[fieldPath] = value;
+            (newAnalysis as any)[section] = sectionData;
+        }
+    }
+      
+    onAnalysisUpdate(newAnalysis);
+  };
+
+  const handleRunSEOAudit = async (url: string) => {
+    try {
+      const response = await apiClient.post('/api/seo/on-page-analysis', {
+        url: url,
+        analyze_images: true,
+        analyze_content_quality: true
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to run SEO audit:', error);
+      throw error;
+    }
+  };
+
+  if (!analysis) {
+    return null;
+  }
 
   return (
     <Box sx={{
@@ -178,31 +227,116 @@ const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
       {/* Main Analysis Results */}
       <Card sx={styles.analysisHeaderCard}>
         <CardContent sx={styles.analysisCardContent}>
-          <Box sx={styles.analysisHeader}>
-            <VerifiedIcon sx={styles.analysisHeaderIcon} />
-            <Box>
-              <Typography 
-                variant="h4" 
-                sx={{
-                  ...styles.analysisHeaderTitle,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                {domainName} Style Analysis
-              </Typography>
-              <Typography 
-                variant="body1" 
-                sx={{
-                  ...styles.analysisHeaderSubtitle,
-                  color: '#4a5568 !important' // Force dark secondary text
-                }}
-              >
-                Comprehensive content analysis and personalized recommendations
-              </Typography>
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <VerifiedIcon sx={{ ...styles.analysisHeaderIcon, fontSize: 32 }} />
+                <Box>
+                  <Typography 
+                    variant="h4" 
+                    sx={{
+                      ...styles.analysisHeaderTitle,
+                      color: '#1a202c !important',
+                      fontWeight: '700 !important',
+                      mb: 0.5
+                    }} 
+                  >
+                    {domainName} Style Analysis
+                  </Typography>
+                  <Typography 
+                    variant="body1" 
+                    sx={{ color: '#4a5568 !important' }}
+                  >
+                    AI-powered analysis of your brand voice and content strategy
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                {onSave && (
+                  <Button
+                    startIcon={<SaveIcon />}
+                    variant="contained"
+                    onClick={onSave}
+                    sx={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white',
+                      '&:hover': {
+                         background: 'linear-gradient(135deg, #5a6fd6 0%, #663d91 100%)',
+                      }
+                    }}
+                  >
+                    Save Analysis
+                  </Button>
+                )}
+                {onAnalysisUpdate && (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={isEditable}
+                        onChange={(e) => setIsEditable(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Edit Mode"
+                    sx={{ 
+                      '& .MuiTypography-root': { color: '#4a5568 !important' } 
+                    }}
+                  />
+                )}
+              </Box>
             </Box>
+
+            <Alert 
+              severity="info" 
+              icon={<AutoAwesomeIcon />}
+              sx={{ 
+                mb: 3, 
+                borderRadius: 2,
+                '& .MuiAlert-message': { color: '#1e293b' },
+                '& .MuiAlert-icon': { color: '#3b82f6' }
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                AI Analysis Complete
+              </Typography>
+              <Typography variant="body2">
+                We've analyzed your content to understand your brand voice, audience, and strategy. 
+                Use these insights to generate on-brand content automatically.
+              </Typography>
+            </Alert>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={useAnalysisForGenAI}
+                  onChange={(e) => onUseAnalysisChange(e.target.checked)}
+                  color="primary"
+                  sx={{ '&.Mui-checked': { color: '#764ba2' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1f2937 !important' }}>
+                    Use this analysis for AI generation
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#4b5563 !important' }}>
+                    Apply these style guidelines to all future content generated by ALwrity
+                  </Typography>
+                </Box>
+              }
+              sx={{ 
+                mt: 1,
+                p: 2,
+                borderRadius: 2,
+                bgcolor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                width: '100%',
+                ml: 0
+              }}
+            />
           </Box>
+
+          <Divider sx={{ my: 3 }} />
 
           {/* Key Insights Grid */}
           <KeyInsightsGrid 
@@ -211,448 +345,150 @@ const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
             content_type={analysis.content_type}
           />
 
-          {/* Content Characteristics Section */}
-          <ContentCharacteristicsSection 
-            contentCharacteristics={analysis.content_characteristics as any}
-          />
-
-          {/* Target Audience Analysis Section */}
-          <TargetAudienceAnalysisSection 
-            targetAudience={analysis.target_audience as any}
-          />
-
-          {/* Content Type Details Section */}
-          {analysis.content_type && (
-            <Box sx={{ ...styles.analysisSection, mt: 4 }}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }}
-              >
-                <BusinessIcon sx={{ color: '#667eea !important' }} />
-                Content Type Analysis
-               </Typography>
-               <Grid container spacing={2}>
-                 {analysis.content_type.purpose && (
-                  <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                    {renderKeyInsight(
-                      'Content Purpose',
-                      analysis.content_type.purpose,
-                      <AutoAwesomeIcon />,
-                      'primary'
-                    )}
-                  </Grid>
-                )}
-                
-                {analysis.content_type.call_to_action && (
-                  <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                    {renderKeyInsight(
-                      'Call to Action Style',
-                      analysis.content_type.call_to_action,
-                      <TrendingUpIcon />,
-                      'success'
-                    )}
-                  </Grid>
-                )}
-                
-                {analysis.content_type.conversion_focus && (
-                  <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                    {renderKeyInsight(
-                      'Conversion Focus',
-                      analysis.content_type.conversion_focus,
-                      <AnalyticsIcon />,
-                      'info'
-                    )}
-                  </Grid>
-                )}
-                
-                {analysis.content_type.educational_value && (
-                  <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                    {renderKeyInsight(
-                      'Educational Value',
-                      analysis.content_type.educational_value,
-                      <LightbulbIcon />,
-                      'warning'
-                    )}
-                  </Grid>
-                )}
-                
-                {analysis.content_type.secondary_types && analysis.content_type.secondary_types.length > 0 && (
-                  <Grid item xs={12}>
-                    <Paper elevation={2} sx={styles.analysisAccentPaperSuccess}>
-                      <Box display="flex" alignItems="center" gap={2}>
-                        <Box sx={styles.analysisAccentIconSuccess}>
-                          <BusinessIcon />
-                        </Box>
-                        <Box flex={1}>
-                          <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                            Secondary Content Types
-                          </Typography>
-                          <Box component="ul" sx={styles.analysisList}>
-                            {analysis.content_type.secondary_types.map((type: string, index: number) => (
-                              <Typography component="li" variant="body2" key={index} sx={styles.analysisListItem}>
-                                {type}
-                              </Typography>
-                            ))}
-                          </Box>
-                        </Box>
-                      </Box>
-                    </Paper>
-                  </Grid>
-                )}
-              </Grid>
-            </Box>
-          )}
-
-          <Divider sx={styles.analysisDivider} />
-
-          {/* Content Strategy */}
-          {analysis.content_strategy && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <AutoAwesomeIcon color="primary" />
-                Content Strategy
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperPrimary}>
-                <Typography variant="body1" sx={styles.analysisParagraph}>
-                  {analysis.content_strategy}
-                </Typography>
-              </Paper>
-            </Box>
-          )}
-
-          {/* Recommended Settings for AI Generation */}
-          {analysis.recommended_settings && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <AutoAwesomeIcon color="primary" />
-                Recommended AI Generation Settings
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperPrimary}>
-                <Grid container spacing={2}>
-                  {analysis.recommended_settings.writing_tone && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                      <Typography variant="subtitle2" sx={styles.analysisSubheader}>
-                        Writing Tone:
-                      </Typography>
-                      <Typography variant="body1" sx={styles.analysisValue}>
-                        {analysis.recommended_settings.writing_tone}
-                      </Typography>
-                    </Grid>
-                  )}
-                  
-                  {analysis.recommended_settings.target_audience && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                      <Typography variant="subtitle2" sx={styles.analysisSubheader}>
-                        Target Audience:
-                      </Typography>
-                      <Typography variant="body1" sx={styles.analysisValue}>
-                        {analysis.recommended_settings.target_audience}
-                      </Typography>
-                    </Grid>
-                  )}
-                  
-                  {analysis.recommended_settings.content_type && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                      <Typography variant="subtitle2" sx={styles.analysisSubheader}>
-                        Content Type:
-                      </Typography>
-                      <Typography variant="body1" sx={styles.analysisValue}>
-                        {analysis.recommended_settings.content_type}
-                      </Typography>
-                    </Grid>
-                  )}
-                  
-                  {analysis.recommended_settings.creativity_level && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                      <Typography variant="subtitle2" sx={styles.analysisSubheader}>
-                        Creativity Level:
-                      </Typography>
-                      <Typography variant="body1" sx={styles.analysisValue}>
-                        {analysis.recommended_settings.creativity_level}
-                      </Typography>
-                    </Grid>
-                  )}
-                  
-                  {analysis.recommended_settings.industry_context && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                      <Typography variant="subtitle2" sx={styles.analysisSubheader}>
-                        Industry Context:
-                      </Typography>
-                      <Typography variant="body1" sx={styles.analysisValue}>
-                        {analysis.recommended_settings.industry_context}
-                      </Typography>
-                    </Grid>
-                  )}
-                  
-                  {analysis.recommended_settings.geographic_location && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                      <Typography variant="subtitle2" sx={styles.analysisSubheader}>
-                        Geographic Focus:
-                      </Typography>
-                      <Typography variant="body1" sx={styles.analysisValue}>
-                        {analysis.recommended_settings.geographic_location}
-                      </Typography>
-                    </Grid>
-                  )}
-
-                  {analysis.recommended_settings.brand_alignment && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                      <Typography variant="subtitle2" sx={styles.analysisSubheader}>
-                        Brand Alignment:
-                      </Typography>
-                      <Typography variant="body1" sx={styles.analysisValue}>
-                        {analysis.recommended_settings.brand_alignment}
-                      </Typography>
-                    </Grid>
-                  )}
-                </Grid>
-              </Paper>
-            </Box>
-          )}
-
-          {/* Brand Analysis */}
-          {analysis.brand_analysis && renderBrandAnalysisSection(analysis.brand_analysis)}
-
-          {/* Content Strategy Insights */}
-          {analysis.content_strategy_insights && renderContentStrategyInsightsSection(analysis.content_strategy_insights)}
-
-          {/* AI Generation Tips */}
-          {analysis.ai_generation_tips && renderAIGenerationTipsSection(analysis.ai_generation_tips)}
-
-          {/* Style Patterns Section */}
-          {(analysis.style_patterns || analysis.patterns) && (
-            <Box sx={styles.analysisSection}>
-              {renderStylePatternsSection(analysis.style_patterns || analysis.patterns)}
-            </Box>
-          )}
-
-          {/* Style Consistency Section */}
-          {analysis.style_consistency && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <AnalyticsIcon color="info" />
-                Style Consistency
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperWarning}>
-                <Typography variant="body1" sx={styles.analysisParagraph}>
-                  {analysis.style_consistency}
-                </Typography>
-              </Paper>
-            </Box>
-          )}
-
-          {/* Unique Elements Section */}
-          {analysis.unique_elements && analysis.unique_elements.length > 0 && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <AutoAwesomeIcon color="primary" />
-                Unique Style Elements
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperAccent}>
-                <Box component="ul" sx={styles.analysisList}>
-                  {analysis.unique_elements.map((element: string, index: number) => (
-                    <Typography component="li" variant="body1" key={index} sx={styles.analysisListItem}>
-                      {element}
-                    </Typography>
-                  ))}
-                </Box>
-              </Paper>
-            </Box>
-          )}
-
-          {/* Enhanced Guidelines Section */}
-          {analysis.guidelines && (
-            <EnhancedGuidelinesSection 
-              guidelines={analysis.guidelines}
-              domainName={domainName}
+          {/* Strategic Insights Section */}
+          <Box sx={{ mt: 4 }}>
+            <SectionHeader 
+              title="Strategic Insights" 
+              icon={<LightbulbIcon />} 
             />
-          )}
-
-          {/* Best Practices & Avoid Elements */}
-           <Grid container spacing={2} sx={styles.analysisSection}>
-            {analysis.best_practices && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                {renderBestPracticesSection(analysis.best_practices)}
-              </Grid>
-            )}
-            
-            {analysis.avoid_elements && (
-                    <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
-                {renderAvoidElementsSection(analysis.avoid_elements)}
-              </Grid>
-            )}
-          </Grid>
-
-          {/* Competitive Advantages */}
-          {analysis.competitive_advantages && analysis.competitive_advantages.length > 0 && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <TrendingUpIcon color="success" />
-                Competitive Advantages
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperSuccess}>
-                <Box component="ul" sx={styles.analysisList}>
-                  {analysis.competitive_advantages.map((advantage: string, index: number) => (
-                    <Typography component="li" variant="body1" key={index} sx={styles.analysisListItem}>
-                      {advantage}
-                    </Typography>
-                  ))}
-                </Box>
-              </Paper>
-            </Box>
-          )}
-
-          {/* Content Calendar Suggestions */}
-          {analysis.content_calendar_suggestions && analysis.content_calendar_suggestions.length > 0 && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <AnalyticsIcon color="primary" />
-                Content Calendar Suggestions
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperInfo}>
-                <Box component="ul" sx={styles.analysisList}>
-                  {analysis.content_calendar_suggestions.map((suggestion: string, index: number) => (
-                    <Typography component="li" variant="body1" key={index} sx={styles.analysisListItem}>
-                      {suggestion}
-                    </Typography>
-                  ))}
-                </Box>
-              </Paper>
-            </Box>
-          )}
-
-          {/* Content Strategy */}
-          {analysis.content_strategy && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <BusinessIcon color="primary" />
-                Content Strategy Overview
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperPrimary}>
-                <Typography variant="body1" sx={styles.analysisParagraph}>
-                  {analysis.content_strategy}
-                </Typography>
-              </Paper>
-            </Box>
-          )}
-
-          {/* AI Generation Tips */}
-          {analysis.ai_generation_tips && analysis.ai_generation_tips.length > 0 && (
-            <Box sx={styles.analysisSection}>
-              <Typography 
-                variant="h5" 
-                sx={{
-                  ...styles.analysisSectionHeader,
-                  color: '#1a202c !important', // Force dark text
-                  fontWeight: '700 !important'
-                }} 
-                gutterBottom
-              >
-                <AutoAwesomeIcon color="secondary" />
-                AI Content Generation Tips
-              </Typography>
-              <Paper elevation={3} sx={styles.analysisGradientPaperAccent}>
-                <Box component="ul" sx={styles.analysisList}>
-                  {analysis.ai_generation_tips.map((tip: string, index: number) => (
-                    <Typography component="li" variant="body1" key={index} sx={styles.analysisListItem}>
-                      {tip}
-                    </Typography>
-                  ))}
-                </Box>
-              </Paper>
-            </Box>
-          )}
-
-          {/* GenAI Integration Checkbox */}
-          <Box sx={styles.analysisCheckboxContainer}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={useAnalysisForGenAI}
-                  onChange={(e) => onUseAnalysisChange(e.target.checked)}
-                  color="primary"
-                  size="large"
-                />
-              }
-              label={
-                <Box>
-                  <Typography variant="h6" sx={styles.analysisSubheader} gutterBottom>
-                    Use Analysis for AI Content Generation
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Apply this style analysis to personalize AI-generated content, ensuring it matches {domainName}'s voice and tone.
-                  </Typography>
-                </Box>
-              }
+            <StrategicInsightsSection 
+              contentStrategy={analysis.strategic_insights?.content_strategy}
+              competitiveAdvantages={analysis.strategic_insights?.competitive_advantages}
+              contentCalendarSuggestions={analysis.strategic_insights?.content_calendar_suggestions}
+              aiGenerationTips={analysis.strategic_insights?.ai_generation_tips}
+              isEditable={isEditable}
+              onUpdate={(field, value) => handleSectionUpdate('strategic_insights', field, value)}
             />
           </Box>
 
-          {/* Success Message */}
-          <Alert severity="success" sx={styles.analysisSuccessAlert}>
-            <Typography variant="body1" sx={styles.analysisAlertText}>
-              ✅ Analysis complete! Your content style has been analyzed and personalized recommendations are ready.
-            </Typography>
-          </Alert>
+          {/* Content Strategy Insights */}
+          <Box sx={{ mt: 4 }}>
+             <SectionHeader 
+              title="Content Strategy" 
+              icon={<TrendingUpIcon />} 
+            />
+             <ContentStrategyInsightsSection 
+               insights={analysis.content_strategy_insights}
+               isEditable={isEditable}
+               onUpdate={(field, value) => handleSectionUpdate('content_strategy_insights', field, value)}
+             />
+          </Box>
+          
+          {/* Brand Analysis Section */}
+          <Box sx={{ mt: 4 }}>
+            <SectionHeader 
+              title="Brand Identity" 
+              icon={<BusinessIcon />} 
+            />
+            {renderBrandAnalysisSection(analysis)}
+          </Box>
+
+          {/* Style Guidelines Section */}
+          <Box sx={{ mt: 4 }}>
+            <SectionHeader 
+              title="Style Guidelines" 
+              icon={<AutoAwesomeIcon />} 
+            />
+            <EnhancedGuidelinesSection 
+              guidelines={analysis.style_guidelines}
+              domainName={domainName}
+            />
+          </Box>
+
+          {/* SEO Audit Section */}
+          <Box sx={{ mt: 4 }}>
+             <SectionHeader 
+              title="SEO Audit" 
+              icon={<AnalyticsIcon />} 
+            />
+             <SEOAuditSection
+               seoAudit={analysis.seo_audit}
+               domainName={domainName}
+               onRunAudit={() => handleRunSEOAudit(domainName)}
+             />
+          </Box>
+
+          {/* Sitemap Analysis Section */}
+          <Box sx={{ mt: 4 }}>
+             <SectionHeader 
+              title="Sitemap Analysis" 
+              icon={<LinkIcon />} 
+            />
+             <SitemapAnalysisSection
+               sitemapAnalysis={analysis.sitemap_analysis}
+               domainName={domainName}
+             />
+          </Box>
+
+          {/* Combined Analysis Section (Legacy Support) */}
+          <Box sx={{ mt: 4 }}>
+            <CombinedAnalysisSection 
+              contentCharacteristics={analysis.content_characteristics}
+              targetAudience={analysis.target_audience}
+              contentType={analysis.content_type}
+              brandAnalysis={analysis.brand_analysis}
+              contentStrategyInsights={analysis.content_strategy_insights}
+              isEditable={isEditable}
+              onUpdate={handleSectionUpdate}
+            />
+          </Box>
+
+          {/* Combined Strategy Section (Legacy Support) */}
+          <Box sx={{ mt: 4 }}>
+             <CombinedStrategySection 
+               contentStrategy={analysis.strategic_insights?.content_strategy}
+               competitiveAdvantages={analysis.strategic_insights?.competitive_advantages}
+               contentCalendarSuggestions={analysis.strategic_insights?.content_calendar_suggestions}
+               aiGenerationTips={analysis.strategic_insights?.ai_generation_tips}
+               stylePatterns={analysis.style_patterns}
+               domainName={domainName}
+               isEditable={isEditable}
+               onUpdate={handleSectionUpdate}
+             />
+          </Box>
+          
+          <Grid container spacing={3} sx={{ mt: 2 }}>
+            {/* Target Audience */}
+            <Grid item xs={12} md={6}>
+              <TargetAudienceAnalysisSection targetAudience={analysis.target_audience} />
+            </Grid>
+            
+            {/* Content Characteristics */}
+            <Grid item xs={12} md={6}>
+              <ContentCharacteristicsSection contentCharacteristics={analysis.content_characteristics} />
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} sx={{ mt: 2 }}>
+            <Grid item xs={12} md={6}>
+              {analysis.best_practices && renderBestPracticesSection(analysis.best_practices)}
+            </Grid>
+            <Grid item xs={12} md={6}>
+              {analysis.avoid_elements && renderAvoidElementsSection(analysis.avoid_elements)}
+            </Grid>
+          </Grid>
+          
+          {/* Raw Crawl Data (Collapsible) */}
+          {crawlResult && (
+            <Box sx={{ mt: 4 }}>
+              <Button
+                onClick={() => setIsCrawlExpanded(!isCrawlExpanded)}
+                endIcon={isCrawlExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                sx={{ mb: 2 }}
+              >
+                {isCrawlExpanded ? 'Hide Raw Crawl Data' : 'Show Raw Crawl Data'}
+              </Button>
+              <Collapse in={isCrawlExpanded}>
+                <Paper sx={{ p: 2, bgcolor: '#f8fafc', maxHeight: '400px', overflow: 'auto' }}>
+                  <Typography variant="h6" gutterBottom>Raw Crawl Result</Typography>
+                  <pre style={{ fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>
+                    {JSON.stringify(crawlResult, null, 2)}
+                  </pre>
+                </Paper>
+              </Collapse>
+            </Box>
+          )}
+
         </CardContent>
       </Card>
     </Box>

@@ -1,6 +1,6 @@
 import { apiClient, aiApiClient, pollingApiClient } from "../api/client";
 // Import research types for use in this file
-import type { ResearchMode, ResearchProvider, SourceType, DateRange, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
+import type { ResearchMode, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
 // Re-export research types for backward compatibility
 // TODO: Update all blog writer code to import from researchApi.ts directly
 export type { ResearchMode, ResearchProvider, SourceType, DateRange, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
@@ -290,6 +290,77 @@ export const blogWriterApi = {
 
   async getContinuity(sectionId: string): Promise<{ section_id: string; continuity_metrics?: Record<string, number> }> {
     const { data } = await apiClient.get(`/api/blog/section/${encodeURIComponent(sectionId)}/continuity`);
+    return data;
+  },
+
+  async sectionOriginalityTools(payload: {
+    section_id: string;
+    title?: string;
+    content: string;
+  }): Promise<{
+    success: boolean;
+    section_id: string;
+    cannibalization?: any;
+    matches?: Array<{ id?: string; score?: number; excerpt?: string }>;
+    error?: string;
+  }> {
+    const { data } = await apiClient.post('/api/blog/section/tools/originality', payload);
+    return data;
+  },
+
+  async sectionInternalLinkTools(payload: {
+    section_id: string;
+    title?: string;
+    content: string;
+  }): Promise<{
+    success: boolean;
+    section_id: string;
+    suggestions?: Array<{
+      url: string;
+      relevance?: number;
+      final_score?: number;
+      confidence?: number;
+      reason?: string;
+    }>;
+  }> {
+    const { data } = await apiClient.post('/api/blog/section/tools/internal-links', payload);
+    return data;
+  },
+
+  async sectionFactCheckTools(payload: {
+    section_id: string;
+    title?: string;
+    content: string;
+  }): Promise<{
+    success: boolean;
+    section_id: string;
+    verification?: any;
+    citations?: Array<{
+      source?: string;
+      title?: string;
+      relevance?: number;
+      citation_text?: string;
+    }>;
+  }> {
+    const { data } = await apiClient.post('/api/blog/section/tools/fact-check', payload);
+    return data;
+  },
+
+  async sectionOptimizeTools(payload: {
+    section_id: string;
+    title?: string;
+    content: string;
+    keywords?: string[];
+    goal?: string;
+  }): Promise<{
+    success: boolean;
+    section_id: string;
+    optimized_content?: string;
+    changes_made?: string[];
+    diff_summary?: string;
+    error?: string;
+  }> {
+    const { data } = await apiClient.post('/api/blog/section/tools/optimize', payload);
     return data;
   },
 

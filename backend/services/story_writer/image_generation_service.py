@@ -10,10 +10,12 @@ import uuid
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 from services.llm_providers.main_image_generation import generate_image
 from services.llm_providers.image_generation import ImageGenerationResult
 from utils.logger_utils import get_service_logger
+from services.user_workspace_manager import UserWorkspaceManager
 
 logger = get_service_logger("story_writer.image_generation")
 
@@ -32,14 +34,33 @@ class StoryImageGenerationService:
         if output_dir:
             self.output_dir = Path(output_dir)
         else:
-            # Default to backend/story_images directory
-            base_dir = Path(__file__).parent.parent.parent
-            self.output_dir = base_dir / "story_images"
+            # Default to root/data/media/story_images directory
+            base_dir = Path(__file__).resolve().parents[3]
+            self.output_dir = base_dir / "data" / "media" / "story_images"
         
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"[StoryImageGeneration] Initialized with output directory: {self.output_dir}")
     
+    def _get_user_image_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
+        """
+        Get the image directory for a specific user.
+        Falls back to default output_dir if workspace not found.
+        """
+        if db and user_id:
+            try:
+                workspace_manager = UserWorkspaceManager(db)
+                workspace = workspace_manager.get_user_workspace(user_id)
+                if workspace:
+                    # Use media/story_images inside user workspace
+                    user_image_dir = Path(workspace['workspace_path']) / "media" / "story_images"
+                    user_image_dir.mkdir(parents=True, exist_ok=True)
+                    return user_image_dir
+            except Exception as e:
+                logger.warning(f"[StoryImageGeneration] Failed to resolve user workspace path for {user_id}: {e}")
+        
+        return self.output_dir
+
     def _generate_image_filename(self, scene_number: int, scene_title: str) -> str:
         """Generate a unique filename for a scene image."""
         # Clean scene title for filename
@@ -134,7 +155,8 @@ class StoryImageGenerationService:
         width: int = 1024,
         height: int = 1024,
         model: Optional[str] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        db: Optional[Session] = None
     ) -> List[Dict[str, Any]]:
         """
         Generate images for multiple story scenes.
@@ -147,6 +169,7 @@ class StoryImageGenerationService:
             height (int): Image height (default: 1024).
             model (str, optional): Model to use for image generation.
             progress_callback (callable, optional): Callback function for progress updates.
+            db (Session, optional): Database session.
         
         Returns:
             List[Dict[str, Any]]: List of image metadata for each scene.
@@ -168,7 +191,8 @@ class StoryImageGenerationService:
                     provider=provider,
                     width=width,
                     height=height,
-                    model=model
+                    model=model,
+                    db=db
                 )
                 
                 image_results.append(image_result)

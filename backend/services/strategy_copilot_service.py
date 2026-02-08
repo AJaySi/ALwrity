@@ -1,16 +1,15 @@
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from loguru import logger
-from services.onboarding.data_service import OnboardingDataService
-from services.user_data_service import UserDataService
 from services.llm_providers.gemini_provider import gemini_text_response, gemini_structured_json_response
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 class StrategyCopilotService:
     """Service for CopilotKit strategy assistance using Gemini."""
     
     def __init__(self, db: Session):
         self.db = db
-        self.onboarding_service = OnboardingDataService()
+        self.onboarding_integration_service = OnboardingDataIntegrationService()
         self.user_data_service = UserDataService(db)
     
     async def generate_category_data(
@@ -23,7 +22,8 @@ class StrategyCopilotService:
         try:
             # Get user onboarding data
             user_id = 1  # TODO: Get from auth context
-            onboarding_data = self.onboarding_service.get_personalized_ai_inputs(user_id)
+            integrated_data = await self.onboarding_integration_service.process_onboarding_data(str(user_id), self.db)
+            onboarding_data = integrated_data.get('canonical_profile', {})
             
             # Build prompt for category generation
             prompt = self._build_category_generation_prompt(
@@ -82,7 +82,8 @@ class StrategyCopilotService:
         try:
             # Get user data for context
             user_id = 1  # TODO: Get from auth context
-            onboarding_data = self.onboarding_service.get_personalized_ai_inputs(user_id)
+            integrated_data = await self.onboarding_integration_service.process_onboarding_data(str(user_id), self.db)
+            onboarding_data = integrated_data.get('canonical_profile', {})
             
             # Build analysis prompt
             prompt = self._build_analysis_prompt(form_data, onboarding_data)
@@ -118,7 +119,9 @@ class StrategyCopilotService:
             
             # Get user data
             user_id = 1  # TODO: Get from auth context
-            onboarding_data = self.onboarding_service.get_personalized_ai_inputs(user_id)
+            # Use SSOT
+            integrated_data = await self.onboarding_integration_service.process_onboarding_data(str(user_id), self.db)
+            onboarding_data = integrated_data.get('canonical_profile', {})
             
             # Build suggestions prompt
             prompt = self._build_suggestions_prompt(

@@ -11,6 +11,17 @@ import json
 import re
 import sys
 import os
+import requests
+from ..seo_analyzer.analyzers import (
+    MetaDataAnalyzer,
+    TechnicalSEOAnalyzer,
+    ContentAnalyzer,
+    PerformanceAnalyzer,
+    URLStructureAnalyzer,
+    AccessibilityAnalyzer,
+    UserExperienceAnalyzer
+)
+from bs4 import BeautifulSoup
 
 # Add the backend directory to Python path for absolute imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -48,12 +59,13 @@ class StyleDetectionLogic:
             logger.error(f"[StyleDetectionLogic._clean_json_response] Error cleaning response: {str(e)}")
             return ""
     
-    def analyze_content_style(self, content: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_content_style(self, content: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """
         Analyze the style of the provided content using AI with enhanced prompts.
         
         Args:
             content (Dict): Content to analyze, containing main_content, title, etc.
+            user_id (str): User ID for subscription checking.
             
         Returns:
             Dict: Analysis results with writing style, characteristics, and recommendations
@@ -149,28 +161,40 @@ class StyleDetectionLogic:
             
             # Call the LLM for analysis
             logger.debug("[StyleDetectionLogic.analyze_content_style] Sending enhanced prompt to LLM")
-            analysis_text = llm_text_gen(prompt)
-            
-            # Clean and parse the response
-            cleaned_json = self._clean_json_response(analysis_text)
-            
             try:
+                analysis_text = llm_text_gen(prompt, user_id=user_id)
+                
+                # Clean and parse the response
+                cleaned_json = self._clean_json_response(analysis_text)
+                
                 analysis_results = json.loads(cleaned_json)
                 logger.info("[StyleDetectionLogic.analyze_content_style] Successfully parsed enhanced analysis results")
                 return {
                     'success': True,
                     'analysis': analysis_results
                 }
-            except json.JSONDecodeError as e:
-                logger.error(f"[StyleDetectionLogic.analyze_content_style] Failed to parse JSON response: {e}")
-                logger.debug(f"[StyleDetectionLogic.analyze_content_style] Raw response: {analysis_text}")
+            except Exception as e:
+                logger.warning(f"[StyleDetectionLogic.analyze_content_style] AI analysis failed, using fallback: {str(e)}")
+                fallback_results = self._get_fallback_analysis(content)
                 return {
-                    'success': False,
-                    'error': 'Failed to parse analysis response'
+                    'success': True,
+                    'analysis': fallback_results,
+                    'warning': 'AI analysis failed, used fallback detection'
                 }
                 
         except Exception as e:
-            logger.error(f"[StyleDetectionLogic.analyze_content_style] Error in enhanced analysis: {str(e)}")
+            logger.error(f"[StyleDetectionLogic.analyze_content_style] Critical error in enhanced analysis: {str(e)}")
+            # Even in critical error, try to return fallback if we have content
+            if content:
+                try:
+                    return {
+                        'success': True,
+                        'analysis': self._get_fallback_analysis(content),
+                        'warning': f'Critical error ({str(e)}), used fallback detection'
+                    }
+                except:
+                    pass
+            
             return {
                 'success': False,
                 'error': str(e)
@@ -251,12 +275,13 @@ class StyleDetectionLogic:
             }
         }
     
-    def analyze_style_patterns(self, content: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_style_patterns(self, content: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """
         Analyze recurring patterns in the content style.
         
         Args:
             content (Dict): Content to analyze
+            user_id (str): User ID for subscription checking.
             
         Returns:
             Dict: Pattern analysis results
@@ -288,7 +313,7 @@ class StyleDetectionLogic:
             }}
             """
             
-            analysis_text = llm_text_gen(prompt)
+            analysis_text = llm_text_gen(prompt, user_id=user_id)
             cleaned_json = self._clean_json_response(analysis_text)
             
             try:
@@ -311,12 +336,13 @@ class StyleDetectionLogic:
                 'error': str(e)
             }
     
-    def generate_style_guidelines(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_style_guidelines(self, analysis_results: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """
         Generate comprehensive content guidelines based on enhanced style analysis.
         
         Args:
             analysis_results (Dict): Results from enhanced style analysis
+            user_id (str): User ID for subscription checking.
             
         Returns:
             Dict: Generated comprehensive guidelines
@@ -369,7 +395,7 @@ class StyleDetectionLogic:
             }}
             """
             
-            guidelines_text = llm_text_gen(prompt)
+            guidelines_text = llm_text_gen(prompt, user_id=user_id)
             cleaned_json = self._clean_json_response(guidelines_text)
             
             try:
@@ -421,4 +447,129 @@ class StyleDetectionLogic:
         return {
             'valid': len(errors) == 0,
             'errors': errors
-        } 
+        }
+
+    def perform_seo_audit(self, url: str, content: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Perform a comprehensive SEO audit using the seo_analyzer tools.
+        
+        Args:
+            url (str): The URL of the page being analyzed.
+            content (Dict): The content dictionary containing HTML content.
+            
+        Returns:
+            Dict: Aggregated SEO audit results.
+        """
+        logger.info(f"[StyleDetectionLogic.perform_seo_audit] Starting SEO audit for {url}")
+        
+        audit_results = {
+            'meta': {},
+            'technical': {},
+            'content_health': {},
+            'performance': {},
+            'url_structure': {},
+            'accessibility': {},
+            'ux': {},
+            'overall_score': 0,
+            'summary': {
+                'critical_issues': [],
+                'warnings': [],
+                'passed_checks': 0,
+                'total_checks': 0
+            }
+        }
+        
+        # Need actual HTML content for analysis
+        # If content dictionary has 'html_content', use it.
+        # Otherwise, we might need to fetch it or use 'main_content' if it's HTML.
+        # Ideally, the crawler should pass the full HTML.
+        # For now, let's assume content['html'] or we fetch it if missing.
+        
+        html_content = content.get('html', '')
+        if not html_content and url:
+            try:
+                logger.info(f"Fetching HTML for SEO audit: {url}")
+                response = requests.get(url, timeout=10, headers={'User-Agent': 'ALwrity-SEO-Audit/1.0'})
+                if response.status_code == 200:
+                    html_content = response.text
+            except Exception as e:
+                logger.warning(f"Failed to fetch HTML for SEO audit: {e}")
+        
+        if not html_content:
+            logger.warning("No HTML content available for SEO audit")
+            return audit_results
+            
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Helper to run analyzer safely
+        def run_analyzer(analyzer_class, *analyze_args):
+            try:
+                analyzer = analyzer_class()
+                return analyzer.analyze(*analyze_args)
+            except Exception as e:
+                logger.error(f"Error running {analyzer_class.__name__}: {e}")
+                return {'score': 0, 'issues': [f"Analysis failed: {str(e)}"], 'warnings': []}
+
+        # 1. Meta Data Analysis
+        audit_results['meta'] = run_analyzer(MetaDataAnalyzer, html_content, url)
+        
+        # 2. Technical Analysis (Requires URL)
+        audit_results['technical'] = run_analyzer(TechnicalSEOAnalyzer, html_content, url)
+        
+        # 3. Content Analysis
+        audit_results['content_health'] = run_analyzer(ContentAnalyzer, html_content, url)
+        
+        # 4. Performance Analysis (Requires URL)
+        audit_results['performance'] = run_analyzer(PerformanceAnalyzer, url)
+        
+        # 5. URL Structure
+        audit_results['url_structure'] = run_analyzer(URLStructureAnalyzer, url)
+        
+        # 6. Accessibility
+        audit_results['accessibility'] = run_analyzer(AccessibilityAnalyzer, html_content)
+        
+        # 7. User Experience
+        audit_results['ux'] = run_analyzer(UserExperienceAnalyzer, html_content, url)
+        
+        # Calculate summary metrics
+        total_score = 0
+        categories = ['meta', 'technical', 'content_health', 'performance', 'url_structure', 'accessibility', 'ux']
+        valid_categories = 0
+        
+        for cat in categories:
+            result = audit_results.get(cat, {})
+            score = result.get('score', 0)
+            total_score += score
+            if score > 0: # valid run
+                valid_categories += 1
+                
+            # Aggregate issues
+            for issue in result.get('issues', []):
+                if isinstance(issue, dict):
+                    enriched_issue = dict(issue)
+                    enriched_issue.setdefault('category', cat)
+                    audit_results['summary']['critical_issues'].append(enriched_issue)
+                else:
+                    audit_results['summary']['critical_issues'].append({
+                        'category': cat,
+                        'type': 'critical',
+                        'message': str(issue)
+                    })
+                
+            for warning in result.get('warnings', []):
+                if isinstance(warning, dict):
+                    enriched_warning = dict(warning)
+                    enriched_warning.setdefault('category', cat)
+                    audit_results['summary']['warnings'].append(enriched_warning)
+                else:
+                    audit_results['summary']['warnings'].append({
+                        'category': cat,
+                        'type': 'warning',
+                        'message': str(warning)
+                    })
+
+        # Average score
+        audit_results['overall_score'] = round(total_score / len(categories)) if categories else 0
+        
+        logger.info(f"[StyleDetectionLogic.perform_seo_audit] SEO audit completed. Score: {audit_results['overall_score']}")
+        return audit_results 

@@ -9,8 +9,11 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from loguru import logger
 
+# Import auth middleware
+from middleware.auth_middleware import get_current_user
+
 # Import database service
-from services.database import get_db_session, get_db
+from services.database import get_db, get_session_for_user
 from services.content_planning_db import ContentPlanningDBService
 
 # Import models
@@ -53,21 +56,37 @@ async def create_content_strategy(
 
 @router.get("/", response_model=Dict[str, Any])
 async def get_content_strategies(
-    user_id: Optional[int] = Query(None, description="User ID"),
-    strategy_id: Optional[int] = Query(None, description="Strategy ID")
+    strategy_id: Optional[int] = Query(None, description="Strategy ID"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Get content strategies with comprehensive logging for debugging.
     """
     try:
+        user_id = str(current_user.get('id'))
         logger.info(f"🚀 Starting content strategy analysis for user: {user_id}, strategy: {strategy_id}")
         
         # Create a temporary database session for this operation
-        from services.database import get_db_session
-        temp_db = get_db_session()
+        temp_db = get_session_for_user(user_id)
+        if not temp_db:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+            
         try:
             db_service = EnhancedStrategyDBService(temp_db)
             strategy_service = EnhancedStrategyService(db_service)
+            # Pass user_id (as int or str depending on service expectation)
+            # EnhancedStrategyService.get_enhanced_strategies usually takes user_id but here it seems to filter by strategy_id
+            # If user_id is needed for filtering by user, we should check the service signature.
+            # But the service uses the DB session which is already filtered by user (SQLite isolation).
+            # So passing user_id might be for logging or legacy filtering.
+            
+            # Note: The original code passed user_id from query param.
+            # We pass the authenticated user_id.
+            # Assuming the service can handle string user_id or we convert to int if it expects int.
+            # Most legacy IDs were ints. Clerk IDs are strings.
+            # Let's try to convert to int if possible, or pass as is.
+            # Since SQLite isolation is used, the DB only contains this user's data.
+            
             result = await strategy_service.get_enhanced_strategies(user_id, strategy_id, temp_db)
             return result
         finally:

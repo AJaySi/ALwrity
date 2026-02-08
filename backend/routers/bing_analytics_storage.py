@@ -19,8 +19,11 @@ from middleware.auth_middleware import get_current_user
 router = APIRouter(prefix="/bing-analytics", tags=["Bing Analytics Storage"])
 
 # Initialize storage service
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./bing_analytics.db')
-storage_service = BingAnalyticsStorageService(DATABASE_URL)
+from services.database import get_user_db_path
+
+def get_storage_service(user_id: str) -> BingAnalyticsStorageService:
+    """Get storage service instance for a specific user."""
+    return BingAnalyticsStorageService()
 
 
 @router.post("/collect-data")
@@ -40,6 +43,8 @@ async def collect_bing_data(
             raise HTTPException(status_code=401, detail="User not authenticated")
         
         logger.info(f"Starting Bing data collection for user {user_id}, site: {site_url}")
+        
+        storage_service = get_storage_service(user_id)
         
         # Run data collection in background
         background_tasks.add_task(
@@ -80,6 +85,7 @@ async def get_analytics_summary(
         
         logger.info(f"Getting analytics summary for user {user_id}, site: {site_url}, days: {days}")
         
+        storage_service = get_storage_service(user_id)
         summary = storage_service.get_analytics_summary(
             user_id=user_id,
             site_url=site_url,
@@ -119,6 +125,7 @@ async def get_daily_metrics(
         
         logger.info(f"Getting daily metrics for user {user_id}, site: {site_url}, days: {days}")
         
+        storage_service = get_storage_service(user_id)
         db = storage_service._get_db_session()
         
         # Calculate date range
@@ -190,6 +197,7 @@ async def get_top_queries(
         
         logger.info(f"Getting top queries for user {user_id}, site: {site_url}, sort_by: {sort_by}")
         
+        storage_service = get_storage_service(user_id)
         db = storage_service._get_db_session()
         
         # Calculate date range
@@ -430,6 +438,8 @@ async def generate_daily_metrics(
             target_dt = None
         
         logger.info(f"Generating daily metrics for user {user_id}, site: {site_url}, date: {target_dt}")
+        
+        storage_service = get_storage_service(user_id)
         
         # Run in background
         background_tasks.add_task(

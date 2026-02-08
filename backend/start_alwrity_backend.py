@@ -188,7 +188,9 @@ def start_backend(enable_reload=False, production_mode=False):
             host=host,
             port=port,
             reload=reload,
+            reload_dirs=["."],  # Strictly watch backend directory only
             reload_excludes=[
+                "workspace/**/*",
                 "*.pyc",
                 "*.pyo", 
                 "*.pyd",
@@ -206,19 +208,17 @@ def start_backend(enable_reload=False, production_mode=False):
                 "*.yaml",
                 "*.yml",
                 ".env*",
-                "logs/*",
-                "cache/*",
-                "tmp/*",
-                "temp/*",
+                "logs/**/*",
+                "logs",
+                "**/*.jsonl",
+                "**/*.log",
+                "cache/**/*",
+                "tmp/**/*",
+                "temp/**/*",
                 "middleware/*",
                 "models/*",
                 "scripts/*",
                 "alwrity_utils/*"
-            ],
-            reload_includes=[
-                "app.py",
-                "api/**/*.py",
-                "services/**/*.py"
             ],
             log_level=uvicorn_log_level
         )

@@ -7,6 +7,7 @@ This script should be run once to add the column to existing databases.
 import os
 import sys
 import sqlite3
+import argparse
 from pathlib import Path
 from loguru import logger
 
@@ -14,11 +15,18 @@ from loguru import logger
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-def run_migration():
+from services.database import get_user_db_path
+
+def run_migration(user_id=None):
     """Run the final_video_url column migration."""
     try:
         # Get the database path
-        db_path = backend_dir / "alwrity.db"
+        if user_id:
+            db_path = Path(get_user_db_path(user_id))
+            logger.info(f"Targeting user database: {db_path}")
+        else:
+            logger.error("❌ Error: user_id is required for migration.")
+            return False
         
         logger.info(f"🔄 Starting final_video_url column migration...")
         logger.info(f"📁 Database path: {db_path}")
@@ -86,6 +94,10 @@ def run_migration():
         return False
 
 if __name__ == "__main__":
-    success = run_migration()
+    parser = argparse.ArgumentParser(description="Run final_video_url migration")
+    parser.add_argument("--user_id", help="Target specific user ID")
+    args = parser.parse_args()
+    
+    success = run_migration(args.user_id)
     sys.exit(0 if success else 1)
 

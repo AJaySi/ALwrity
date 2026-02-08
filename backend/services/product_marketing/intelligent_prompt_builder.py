@@ -7,9 +7,9 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 import json
 
-from services.onboarding.database_service import OnboardingDatabaseService
 from services.database import SessionLocal
 from services.llm_providers.main_text_generation import llm_text_gen
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from .product_marketing_templates import (
     ProductMarketingTemplates,
     TemplateCategory,
@@ -77,6 +77,7 @@ class IntelligentPromptBuilder:
     def _parse_user_input(
         self,
         user_input: str,
+        user_id: str,
         asset_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -138,7 +139,7 @@ Output: {"product_name": "luxury watch", "product_type": "watch", "use_case": "m
                 prompt=prompt,
                 system_prompt=system_prompt,
                 json_struct=json_struct,
-                user_id=None  # No user_id needed for parsing
+                user_id=user_id  # Pass user_id for subscription checking
             )
             
             # Parse JSON response
@@ -185,26 +186,21 @@ Output: {"product_name": "luxury watch", "product_type": "watch", "use_case": "m
         Get all onboarding data for user.
         
         Returns:
-            Dictionary with website_analysis, persona_data, competitor_analyses
+            Dictionary with canonical_profile only (Single Source of Truth)
         """
         db = SessionLocal()
         try:
-            onboarding_db = OnboardingDatabaseService(db)
-            website_analysis = onboarding_db.get_website_analysis(user_id, db)
-            persona_data = onboarding_db.get_persona_data(user_id, db)
-            competitor_analyses = onboarding_db.get_competitor_analysis(user_id, db)
-            
+            integration_service = OnboardingDataIntegrationService()
+            integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+            canonical_profile = integrated_data.get('canonical_profile', {})
+
             return {
-                "website_analysis": website_analysis or {},
-                "persona_data": persona_data or {},
-                "competitor_analyses": competitor_analyses or [],
+                "canonical_profile": canonical_profile,
             }
         except Exception as e:
             logger.error(f"[Intelligent Prompt Builder] Error getting onboarding data: {str(e)}")
             return {
-                "website_analysis": {},
-                "persona_data": {},
-                "competitor_analyses": [],
+                "canonical_profile": {},
             }
         finally:
             db.close()
@@ -218,49 +214,49 @@ Output: {"product_name": "luxury watch", "product_type": "watch", "use_case": "m
         """
         Infer requirements from parsed input and onboarding context.
         
-        Uses onboarding data to fill in missing information:
-        - Platform from onboarding (if user has e-commerce setup)
-        - Style from brand DNA
-        - Target audience from onboarding
+        Uses canonical profile for:
+        - Style (aesthetic)
+        - Target audience
+        - Brand colors
+        - Tone/Voice
         """
         requirements = parsed_input.copy()
         
-        website_analysis = onboarding_data.get("website_analysis", {})
-        persona_data = onboarding_data.get("persona_data", {})
+        # We rely strictly on canonical_profile now
+        canonical_profile = onboarding_data.get("canonical_profile", {}) or {}
         
         # Infer platform from onboarding
         if not requirements.get("platform_hints"):
             # Check if user has e-commerce setup (from website analysis)
-            brand_analysis = website_analysis.get("brand_analysis", {})
-            # Try to infer platform from website URL or other hints
-            # For now, default to e-commerce if no hints
+            # This logic was: if use_case == ecommerce -> shopify. 
+            # We can keep this simple inference or check if industry is ecommerce.
             if requirements.get("use_case") == "ecommerce":
                 requirements["platform_hints"] = ["shopify"]  # Default e-commerce platform
         
-        # Infer style from brand DNA
+        # Infer style from brand DNA (canonical)
         if not requirements.get("style_hints"):
-            if brand_analysis:
-                style_guidelines = brand_analysis.get("style_guidelines", {})
-                aesthetic = style_guidelines.get("aesthetic", "")
-                if aesthetic:
-                    requirements["style_hints"] = [aesthetic.lower()]
+            visual_style = canonical_profile.get("visual_style", {})
+            aesthetic = visual_style.get("aesthetic")
+            if aesthetic:
+                requirements["style_hints"] = [aesthetic.lower()]
         
-        # Infer target audience from onboarding
-        target_audience = website_analysis.get("target_audience", {})
+        # Target Audience (canonical)
+        target_audience = canonical_profile.get("target_audience")
         if target_audience:
             requirements["target_audience"] = target_audience
         
-        # Infer brand colors
-        if brand_analysis:
-            color_palette = brand_analysis.get("color_palette", [])
-            if color_palette:
-                requirements["brand_colors"] = color_palette[:5]  # Top 5 colors
+        # Brand colors (canonical)
+        brand_colors = canonical_profile.get("brand_colors", [])
+        if brand_colors:
+            requirements["brand_colors"] = brand_colors[:5]  # Top 5 colors
         
-        # Infer writing style
-        writing_style = website_analysis.get("writing_style", {})
-        if writing_style:
-            requirements["tone"] = writing_style.get("tone", "professional")
-            requirements["voice"] = writing_style.get("voice", "authoritative")
+        # Tone/Voice (canonical)
+        tone = canonical_profile.get("writing_tone") or "professional"
+        requirements["tone"] = tone
+        
+        voice = canonical_profile.get("writing_voice")
+        if voice:
+            requirements["voice"] = voice
         
         return requirements
     
@@ -423,6 +419,16 @@ Output: {"product_name": "luxury watch", "product_type": "watch", "use_case": "m
         # Brand colors from onboarding
         if requirements.get("brand_colors"):
             defaults["brand_colors"] = requirements["brand_colors"]
+
+        # Pass through other inferred context
+        if requirements.get("tone"):
+            defaults["tone"] = requirements["tone"]
+        if requirements.get("voice"):
+            defaults["voice"] = requirements["voice"]
+        if requirements.get("target_audience"):
+            defaults["target_audience"] = requirements["target_audience"]
+        if requirements.get("industry"):
+            defaults["industry"] = requirements["industry"]
         
         # Additional context
         defaults["additional_context"] = requirements.get("additional_context", "")

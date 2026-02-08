@@ -12,7 +12,15 @@ import os
 import sys
 import sqlite3
 import json
+import argparse
 from pathlib import Path
+
+# Add backend directory to path to import services
+current_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.dirname(current_dir)
+sys.path.append(backend_dir)
+
+from services.database import get_user_db_path
 
 def check_credentials_file():
     """Check if GSC credentials file exists and is valid."""
@@ -51,12 +59,18 @@ def check_credentials_file():
         print(f"❌ Error reading credentials file: {e}")
         return False
 
-def check_database_tables():
+def check_database_tables(user_id=None):
     """Check if GSC database tables exist."""
-    db_path = "alwrity.db"
+    
+    if user_id:
+        db_path = get_user_db_path(user_id)
+        print(f"Targeting user database: {db_path}")
+    else:
+        print("❌ Error: user_id is required to check GSC tables.")
+        return False
     
     if not os.path.exists(db_path):
-        print("❌ Database file not found!")
+        print(f"❌ Database file not found at {db_path}!")
         print("📝 Please ensure the database is initialized.")
         return False
     
@@ -104,11 +118,17 @@ def check_environment_variables():
     print("✅ All required environment variables are set!")
     return True
 
-def create_database_tables():
+def create_database_tables(user_id=None):
     """Create GSC database tables if they don't exist."""
-    db_path = "alwrity.db"
+    if user_id:
+        db_path = get_user_db_path(user_id)
+    else:
+        db_path = get_user_db_path('alwrity')
     
     try:
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             
@@ -155,6 +175,10 @@ def create_database_tables():
 
 def main():
     """Main setup function."""
+    parser = argparse.ArgumentParser(description="GSC Setup Script")
+    parser.add_argument("--user_id", help="Target specific user ID")
+    args = parser.parse_args()
+
     print("🔧 Google Search Console Setup Check")
     print("=" * 50)
     
@@ -176,9 +200,9 @@ def main():
     
     # Check/create database tables
     print("\n3. Checking database tables...")
-    if not check_database_tables():
+    if not check_database_tables(args.user_id):
         print("📝 Creating missing database tables...")
-        if not create_database_tables():
+        if not create_database_tables(args.user_id):
             all_good = False
     
     # Summary

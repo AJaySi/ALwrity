@@ -26,7 +26,7 @@ from services.story_writer.audio_generation_service import StoryAudioGenerationS
 from utils.asset_tracker import save_asset_to_library
 
 from ..utils.auth import require_authenticated_user
-from ..utils.media_utils import resolve_media_file
+from ..utils.media_utils import resolve_media_file, resolve_story_media_path
 
 
 router = APIRouter()
@@ -57,6 +57,7 @@ async def generate_scene_images(
             width=request.width or 1024,
             height=request.height or 1024,
             model=request.model,
+            db=db,
         )
 
         image_models: List[StoryImageResult] = [

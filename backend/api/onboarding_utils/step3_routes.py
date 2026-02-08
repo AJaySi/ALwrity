@@ -9,7 +9,7 @@ Version: 1.0
 Last Updated: January 2025
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Body
 from pydantic import BaseModel, HttpUrl, Field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -19,6 +19,15 @@ from loguru import logger
 from middleware.auth_middleware import get_current_user
 from .step3_research_service import Step3ResearchService
 from services.seo_tools.sitemap_service import SitemapService
+from services.database import get_session_for_user
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
+from models.website_analysis_monitoring_models import (
+    DeepCompetitorAnalysisTask,
+    DeepCompetitorAnalysisExecutionLog,
+    DeepWebsiteCrawlTask,
+    DeepWebsiteCrawlExecutionLog
+)
+from services.research.deep_crawl_service import DeepCrawlService
 
 router = APIRouter(prefix="/api/onboarding/step3", tags=["Onboarding Step 3 - Research"])
 
@@ -59,6 +68,104 @@ class ResearchDataResponse(BaseModel):
     research_data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
+
+@router.get("/scheduled-tasks-status")
+async def scheduled_tasks_status(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    user_id = str(current_user.get("id"))
+    db = get_session_for_user(user_id)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    try:
+        integration_service = OnboardingDataIntegrationService()
+        integrated = integration_service.get_integrated_data_sync(user_id, db)
+        
+        # Check for competitors in competitor_analysis (Step 3 persistence) first
+        competitors = integrated.get("competitor_analysis") if isinstance(integrated, dict) else []
+        
+        # If not found, fall back to research_preferences
+        if not competitors:
+            research_prefs = integrated.get("research_preferences", {}) if isinstance(integrated, dict) else {}
+            competitors = research_prefs.get("competitors") if isinstance(research_prefs, dict) else None
+
+        has_competitors = isinstance(competitors, list) and len(competitors) > 0
+
+        website_analysis = integrated.get("website_analysis") if isinstance(integrated, dict) else {}
+        seo_audit = website_analysis.get("seo_audit") if isinstance(website_analysis, dict) else {}
+        sitemap_benchmark_report = seo_audit.get("competitive_sitemap_benchmarking") if isinstance(seo_audit, dict) else None
+        
+        # Check if it's a real report or just status tracking
+        # A full report has 'analysis_type' or 'competitors' or 'benchmark'
+        is_full_report = False
+        if isinstance(sitemap_benchmark_report, dict):
+            if "benchmark" in sitemap_benchmark_report or "competitors" in sitemap_benchmark_report:
+                is_full_report = True
+                
+        sitemap_benchmark_available = is_full_report
+        sitemap_benchmark_last_run = sitemap_benchmark_report.get("timestamp") if isinstance(sitemap_benchmark_report, dict) else None
+        sitemap_benchmark_status = sitemap_benchmark_report.get("status") if isinstance(sitemap_benchmark_report, dict) else None
+        sitemap_benchmark_error = sitemap_benchmark_report.get("error") if isinstance(sitemap_benchmark_report, dict) else None
+
+        # Check for stale processing status (older than 30 minutes)
+        if sitemap_benchmark_status == "processing" and isinstance(sitemap_benchmark_report, dict):
+            started_at_str = sitemap_benchmark_report.get("started_at")
+            if started_at_str:
+                try:
+                    started_at = datetime.fromisoformat(started_at_str)
+                    if (datetime.utcnow() - started_at).total_seconds() > 600:
+                        sitemap_benchmark_status = "failed"
+                        sitemap_benchmark_error = "Task timed out (stale). Please retry."
+                except Exception:
+                    pass
+
+        # Extract error count from the report if available
+        sitemap_error_count = 0
+        if isinstance(sitemap_benchmark_report, dict):
+            competitors_data = sitemap_benchmark_report.get("competitors", {})
+            if isinstance(competitors_data, dict):
+                errors = competitors_data.get("errors", {})
+                if isinstance(errors, dict):
+                    sitemap_error_count = len(errors)
+
+        task = db.query(DeepCompetitorAnalysisTask).filter(
+            DeepCompetitorAnalysisTask.user_id == user_id
+        ).order_by(DeepCompetitorAnalysisTask.updated_at.desc()).first()
+
+        latest_log = None
+        if task:
+            latest_log = db.query(DeepCompetitorAnalysisExecutionLog).filter(
+                DeepCompetitorAnalysisExecutionLog.task_id == task.id
+            ).order_by(DeepCompetitorAnalysisExecutionLog.execution_date.desc()).first()
+
+        return {
+            "deep_competitor_analysis": {
+                "bulb": "green" if has_competitors else "red",
+                "eligible": has_competitors,
+                "reason": None if has_competitors else "No competitors found in Step 3 'Discovered Competitors'.",
+                "task": {
+                    "exists": bool(task),
+                    "status": task.status if task else None,
+                    "next_execution": task.next_execution.isoformat() if task and task.next_execution else None,
+                    "last_run": latest_log.execution_date.isoformat() if latest_log and latest_log.execution_date else None,
+                    "last_status": latest_log.status if latest_log else None
+                }
+            },
+            "competitive_sitemap_benchmarking": {
+                "bulb": "green" if has_competitors else "red",
+                "eligible": has_competitors,
+                "reason": None if has_competitors else "No competitors found in Step 3 'Discovered Competitors'.",
+                "report": {
+                    "available": sitemap_benchmark_available,
+                    "last_run": sitemap_benchmark_last_run,
+                    "error_count": sitemap_error_count,
+                    "status": sitemap_benchmark_status,
+                    "error": sitemap_benchmark_error
+                }
+            }
+        }
+    finally:
+        db.close()
+
 class ResearchHealthResponse(BaseModel):
     """Response model for research service health check."""
     success: bool
@@ -87,9 +194,56 @@ class SitemapAnalysisResponse(BaseModel):
     discovery_method: Optional[str] = None
     error: Optional[str] = None
 
+class SocialMediaDiscoveryRequest(BaseModel):
+    """Request model for social media discovery."""
+    user_url: str = Field(..., description="User's website URL")
+
+class SocialMediaDiscoveryResponse(BaseModel):
+    """Response model for social media discovery."""
+    success: bool
+    message: str
+    social_media_accounts: Optional[Dict[str, str]] = None
+    error: Optional[str] = None
+
 # Initialize services
 step3_research_service = Step3ResearchService()
 sitemap_service = SitemapService()
+
+@router.post("/discover-social-media", response_model=SocialMediaDiscoveryResponse)
+async def discover_social_media(
+    request: SocialMediaDiscoveryRequest,
+    current_user: dict = Depends(get_current_user)
+) -> SocialMediaDiscoveryResponse:
+    """
+    Discover social media accounts for a given website.
+    """
+    try:
+        logger.info(f"Starting social media discovery for user: {current_user.get('user_id', 'unknown')}")
+        logger.info(f"Social media discovery request: {request.user_url}")
+        
+        # Use ExaService directly via Step3ResearchService instance
+        result = await step3_research_service.exa_service.discover_social_media_accounts(request.user_url)
+        
+        if result["success"]:
+            return SocialMediaDiscoveryResponse(
+                success=True,
+                message="Social media accounts discovered successfully",
+                social_media_accounts=result.get("social_media_accounts", {})
+            )
+        else:
+            return SocialMediaDiscoveryResponse(
+                success=False,
+                message="Social media discovery failed",
+                error=result.get("error", "Unknown error")
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in social media discovery: {str(e)}")
+        return SocialMediaDiscoveryResponse(
+            success=False,
+            message="An unexpected error occurred",
+            error=str(e)
+        )
 
 @router.post("/discover-competitors", response_model=CompetitorDiscoveryResponse)
 async def discover_competitors(
@@ -168,7 +322,10 @@ async def discover_competitors(
         )
 
 @router.post("/research-data", response_model=ResearchDataResponse)
-async def get_research_data(request: ResearchDataRequest) -> ResearchDataResponse:
+async def get_research_data(
+    request: ResearchDataRequest,
+    current_user: dict = Depends(get_current_user)
+) -> ResearchDataResponse:
     """
     Retrieve research data for a specific onboarding session.
     
@@ -176,7 +333,10 @@ async def get_research_data(request: ResearchDataRequest) -> ResearchDataRespons
     and research summary for the given session.
     """
     try:
-        logger.info(f"Retrieving research data for session {request.session_id}")
+        # Get Clerk user ID for user isolation
+        clerk_user_id = str(current_user.get('id'))
+        
+        logger.info(f"Retrieving research data for session {request.session_id} (user: {clerk_user_id})")
         
         # Validate session ID
         if not request.session_id or len(request.session_id) < 10:
@@ -186,7 +346,7 @@ async def get_research_data(request: ResearchDataRequest) -> ResearchDataRespons
             )
         
         # Retrieve research data
-        result = await step3_research_service.get_research_data(request.session_id)
+        result = await step3_research_service.get_research_data(request.session_id, clerk_user_id)
         
         if result["success"]:
             logger.info(f"Successfully retrieved research data for session {request.session_id}")
@@ -219,6 +379,32 @@ async def get_research_data(request: ResearchDataRequest) -> ResearchDataRespons
             session_id=request.session_id,
             error=str(e)
         )
+
+@router.get("/sitemap-benchmark-report")
+async def get_sitemap_benchmark_report(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Retrieve the full sitemap benchmark report for the current user.
+    """
+    user_id = str(current_user.get("id"))
+    db = get_session_for_user(user_id)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    try:
+        integration_service = OnboardingDataIntegrationService()
+        integrated = integration_service.get_integrated_data_sync(user_id, db)
+        
+        website_analysis = integrated.get("website_analysis") if isinstance(integrated, dict) else {}
+        seo_audit = website_analysis.get("seo_audit") if isinstance(website_analysis, dict) else {}
+        sitemap_benchmark_report = seo_audit.get("competitive_sitemap_benchmarking") if isinstance(seo_audit, dict) else None
+        
+        if not sitemap_benchmark_report:
+            raise HTTPException(status_code=404, detail="No sitemap benchmark report found")
+            
+        return sitemap_benchmark_report
+        
+    finally:
+        db.close()
 
 @router.get("/health", response_model=ResearchHealthResponse)
 async def health_check() -> ResearchHealthResponse:
@@ -260,14 +446,17 @@ async def health_check() -> ResearchHealthResponse:
         )
 
 @router.post("/validate-session")
-async def validate_session(session_id: str) -> Dict[str, Any]:
+async def validate_session(
+    session_id: str = Body(..., embed=True),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
     """
     Validate that a session exists and is ready for Step 3.
     
     This endpoint checks if the session exists and has completed previous steps.
     """
     try:
-        logger.info(f"Validating session {session_id} for Step 3")
+        logger.info(f"Validating session {session_id} for Step 3, user: {current_user.get('id')}")
         
         # Basic validation
         if not session_id or len(session_id) < 10:
@@ -290,12 +479,141 @@ async def validate_session(session_id: str) -> Dict[str, Any]:
         raise
     except Exception as e:
         logger.error(f"Error validating session: {str(e)}")
-        
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Deep Website Crawl Endpoints
+
+class DeepCrawlRequest(BaseModel):
+    user_url: str
+    schedule: bool = False
+
+@router.post("/deep-crawl/start")
+async def start_deep_crawl(
+    request: DeepCrawlRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Start a deep website crawl task.
+    If schedule is True, it sets up the recurring task.
+    If schedule is False, it runs immediately (fire and forget/poll).
+    """
+    user_id = str(current_user.get("id"))
+    db = get_session_for_user(user_id)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    try:
+        # Check/Create Task
+        task = db.query(DeepWebsiteCrawlTask).filter(
+            DeepWebsiteCrawlTask.user_id == user_id,
+            DeepWebsiteCrawlTask.website_url == request.user_url
+        ).first()
+
+        if not task:
+            task = DeepWebsiteCrawlTask(
+                user_id=user_id,
+                website_url=request.user_url,
+                status="active" if request.schedule else "running",
+                next_execution=datetime.utcnow() if request.schedule else None
+            )
+            db.add(task)
+            db.commit()
+            db.refresh(task)
+        else:
+            task.website_url = request.user_url # Update URL if changed?
+            if request.schedule:
+                task.status = "active"
+                # If scheduling, don't run immediately unless requested?
+                # User said "fire ... OR let it be scheduled".
+                # If this endpoint is called, we assume intent to start OR schedule.
+                # If schedule=True, we might just set it active.
+                # If schedule=False, we run it now.
+                # But typically user might want "Run now AND schedule".
+                # Let's assume this endpoint is "Start Now". Scheduling is separate?
+                # "option to fire and check ... or let it be scheduled"
+                # If "fire", run now.
+                pass
+            else:
+                task.status = "running"
+            db.commit()
+
+        if not request.schedule:
+            # Run immediately in background
+            service = DeepCrawlService()
+            background_tasks.add_task(
+                service.execute_deep_crawl,
+                user_id=user_id,
+                website_url=request.user_url,
+                task_id=task.id
+            )
+            message = "Deep crawl started immediately."
+        else:
+            # Scheduled
+            task.status = "active"
+            task.next_execution = datetime.utcnow() # Scheduler will pick it up
+            db.commit()
+            message = "Deep crawl scheduled."
+
         return {
-            "success": False,
-            "message": "Session validation failed",
-            "error": str(e)
+            "success": True,
+            "message": message,
+            "task_id": task.id,
+            "status": task.status
         }
+    except Exception as e:
+        logger.error(f"Error starting deep crawl: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.get("/deep-crawl/status")
+async def get_deep_crawl_status(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get status of the deep website crawl task.
+    """
+    user_id = str(current_user.get("id"))
+    db = get_session_for_user(user_id)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    try:
+        task = db.query(DeepWebsiteCrawlTask).filter(
+            DeepWebsiteCrawlTask.user_id == user_id
+        ).order_by(DeepWebsiteCrawlTask.id.desc()).first()
+
+        if not task:
+            return {
+                "exists": False,
+                "status": None
+            }
+
+        latest_log = db.query(DeepWebsiteCrawlExecutionLog).filter(
+            DeepWebsiteCrawlExecutionLog.task_id == task.id
+        ).order_by(DeepWebsiteCrawlExecutionLog.execution_date.desc()).first()
+
+        return {
+            "exists": True,
+            "task_id": task.id,
+            "status": task.status,
+            "last_executed": task.last_executed,
+            "next_execution": task.next_execution,
+            "latest_log": {
+                "status": latest_log.status if latest_log else None,
+                "execution_date": latest_log.execution_date if latest_log else None,
+                "result_summary": latest_log.result_data if latest_log else None,
+                "error": latest_log.error_message if latest_log else None
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting deep crawl status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
 
 @router.get("/cost-estimate")
 async def get_cost_estimate(
@@ -421,7 +739,8 @@ async def analyze_sitemap_for_onboarding(
             competitors=request.competitors,
             industry_context=request.industry_context,
             analyze_content_trends=request.analyze_content_trends,
-            analyze_publishing_patterns=request.analyze_publishing_patterns
+            analyze_publishing_patterns=request.analyze_publishing_patterns,
+            user_id=str(current_user.get('id'))
         )
         
         # Check if analysis was successful

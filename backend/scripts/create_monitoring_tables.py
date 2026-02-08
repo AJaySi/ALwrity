@@ -11,12 +11,20 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from loguru import logger
 import os
+import argparse
+from services.database import get_user_db_path
 
-def create_monitoring_tables():
+def create_monitoring_tables(user_id=None):
     """Create the API monitoring tables."""
     try:
-        # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
+        # Get database URL
+        if user_id:
+            db_path = get_user_db_path(user_id)
+            database_url = f'sqlite:///{db_path}'
+            logger.info(f"Targeting user database: {db_path}")
+        else:
+            logger.error("❌ Error: user_id is required to create monitoring tables.")
+            return False
         
         # Create engine
         engine = create_engine(database_url)
@@ -138,11 +146,17 @@ def create_monitoring_tables():
             db.close()
         return False
 
-def drop_monitoring_tables():
+def drop_monitoring_tables(user_id=None):
     """Drop the API monitoring tables (for testing)."""
     try:
-        # Get database URL from environment or use default
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
+        # Get database URL
+        if user_id:
+            db_path = get_user_db_path(user_id)
+            database_url = f'sqlite:///{db_path}'
+            logger.info(f"Targeting user database: {db_path}")
+        else:
+            logger.error("❌ Error: user_id is required to drop monitoring tables.")
+            return False
         
         # Create engine
         engine = create_engine(database_url)
@@ -176,18 +190,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage API monitoring tables")
     parser.add_argument("--action", choices=["create", "drop"], default="create", 
                        help="Action to perform (create or drop tables)")
+    parser.add_argument("--user_id", help="Target specific user ID")
     
     args = parser.parse_args()
     
     if args.action == "create":
-        success = create_monitoring_tables()
+        success = create_monitoring_tables(args.user_id)
         if success:
             logger.info("🎉 API monitoring tables setup completed successfully!")
         else:
             logger.error("💥 API monitoring tables setup failed!")
             sys.exit(1)
     elif args.action == "drop":
-        success = drop_monitoring_tables()
+        success = drop_monitoring_tables(args.user_id)
         if success:
             logger.info("🗑️ API monitoring tables dropped successfully!")
         else:

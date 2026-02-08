@@ -17,7 +17,7 @@ from ...analytics_cache_service import AnalyticsCacheService
 class BingInsightsService:
     """Service for generating Bing Webmaster insights and recommendations"""
     
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: Optional[str] = None):
         self.storage_service = BingAnalyticsStorageService(database_url)
         self.cache_service = AnalyticsCacheService()
     

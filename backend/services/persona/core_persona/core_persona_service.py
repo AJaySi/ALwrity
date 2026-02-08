@@ -70,7 +70,7 @@ class CorePersonaService:
     def generate_platform_adaptations(self, core_persona: Dict[str, Any], onboarding_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate platform-specific persona adaptations."""
         
-        platforms = ["twitter", "linkedin", "instagram", "facebook", "blog", "medium", "substack"]
+        platforms = ["twitter", "linkedin", "instagram", "facebook", "blog", "medium", "substack", "youtube"]
         platform_personas = {}
         
         for platform in platforms:
@@ -170,6 +170,14 @@ class CorePersonaService:
                 "long_form": True,
                 "personal_connection": True,
                 "monetization_support": True
+            },
+            "youtube": {
+                "hook_optimization": True,
+                "script_structure": "Hook-Intro-Body-CTA",
+                "video_description_limit": 5000,
+                "title_optimization": True,
+                "engagement_prompts": True,
+                "visual_cues": True
             }
         }
         

@@ -1,6 +1,7 @@
 """
 Database-only Onboarding Progress Service
 Replaces file-based progress tracking with database-only implementation.
+Refactored to use direct DB access and eliminate legacy OnboardingDatabaseService dependency.
 """
 
 from typing import Dict, Any, List, Optional
@@ -9,23 +10,47 @@ from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.database import SessionLocal
-from .database_service import OnboardingDatabaseService
+from services.database import SessionLocal, get_session_for_user
+from models.onboarding import OnboardingSession
 
 
 class OnboardingProgressService:
     """Database-only onboarding progress management."""
     
     def __init__(self):
-        self.db_service = OnboardingDatabaseService()
+        from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
+        self.integration_service = OnboardingDataIntegrationService()
     
-    def get_onboarding_status(self, user_id: str) -> Dict[str, Any]:
-        """Get current onboarding status from database only."""
+    def get_completion_data(self, user_id: str) -> Dict[str, Any]:
+        """Get full completion data for all steps using SSOT."""
         try:
-            db = SessionLocal()
+            db = get_session_for_user(user_id)
             try:
-                # Get session data
-                session = self.db_service.get_session_by_user(user_id, db)
+                # Use SSOT integration service to get all data
+                integrated_data = self.integration_service.get_integrated_data_sync(user_id, db)
+                
+                # Map to format expected by StepManagementService
+                return {
+                    "api_keys": integrated_data.get('api_keys_data', {}),
+                    "website_analysis": integrated_data.get('website_analysis', {}),
+                    "research_preferences": integrated_data.get('research_preferences', {}),
+                    "persona_data": integrated_data.get('persona_data', {}),
+                    "onboarding_session": integrated_data.get('onboarding_session', {})
+                }
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error getting completion data: {e}")
+            return {}
+
+    def get_onboarding_status(self, user_id: str) -> Dict[str, Any]:
+        """Get current onboarding status from database."""
+        try:
+            db = get_session_for_user(user_id)
+            try:
+                # Direct DB access to SSOT session
+                session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
+                
                 if not session:
                     return {
                         "is_completed": False,
@@ -38,7 +63,6 @@ class OnboardingProgressService:
                 
                 # Check if onboarding is complete
                 # Consider complete if either the final step is reached OR progress hit 100%
-                # This guards against partial writes where one field persisted but the other didn't.
                 is_completed = (session.current_step >= 6) or (session.progress >= 100.0)
                 
                 return {
@@ -67,12 +91,26 @@ class OnboardingProgressService:
     def update_step(self, user_id: str, step_number: int) -> bool:
         """Update current step in database."""
         try:
-            db = SessionLocal()
+            db = get_session_for_user(user_id)
             try:
-                success = self.db_service.update_step(user_id, step_number, db)
-                if success:
-                    logger.info(f"Updated user {user_id} to step {step_number}")
-                return success
+                session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
+                if not session:
+                    # Create session if not exists
+                    session = OnboardingSession(
+                        user_id=user_id,
+                        current_step=step_number,
+                        progress=0.0,
+                        started_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(session)
+                else:
+                    session.current_step = step_number
+                    session.updated_at = datetime.utcnow()
+                
+                db.commit()
+                logger.info(f"Updated user {user_id} to step {step_number}")
+                return True
             finally:
                 db.close()
         except Exception as e:
@@ -82,12 +120,16 @@ class OnboardingProgressService:
     def update_progress(self, user_id: str, progress_percentage: float) -> bool:
         """Update progress percentage in database."""
         try:
-            db = SessionLocal()
+            db = get_session_for_user(user_id)
             try:
-                success = self.db_service.update_progress(user_id, progress_percentage, db)
-                if success:
+                session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
+                if session:
+                    session.progress = progress_percentage
+                    session.updated_at = datetime.utcnow()
+                    db.commit()
                     logger.info(f"Updated user {user_id} progress to {progress_percentage}%")
-                return success
+                    return True
+                return False
             finally:
                 db.close()
         except Exception as e:
@@ -97,67 +139,18 @@ class OnboardingProgressService:
     def complete_onboarding(self, user_id: str) -> bool:
         """Mark onboarding as complete in database."""
         try:
-            db = SessionLocal()
+            db = get_session_for_user(user_id)
             try:
-                success = self.db_service.mark_onboarding_complete(user_id, db)
-                if success:
-                    logger.info(f"Marked onboarding complete for user {user_id}")
-                return success
+                session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
+                if session:
+                    session.progress = 100.0
+                    session.current_step = 6  # Assuming 6 is complete
+                    session.updated_at = datetime.utcnow()
+                    db.commit()
+                    return True
+                return False
             finally:
                 db.close()
         except Exception as e:
             logger.error(f"Error completing onboarding: {e}")
             return False
-    
-    def reset_onboarding(self, user_id: str) -> bool:
-        """Reset onboarding progress in database."""
-        try:
-            db = SessionLocal()
-            try:
-                # Reset to step 1, 0% progress
-                success = self.db_service.update_step(user_id, 1, db)
-                if success:
-                    self.db_service.update_progress(user_id, 0.0, db)
-                    logger.info(f"Reset onboarding for user {user_id}")
-                return success
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Error resetting onboarding: {e}")
-            return False
-    
-    def get_completion_data(self, user_id: str) -> Dict[str, Any]:
-        """Get completion data for validation."""
-        try:
-            db = SessionLocal()
-            try:
-                # Get all relevant data for completion validation
-                session = self.db_service.get_session_by_user(user_id, db)
-                api_keys = self.db_service.get_api_keys(user_id, db)
-                website_analysis = self.db_service.get_website_analysis(user_id, db)
-                research_preferences = self.db_service.get_research_preferences(user_id, db)
-                persona_data = self.db_service.get_persona_data(user_id, db)
-                
-                return {
-                    "session": session,
-                    "api_keys": api_keys,
-                    "website_analysis": website_analysis,
-                    "research_preferences": research_preferences,
-                    "persona_data": persona_data
-                }
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Error getting completion data: {e}")
-            return {}
-
-
-# Global instance
-_onboarding_progress_service = None
-
-def get_onboarding_progress_service() -> OnboardingProgressService:
-    """Get the global onboarding progress service instance."""
-    global _onboarding_progress_service
-    if _onboarding_progress_service is None:
-        _onboarding_progress_service = OnboardingProgressService()
-    return _onboarding_progress_service

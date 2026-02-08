@@ -18,8 +18,9 @@ import {
 } from '@mui/icons-material';
 import OnboardingButton from '../common/OnboardingButton';
 import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, setCurrentStep } from '../../../api/onboarding';
-import { SetupSummary, CapabilitiesOverview } from './components';
+import { SetupSummary, CapabilitiesOverview, AgentTeamSection } from './components';
 import { FinalStepProps, OnboardingData, Capability } from './types';
+import { getAgentTeam, type AgentTeamCatalogEntry } from '../../../api/agentsTeam';
 
 const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }) => {
   const [loading, setLoading] = useState(false);
@@ -30,6 +31,8 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
   });
   const [expandedSection, setExpandedSection] = useState<string | null>('summary');
   const [validationStatus, setValidationStatus] = useState<{isValid: boolean, missingSteps: string[]} | null>(null);
+  const [agentTeam, setAgentTeam] = useState<AgentTeamCatalogEntry[]>([]);
+  const [agentTeamError, setAgentTeamError] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -64,6 +67,14 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
       // Load individual data sources for detailed information
       const websiteAnalysis = await getWebsiteAnalysisData();
       const researchPreferences = await getResearchPreferencesData();
+      try {
+        const team = await getAgentTeam();
+        setAgentTeam(team || []);
+        setAgentTeamError(null);
+      } catch (e: any) {
+        setAgentTeam([]);
+        setAgentTeamError(e?.message || 'Failed to load agent team configuration');
+      }
       // Frontend fallbacks to Step 2 cached data (ensures non-breaking UI)
       const cachedUrl = typeof window !== 'undefined' ? localStorage.getItem('website_url') : null;
       const cachedAnalysisRaw = typeof window !== 'undefined' ? localStorage.getItem('website_analysis_data') : null;
@@ -75,7 +86,8 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
         researchPreferences: researchPreferences || summary.research_preferences,
         personalizationSettings: summary.personalization_settings,
         integrations: summary.integrations || {},
-        styleAnalysis: websiteAnalysis?.style_analysis || summary.style_analysis || cachedAnalysis || undefined
+        styleAnalysis: websiteAnalysis?.style_analysis || summary.style_analysis || cachedAnalysis || undefined,
+        canonicalProfile: summary.canonical_profile
       };
       
       setOnboardingData(newOnboardingData);
@@ -109,6 +121,48 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
       clearTimeout(loadingTimeout);
     }
   };
+
+  const websiteName = React.useMemo(() => {
+    const url = onboardingData.websiteUrl;
+    if (!url) return 'Your';
+    try {
+      const hostname = new URL(url).hostname.replace(/^www\./, '');
+      const parts = hostname.split('.');
+      if (parts.length <= 2) return parts[0] || hostname;
+      return parts.slice(0, -1).join('.') || hostname;
+    } catch {
+      return 'Your';
+    }
+  }, [onboardingData.websiteUrl]);
+
+  const agentContextCard = React.useMemo(() => {
+    const style = onboardingData.styleAnalysis || {};
+    const persona = onboardingData.personalizationSettings || {};
+    const canonical = onboardingData.canonicalProfile || {};
+    const research = onboardingData.researchPreferences || {};
+
+    const contentPillars =
+      style?.content_strategy_insights?.content_pillars ||
+      style?.sitemap_analysis?.content_pillars ||
+      canonical?.content_pillars ||
+      [];
+
+    const competitors =
+      research?.competitors ||
+      canonical?.competitors ||
+      [];
+
+    return {
+      website_name: websiteName,
+      website_url: onboardingData.websiteUrl,
+      brand_voice: persona?.corePersona || persona?.platformPersonas || persona?.brand_voice || canonical?.brand_voice || "",
+      target_audience: style?.target_audience || canonical?.target_audience || "",
+      style_guidelines: style?.style_guidelines || style?.style_patterns || canonical?.style_guidelines || "",
+      content_pillars: Array.isArray(contentPillars) ? contentPillars : [],
+      competitors: Array.isArray(competitors) ? competitors : [],
+      business_goals: canonical?.business_goals || [],
+    };
+  }, [onboardingData, websiteName]);
 
   // Safe JSON parser for cached data
   const safeParseJSON = (raw: string | null): any | undefined => {
@@ -377,6 +431,19 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
 
             {/* Capabilities Overview */}
             <CapabilitiesOverview capabilities={capabilities} />
+
+            {/* Agent Team */}
+            {agentTeamError && (
+              <Alert severity="warning" sx={{ mt: 3, borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Agent team configuration unavailable
+                </Typography>
+                <Typography variant="body2">{agentTeamError}</Typography>
+              </Alert>
+            )}
+            {!agentTeamError && agentTeam.length > 0 && (
+              <AgentTeamSection websiteName={websiteName} agents={agentTeam} contextCard={agentContextCard} />
+            )}
 
             {/* Missing Requirements Warning */}
             {missingRequirements.length > 0 && (

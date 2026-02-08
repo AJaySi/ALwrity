@@ -9,10 +9,10 @@ import {
 } from '@mui/material';
 import { getCurrentStep, setCurrentStep } from '../../api/onboarding';
 import { apiClient } from '../../api/client';
-import ApiKeyValidationStep from './ApiKeyValidationStep';
+import IntroStep from './IntroStep';
 import WebsiteStep from './WebsiteStep';
 import CompetitorAnalysisStep from './CompetitorAnalysisStep';
-import PersonaStep from './PersonaStep';
+import PersonalizationStep from './PersonalizationStep';
 import IntegrationsStep from './IntegrationsStep';
 import FinalStep from './FinalStep';
 import { WizardHeader } from './common/WizardHeader';
@@ -20,7 +20,7 @@ import { WizardNavigation } from './common/WizardNavigation';
 import { WizardLoadingState } from './common/WizardLoadingState';
 
 const steps = [
-  { label: 'API Keys', description: 'Connect your AI services', icon: '🔑' },
+  { label: 'Init', description: 'Start your ALwrity onboarding.', icon: '🔑' },
   { label: 'Website', description: 'Set up your website', icon: '🌐' },
   { label: 'Research', description: 'Discover competitors', icon: '🔍' },
   { label: 'Personalization', description: 'Customize your experience', icon: '⚙️' },
@@ -54,6 +54,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     title: steps[0].label,
     description: steps[0].description
   });
+  const [introCompleted, setIntroCompleted] = useState<boolean>(false);
 
   // Step validation function
   const isStepDataValid = useCallback((step: number, data: any): boolean => {
@@ -122,6 +123,15 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
   useEffect(() => {
     stepDataRef.current = stepData;
     console.log('Wizard: stepData changed:', stepData);
+    
+    // Persist stepData to localStorage to survive refreshes
+    if (stepData && Object.keys(stepData).length > 0) {
+      try {
+        localStorage.setItem('onboarding_step_data', JSON.stringify(stepData));
+      } catch (e) {
+        console.warn('Wizard: Failed to persist stepData to localStorage', e);
+      }
+    }
   }, [stepData]);
   
   useEffect(() => {
@@ -134,6 +144,11 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     console.log(`Wizard: Validation effect triggered - activeStep: ${activeStep}, stepData:`, stepData);
     console.log(`Wizard: stepData type:`, typeof stepData, 'keys:', stepData ? Object.keys(stepData) : 'no data');
     console.log(`Wizard: stepValidationStates:`, stepValidationStates);
+
+    if (activeStep === 0) {
+      setIsCurrentStepValid(true);
+      return;
+    }
     
     // For step 0 (API Keys), step 1 (Website), and step 3 (Persona), use the step validation state if available
     if ((activeStep === 0 || activeStep === 1 || activeStep === 3) && stepValidationStates[activeStep] !== undefined) {
@@ -181,11 +196,6 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     });
   }, []);
   
-  // Memoized callback specifically for ApiKeyValidationStep to prevent infinite loops
-  const handleApiKeyValidationChange = useCallback((isValid: boolean) => {
-    handleStepValidationChange(0, isValid);
-  }, [handleStepValidationChange]);
-
   // Memoize the onDataReady callback to prevent infinite loops
   const handleCompetitorDataReady = useCallback((dataCollector: (() => any) | undefined) => {
     console.log('Wizard: onDataReady called with:', dataCollector);
@@ -203,6 +213,19 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
       try {
         setLoading(true);
         console.log('Wizard: Starting initialization...');
+        
+        // Restore stepData from localStorage if available (robustness against refresh)
+        try {
+          const cachedStepData = localStorage.getItem('onboarding_step_data');
+          if (cachedStepData) {
+            const parsedData = JSON.parse(cachedStepData);
+            console.log('Wizard: Restored stepData from localStorage backup:', Object.keys(parsedData));
+            setStepData((prev: any) => ({ ...prev, ...parsedData }));
+          }
+        } catch (e) {
+          console.warn('Wizard: Failed to restore stepData from localStorage', e);
+        }
+
         // Fast local restore: try localStorage active step first (non-authoritative)
         const cachedActiveStep = localStorage.getItem('onboarding_active_step');
         if (cachedActiveStep !== null) {
@@ -214,7 +237,39 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
         }
         
         // Check if we already have init data from App (cached in sessionStorage)
-        const cachedInit = sessionStorage.getItem('onboarding_init');
+        let cachedInit = sessionStorage.getItem('onboarding_init');
+        
+        // Check for staleness BEFORE parsing/using
+        if (cachedInit) {
+          const lsStep = localStorage.getItem('onboarding_active_step');
+          if (lsStep !== null) {
+            const lsIdx = parseInt(lsStep, 10);
+            if (!Number.isNaN(lsIdx)) {
+              // Parse cached data to get backend state
+              try {
+                const parsedCache = JSON.parse(cachedInit);
+                const backendStep = parsedCache.onboarding?.current_step || 0;
+                // backendStep is 1-based (usually). 
+                // computedStep would be backendStep + 1.
+                // If lsIdx (active step index) >= backendStep + 1, it's significantly ahead.
+                // Example: lsIdx=2 (Step 3), backendStep=1 (Step 2). Diff is 1.
+                // If backendStep=0 (Step 1 active), lsIdx=2. Diff is 2.
+                
+                // If local progress is significantly ahead, discard cache
+                if (lsIdx > backendStep) {
+                   console.warn(`Wizard: Local progress (step ${lsIdx}) ahead of cached backend state (step ${backendStep}). Discarding stale cache.`);
+                   sessionStorage.removeItem('onboarding_init');
+                   cachedInit = null; // Disable cache usage
+                }
+              } catch (e) {
+                console.warn('Wizard: Error parsing cached init data for staleness check', e);
+                // If we can't parse it, better to discard it
+                sessionStorage.removeItem('onboarding_init');
+                cachedInit = null;
+              }
+            }
+          }
+        }
         
         if (cachedInit) {
           console.log('Wizard: Using cached init data from batch endpoint');
@@ -238,6 +293,19 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
 
           // Load step data, especially research data from step 3 and persona data from step 4
           if (onboarding.steps && Array.isArray(onboarding.steps)) {
+            // Load website data from step 2 (Crucial for URL persistence)
+            const step2Data = onboarding.steps.find((step: any) => step.step_number === 2);
+            if (step2Data && step2Data.data) {
+              console.log('Wizard: Loading website data from step 2:', Object.keys(step2Data.data));
+              const normalizedData = {
+                ...step2Data.data,
+                website: step2Data.data.website || step2Data.data.website_url,
+                // Ensure analysis is present for downstream steps
+                analysis: step2Data.data.analysis || step2Data.data
+              };
+              setStepData((prevData: any) => ({ ...prevData, ...normalizedData }));
+            }
+
             // Load research preferences from step 3
             const step3Data = onboarding.steps.find((step: any) => step.step_number === 3);
             if (step3Data && step3Data.data) {
@@ -253,16 +321,34 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
             }
           }
 
+          const introFlag = localStorage.getItem('onboarding_intro_completed');
+          if (introFlag === 'true' || onboarding.completion_percentage > 0 || onboarding.current_step > 1) {
+            setIntroCompleted(true);
+          }
+
           // Set state from cached data - NO API CALLS NEEDED!
-          let computedStep = Math.max(1, Math.min(steps.length, onboarding.current_step));
+          // Calculate the most appropriate step to show
+          // If current_step is X, it means X is completed, so we should be on X + 1
+          let computedStep = Math.max(1, Math.min(steps.length, onboarding.current_step + 1));
+          
+          // If onboarding is marked as completed, stay on the last step
+          if (onboarding.is_completed) {
+            computedStep = steps.length;
+          }
+
           // If localStorage has a higher step index, prefer it for UX continuity
           const lsStep = localStorage.getItem('onboarding_active_step');
           if (lsStep !== null) {
             const lsIdx = Math.max(0, Math.min(steps.length - 1, parseInt(lsStep, 10)));
             if (!Number.isNaN(lsIdx)) {
-              computedStep = Math.max(computedStep, lsIdx + 1);
+              // We only trust localStorage if it's within 1 step of what the backend says
+              if (lsIdx + 1 >= computedStep - 1 && lsIdx + 1 <= computedStep + 1) {
+                computedStep = lsIdx + 1;
+              }
             }
           }
+          
+          console.log('Wizard: Final computed step:', computedStep, 'from backend step:', onboarding.current_step);
           setActiveStep(computedStep - 1);
           setProgressState(onboarding.completion_percentage);
           // Note: Session managed by Clerk auth, no need to track separately
@@ -279,12 +365,57 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
         }
         
         // Fallback: If no cached data (shouldn't happen), make batch call
-        console.log('Wizard: No cached data, making batch init call');
-        const response = await apiClient.get('/api/onboarding/init');
+        console.log('Wizard: No cached data, making batch init call to /api/onboarding/init');
+        
+        let response;
+        const maxRetries = 3;
+        let lastError;
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          const startTime = Date.now();
+          try {
+            console.log(`Wizard: Batch init attempt ${attempt + 1}/${maxRetries}`);
+            response = await apiClient.get('/api/onboarding/init');
+            console.log(`Wizard: Batch init call success (${Date.now() - startTime}ms)`, {
+              status: response.status,
+              dataKeys: Object.keys(response.data)
+            });
+            break; // Success, exit loop
+          } catch (err: any) {
+            console.warn(`Wizard: Batch init attempt ${attempt + 1} failed (${Date.now() - startTime}ms):`, err.message);
+            lastError = err;
+            
+            // If it's the last attempt, don't wait
+            if (attempt === maxRetries - 1) break;
+            
+            // Wait with exponential backoff: 1s, 2s, 4s...
+            const delay = 1000 * Math.pow(2, attempt);
+            console.log(`Wizard: Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+
+        if (!response) {
+          throw lastError || new Error('Failed to initialize onboarding after retries');
+        }
+
         const { onboarding, session } = response.data;
 
         // Load step data, especially research data from step 3 and persona data from step 4
         if (onboarding.steps && Array.isArray(onboarding.steps)) {
+          // Load website data from step 2 (Crucial for URL persistence)
+          const step2Data = onboarding.steps.find((step: any) => step.step_number === 2);
+          if (step2Data && step2Data.data) {
+            console.log('Wizard: Loading website data from step 2 API call:', Object.keys(step2Data.data));
+            const normalizedData = {
+              ...step2Data.data,
+              website: step2Data.data.website || step2Data.data.website_url,
+              // Ensure analysis is present for downstream steps
+              analysis: step2Data.data.analysis || step2Data.data
+            };
+            setStepData((prevData: any) => ({ ...prevData, ...normalizedData }));
+          }
+
           // Load research preferences from step 3
           const step3Data = onboarding.steps.find((step: any) => step.step_number === 3);
           if (step3Data && step3Data.data) {
@@ -303,15 +434,34 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
         // Cache for future use
         sessionStorage.setItem('onboarding_init', JSON.stringify(response.data));
 
+        const introFlag = localStorage.getItem('onboarding_intro_completed');
+        if (introFlag === 'true' || onboarding.completion_percentage > 0 || onboarding.current_step > 1) {
+          setIntroCompleted(true);
+        }
+
         // Set state from API response
-        let computedStep = Math.max(1, Math.min(steps.length, onboarding.current_step));
+        // Calculate the most appropriate step to show
+        // If current_step is X, it means X is completed, so we should be on X + 1
+        let computedStep = Math.max(1, Math.min(steps.length, onboarding.current_step + 1));
+        
+        // If onboarding is marked as completed, stay on the last step
+        if (onboarding.is_completed) {
+          computedStep = steps.length;
+        }
+
+        // If localStorage has a higher step index, prefer it for UX continuity
         const lsStep = localStorage.getItem('onboarding_active_step');
         if (lsStep !== null) {
           const lsIdx = Math.max(0, Math.min(steps.length - 1, parseInt(lsStep, 10)));
           if (!Number.isNaN(lsIdx)) {
-            computedStep = Math.max(computedStep, lsIdx + 1);
+            // We only trust localStorage if it's within 1 step of what the backend says
+            if (lsIdx + 1 >= computedStep - 1 && lsIdx + 1 <= computedStep + 1) {
+              computedStep = lsIdx + 1;
+            }
           }
         }
+        
+        console.log('Wizard: Final computed step (API):', computedStep, 'from backend step:', onboarding.current_step);
         setActiveStep(computedStep - 1);
         setProgressState(onboarding.completion_percentage);
         // Note: Session managed by Clerk auth, no need to track separately
@@ -322,10 +472,17 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
           userId: session.session_id,  // Clerk user ID from backend
           hasPersonaData: !!stepData
         });
-      } catch (error) {
-        console.error('Error initializing onboarding:', error);
+      } catch (error: any) {
+        console.error('Wizard: Error initializing onboarding:', {
+          message: error.message,
+          code: error.code,
+          response: error.response?.status,
+          url: error.config?.url,
+          stack: error.stack
+        });
         // Error handling is managed by global API client interceptors
       } finally {
+        console.log('Wizard: Initialization finished');
         setLoading(false);
       }
     };
@@ -335,12 +492,23 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
 
   const handleNext = useCallback(async (rawStepData?: any) => {
     console.log('Wizard: handleNext called');
-    console.log('Wizard: Current step:', activeStep);
+    console.log(`Wizard: Current step index: ${activeStep} (Step ${activeStep + 1}: ${steps[activeStep]?.label || 'Unknown'})`);
     console.log('Wizard: Raw step data:', rawStepData);
     console.log('Wizard: Step data:', stepDataRef.current);
     console.log('Wizard: competitorDataCollector:', competitorDataCollectorRef.current);
     console.log('Wizard: competitorDataCollector type:', typeof competitorDataCollectorRef.current);
+
+    if (!introCompleted && activeStep === 0) {
+      console.log('Wizard: Completing intro via navigation and moving to Website step');
+      setIntroCompleted(true);
+      try {
+        localStorage.setItem('onboarding_intro_completed', 'true');
+      } catch (_e) {}
+      // Do not return here; continue into normal next-step flow so the user
+      // is taken directly to the Website step.
+    }
     
+    // Check if rawStepData is a React SyntheticEvent or native Event
     if (rawStepData && typeof rawStepData === 'object') {
       if (typeof rawStepData.preventDefault === 'function') {
         rawStepData.preventDefault();
@@ -350,7 +518,8 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
       }
     }
 
-    let currentStepData = rawStepData && typeof rawStepData === 'object' && 'nativeEvent' in rawStepData
+    // If it's an event, treat it as no data passed (undefined)
+    let currentStepData = rawStepData && typeof rawStepData === 'object' && ('nativeEvent' in rawStepData || 'target' in rawStepData)
       ? undefined
       : rawStepData;
     
@@ -370,7 +539,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
           console.log('Wizard: Collecting data from CompetitorAnalysisStep collector...');
           currentStepData = collector();
         } else if (collector && typeof collector === 'object') {
-          console.warn('Wizard: competitorDataCollector is an object; using it directly as step data');
+          console.log('Wizard: competitorDataCollector is an object; using it directly as step data');
           currentStepData = collector;
         } else {
           console.warn('Wizard: competitorDataCollector not available; using empty data');
@@ -473,7 +642,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     setDirection('right');
     const nextStep = activeStep + 1;
     
-    console.log('Wizard: Next step will be:', nextStep);
+    console.log(`Wizard: Next step will be: ${nextStep} (Step ${nextStep + 1}: ${steps[nextStep]?.label || 'Unknown'})`);
     
     // Show progress message
     const newProgress = ((nextStep + 1) / steps.length) * 100;
@@ -563,6 +732,24 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     setActiveStep(nextStep);
     try {
       localStorage.setItem('onboarding_active_step', String(nextStep));
+      
+      // Update local cache to reflect progress
+      // This prevents stale cache from reverting user to previous steps on refresh
+      const cachedInit = sessionStorage.getItem('onboarding_init');
+      if (cachedInit) {
+        try {
+          const data = JSON.parse(cachedInit);
+          if (data.onboarding) {
+             data.onboarding.current_step = currentStepNumber; // Update to new completed step
+             data.onboarding.completion_percentage = newProgress;
+             // Also update the step data in cache if needed, but current_step is most important for routing
+             sessionStorage.setItem('onboarding_init', JSON.stringify(data));
+             console.log('Wizard: Updated session cache with new step:', currentStepNumber);
+          }
+        } catch (e) {
+          console.warn('Wizard: Failed to update session cache', e);
+        }
+      }
     } catch (_e) {}
     console.log('Wizard: Setting activeStep to:', nextStep);
     
@@ -576,7 +763,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     } else {
       console.log('Wizard: Not the final step, continuing to next step');
     }
-  }, [activeStep, onComplete]);
+  }, [activeStep, onComplete, introCompleted]);
 
   const handleBack = useCallback(async () => {
     setDirection('left');
@@ -634,21 +821,25 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
 
   const renderStepContent = (step: number) => {
     const stepComponents = [
-      <ApiKeyValidationStep key="api-keys" onContinue={handleNext} updateHeaderContent={updateHeaderContent} onValidationChange={handleApiKeyValidationChange} />,
+      <IntroStep
+        key="intro"
+        updateHeaderContent={updateHeaderContent}
+      />,
       <WebsiteStep key="website" onContinue={handleNext} updateHeaderContent={updateHeaderContent} onValidationChange={(isValid) => handleStepValidationChange(1, isValid)} />,
       <CompetitorAnalysisStep 
         key="research" 
         onContinue={handleNext} 
         onBack={handleBack}
-        userUrl={stepData?.website || localStorage.getItem('website_url') || ''}
+        userUrl={stepData?.website || stepData?.website_url || localStorage.getItem('website_url') || ''}
         industryContext={stepData?.industryContext}
         onDataReady={handleCompetitorDataReady}
+        initialData={stepData}
       />,
-      <PersonaStep 
+      <PersonalizationStep 
         key="personalization" 
         onContinue={handleNext} 
         updateHeaderContent={updateHeaderContent}
-        onValidationChange={(isValid) => handleStepValidationChange(3, isValid)}
+        onValidationChange={(isValid: boolean) => handleStepValidationChange(3, isValid)}
         onboardingData={personaOnboardingData}
         stepData={personaStepData}
       />,
@@ -738,6 +929,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
             onNext={handleNext}
             isLastStep={activeStep === steps.length - 1}
             isCurrentStepValid={isCurrentStepValid}
+            nextLabel={activeStep === 0 ? 'ALwrity Your Growth' : 'Continue'}
           />
         )}
       </Paper>

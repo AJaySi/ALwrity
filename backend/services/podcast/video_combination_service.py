@@ -28,9 +28,9 @@ class PodcastVideoCombinationService:
         if output_dir:
             self.output_dir = Path(output_dir)
         else:
-            # Default to podcast_videos/Final_Videos directory
-            base_dir = Path(__file__).parent.parent.parent
-            self.output_dir = base_dir / "podcast_videos" / "Final_Videos"
+            # Default to root/data/media/podcast_videos/Final_Videos directory
+            base_dir = Path(__file__).resolve().parents[3]
+            self.output_dir = base_dir / "data" / "media" / "podcast_videos" / "Final_Videos"
         
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"[PodcastVideoCombination] Initialized with output directory: {self.output_dir}")

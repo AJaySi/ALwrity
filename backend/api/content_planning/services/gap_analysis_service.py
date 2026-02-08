@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 # Import database services
 from services.content_planning_db import ContentPlanningDBService
 from services.ai_analysis_db_service import AIAnalysisDBService
-from services.onboarding.data_service import OnboardingDataService
+from services.database import SessionLocal, get_session_for_user
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 # Import migrated content gap analysis services
 from services.content_gap_analyzer.content_gap_analyzer import ContentGapAnalyzer
@@ -30,7 +31,7 @@ class GapAnalysisService:
     
     def __init__(self):
         self.ai_analysis_db_service = AIAnalysisDBService()
-        self.onboarding_service = OnboardingDataService()
+        self.onboarding_integration_service = OnboardingDataIntegrationService()
         
         # Initialize migrated services
         self.content_gap_analyzer = ContentGapAnalyzer()
@@ -57,13 +58,13 @@ class GapAnalysisService:
             logger.error(f"Error creating content gap analysis: {str(e)}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "create_gap_analysis")
     
-    async def get_gap_analyses(self, user_id: Optional[int] = None, strategy_id: Optional[int] = None, force_refresh: bool = False) -> Dict[str, Any]:
+    async def get_gap_analyses(self, user_id: Optional[Any] = None, strategy_id: Optional[int] = None, force_refresh: bool = False) -> Dict[str, Any]:
         """Get content gap analysis with real AI insights - Database first approach."""
         try:
             logger.info(f"🚀 Starting content gap analysis for user: {user_id}, strategy: {strategy_id}, force_refresh: {force_refresh}")
             
             # Use user_id or default to 1
-            current_user_id = user_id or 1
+            current_user_id = user_id or "1"
             
             # Skip database check if force_refresh is True
             if not force_refresh:
@@ -93,13 +94,17 @@ class GapAnalysisService:
             # No recent analysis found or force refresh requested, run new AI analysis
             logger.info(f"🔄 Running new gap analysis for user {current_user_id} (force_refresh: {force_refresh})")
             
-            # Get personalized inputs from onboarding data
-            personalized_inputs = self.onboarding_service.get_personalized_ai_inputs(current_user_id)
+            # Get personalized inputs from onboarding data (SSOT)
+            db = get_session_for_user(str(current_user_id))
+            try:
+                personalized_inputs = await self.onboarding_integration_service.process_onboarding_data(str(current_user_id), db)
+            finally:
+                db.close()
             
             logger.info(f"📊 Using personalized inputs: {len(personalized_inputs)} data points")
             
             # Generate real AI-powered gap analysis
-            gap_analysis = await self.ai_engine_service.generate_content_recommendations(personalized_inputs)
+            gap_analysis = await self.ai_engine_service.generate_content_recommendations(personalized_inputs, user_id=str(current_user_id))
             
             logger.info(f"✅ AI gap analysis completed: {len(gap_analysis)} recommendations")
             
@@ -148,67 +153,34 @@ class GapAnalysisService:
             logger.error(f"Error getting content gap analysis: {str(e)}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "get_gap_analysis_by_id")
     
-    async def analyze_content_gaps(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_content_gaps(self, request_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """Analyze content gaps between your website and competitors."""
         try:
             logger.info(f"Starting content gap analysis for: {request_data.get('website_url', 'Unknown')}")
             
-            # Use migrated services for actual analysis
-            analysis_results = {}
-            
-            # 1. Website Analysis
-            logger.info("Performing website analysis...")
-            website_analysis = await self.website_analyzer.analyze_website_content(request_data.get('website_url'))
-            analysis_results['website_analysis'] = website_analysis
-            
-            # 2. Competitor Analysis
-            logger.info("Performing competitor analysis...")
-            competitor_analysis = await self.competitor_analyzer.analyze_competitors(request_data.get('competitor_urls', []))
-            analysis_results['competitor_analysis'] = competitor_analysis
-            
-            # 3. Keyword Research
-            logger.info("Performing keyword research...")
-            keyword_analysis = await self.keyword_researcher.research_keywords(
-                industry=request_data.get('industry'),
-                target_keywords=request_data.get('target_keywords')
-            )
-            analysis_results['keyword_analysis'] = keyword_analysis
-            
-            # 4. Content Gap Analysis
-            logger.info("Performing content gap analysis...")
-            gap_analysis = await self.content_gap_analyzer.identify_content_gaps(
-                website_url=request_data.get('website_url'),
+            # Use ContentGapAnalyzer for comprehensive analysis
+            results = await self.content_gap_analyzer.analyze_comprehensive_gap(
+                target_url=request_data.get('website_url'),
                 competitor_urls=request_data.get('competitor_urls', []),
-                keyword_data=keyword_analysis
+                target_keywords=request_data.get('target_keywords', []),
+                user_id=user_id,
+                industry=request_data.get('industry', 'general')
             )
-            analysis_results['gap_analysis'] = gap_analysis
             
-            # 5. AI-Powered Recommendations
-            logger.info("Generating AI recommendations...")
-            recommendations = await self.ai_engine_service.generate_recommendations(
-                website_analysis=website_analysis,
-                competitor_analysis=competitor_analysis,
-                gap_analysis=gap_analysis,
-                keyword_analysis=keyword_analysis
-            )
-            analysis_results['recommendations'] = recommendations
+            if 'error' in results:
+                raise Exception(results['error'])
             
-            # 6. Strategic Opportunities
-            logger.info("Identifying strategic opportunities...")
-            opportunities = await self.ai_engine_service.identify_strategic_opportunities(
-                gap_analysis=gap_analysis,
-                competitor_analysis=competitor_analysis,
-                keyword_analysis=keyword_analysis
-            )
-            analysis_results['opportunities'] = opportunities
-            
-            # Prepare response
+            # Map results to ContentGapAnalysisFullResponse structure
+            # ContentGapAnalyzer returns a rich structure, we map it to the response model
             response_data = {
-                'website_analysis': analysis_results['website_analysis'],
-                'competitor_analysis': analysis_results['competitor_analysis'],
-                'gap_analysis': analysis_results['gap_analysis'],
-                'recommendations': analysis_results['recommendations'],
-                'opportunities': analysis_results['opportunities'],
+                'website_analysis': {
+                    'serp_analysis': results.get('serp_analysis', {}),
+                    'keyword_expansion': results.get('keyword_expansion', {})
+                },
+                'competitor_analysis': results.get('competitor_content', {}),
+                'gap_analysis': results.get('gap_analysis', {}),
+                'recommendations': results.get('recommendations', []),
+                'opportunities': results.get('ai_insights', {}).get('strategic_insights', []),
                 'created_at': datetime.utcnow()
             }
             

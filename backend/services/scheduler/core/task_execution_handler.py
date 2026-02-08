@@ -23,7 +23,8 @@ async def execute_task_async(
     task_type: str,
     task: Any,
     summary: Optional[Dict[str, Any]] = None,
-    execution_source: str = "scheduler"  # "scheduler" or "manual"
+    execution_source: str = "scheduler",  # "scheduler" or "manual"
+    user_id: Optional[str] = None
 ):
     """
     Execute a single task asynchronously with user isolation.
@@ -38,21 +39,25 @@ async def execute_task_async(
         task_type: Type of task
         task: Task instance from database (detached from original session)
         summary: Optional summary dict to update with execution results
+        user_id: Optional user ID for user isolation (overrides extraction from task)
     """
     task_id = f"{task_type}_{getattr(task, 'id', id(task))}"
     db = None
-    user_id = None
     
     try:
         # Extract user context if available (for user isolation tracking)
-        try:
-            if hasattr(task, 'strategy') and task.strategy:
-                user_id = getattr(task.strategy, 'user_id', None)
-            elif hasattr(task, 'strategy_id') and task.strategy_id:
-                # Will query user_id after we have db session
-                pass
-        except Exception as e:
-            logger.debug(f"Could not extract user_id before execution for task {task_id}: {e}")
+        if user_id is None:
+            try:
+                if hasattr(task, 'strategy') and task.strategy:
+                    user_id = getattr(task.strategy, 'user_id', None)
+                elif hasattr(task, 'strategy_id') and task.strategy_id:
+                    # Will query user_id after we have db session
+                    pass
+                elif hasattr(task, 'user_id') and task.user_id:
+                    # Direct user_id on task object
+                    user_id = task.user_id
+            except Exception as e:
+                logger.debug(f"Could not extract user_id before execution for task {task_id}: {e}")
         
         # Log task execution start (detailed for important tasks)
         task_db_id = getattr(task, 'id', None)
@@ -61,7 +66,7 @@ async def execute_task_async(
         
         # Create a new database session for this async task
         # SQLAlchemy sessions are not async-safe and cannot be shared across concurrent tasks
-        db = get_db_session()
+        db = get_db_session(user_id)
         if db is None:
             error = DatabaseError(
                 message=f"Failed to get database session for task {task_id}",
@@ -79,7 +84,15 @@ async def execute_task_async(
         
         # Merge the detached task object into this session
         # The task object was loaded in a different session and is now detached
-        if object_session(task) is None:
+        from sqlalchemy.inspection import inspect
+        is_model = False
+        try:
+            inspect(task)
+            is_model = True
+        except:
+            pass
+
+        if is_model and object_session(task) is None:
             # Task is detached, need to merge it into this session
             task = db.merge(task)
         

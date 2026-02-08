@@ -12,6 +12,7 @@ import sqlite3
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
 from services.subscription.schema_utils import ensure_subscription_plan_columns
+from services.user_workspace_manager import UserWorkspaceManager
 from middleware.auth_middleware import get_current_user
 from models.subscription_models import (
     SubscriptionPlan, UserSubscription, UsageSummary,
@@ -93,7 +94,23 @@ async def get_user_subscription(
     
     except Exception as e:
         logger.error(f"Error getting user subscription: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "success": False,
+            "error": str(e),
+            "data": {
+                "subscription": None,
+                "plan": {
+                    "id": "error_fallback",
+                    "name": "Error Fallback",
+                    "tier": "free",
+                    "price_monthly": 0,
+                    "description": "Unable to load subscription details",
+                    "is_free": True
+                },
+                "status": "error",
+                "limits": {}
+            }
+        }
 
 
 @router.get("/status/{user_id}")
@@ -255,11 +272,29 @@ async def get_subscription_status(
                         }
                     }
             except Exception as retry_err:
-                logger.error(f"Schema fix and retry failed: {retry_err}")
-                raise HTTPException(status_code=500, detail=f"Database schema error: {str(e)}")
+                logger.error(f"Schema fix and retry failed: {retry_err}", exc_info=True)
+                return {
+                    "success": True,
+                    "data": {
+                        "active": False,
+                        "plan": "none",
+                        "tier": "none",
+                        "can_use_api": False,
+                        "reason": f"Database schema error: {str(e)}"
+                    }
+                }
         
-        logger.error(f"Error getting subscription status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting subscription status: {e}", exc_info=True)
+        return {
+            "success": True,
+            "data": {
+                "active": False,
+                "plan": "none",
+                "tier": "none",
+                "can_use_api": False,
+                "reason": f"Failed to check subscription status: {str(e)}"
+            }
+        }
 
 
 @router.post("/subscribe/{user_id}")
@@ -383,6 +418,18 @@ async def subscribe_to_plan(
                 auto_renew=True
             )
             db.add(subscription)
+            
+            # Ensure user workspace exists for new subscribers
+            # MOVED: Workspace creation is now handled exclusively in the onboarding flow 
+            # to prevent premature creation before plan selection/onboarding.
+            # See onboarding_control_service.py
+            # try:
+            #     logger.info(f"Creating workspace for new subscriber {user_id}")
+            #     workspace_manager = UserWorkspaceManager(db)
+            #     workspace_manager.create_user_workspace(user_id)
+            # except Exception as ws_error:
+            #     logger.error(f"Failed to create workspace for new subscriber {user_id}: {ws_error}")
+            #     # Don't fail the subscription if workspace creation fails, but log it
         
         db.commit()
         
@@ -491,6 +538,15 @@ async def subscribe_to_plan(
         except Exception as reset_err:
             logger.error(f"   ❌ Failed to reset usage after subscribe: {reset_err}", exc_info=True)
         
+        # Ensure user workspace is created/verified upon subscription
+        try:
+            workspace_manager = UserWorkspaceManager(db)
+            workspace_manager.create_user_workspace(user_id)
+            logger.info(f"   ✅ User workspace verified/created for user {user_id}")
+        except Exception as ws_err:
+            # Log but don't fail the subscription response, as workspace can be created later
+            logger.error(f"   ⚠️ Failed to create user workspace during subscription: {ws_err}")
+
         logger.info(f"   ✅ Renewal completed: User {user_id} → {plan.name} ({billing_cycle})")
         logger.info("=" * 80)
 

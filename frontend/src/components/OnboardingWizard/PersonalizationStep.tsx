@@ -1,65 +1,271 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Box, 
   Button, 
-  TextField, 
   Typography, 
   Alert, 
-  MenuItem, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  Chip, 
-  OutlinedInput,
-  FormHelperText,
-  Switch,
-  FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Divider
+  Divider,
+  Stack,
+  Tooltip,
+  CircularProgress,
 } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { 
-  validateContentStyle, 
-  configureBrandVoice, 
-  processPersonalizationSettings,
+  TextFields, 
+  Face, 
+  RecordVoiceOver,
+  InfoOutlined,
+  Psychology as PsychologyIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  Assessment as AssessmentIcon
+} from '@mui/icons-material';
+import { 
   getPersonalizationConfigurationOptions,
-  generateContentGuidelines,
-  ContentStyleRequest,
-  BrandVoiceRequest,
-  AdvancedSettingsRequest,
-  PersonalizationSettingsRequest
 } from '../../api/componentLogic';
+import { usePersonaPolling } from '../../hooks/usePersonaPolling';
+import { apiClient } from '../../api/client';
+import { type GenerationStep } from './PersonaStep/PersonaGenerationProgress';
+import { usePersonaInitialization } from './PersonaStep/personaInitialization';
+import { usePersonaGeneration } from './PersonaStep/personaGeneration';
+import { PersonaPreviewSection } from './PersonaStep/PersonaPreviewSection';
+import { PersonaLoadingState } from './PersonaStep/PersonaLoadingState';
+import { ComingSoonSection } from './PersonaStep/ComingSoonSection';
+import { BrandAvatarStudio } from './PersonalizationStep/components/BrandAvatarStudio';
+import { VoiceAvatarPlaceholder } from './PersonalizationStep/components/VoiceAvatarPlaceholder';
 
 interface PersonalizationStepProps {
-  onContinue: () => void;
+  onContinue: (data?: any) => void;
   updateHeaderContent: (content: { title: string; description: string }) => void;
+  onValidationChange?: (isValid: boolean) => void;
+  onboardingData?: {
+    websiteAnalysis?: any;
+    competitorResearch?: any;
+    sitemapAnalysis?: any;
+    businessData?: any;
+    website?: string;
+  };
+  stepData?: {
+    corePersona?: any;
+    platformPersonas?: Record<string, any>;
+    qualityMetrics?: any;
+    selectedPlatforms?: string[];
+  };
 }
 
-const PersonalizationStep: React.FC<PersonalizationStepProps> = ({ onContinue, updateHeaderContent }) => {
-  // Content Style State
-  const [writingStyle, setWritingStyle] = useState('Professional');
-  const [tone, setTone] = useState('Neutral');
-  const [contentLength, setContentLength] = useState('Standard');
+interface QualityMetrics {
+  overall_score: number;
+  style_consistency: number;
+  brand_alignment: number;
+  platform_optimization: number;
+  engagement_potential: number;
+  recommendations: string[];
+}
 
-  // Brand Voice State
-  const [personalityTraits, setPersonalityTraits] = useState<string[]>(['Professional']);
-  const [voiceDescription, setVoiceDescription] = useState('');
-  const [keywords, setKeywords] = useState('');
+type PersonalizationTab = 'text' | 'image' | 'audio';
 
-  // Advanced Settings State
-  const [seoOptimization, setSeoOptimization] = useState(false);
-  const [readabilityLevel, setReadabilityLevel] = useState('Standard');
-  const [contentStructure, setContentStructure] = useState<string[]>(['Introduction', 'Key Points', 'Conclusion']);
+const PersonalizationStep: React.FC<PersonalizationStepProps> = ({ 
+  onContinue, 
+  updateHeaderContent, 
+  onValidationChange,
+  onboardingData = {},
+  stepData
+}) => {
+  // Tabs State
+  const [activeTab, setActiveTab] = useState<PersonalizationTab>('text');
 
-  // UI State
+  // AI Generation state (Ported from PersonaStep)
+  const [generationStep, setGenerationStep] = useState<string>('analyzing');
+  const [isGenerating, setIsGenerating] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Persona data
+  const [corePersona, setCorePersona] = useState<any>(null);
+  const [platformPersonas, setPlatformPersonas] = useState<Record<string, any>>({});
+  const [qualityMetrics, setQualityMetrics] = useState<QualityMetrics | null>(null);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['linkedin', 'blog']);
+
+  // UI state
+  const [showPreview, setShowPreview] = useState(false);
+  const [expandedAccordion, setExpandedAccordion] = useState<string | false>('core');
+  const [hasCheckedCache, setHasCheckedCache] = useState(false);
   const [configurationOptions, setConfigurationOptions] = useState<any>(null);
 
+  // Generation steps (Ported from PersonaStep)
+  const generationSteps: GenerationStep[] = [
+    {
+      id: 'analyzing',
+      name: 'Analyzing Your Data',
+      description: 'Processing website analysis, competitor research, and content insights',
+      icon: <AssessmentIcon />,
+      completed: generationStep !== 'analyzing',
+      progress: generationStep === 'analyzing' ? 100 : 100
+    },
+    {
+      id: 'generating',
+      name: 'Generating Brand Voice',
+      description: 'Creating your unique brand writing style and identity',
+      icon: <PsychologyIcon />,
+      completed: ['adapting', 'assessing', 'preview'].includes(generationStep),
+      progress: ['adapting', 'assessing', 'preview'].includes(generationStep) ? 100 : 0
+    },
+    {
+      id: 'adapting',
+      name: 'Adapting to Platforms',
+      description: 'Tailoring your brand voice for different content platforms',
+      icon: <AutoAwesomeIcon />,
+      completed: ['assessing', 'preview'].includes(generationStep),
+      progress: ['assessing', 'preview'].includes(generationStep) ? 100 : 0
+    },
+    {
+      id: 'assessing',
+      name: 'Quality Assessment',
+      description: 'Evaluating persona accuracy and optimization potential',
+      icon: <AssessmentIcon />,
+      completed: generationStep === 'preview',
+      progress: generationStep === 'preview' ? 100 : 0
+    }
+  ];
+
+  // Load cached persona data (Ported from PersonaStep)
+  const loadCachedPersonaData = useCallback(() => {
+    try {
+      const cachedData = localStorage.getItem('persona_generation_data');
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        const cacheTime = new Date(parsedData.timestamp);
+        const now = new Date();
+        const hoursDiff = (now.getTime() - cacheTime.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursDiff < 24) {
+          setCorePersona(parsedData.core_persona);
+          setPlatformPersonas(parsedData.platform_personas);
+          setQualityMetrics(parsedData.quality_metrics);
+          setShowPreview(true);
+          setGenerationStep('preview');
+          setProgress(100);
+          setSuccess('Loaded your saved Brand Voice. Click "Regenerate" for a fresh analysis.');
+          return true;
+        } else {
+          localStorage.removeItem('persona_generation_data');
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load cached Brand Voice:', err);
+    }
+    return false;
+  }, []);
+
+  const loadServerCachedPersonaData = useCallback(async () => {
+    try {
+      const resp = await apiClient.get('/api/onboarding/step4/persona-latest');
+      if (resp.data && resp.data.success && resp.data.persona) {
+        const p = resp.data.persona;
+        setCorePersona(p.core_persona);
+        setPlatformPersonas(p.platform_personas || {});
+        setQualityMetrics(p.quality_metrics || null);
+        if (Array.isArray(p.selected_platforms)) {
+          setSelectedPlatforms(p.selected_platforms);
+        }
+        setShowPreview(true);
+        setGenerationStep('preview');
+        setProgress(100);
+        try {
+          localStorage.setItem('persona_generation_data', JSON.stringify({
+            ...p,
+            timestamp: p.timestamp || new Date().toISOString(),
+          }));
+        } catch {}
+        setSuccess('Loaded your saved Brand Voice from server. Click "Regenerate" for a fresh analysis.');
+        return true;
+      }
+    } catch (e: any) {
+      if (e?.response?.status === 404) {
+        console.log('No cached persona found on server');
+      } else if (e?.response?.status === 401) {
+        throw e;
+      }
+    }
+    return false;
+  }, []);
+
+  const savePersonaDataToCache = useCallback((personaData: any) => {
+    try {
+      const cacheData = {
+        ...personaData,
+        timestamp: new Date().toISOString(),
+        selected_platforms: selectedPlatforms
+      };
+      localStorage.setItem('persona_generation_data', JSON.stringify(cacheData));
+    } catch (err) {
+      console.warn('Failed to cache persona data:', err);
+    }
+  }, [selectedPlatforms]);
+
+  const { startPolling, progressMessages } = usePersonaPolling({
+    onProgress: (message, progress) => {
+      setProgress(progress);
+      setGenerationStep(getStepFromMessage(message));
+    },
+    onComplete: (personaResult) => {
+      if (personaResult && personaResult.success) {
+        setCorePersona(personaResult.core_persona);
+        setPlatformPersonas(personaResult.platform_personas);
+        setQualityMetrics(personaResult.quality_metrics);
+        setShowPreview(true);
+        setGenerationStep('preview');
+        setProgress(100);
+        savePersonaDataToCache(personaResult);
+      }
+      setIsGenerating(false);
+    },
+    onError: (error) => {
+      setError(error);
+      setIsGenerating(false);
+    }
+  });
+
+  const { generatePersonas, getStepFromMessage } = usePersonaGeneration({
+    onboardingData,
+    selectedPlatforms,
+    setCorePersona,
+    setPlatformPersonas,
+    setQualityMetrics,
+    setShowPreview,
+    setGenerationStep,
+    setProgress,
+    setIsGenerating,
+    setError,
+    savePersonaDataToCache,
+    startPolling
+  });
+
+  const { initialize } = usePersonaInitialization({
+    onboardingData,
+    stepData,
+    updateHeaderContent,
+    setCorePersona,
+    setPlatformPersonas,
+    setQualityMetrics,
+    setSelectedPlatforms,
+    setShowPreview,
+    setGenerationStep,
+    setProgress,
+    setHasCheckedCache,
+    setSuccess,
+    loadCachedPersonaData,
+    loadServerCachedPersonaData,
+    generatePersonas
+  });
+
+  const initRef = useRef(false);
+
   useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    initialize();
+    
     async function loadConfigurationOptions() {
       try {
         const options = await getPersonalizationConfigurationOptions();
@@ -70,293 +276,211 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({ onContinue, u
     }
     loadConfigurationOptions();
     
-    // Update header content when component mounts
     updateHeaderContent({
-      title: 'Customize Your Experience',
-      description: 'Personalize Alwrity to match your brand voice, content style, and writing preferences. Configure how AI generates content to ensure it aligns with your brand identity and resonates with your audience.'
+      title: 'Define Your Brand Persona',
+      description: 'Go beyond text. Define how your brand sounds, looks, and speaks. Configure your brand voice, generate an AI avatar, and prepare for voice cloning.'
     });
-  }, [updateHeaderContent]);
+  }, [updateHeaderContent, initialize]);
 
-  const handleContinue = async () => {
-    setError(null);
-    setSuccess(null);
-    setLoading(true);
+  const handleRegenerate = () => {
+    setShowPreview(false);
+    setCorePersona(null);
+    setPlatformPersonas({});
+    setQualityMetrics(null);
+    generatePersonas();
+  };
 
-    try {
-      // Validate content style
-      const contentStyleRequest: ContentStyleRequest = {
-        writing_style: writingStyle,
-        tone: tone,
-        content_length: contentLength
+  const handleContinue = useCallback(() => {
+    if (corePersona && platformPersonas && qualityMetrics) {
+      const personaData = {
+        corePersona,
+        platformPersonas,
+        qualityMetrics,
+        selectedPlatforms,
+        stepType: 'personalization',
+        completedAt: new Date().toISOString()
       };
-
-      const contentStyleValidation = await validateContentStyle(contentStyleRequest);
-      if (!contentStyleValidation.valid) {
-        setError(`Content style validation failed: ${contentStyleValidation.errors.join(', ')}`);
-        setLoading(false);
-        return;
-      }
-
-      // Configure brand voice
-      const brandVoiceRequest: BrandVoiceRequest = {
-        personality_traits: personalityTraits,
-        voice_description: voiceDescription,
-        keywords: keywords
-      };
-
-      const brandVoiceValidation = await configureBrandVoice(brandVoiceRequest);
-      if (!brandVoiceValidation.valid) {
-        setError(`Brand voice validation failed: ${brandVoiceValidation.errors.join(', ')}`);
-        setLoading(false);
-        return;
-      }
-
-      // Process complete settings
-      const advancedSettingsRequest: AdvancedSettingsRequest = {
-        seo_optimization: seoOptimization,
-        readability_level: readabilityLevel,
-        content_structure: contentStructure
-      };
-
-      const completeSettingsRequest: PersonalizationSettingsRequest = {
-        content_style: contentStyleRequest,
-        brand_voice: brandVoiceRequest,
-        advanced_settings: advancedSettingsRequest
-      };
-
-      const settingsValidation = await processPersonalizationSettings(completeSettingsRequest);
-      if (!settingsValidation.valid) {
-        setError(`Settings validation failed: ${settingsValidation.errors.join(', ')}`);
-        setLoading(false);
-        return;
-      }
-
-      // Generate content guidelines
-      const guidelines = await generateContentGuidelines(settingsValidation.settings);
-      if (guidelines.success) {
-        setSuccess('Personalization settings saved successfully! Content guidelines generated.');
-        // TODO: Store guidelines for later use
-        onContinue();
-      } else {
-        setError('Failed to generate content guidelines.');
-      }
-
-    } catch (e) {
-      setError('Failed to save personalization settings. Please try again.');
-      console.error('Personalization error:', e);
-    } finally {
-      setLoading(false);
+      onContinue(personaData);
+    } else {
+      setError('Missing persona data. Please generate your brand voice first.');
     }
-  };
+  }, [corePersona, platformPersonas, qualityMetrics, selectedPlatforms, onContinue]);
 
-  const handlePersonalityTraitsChange = (event: any) => {
-    const value = event.target.value;
-    setPersonalityTraits(typeof value === 'string' ? value.split(',') : value);
-  };
-
-  const handleContentStructureChange = (event: any) => {
-    const value = event.target.value;
-    setContentStructure(typeof value === 'string' ? value.split(',') : value);
-  };
+  useEffect(() => {
+    const hasValidData = !!(corePersona && platformPersonas && Object.keys(platformPersonas).length > 0 && qualityMetrics);
+    const isComplete = !isGenerating && hasValidData && generationStep === 'preview';
+    if (onValidationChange) {
+      onValidationChange(isComplete);
+    }
+  }, [corePersona, platformPersonas, qualityMetrics, isGenerating, generationStep, onValidationChange]);
 
   if (!configurationOptions) {
     return (
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          Personalize Your Experience
+      <Box sx={{ py: 4, textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">
+          Loading personalization options...
         </Typography>
-        <Alert severity="info">Loading configuration options...</Alert>
       </Box>
     );
   }
 
+  const tabs = [
+    { 
+      id: 'text', 
+      label: 'Brand Identity', 
+      icon: <TextFields />,
+      tooltip: 'Define your writing style, brand voice, and content characteristics.'
+    },
+    { 
+      id: 'image', 
+      label: 'Brand Avatar', 
+      icon: <Face />,
+      tooltip: 'Create or enhance a visual avatar for your brand using AI.'
+    },
+    { 
+      id: 'audio', 
+      label: 'Voice Clone', 
+      icon: <RecordVoiceOver />,
+      tooltip: 'Create a premium AI voice model based on your unique vocal characteristics.'
+    },
+  ];
+
+  const websiteUrl =
+    onboardingData?.websiteAnalysis?.website_url ||
+    onboardingData?.websiteAnalysis?.website ||
+    onboardingData?.website ||
+    '';
+  let domainName: string | undefined;
+  try {
+    const normalizedUrl = websiteUrl && !/^https?:\/\//i.test(websiteUrl) ? `https://${websiteUrl}` : websiteUrl;
+    const hostname = normalizedUrl ? new URL(normalizedUrl).hostname : '';
+    domainName = hostname ? hostname.replace(/^www\./i, '') : undefined;
+  } catch {
+    domainName = undefined;
+  }
+
   return (
-    <Box>
-      {/* Enhanced Explanatory Text */}
-      <Box sx={{ mb: 4, textAlign: 'center' }}>
-        <Typography variant="h6" color="text.secondary" sx={{ 
-          mb: 3, 
-          lineHeight: 1.6, 
-          maxWidth: 800, 
-          mx: 'auto',
-          fontWeight: 500,
-          opacity: 0.8
-        }}>
-          Configure your content style, brand voice, and advanced settings to tailor the AI experience to your needs. 
-          This ensures that all generated content aligns with your brand identity and resonates with your target audience.
-        </Typography>
+    <Box sx={{ 
+      transition: 'background-color 0.3s ease',
+      bgcolor: 'transparent',
+    }}>
+      {/* Tabbed Navigation Styled as Buttons */}
+      <Stack 
+        direction="row" 
+        spacing={2} 
+        justifyContent="center" 
+        sx={{ mb: 6 }}
+      >
+        {tabs.map((tab) => (
+          <Tooltip key={tab.id} title={tab.tooltip} arrow placement="top">
+            <Button
+              variant={activeTab === tab.id ? 'contained' : 'outlined'}
+              startIcon={tab.icon}
+              onClick={() => setActiveTab(tab.id as PersonalizationTab)}
+              sx={{
+                px: 4,
+                py: 1.5,
+                borderRadius: 3,
+                textTransform: 'none',
+                fontWeight: 'bold',
+                boxShadow: activeTab === tab.id ? 4 : 0,
+                transition: 'all 0.2s ease',
+                background: activeTab === tab.id ? 'linear-gradient(45deg, #7C3AED 0%, #EC4899 100%)' : undefined,
+                color: activeTab === tab.id ? '#FFFFFF' : undefined,
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: 2,
+                }
+              }}
+            >
+              {tab.label}
+            </Button>
+          </Tooltip>
+        ))}
+      </Stack>
+
+      <Box sx={{ minHeight: 400 }}>
+        {activeTab === 'text' && (
+          <Box>
+            <PersonaLoadingState
+              showPreview={showPreview}
+              isGenerating={isGenerating}
+              corePersona={corePersona}
+              progress={progress}
+              generationStep={generationStep}
+              generationSteps={generationSteps}
+              progressMessages={progressMessages}
+              error={error}
+              pollingError={null}
+              success={success}
+              handleRegenerate={handleRegenerate}
+              generatePersonas={generatePersonas}
+              setShowPreview={setShowPreview}
+              setSuccess={setSuccess}
+            />
+
+            <PersonaPreviewSection
+              showPreview={showPreview}
+              corePersona={corePersona}
+              platformPersonas={platformPersonas}
+              qualityMetrics={qualityMetrics}
+              selectedPlatforms={selectedPlatforms}
+              expandedAccordion={expandedAccordion}
+              setExpandedAccordion={setExpandedAccordion}
+              setCorePersona={setCorePersona}
+              setPlatformPersonas={setPlatformPersonas}
+              handleRegenerate={handleRegenerate}
+            />
+
+            <ComingSoonSection />
+          </Box>
+        )}
+
+        {activeTab === 'image' && (
+          <BrandAvatarStudio domainName={domainName} />
+        )}
+
+        {activeTab === 'audio' && (
+          <VoiceAvatarPlaceholder domainName={domainName} />
+        )}
       </Box>
 
-      {/* Content Style Section */}
-      <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" fontWeight="bold">Content Style</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth>
-              <InputLabel>Writing Style</InputLabel>
-              <Select
-                value={writingStyle}
-                onChange={(e) => setWritingStyle(e.target.value)}
-                label="Writing Style"
-              >
-                {configurationOptions.writing_styles?.map((style: string) => (
-                  <MenuItem key={style} value={style}>{style}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+      <Divider sx={{ my: 4 }} />
 
-            <FormControl fullWidth>
-              <InputLabel>Tone</InputLabel>
-              <Select
-                value={tone}
-                onChange={(e) => setTone(e.target.value)}
-                label="Tone"
-              >
-                {configurationOptions.tones?.map((toneOption: string) => (
-                  <MenuItem key={toneOption} value={toneOption}>{toneOption}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-              <InputLabel>Content Length</InputLabel>
-              <Select
-                value={contentLength}
-                onChange={(e) => setContentLength(e.target.value)}
-                label="Content Length"
-              >
-                {configurationOptions.content_lengths?.map((length: string) => (
-                  <MenuItem key={length} value={length}>{length}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+      {activeTab === 'text' && (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <InfoOutlined color="action" fontSize="small" />
+            <Typography variant="caption" color="text.secondary">
+              Changes to Brand Identity are required to continue. Avatar and Voice are optional.
+            </Typography>
           </Box>
-        </AccordionDetails>
-      </Accordion>
 
-      {/* Brand Voice Section */}
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" fontWeight="bold">Brand Voice</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth>
-              <InputLabel>Personality Traits</InputLabel>
-              <Select
-                multiple
-                value={personalityTraits}
-                onChange={handlePersonalityTraitsChange}
-                input={<OutlinedInput label="Personality Traits" />}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
-                      <Chip key={value} label={value} />
-                    ))}
-                  </Box>
-                )}
-              >
-                {configurationOptions.personality_traits?.map((trait: string) => (
-                  <MenuItem key={trait} value={trait}>{trait}</MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>Select traits that best describe your brand</FormHelperText>
-            </FormControl>
-
-            <TextField
-              label="Brand Voice Description"
-              value={voiceDescription}
-              onChange={(e) => setVoiceDescription(e.target.value)}
-              fullWidth
-              multiline
-              rows={3}
-              helperText="Describe how your brand should sound in content (optional)"
-            />
-
-            <TextField
-              label="Brand Keywords"
-              value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
-              fullWidth
-              helperText="Enter key terms that should be used in your content (optional)"
-            />
+          <Box>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+            
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleContinue}
+              disabled={loading}
+              sx={{ 
+                px: 6, 
+                py: 1.5, 
+                borderRadius: 2, 
+                fontWeight: 'bold',
+                boxShadow: '0 4px 14px 0 rgba(0,118,255,0.39)'
+              }}
+            >
+              {loading ? 'Saving Settings...' : 'Save & Continue'}
+            </Button>
           </Box>
-        </AccordionDetails>
-      </Accordion>
-
-      {/* Advanced Settings Section */}
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" fontWeight="bold">Advanced Settings</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={seoOptimization}
-                  onChange={(e) => setSeoOptimization(e.target.checked)}
-                />
-              }
-              label="Enable SEO Optimization"
-            />
-
-            <FormControl fullWidth>
-              <InputLabel>Readability Level</InputLabel>
-              <Select
-                value={readabilityLevel}
-                onChange={(e) => setReadabilityLevel(e.target.value)}
-                label="Readability Level"
-              >
-                {configurationOptions.readability_levels?.map((level: string) => (
-                  <MenuItem key={level} value={level}>{level}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-              <InputLabel>Content Structure</InputLabel>
-              <Select
-                multiple
-                value={contentStructure}
-                onChange={handleContentStructureChange}
-                input={<OutlinedInput label="Content Structure" />}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
-                      <Chip key={value} label={value} />
-                    ))}
-                  </Box>
-                )}
-              >
-                {configurationOptions.content_structures?.map((structure: string) => (
-                  <MenuItem key={structure} value={structure}>{structure}</MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>Select required content sections</FormHelperText>
-            </FormControl>
-          </Box>
-        </AccordionDetails>
-      </Accordion>
-
-      <Divider sx={{ my: 2 }} />
-
-      {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
-      
-      <Button
-        variant="contained"
-        color="primary"
-        onClick={handleContinue}
-        sx={{ mt: 2 }}
-        disabled={loading}
-      >
-        {loading ? 'Saving Settings...' : 'Continue'}
-      </Button>
+        </Box>
+      )}
     </Box>
   );
 };
 
-export default PersonalizationStep; 
+export default PersonalizationStep;

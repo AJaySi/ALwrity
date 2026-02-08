@@ -278,6 +278,52 @@ class WaveSpeedClient:
             **kwargs
         )
 
+    def voice_clone(
+        self,
+        audio_bytes: bytes,
+        custom_voice_id: str,
+        model: str = "speech-02-hd",
+        *,
+        audio_mime_type: str = "audio/wav",
+        text: Optional[str] = None,
+        need_noise_reduction: bool = False,
+        need_volume_normalization: bool = False,
+        accuracy: float = 0.7,
+        language_boost: Optional[str] = None,
+        timeout: int = 180,
+    ) -> bytes:
+        return self.speech.voice_clone(
+            audio_bytes=audio_bytes,
+            custom_voice_id=custom_voice_id,
+            model=model,
+            audio_mime_type=audio_mime_type,
+            text=text,
+            need_noise_reduction=need_noise_reduction,
+            need_volume_normalization=need_volume_normalization,
+            accuracy=accuracy,
+            language_boost=language_boost,
+            timeout=timeout,
+        )
+
+    def qwen3_voice_clone(
+        self,
+        audio_bytes: bytes,
+        text: str,
+        *,
+        audio_mime_type: str = "audio/wav",
+        language: str = "auto",
+        reference_text: Optional[str] = None,
+        timeout: int = 180,
+    ) -> bytes:
+        return self.speech.qwen3_voice_clone(
+            audio_bytes=audio_bytes,
+            text=text,
+            audio_mime_type=audio_mime_type,
+            language=language,
+            reference_text=reference_text,
+            timeout=timeout,
+        )
+
     def generate_text_video(
         self,
         prompt: str,

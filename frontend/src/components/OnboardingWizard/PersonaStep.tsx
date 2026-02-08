@@ -98,16 +98,16 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
     },
     {
       id: 'generating',
-      name: 'Generating Core Persona',
-      description: 'Creating your unique writing style and brand voice',
+      name: 'Generating Brand Voice',
+      description: 'Creating your unique brand writing style and identity',
       icon: <PsychologyIcon />,
       completed: ['adapting', 'assessing', 'preview'].includes(generationStep),
       progress: ['adapting', 'assessing', 'preview'].includes(generationStep) ? 100 : 0
     },
     {
       id: 'adapting',
-      name: 'Creating Platform Adaptations',
-      description: 'Optimizing your persona for different content platforms',
+      name: 'Adapting to Platforms',
+      description: 'Tailoring your brand voice for different content platforms',
       icon: <AutoAwesomeIcon />,
       completed: ['assessing', 'preview'].includes(generationStep),
       progress: ['assessing', 'preview'].includes(generationStep) ? 100 : 0
@@ -144,7 +144,7 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
           setProgress(100);
           
           // Show cache notification
-          setSuccess('Loaded cached persona data. Click "Generate New" for fresh analysis.');
+          setSuccess('Loaded your saved Brand Voice. Click "Regenerate" for a fresh analysis.');
           return true;
         } else {
           // Remove expired cache
@@ -152,7 +152,7 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
         }
       }
     } catch (err) {
-      console.warn('Failed to load cached persona data:', err);
+      console.warn('Failed to load cached Brand Voice:', err);
     }
     return false;
   }, []);
@@ -181,7 +181,7 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
           }));
         } catch {}
 
-        setSuccess('Loaded cached persona from server. Click "Generate New" for fresh analysis.');
+        setSuccess('Loaded your saved Brand Voice from server. Click "Regenerate" for a fresh analysis.');
         return true;
       }
     } catch (e: any) {
@@ -268,6 +268,7 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
   const {
     initialize
   } = usePersonaInitialization({
+    onboardingData,
     stepData,
     updateHeaderContent,
     setCorePersona,

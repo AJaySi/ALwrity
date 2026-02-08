@@ -393,6 +393,22 @@ class PricingService:
             },
             {
                 "provider": APIProvider.AUDIO,
+                "model_name": "minimax/voice-clone",
+                "cost_per_request": 0.50,
+                "cost_per_input_token": 0.0,
+                "cost_per_output_token": 0.0,
+                "description": "MiniMax Voice Clone via WaveSpeed (per run pricing)"
+            },
+            {
+                "provider": APIProvider.AUDIO,
+                "model_name": "wavespeed-ai/qwen3-tts/voice-clone",
+                "cost_per_request": 0.0,
+                "cost_per_input_token": 0.0,
+                "cost_per_output_token": 0.0,
+                "description": "Qwen3-TTS Voice Clone via WaveSpeed (cost depends on text length)"
+            },
+            {
+                "provider": APIProvider.AUDIO,
                 "model_name": "default",
                 "cost_per_input_token": 0.00005,  # $0.05 per 1,000 characters default
                 "cost_per_output_token": 0.0,

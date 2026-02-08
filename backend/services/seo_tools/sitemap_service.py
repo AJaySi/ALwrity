@@ -8,12 +8,14 @@ content distribution, and publishing patterns for SEO optimization.
 import aiohttp
 import asyncio
 import re
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from loguru import logger
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse, urljoin
 import pandas as pd
+import gzip
 
 from ..llm_providers.main_text_generation import llm_text_gen
 from middleware.logging_middleware import seo_logger
@@ -52,7 +54,9 @@ class SitemapService:
         self,
         sitemap_url: str,
         analyze_content_trends: bool = True,
-        analyze_publishing_patterns: bool = True
+        analyze_publishing_patterns: bool = True,
+        include_ai_insights: bool = True,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Analyze website sitemap for structure and patterns
@@ -92,10 +96,11 @@ class SitemapService:
             if analyze_publishing_patterns and sitemap_data.get("urls"):
                 publishing_patterns = self._analyze_publishing_patterns(sitemap_data["urls"])
             
-            # Generate AI insights
-            ai_insights = await self._generate_ai_insights(
-                structure_analysis, content_trends, publishing_patterns, sitemap_url
-            )
+            ai_insights = {}
+            if include_ai_insights:
+                ai_insights = await self._generate_ai_insights(
+                    structure_analysis, content_trends, publishing_patterns, sitemap_url, user_id=user_id
+                )
             
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             
@@ -119,7 +124,8 @@ class SitemapService:
                 input_data={
                     "sitemap_url": sitemap_url,
                     "analyze_content_trends": analyze_content_trends,
-                    "analyze_publishing_patterns": analyze_publishing_patterns
+                    "analyze_publishing_patterns": analyze_publishing_patterns,
+                    "include_ai_insights": include_ai_insights
                 },
                 output_data=result,
                 success=True
@@ -145,19 +151,88 @@ class SitemapService:
             
             raise
     
-    async def _fetch_sitemap_data(self, sitemap_url: str) -> Dict[str, Any]:
+    async def _fetch_sitemap_data(self, sitemap_url: str, depth: int = 0, session: aiohttp.ClientSession = None) -> Dict[str, Any]:
         """Fetch and parse sitemap data"""
         
+        # Reduced max depth from 3 to 2 to prevent infinite recursion/hanging on massive sites
+        if depth > 2:
+            logger.info(f"🛑 Max recursion depth (2) reached for sitemap {sitemap_url}")
+            return {"urls": [], "sitemaps": [], "total_urls": 0}
+
+        # Use passed session or create a new local one if it's the top-level call
+        local_session = False
+        if session is None:
+            local_session = True
+            # Limit pool size and set strict timeouts
+            connector = aiohttp.TCPConnector(limit_per_host=5, force_close=True)
+            # Increased total timeout to 60s for slow sitemaps, but kept connect/read strict
+            timeout = aiohttp.ClientTimeout(total=60, connect=10, sock_read=30)
+            session = aiohttp.ClientSession(connector=connector, timeout=timeout)
+
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(sitemap_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            logger.info(f"🔍 Fetching sitemap: {sitemap_url} (depth={depth})")
+            # 10MB limit for sitemaps
+            MAX_SITEMAP_SIZE = 10 * 1024 * 1024 
+            
+            try:
+                async with session.get(sitemap_url) as response:
                     if response.status != 200:
                         raise Exception(f"Failed to fetch sitemap: HTTP {response.status}")
                     
-                    content = await response.text()
-                    
-                    # Parse XML
-                    root = ET.fromstring(content)
+                    # Check Content-Type header
+                    content_type = response.headers.get("Content-Type", "").lower()
+                    if "text/html" in content_type:
+                        raise Exception("URL returned a webpage (HTML), not a valid XML sitemap")
+
+                    # Check Content-Length header if available
+                    content_length = response.headers.get("Content-Length")
+                    if content_length and int(content_length) > MAX_SITEMAP_SIZE:
+                        raise Exception(f"Sitemap too large: {content_length} bytes")
+
+                    # Read with size limit (safe read)
+                    raw = await response.content.read(MAX_SITEMAP_SIZE + 1)
+                    if len(raw) > MAX_SITEMAP_SIZE:
+                        raise Exception(f"Sitemap size exceeds limit of {MAX_SITEMAP_SIZE} bytes")
+
+                    if sitemap_url.lower().endswith(".gz") or (len(raw) >= 2 and raw[0] == 0x1F and raw[1] == 0x8B):
+                        try:
+                            raw = gzip.decompress(raw)
+                        except Exception:
+                            pass
+
+                    try:
+                        content = raw.decode(response.charset or "utf-8", errors="replace")
+                    except Exception:
+                        content = raw.decode("utf-8", errors="replace")
+
+                    content_stripped = content.lstrip()
+
+                    if not content_stripped.startswith("<"):
+                        urls = []
+                        # Limit text sitemaps to 50k lines
+                        lines = content.splitlines()[:50000]
+                        for line in lines:
+                            line_clean = (line or "").strip()
+                            if not line_clean or line_clean.startswith("#"):
+                                continue
+                            if line_clean.startswith("http://") or line_clean.startswith("https://"):
+                                urls.append({"loc": line_clean})
+                        return {
+                            "urls": urls,
+                            "sitemaps": [],
+                            "total_urls": len(urls)
+                        }
+
+                    # Check for HTML content disguised as XML
+                    if content.strip().lower().startswith(("<!doctype html", "<html")):
+                        raise Exception("URL returned a webpage (HTML), not a valid XML sitemap")
+
+                    # Use defusedxml for safety if available, otherwise standard ET
+                    try:
+                        import defusedxml.ElementTree as DET
+                        root = DET.fromstring(content)
+                    except ImportError:
+                        root = ET.fromstring(content)
                     
                     # Handle different sitemap formats
                     urls = []
@@ -172,17 +247,28 @@ class SitemapService:
                                 if loc is not None:
                                     sitemaps.append(loc.text)
                         
-                        # Fetch and parse nested sitemaps
-                        for nested_url in sitemaps[:10]:  # Limit to 10 sitemaps
-                            try:
-                                nested_data = await self._fetch_sitemap_data(nested_url)
-                                urls.extend(nested_data.get("urls", []))
-                            except Exception as e:
-                                logger.warning(f"Failed to fetch nested sitemap {nested_url}: {e}")
+                        # Fetch and parse nested sitemaps in parallel
+                        nested_tasks = []
+                        # Reduced nested limit from 10 to 5 to prevent fan-out explosion
+                        for nested_url in sitemaps[:5]: 
+                            nested_tasks.append(self._fetch_sitemap_data(nested_url, depth + 1, session))
+                        
+                        if nested_tasks:
+                            nested_results = await asyncio.gather(*nested_tasks, return_exceptions=True)
+                            for res in nested_results:
+                                if isinstance(res, Exception):
+                                    logger.warning(f"Failed to fetch nested sitemap: {res}")
+                                elif isinstance(res, dict):
+                                    urls.extend(res.get("urls", []))
                     
                     else:
                         # Regular sitemap with URLs
+                        # Limit to first 10k URLs per sitemap file to prevent memory issues
+                        url_count = 0
                         for url_element in root:
+                            if url_count >= 10000:
+                                break
+                                
                             if url_element.tag.endswith('url'):
                                 url_data = {}
                                 
@@ -192,18 +278,42 @@ class SitemapService:
                                 
                                 if 'loc' in url_data:
                                     urls.append(url_data)
+                                    url_count += 1
                     
                     return {
                         "urls": urls,
                         "sitemaps": sitemaps,
                         "total_urls": len(urls)
                     }
-                    
+            except Exception as e:
+                 # Re-raise to be caught by outer try/except
+                 raise e
+
         except ET.ParseError as e:
+            # Check if content is empty
+            if not content or not content.strip():
+                logger.warning(f"Sitemap is empty: {sitemap_url}")
+                return {"urls": [], "sitemaps": [], "total_urls": 0}
+
+            # Check if content looks like HTML to give a better error message
+            try:
+                if "content" in locals() and ("<html" in content.lower() or "<body" in content.lower() or "<div" in content.lower()):
+                    raise Exception("URL returned a webpage (HTML), not a valid XML sitemap")
+            except Exception:
+                pass
+            
+            logger.warning(f"Failed to parse sitemap XML: {e}")
             raise Exception(f"Failed to parse sitemap XML: {e}")
         except Exception as e:
-            logger.error(f"Error fetching sitemap data: {e}")
+            if "no element found" in str(e) or "not a valid XML sitemap" in str(e):
+                logger.warning(f"⚠️ Sitemap parsing failed for {sitemap_url}: {e}")
+            else:
+                logger.error(f"Error fetching sitemap data for {sitemap_url}: {e}")
             raise
+        finally:
+            # Only close the session if we created it
+            if local_session and session:
+                await session.close()
     
     def _analyze_sitemap_structure(self, sitemap_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze the structure of the sitemap"""
@@ -239,14 +349,60 @@ class SitemapService:
         # Calculate statistics
         avg_path_depth = sum(path_levels) / len(path_levels) if path_levels else 0
         
+        # Enhancement: Keyword Clustering & Strategic Pillar Mapping
+        keyword_clusters = self._cluster_keywords_from_urls(urls)
+        strategic_pillars = self._map_strategic_pillars(urls)
+        
         return {
             "total_urls": len(urls),
             "url_patterns": dict(sorted(url_patterns.items(), key=lambda x: x[1], reverse=True)[:10]),
             "file_types": dict(sorted(file_types.items(), key=lambda x: x[1], reverse=True)),
             "average_path_depth": round(avg_path_depth, 2),
             "max_path_depth": max(path_levels) if path_levels else 0,
+            "keyword_clusters": keyword_clusters,
+            "strategic_pillars": strategic_pillars,
             "structure_quality": self._assess_structure_quality(url_patterns, avg_path_depth)
         }
+
+    def _cluster_keywords_from_urls(self, urls: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Extract and cluster keywords from URL slugs to identify content strategy focus."""
+        stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'of', 'from', 'category', 'tag', 'blog', 'posts', 'archive'}
+        keywords: Dict[str, int] = {}
+        
+        for u in urls[:1000]: # Sample 1000 for performance
+            path = urlparse(u.get('loc', '')).path
+            # Split by non-alphanumeric and underscores
+            parts = re.split(r'[^a-zA-Z0-9]', path)
+            for part in parts:
+                p = part.lower()
+                if len(p) > 3 and p not in stop_words and not p.isdigit():
+                    keywords[p] = keywords.get(p, 0) + 1
+                    
+        # Return top 15 clusters
+        return dict(sorted(keywords.items(), key=lambda x: x[1], reverse=True)[:15])
+
+    def _map_strategic_pillars(self, urls: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Categorize URLs into strategic content pillars based on common path patterns."""
+        pillars = {
+            "Educational": ["blog", "guides", "how-to", "learn", "academy", "resource", "documentation", "docs"],
+            "Transactional": ["product", "features", "pricing", "plans", "solutions", "buy", "checkout", "cart"],
+            "Comparison": ["vs", "alternative", "comparison", "reviews", "best-of"],
+            "Company": ["about", "careers", "press", "contact", "team", "legal", "privacy", "terms"],
+            "Tools": ["calculator", "tool", "generator", "checker", "analyzer"]
+        }
+        
+        results = {k: 0 for k in pillars}
+        for u in urls:
+            loc = u.get('loc', '').lower()
+            found = False
+            for pillar, tokens in pillars.items():
+                if any(token in loc for token in tokens):
+                    results[pillar] += 1
+                    found = True
+                    break
+            # Optional: Add "Other" category if needed
+                    
+        return results
     
     def _analyze_content_trends(self, urls: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze content publishing trends"""
@@ -334,7 +490,9 @@ class SitemapService:
         competitors: List[str] = None,
         industry_context: str = None,
         analyze_content_trends: bool = True,
-        analyze_publishing_patterns: bool = True
+        analyze_publishing_patterns: bool = True,
+        include_ai_insights: bool = True,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Enhanced sitemap analysis specifically for onboarding Step 3 competitive analysis"""
         
@@ -343,7 +501,9 @@ class SitemapService:
             analysis_result = await self.analyze_sitemap(
                 sitemap_url=sitemap_url,
                 analyze_content_trends=analyze_content_trends,
-                analyze_publishing_patterns=analyze_publishing_patterns
+                analyze_publishing_patterns=analyze_publishing_patterns,
+                include_ai_insights=include_ai_insights,
+                user_id=user_id
             )
             
             # Enhance with onboarding-specific insights
@@ -351,7 +511,8 @@ class SitemapService:
                 analysis_result,
                 user_url,
                 competitors,
-                industry_context
+                industry_context,
+                user_id=user_id
             )
             
             # Combine results
@@ -374,7 +535,8 @@ class SitemapService:
         analysis_result: Dict[str, Any],
         user_url: str,
         competitors: List[str] = None,
-        industry_context: str = None
+        industry_context: str = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate onboarding-specific insights for competitive analysis"""
         
@@ -389,10 +551,37 @@ class SitemapService:
                 user_url, competitors, industry_context
             )
             
+            # Define JSON schema for structured output
+            json_struct = {
+                "type": "object",
+                "properties": {
+                    "competitive_positioning": {"type": "string"},
+                    "content_gaps": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "growth_opportunities": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "industry_benchmarks": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "strategic_recommendations": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": ["competitive_positioning", "content_gaps", "growth_opportunities", "industry_benchmarks", "strategic_recommendations"]
+            }
+
             # Generate AI insights
             ai_response = llm_text_gen(
                 prompt=prompt,
-                system_prompt=self._get_onboarding_system_prompt()
+                system_prompt=self._get_onboarding_system_prompt(),
+                json_struct=json_struct,
+                user_id=user_id
             )
             
             # Parse and structure insights
@@ -402,7 +591,7 @@ class SitemapService:
             await seo_logger.log_ai_analysis(
                 tool_name=f"{self.service_name}_onboarding",
                 prompt=prompt,
-                response=ai_response,
+                response=ai_response if isinstance(ai_response, str) else str(ai_response),
                 model_used="gemini-2.0-flash-001"
             )
             
@@ -422,7 +611,8 @@ class SitemapService:
         structure_analysis: Dict[str, Any],
         content_trends: Dict[str, Any],
         publishing_patterns: Dict[str, Any],
-        sitemap_url: str
+        sitemap_url: str,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate AI-powered insights for sitemap analysis"""
         
@@ -435,7 +625,8 @@ class SitemapService:
             # Generate AI insights
             ai_response = llm_text_gen(
                 prompt=prompt,
-                system_prompt=self._get_system_prompt()
+                system_prompt=self._get_system_prompt(),
+                user_id=user_id
             )
             
             # Parse and structure insights
@@ -697,7 +888,12 @@ Focus on actionable insights for content creators and digital marketing professi
         try:
             # Test with a simple sitemap
             test_url = "https://www.google.com/sitemap.xml"
-            result = await self.analyze_sitemap(test_url, False, False)
+            result = await self.analyze_sitemap(
+                sitemap_url=test_url,
+                analyze_content_trends=False,
+                analyze_publishing_patterns=False,
+                include_ai_insights=False
+            )
             
             return {
                 "status": "operational",
@@ -731,7 +927,7 @@ Focus on actionable insights for content creators and digital marketing professi
         
         competitor_info = ""
         if competitors:
-            competitor_info = f"\nCompetitors to consider: {', '.join(competitors[:5])}"
+            competitor_info = f"\nCompetitors to consider: {', '.join(competitors)}"
         
         industry_info = ""
         if industry_context:
@@ -753,12 +949,12 @@ Content Publishing Patterns:
 - Publishing Rate: {publishing_velocity:.2f} pages per day
 - Content Categories: {len(url_patterns)} main categories identified
 
-Please provide competitive analysis insights focusing on:
+Please provide competitive analysis insights focusing on the following sections:
 
-1. **COMPETITIVE POSITIONING**: How does this site's content structure compare to industry standards?
-2. **CONTENT GAPS**: What content categories or topics are missing based on the URL structure?
-3. **GROWTH OPPORTUNITIES**: Specific content expansion opportunities to compete better
-4. **INDUSTRY BENCHMARKS**: How does publishing frequency and content depth compare to competitors?
+1. **COMPETITIVE POSITIONING**: How does this site's content structure compare to industry standards? (Provide a brief paragraph)
+2. **CONTENT GAPS**: What content categories or topics are missing based on the URL structure? (List 3-5 specific gaps)
+3. **GROWTH OPPORTUNITIES**: Specific content expansion opportunities to compete better (List 3-5 opportunities)
+4. **INDUSTRY BENCHMARKS**: How does publishing frequency and content depth compare to competitors? (List 3 key comparisons)
 5. **STRATEGIC RECOMMENDATIONS**: 3-5 actionable steps for content strategy improvement
 
 Focus on actionable insights that help content creators understand their competitive position and identify growth opportunities.
@@ -783,69 +979,61 @@ Provide practical, data-driven insights that help content creators make informed
 
 Format your response as structured insights that can be easily parsed and displayed in a user interface."""
 
-    def _parse_onboarding_insights(self, ai_response: str) -> Dict[str, Any]:
+    def _parse_onboarding_insights(self, ai_response: Any) -> Dict[str, Any]:
         """Parse AI response for onboarding-specific insights"""
         
         try:
-            # Initialize structured response
-            insights = {
-                "competitive_positioning": "Analysis in progress...",
-                "content_gaps": [],
-                "growth_opportunities": [],
-                "industry_benchmarks": [],
-                "strategic_recommendations": []
+            insights = {}
+            
+            # If it's already a dict (structured output), use it
+            if isinstance(ai_response, dict):
+                insights = ai_response
+            elif isinstance(ai_response, str):
+                # Try to parse JSON string
+                try:
+                    insights = json.loads(ai_response)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from markdown block
+                    json_match = re.search(r'```json\s*(.*?)\s*```', ai_response, re.DOTALL)
+                    if json_match:
+                        try:
+                            insights = json.loads(json_match.group(1))
+                        except json.JSONDecodeError:
+                            pass
+            
+            # Ensure all required keys exist
+            required_keys = [
+                "competitive_positioning", 
+                "content_gaps", 
+                "growth_opportunities", 
+                "industry_benchmarks", 
+                "strategic_recommendations"
+            ]
+            
+            # Validate and fill missing keys
+            validated_insights = {
+                "competitive_positioning": insights.get("competitive_positioning", "Analysis in progress..."),
+                "content_gaps": insights.get("content_gaps", []),
+                "growth_opportunities": insights.get("growth_opportunities", []),
+                "industry_benchmarks": insights.get("industry_benchmarks", []),
+                "strategic_recommendations": insights.get("strategic_recommendations", [])
             }
             
-            # Simple parsing logic - look for structured sections
-            lines = ai_response.split('\n')
-            current_section = None
-            
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Detect sections
-                if any(keyword in line.lower() for keyword in ['competitive positioning', 'market position']):
-                    current_section = 'competitive_positioning'
-                    insights[current_section] = line
-                elif any(keyword in line.lower() for keyword in ['content gaps', 'missing content']):
-                    current_section = 'content_gaps'
-                elif any(keyword in line.lower() for keyword in ['growth opportunities', 'expansion']):
-                    current_section = 'growth_opportunities'
-                elif any(keyword in line.lower() for keyword in ['industry benchmarks', 'benchmarks']):
-                    current_section = 'industry_benchmarks'
-                elif any(keyword in line.lower() for keyword in ['strategic recommendations', 'recommendations']):
-                    current_section = 'strategic_recommendations'
-                elif line.startswith('-') or line.startswith('•'):
-                    # This is a list item
-                    if current_section and current_section in insights:
-                        if isinstance(insights[current_section], str):
-                            insights[current_section] = [insights[current_section]]
-                        insights[current_section].append(line[1:].strip())
-                elif current_section == 'competitive_positioning':
-                    # Append to competitive positioning text
-                    if insights[current_section] == "Analysis in progress...":
-                        insights[current_section] = line
+            # Ensure lists are actually lists
+            for key in required_keys[1:]:
+                if not isinstance(validated_insights[key], list):
+                    if isinstance(validated_insights[key], str):
+                        validated_insights[key] = [validated_insights[key]]
                     else:
-                        insights[current_section] += " " + line
-            
-            # Fallback: if no structured parsing worked, use the full response
-            if insights["competitive_positioning"] == "Analysis in progress...":
-                insights["competitive_positioning"] = ai_response[:500] + "..." if len(ai_response) > 500 else ai_response
-            
-            # Ensure lists are properly formatted
-            for key in ['content_gaps', 'growth_opportunities', 'industry_benchmarks', 'strategic_recommendations']:
-                if isinstance(insights[key], str):
-                    insights[key] = [insights[key]] if insights[key] else []
-            
-            return insights
+                        validated_insights[key] = []
+                        
+            return validated_insights
             
         except Exception as e:
             logger.error(f"Error parsing onboarding insights: {e}")
             return {
-                "competitive_positioning": ai_response[:300] + "..." if len(ai_response) > 300 else ai_response,
-                "content_gaps": ["Analysis parsing error - see full response above"],
+                "competitive_positioning": "Analysis unavailable",
+                "content_gaps": [],
                 "growth_opportunities": [],
                 "industry_benchmarks": [],
                 "strategic_recommendations": []
@@ -887,6 +1075,48 @@ Format your response as structured insights that can be easily parsed and displa
             
         except Exception as e:
             logger.error(f"Error discovering sitemap for {website_url}: {e}")
+            return None
+
+    async def _find_sitemap_on_homepage(self, base_url: str) -> Optional[str]:
+        """
+        Check homepage for sitemap links in HTML.
+        
+        Args:
+            base_url: Base URL of the website
+            
+        Returns:
+            Sitemap URL if found on homepage, None otherwise
+        """
+        try:
+            logger.debug(f"Checking homepage for sitemap links: {base_url}")
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(base_url, timeout=aiohttp.ClientTimeout(total=15), headers={"User-Agent": "ALwrity-SEO-Bot/1.0"}) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        
+                        # Look for sitemap links in href attributes
+                        # Matches: href="...sitemap.xml..." or href='...sitemap.xml...'
+                        # Simple regex to catch common variations
+                        sitemap_matches = re.findall(r'href=["\']([^"\']*[sS]itemap[^"\']*\.xml[^"\']*)["\']', content)
+                        
+                        for match in sitemap_matches:
+                            potential_url = match.strip()
+                            
+                            # Handle relative URLs
+                            if not potential_url.startswith(('http://', 'https://')):
+                                potential_url = urljoin(base_url, potential_url)
+                            
+                            logger.debug(f"Found potential sitemap link on homepage: {potential_url}")
+                            
+                            # Verify accessibility
+                            if await self._check_sitemap_url(potential_url, "homepage link"):
+                                return potential_url
+                                
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error checking homepage for sitemap: {e}")
             return None
 
     async def _find_sitemap_in_robots_txt(self, base_url: str) -> Optional[str]:

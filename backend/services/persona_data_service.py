@@ -17,13 +17,24 @@ class PersonaDataService:
     """Service for working directly with PersonaData table."""
     
     def __init__(self, db_session: Optional[Session] = None):
-        self.db = db_session or get_db_session()
+        self.db = db_session
     
     def get_user_persona_data(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get complete persona data for a user from PersonaData table."""
+        db = self.db
+        should_close = False
+        
         try:
+            if not db:
+                db = get_db_session(user_id)
+                should_close = True
+            
+            if not db:
+                logger.error(f"Could not get database session for user {user_id}")
+                return None
+                
             # Get onboarding session for user
-            session = self.db.query(OnboardingSession).filter(
+            session = db.query(OnboardingSession).filter(
                 OnboardingSession.user_id == user_id
             ).first()
             
@@ -32,7 +43,7 @@ class PersonaDataService:
                 return None
             
             # Get persona data
-            persona_data = self.db.query(PersonaData).filter(
+            persona_data = db.query(PersonaData).filter(
                 PersonaData.session_id == session.id
             ).first()
             
@@ -45,6 +56,9 @@ class PersonaDataService:
         except Exception as e:
             logger.error(f"Error getting persona data for user {user_id}: {str(e)}")
             return None
+        finally:
+            if should_close and db:
+                db.close()
     
     def get_platform_persona(self, user_id: str, platform: str) -> Optional[Dict[str, Any]]:
         """Get platform-specific persona data for a user."""
@@ -137,9 +151,20 @@ class PersonaDataService:
     
     def update_platform_persona(self, user_id: str, platform: str, updates: Dict[str, Any]) -> bool:
         """Update platform-specific persona data."""
+        db = self.db
+        should_close = False
+        
         try:
+            if not db:
+                db = get_db_session(user_id)
+                should_close = True
+            
+            if not db:
+                logger.error(f"Could not get database session for user {user_id}")
+                return False
+
             # Get onboarding session for user
-            session = self.db.query(OnboardingSession).filter(
+            session = db.query(OnboardingSession).filter(
                 OnboardingSession.user_id == user_id
             ).first()
             
@@ -148,7 +173,7 @@ class PersonaDataService:
                 return False
             
             # Get persona data
-            persona_data = self.db.query(PersonaData).filter(
+            persona_data = db.query(PersonaData).filter(
                 PersonaData.session_id == session.id
             ).first()
             
@@ -163,7 +188,7 @@ class PersonaDataService:
                 persona_data.platform_personas = platform_personas
                 persona_data.updated_at = datetime.utcnow()
                 
-                self.db.commit()
+                db.commit()
                 logger.info(f"Updated {platform} persona for user {user_id}")
                 return True
             else:
@@ -172,14 +197,29 @@ class PersonaDataService:
                 
         except Exception as e:
             logger.error(f"Error updating {platform} persona for user {user_id}: {str(e)}")
-            self.db.rollback()
+            if db:
+                db.rollback()
             return False
+        finally:
+            if should_close and db:
+                db.close()
     
     def save_platform_persona(self, user_id: str, platform: str, platform_data: Dict[str, Any]) -> bool:
         """Save or create platform-specific persona data (creates if doesn't exist)."""
+        db = self.db
+        should_close = False
+        
         try:
+            if not db:
+                db = get_db_session(user_id)
+                should_close = True
+            
+            if not db:
+                logger.error(f"Could not get database session for user {user_id}")
+                return False
+
             # Get onboarding session
-            session = self.db.query(OnboardingSession).filter(
+            session = db.query(OnboardingSession).filter(
                 OnboardingSession.user_id == user_id
             ).first()
             
@@ -188,7 +228,7 @@ class PersonaDataService:
                 return False
             
             # Get persona data
-            persona_data = self.db.query(PersonaData).filter(
+            persona_data = db.query(PersonaData).filter(
                 PersonaData.session_id == session.id
             ).first()
             
@@ -202,14 +242,18 @@ class PersonaDataService:
             persona_data.platform_personas = platform_personas
             persona_data.updated_at = datetime.utcnow()
             
-            self.db.commit()
+            db.commit()
             logger.info(f"Saved {platform} persona for user {user_id}")
             return True
             
         except Exception as e:
             logger.error(f"Error saving {platform} persona for user {user_id}: {str(e)}")
-            self.db.rollback()
+            if db:
+                db.rollback()
             return False
+        finally:
+            if should_close and db:
+                db.close()
     
     def get_supported_platforms(self, user_id: str) -> List[str]:
         """Get list of platforms for which personas exist."""

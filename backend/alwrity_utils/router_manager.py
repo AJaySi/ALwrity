@@ -6,6 +6,7 @@ Handles FastAPI router inclusion and management.
 from fastapi import FastAPI
 from loguru import logger
 from typing import List, Dict, Any, Optional
+import os
 
 
 class RouterManager:
@@ -18,7 +19,6 @@ class RouterManager:
     
     def include_router_safely(self, router, router_name: str = None) -> bool:
         """Include a router safely with error handling."""
-        import os
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
 
         try:
@@ -37,6 +37,7 @@ class RouterManager:
     
     def include_core_routers(self) -> bool:
         """Include core application routers."""
+        # Import os locally to avoid UnboundLocalError if it's shadowed
         import os
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
 
@@ -55,6 +56,13 @@ class RouterManager:
             # Step 3 Research router (core onboarding functionality)
             from api.onboarding_utils.step3_routes import router as step3_research_router
             self.include_router_safely(step3_research_router, "step3_research")
+
+            # Step 4 Persona and Asset routers
+            from api.onboarding_utils.step4_asset_routes import router as step4_asset_router
+            self.include_router_safely(step4_asset_router, "step4_assets")
+
+            from api.onboarding_utils.step4_persona_routes_optimized import router as step4_persona_router
+            self.include_router_safely(step4_persona_router, "step4_persona")
             
             # GSC router
             from routers.gsc_auth import router as gsc_auth_router

@@ -87,37 +87,25 @@ class AIServiceManager:
         """Load centralized AI prompts."""
         return {
             'content_gap_analysis': """
-As an expert SEO content strategist with 15+ years of experience in content marketing and competitive analysis, analyze this comprehensive content gap analysis data and provide actionable strategic insights:
+As an expert SEO content strategist, analyze the provided client profile and competitive landscape to find specific content gaps.
 
-TARGET ANALYSIS:
-- Website: {target_url}
-- Industry: {industry}
-- SERP Opportunities: {serp_opportunities} keywords not ranking
-- Keyword Expansion: {expanded_keywords_count} additional keywords identified
-- Competitors Analyzed: {competitors_analyzed} websites
-- Content Quality Score: {content_quality_score}/10
-- Market Competition Level: {competition_level}
+CLIENT PROFILE & COMPETITIVE DATA:
+{analysis_data}
 
-DOMINANT CONTENT THEMES:
-{dominant_themes}
+CRITICAL INSTRUCTIONS:
+1. **HYPER-RELEVANCE**: Recommendations must be strictly about the client's specific niche (e.g., if "Vegan Cooking", don't suggest "Steak recipes" or "Cloud Hosting").
+2. **LOW-HANGING FRUIT**: Identify topics competitors are covering but the client is missing, or topics where competitors have weak content.
+3. **SPECIFIC TITLES**: Suggest actual blog post titles or keywords, not generic categories (e.g., suggest "Best Vegan Cheese for Pizza 2024" instead of "Cheese reviews").
 
-COMPETITIVE LANDSCAPE:
-{competitive_landscape}
+PROVIDE CONTENT GAPS (JSON Format):
+1. **Low Hanging Fruit (Content Recommendations)**:
+   - recommendation: A specific, high-potential content topic or title.
+   - priority: High/Medium/Low.
+   - estimated_traffic: A realistic estimate (e.g., "Medium", "High", or numeric range).
+   - roi_estimate: Why this brings value (e.g., "High conversion intent").
+   - implementation_time: e.g., "2-4 hours".
 
-PROVIDE COMPREHENSIVE ANALYSIS:
-1. Strategic Content Gap Analysis (identify 3-5 major gaps with impact assessment)
-2. Priority Content Recommendations (top 5 with ROI estimates)
-3. Keyword Strategy Insights (trending, seasonal, long-tail opportunities)
-4. Competitive Positioning Advice (differentiation strategies)
-5. Content Format Recommendations (video, interactive, comprehensive guides)
-6. Technical SEO Opportunities (structured data, schema markup)
-7. Implementation Timeline (30/60/90 days with milestones)
-8. Risk Assessment and Mitigation Strategies
-9. Success Metrics and KPIs
-10. Resource Allocation Recommendations
-
-Consider user intent, search behavior patterns, and content consumption trends in your analysis.
-Format as structured JSON with clear, actionable recommendations and confidence scores.
+Format as structured JSON matching the schema exactly.
 """,
 
             'market_position_analysis': """
@@ -203,30 +191,24 @@ Format as structured JSON with detailed predictions and actionable insights.
 """,
 
             'strategic_intelligence': """
-As a senior content strategy consultant with expertise in digital marketing, competitive intelligence, and strategic planning, generate comprehensive strategic insights:
+As a senior content strategy consultant with expertise in digital marketing, competitive intelligence, and strategic planning, generate comprehensive strategic insights.
 
-ANALYSIS DATA:
+ANALYSIS DATA (Includes Advertools site hierarchy and word frequency themes):
 {analysis_data}
 
-STRATEGIC CONTEXT:
-- Business Objectives: {business_objectives}
-- Target Audience: {target_audience}
-- Competitive Landscape: {competitive_landscape}
-- Market Opportunities: {market_opportunities}
+CRITICAL INSTRUCTIONS:
+1. **DATA-DRIVEN PRECISION**: Use the `augmented_themes` and `competitor_content_themes` to identify specific topic authority shifts.
+2. **STRICT NICHE RELEVANCE**: Only suggest actions relevant to the user's specific industry and topics. Avoid generic tech/cloud storage jargon unless that is the user's niche.
+3. **SITE HIERARCHY INSIGHTS**: Analyze the `competitor_hierarchies` to suggest structural improvements to the user's website.
+4. **STALE CONTENT STRATEGY**: If stale content is detected in market intelligence, suggest a "Refresh & Relaunch" strategy.
 
 PROVIDE STRATEGIC INTELLIGENCE:
-1. Content Strategy Recommendations (pillar content, topic clusters)
-2. Competitive Positioning Advice (differentiation strategies)
+1. Content Strategy Recommendations (pillar content, topic clusters based on themes)
+2. Competitive Positioning Advice (differentiation strategies using site hierarchy)
 3. Content Optimization Suggestions (quality, format, frequency)
-4. Innovation Opportunities (emerging trends, new formats)
-5. Risk Mitigation Strategies (competitive threats, algorithm changes)
-6. Resource Allocation (budget, team, timeline)
-7. Performance Optimization (KPIs, metrics, tracking)
-8. Market Expansion Opportunities (new audiences, verticals)
-9. Technology Integration (AI, automation, tools)
-10. Long-term Strategic Vision (3-5 year roadmap)
+4. Innovation Opportunities (emerging trends from competitor word frequency)
+5. Risk Mitigation Strategies (competitive threats, cadence shifts)
 
-Consider market dynamics, user behavior trends, and competitive landscape in your analysis.
 Format as structured JSON with strategic insights and implementation guidance.
 """,
 
@@ -618,12 +600,13 @@ Format as structured JSON with detailed assessment and optimization guidance.
             raise RuntimeError("user_id is required for subscription checking. All AI calls must be authenticated.")
         return await self._execute_ai_call(service_type, prompt, schema, user_id=user_id)
     
-    async def generate_content_gap_analysis(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_content_gap_analysis(self, analysis_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Generate content gap analysis using centralized AI service.
         
         Args:
             analysis_data: Analysis data
+            user_id: User ID for subscription checking
             
         Returns:
             Content gap analysis results
@@ -646,7 +629,8 @@ Format as structured JSON with detailed assessment and optimization guidance.
             result = await self._execute_ai_call(
                 AIServiceType.CONTENT_GAP_ANALYSIS,
                 prompt,
-                self.schemas['content_gap_analysis']
+                self.schemas['content_gap_analysis'],
+                user_id=user_id
             )
             
             return result if result else {}
@@ -655,12 +639,13 @@ Format as structured JSON with detailed assessment and optimization guidance.
             logger.error(f"Error in content gap analysis: {str(e)}")
             raise Exception(f"Failed to generate content gap analysis: {str(e)}")
     
-    async def generate_market_position_analysis(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_market_position_analysis(self, market_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Generate market position analysis using centralized AI service.
         
         Args:
             market_data: Market analysis data
+            user_id: User ID for subscription checking
             
         Returns:
             Market position analysis results
@@ -679,7 +664,8 @@ Format as structured JSON with detailed assessment and optimization guidance.
             result = await self._execute_ai_call(
                 AIServiceType.MARKET_POSITION_ANALYSIS,
                 prompt,
-                self.schemas['market_position_analysis']
+                self.schemas['market_position_analysis'],
+                user_id=user_id
             )
             
             return result if result else {}
@@ -688,12 +674,13 @@ Format as structured JSON with detailed assessment and optimization guidance.
             logger.error(f"Error in market position analysis: {str(e)}")
             raise Exception(f"Failed to generate market position analysis: {str(e)}")
     
-    async def generate_keyword_analysis(self, keyword_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_keyword_analysis(self, keyword_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Generate keyword analysis using centralized AI service.
         
         Args:
             keyword_data: Keyword analysis data
+            user_id: User ID for subscription checking
             
         Returns:
             Keyword analysis results
@@ -712,7 +699,8 @@ Format as structured JSON with detailed assessment and optimization guidance.
             result = await self._execute_ai_call(
                 AIServiceType.KEYWORD_ANALYSIS,
                 prompt,
-                self.schemas['keyword_analysis']
+                self.schemas['keyword_analysis'],
+                user_id=user_id
             )
             
             return result if result else {}
@@ -721,12 +709,13 @@ Format as structured JSON with detailed assessment and optimization guidance.
             logger.error(f"Error in keyword analysis: {str(e)}")
             raise Exception(f"Failed to generate keyword analysis: {str(e)}")
     
-    async def generate_performance_prediction(self, content_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_performance_prediction(self, content_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Generate performance prediction using centralized AI service.
         
         Args:
             content_data: Content data for prediction
+            user_id: User ID for subscription checking
             
         Returns:
             Performance prediction results
@@ -744,7 +733,8 @@ Format as structured JSON with detailed assessment and optimization guidance.
             result = await self._execute_ai_call(
                 AIServiceType.PERFORMANCE_PREDICTION,
                 prompt,
-                self.schemas['performance_prediction']
+                self.schemas['performance_prediction'],
+                user_id=user_id
             )
             
             return result if result else {}
@@ -753,12 +743,13 @@ Format as structured JSON with detailed assessment and optimization guidance.
             logger.error(f"Error in performance prediction: {str(e)}")
             raise Exception(f"Failed to generate performance prediction: {str(e)}")
     
-    async def generate_strategic_intelligence(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_strategic_intelligence(self, analysis_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Generate strategic intelligence using centralized AI service.
         
         Args:
             analysis_data: Analysis data for strategic insights
+            user_id: User ID for subscription checking
             
         Returns:
             Strategic intelligence results
@@ -777,7 +768,8 @@ Format as structured JSON with detailed assessment and optimization guidance.
             result = await self._execute_ai_call(
                 AIServiceType.STRATEGIC_INTELLIGENCE,
                 prompt,
-                self.schemas['strategic_intelligence']
+                self.schemas['strategic_intelligence'],
+                user_id=user_id
             )
             
             return result if result else {}
@@ -786,12 +778,13 @@ Format as structured JSON with detailed assessment and optimization guidance.
             logger.error(f"Error in strategic intelligence: {str(e)}")
             raise Exception(f"Failed to generate strategic intelligence: {str(e)}")
     
-    async def generate_content_quality_assessment(self, content_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_content_quality_assessment(self, content_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Generate content quality assessment using centralized AI service.
         
         Args:
             content_data: Content data for assessment
+            user_id: User ID for subscription checking
             
         Returns:
             Content quality assessment results
@@ -810,7 +803,8 @@ Format as structured JSON with detailed assessment and optimization guidance.
             result = await self._execute_ai_call(
                 AIServiceType.CONTENT_QUALITY_ASSESSMENT,
                 prompt,
-                self.schemas['content_quality_assessment']
+                self.schemas['content_quality_assessment'],
+                user_id=user_id
             )
             
             return result if result else {}
@@ -819,9 +813,13 @@ Format as structured JSON with detailed assessment and optimization guidance.
             logger.error(f"Error in content quality assessment: {str(e)}")
             raise Exception(f"Failed to generate content quality assessment: {str(e)}")
     
-    async def generate_content_schedule(self, prompt: str) -> Dict[str, Any]:
+    async def generate_content_schedule(self, prompt: str, user_id: str) -> Dict[str, Any]:
         """
         Generate content schedule using AI.
+        
+        Args:
+            prompt: Prompt for schedule generation
+            user_id: User ID for subscription checking
         """
         try:
             logger.info("Generating content schedule using AI")
@@ -852,7 +850,8 @@ Format as structured JSON with detailed assessment and optimization guidance.
             response = await self._execute_ai_call(
                 AIServiceType.CONTENT_SCHEDULE_GENERATION,
                 enhanced_prompt,
-                self.schemas.get('content_schedule_generation', {})
+                self.schemas.get('content_schedule_generation', {}),
+                user_id=user_id
             )
             
             logger.info("Content schedule generated successfully")

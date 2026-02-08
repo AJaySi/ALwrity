@@ -10,10 +10,14 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional
 from loguru import logger
 from datetime import datetime
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from services.blog_writer.seo.blog_content_seo_analyzer import BlogContentSEOAnalyzer
 from services.blog_writer.core.blog_writer_service import BlogWriterService
 from middleware.auth_middleware import get_current_user
+from services.database import get_db
+from models.seo_analysis import SEOAnalysis
 
 
 router = APIRouter(prefix="/api/blog-writer/seo", tags=["Blog SEO Analysis"])
@@ -147,7 +151,8 @@ async def analyze_blog_seo(
 @router.post("/analyze-with-progress")
 async def analyze_blog_seo_with_progress(
     request: SEOAnalysisRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Analyze blog content for SEO with real-time progress updates
@@ -158,6 +163,7 @@ async def analyze_blog_seo_with_progress(
     Args:
         request: SEOAnalysisRequest containing blog content and research data
         current_user: Authenticated user from middleware
+        db: Database session
         
     Returns:
         Generator yielding progress updates and final results
@@ -240,6 +246,35 @@ async def analyze_blog_seo_with_progress(
                     user_id=user_id
                 )
                 
+                # Save to Database
+                try:
+                    draft_url = f"draft:{analysis_id}"
+                    overall_score = analysis_results.get('overall_score', 0)
+                    
+                    # Determine health status
+                    if overall_score >= 90:
+                        health_status = "excellent"
+                    elif overall_score >= 70:
+                        health_status = "good"
+                    elif overall_score >= 50:
+                        health_status = "needs_improvement"
+                    else:
+                        health_status = "poor"
+
+                    new_analysis = SEOAnalysis(
+                        url=draft_url,
+                        overall_score=int(overall_score),
+                        health_status=health_status,
+                        timestamp=datetime.utcnow(),
+                        analysis_data=analysis_results
+                    )
+                    db.add(new_analysis)
+                    db.commit()
+                    logger.info(f"Saved SEO analysis results to DB for ID: {analysis_id}")
+                except Exception as db_error:
+                    logger.error(f"Failed to save analysis to DB: {db_error}")
+                    # Continue without failing
+                
                 # Final result
                 yield SEOAnalysisProgress(
                     analysis_id=analysis_id,
@@ -273,27 +308,46 @@ async def analyze_blog_seo_with_progress(
 
 
 @router.get("/analysis/{analysis_id}")
-async def get_analysis_result(analysis_id: str):
+async def get_analysis_result(
+    analysis_id: str,
+    db: Session = Depends(get_db)
+):
     """
     Get SEO analysis result by ID
     
     Args:
         analysis_id: Unique identifier for the analysis
+        db: Database session
         
     Returns:
         SEO analysis results
     """
     try:
-        # In a real implementation, you would store results in a database
-        # For now, we'll return a placeholder
         logger.info(f"Retrieving SEO analysis result for ID: {analysis_id}")
         
-        return {
-            "analysis_id": analysis_id,
-            "status": "completed",
-            "message": "Analysis results retrieved successfully"
-        }
+        # Look for the analysis in the database
+        draft_url = f"draft:{analysis_id}"
+        stmt = select(SEOAnalysis).where(SEOAnalysis.url == draft_url)
+        analysis = db.execute(stmt).scalar_one_or_none()
         
+        if analysis and analysis.analysis_data:
+            # Return stored analysis data
+            return {
+                "analysis_id": analysis_id,
+                "status": "completed",
+                "message": "Analysis results retrieved successfully",
+                **analysis.analysis_data
+            }
+        
+        # If not found in DB (fallback for legacy or in-memory only)
+        # For now, we return 404 to encourage DB usage, or we could return a placeholder if strictly needed.
+        # But user requested DB integration, so we should rely on DB.
+        
+        logger.warning(f"Analysis result not found in DB for ID: {analysis_id}")
+        raise HTTPException(status_code=404, detail="Analysis result not found")
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get analysis result error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve analysis result: {str(e)}")

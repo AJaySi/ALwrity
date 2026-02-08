@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
 wix_service = WixService()
 
 # Initialize Wix OAuth service for token storage
-wix_oauth_service = WixOAuthService(db_path=os.path.abspath("alwrity.db"))
+wix_oauth_service = WixOAuthService()
 
 
 class WixAuthRequest(BaseModel):

@@ -1,37 +1,54 @@
 """
 Database Migration Script for Billing System
 Creates all tables needed for billing, usage tracking, and subscription management.
+Supports multi-tenant architecture.
 """
 
 import sys
 import os
+import argparse
 from pathlib import Path
 
 # Add the backend directory to Python path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
 from loguru import logger
 import traceback
 
 # Import models
 from models.subscription_models import Base as SubscriptionBase
-from services.database import DATABASE_URL
+from services.database import get_engine_for_user, get_all_user_ids, init_user_database
 from services.subscription.pricing_service import PricingService
 
-def create_billing_tables():
-    """Create all billing and subscription-related tables."""
+def check_existing_tables(engine):
+    """Check if billing tables exist."""
+    if engine is None:
+        return False
+    try:
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        # Check for a key table
+        return 'subscription_plans' in tables
+    except Exception as e:
+        logger.warning(f"Error checking existing tables: {e}")
+        return False
+
+def create_billing_tables(user_id):
+    """Create all billing and subscription-related tables for a specific user."""
     
     try:
-        # Create engine
-        engine = create_engine(DATABASE_URL, echo=False)
+        logger.info(f"Setting up billing tables for user: {user_id}")
         
-        # Create all tables
+        # Get engine for user
+        engine = get_engine_for_user(user_id)
+        
+        # Create all tables (idempotent)
         logger.debug("Creating billing and subscription system tables...")
         SubscriptionBase.metadata.create_all(bind=engine)
-        logger.debug("✅ Billing and subscription tables created successfully")
+        logger.debug("✅ Billing and subscription tables created/verified")
         
         # Create session for data initialization
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -49,6 +66,8 @@ def create_billing_tables():
             pricing_service.initialize_default_plans()
             logger.debug("✅ Default subscription plans initialized")
             
+            db.commit()
+            
         except Exception as e:
             logger.error(f"Error initializing default data: {e}")
             logger.error(traceback.format_exc())
@@ -57,15 +76,17 @@ def create_billing_tables():
         finally:
             db.close()
             
-        logger.info("✅ Billing system setup completed successfully!")
+        logger.info(f"✅ Billing system setup completed successfully for {user_id}!")
         
         # Display summary
         display_setup_summary(engine)
         
+        return True
+
     except Exception as e:
-        logger.error(f"❌ Error creating billing tables: {e}")
+        logger.error(f"❌ Error creating billing tables for {user_id}: {e}")
         logger.error(traceback.format_exc())
-        raise
+        return False
 
 def display_setup_summary(engine):
     """Display a summary of the created tables and data."""
@@ -144,74 +165,36 @@ def display_setup_summary(engine):
                 logger.warning(f"Could not check API pricing: {e}")
             
             logger.info("\n" + "="*60)
-            logger.info("NEXT STEPS:")
-            logger.info("="*60)
-            logger.info("1. Billing system is ready for use")
-            logger.info("2. API endpoints are available at:")
-            logger.info("   GET /api/subscription/plans")
-            logger.info("   GET /api/subscription/usage/{user_id}")
-            logger.info("   GET /api/subscription/dashboard/{user_id}")
-            logger.info("   GET /api/subscription/pricing")
-            logger.info("\n3. Frontend billing dashboard is integrated")
-            logger.info("4. Usage tracking middleware is active")
-            logger.info("5. Real-time cost monitoring is enabled")
-            logger.info("="*60)
             
     except Exception as e:
         logger.error(f"Error displaying summary: {e}")
 
-def check_existing_tables(engine):
-    """Check if billing tables already exist."""
-    
-    try:
-        with engine.connect() as conn:
-            # Check for billing tables
-            check_query = text("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND (
-                    name = 'subscription_plans' OR 
-                    name = 'user_subscriptions' OR 
-                    name = 'api_usage_logs' OR
-                    name = 'usage_summaries' OR
-                    name = 'api_provider_pricing' OR
-                    name = 'usage_alerts'
-                )
-            """)
-            
-            result = conn.execute(check_query)
-            existing_tables = result.fetchall()
-            
-            if existing_tables:
-                logger.warning(f"Found existing billing tables: {[t[0] for t in existing_tables]}")
-                logger.debug("Tables already exist. Skipping creation to preserve data.")
-                return False
-            
-            return True
-            
-    except Exception as e:
-        logger.error(f"Error checking existing tables: {e}")
-        return True  # Proceed anyway
-
 if __name__ == "__main__":
-    logger.debug("🚀 Starting billing system database migration...")
+    parser = argparse.ArgumentParser(description='Create billing tables for a user.')
+    parser.add_argument('--user_id', type=str, help='Specific user ID to setup billing for')
+    parser.add_argument('--all', action='store_true', help='Setup billing for ALL users')
     
-    try:
-        # Create engine to check existing tables
-        engine = create_engine(DATABASE_URL, echo=False)
+    args = parser.parse_args()
+    
+    if args.user_id:
+        create_billing_tables(args.user_id)
+    elif args.all:
+        user_ids = get_all_user_ids()
+        logger.info(f"Found {len(user_ids)} users to process")
+        for uid in user_ids:
+            create_billing_tables(uid)
+    else:
+        logger.warning("No user_id provided. Using default behavior (checking for single tenant or exiting).")
+        logger.warning("Usage: python create_billing_tables.py --user_id <user_id> OR --all")
         
-        # Check existing tables
-        if not check_existing_tables(engine):
-            logger.debug("✅ Billing tables already exist, skipping creation")
-            sys.exit(0)
-        
-        # Create tables and initialize data
-        create_billing_tables()
-        
-        logger.info("✅ Billing system migration completed successfully!")
-        
-    except KeyboardInterrupt:
-        logger.warning("Migration cancelled by user")
-        sys.exit(0)
-    except Exception as e:
-        logger.error(f"❌ Migration failed: {e}")
-        sys.exit(1)
+        # Fallback: if there's only one user, maybe we can guess?
+        # But safer to just exit or ask for input.
+        # For now, let's try to discover users and if only 1, do it.
+        user_ids = get_all_user_ids()
+        if len(user_ids) == 1:
+            logger.info(f"Single user found: {user_ids[0]}. Proceeding...")
+            create_billing_tables(user_ids[0])
+        elif len(user_ids) > 1:
+            logger.error(f"Multiple users found {user_ids}. Please specify --user_id or --all")
+        else:
+            logger.error("No users found.")

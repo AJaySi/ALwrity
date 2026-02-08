@@ -75,27 +75,27 @@ class AIStrategyGenerator:
             base_strategy = await self._generate_base_strategy_fields(user_id, context)
             
             # Step 2: Generate strategic insights and recommendations
-            strategic_insights = await self._generate_strategic_insights(base_strategy, context)
+            strategic_insights = await self._generate_strategic_insights(base_strategy, context, user_id=user_id)
             if strategic_insights.get("ai_generation_failed"):
                 failed_components.append("strategic_insights")
             
             # Step 3: Generate competitive analysis
-            competitive_analysis = await self._generate_competitive_analysis(base_strategy, context)
+            competitive_analysis = await self._generate_competitive_analysis(base_strategy, context, user_id=user_id)
             if competitive_analysis.get("ai_generation_failed"):
                 failed_components.append("competitive_analysis")
             
             # Step 4: Generate performance predictions
-            performance_predictions = await self._generate_performance_predictions(base_strategy, context)
+            performance_predictions = await self._generate_performance_predictions(base_strategy, context, user_id=user_id)
             if performance_predictions.get("ai_generation_failed"):
                 failed_components.append("performance_predictions")
             
             # Step 5: Generate implementation roadmap
-            implementation_roadmap = await self._generate_implementation_roadmap(base_strategy, context)
+            implementation_roadmap = await self._generate_implementation_roadmap(base_strategy, context, user_id=user_id)
             if implementation_roadmap.get("ai_generation_failed"):
                 failed_components.append("implementation_roadmap")
             
             # Step 6: Generate risk assessment
-            risk_assessment = await self._generate_risk_assessment(base_strategy, context)
+            risk_assessment = await self._generate_risk_assessment(base_strategy, context, user_id=user_id)
             if risk_assessment.get("ai_generation_failed"):
                 failed_components.append("risk_assessment")
             
@@ -169,7 +169,7 @@ class AIStrategyGenerator:
             self.logger.error(f"Error generating base strategy fields: {str(e)}")
             raise
 
-    async def _generate_strategic_insights(self, base_strategy: Dict[str, Any], context: Dict[str, Any], ai_manager: Optional[Any] = None) -> Dict[str, Any]:
+    async def _generate_strategic_insights(self, base_strategy: Dict[str, Any], context: Dict[str, Any], user_id: Optional[int] = None, ai_manager: Optional[Any] = None) -> Dict[str, Any]:
         """Generate strategic insights using AI."""
         try:
             logger.info("🧠 Generating strategic insights...")
@@ -222,7 +222,8 @@ class AIStrategyGenerator:
             response = await ai_manager.execute_structured_json_call(
                 AIServiceType.STRATEGIC_INTELLIGENCE, 
                 prompt, 
-                schema
+                schema,
+                user_id=str(user_id) if user_id else None
             )
             
             if not response or not response.get("data"):
@@ -306,7 +307,8 @@ class AIStrategyGenerator:
             response = await ai_manager.execute_structured_json_call(
                 AIServiceType.MARKET_POSITION_ANALYSIS, 
                 prompt, 
-                schema
+                schema,
+                user_id=str(user_id) if user_id else None
             )
             
             if not response or not response.get("data"):
@@ -339,7 +341,7 @@ class AIStrategyGenerator:
                 "failure_reason": str(e)
             }
 
-    async def _generate_content_calendar(self, base_strategy: Dict[str, Any], context: Dict[str, Any], ai_manager: Optional[Any] = None) -> Dict[str, Any]:
+    async def _generate_content_calendar(self, base_strategy: Dict[str, Any], context: Dict[str, Any], user_id: Optional[int] = None, ai_manager: Optional[Any] = None) -> Dict[str, Any]:
         """Generate content calendar using AI."""
         try:
             logger.info("📅 Generating content calendar...")
@@ -442,7 +444,8 @@ class AIStrategyGenerator:
             response = await ai_manager.execute_structured_json_call(
                 AIServiceType.CONTENT_SCHEDULE_GENERATION, 
                 prompt, 
-                schema
+                schema,
+                user_id=str(user_id) if user_id else None
             )
             
             if not response or not response.get("data"):
@@ -455,7 +458,7 @@ class AIStrategyGenerator:
             logger.error(f"❌ Error generating content calendar: {str(e)}")
             raise RuntimeError(f"Failed to generate content calendar: {str(e)}")
 
-    async def _generate_performance_predictions(self, base_strategy: Dict[str, Any], context: Dict[str, Any], ai_manager: Optional[Any] = None) -> Dict[str, Any]:
+    async def _generate_performance_predictions(self, base_strategy: Dict[str, Any], context: Dict[str, Any], user_id: Optional[int] = None, ai_manager: Optional[Any] = None) -> Dict[str, Any]:
         """Generate performance predictions using AI."""
         try:
             logger.info("📊 Generating performance predictions...")
@@ -525,7 +528,8 @@ class AIStrategyGenerator:
             response = await ai_manager.execute_structured_json_call(
                 AIServiceType.PERFORMANCE_PREDICTION, 
                 prompt, 
-                schema
+                schema,
+                user_id=str(user_id) if user_id else None
             )
             
             if not response or not response.get("data"):
@@ -551,7 +555,7 @@ class AIStrategyGenerator:
                 "failure_reason": str(e)
             }
 
-    async def _generate_implementation_roadmap(self, base_strategy: Dict[str, Any], context: Dict[str, Any], ai_manager: Optional[Any] = None) -> Dict[str, Any]:
+    async def _generate_implementation_roadmap(self, base_strategy: Dict[str, Any], context: Dict[str, Any], user_id: Optional[int] = None, ai_manager: Optional[Any] = None) -> Dict[str, Any]:
         """Generate implementation roadmap using AI."""
         try:
             logger.info("🗺️ Generating implementation roadmap...")

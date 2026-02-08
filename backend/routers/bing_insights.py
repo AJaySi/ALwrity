@@ -16,8 +16,10 @@ from middleware.auth_middleware import get_current_user
 router = APIRouter(prefix="/api/bing-insights", tags=["Bing Insights"])
 
 # Initialize insights service
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./bing_analytics.db')
-insights_service = BingInsightsService(DATABASE_URL)
+from services.database import get_user_db_path
+
+def get_insights_service(user_id: str) -> BingInsightsService:
+    return BingInsightsService()
 
 
 @router.get("/performance")
@@ -36,6 +38,7 @@ async def get_performance_insights(
         
         logger.info(f"Getting performance insights for user {user_id}, site: {site_url}")
         
+        insights_service = get_insights_service(user_id)
         insights = insights_service.get_performance_insights(user_id, site_url, days)
         
         if 'error' in insights:
@@ -72,6 +75,7 @@ async def get_seo_insights(
         
         logger.info(f"Getting SEO insights for user {user_id}, site: {site_url}")
         
+        insights_service = get_insights_service(user_id)
         insights = insights_service.get_seo_insights(user_id, site_url, days)
         
         if 'error' in insights:
@@ -181,6 +185,7 @@ async def get_comprehensive_insights(
         logger.info(f"Getting comprehensive insights for user {user_id}, site: {site_url}")
         
         # Get all types of insights
+        insights_service = get_insights_service(user_id)
         performance = insights_service.get_performance_insights(user_id, site_url, days)
         seo = insights_service.get_seo_insights(user_id, site_url, days)
         competitive = insights_service.get_competitive_insights(user_id, site_url, days)

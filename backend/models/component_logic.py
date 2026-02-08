@@ -255,6 +255,8 @@ class StyleDetectionResponse(BaseModel):
     style_analysis: Optional[Dict[str, Any]] = None
     style_patterns: Optional[Dict[str, Any]] = None
     style_guidelines: Optional[Dict[str, Any]] = None
+    seo_audit: Optional[Dict[str, Any]] = None
+    sitemap_analysis: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     warning: Optional[str] = None
     timestamp: str 

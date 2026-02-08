@@ -37,7 +37,7 @@ class ContentGapAnalyzer:
         logger.info("ContentGapAnalyzer initialized")
     
     async def analyze_comprehensive_gap(self, target_url: str, competitor_urls: List[str], 
-                                      target_keywords: List[str], industry: str = "general") -> Dict[str, Any]:
+                                      target_keywords: List[str], user_id: str, industry: str = "general") -> Dict[str, Any]:
         """
         Perform comprehensive content gap analysis.
         
@@ -45,6 +45,7 @@ class ContentGapAnalyzer:
             target_url: Your website URL
             competitor_urls: List of competitor URLs (max 5 for performance)
             target_keywords: List of primary keywords to analyze
+            user_id: User ID for subscription checking
             industry: Industry category for context
             
         Returns:
@@ -95,7 +96,7 @@ class ContentGapAnalyzer:
             
             # Phase 5: AI-Powered Insights
             logger.info("🤖 Generating AI-powered insights")
-            ai_insights = await self._generate_ai_insights(results)
+            ai_insights = await self._generate_ai_insights(results, user_id=user_id)
             results['ai_insights'] = ai_insights
             logger.info("✅ Generated comprehensive AI insights")
             
@@ -496,12 +497,13 @@ class ContentGapAnalyzer:
             logger.error(f"Error in content theme analysis: {str(e)}")
             return {}
     
-    async def _generate_ai_insights(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
+    async def _generate_ai_insights(self, analysis_results: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Generate AI-powered insights using advanced AI analysis.
         
         Args:
             analysis_results: Complete analysis results
+            user_id: User ID for subscription checking
             
         Returns:
             AI-generated insights
@@ -520,7 +522,7 @@ class ContentGapAnalyzer:
             }
             
             # Generate comprehensive AI insights using AI engine
-            ai_insights = await self.ai_engine.analyze_content_gaps(analysis_summary)
+            ai_insights = await self.ai_engine.analyze_content_gaps(analysis_summary, user_id=user_id)
             
             if ai_insights:
                 logger.info("✅ Generated comprehensive AI insights")

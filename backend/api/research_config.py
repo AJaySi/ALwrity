@@ -10,13 +10,13 @@ from pydantic import BaseModel
 
 from middleware.auth_middleware import get_current_user
 from services.user_api_key_context import get_exa_key, get_gemini_key, get_tavily_key
-from services.onboarding.database_service import OnboardingDatabaseService
-from services.onboarding.progress_service import get_onboarding_progress_service
+from services.onboarding.progress_service import OnboardingProgressService
 from services.database import get_db
 from sqlalchemy.orm import Session
 from services.research.research_persona_service import ResearchPersonaService
 from services.research.research_persona_scheduler import schedule_research_persona_generation
 from models.research_persona_models import ResearchPersona
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 
 router = APIRouter()
@@ -129,8 +129,6 @@ async def get_persona_defaults(
             # Return minimal defaults - but onboarding guarantees this won't happen
             return PersonaDefaults()
         
-        db_service = OnboardingDatabaseService(db=db)
-        
         # Phase 2: First check if research persona exists (cached only - don't generate here)
         # Generation happens in ResearchEngine.research() on first use
         research_persona = None
@@ -178,36 +176,27 @@ async def get_persona_defaults(
                 provider_recommendations=getattr(research_persona, 'provider_recommendations', {}),
             )
         
-        # Fallback to core persona from onboarding (guaranteed to exist after onboarding)
-        persona_data = db_service.get_persona_data(user_id, db)
-        industry = None
-        target_audience = None
-        
-        if persona_data:
-            core_persona = persona_data.get('corePersona') or persona_data.get('core_persona')
-            if core_persona:
-                industry = core_persona.get('industry')
-                target_audience = core_persona.get('target_audience')
-        
-        # Fallback to website analysis if core persona doesn't have industry
-        if not industry:
-            website_analysis = db_service.get_website_analysis(user_id, db)
-            if website_analysis:
-                target_audience_data = website_analysis.get('target_audience', {})
-                if isinstance(target_audience_data, dict):
-                    industry = target_audience_data.get('industry_focus')
-                    demographics = target_audience_data.get('demographics')
-                    if demographics and not target_audience:
-                        target_audience = demographics if isinstance(demographics, str) else str(demographics)
-        
-        # Phase 2: Never return "General" - use sensible defaults from onboarding or fallback
-        # Since onboarding is mandatory, we should always have real data
-        if not industry:
-            industry = "Technology"  # Safe default for content creators
-            logger.warning(f"[ResearchConfig] No industry found for user {user_id}, using default")
-        if not target_audience:
-            target_audience = "Professionals"  # Safe default
-            logger.warning(f"[ResearchConfig] No target_audience found for user {user_id}, using default")
+        # Use SSOT Integration Service to get canonical profile
+        integration_service = OnboardingDataIntegrationService()
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+        canonical_profile = integrated_data.get('canonical_profile', {})
+
+        industry = canonical_profile.get('industry')
+        target_audience_raw = canonical_profile.get('target_audience')
+
+        if isinstance(target_audience_raw, list):
+            target_audience = ", ".join(str(item) for item in target_audience_raw if item is not None)
+        elif isinstance(target_audience_raw, dict):
+            target_audience = target_audience_raw.get('description') or target_audience_raw.get('label') or str(target_audience_raw)
+        else:
+            target_audience = target_audience_raw
+
+        if not industry or industry == "General":
+            industry = "Technology"
+            logger.warning(f"[ResearchConfig] No industry found in canonical profile for user {user_id}, using default")
+        if not target_audience or target_audience == "General":
+            target_audience = "Professionals and content consumers"
+            logger.warning(f"[ResearchConfig] No target_audience found in canonical profile for user {user_id}, using default")
         
         # Suggest domains based on industry
         suggested_domains = _get_domain_suggestions(industry)
@@ -377,39 +366,21 @@ async def get_research_config(
         
         # Get persona defaults
         logger.debug(f"[ResearchConfig] Getting persona defaults for user {user_id}")
-        db_service = OnboardingDatabaseService(db=db)
         
-        # Try to get persona data first (most reliable source for industry/target_audience)
-        try:
-            persona_data = db_service.get_persona_data(user_id, db)
-        except Exception as e:
-            logger.error(f"[ResearchConfig] Error getting persona data for user {user_id}: {e}", exc_info=True)
-            persona_data = None
+        # Use SSOT Integration Service
+        integration_service = OnboardingDataIntegrationService()
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+        canonical_profile = integrated_data.get('canonical_profile', {})
         
-        industry = 'General'
-        target_audience = 'General'
+        industry = canonical_profile.get('industry') or 'General'
+        target_audience_raw = canonical_profile.get('target_audience')
         
-        if persona_data:
-            core_persona = persona_data.get('corePersona') or persona_data.get('core_persona')
-            if core_persona:
-                if core_persona.get('industry'):
-                    industry = core_persona['industry']
-                if core_persona.get('target_audience'):
-                    target_audience = core_persona['target_audience']
-        
-        # Fallback to website analysis if persona data doesn't have industry info
-        if industry == 'General':
-            website_analysis = db_service.get_website_analysis(user_id, db)
-            if website_analysis:
-                target_audience_data = website_analysis.get('target_audience', {})
-                if isinstance(target_audience_data, dict):
-                    # Extract from target_audience JSON field
-                    industry_focus = target_audience_data.get('industry_focus')
-                    if industry_focus:
-                        industry = industry_focus
-                    demographics = target_audience_data.get('demographics')
-                    if demographics:
-                        target_audience = demographics if isinstance(demographics, str) else str(demographics)
+        if isinstance(target_audience_raw, list):
+            target_audience = ", ".join(str(item) for item in target_audience_raw if item is not None)
+        elif isinstance(target_audience_raw, dict):
+            target_audience = target_audience_raw.get('description') or target_audience_raw.get('label') or str(target_audience_raw)
+        else:
+            target_audience = target_audience_raw or 'General'
         
         persona_defaults = PersonaDefaults(
             industry=industry,
@@ -422,7 +393,7 @@ async def get_research_config(
         onboarding_completed = False
         try:
             logger.debug(f"[ResearchConfig] Checking onboarding status for user {user_id}")
-            progress_service = get_onboarding_progress_service()
+            progress_service = OnboardingProgressService()
             onboarding_status = progress_service.get_onboarding_status(user_id)
             onboarding_completed = onboarding_status.get('is_completed', False)
             logger.info(
@@ -466,8 +437,10 @@ async def get_research_config(
             if onboarding_completed and not research_persona:
                 try:
                     # Check if persona data exists (to ensure we have data to generate from)
-                    db_service = OnboardingDatabaseService(db=db)
-                    persona_data = db_service.get_persona_data(user_id, db)
+                    integration_service = OnboardingDataIntegrationService()
+                    integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+                    persona_data = integrated_data.get('persona_data', {})
+                    
                     if persona_data and (persona_data.get('corePersona') or persona_data.get('platformPersonas') or 
                                         persona_data.get('core_persona') or persona_data.get('platform_personas')):
                         # Schedule persona generation (20 minutes from now)
@@ -559,12 +532,16 @@ async def get_competitor_analysis(
             logger.error(f"[ResearchConfig] Database session is None for user {user_id}")
             raise HTTPException(status_code=500, detail="Database session not available")
 
-        db_service = OnboardingDatabaseService(db=db)
+        # Use SSOT Integration Service
+        integration_service = OnboardingDataIntegrationService()
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+        
+        onboarding_session = integrated_data.get('onboarding_session')
 
         # Get onboarding session - using same pattern as onboarding completion check
         print(f"[COMPETITOR_ANALYSIS] Looking up onboarding session for user_id={user_id} (Clerk ID)")
-        session = db_service.get_session_by_user(user_id, db)
-        if not session:
+        
+        if not onboarding_session:
             print(f"[COMPETITOR_ANALYSIS] ❌ WARNING: No onboarding session found for user_id={user_id}")
             logger.warning(f"[ResearchConfig] No onboarding session found for user {user_id}")
             return CompetitorAnalysisResponse(
@@ -572,30 +549,31 @@ async def get_competitor_analysis(
                 error="No onboarding session found. Please complete onboarding first."
             )
         
-        print(f"[COMPETITOR_ANALYSIS] ✅ Found onboarding session: id={session.id}, user_id={session.user_id}, current_step={session.current_step}")
+        print(f"[COMPETITOR_ANALYSIS] ✅ Found onboarding session: id={onboarding_session.get('id')}, user_id={onboarding_session.get('user_id')}, current_step={onboarding_session.get('current_step')}")
 
         # Check if step 3 is completed - same pattern as elsewhere (check current_step >= 3 or research_preferences exists)
-        research_preferences = db_service.get_research_preferences(user_id, db)
-        print(f"[COMPETITOR_ANALYSIS] Step check: current_step={session.current_step}, research_preferences exists={research_preferences is not None}")
-        if not research_preferences and session.current_step < 3:
-            print(f"[COMPETITOR_ANALYSIS] ❌ Step 3 not completed for user_id={user_id} (current_step={session.current_step})")
-            logger.info(f"[ResearchConfig] Step 3 not completed for user {user_id} (current_step={session.current_step})")
+        research_preferences = integrated_data.get('research_preferences')
+        current_step = onboarding_session.get('current_step', 0)
+        
+        print(f"[COMPETITOR_ANALYSIS] Step check: current_step={current_step}, research_preferences exists={research_preferences is not None}")
+        if not research_preferences and current_step < 3:
+            print(f"[COMPETITOR_ANALYSIS] ❌ Step 3 not completed for user_id={user_id} (current_step={current_step})")
+            logger.info(f"[ResearchConfig] Step 3 not completed for user {user_id} (current_step={current_step})")
             return CompetitorAnalysisResponse(
                 success=False,
                 error="Onboarding step 3 (Competitor Analysis) is not completed. Please complete onboarding step 3 first."
             )
 
-        print(f"[COMPETITOR_ANALYSIS] ✅ Step 3 is completed (current_step={session.current_step} or research_preferences exists)")
+        print(f"[COMPETITOR_ANALYSIS] ✅ Step 3 is completed (current_step={current_step} or research_preferences exists)")
 
-        # Try Method 1: Get competitor data from CompetitorAnalysis table using OnboardingDatabaseService
-        # This follows the same pattern as get_website_analysis()
-        print(f"[COMPETITOR_ANALYSIS] 🔍 Method 1: Querying CompetitorAnalysis table using OnboardingDatabaseService...")
+        # Try Method 1: Get competitor data from SSOT (Integration Service)
+        print(f"[COMPETITOR_ANALYSIS] 🔍 Method 1: Querying via OnboardingDataIntegrationService...")
         try:
-            competitors = db_service.get_competitor_analysis(user_id, db)
+            competitors = integrated_data.get('competitor_analysis', [])
 
             if competitors:
-                print(f"[COMPETITOR_ANALYSIS] ✅ Found {len(competitors)} competitor records from CompetitorAnalysis table")
-                logger.info(f"[ResearchConfig] Found {len(competitors)} competitors from CompetitorAnalysis table for user {user_id}")
+                print(f"[COMPETITOR_ANALYSIS] ✅ Found {len(competitors)} competitor records from SSOT")
+                logger.info(f"[ResearchConfig] Found {len(competitors)} competitors from SSOT for user {user_id}")
 
                 # Map competitor fields to match frontend expectations
                 mapped_competitors = []
@@ -621,13 +599,13 @@ async def get_competitor_analysis(
                     analysis_timestamp=None
                 )
             else:
-                print(f"[COMPETITOR_ANALYSIS] ⚠️ No competitor records found in CompetitorAnalysis table for user_id={user_id}")
+                print(f"[COMPETITOR_ANALYSIS] ⚠️ No competitor records found in SSOT for user_id={user_id}")
 
         except Exception as e:
             print(f"[COMPETITOR_ANALYSIS] ❌ EXCEPTION in Method 1: {e}")
             import traceback
             print(f"[COMPETITOR_ANALYSIS] Traceback:\n{traceback.format_exc()}")
-            logger.warning(f"[ResearchConfig] Could not retrieve competitor data from CompetitorAnalysis table: {e}", exc_info=True)
+            logger.warning(f"[ResearchConfig] Could not retrieve competitor data from SSOT: {e}", exc_info=True)
 
         # Try Method 2: Get data from Step3ResearchService (which accesses step_data)
         # This is where step3_research_service._store_research_data() saves the data
@@ -734,18 +712,21 @@ async def refresh_competitor_analysis(
         if not db:
             raise HTTPException(status_code=500, detail="Database session not available")
 
-        db_service = OnboardingDatabaseService(db=db)
+        # Use SSOT Integration Service
+        integration_service = OnboardingDataIntegrationService()
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+        
+        onboarding_session = integrated_data.get('onboarding_session')
 
         # Get onboarding session
-        session = db_service.get_session_by_user(user_id, db)
-        if not session:
+        if not onboarding_session:
             return CompetitorAnalysisResponse(
                 success=False,
                 error="No onboarding session found. Please complete onboarding first."
             )
 
         # Get website URL from website analysis
-        website_analysis = db_service.get_website_analysis(user_id, db)
+        website_analysis = integrated_data.get('website_analysis') or {}
         if not website_analysis or not website_analysis.get('website_url'):
             return CompetitorAnalysisResponse(
                 success=False,
@@ -760,8 +741,8 @@ async def refresh_competitor_analysis(
             )
 
         # Get industry context from research preferences or persona
-        research_prefs = db_service.get_research_preferences(user_id, db) or {}
-        persona_data = db_service.get_persona_data(user_id, db) or {}
+        research_prefs = integrated_data.get('research_preferences') or {}
+        persona_data = integrated_data.get('persona_data') or {}
         core_persona = persona_data.get('corePersona') or persona_data.get('core_persona') or {}
         industry_context = core_persona.get('industry') or research_prefs.get('industry') or None
 
@@ -778,8 +759,10 @@ async def refresh_competitor_analysis(
         )
 
         if result.get("success"):
-            # Get the updated competitor data from database
-            competitors = db_service.get_competitor_analysis(user_id, db)
+            # Get the updated competitor data from SSOT (Integration Service)
+            # Re-fetch integrated data to get the latest updates
+            integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+            competitors = integrated_data.get('competitor_analysis', [])
             
             if competitors:
                 # Map competitor fields

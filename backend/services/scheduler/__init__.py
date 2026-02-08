@@ -14,12 +14,24 @@ from .core.exception_handler import (
 from .executors.monitoring_task_executor import MonitoringTaskExecutor
 from .executors.oauth_token_monitoring_executor import OAuthTokenMonitoringExecutor
 from .executors.website_analysis_executor import WebsiteAnalysisExecutor
+from .executors.onboarding_full_website_analysis_executor import OnboardingFullWebsiteAnalysisExecutor
+from .executors.deep_competitor_analysis_executor import DeepCompetitorAnalysisExecutor
+from .executors.deep_website_crawl_executor import DeepWebsiteCrawlExecutor
 from .executors.gsc_insights_executor import GSCInsightsExecutor
 from .executors.bing_insights_executor import BingInsightsExecutor
+from .executors.advertools_executor import AdvertoolsExecutor
+from .executors.sif_indexing_executor import SIFIndexingExecutor
+from .executors.market_trends_executor import MarketTrendsExecutor
 from .utils.task_loader import load_due_monitoring_tasks
 from .utils.oauth_token_task_loader import load_due_oauth_token_monitoring_tasks
 from .utils.website_analysis_task_loader import load_due_website_analysis_tasks
+from .utils.onboarding_full_website_analysis_task_loader import load_due_onboarding_full_website_analysis_tasks
+from .utils.deep_competitor_analysis_task_loader import load_due_deep_competitor_analysis_tasks
+from .utils.deep_website_crawl_task_loader import load_due_deep_website_crawl_tasks
 from .utils.platform_insights_task_loader import load_due_platform_insights_tasks
+from .utils.advertools_task_loader import load_due_advertools_tasks
+from .utils.sif_indexing_task_loader import load_due_sif_indexing_tasks
+from .utils.market_trends_task_loader import load_due_market_trends_tasks
 
 # Global scheduler instance (initialized on first access)
 _scheduler_instance: TaskScheduler = None
@@ -62,6 +74,28 @@ def get_scheduler() -> TaskScheduler:
             website_analysis_executor,
             load_due_website_analysis_tasks
         )
+
+        onboarding_full_site_executor = OnboardingFullWebsiteAnalysisExecutor()
+        _scheduler_instance.register_executor(
+            'onboarding_full_website_analysis',
+            onboarding_full_site_executor,
+            load_due_onboarding_full_website_analysis_tasks
+        )
+
+        deep_competitor_analysis_executor = DeepCompetitorAnalysisExecutor()
+        _scheduler_instance.register_executor(
+            'deep_competitor_analysis',
+            deep_competitor_analysis_executor,
+            load_due_deep_competitor_analysis_tasks
+        )
+        
+        # Register deep website crawl executor
+        deep_website_crawl_executor = DeepWebsiteCrawlExecutor()
+        _scheduler_instance.register_executor(
+            'deep_website_crawl',
+            deep_website_crawl_executor,
+            load_due_deep_website_crawl_tasks
+        )
         
         # Register platform insights executors
         # GSC insights executor
@@ -85,6 +119,30 @@ def get_scheduler() -> TaskScheduler:
             bing_insights_executor,
             load_due_bing_insights_tasks
         )
+
+        # Register Advertools executor
+        advertools_executor = AdvertoolsExecutor()
+        _scheduler_instance.register_executor(
+            'advertools_intelligence',
+            advertools_executor,
+            load_due_advertools_tasks
+        )
+
+        # Register SIF indexing executor
+        sif_indexing_executor = SIFIndexingExecutor()
+        _scheduler_instance.register_executor(
+            'sif_indexing',
+            sif_indexing_executor,
+            load_due_sif_indexing_tasks
+        )
+
+        # Register market trends executor
+        market_trends_executor = MarketTrendsExecutor()
+        _scheduler_instance.register_executor(
+            'market_trends',
+            market_trends_executor,
+            load_due_market_trends_tasks
+        )
     
     return _scheduler_instance
 
@@ -96,8 +154,11 @@ __all__ = [
     'MonitoringTaskExecutor',
     'OAuthTokenMonitoringExecutor',
     'WebsiteAnalysisExecutor',
+    'OnboardingFullWebsiteAnalysisExecutor',
     'GSCInsightsExecutor',
     'BingInsightsExecutor',
+    'SIFIndexingExecutor',
+    'MarketTrendsExecutor',
     'get_scheduler',
     # Exception handling
     'SchedulerExceptionHandler',

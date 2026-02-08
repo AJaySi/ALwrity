@@ -62,7 +62,7 @@ class Step3ResearchService:
             logger.info(f"Starting research analysis for user {user_id}, URL: {user_url}")
 
             # Find the correct onboarding session for this user
-            with get_db_session() as db:
+            with get_db_session(user_id) as db:
                 from models.onboarding import OnboardingSession
                 session = db.query(OnboardingSession).filter(
                     OnboardingSession.user_id == user_id
@@ -108,17 +108,18 @@ class Step3ResearchService:
                 industry_context
             )
             
-            # Store research data in database
-            await self._store_research_data(
-                session_id=actual_session_id,
-                user_url=user_url,
-                competitors=enhanced_competitors,
-                industry_context=industry_context,
-                analysis_metadata={
-                    **competitor_results,
-                    "social_media_data": social_media_results
-                }
-            )
+            # Store research data in database - DEPRECATED in favor of delayed persistence in StepManagementService
+            # await self._store_research_data(
+            #     session_id=actual_session_id,
+            #     user_id=user_id,
+            #     user_url=user_url,
+            #     competitors=enhanced_competitors,
+            #     industry_context=industry_context,
+            #     analysis_metadata={
+            #         **competitor_results,
+            #         "social_media_data": social_media_results
+            #     }
+            # )
             
             # Generate research summary
             research_summary = self._generate_research_summary(
@@ -393,145 +394,21 @@ class Step3ResearchService:
             "competitive_landscape": "moderate" if high_threat_count < len(competitors) * 0.5 else "high"
         }
     
-    async def _store_research_data(
-        self,
-        session_id: str,
-        user_url: str,
-        competitors: List[Dict[str, Any]],
-        industry_context: Optional[str],
-        analysis_metadata: Dict[str, Any]
-    ) -> bool:
-        """
-        Store research data in the database.
-        
-        Args:
-            session_id: Onboarding session ID
-            user_url: User's website URL
-            competitors: Competitor data
-            industry_context: Industry context
-            analysis_metadata: Analysis metadata
-            
-        Returns:
-            Boolean indicating success
-        """
-        try:
-            with get_db_session() as db:
-                # Get onboarding session
-                session = db.query(OnboardingSession).filter(
-                    OnboardingSession.id == int(session_id)
-                ).first()
-
-                if not session:
-                    logger.error(f"Onboarding session {session_id} not found")
-                    return False
-
-                # Store each competitor in CompetitorAnalysis table
-                from models.onboarding import CompetitorAnalysis
-
-                logger.warning(f"🔍 COMPETITOR SAVE: Starting to save {len(competitors)} competitors for session {session_id}")
-                logger.warning(f"  Session ID: {session.id}")
-                logger.warning(f"  Session user_id: {session.user_id}")
-                
-                saved_count = 0
-                failed_count = 0
-                
-                for idx, competitor in enumerate(competitors):
-                    try:
-                        logger.warning(f"🔍 COMPETITOR SAVE: Saving competitor {idx + 1}/{len(competitors)}")
-                        logger.warning(f"  Competitor URL: {competitor.get('url', 'N/A')}")
-                        logger.warning(f"  Competitor Domain: {competitor.get('domain', 'N/A')}")
-                        logger.warning(f"  Has title: {bool(competitor.get('title'))}")
-                        logger.warning(f"  Has summary: {bool(competitor.get('summary'))}")
-                        logger.warning(f"  Has competitive_insights: {bool(competitor.get('competitive_insights'))}")
-                        logger.warning(f"  Has content_insights: {bool(competitor.get('content_insights'))}")
-                        
-                        # Create competitor analysis record
-                        analysis_data = {
-                            "title": competitor.get("title", ""),
-                            "summary": competitor.get("summary", ""),
-                            "relevance_score": competitor.get("relevance_score", 0.5),
-                            "highlights": competitor.get("highlights", []),
-                            "favicon": competitor.get("favicon"),
-                            "image": competitor.get("image"),
-                            "published_date": competitor.get("published_date"),
-                            "author": competitor.get("author"),
-                            "competitive_analysis": competitor.get("competitive_insights", {}),
-                            "content_insights": competitor.get("content_insights", {}),
-                            "industry_context": industry_context,
-                            "analysis_metadata": analysis_metadata,
-                            "completed_at": datetime.utcnow().isoformat()
-                        }
-                        
-                        logger.warning(f"  analysis_data keys: {list(analysis_data.keys())}")
-                        logger.warning(f"  competitive_analysis type: {type(analysis_data.get('competitive_analysis'))}")
-                        logger.warning(f"  content_insights type: {type(analysis_data.get('content_insights'))}")
-                        
-                        competitor_record = CompetitorAnalysis(
-                            session_id=session.id,
-                            competitor_url=competitor.get("url", ""),
-                            competitor_domain=competitor.get("domain", ""),
-                            analysis_data=analysis_data,
-                            status="completed"
-                        )
-
-                        db.add(competitor_record)
-                        saved_count += 1
-                        logger.warning(f"  ✅ Added competitor record {idx + 1} to session")
-                        
-                    except Exception as e:
-                        failed_count += 1
-                        logger.error(f"  ❌ Failed to save competitor {idx + 1}: {str(e)}")
-                        logger.error(f"  Traceback: {traceback.format_exc()}")
-
-                # Store summary in session for quick access (backward compatibility)
-                research_summary = {
-                    "user_url": user_url,
-                    "total_competitors": len(competitors),
-                    "industry_context": industry_context,
-                    "completed_at": datetime.utcnow().isoformat(),
-                    "analysis_metadata": analysis_metadata
-                }
-
-                # Store summary in session (this requires step_data field to exist)
-                # For now, we'll skip this since the model doesn't have step_data
-                # TODO: Add step_data JSON column to OnboardingSession model if needed
-
-                try:
-                    db.commit()
-                    logger.warning(f"🔍 COMPETITOR SAVE: ✅ Committed {saved_count} competitors to database")
-                    logger.warning(f"  Failed: {failed_count}")
-                    
-                    # Verify the save by querying back
-                    from models.onboarding import CompetitorAnalysis
-                    verify_count = db.query(CompetitorAnalysis).filter(
-                        CompetitorAnalysis.session_id == session.id
-                    ).count()
-                    logger.warning(f"🔍 COMPETITOR SAVE: Verification - {verify_count} competitors found in DB for session {session.id}")
-                    
-                    logger.info(f"Stored {len(competitors)} competitors in CompetitorAnalysis table for session {session_id}")
-                    return True
-                except Exception as e:
-                    db.rollback()
-                    logger.error(f"❌ COMPETITOR SAVE: Failed to commit competitors: {str(e)}")
-                    logger.error(f"  Traceback: {traceback.format_exc()}")
-                    return False
-
-        except Exception as e:
-            logger.error(f"Error storing research data: {str(e)}", exc_info=True)
-            return False
+    # _store_research_data removed as it is now handled by StepManagementService via delayed persistence
     
-    async def get_research_data(self, session_id: str) -> Dict[str, Any]:       
+    async def get_research_data(self, session_id: str, user_id: str) -> Dict[str, Any]:       
         """
         Retrieve research data for a session.
 
         Args:
             session_id: Onboarding session ID
+            user_id: Clerk user ID for database access
 
         Returns:
             Dictionary containing research data
         """
         try:
-            with get_db_session() as db:
+            with get_db_session(user_id) as db:
                 session = db.query(OnboardingSession).filter(
                     OnboardingSession.id == session_id
                 ).first()
@@ -571,7 +448,7 @@ class Step3ResearchService:
                                     "image": analysis_data.get("image"),
                                     "published_date": analysis_data.get("published_date"),
                                     "author": analysis_data.get("author"),
-                                    "competitive_insights": analysis_data.get("competitive_analysis", {}),
+                                    "competitive_analysis": analysis_data.get("competitive_analysis", {}),
                                     "content_insights": analysis_data.get("content_insights", {})
                                 }
                                 competitors.append(competitor_info)
@@ -588,8 +465,12 @@ class Step3ResearchService:
                                     }
                                     mapped_competitors.append(mapped_comp)
                                 
+                                # Regenerate research summary from the mapped competitors
+                                research_summary = self._generate_research_summary(mapped_competitors, None)
+                                
                                 research_data = {
                                     "competitors": mapped_competitors,
+                                    "research_summary": research_summary,
                                     "completed_at": competitor_records[0].created_at.isoformat() if competitor_records[0].created_at else None
                                 }
                     except Exception as e:

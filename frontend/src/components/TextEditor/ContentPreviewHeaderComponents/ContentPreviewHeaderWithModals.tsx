@@ -12,6 +12,7 @@ interface ContentPreviewHeaderProps {
   assistantOn?: boolean;
   onAssistantToggle?: (enabled: boolean) => void;
   topic?: string;
+  platform?: string;
 }
 
 // Research Sources Modal Component

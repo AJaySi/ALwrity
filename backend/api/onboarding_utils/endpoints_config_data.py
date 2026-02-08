@@ -162,7 +162,7 @@ async def generate_persona_preview(user_id: int = 1):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-async def generate_writing_persona(user_id: int = 1):
+async def generate_writing_persona(user_id: str):
     try:
         from api.onboarding_utils.persona_management_service import PersonaManagementService
         persona_service = PersonaManagementService()
@@ -202,7 +202,7 @@ async def get_business_info(business_info_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to get business info: {str(e)}")
 
 
-async def get_business_info_by_user(user_id: int):
+async def get_business_info_by_user(user_id: str):
     try:
         from api.onboarding_utils.business_info_service import BusinessInfoService
         business_service = BusinessInfoService()

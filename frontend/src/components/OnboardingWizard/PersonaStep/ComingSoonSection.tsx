@@ -44,10 +44,9 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
       color: '#3b82f6',
       details: [
         'Compare content generated with and without your persona',
-        'Test Core, Blog, and LinkedIn personas side-by-side',
-        'Choose from your content calendar topics',
-        'Provide feedback to improve your persona',
-        'AI model settings automatically optimized per persona'
+        'Test Brand, Blog, and LinkedIn brand voices side-by-side',
+        'Directly apply Brand Voice to any Alwrity tool',
+        'AI-powered feedback on brand voice consistency'
       ]
     },
     {

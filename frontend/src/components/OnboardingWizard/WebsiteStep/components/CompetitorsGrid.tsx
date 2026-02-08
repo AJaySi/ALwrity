@@ -3,7 +3,7 @@
  * Displays discovered competitors in a grid layout
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Typography,
   Grid,
@@ -13,11 +13,20 @@ import {
   Chip,
   Avatar,
   Button,
-  Box
+  Box,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Tooltip
 } from '@mui/material';
 import {
   Business as BusinessIcon,
-  OpenInNew as OpenInNewIcon
+  OpenInNew as OpenInNewIcon,
+  Delete as DeleteIcon,
+  Add as AddIcon
 } from '@mui/icons-material';
 
 export interface Competitor {
@@ -44,6 +53,8 @@ export interface Competitor {
 interface CompetitorsGridProps {
   competitors: Competitor[];
   onShowHighlights: (competitor: Competitor) => void;
+  onRemoveCompetitor?: (index: number) => void;
+  onAddCompetitor?: (competitor: Competitor) => void;
 }
 
 // Utility function to get favicon URL
@@ -58,20 +69,79 @@ const getFaviconUrl = (url: string): string => {
 
 const CompetitorsGrid: React.FC<CompetitorsGridProps> = ({
   competitors,
-  onShowHighlights
+  onShowHighlights,
+  onRemoveCompetitor,
+  onAddCompetitor
 }) => {
+  const [openAddDialog, setOpenAddDialog] = useState(false);
+  const [newCompetitorUrl, setNewCompetitorUrl] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+
+  const handleAddSubmit = async () => {
+    if (!newCompetitorUrl) return;
+    
+    setIsAdding(true);
+    try {
+      // Create a basic competitor object
+      // In a real implementation, you might want to fetch metadata here or let the parent handle it
+      let domain = '';
+      try {
+        domain = new URL(newCompetitorUrl).hostname;
+      } catch {
+        domain = newCompetitorUrl;
+      }
+
+      const newCompetitor: Competitor = {
+        url: newCompetitorUrl.startsWith('http') ? newCompetitorUrl : `https://${newCompetitorUrl}`,
+        domain: domain,
+        title: domain,
+        summary: 'Manually added competitor',
+        relevance_score: 1.0,
+        competitive_insights: {
+          business_model: 'Unknown',
+          target_audience: 'Unknown'
+        },
+        content_insights: {
+          content_focus: 'Unknown',
+          content_quality: 'Unknown'
+        }
+      };
+
+      if (onAddCompetitor) {
+        onAddCompetitor(newCompetitor);
+      }
+      setOpenAddDialog(false);
+      setNewCompetitorUrl('');
+    } catch (error) {
+      console.error('Error adding competitor:', error);
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
   return (
     <>
-      <Typography 
-        variant="h6" 
-        gutterBottom 
-        fontWeight={600} 
-        mb={3}
-        sx={{ color: '#1a202c !important' }} // Force dark text
-      >
-        <BusinessIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#667eea !important' }} />
-        Discovered Competitors ({competitors.length})
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography 
+            variant="h6" 
+            fontWeight={600} 
+            sx={{ color: '#1a202c !important' }} // Force dark text
+        >
+            <BusinessIcon sx={{ mr: 1, verticalAlign: 'middle', color: '#667eea !important' }} />
+            Discovered Competitors ({competitors.length})
+        </Typography>
+        {onAddCompetitor && (
+            <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={() => setOpenAddDialog(true)}
+                sx={{ textTransform: 'none' }}
+            >
+                Add Competitor
+            </Button>
+        )}
+      </Box>
 
       <Grid container spacing={3}>
         {competitors.map((competitor, index) => (
@@ -87,8 +157,25 @@ const CompetitorsGrid: React.FC<CompetitorsGridProps> = ({
               '&:hover': {
                 transform: 'translateY(-4px)',
                 boxShadow: '0 8px 20px rgba(3, 169, 244, 0.25)'
-              }
+              },
+              position: 'relative'
             }}>
+              {onRemoveCompetitor && (
+                  <IconButton
+                    size="small"
+                    onClick={() => onRemoveCompetitor(index)}
+                    sx={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        bgcolor: 'rgba(255,255,255,0.7)',
+                        '&:hover': { bgcolor: 'rgba(255,255,255,0.9)', color: 'error.main' }
+                    }}
+                  >
+                      <DeleteIcon fontSize="small" />
+                  </IconButton>
+              )}
+
               <CardContent sx={{ flexGrow: 1 }}>
                 <Box display="flex" alignItems="flex-start" gap={2} mb={2}>
                   <Avatar 
@@ -106,19 +193,19 @@ const CompetitorsGrid: React.FC<CompetitorsGridProps> = ({
                   >
                     <BusinessIcon sx={{ color: '#667eea' }} />
                   </Avatar>
-                  <Box flex={1}>
+                  <Box flex={1} pr={onRemoveCompetitor ? 3 : 0}>
                     <Typography 
                       variant="h6" 
                       fontWeight={600} 
                       gutterBottom
-                      sx={{ color: '#1a202c !important' }} // Force dark text for readability
+                      sx={{ color: '#1a202c !important', wordBreak: 'break-word' }} // Force dark text for readability
                     >
                       {competitor.title}
                     </Typography>
                     <Typography 
                       variant="body2" 
                       gutterBottom
-                      sx={{ color: '#4a5568 !important' }} // Force dark text for readability
+                      sx={{ color: '#4a5568 !important', wordBreak: 'break-all' }} // Force dark text for readability
                     >
                       {competitor.domain}
                     </Typography>
@@ -178,6 +265,33 @@ const CompetitorsGrid: React.FC<CompetitorsGridProps> = ({
           </Grid>
         ))}
       </Grid>
+
+      {/* Add Competitor Dialog */}
+      <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
+        <DialogTitle>Add Competitor Manually</DialogTitle>
+        <DialogContent>
+            <Typography variant="body2" color="textSecondary" paragraph>
+                Enter the URL of a competitor website to include in the analysis.
+            </Typography>
+            <TextField
+                autoFocus
+                margin="dense"
+                label="Competitor URL"
+                type="url"
+                fullWidth
+                variant="outlined"
+                value={newCompetitorUrl}
+                onChange={(e) => setNewCompetitorUrl(e.target.value)}
+                placeholder="https://example.com"
+            />
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={() => setOpenAddDialog(false)}>Cancel</Button>
+            <Button onClick={handleAddSubmit} variant="contained" disabled={!newCompetitorUrl}>
+                Add Competitor
+            </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

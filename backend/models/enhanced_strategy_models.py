@@ -17,7 +17,7 @@ class EnhancedContentStrategy(Base):
     
     # Primary fields
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=True)
     
@@ -186,7 +186,7 @@ class EnhancedAIAnalysisResult(Base):
     __tablename__ = "enhanced_ai_analysis_results"
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String(255), nullable=False)
     strategy_id = Column(Integer, ForeignKey("enhanced_content_strategies.id"), nullable=True)
     
     # Analysis type for the 5 specialized prompts
@@ -244,7 +244,7 @@ class OnboardingDataIntegration(Base):
     __tablename__ = "onboarding_data_integrations"
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String(255), nullable=False)
     strategy_id = Column(Integer, ForeignKey("enhanced_content_strategies.id"), nullable=True)
     
     # Legacy onboarding storage fields (match existing DB schema)
@@ -275,6 +275,7 @@ class OnboardingDataIntegration(Base):
             'website_analysis_data': self.website_analysis_data,
             'research_preferences_data': self.research_preferences_data,
             'api_keys_data': self.api_keys_data,
+            'canonical_profile': self.canonical_profile,
             'field_mappings': self.field_mappings,
             'auto_populated_fields': self.auto_populated_fields,
             'user_overrides': self.user_overrides,
@@ -291,7 +292,7 @@ class ContentStrategyAutofillInsights(Base):
 
     id = Column(Integer, primary_key=True)
     strategy_id = Column(Integer, ForeignKey("enhanced_content_strategies.id"), nullable=False)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String(255), nullable=False)
 
     # Full snapshot of accepted inputs and transparency at time of strategy creation/confirmation
     accepted_fields = Column(JSON, nullable=False)

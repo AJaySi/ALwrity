@@ -78,16 +78,12 @@ async def stream_enhanced_strategies(
     
     async def strategy_generator():
         try:
-            # Extract authenticated user_id from Clerk
             clerk_user_id = str(current_user.get('id', ''))
             if not clerk_user_id:
                 yield {"type": "error", "message": "Invalid user ID in authentication token", "timestamp": datetime.utcnow().isoformat()}
                 return
             
-            authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
-            if not authenticated_user_id:
-                yield {"type": "error", "message": "Invalid user ID format", "timestamp": datetime.utcnow().isoformat()}
-                return
+            authenticated_user_id = clerk_user_id
             
             logger.info(f"🚀 Starting strategy stream for authenticated user: {authenticated_user_id}, strategy: {strategy_id}")
             
@@ -145,16 +141,12 @@ async def stream_strategic_intelligence(
     
     async def intelligence_generator():
         try:
-            # Extract authenticated user_id from Clerk
             clerk_user_id = str(current_user.get('id', ''))
             if not clerk_user_id:
                 yield {"type": "error", "message": "Invalid user ID in authentication token", "timestamp": datetime.utcnow().isoformat()}
                 return
             
-            authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
-            if not authenticated_user_id:
-                yield {"type": "error", "message": "Invalid user ID format", "timestamp": datetime.utcnow().isoformat()}
-                return
+            authenticated_user_id = clerk_user_id
             
             logger.info(f"🚀 Starting strategic intelligence stream for authenticated user: {authenticated_user_id}")
             
@@ -286,16 +278,12 @@ async def stream_keyword_research(
     
     async def keyword_generator():
         try:
-            # Extract authenticated user_id from Clerk
             clerk_user_id = str(current_user.get('id', ''))
             if not clerk_user_id:
                 yield {"type": "error", "message": "Invalid user ID in authentication token", "timestamp": datetime.utcnow().isoformat()}
                 return
             
-            authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
-            if not authenticated_user_id:
-                yield {"type": "error", "message": "Invalid user ID format", "timestamp": datetime.utcnow().isoformat()}
-                return
+            authenticated_user_id = clerk_user_id
             
             logger.info(f"🚀 Starting keyword research stream for authenticated user: {authenticated_user_id}")
             

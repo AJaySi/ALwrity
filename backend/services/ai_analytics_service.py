@@ -10,7 +10,7 @@ from loguru import logger
 import asyncio
 from sqlalchemy.orm import Session
 
-from services.database import get_db_session
+from services.database import get_session_for_user
 from models.content_planning import ContentAnalytics, ContentStrategy, CalendarEvent
 from services.content_gap_analyzer.ai_engine_service import AIEngineService
 
@@ -19,19 +19,17 @@ class AIAnalyticsService:
     
     def __init__(self):
         self.ai_engine = AIEngineService()
-        self.db_session = None
     
-    def _get_db_session(self) -> Session:
+    def _get_db_session(self, user_id: int) -> Session:
         """Get database session."""
-        if not self.db_session:
-            self.db_session = get_db_session()
-        return self.db_session
+        return get_session_for_user(str(user_id))
     
-    async def analyze_content_evolution(self, strategy_id: int, time_period: str = "30d") -> Dict[str, Any]:
+    async def analyze_content_evolution(self, user_id: int, strategy_id: int, time_period: str = "30d") -> Dict[str, Any]:
         """
         Analyze content evolution over time for a specific strategy.
         
         Args:
+            user_id: User ID
             strategy_id: Content strategy ID
             time_period: Analysis period (7d, 30d, 90d, 1y)
             
@@ -39,10 +37,10 @@ class AIAnalyticsService:
             Content evolution analysis results
         """
         try:
-            logger.info(f"Analyzing content evolution for strategy {strategy_id}")
+            logger.info(f"Analyzing content evolution for strategy {strategy_id} (user {user_id})")
             
             # Get analytics data for the strategy
-            analytics_data = await self._get_analytics_data(strategy_id, time_period)
+            analytics_data = await self._get_analytics_data(user_id, strategy_id, time_period)
             
             # Analyze content performance trends
             performance_trends = await self._analyze_performance_trends(analytics_data)
@@ -72,11 +70,12 @@ class AIAnalyticsService:
             logger.error(f"Error analyzing content evolution: {str(e)}")
             raise
     
-    async def analyze_performance_trends(self, strategy_id: int, metrics: List[str] = None) -> Dict[str, Any]:
+    async def analyze_performance_trends(self, user_id: int, strategy_id: int, metrics: List[str] = None) -> Dict[str, Any]:
         """
         Analyze performance trends for content strategy.
         
         Args:
+            user_id: User ID
             strategy_id: Content strategy ID
             metrics: List of metrics to analyze (engagement, reach, conversion, etc.)
             
@@ -84,13 +83,13 @@ class AIAnalyticsService:
             Performance trend analysis results
         """
         try:
-            logger.info(f"Analyzing performance trends for strategy {strategy_id}")
+            logger.info(f"Analyzing performance trends for strategy {strategy_id} (user {user_id})")
             
             if not metrics:
                 metrics = ['engagement_rate', 'reach', 'conversion_rate', 'click_through_rate']
             
             # Get performance data
-            performance_data = await self._get_performance_data(strategy_id, metrics)
+            performance_data = await self._get_performance_data(user_id, strategy_id, metrics)
             
             # Analyze trends for each metric
             trend_analysis = {}
@@ -120,12 +119,13 @@ class AIAnalyticsService:
             logger.error(f"Error analyzing performance trends: {str(e)}")
             raise
     
-    async def predict_content_performance(self, content_data: Dict[str, Any], 
+    async def predict_content_performance(self, user_id: int, content_data: Dict[str, Any], 
                                        strategy_id: int) -> Dict[str, Any]:
         """
         Predict content performance using AI models.
         
         Args:
+            user_id: User ID
             content_data: Content details (title, description, type, platform, etc.)
             strategy_id: Content strategy ID
             
@@ -133,10 +133,10 @@ class AIAnalyticsService:
             Performance prediction results
         """
         try:
-            logger.info(f"Predicting performance for content in strategy {strategy_id}")
+            logger.info(f"Predicting performance for content in strategy {strategy_id} (user {user_id})")
             
             # Get historical performance data
-            historical_data = await self._get_historical_performance_data(strategy_id)
+            historical_data = await self._get_historical_performance_data(user_id, strategy_id)
             
             # Analyze content characteristics
             content_analysis = await self._analyze_content_characteristics(content_data)
@@ -166,12 +166,13 @@ class AIAnalyticsService:
             logger.error(f"Error predicting content performance: {str(e)}")
             raise
     
-    async def generate_strategic_intelligence(self, strategy_id: int, 
+    async def generate_strategic_intelligence(self, user_id: int, strategy_id: int, 
                                            market_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Generate strategic intelligence for content planning.
         
         Args:
+            user_id: User ID
             strategy_id: Content strategy ID
             market_data: Additional market data for analysis
             
@@ -179,10 +180,10 @@ class AIAnalyticsService:
             Strategic intelligence results
         """
         try:
-            logger.info(f"Generating strategic intelligence for strategy {strategy_id}")
+            logger.info(f"Generating strategic intelligence for strategy {strategy_id} (user {user_id})")
             
             # Get strategy data
-            strategy_data = await self._get_strategy_data(strategy_id)
+            strategy_data = await self._get_strategy_data(user_id, strategy_id)
             
             # Analyze market positioning
             market_positioning = await self._analyze_market_positioning(strategy_data, market_data)
@@ -213,10 +214,11 @@ class AIAnalyticsService:
             raise
     
     # Helper methods for data retrieval and analysis
-    async def _get_analytics_data(self, strategy_id: int, time_period: str) -> List[Dict[str, Any]]:
+    async def _get_analytics_data(self, user_id: int, strategy_id: int, time_period: str) -> List[Dict[str, Any]]:
         """Get analytics data for the specified strategy and time period."""
+        session = None
         try:
-            session = self._get_db_session()
+            session = self._get_db_session(user_id)
             
             # Calculate date range
             end_date = datetime.utcnow()
@@ -243,6 +245,9 @@ class AIAnalyticsService:
         except Exception as e:
             logger.error(f"Error getting analytics data: {str(e)}")
             return []
+        finally:
+            if session:
+                session.close()
     
     async def _analyze_performance_trends(self, analytics_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze performance trends from analytics data."""
@@ -404,10 +409,10 @@ class AIAnalyticsService:
             logger.error(f"Error generating evolution recommendations: {str(e)}")
             return [{'error': str(e)}]
     
-    async def _get_performance_data(self, strategy_id: int, metrics: List[str]) -> List[Dict[str, Any]]:
+    async def _get_performance_data(self, user_id: int, strategy_id: int, metrics: List[str]) -> List[Dict[str, Any]]:
         """Get performance data for specified metrics."""
         try:
-            session = self._get_db_session()
+            session = self._get_db_session(user_id)
             
             # Get analytics data for the strategy
             analytics = session.query(ContentAnalytics).filter(
@@ -695,10 +700,11 @@ class AIAnalyticsService:
             logger.error(f"Error generating competitor recommendations: {str(e)}")
             return [{'error': str(e)}]
     
-    async def _get_historical_performance_data(self, strategy_id: int) -> List[Dict[str, Any]]:
+    async def _get_historical_performance_data(self, user_id: int, strategy_id: int) -> List[Dict[str, Any]]:
         """Get historical performance data for the strategy."""
+        session = None
         try:
-            session = self._get_db_session()
+            session = self._get_db_session(user_id)
             
             analytics = session.query(ContentAnalytics).filter(
                 ContentAnalytics.strategy_id == strategy_id
@@ -709,6 +715,9 @@ class AIAnalyticsService:
         except Exception as e:
             logger.error(f"Error getting historical performance data: {str(e)}")
             return []
+        finally:
+            if session:
+                session.close()
     
     async def _analyze_content_characteristics(self, content_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze content characteristics for performance prediction."""
@@ -801,10 +810,11 @@ class AIAnalyticsService:
             logger.error(f"Error generating optimization recommendations: {str(e)}")
             return [{'error': str(e)}]
     
-    async def _get_strategy_data(self, strategy_id: int) -> Dict[str, Any]:
+    async def _get_strategy_data(self, user_id: int, strategy_id: int) -> Dict[str, Any]:
         """Get strategy data for analysis."""
+        session = None
         try:
-            session = self._get_db_session()
+            session = self._get_db_session(user_id)
             
             strategy = session.query(ContentStrategy).filter(
                 ContentStrategy.id == strategy_id
@@ -818,6 +828,9 @@ class AIAnalyticsService:
         except Exception as e:
             logger.error(f"Error getting strategy data: {str(e)}")
             return {}
+        finally:
+            if session:
+                session.close()
     
     async def _analyze_market_positioning(self, strategy_data: Dict[str, Any], 
                                         market_data: Dict[str, Any] = None) -> Dict[str, Any]:

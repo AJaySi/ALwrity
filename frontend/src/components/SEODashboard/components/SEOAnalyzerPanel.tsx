@@ -37,6 +37,7 @@ import IssueDetailsDialog from './IssueDetailsDialog';
 import AnalysisDetailsDialog from './AnalysisDetailsDialog';
 import SEOAnalysisLoading from './SEOAnalysisLoading';
 import SEOAnalysisError from './SEOAnalysisError';
+import PageAuditList from './PageAuditList';
 
 const SEOAnalyzerPanel: React.FC<SEOAnalyzerPanelProps> = ({
   analysisData,
@@ -246,6 +247,9 @@ const SEOAnalyzerPanel: React.FC<SEOAnalyzerPanelProps> = ({
           )}
         </AnimatePresence>
       </GlassCard>
+
+      {/* Full Site Page List */}
+      <PageAuditList />
 
       {/* Dialogs */}
       <IssueDetailsDialog

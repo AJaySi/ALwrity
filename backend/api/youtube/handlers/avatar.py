@@ -19,8 +19,10 @@ router = APIRouter(prefix="/avatar", tags=["youtube-avatar"])
 logger = get_service_logger("api.youtube.avatar")
 
 # Directories
-base_dir = Path(__file__).parent.parent.parent.parent
-YOUTUBE_AVATARS_DIR = base_dir / "youtube_avatars"
+# api/youtube/handlers/avatar.py -> handlers -> youtube -> api -> backend -> root
+base_dir = Path(__file__).parent.parent.parent.parent.parent
+DATA_MEDIA_DIR = base_dir / "data" / "media"
+YOUTUBE_AVATARS_DIR = DATA_MEDIA_DIR / "youtube_avatars"
 YOUTUBE_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 
 

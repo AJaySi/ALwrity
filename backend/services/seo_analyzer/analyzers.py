@@ -196,9 +196,50 @@ class MetaDataAnalyzer(BaseAnalyzer):
                 'code_example': '<meta charset="UTF-8">',
                 'action': 'add_charset_meta'
             })
+            
+        # Social Tags (Open Graph)
+        og_title = soup.find('meta', property='og:title')
+        og_desc = soup.find('meta', property='og:description')
+        og_image = soup.find('meta', property='og:image')
+        
+        if not og_title or not og_image:
+            warnings.append({
+                'type': 'warning',
+                'message': 'Missing Open Graph tags for social sharing',
+                'location': '<head>',
+                'fix': 'Add Open Graph meta tags',
+                'code_example': '<meta property="og:title" content="Title">\n<meta property="og:image" content="image.jpg">',
+                'action': 'add_og_tags'
+            })
+            
+        # Twitter Card
+        twitter_card = soup.find('meta', attrs={'name': 'twitter:card'})
+        if not twitter_card:
+            recommendations.append({
+                'type': 'recommendation',
+                'message': 'Missing Twitter Card metadata',
+                'location': '<head>',
+                'fix': 'Add Twitter Card meta tags',
+                'code_example': '<meta name="twitter:card" content="summary_large_image">',
+                'action': 'add_twitter_card'
+            })
+
+        # Robots Meta
+        robots = soup.find('meta', attrs={'name': 'robots'})
+        if not robots:
+             recommendations.append({
+                'type': 'recommendation',
+                'message': 'No robots meta tag found (defaults to index, follow)',
+                'location': '<head>',
+                'fix': 'Add robots meta tag if you need to control crawling',
+                'code_example': '<meta name="robots" content="index, follow">',
+                'action': 'add_robots_meta'
+            })
         
         score = max(0, 100 - len(issues) * 25 - len(warnings) * 10)
         
+        og_found = list(filter(None, ['Title' if og_title else '', 'Desc' if og_desc else '', 'Image' if og_image else '']))
+
         return {
             'score': score,
             'issues': issues,
@@ -207,7 +248,10 @@ class MetaDataAnalyzer(BaseAnalyzer):
             'title_length': len(title_tag.get_text().strip()) if title_tag else 0,
             'description_length': len(meta_desc.get('content', '')) if meta_desc else 0,
             'has_viewport': bool(viewport),
-            'has_charset': bool(charset)
+            'has_charset': bool(charset),
+            'og_tags': f"Found: {', '.join(og_found)}" if og_found else "None",
+            'twitter_card': twitter_card['content'] if twitter_card else "Missing",
+            'robots_meta': robots['content'] if robots else "Missing (Default: index, follow)"
         }
 
 
@@ -391,6 +435,27 @@ class TechnicalSEOAnalyzer(BaseAnalyzer):
                 'action': 'add_structured_data'
             })
         
+        # Check for H1 tags (Technical aspect)
+        h1_tags = soup.find_all('h1')
+        if len(h1_tags) == 0:
+            issues.append({
+                'type': 'critical',
+                'message': 'Missing H1 tag',
+                'location': 'Page structure',
+                'fix': 'Add exactly one H1 tag per page',
+                'code_example': '<h1>Main Page Title</h1>',
+                'action': 'add_h1_tag'
+            })
+        elif len(h1_tags) > 1:
+            warnings.append({
+                'type': 'warning',
+                'message': f'Multiple H1 tags found ({len(h1_tags)})',
+                'location': 'Page structure',
+                'fix': 'Ensure only one H1 tag exists per page',
+                'code_example': 'Convert secondary H1s to H2s',
+                'action': 'fix_h1_tags'
+            })
+            
         # Check for canonical URL
         canonical = soup.find('link', rel='canonical')
         if not canonical:
@@ -413,7 +478,10 @@ class TechnicalSEOAnalyzer(BaseAnalyzer):
             'has_robots_txt': len([w for w in warnings if 'robots.txt' in w['message']]) == 0,
             'has_sitemap': len([w for w in warnings if 'sitemap' in w['message']]) == 0,
             'has_structured_data': bool(structured_data),
-            'has_canonical': bool(canonical)
+            'schema_markup': f"Found {len(structured_data)} schema objects",
+            'has_canonical': bool(canonical),
+            'canonical_tag': canonical['href'] if canonical else "Missing",
+            'h1_count': len(h1_tags)
         }
 
 

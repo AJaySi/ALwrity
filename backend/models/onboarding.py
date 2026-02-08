@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, func, JSON, Text, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, func, JSON, Text, Boolean, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
@@ -61,13 +61,16 @@ class WebsiteAnalysis(Base):
     target_audience = Column(JSON)  # Demographics, expertise level, industry focus
     content_type = Column(JSON)  # Primary type, secondary types, purpose
     recommended_settings = Column(JSON)  # Writing tone, target audience, content type
-    # brand_analysis = Column(JSON)  # Brand voice, values, positioning, competitive differentiation
-    # content_strategy_insights = Column(JSON)  # SWOT analysis, strengths, weaknesses, opportunities, threats
+    brand_analysis = Column(JSON)  # Brand voice, values, positioning, competitive differentiation
+    content_strategy_insights = Column(JSON)  # SWOT analysis, strengths, weaknesses, opportunities, threats
+    social_media_presence = Column(JSON)  # Social media accounts and metrics
     
     # Crawl results
     crawl_result = Column(JSON)  # Raw crawl data
     style_patterns = Column(JSON)  # Writing patterns analysis
     style_guidelines = Column(JSON)  # Generated guidelines
+    seo_audit = Column(JSON)  # Comprehensive SEO audit results
+    strategic_insights_history = Column(JSON)  # Weekly strategic intelligence reports history
     
     # Metadata
     status = Column(String(50), default='completed')  # completed, failed, in_progress
@@ -86,6 +89,7 @@ class WebsiteAnalysis(Base):
         """Convert to dictionary for API responses."""
         return {
             'id': self.id,
+            'session_id': self.session_id,
             'website_url': self.website_url,
             'analysis_date': self.analysis_date.isoformat() if self.analysis_date else None,
             'writing_style': self.writing_style,
@@ -93,17 +97,64 @@ class WebsiteAnalysis(Base):
             'target_audience': self.target_audience,
             'content_type': self.content_type,
             'recommended_settings': self.recommended_settings,
-            # 'brand_analysis': self.brand_analysis,
-            # 'content_strategy_insights': self.content_strategy_insights,
+            'brand_analysis': self.brand_analysis,
+            'content_strategy_insights': self.content_strategy_insights,
+            'social_media_presence': self.social_media_presence,
             'crawl_result': self.crawl_result,
             'style_patterns': self.style_patterns,
             'style_guidelines': self.style_guidelines,
+            'seo_audit': self.seo_audit,
+            'strategic_insights_history': self.strategic_insights_history,
             'status': self.status,
             'error_message': self.error_message,
             'warning_message': self.warning_message,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         } 
+
+class SEOPageAudit(Base):
+    __tablename__ = 'seo_page_audits'
+    __table_args__ = (
+        UniqueConstraint('user_id', 'page_url', name='uq_seo_page_audits_user_page'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    website_url = Column(String(500), nullable=False, index=True)
+    page_url = Column(String(1000), nullable=False, index=True)
+
+    overall_score = Column(Integer, nullable=True)
+    status = Column(String(50), default='needs_review', index=True)
+
+    category_scores = Column(JSON)
+    issues = Column(JSON)
+    warnings = Column(JSON)
+    recommendations = Column(JSON)
+    audit_data = Column(JSON)
+
+    analysis_source = Column(String(50), default='onboarding_full_site')
+    last_analyzed_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'website_url': self.website_url,
+            'page_url': self.page_url,
+            'overall_score': self.overall_score,
+            'status': self.status,
+            'category_scores': self.category_scores,
+            'issues': self.issues,
+            'warnings': self.warnings,
+            'recommendations': self.recommendations,
+            'audit_data': self.audit_data,
+            'analysis_source': self.analysis_source,
+            'last_analyzed_at': self.last_analyzed_at.isoformat() if self.last_analyzed_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 class ResearchPreferences(Base):
     """Stores research preferences from onboarding step 3."""
@@ -197,7 +248,7 @@ class CompetitorAnalysis(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey('onboarding_sessions.id', ondelete='CASCADE'), nullable=False)
-    competitor_url = Column(String(500), nullable=False)
+    competitor_url = Column(Text, nullable=False)
     competitor_domain = Column(String(255), nullable=True)  # Extracted domain for easier queries
     analysis_date = Column(DateTime, default=func.now())
     

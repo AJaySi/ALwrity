@@ -44,9 +44,10 @@ router = APIRouter(prefix="/api/personas", tags=["personas"])
 @router.post("/generate")
 async def generate_persona_endpoint(
     request: PersonaGenerationRequest,
-    user_id: int = Query(1, description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Generate a new writing persona from onboarding data."""
+    user_id = str(current_user.get('id'))
     return await generate_persona(user_id, request)
 
 @router.get("/user")

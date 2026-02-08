@@ -17,6 +17,7 @@ from models.bing_analytics_models import (
     BingQueryStats, BingDailyMetrics, BingTrendAnalysis,
     BingAlertRules, BingAlertHistory, BingSitePerformance
 )
+from services.database import get_session_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -24,30 +25,20 @@ logger = logging.getLogger(__name__)
 class BingAnalyticsInsightsService:
     """Service for generating insights from Bing analytics data"""
     
-    def __init__(self, database_url: str):
-        """Initialize the insights service with database connection"""
-        engine_kwargs = {}
-        if 'sqlite' in database_url:
-            engine_kwargs = {
-                'pool_size': 1,
-                'max_overflow': 2,
-                'pool_pre_ping': False,
-                'pool_recycle': 300,
-                'connect_args': {'timeout': 10}
-            }
-        
-        self.engine = create_engine(database_url, **engine_kwargs)
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+    def __init__(self, database_url: Optional[str] = None):
+        """Initialize the insights service"""
+        # Legacy support: database_url is ignored as we use per-user sessions
+        pass
     
-    def _get_db_session(self) -> Session:
-        """Get database session"""
-        return self.SessionLocal()
+    def _get_db_session(self, user_id: str) -> Session:
+        """Get database session for user"""
+        return get_session_for_user(user_id)
     
-    def _with_db_session(self, func):
+    def _with_db_session(self, user_id: str, func):
         """Context manager for database sessions"""
         db = None
         try:
-            db = self._get_db_session()
+            db = self._get_db_session(user_id)
             return func(db)
         finally:
             if db:
@@ -65,7 +56,7 @@ class BingAnalyticsInsightsService:
         Returns:
             Dict containing comprehensive insights
         """
-        return self._with_db_session(lambda db: self._generate_comprehensive_insights(db, user_id, site_url, days))
+        return self._with_db_session(user_id, lambda db: self._generate_comprehensive_insights(db, user_id, site_url, days))
     
     def _generate_comprehensive_insights(self, db: Session, user_id: str, site_url: str, days: int) -> Dict[str, Any]:
         """Generate comprehensive insights from the database"""

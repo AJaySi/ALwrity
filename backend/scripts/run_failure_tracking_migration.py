@@ -6,18 +6,21 @@ Adds consecutive_failures and failure_pattern columns to task tables.
 import sqlite3
 import os
 import sys
+import argparse
+from pathlib import Path
 
 # Add parent directory to path to import migration
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from services.database import get_user_db_path
 
-def run_migration():
+def run_migration(user_id=None):
     """Run the failure tracking migration."""
-    # Get database path
-    db_path = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
-    
-    # Extract path from SQLite URL if needed
-    if db_path.startswith('sqlite:///'):
-        db_path = db_path.replace('sqlite:///', '')
+    if user_id:
+        db_path = get_user_db_path(user_id)
+        print(f"Targeting user database: {db_path}")
+    else:
+        print("❌ Error: user_id is required for migration.")
+        return False
     
     if not os.path.exists(db_path):
         print(f"Database not found at {db_path}")
@@ -80,6 +83,10 @@ def run_migration():
         return False
 
 if __name__ == "__main__":
-    success = run_migration()
+    parser = argparse.ArgumentParser(description="Run failure tracking migration")
+    parser.add_argument("--user_id", help="Target specific user ID")
+    args = parser.parse_args()
+
+    success = run_migration(args.user_id)
     sys.exit(0 if success else 1)
 

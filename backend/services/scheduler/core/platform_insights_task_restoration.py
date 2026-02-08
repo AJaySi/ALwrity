@@ -9,7 +9,7 @@ from typing import List
 from sqlalchemy.orm import Session
 from utils.logger_utils import get_service_logger
 
-from services.database import get_db_session
+from services.database import get_session_for_user, get_all_user_ids
 from models.platform_insights_monitoring_models import PlatformInsightsTask
 from services.platform_insights_monitoring_service import create_platform_insights_task
 from services.oauth_token_monitoring_service import get_connected_platforms
@@ -32,44 +32,36 @@ async def restore_platform_insights_tasks(scheduler):
     """
     try:
         logger.warning("[Platform Insights Restoration] Starting platform insights task restoration...")
-        db = get_db_session()
-        if not db:
-            logger.warning("[Platform Insights Restoration] Could not get database session")
-            return
         
-        try:
-            # Get all existing insights tasks to find unique user_ids
-            existing_tasks = db.query(PlatformInsightsTask).all()
-            user_ids_with_tasks = set(task.user_id for task in existing_tasks)
-            
-            # Get all OAuth tasks to find users with connected platforms
-            oauth_tasks = db.query(OAuthTokenMonitoringTask).all()
-            user_ids_with_oauth = set(task.user_id for task in oauth_tasks)
-            
-            # Platforms that support insights (GSC and Bing only)
-            insights_platforms = ['gsc', 'bing']
-            
-            # Get users who have OAuth tasks for GSC or Bing
-            users_to_check = set()
-            for task in oauth_tasks:
-                if task.platform in insights_platforms:
-                    users_to_check.add(task.user_id)
-            
-            logger.warning(
-                f"[Platform Insights Restoration] Found {len(existing_tasks)} existing insights tasks "
-                f"for {len(user_ids_with_tasks)} users. Checking {len(users_to_check)} users "
-                f"with GSC/Bing OAuth connections."
-            )
-            
-            if not users_to_check:
-                logger.warning("[Platform Insights Restoration] No users with GSC/Bing connections found")
-                return
-            
-            total_created = 0
-            restoration_summary = []
-            
-            for user_id in users_to_check:
+        user_ids = get_all_user_ids()
+        total_created = 0
+        users_processed = 0
+        total_existing_tasks = 0
+        restoration_summary = []
+        
+        # Platforms that support insights (GSC and Bing only)
+        insights_platforms = ['gsc', 'bing']
+        
+        for user_id in user_ids:
+            try:
+                db = get_session_for_user(user_id)
+                if not db:
+                    logger.debug(f"[Platform Insights Restoration] Could not get database session for user {user_id}")
+                    continue
+                
                 try:
+                    users_processed += 1
+                    
+                    # Get existing insights tasks
+                    try:
+                        existing_tasks = db.query(PlatformInsightsTask).filter(
+                            PlatformInsightsTask.user_id == user_id
+                        ).all()
+                        total_existing_tasks += len(existing_tasks)
+                    except Exception as table_error:
+                        # Table might not exist
+                        continue
+                        
                     # Get connected platforms for this user
                     connected_platforms = get_connected_platforms(user_id)
                     
@@ -77,17 +69,10 @@ async def restore_platform_insights_tasks(scheduler):
                     insights_connected = [p for p in connected_platforms if p in insights_platforms]
                     
                     if not insights_connected:
-                        logger.debug(
-                            f"[Platform Insights Restoration] No GSC/Bing connections for user {user_id[:20]}..., skipping"
-                        )
                         continue
                     
                     # Check which platforms are missing insights tasks
-                    existing_platforms = {
-                        task.platform 
-                        for task in existing_tasks 
-                        if task.user_id == user_id
-                    }
+                    existing_platforms = {task.platform for task in existing_tasks}
                     
                     missing_platforms = [
                         platform 
@@ -101,11 +86,10 @@ async def restore_platform_insights_tasks(scheduler):
                             try:
                                 # Don't fetch site_url here - it requires API calls
                                 # The executor will fetch it when the task runs (weekly)
-                                # This avoids API calls during restoration
                                 result = create_platform_insights_task(
                                     user_id=user_id,
                                     platform=platform,
-                                    site_url=None,  # Will be fetched by executor when task runs
+                                    site_url=None,
                                     db=db
                                 )
                                 
@@ -125,28 +109,28 @@ async def restore_platform_insights_tasks(scheduler):
                                     f"for user {user_id}: {e}"
                                 )
                                 continue
+                                
+                finally:
+                    db.close()
                     
-                except Exception as e:
-                    logger.debug(
-                        f"[Platform Insights Restoration] Error processing user {user_id}: {e}"
-                    )
-                    continue
+            except Exception as e:
+                logger.warning(f"[Platform Insights Restoration] Error processing user {user_id}: {e}")
+                continue
+                
+        # Log summary
+        if total_created > 0:
+            logger.warning(
+                f"[Platform Insights Restoration] ✅ Created {total_created} platform insights tasks:\n" +
+                "\n".join(restoration_summary)
+            )
+        else:
+            logger.warning(
+                f"[Platform Insights Restoration] ✅ All users have required platform insights tasks. "
+                f"Processed {users_processed} users."
+            )
             
-            # Log summary
-            if total_created > 0:
-                logger.warning(
-                    f"[Platform Insights Restoration] ✅ Created {total_created} platform insights tasks:\n" +
-                    "\n".join(restoration_summary)
-                )
-            else:
-                logger.warning(
-                    f"[Platform Insights Restoration] ✅ All users have required platform insights tasks. "
-                    f"Checked {len(users_to_check)} users, found {len(existing_tasks)} existing tasks."
-                )
-            
-        finally:
-            db.close()
+        return total_existing_tasks + total_created
             
     except Exception as e:
         logger.error(f"[Platform Insights Restoration] Error during restoration: {e}", exc_info=True)
-
+        return 0

@@ -364,7 +364,7 @@ class OnboardingManager:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.get("/api/onboarding/business-info/user/{user_id}")
-        async def business_info_get_by_user(user_id: int):
+        async def business_info_get_by_user(user_id: str):
             """Get business information by user ID."""
             try:
                 return await get_business_info_by_user(user_id)

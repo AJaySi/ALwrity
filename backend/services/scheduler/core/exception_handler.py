@@ -106,6 +106,7 @@ class DatabaseError(SchedulerException):
         message: str,
         user_id: Optional[int] = None,
         task_id: Optional[int] = None,
+        task_type: Optional[str] = None,
         context: Dict[str, Any] = None,
         original_error: Exception = None
     ):
@@ -115,6 +116,7 @@ class DatabaseError(SchedulerException):
             severity=SchedulerErrorSeverity.CRITICAL,
             user_id=user_id,
             task_id=task_id,
+            task_type=task_type,
             context=context or {},
             original_error=original_error
         )
@@ -180,6 +182,9 @@ class SchedulerConfigError(SchedulerException):
     def __init__(
         self,
         message: str,
+        user_id: Optional[int] = None,
+        task_id: Optional[int] = None,
+        task_type: Optional[str] = None,
         context: Dict[str, Any] = None,
         original_error: Exception = None
     ):
@@ -187,6 +192,9 @@ class SchedulerConfigError(SchedulerException):
             message=message,
             error_type=SchedulerErrorType.SCHEDULER_CONFIG_ERROR,
             severity=SchedulerErrorSeverity.CRITICAL,
+            user_id=user_id,
+            task_id=task_id,
+            task_type=task_type,
             context=context or {},
             original_error=original_error
         )

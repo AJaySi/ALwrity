@@ -7,9 +7,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 
 from services.ai_prompt_optimizer import AIPromptOptimizer
-from services.onboarding import OnboardingDataService
-from services.onboarding.database_service import OnboardingDatabaseService
-from services.persona_data_service import PersonaDataService
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from services.database import SessionLocal
 
 
@@ -19,9 +17,9 @@ class ProductMarketingPromptBuilder(AIPromptOptimizer):
     def __init__(self):
         """Initialize Product Marketing Prompt Builder."""
         super().__init__()
-        self.onboarding_data_service = OnboardingDataService()
+        self.onboarding_integration_service = OnboardingDataIntegrationService()
         self.logger = logger
-        logger.info("[Product Marketing Prompt Builder] Initialized")
+        self.logger.info("[Product Marketing Prompt Builder] Initialized")
     
     def build_marketing_image_prompt(
         self,
@@ -45,66 +43,61 @@ class ProductMarketingPromptBuilder(AIPromptOptimizer):
             Enhanced prompt with brand DNA, persona style, and marketing context
         """
         try:
-            # Get onboarding data
+            # Use Canonical Profile (SSOT)
             db = SessionLocal()
             try:
-                onboarding_db = OnboardingDatabaseService(db)
-                website_analysis = onboarding_db.get_website_analysis(user_id, db)
-                persona_data = onboarding_db.get_persona_data(user_id, db)
-                competitor_analyses = onboarding_db.get_competitor_analysis(user_id, db)
+                onboarding_data = self.onboarding_integration_service._build_canonical_from_db(user_id, db)
+            except Exception as e:
+                self.logger.error(f"Error fetching onboarding data: {e}")
+                onboarding_data = {}
             finally:
                 db.close()
+
+            canonical_profile = onboarding_data or {}
             
-            # Build prompt layers
             enhanced_prompt = base_prompt
             
-            # Layer 1: Brand DNA (from website_analysis)
-            if website_analysis:
-                writing_style = website_analysis.get('writing_style', {})
-                target_audience = website_analysis.get('target_audience', {})
-                brand_analysis = website_analysis.get('brand_analysis', {})
-                style_guidelines = website_analysis.get('style_guidelines', {})
-                
-                # Add brand tone and style
-                tone = writing_style.get('tone', 'professional')
-                voice = writing_style.get('voice', 'authoritative')
-                brand_enhancement = f", {tone} tone, {voice} voice"
-                
-                # Add target audience context
+            # 1. Brand Voice & Tone (Canonical)
+            tone = canonical_profile.get('writing_tone', 'professional')
+            voice = canonical_profile.get('writing_voice', 'authoritative')
+            brand_enhancement = f", {tone} tone, {voice} voice"
+            enhanced_prompt += brand_enhancement
+            
+            # 2. Target Audience (Canonical)
+            target_audience = canonical_profile.get('target_audience')
+            demographics = []
+            
+            if isinstance(target_audience, dict):
                 demographics = target_audience.get('demographics', [])
-                if demographics:
-                    audience_context = f", targeting {', '.join(demographics[:2])}"
-                    enhanced_prompt += audience_context
-                
-                # Add brand visual identity if available
-                if brand_analysis:
-                    color_palette = brand_analysis.get('color_palette', [])
-                    if color_palette:
-                        colors = ', '.join(color_palette[:3])
-                        enhanced_prompt += f", brand colors: {colors}"
+                if not demographics:
+                     # fallback to checking keys if demographics key is missing but dict acts as demographics
+                     pass 
+            elif isinstance(target_audience, list):
+                demographics = target_audience
+            elif isinstance(target_audience, str):
+                demographics = [target_audience]
+
+            if demographics:
+                audience_str = ', '.join([str(d) for d in demographics[:2]])
+                enhanced_prompt += f", targeting {audience_str}"
             
-            # Layer 2: Persona Visual Style (from persona_data)
-            if persona_data:
-                core_persona = persona_data.get('corePersona', {})
-                platform_personas = persona_data.get('platformPersonas', {})
+            # 3. Brand Identity (Canonical)
+            brand_colors = canonical_profile.get('brand_colors', [])
+            if brand_colors:
+                colors = ', '.join([str(c) for c in brand_colors[:3]])
+                enhanced_prompt += f", brand colors: {colors}"
                 
-                if core_persona:
-                    persona_name = core_persona.get('persona_name', '')
-                    archetype = core_persona.get('archetype', '')
-                    if persona_name:
-                        enhanced_prompt += f", {persona_name} style"
-                
-                # Channel-specific persona adaptation
-                if channel and platform_personas:
-                    platform_persona = platform_personas.get(channel, {})
-                    if platform_persona:
-                        visual_identity = platform_persona.get('visual_identity', {})
-                        if visual_identity:
-                            aesthetic = visual_identity.get('aesthetic_preferences', '')
-                            if aesthetic:
-                                enhanced_prompt += f", {aesthetic} aesthetic"
+            visual_style = canonical_profile.get('visual_style', {})
+            aesthetic = visual_style.get('aesthetic')
+            if aesthetic:
+                enhanced_prompt += f", {aesthetic} aesthetic"
+
+            # 4. Persona Style (Canonical - derived from Persona Data if available)
+            # Note: Canonical profile already merges persona data into tone/voice/style.
+            # If we need specific persona name, we might need to check if it's stored in canonical.
+            # Currently canonical stores aggregated traits. 
             
-            # Layer 3: Channel Optimization
+            # Channel-specific optimization
             channel_enhancements = {
                 'instagram': ', Instagram-optimized composition, vibrant colors, engaging visual',
                 'linkedin': ', professional photography, clean composition, business-focused',
@@ -117,7 +110,6 @@ class ProductMarketingPromptBuilder(AIPromptOptimizer):
             if channel and channel.lower() in channel_enhancements:
                 enhanced_prompt += channel_enhancements[channel.lower()]
             
-            # Layer 4: Asset Type Specific
             asset_type_enhancements = {
                 'hero_image': ', hero image style, prominent product placement, professional photography',
                 'product_photo': ', product photography, clean background, detailed product showcase',
@@ -128,11 +120,6 @@ class ProductMarketingPromptBuilder(AIPromptOptimizer):
             if asset_type in asset_type_enhancements:
                 enhanced_prompt += asset_type_enhancements[asset_type]
             
-            # Layer 5: Competitive Differentiation
-            if competitor_analyses and len(competitor_analyses) > 0:
-                # Extract unique positioning from competitor analysis
-                enhanced_prompt += ", unique positioning, differentiated visual style"
-            
             # Layer 6: Quality Descriptors
             enhanced_prompt += ", professional photography, high quality, detailed, sharp focus, natural lighting"
             
@@ -142,11 +129,11 @@ class ProductMarketingPromptBuilder(AIPromptOptimizer):
                 if marketing_goal:
                     enhanced_prompt += f", {marketing_goal} focused"
             
-            logger.info(f"[Marketing Prompt] Enhanced prompt for user {user_id}: {enhanced_prompt[:200]}...")
+            self.logger.info(f"[Marketing Prompt] Enhanced prompt for user {user_id}: {enhanced_prompt[:200]}...")
             return enhanced_prompt
             
         except Exception as e:
-            logger.error(f"[Marketing Prompt] Error building prompt: {str(e)}")
+            self.logger.error(f"[Marketing Prompt] Error building prompt: {str(e)}")
             # Return base prompt with minimal enhancement if error
             return f"{base_prompt}, professional photography, high quality"
     
@@ -172,97 +159,62 @@ class ProductMarketingPromptBuilder(AIPromptOptimizer):
             Enhanced prompt with persona style, brand voice, and marketing context
         """
         try:
-            # Get onboarding data
+            # Use Canonical Profile (SSOT)
             db = SessionLocal()
             try:
-                onboarding_db = OnboardingDatabaseService(db)
-                website_analysis = onboarding_db.get_website_analysis(user_id, db)
-                persona_data = onboarding_db.get_persona_data(user_id, db)
-                competitor_analyses = onboarding_db.get_competitor_analysis(user_id, db)
+                onboarding_data = self.onboarding_integration_service._build_canonical_from_db(user_id, db)
+            except Exception as e:
+                self.logger.error(f"Error fetching onboarding data: {e}")
+                onboarding_data = {}
             finally:
                 db.close()
+
+            canonical_profile = onboarding_data or {}
             
-            # Build enhanced prompt
             enhanced_prompt = base_request
             
-            # Add persona linguistic fingerprint
-            if persona_data:
-                core_persona = persona_data.get('corePersona', {})
-                platform_personas = persona_data.get('platformPersonas', {})
-                
-                if core_persona:
-                    persona_name = core_persona.get('persona_name', '')
-                    linguistic_fingerprint = core_persona.get('linguistic_fingerprint', {})
-                    
-                    if persona_name:
-                        enhanced_prompt += f"\n\nFollow {persona_name} persona style:"
-                    
-                    if linguistic_fingerprint:
-                        sentence_metrics = linguistic_fingerprint.get('sentence_metrics', {})
-                        lexical_features = linguistic_fingerprint.get('lexical_features', {})
-                        
-                        if sentence_metrics:
-                            avg_length = sentence_metrics.get('average_sentence_length_words', '')
-                            if avg_length:
-                                enhanced_prompt += f"\n- Average sentence length: {avg_length} words"
-                        
-                        if lexical_features:
-                            go_to_words = lexical_features.get('go_to_words', [])
-                            avoid_words = lexical_features.get('avoid_words', [])
-                            vocabulary_level = lexical_features.get('vocabulary_level', '')
-                            
-                            if go_to_words:
-                                enhanced_prompt += f"\n- Use these words: {', '.join(go_to_words[:5])}"
-                            if avoid_words:
-                                enhanced_prompt += f"\n- Avoid these words: {', '.join(avoid_words[:5])}"
-                            if vocabulary_level:
-                                enhanced_prompt += f"\n- Vocabulary level: {vocabulary_level}"
-                
-                # Channel-specific persona adaptation
-                if channel and platform_personas:
-                    platform_persona = platform_personas.get(channel, {})
-                    if platform_persona:
-                        content_format_rules = platform_persona.get('content_format_rules', {})
-                        engagement_patterns = platform_persona.get('engagement_patterns', {})
-                        
-                        if content_format_rules:
-                            char_limit = content_format_rules.get('character_limit', '')
-                            hashtag_strategy = content_format_rules.get('hashtag_strategy', '')
-                            
-                            if char_limit:
-                                enhanced_prompt += f"\n- Character limit: {char_limit}"
-                            if hashtag_strategy:
-                                enhanced_prompt += f"\n- Hashtag strategy: {hashtag_strategy}"
+            # 1. Brand Voice & Tone (Canonical)
+            tone = canonical_profile.get('writing_tone', 'professional')
+            voice = canonical_profile.get('writing_voice', 'authoritative')
+            complexity = canonical_profile.get('writing_complexity', 'intermediate')
             
-            # Add brand voice
-            if website_analysis:
-                writing_style = website_analysis.get('writing_style', {})
-                target_audience = website_analysis.get('target_audience', {})
-                
-                tone = writing_style.get('tone', 'professional')
-                voice = writing_style.get('voice', 'authoritative')
-                enhanced_prompt += f"\n- Brand tone: {tone}, Brand voice: {voice}"
-                
+            enhanced_prompt += f"\n\nBrand Voice & Tone:\n- Tone: {tone}\n- Voice: {voice}\n- Complexity: {complexity}"
+            
+            # 2. Target Audience (Canonical)
+            target_audience = canonical_profile.get('target_audience')
+            demographics = []
+            if isinstance(target_audience, dict):
                 demographics = target_audience.get('demographics', [])
-                expertise_level = target_audience.get('expertise_level', 'intermediate')
-                if demographics:
-                    enhanced_prompt += f"\n- Target audience: {', '.join(demographics[:2])}, {expertise_level} level"
+            elif isinstance(target_audience, list):
+                demographics = target_audience
+            elif isinstance(target_audience, str):
+                demographics = [target_audience]
+                
+            if demographics:
+                enhanced_prompt += f"\n- Target Audience: {', '.join([str(d) for d in demographics[:3]])}"
+                
+            # 3. Industry (Canonical)
+            business_info = canonical_profile.get('business_info', {})
+            industry = business_info.get('industry')
+            if industry:
+                enhanced_prompt += f"\n- Industry Context: {industry}"
+                
+            # 4. Platform Preferences / Context
+            if channel:
+                 enhanced_prompt += f"\n- Platform: {channel}"
+                 # Add channel specific constraints if needed, but usually base model handles it well with just platform name
             
-            # Add competitive positioning
-            if competitor_analyses and len(competitor_analyses) > 0:
-                enhanced_prompt += "\n- Differentiate from competitors, highlight unique value propositions"
-            
-            # Add marketing context
+            # 5. Marketing Context
             if product_context:
                 marketing_goal = product_context.get('marketing_goal', '')
                 if marketing_goal:
-                    enhanced_prompt += f"\n- Marketing goal: {marketing_goal}"
+                    enhanced_prompt += f"\n- Goal: {marketing_goal}"
             
-            logger.info(f"[Marketing Copy Prompt] Enhanced for user {user_id}: {enhanced_prompt[:200]}...")
+            self.logger.info(f"[Marketing Copy Prompt] Enhanced for user {user_id}: {enhanced_prompt[:200]}...")
             return enhanced_prompt
             
         except Exception as e:
-            logger.error(f"[Marketing Copy Prompt] Error building prompt: {str(e)}")
+            self.logger.error(f"[Marketing Copy Prompt] Error building prompt: {str(e)}")
             return base_request
     
     def optimize_marketing_prompt(

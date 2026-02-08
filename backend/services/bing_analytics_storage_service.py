@@ -18,6 +18,7 @@ from models.bing_analytics_models import (
     BingAlertRules, BingAlertHistory, BingSitePerformance
 )
 from services.integrations.bing_oauth import BingOAuthService
+from services.database import get_session_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -25,44 +26,25 @@ logger = logging.getLogger(__name__)
 class BingAnalyticsStorageService:
     """Service for managing Bing analytics data storage and analysis"""
     
-    def __init__(self, database_url: str):
-        """Initialize the storage service with database connection"""
-        # Configure engine with minimal pooling to prevent connection exhaustion
-        engine_kwargs = {}
-        if 'sqlite' in database_url:
-            engine_kwargs = {
-                'pool_size': 1,  # Minimal pool size
-                'max_overflow': 2,  # Minimal overflow
-                'pool_pre_ping': False,  # Disable pre-ping to reduce overhead
-                'pool_recycle': 300,  # Recycle connections every 5 minutes
-                'connect_args': {'timeout': 10}  # Shorter timeout
-            }
-        
-        self.engine = create_engine(database_url, **engine_kwargs)
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+    def __init__(self, database_url: Optional[str] = None):
+        """Initialize the storage service"""
+        # Legacy support: database_url is ignored
         self.bing_service = BingOAuthService()
-        
-        # Create tables if they don't exist
-        self._create_tables()
     
     def _create_tables(self):
         """Create database tables if they don't exist"""
-        try:
-            from models.bing_analytics_models import Base
-            Base.metadata.create_all(bind=self.engine)
-            logger.info("Bing analytics database tables created/verified successfully")
-        except Exception as e:
-            logger.error(f"Error creating Bing analytics tables: {e}")
+        # Handled by services.database.init_user_database
+        pass
     
-    def _get_db_session(self) -> Session:
-        """Get database session"""
-        return self.SessionLocal()
+    def _get_db_session(self, user_id: str) -> Session:
+        """Get database session for user"""
+        return get_session_for_user(user_id)
     
-    def _with_db_session(self, func):
+    def _with_db_session(self, user_id: str, func):
         """Context manager for database sessions"""
         db = None
         try:
-            db = self._get_db_session()
+            db = self._get_db_session(user_id)
             return func(db)
         finally:
             if db:
@@ -81,7 +63,7 @@ class BingAnalyticsStorageService:
             bool: True if successful, False otherwise
         """
         try:
-            db = self._get_db_session()
+            db = self._get_db_session(user_id)
             
             # Process and store each query
             stored_count = 0
@@ -157,7 +139,7 @@ class BingAnalyticsStorageService:
             start_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_date = start_date + timedelta(days=1)
             
-            db = self._get_db_session()
+            db = self._get_db_session(user_id)
             
             # Get raw data for the day
             daily_queries = db.query(BingQueryStats).filter(
@@ -389,7 +371,7 @@ class BingAnalyticsStorageService:
         Get daily metrics for a site over a specified period
         """
         try:
-            db = self._get_db_session()
+            db = self._get_db_session(user_id)
             
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days)

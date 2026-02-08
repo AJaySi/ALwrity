@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from loguru import logger
 
 from services.onboarding.api_key_manager import get_onboarding_progress, get_onboarding_progress_for_user
+from services.database import get_db
+from services.user_workspace_manager import UserWorkspaceManager
 
 class OnboardingControlService:
     """Service for handling onboarding control operations."""
@@ -17,8 +19,21 @@ class OnboardingControlService:
     
     async def start_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Start a new onboarding session."""
+        db_gen = get_db()
+        db = next(db_gen)
         try:
             user_id = str(current_user.get('id'))
+            
+            # Ensure user workspace exists when starting onboarding
+            try:
+                workspace_manager = UserWorkspaceManager(db)
+                workspace_manager.create_user_workspace(user_id)
+                logger.info(f"Verified/Created workspace for user {user_id} at start of onboarding")
+            except Exception as e:
+                logger.error(f"Failed to create workspace for user {user_id}: {e}")
+                # Don't fail onboarding just because workspace creation failed, 
+                # but log it. It might exist or be a permission issue.
+            
             progress = get_onboarding_progress_for_user(user_id)
             progress.reset_progress()
             
@@ -30,13 +45,16 @@ class OnboardingControlService:
         except Exception as e:
             logger.error(f"Error starting onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
+        finally:
+            if 'db' in locals():
+                db.close()
     
     async def reset_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Reset the onboarding progress for a specific user."""
         try:
-            from services.onboarding.progress_service import get_onboarding_progress_service
+            from services.onboarding.progress_service import OnboardingProgressService
             user_id = str(current_user.get('id'))
-            progress_service = get_onboarding_progress_service()
+            progress_service = OnboardingProgressService()
             success = progress_service.reset_onboarding(user_id)
 
             if success:

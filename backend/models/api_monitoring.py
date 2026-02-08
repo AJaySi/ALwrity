@@ -30,10 +30,10 @@ class APIRequest(Base):
     
     # Indexes for fast queries
     __table_args__ = (
-        Index('idx_timestamp', 'timestamp'),
-        Index('idx_path_method', 'path', 'method'),
-        Index('idx_status_code', 'status_code'),
-        Index('idx_user_id', 'user_id'),
+        Index('idx_api_req_timestamp', 'timestamp'),
+        Index('idx_api_req_path_method', 'path', 'method'),
+        Index('idx_api_req_status_code', 'status_code'),
+        Index('idx_api_req_user_id', 'user_id'),
     )
 
 class APIEndpointStats(Base):
@@ -56,9 +56,9 @@ class APIEndpointStats(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     __table_args__ = (
-        Index('idx_endpoint', 'endpoint'),
-        Index('idx_total_requests', 'total_requests'),
-        Index('idx_avg_duration', 'avg_duration'),
+        Index('idx_api_stats_endpoint', 'endpoint'),
+        Index('idx_api_stats_total_requests', 'total_requests'),
+        Index('idx_api_stats_avg_duration', 'avg_duration'),
     )
 
 class SystemHealth(Base):
@@ -78,8 +78,8 @@ class SystemHealth(Base):
     metrics = Column(JSON, nullable=True)  # Additional metrics
     
     __table_args__ = (
-        Index('idx_timestamp', 'timestamp'),
-        Index('idx_status', 'status'),
+        Index('idx_sys_health_timestamp', 'timestamp'),
+        Index('idx_sys_health_status', 'status'),
     )
 
 class CachePerformance(Base):
@@ -97,6 +97,6 @@ class CachePerformance(Base):
     total_requests = Column(Integer, default=0)
     
     __table_args__ = (
-        Index('idx_timestamp', 'timestamp'),
+        Index('idx_cache_perf_timestamp', 'timestamp'),
         Index('idx_cache_type', 'cache_type'),
     )

@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from loguru import logger
 from sqlalchemy.orm import Session as SQLSession
 
-from services.database import get_db_session
+from services.database import get_session_for_user
 from models.onboarding import OnboardingSession, WebsiteAnalysis
 
 
@@ -79,7 +79,7 @@ def get_user_job_store_name(user_id: str, db: SQLSession = None) -> str:
     
     try:
         if not db_session:
-            db_session = get_db_session()
+            db_session = get_session_for_user(user_id)
             close_db = True
         
         if not db_session:

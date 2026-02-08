@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from loguru import logger
 from pydantic import BaseModel
@@ -88,8 +88,8 @@ async def generate_story_video(
         valid_scenes: List[Dict[str, Any]] = []
 
         # Resolve video/audio directories
-        base_dir = Path(__file__).parent.parent.parent.parent
-        ai_video_dir = (base_dir / "story_videos" / "AI_Videos").resolve()
+        base_dir = Path(__file__).resolve().parents[4]
+        ai_video_dir = (base_dir / "data" / "media" / "story_videos" / "AI_Videos").resolve()
 
         video_urls = request.video_urls or [None] * len(request.scenes)
         ai_audio_urls = request.ai_audio_urls or [None] * len(request.scenes)

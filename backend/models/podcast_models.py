@@ -62,7 +62,7 @@ class PodcastProject(Base):
     
     # Composite indexes for common query patterns
     __table_args__ = (
-        Index('idx_user_status_created', 'user_id', 'status', 'created_at'),
-        Index('idx_user_favorite_updated', 'user_id', 'is_favorite', 'updated_at'),
+        Index('idx_podcast_user_status_created', 'user_id', 'status', 'created_at'),
+        Index('idx_podcast_user_favorite_updated', 'user_id', 'is_favorite', 'updated_at'),
     )
 

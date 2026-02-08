@@ -29,6 +29,7 @@ from ...utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 # Import services
 from ...services.ai_analytics_service import ContentPlanningAIAnalyticsService
+from middleware.auth_middleware import get_current_user
 
 # Initialize services
 ai_analytics_service = ContentPlanningAIAnalyticsService()
@@ -37,14 +38,19 @@ ai_analytics_service = ContentPlanningAIAnalyticsService()
 router = APIRouter(prefix="/ai-analytics", tags=["ai-analytics"])
 
 @router.post("/content-evolution", response_model=AIAnalyticsResponse)
-async def analyze_content_evolution(request: ContentEvolutionRequest):
+async def analyze_content_evolution(
+    request: ContentEvolutionRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Analyze content evolution over time for a specific strategy.
     """
     try:
-        logger.info(f"Starting content evolution analysis for strategy {request.strategy_id}")
+        user_id = current_user.get("user_id")
+        logger.info(f"Starting content evolution analysis for strategy {request.strategy_id} (user {user_id})")
         
         result = await ai_analytics_service.analyze_content_evolution(
+            user_id=user_id,
             strategy_id=request.strategy_id,
             time_period=request.time_period
         )
@@ -103,14 +109,19 @@ async def predict_content_performance(request: ContentPerformancePredictionReque
         )
 
 @router.post("/strategic-intelligence", response_model=AIAnalyticsResponse)
-async def generate_strategic_intelligence(request: StrategicIntelligenceRequest):
+async def generate_strategic_intelligence(
+    request: StrategicIntelligenceRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Generate strategic intelligence for content planning.
     """
     try:
-        logger.info(f"Starting strategic intelligence generation for strategy {request.strategy_id}")
+        user_id = current_user.get("user_id")
+        logger.info(f"Starting strategic intelligence generation for strategy {request.strategy_id} (user {user_id})")
         
         result = await ai_analytics_service.generate_strategic_intelligence(
+            user_id=user_id,
             strategy_id=request.strategy_id,
             market_data=request.market_data
         )

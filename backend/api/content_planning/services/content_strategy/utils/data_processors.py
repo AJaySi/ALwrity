@@ -195,14 +195,29 @@ class DataProcessorService:
         }
         
         # Competitive Intelligence Fields
+        # Extract competitors from competitor_analysis list in processed_data
+        competitors_list = processed_data.get('competitor_analysis', [])
+        competitor_names = []
+        
+        if competitors_list:
+            for comp in competitors_list:
+                # Try to get domain or title, fallback to URL
+                name = comp.get('competitor_domain') or comp.get('domain') or comp.get('title') or comp.get('competitor_url') or comp.get('url')
+                if name:
+                    competitor_names.append(name)
+        
+        # Fallback to website_analysis competitors if available (legacy/manual entry)
+        if not competitor_names and website_data.get('competitors'):
+            competitor_names = website_data.get('competitors')
+            
         fields['top_competitors'] = {
-            'value': website_data.get('competitors', [
+            'value': competitor_names if competitor_names else [
                 'Competitor A - Industry Leader',
                 'Competitor B - Emerging Player', 
                 'Competitor C - Niche Specialist'
-            ]),
-            'source': 'website_analysis',
-            'confidence': website_data.get('confidence_level', 0.8)
+            ],
+            'source': 'competitor_analysis' if competitors_list else ('website_analysis' if website_data.get('competitors') else 'default'),
+            'confidence': 0.9 if competitors_list else (website_data.get('confidence_level', 0.8) if website_data.get('competitors') else 0.3)
         }
         
         fields['competitor_content_strategies'] = {

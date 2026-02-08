@@ -35,6 +35,7 @@ from models.blog_models import (
 )
 from services.blog_writer.blog_service import BlogWriterService
 from services.blog_writer.seo.blog_seo_recommendation_applier import BlogSEORecommendationApplier
+from services.llm_providers.main_text_generation import llm_text_gen
 from .task_manager import task_manager
 from .cache_manager import cache_manager
 from models.blog_models import MediumBlogGenerateRequest
@@ -94,6 +95,217 @@ async def apply_seo_recommendations(
         raise
     except Exception as e:
         logger.error(f"Failed to apply SEO recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class BlogSectionToolRequest(BaseModel):
+    section_id: str = Field(..., description="Section id in blog writer UI")
+    title: Optional[str] = Field(default=None, description="Section title/heading")
+    content: str = Field(..., description="Section content text")
+    keywords: List[str] = Field(default_factory=list, description="Optional target keywords")
+    goal: Optional[str] = Field(default=None, description="Optional optimization goal")
+
+
+@router.post("/section/tools/originality")
+async def section_originality_tools(
+    request: BlogSectionToolRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get("id"))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in authentication token")
+
+        from services.intelligence.sif_integration import SIFIntegrationService
+        from services.intelligence.sif_agents import ContentGuardianAgent
+
+        sif_service = SIFIntegrationService(user_id)
+        intelligence = sif_service.intelligence_service
+
+        content = (request.content or "").strip()
+        if len(content) < 50:
+            return {
+                "success": False,
+                "section_id": request.section_id,
+                "error": "Content too short for originality check",
+                "matches": [],
+            }
+
+        matches = await intelligence.search(content, limit=5)
+        normalized_matches = []
+        for m in matches or []:
+            normalized_matches.append(
+                {
+                    "id": m.get("id"),
+                    "score": m.get("score", 0.0),
+                    "excerpt": (m.get("text", "") or "")[:240],
+                }
+            )
+
+        guardian = ContentGuardianAgent(intelligence, sif_service=sif_service)
+        cannibalization = await guardian.check_cannibalization(content)
+
+        return {
+            "success": True,
+            "section_id": request.section_id,
+            "cannibalization": cannibalization,
+            "matches": normalized_matches,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to run originality tools: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/section/tools/internal-links")
+async def section_internal_link_tools(
+    request: BlogSectionToolRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get("id"))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in authentication token")
+
+        from services.intelligence.sif_integration import SIFIntegrationService
+        from services.intelligence.sif_agents import LinkGraphAgent
+
+        sif_service = SIFIntegrationService(user_id)
+        intelligence = sif_service.intelligence_service
+
+        content = (request.content or "").strip()
+        suggestions = []
+        if len(content) >= 50:
+            link_agent = LinkGraphAgent(intelligence, sif_service=sif_service)
+            suggestions = await link_agent.link_suggester(content)
+
+        return {
+            "success": True,
+            "section_id": request.section_id,
+            "suggestions": suggestions or [],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to run internal link tools: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/section/tools/fact-check")
+async def section_fact_check_tools(
+    request: BlogSectionToolRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get("id"))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in authentication token")
+
+        from services.intelligence.sif_integration import SIFIntegrationService
+        from services.intelligence.sif_agents import CitationExpert
+
+        sif_service = SIFIntegrationService(user_id)
+        intelligence = sif_service.intelligence_service
+
+        expert = CitationExpert(intelligence)
+        content = (request.content or "").strip()
+
+        verification = await expert.claim_verifier(content)
+
+        topic = request.title or content[:120]
+        citations = await expert.citation_finder(topic)
+
+        return {
+            "success": True,
+            "section_id": request.section_id,
+            "verification": verification,
+            "citations": citations or [],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to run fact check tools: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/section/tools/optimize")
+async def section_optimize_tools(
+    request: BlogSectionToolRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get("id"))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in authentication token")
+
+        content = (request.content or "").strip()
+        if len(content) < 50:
+            return {
+                "success": False,
+                "section_id": request.section_id,
+                "error": "Content too short for optimization",
+            }
+
+        goal = request.goal or "readability"
+        keywords_str = ", ".join(request.keywords or [])
+
+        system_prompt = (
+            "You are an expert editor. Optimize the provided blog section while preserving meaning and tone."
+        )
+        prompt = (
+            f"Optimization goal: {goal}\n"
+            f"Target keywords (if any): {keywords_str}\n"
+            f"Section title: {request.title or ''}\n\n"
+            "Return a JSON object with keys:\n"
+            '- optimized_content: string\n'
+            '- changes_made: array of strings\n'
+            "- diff_summary: string\n\n"
+            f"Section content:\n{content}\n"
+        )
+
+        json_struct = {
+            "type": "object",
+            "properties": {
+                "optimized_content": {"type": "string"},
+                "changes_made": {"type": "array", "items": {"type": "string"}},
+                "diff_summary": {"type": "string"},
+            },
+            "required": ["optimized_content", "changes_made", "diff_summary"],
+        }
+
+        raw = llm_text_gen(prompt=prompt, system_prompt=system_prompt, json_struct=json_struct, user_id=user_id)
+        data = None
+        try:
+            import json as _json
+
+            data = _json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            data = {
+                "optimized_content": raw,
+                "changes_made": ["Optimization applied"],
+                "diff_summary": "Generated optimized version",
+            }
+
+        return {
+            "success": True,
+            "section_id": request.section_id,
+            "optimized_content": data.get("optimized_content"),
+            "changes_made": data.get("changes_made", []),
+            "diff_summary": data.get("diff_summary"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to run optimize tools: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -286,7 +498,8 @@ async def generate_section(
 ) -> BlogSectionResponse:
     """Generate content for a specific section."""
     try:
-        response = await service.generate_section(request)
+        user_id = str(current_user.get('id', '')) if current_user else None
+        response = await service.generate_section(request, user_id=user_id)
         
         # Save and track text content (non-blocking)
         if response.markdown:

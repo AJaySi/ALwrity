@@ -38,7 +38,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   // Loading state from context - show spinner unless local flag says complete
   if (loading && !localComplete) {
-    console.log('ProtectedRoute: Loading onboarding state from context...');
+    console.log('ProtectedRoute: Blocking access - Waiting for context to load', {
+      loading,
+      localComplete,
+      isOnboardingComplete
+    });
     return (
       <Box
         display="flex"

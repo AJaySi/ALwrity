@@ -6,9 +6,55 @@ import {
   WorkflowProgress, 
   UserWorkflowPreferences,
   NavigationState,
+  WorkflowStatus,
   WorkflowError
 } from '../types/workflow';
 import { taskWorkflowOrchestrator } from '../services/TaskWorkflowOrchestrator';
+import { apiClient } from '../api/client';
+
+const isServerWorkflowId = (workflowId: string) => workflowId.startsWith('daily-');
+
+const computeProgressAndNavigation = (workflow: DailyWorkflow): { progress: WorkflowProgress; navigation: NavigationState } => {
+  const tasks = Array.isArray(workflow.tasks) ? workflow.tasks : [];
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'skipped').length;
+  const completionPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+  const currentIndex = (() => {
+    if (typeof workflow.currentTaskIndex === 'number' && workflow.currentTaskIndex >= 0 && workflow.currentTaskIndex < totalTasks) {
+      return workflow.currentTaskIndex;
+    }
+    const idx = tasks.findIndex(t => t.status !== 'completed' && t.status !== 'skipped');
+    return idx >= 0 ? idx : Math.max(0, totalTasks - 1);
+  })();
+
+  const currentTask = tasks[currentIndex] || null;
+  const nextTask = tasks.slice(currentIndex + 1).find(t => t.status !== 'completed' && t.status !== 'skipped') || null;
+  const previousTask = currentIndex > 0 ? tasks[currentIndex - 1] : null;
+
+  const estimatedTimeRemaining = tasks
+    .filter(t => t.status !== 'completed' && t.status !== 'skipped')
+    .reduce((sum, t) => sum + (t.estimatedTime || 0), 0);
+
+  return {
+    progress: {
+      completedTasks,
+      totalTasks,
+      completionPercentage,
+      currentTask: currentTask || undefined,
+      nextTask: nextTask || undefined,
+      estimatedTimeRemaining,
+      actualTimeSpent: workflow.actualTimeSpent || 0,
+    },
+    navigation: {
+      currentTask,
+      previousTask,
+      nextTask,
+      canGoBack: currentIndex > 0,
+      canGoForward: Boolean(nextTask),
+    }
+  };
+};
 
 interface WorkflowState {
   // Current workflow state
@@ -68,16 +114,25 @@ export const useWorkflowStore = create<WorkflowState>()(
         set({ isLoading: true, error: null });
         
         try {
+          try {
+            const resp = await apiClient.get('/api/today-workflow', { params: date ? { date } : {} });
+            const serverWorkflow = resp?.data?.data?.workflow as DailyWorkflow | undefined;
+            if (serverWorkflow && Array.isArray(serverWorkflow.tasks)) {
+              const derived = computeProgressAndNavigation(serverWorkflow);
+              set({
+                currentWorkflow: serverWorkflow,
+                workflowProgress: derived.progress,
+                navigationState: derived.navigation,
+                isLoading: false
+              });
+              return;
+            }
+          } catch {}
+
           const workflow = await taskWorkflowOrchestrator.generateDailyWorkflow(userId, date);
           const progress = taskWorkflowOrchestrator.getWorkflowProgress(workflow.id);
           const navigation = taskWorkflowOrchestrator.getNavigationState(workflow.id);
-          
-          set({
-            currentWorkflow: workflow,
-            workflowProgress: progress,
-            navigationState: navigation,
-            isLoading: false
-          });
+          set({ currentWorkflow: workflow, workflowProgress: progress, navigationState: navigation, isLoading: false });
         } catch (error) {
           const workflowError = error as WorkflowError;
           set({ 
@@ -92,16 +147,24 @@ export const useWorkflowStore = create<WorkflowState>()(
         set({ isLoading: true, error: null });
         
         try {
+          const current = get().currentWorkflow;
+          if (current && current.id === workflowId && isServerWorkflowId(workflowId)) {
+            const tasks = current.tasks.map((t, idx) => {
+              if (idx === current.currentTaskIndex && t.status === 'pending') {
+                return { ...t, status: 'in_progress' as const, startedAt: new Date() };
+              }
+              return t;
+            });
+            const updated: DailyWorkflow = { ...current, workflowStatus: 'in_progress', startedAt: new Date(), tasks };
+            const derived = computeProgressAndNavigation(updated);
+            set({ currentWorkflow: updated, workflowProgress: derived.progress, navigationState: derived.navigation, isLoading: false });
+            return;
+          }
+
           const workflow = await taskWorkflowOrchestrator.startWorkflow(workflowId);
           const progress = taskWorkflowOrchestrator.getWorkflowProgress(workflow.id);
           const navigation = taskWorkflowOrchestrator.getNavigationState(workflow.id);
-          
-          set({
-            currentWorkflow: workflow,
-            workflowProgress: progress,
-            navigationState: navigation,
-            isLoading: false
-          });
+          set({ currentWorkflow: workflow, workflowProgress: progress, navigationState: navigation, isLoading: false });
         } catch (error) {
           const workflowError = error as WorkflowError;
           set({ 
@@ -177,25 +240,33 @@ export const useWorkflowStore = create<WorkflowState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const progress = await taskWorkflowOrchestrator.completeTask(
-            currentWorkflow.id, 
-            taskId, 
-            completionData
-          );
+          if (isServerWorkflowId(currentWorkflow.id)) {
+            await apiClient.post(`/api/today-workflow/tasks/${taskId}/status`, {
+              status: 'completed',
+              completion_notes: completionData?.userNotes
+            });
+
+            const tasks = currentWorkflow.tasks.map(t => (t.id === taskId ? { ...t, status: 'completed' as const, completedAt: new Date() } : t));
+            const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'skipped').length;
+            const totalTasks = tasks.length;
+            const workflowStatus: WorkflowStatus = totalTasks > 0 && completedTasks === totalTasks ? 'completed' : 'in_progress';
+            const updated: DailyWorkflow = {
+              ...currentWorkflow,
+              tasks,
+              completedTasks,
+              totalTasks,
+              workflowStatus,
+              completedAt: workflowStatus === 'completed' ? new Date() : currentWorkflow.completedAt,
+            };
+            const derived = computeProgressAndNavigation(updated);
+            set({ currentWorkflow: updated, workflowProgress: derived.progress, navigationState: derived.navigation, isLoading: false });
+            return;
+          }
+
+          const progress = await taskWorkflowOrchestrator.completeTask(currentWorkflow.id, taskId, completionData);
           const navigation = taskWorkflowOrchestrator.getNavigationState(currentWorkflow.id);
-          
-          // Update current workflow
-          const updatedWorkflow = taskWorkflowOrchestrator.getWorkflow(
-            currentWorkflow.userId, 
-            currentWorkflow.date
-          );
-          
-          set({
-            currentWorkflow: updatedWorkflow,
-            workflowProgress: progress,
-            navigationState: navigation,
-            isLoading: false
-          });
+          const updatedWorkflow = taskWorkflowOrchestrator.getWorkflow(currentWorkflow.userId, currentWorkflow.date);
+          set({ currentWorkflow: updatedWorkflow, workflowProgress: progress, navigationState: navigation, isLoading: false });
         } catch (error) {
           const workflowError = error as WorkflowError;
           set({ 
@@ -213,24 +284,22 @@ export const useWorkflowStore = create<WorkflowState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const progress = await taskWorkflowOrchestrator.skipTask(
-            currentWorkflow.id, 
-            taskId
-          );
+          if (isServerWorkflowId(currentWorkflow.id)) {
+            await apiClient.post(`/api/today-workflow/tasks/${taskId}/status`, { status: 'skipped' });
+            const tasks = currentWorkflow.tasks.map(t => (t.id === taskId ? { ...t, status: 'skipped' as const, completedAt: new Date() } : t));
+            const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'skipped').length;
+            const totalTasks = tasks.length;
+            const workflowStatus: WorkflowStatus = totalTasks > 0 && completedTasks === totalTasks ? 'completed' : currentWorkflow.workflowStatus;
+            const updated: DailyWorkflow = { ...currentWorkflow, tasks, completedTasks, totalTasks, workflowStatus };
+            const derived = computeProgressAndNavigation(updated);
+            set({ currentWorkflow: updated, workflowProgress: derived.progress, navigationState: derived.navigation, isLoading: false });
+            return;
+          }
+
+          const progress = await taskWorkflowOrchestrator.skipTask(currentWorkflow.id, taskId);
           const navigation = taskWorkflowOrchestrator.getNavigationState(currentWorkflow.id);
-          
-          // Update current workflow
-          const updatedWorkflow = taskWorkflowOrchestrator.getWorkflow(
-            currentWorkflow.userId, 
-            currentWorkflow.date
-          );
-          
-          set({
-            currentWorkflow: updatedWorkflow,
-            workflowProgress: progress,
-            navigationState: navigation,
-            isLoading: false
-          });
+          const updatedWorkflow = taskWorkflowOrchestrator.getWorkflow(currentWorkflow.userId, currentWorkflow.date);
+          set({ currentWorkflow: updatedWorkflow, workflowProgress: progress, navigationState: navigation, isLoading: false });
         } catch (error) {
           const workflowError = error as WorkflowError;
           set({ 
@@ -248,22 +317,23 @@ export const useWorkflowStore = create<WorkflowState>()(
         set({ isLoading: true, error: null });
         
         try {
+          if (isServerWorkflowId(currentWorkflow.id)) {
+            const tasks = currentWorkflow.tasks;
+            const nextIndex = tasks.findIndex((t, idx) => idx > currentWorkflow.currentTaskIndex && t.status !== 'completed' && t.status !== 'skipped');
+            const updated: DailyWorkflow = {
+              ...currentWorkflow,
+              currentTaskIndex: nextIndex >= 0 ? nextIndex : currentWorkflow.currentTaskIndex,
+            };
+            const derived = computeProgressAndNavigation(updated);
+            set({ currentWorkflow: updated, workflowProgress: derived.progress, navigationState: derived.navigation, isLoading: false });
+            return;
+          }
+
           await taskWorkflowOrchestrator.moveToNextTask(currentWorkflow.id);
           const progress = taskWorkflowOrchestrator.getWorkflowProgress(currentWorkflow.id);
           const navigation = taskWorkflowOrchestrator.getNavigationState(currentWorkflow.id);
-          
-          // Update current workflow
-          const updatedWorkflow = taskWorkflowOrchestrator.getWorkflow(
-            currentWorkflow.userId, 
-            currentWorkflow.date
-          );
-          
-          set({
-            currentWorkflow: updatedWorkflow,
-            workflowProgress: progress,
-            navigationState: navigation,
-            isLoading: false
-          });
+          const updatedWorkflow = taskWorkflowOrchestrator.getWorkflow(currentWorkflow.userId, currentWorkflow.date);
+          set({ currentWorkflow: updatedWorkflow, workflowProgress: progress, navigationState: navigation, isLoading: false });
         } catch (error) {
           const workflowError = error as WorkflowError;
           set({ 
@@ -321,13 +391,15 @@ export const useWorkflowStore = create<WorkflowState>()(
         if (!currentWorkflow) return;
 
         try {
+          if (isServerWorkflowId(currentWorkflow.id)) {
+            const derived = computeProgressAndNavigation(currentWorkflow);
+            set({ workflowProgress: derived.progress, navigationState: derived.navigation });
+            return;
+          }
+
           const progress = taskWorkflowOrchestrator.getWorkflowProgress(currentWorkflow.id);
           const navigation = taskWorkflowOrchestrator.getNavigationState(currentWorkflow.id);
-          
-          set({
-            workflowProgress: progress,
-            navigationState: navigation
-          });
+          set({ workflowProgress: progress, navigationState: navigation });
         } catch (error) {
           console.warn('Failed to refresh workflow progress:', error);
         }

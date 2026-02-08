@@ -28,14 +28,14 @@ export const QualityMetricsDisplay: React.FC<QualityMetricsDisplayProps> = ({ me
   
   const metricItems = isNewMetrics ? [
     { label: 'Overall Quality', value: metrics.overall_score },
-    { label: 'Core Completeness', value: metrics.core_completeness || 0 },
+    { label: 'Brand Voice Accuracy', value: metrics.core_completeness || 0 },
     { label: 'Platform Consistency', value: metrics.platform_consistency || 0 },
     { label: 'Platform Optimization', value: metrics.platform_optimization || 0 },
     { label: 'Linguistic Quality', value: metrics.linguistic_quality || 0 }
   ] : [
     { label: 'Overall Quality', value: metrics.overall_score },
     { label: 'Style Consistency', value: metrics.style_consistency || 0 },
-    { label: 'Brand Alignment', value: metrics.brand_alignment || 0 },
+    { label: 'Brand Voice Accuracy', value: metrics.brand_alignment || 0 },
     { label: 'Platform Optimization', value: metrics.platform_optimization || 0 },
     { label: 'Engagement Potential', value: metrics.engagement_potential || 0 }
   ];

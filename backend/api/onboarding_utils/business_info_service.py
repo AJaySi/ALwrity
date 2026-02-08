@@ -19,9 +19,10 @@ class BusinessInfoService:
             from models.business_info_request import BusinessInfoRequest
             from services.business_info_service import business_info_service
             
-            logger.info(f"🔄 Saving business info for user_id: {business_info.user_id}")
-            result = business_info_service.save_business_info(business_info)
-            logger.success(f"✅ Business info saved successfully for user_id: {business_info.user_id}")
+            request_model = BusinessInfoRequest(**business_info)
+            logger.info(f"🔄 Saving business info for user_id: {request_model.user_id}")
+            result = business_info_service.save_business_info(request_model)
+            logger.success(f"✅ Business info saved successfully for user_id: {request_model.user_id}")
             return result
         except Exception as e:
             logger.error(f"❌ Error saving business info: {str(e)}")
@@ -46,7 +47,7 @@ class BusinessInfoService:
             logger.error(f"❌ Error getting business info: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to get business info: {str(e)}")
     
-    async def get_business_info_by_user(self, user_id: int) -> Dict[str, Any]:
+    async def get_business_info_by_user(self, user_id: str) -> Dict[str, Any]:
         """Get business information by user ID."""
         try:
             from services.business_info_service import business_info_service

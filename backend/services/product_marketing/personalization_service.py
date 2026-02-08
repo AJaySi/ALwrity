@@ -6,8 +6,8 @@ Extracts ALL onboarding data and provides personalized defaults for forms and re
 from typing import Dict, Any, Optional, List
 from loguru import logger
 
-from services.onboarding.database_service import OnboardingDatabaseService
 from services.database import SessionLocal
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 
 class PersonalizationService:
@@ -38,87 +38,37 @@ class PersonalizationService:
         """
         db = SessionLocal()
         try:
-            onboarding_db = OnboardingDatabaseService(db)
-            website_analysis = onboarding_db.get_website_analysis(user_id, db)
-            persona_data = onboarding_db.get_persona_data(user_id, db)
-            competitor_analyses = onboarding_db.get_competitor_analysis(user_id, db)
+            integration_service = OnboardingDataIntegrationService()
+            integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+            canonical_profile = integrated_data.get('canonical_profile', {})
             
+            # Map strictly from Canonical Profile
             preferences = {
-                "industry": None,
-                "target_audience": {},
-                "platform_preferences": [],
-                "content_preferences": [],
-                "style_preferences": {},
-                "brand_colors": [],
+                "industry": canonical_profile.get("industry"),
+                "target_audience": canonical_profile.get("target_audience", {}),
+                "platform_preferences": canonical_profile.get("platform_preferences", []),
+                "content_preferences": canonical_profile.get("content_types", []),
+                "style_preferences": canonical_profile.get("visual_style", {}),
+                "brand_colors": canonical_profile.get("brand_colors", []),
                 "recommended_templates": [],
                 "recommended_channels": [],
-                "writing_style": {},
-                "brand_values": [],
+                "writing_style": {
+                    "tone": canonical_profile.get("writing_tone", "professional"),
+                    "voice": canonical_profile.get("writing_voice", "authoritative"),
+                    "complexity": canonical_profile.get("writing_complexity", "intermediate"),
+                    "engagement_level": canonical_profile.get("writing_engagement", "moderate"),
+                },
+                "brand_values": canonical_profile.get("brand_values", []),
             }
             
-            # Extract from website_analysis
-            if website_analysis:
-                # Industry
-                target_audience = website_analysis.get("target_audience", {})
-                preferences["industry"] = target_audience.get("industry_focus")
-                
-                # Target audience
-                preferences["target_audience"] = {
-                    "demographics": target_audience.get("demographics", []),
-                    "expertise_level": target_audience.get("expertise_level", "intermediate"),
-                    "industry_focus": target_audience.get("industry_focus"),
-                }
-                
-                # Writing style
-                writing_style = website_analysis.get("writing_style", {})
-                preferences["writing_style"] = {
-                    "tone": writing_style.get("tone", "professional"),
-                    "voice": writing_style.get("voice", "authoritative"),
-                    "complexity": writing_style.get("complexity", "intermediate"),
-                    "engagement_level": writing_style.get("engagement_level", "moderate"),
-                }
-                
-                # Brand colors
-                brand_analysis = website_analysis.get("brand_analysis", {})
-                if brand_analysis:
-                    preferences["brand_colors"] = brand_analysis.get("color_palette", [])
-                    preferences["brand_values"] = brand_analysis.get("brand_values", [])
-                
-                # Style preferences
-                style_guidelines = website_analysis.get("style_guidelines", {})
-                if style_guidelines:
-                    preferences["style_preferences"] = {
-                        "aesthetic": style_guidelines.get("aesthetic", "modern"),
-                        "visual_style": style_guidelines.get("visual_style", "clean"),
-                    }
-            
-            # Extract from persona_data
-            if persona_data:
-                core_persona = persona_data.get("corePersona", {})
-                platform_personas = persona_data.get("platformPersonas", {})
-                selected_platforms = persona_data.get("selectedPlatforms", [])
-                
-                # Platform preferences from selected platforms
-                if selected_platforms:
-                    preferences["platform_preferences"] = selected_platforms
-                elif platform_personas:
-                    # Extract platforms from platform personas
-                    preferences["platform_preferences"] = list(platform_personas.keys())
-                
-                # Recommended channels based on platform personas
-                if platform_personas:
-                    # Prioritize platforms with active personas
-                    preferences["recommended_channels"] = list(platform_personas.keys())[:5]  # Top 5
-                
-                # Content preferences from persona
-                if core_persona:
-                    content_format_rules = core_persona.get("content_format_rules", {})
-                    if content_format_rules:
-                        preferred_formats = content_format_rules.get("preferred_formats", [])
-                        preferences["content_preferences"] = preferred_formats
-            
-            # Infer content preferences from industry
-            if preferences["industry"]:
+            # Ensure target_audience structure
+            if isinstance(preferences["target_audience"], dict):
+                ta = preferences["target_audience"]
+                if "industry_focus" not in ta and preferences["industry"]:
+                    ta["industry_focus"] = preferences["industry"]
+
+            # Infer content preferences from industry if missing (Business Rule)
+            if not preferences["content_preferences"] and preferences["industry"]:
                 industry_content_map = {
                     "ecommerce": ["product_images", "product_videos", "lifestyle_content"],
                     "saas": ["feature_highlights", "tutorials", "demo_videos"],

@@ -23,10 +23,12 @@ router = APIRouter(tags=["youtube-image"])
 logger = get_service_logger("api.youtube.image")
 
 # Directories
-base_dir = Path(__file__).parent.parent.parent.parent
-YOUTUBE_IMAGES_DIR = base_dir / "youtube_images"
+# api/youtube/handlers/images.py -> handlers -> youtube -> api -> backend -> root
+base_dir = Path(__file__).parent.parent.parent.parent.parent
+DATA_MEDIA_DIR = base_dir / "data" / "media"
+YOUTUBE_IMAGES_DIR = DATA_MEDIA_DIR / "youtube_images"
 YOUTUBE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-YOUTUBE_AVATARS_DIR = base_dir / "youtube_avatars"
+YOUTUBE_AVATARS_DIR = DATA_MEDIA_DIR / "youtube_avatars"
 
 # Thread pool for background image generation
 _image_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="youtube_image")

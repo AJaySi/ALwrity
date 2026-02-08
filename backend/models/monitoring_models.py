@@ -65,7 +65,7 @@ class StrategyPerformanceMetrics(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     strategy_id = Column(Integer, ForeignKey("enhanced_content_strategies.id"), nullable=False)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String(255), nullable=False)
     metric_date = Column(DateTime, default=datetime.utcnow)
     traffic_growth_percentage = Column(Integer, nullable=True)
     engagement_rate_percentage = Column(Integer, nullable=True)

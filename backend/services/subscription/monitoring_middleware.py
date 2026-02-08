@@ -18,6 +18,7 @@ import asyncio
 from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, case
+from sqlalchemy.exc import OperationalError
 import re
 
 from models.api_monitoring import APIRequest, APIEndpointStats, SystemHealth, CachePerformance
@@ -26,13 +27,7 @@ from .usage_tracking_service import UsageTrackingService
 from .pricing_service import PricingService
 
 
-def _get_db_session():
-    """
-    Get a database session with lazy import to survive hot reloads.
-    Uvicorn's reloader can sometimes clear module-level imports.
-    """
-    from services.database import get_db
-    return next(get_db())
+from services.database import get_session_for_user, init_user_database
 
 class DatabaseAPIMonitor:
     """Database-backed API monitoring with usage tracking and subscription management."""
@@ -158,7 +153,10 @@ async def check_usage_limits_middleware(request: Request, user_id: str, request_
     
     db = None
     try:
-        db = _get_db_session()
+        db = get_session_for_user(user_id)
+        if not db:
+            return None
+            
         api_monitor = DatabaseAPIMonitor()
         
         # Detect if this is an API call that should be rate limited
@@ -186,27 +184,39 @@ async def check_usage_limits_middleware(request: Request, user_id: str, request_
         
         # Check limits
         usage_service = UsageTrackingService(db)
-        can_proceed, message, usage_info = await usage_service.enforce_usage_limits(
-            user_id=user_id,
-            provider=api_provider,
-            tokens_requested=tokens_requested
-        )
-        
-        if not can_proceed:
-            logger.warning(f"Usage limit exceeded for {user_id}: {message}")
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "error": "Usage limit exceeded",
-                    "message": message,
-                    "usage_info": usage_info,
-                    "provider": api_provider.value
-                }
+        try:
+            can_proceed, message, usage_info = await usage_service.enforce_usage_limits(
+                user_id=user_id,
+                provider=api_provider,
+                tokens_requested=tokens_requested
             )
-        
-        # Warn if approaching limits
-        if usage_info.get('call_usage_percentage', 0) >= 80 or usage_info.get('cost_usage_percentage', 0) >= 80:
-            logger.warning(f"User {user_id} approaching usage limits: {usage_info}")
+            
+            if not can_proceed:
+                logger.warning(f"Usage limit exceeded for {user_id}: {message}")
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": "Usage limit exceeded",
+                        "message": message,
+                        "usage_info": usage_info,
+                        "provider": api_provider.value
+                    }
+                )
+            
+            # Warn if approaching limits
+            if usage_info.get('call_usage_percentage', 0) >= 80 or usage_info.get('cost_usage_percentage', 0) >= 80:
+                logger.warning(f"User {user_id} approaching usage limits: {usage_info}")
+                
+        except OperationalError as e:
+            if "no such table" in str(e):
+                logger.warning(f"Tables missing for user {user_id}, attempting initialization...")
+                try:
+                    init_user_database(user_id)
+                    # Don't retry immediately to avoid loops, just let this request pass
+                except Exception as init_error:
+                    logger.error(f"Failed to initialize database for user {user_id}: {init_error}")
+            else:
+                raise e
         
         return None
         
@@ -221,9 +231,6 @@ async def check_usage_limits_middleware(request: Request, user_id: str, request_
 async def monitoring_middleware(request: Request, call_next):
     """Enhanced FastAPI middleware for monitoring API calls with usage tracking."""
     start_time = time.time()
-    
-    # Get database session
-    db = _get_db_session()
     
     # Extract request details - Enhanced user identification
     user_id = None
@@ -252,16 +259,17 @@ async def monitoring_middleware(request: Request, call_next):
             # Auth middleware should have set request.state.user_id
             # If not, this indicates an authentication failure (likely expired token)
             # Log at debug level to reduce noise - expired tokens are expected
-            user_id = None
-            logger.debug("Monitoring: Auth header present but no user_id in state - token likely expired")
+            # But we can try to decode token if we really needed to, but let's rely on auth middleware
+            pass
         
-        # Final fallback: None (skip usage limits for truly anonymous/unauthenticated)
-        else:
-            user_id = None
-            
     except Exception as e:
         logger.debug(f"Error extracting user ID: {e}")
-        user_id = None  # On error, skip usage limits
+        user_id = None
+    
+    # Get database session if user identified
+    db = None
+    if user_id:
+        db = get_session_for_user(user_id)
     
     # Capture request body for usage tracking (read once, safely)
     request_body = None
@@ -285,6 +293,7 @@ async def monitoring_middleware(request: Request, call_next):
     # Check usage limits before processing
     limit_response = await check_usage_limits_middleware(request, user_id, request_body)
     if limit_response:
+        if db: db.close()
         return limit_response
     
     try:
@@ -312,25 +321,33 @@ async def monitoring_middleware(request: Request, call_next):
                 usage_metrics = api_monitor.extract_usage_metrics(request_body, response_body)
                 
                 # Track usage with the usage tracking service
-                usage_service = UsageTrackingService(db)
-                await usage_service.track_api_usage(
-                    user_id=user_id,
-                    provider=api_provider,
-                    endpoint=request.url.path,
-                    method=request.method,
-                    model_used=usage_metrics.get('model_used'),
-                    tokens_input=usage_metrics.get('tokens_input', 0),
-                    tokens_output=usage_metrics.get('tokens_output', 0),
-                    response_time=duration,
-                    status_code=status_code,
-                    request_size=len(request_body) if request_body else None,
-                    response_size=len(response_body) if response_body else None,
-                    user_agent=request.headers.get('user-agent'),
-                    ip_address=request.client.host if request.client else None,
-                    search_count=usage_metrics.get('search_count', 0),
-                    image_count=usage_metrics.get('image_count', 0),
-                    page_count=usage_metrics.get('page_count', 0)
-                )
+                if db:
+                    usage_service = UsageTrackingService(db)
+                    await usage_service.track_api_usage(
+                        user_id=user_id,
+                        provider=api_provider,
+                        endpoint=request.url.path,
+                        method=request.method,
+                        model_used=usage_metrics.get('model_used'),
+                        tokens_input=usage_metrics.get('tokens_input', 0),
+                        tokens_output=usage_metrics.get('tokens_output', 0),
+                        response_time=duration,
+                        status_code=status_code,
+                        request_size=len(request_body) if request_body else None,
+                        response_size=len(response_body) if response_body else None,
+                        user_agent=request.headers.get('user-agent'),
+                        ip_address=request.client.host if request.client else None,
+                        search_count=usage_metrics.get('search_count', 0),
+                        image_count=usage_metrics.get('image_count', 0),
+                        page_count=usage_metrics.get('page_count', 0)
+                    )
+            except OperationalError as e:
+                if "no such table" in str(e):
+                    # Tables missing, try to init (might happen if check_usage_limits was skipped or passed)
+                    try:
+                         init_user_database(user_id)
+                    except:
+                        pass
             except Exception as usage_error:
                 logger.error(f"Error tracking API usage: {usage_error}")
                 # Don't fail the main request if usage tracking fails
@@ -341,6 +358,19 @@ async def monitoring_middleware(request: Request, call_next):
         duration = time.time() - start_time
         status_code = 500
         
+        # Check for missing tables and try to self-heal
+        if "no such table" in str(e) and user_id:
+            logger.warning(f"Tables missing for user {user_id} during request processing, attempting initialization...")
+            try:
+                init_user_database(user_id)
+                logger.info(f"Database initialized for user {user_id}. Request failed but next should succeed.")
+                return JSONResponse(
+                    status_code=503, # Service Unavailable (temporary)
+                    content={"error": "Database initialized. Please retry request."}
+                )
+            except Exception as init_error:
+                logger.error(f"Failed to initialize database for user {user_id}: {init_error}")
+
         # Store minimal error info
         logger.error(f"API Error: {request.method} {request.url.path} - {str(e)}")
         
@@ -349,36 +379,40 @@ async def monitoring_middleware(request: Request, call_next):
             content={"error": "Internal server error"}
         )
     finally:
-        db.close()
+        if db:
+            db.close()
 
 async def get_monitoring_stats(minutes: int = 5) -> Dict[str, Any]:
     """Get current monitoring statistics."""
-    db = None
-    try:
-        db = _get_db_session()
-        # Placeholder to match old API; heavy stats handled elsewhere
-        return {
-            'timestamp': datetime.utcnow().isoformat(),
-            'overview': {
-                'recent_requests': 0,
-                'recent_errors': 0,
-            },
-            'cache_performance': {'hits': 0, 'misses': 0, 'hit_rate': 0.0},
-            'recent_errors': [],
-            'system_health': {'status': 'healthy', 'error_rate': 0.0}
-        }
-    finally:
-        if db is not None:
-            db.close()
+    # Placeholder to match old API; heavy stats handled elsewhere
+    return {
+        'timestamp': datetime.utcnow().isoformat(),
+        'overview': {
+            'recent_requests': 0,
+            'recent_errors': 0,
+        },
+        'cache_performance': {'hits': 0, 'misses': 0, 'hit_rate': 0.0},
+        'recent_errors': [],
+        'system_health': {'status': 'healthy', 'error_rate': 0.0}
+    }
 
-async def get_lightweight_stats() -> Dict[str, Any]:
+async def get_lightweight_stats(user_id: str) -> Dict[str, Any]:
     """Get lightweight stats for dashboard header.
     
     Optimized single-query approach using conditional aggregation for better performance.
     """
     db = None
     try:
-        db = _get_db_session()
+        db = get_session_for_user(user_id)
+        if not db:
+             return {
+                'status': 'unknown',
+                'icon': '⚪',
+                'recent_requests': 0,
+                'recent_errors': 0,
+                'error_rate': 0.0,
+                'timestamp': datetime.utcnow().isoformat()
+            }
         now = datetime.utcnow()
         
         # Get stats from last 5 minutes
@@ -419,6 +453,23 @@ async def get_lightweight_stats() -> Dict[str, Any]:
             'recent_errors': recent_errors,
             'error_rate': round(error_rate, 2),
             'timestamp': now.isoformat()
+        }
+    except OperationalError as e:
+        if "no such table" in str(e):
+            logger.warning(f"Tables missing for user {user_id} in lightweight stats, attempting initialization...")
+            try:
+                init_user_database(user_id)
+            except Exception as init_error:
+                logger.error(f"Failed to initialize database for user {user_id}: {init_error}")
+        
+        # Return default healthy state on error/missing table
+        return {
+            'status': 'healthy',
+            'icon': '🟢',
+            'recent_requests': 0,
+            'recent_errors': 0,
+            'error_rate': 0.0,
+            'timestamp': datetime.utcnow().isoformat()
         }
     except Exception as e:
         logger.error(f"Error getting lightweight stats: {e}", exc_info=True)

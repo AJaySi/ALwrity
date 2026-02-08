@@ -9,10 +9,10 @@ from loguru import logger
 
 from services.onboarding.api_key_manager import get_api_key_manager
 from services.database import get_db
-from services.onboarding.database_service import OnboardingDatabaseService
 from services.website_analysis_service import WebsiteAnalysisService
 from services.research_preferences_service import ResearchPreferencesService
 from services.persona_analysis_service import PersonaAnalysisService
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 class OnboardingSummaryService:
     """Service for handling onboarding summary generation with user isolation."""
@@ -25,21 +25,27 @@ class OnboardingSummaryService:
             user_id: Clerk user ID from authenticated request
         """
         self.user_id = user_id  # Store Clerk user ID (string)
-        self.db_service = OnboardingDatabaseService()
+        self.integration_service = OnboardingDataIntegrationService()
         
-        logger.info(f"OnboardingSummaryService initialized for user {user_id} (database mode)")
+        logger.info(f"OnboardingSummaryService initialized for user {user_id} (SSOT mode)")
     
     async def get_onboarding_summary(self) -> Dict[str, Any]:
         """Get comprehensive onboarding summary for FinalStep."""
         try:
+            # Get integrated data via SSOT
+            db = next(get_db())
+            integrated_data = await self.integration_service.process_onboarding_data(self.user_id, db)
+            db.close()
+            
+            # Extract components from integrated data
+            website_analysis = integrated_data.get('website_analysis', {})
+            research_preferences = integrated_data.get('research_preferences', {})
+            persona_data = integrated_data.get('persona_data', {})
+            canonical_profile = integrated_data.get('canonical_profile', {})
+            api_keys_data = integrated_data.get('api_keys_data', {})
+            
             # Get API keys
-            api_keys = self._get_api_keys()
-            
-            # Get website analysis data
-            website_analysis = self._get_website_analysis()
-            
-            # Get research preferences
-            research_preferences = self._get_research_preferences()
+            api_keys = self._get_api_keys(api_keys_data)
             
             # Get personalization settings
             personalization_settings = self._get_personalization_settings(research_preferences)
@@ -57,22 +63,19 @@ class OnboardingSummaryService:
                 "research_preferences": research_preferences,
                 "personalization_settings": personalization_settings,
                 "persona_readiness": persona_readiness,
-                "integrations": {},  # TODO: Implement integrations data
-                "capabilities": capabilities
+                "integrations": {},
+                "capabilities": capabilities,
+                "canonical_profile": canonical_profile
             }
             
         except Exception as e:
             logger.error(f"Error getting onboarding summary: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    def _get_api_keys(self) -> Dict[str, Any]:
-        """Get configured API keys from database."""
+    def _get_api_keys(self, api_keys_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get configured API keys from integrated data."""
         try:
-            db = next(get_db())
-            api_keys = self.db_service.get_api_keys(self.user_id, db)
-            db.close()
-            
-            if not api_keys:
+            if not api_keys_data:
                 return {
                     "openai": {"configured": False, "value": None},
                     "anthropic": {"configured": False, "value": None},
@@ -81,16 +84,16 @@ class OnboardingSummaryService:
             
             return {
                 "openai": {
-                    "configured": bool(api_keys.get('openai_api_key')),
-                    "value": api_keys.get('openai_api_key')[:8] + "..." if api_keys.get('openai_api_key') else None
+                    "configured": bool(api_keys_data.get('openai_api_key')),
+                    "value": api_keys_data.get('openai_api_key')[:8] + "..." if api_keys_data.get('openai_api_key') else None
                 },
                 "anthropic": {
-                    "configured": bool(api_keys.get('anthropic_api_key')),
-                    "value": api_keys.get('anthropic_api_key')[:8] + "..." if api_keys.get('anthropic_api_key') else None
+                    "configured": bool(api_keys_data.get('anthropic_api_key')),
+                    "value": api_keys_data.get('anthropic_api_key')[:8] + "..." if api_keys_data.get('anthropic_api_key') else None
                 },
                 "google": {
-                    "configured": bool(api_keys.get('google_api_key')),
-                    "value": api_keys.get('google_api_key')[:8] + "..." if api_keys.get('google_api_key') else None
+                    "configured": bool(api_keys_data.get('google_api_key')),
+                    "value": api_keys_data.get('google_api_key')[:8] + "..." if api_keys_data.get('google_api_key') else None
                 }
             }
         except Exception as e:
@@ -100,40 +103,6 @@ class OnboardingSummaryService:
                 "anthropic": {"configured": False, "value": None},
                 "google": {"configured": False, "value": None}
             }
-    
-    def _get_website_analysis(self) -> Optional[Dict[str, Any]]:
-        """Get website analysis data from database."""
-        try:
-            db = next(get_db())
-            website_data = self.db_service.get_website_analysis(self.user_id, db)
-            db.close()
-            return website_data
-        except Exception as e:
-            logger.error(f"Error getting website analysis: {str(e)}")
-            return None
-    
-    async def get_website_analysis_data(self) -> Dict[str, Any]:
-        """Get website analysis data for API endpoint."""
-        try:
-            website_analysis = self._get_website_analysis()
-            return {
-                "website_analysis": website_analysis,
-                "status": "success" if website_analysis else "no_data"
-            }
-        except Exception as e:
-            logger.error(f"Error in get_website_analysis_data: {str(e)}")
-            raise e
-    
-    def _get_research_preferences(self) -> Optional[Dict[str, Any]]:
-        """Get research preferences from database."""
-        try:
-            db = next(get_db())
-            preferences = self.db_service.get_research_preferences(self.user_id, db)
-            db.close()
-            return preferences
-        except Exception as e:
-            logger.error(f"Error getting research preferences: {str(e)}")
-            return None
     
     def _get_personalization_settings(self, research_preferences: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Get personalization settings based on research preferences."""

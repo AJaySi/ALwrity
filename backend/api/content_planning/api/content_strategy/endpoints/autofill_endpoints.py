@@ -54,7 +54,7 @@ async def accept_autofill_inputs(
     """Persist end-user accepted auto-fill inputs and associate with the strategy."""
     try:
         logger.info(f"🚀 Accepting autofill inputs for strategy: {strategy_id}")
-        user_id = int(payload.get('user_id') or 1)
+        user_id = str(payload.get('user_id') or "")
         accepted_fields = payload.get('accepted_fields') or {}
         # Optional transparency bundles
         sources = payload.get('sources') or {}

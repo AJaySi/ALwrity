@@ -58,11 +58,11 @@ class EnhancedStrategyDBService:
             logger.error(f"Error getting enhanced strategy: {str(e)}")
             raise
     
-    async def get_enhanced_strategies_by_user(self, user_id: int) -> List[EnhancedContentStrategy]:
+    async def get_enhanced_strategies_by_user(self, user_id: str) -> List[EnhancedContentStrategy]:
         """Get all enhanced strategies for a user."""
         try:
             strategies = self.db.query(EnhancedContentStrategy).filter(
-                EnhancedContentStrategy.user_id == user_id
+                EnhancedContentStrategy.user_id == str(user_id)
             ).order_by(desc(EnhancedContentStrategy.created_at)).all()
             
             # Calculate completion percentage for each strategy
@@ -124,14 +124,14 @@ class EnhancedStrategyDBService:
             self.db.rollback()
             raise
     
-    async def get_enhanced_strategies_with_analytics(self, user_id: Optional[int] = None, strategy_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def get_enhanced_strategies_with_analytics(self, user_id: Optional[str] = None, strategy_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get enhanced strategies with comprehensive analytics and AI analysis."""
         try:
             # Build base query
             query = self.db.query(EnhancedContentStrategy)
             
             if user_id:
-                query = query.filter(EnhancedContentStrategy.user_id == user_id)
+                query = query.filter(EnhancedContentStrategy.user_id == str(user_id))
             
             if strategy_id:
                 query = query.filter(EnhancedContentStrategy.id == strategy_id)

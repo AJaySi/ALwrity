@@ -25,6 +25,7 @@ from models.content_asset_models import AssetType, AssetSource
 from utils.logger_utils import get_service_logger
 from utils.asset_tracker import save_asset_to_library
 from services.story_writer.video_generation_service import StoryVideoGenerationService
+from services.user_workspace_manager import UserWorkspaceManager
 from .task_manager import task_manager
 from .handlers import avatar as avatar_handlers
 from .handlers import images as image_handlers
@@ -34,13 +35,16 @@ router = APIRouter(prefix="/youtube", tags=["youtube"])
 logger = get_service_logger("api.youtube")
 
 # Video output and image directories
-base_dir = Path(__file__).parent.parent.parent.parent
-YOUTUBE_VIDEO_DIR = base_dir / "youtube_videos"
-YOUTUBE_VIDEO_DIR.mkdir(parents=True, exist_ok=True)
-YOUTUBE_AVATARS_DIR = base_dir / "youtube_avatars"
-YOUTUBE_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
-YOUTUBE_IMAGES_DIR = base_dir / "youtube_images"
-YOUTUBE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+# api/youtube/router.py -> youtube -> api -> backend -> root
+base_dir = Path(__file__).resolve().parents[3]
+DATA_MEDIA_DIR = base_dir / "workspace" / "media"
+YOUTUBE_VIDEO_DIR = DATA_MEDIA_DIR / "youtube_videos"
+YOUTUBE_AVATARS_DIR = DATA_MEDIA_DIR / "youtube_avatars"
+YOUTUBE_IMAGES_DIR = DATA_MEDIA_DIR / "youtube_images"
+
+# Ensure directories exist
+for directory in [YOUTUBE_VIDEO_DIR, YOUTUBE_AVATARS_DIR, YOUTUBE_IMAGES_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
 
 # Include sub-routers for avatar, images, and audio
 router.include_router(avatar_handlers.router)
@@ -820,6 +824,11 @@ def _execute_video_render_task(
         )
         return
     
+    # Create DB session for workspace resolution
+    from services.database import get_db
+    db_gen = get_db()
+    db = next(db_gen)
+    
     try:
         task_manager.update_task_status(
             task_id, "processing", progress=5.0, message="Initializing render..."
@@ -892,6 +901,7 @@ def _execute_video_render_task(
                     resolution=resolution,
                     generate_audio_enabled=True,
                     voice_id=voice_id,
+                    db=db,
                 )
                 
                 scene_results.append(scene_result)
@@ -899,35 +909,30 @@ def _execute_video_render_task(
                 
                 # Save to asset library
                 try:
-                    from services.database import get_db
-                    db = next(get_db())
-                    try:
-                        save_asset_to_library(
-                            db=db,
-                            user_id=user_id,
-                            asset_type="video",
-                            source_module="youtube_creator",
-                            filename=scene_result["video_filename"],
-                            file_url=scene_result["video_url"],
-                            file_path=scene_result["video_path"],
-                            file_size=scene_result["file_size"],
-                            mime_type="video/mp4",
-                            title=f"YouTube Scene {scene_num}: {scene.get('title', 'Untitled')}",
-                            description=f"Scene {scene_num} from YouTube video",
-                            prompt=scene.get("visual_prompt", ""),
-                            tags=["youtube_creator", "video", "scene", f"scene_{scene_num}", resolution],
-                            provider="wavespeed",
-                            model="alibaba/wan-2.5/text-to-video",
-                            cost=scene_result["cost"],
-                            asset_metadata={
-                                "scene_number": scene_num,
-                                "duration": scene_result["duration"],
-                                "resolution": resolution,
-                                "status": "completed"
-                            }
-                        )
-                    finally:
-                        db.close()
+                    save_asset_to_library(
+                        db=db,
+                        user_id=user_id,
+                        asset_type="video",
+                        source_module="youtube_creator",
+                        filename=scene_result["video_filename"],
+                        file_url=scene_result["video_url"],
+                        file_path=scene_result["video_path"],
+                        file_size=scene_result["file_size"],
+                        mime_type="video/mp4",
+                        title=f"YouTube Scene {scene_num}: {scene.get('title', 'Untitled')}",
+                        description=f"Scene {scene_num} from YouTube video",
+                        prompt=scene.get("visual_prompt", ""),
+                        tags=["youtube_creator", "video", "scene", f"scene_{scene_num}", resolution],
+                        provider="wavespeed",
+                        model="alibaba/wan-2.5/text-to-video",
+                        cost=scene_result["cost"],
+                        asset_metadata={
+                            "scene_number": scene_num,
+                            "duration": scene_result["duration"],
+                            "resolution": resolution,
+                            "status": "completed"
+                        }
+                    )
                 except Exception as e:
                     logger.warning(f"[YouTubeRenderer] Failed to save scene to library: {e}")
                 
@@ -1070,6 +1075,7 @@ def _execute_video_render_task(
                 resolution=resolution,
                 combine_scenes=True,
                 voice_id=voice_id,
+                db=db,
             )
             
             final_video_url = combined_result.get("final_video_url")
@@ -1132,6 +1138,9 @@ def _execute_video_render_task(
             error=error_msg,
             message=f"Video rendering error: {error_msg}",
         )
+    finally:
+        if 'db' in locals():
+            db.close()
 
 
 def _execute_scene_video_render_task(
@@ -1156,6 +1165,11 @@ def _execute_scene_video_render_task(
         )
         return
 
+    # Create DB session for workspace resolution
+    from services.database import get_db
+    db_gen = get_db()
+    db = next(db_gen)
+
     try:
         task_manager.update_task_status(
             task_id, "processing", progress=5.0, message=f"Rendering scene {scene_num}..."
@@ -1170,6 +1184,7 @@ def _execute_scene_video_render_task(
             resolution=resolution,
             generate_audio_enabled=generate_audio_enabled,
             voice_id=voice_id,
+            db=db,
         )
 
         total_cost = scene_result.get("cost", 0.0) or 0.0
@@ -1229,6 +1244,9 @@ def _execute_scene_video_render_task(
             error=error_msg,
             message=f"Scene {scene_num} rendering error: {error_msg}",
         )
+    finally:
+        if 'db' in locals():
+            db.close()
 
 
 @router.post("/render/combine", response_model=CombineVideosResponse)
@@ -1398,19 +1416,50 @@ def _execute_combine_video_task(
         logger.error(f"[YouTubeRenderer] Task {task_id} not found when combine task started.")
         return
 
-    base_dir = Path(__file__).parent.parent.parent.parent
-    youtube_video_dir = base_dir / "youtube_videos"
+    # Create DB session for workspace resolution
+    from services.database import get_db
+    from services.user_workspace_manager import UserWorkspaceManager
+    
+    db_gen = get_db()
+    db = next(db_gen)
 
     try:
         task_manager.update_task_status(
             task_id, "processing", progress=5.0, message="Preparing to combine videos..."
         )
 
+        # Resolve user workspace directory
+        workspace_manager = UserWorkspaceManager(db)
+        workspace_info = workspace_manager.get_user_workspace(user_id)
+        
+        if workspace_info and workspace_info.get('workspace_path'):
+            user_video_dir = Path(workspace_info['workspace_path']) / "content" / "videos"
+            if not user_video_dir.exists():
+                user_video_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            # Fallback to default directory
+            base_dir = Path(__file__).parent.parent.parent.parent
+            user_video_dir = base_dir / "youtube_videos"
+            logger.warning(f"Workspace not found for user {user_id}, using default directory: {user_video_dir}")
+
+        # Fallback directory (legacy global directory) for backward compatibility
+        base_dir = Path(__file__).parent.parent.parent.parent
+        legacy_video_dir = base_dir / "youtube_videos"
+
         # Resolve video paths from URLs
         video_paths: List[Path] = []
         for url in scene_video_urls:
             filename = Path(url).name
-            video_path = youtube_video_dir / filename
+            
+            # Check user directory first
+            video_path = user_video_dir / filename
+            
+            # If not found, check legacy directory
+            if not video_path.exists():
+                legacy_path = legacy_video_dir / filename
+                if legacy_path.exists():
+                    video_path = legacy_path
+                    
             if not video_path.exists():
                 logger.error(f"[YouTubeRenderer] Video file not found for combine: {video_path}")
                 raise HTTPException(
@@ -1426,7 +1475,8 @@ def _execute_combine_video_task(
             task_id, "processing", progress=25.0, message="Combining scene videos..."
         )
 
-        video_service = StoryVideoGenerationService(output_dir=str(youtube_video_dir))
+        # Use user video directory for output
+        video_service = StoryVideoGenerationService(output_dir=str(user_video_dir))
         combined_result = video_service.generate_story_video(
             scenes=[
                 {"scene_number": idx + 1, "title": f"Scene {idx + 1}"}
@@ -1448,34 +1498,30 @@ def _execute_combine_video_task(
         final_url = combined_result["video_url"]
         file_size = combined_result.get("file_size", 0)
 
-        # Save to asset library
+        # Save to asset library using existing db session
         try:
-            db = next(get_db())
-            try:
-                save_asset_to_library(
-                    db=db,
-                    user_id=user_id,
-                    asset_type="video",
-                    source_module="youtube_creator",
-                    filename=Path(final_path).name,
-                    file_url=final_url,
-                    file_path=str(final_path),
-                    file_size=file_size,
-                    mime_type="video/mp4",
-                    title=title or "YouTube Video",
-                    description="Combined YouTube creator video",
-                    tags=["youtube_creator", "video", "combined", resolution],
-                    provider="wavespeed",
-                    model="alibaba/wan-2.5/text-to-video",
-                    cost=0.0,
-                    asset_metadata={
-                        "resolution": resolution,
-                        "status": "completed",
-                        "scene_count": len(video_paths),
-                    },
-                )
-            finally:
-                db.close()
+            save_asset_to_library(
+                db=db,
+                user_id=user_id,
+                asset_type="video",
+                source_module="youtube_creator",
+                filename=Path(final_path).name,
+                file_url=final_url,
+                file_path=str(final_path),
+                file_size=file_size,
+                mime_type="video/mp4",
+                title=title or "YouTube Video",
+                description="Combined YouTube creator video",
+                tags=["youtube_creator", "video", "combined", resolution],
+                provider="wavespeed",
+                model="alibaba/wan-2.5/text-to-video",
+                cost=0.0,
+                asset_metadata={
+                    "resolution": resolution,
+                    "status": "completed",
+                    "scene_count": len(video_paths),
+                },
+            )
         except Exception as e:
             logger.warning(f"[YouTubeRenderer] Failed to save combined video to asset library: {e}")
 
@@ -1516,6 +1562,9 @@ def _execute_combine_video_task(
             error=error_msg,
             message=f"Combine error: {error_msg}",
         )
+    finally:
+        if 'db' in locals():
+            db.close()
 
 
 @router.post("/estimate-cost", response_model=CostEstimateResponse)

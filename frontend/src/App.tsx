@@ -47,6 +47,7 @@ import ResearchDashboard from './pages/ResearchDashboard';
 import IntentResearchTest from './pages/IntentResearchTest';
 import SchedulerDashboard from './pages/SchedulerDashboard';
 import BillingPage from './pages/BillingPage';
+import ApprovalsPage from './pages/ApprovalsPage';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
 import Landing from './components/Landing/Landing';
@@ -103,19 +104,37 @@ const InitialRouteHandler: React.FC = () => {
   // Check subscription on mount (non-blocking - don't wait for it to route)
   useEffect(() => {
     // Delay subscription check slightly to allow auth token getter to be installed first
-    const timeoutId = setTimeout(() => {
-      checkSubscription().catch((err) => {
-        console.error('Error checking subscription (non-blocking):', err);
-        
-        // Check if it's a connection error - handle it locally
-        if (err instanceof Error && (err.name === 'NetworkError' || err.name === 'ConnectionError')) {
-          setConnectionError({
-            hasError: true,
-            error: err,
-          });
+    const timeoutId = setTimeout(async () => {
+      // Retry logic for initial subscription check
+      const maxRetries = 3;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          await checkSubscription();
+          break; // Success
+        } catch (err) {
+          console.error(`App: Subscription check attempt ${attempt + 1} failed:`, err);
+          
+          // If it's a connection error and we have retries left, wait and retry
+          const isConnectionError = err instanceof Error && (err.name === 'NetworkError' || err.name === 'ConnectionError');
+          
+          if (isConnectionError && attempt < maxRetries - 1) {
+             const delay = 1000 * Math.pow(2, attempt); // 1s, 2s
+             await new Promise(resolve => setTimeout(resolve, delay));
+             continue;
+          }
+          
+          // If final attempt or not a connection error, handle it
+          if (attempt === maxRetries - 1 || !isConnectionError) {
+             if (isConnectionError) {
+               setConnectionError({
+                 hasError: true,
+                 error: err as Error,
+               });
+             }
+             // Don't block routing on other errors
+          }
         }
-        // Don't block routing on subscription check errors - allow graceful degradation
-      });
+      }
     }, 100); // Small delay to ensure TokenInstaller has run
     
     return () => clearTimeout(timeoutId);
@@ -513,6 +532,7 @@ const App: React.FC = () => {
                 <Route path="/product-marketing" element={<Navigate to="/campaign-creator" replace />} />
                 <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
+                <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/research-test" element={<ResearchDashboard />} />
                 <Route path="/research-dashboard" element={<ResearchDashboard />} />

@@ -16,8 +16,10 @@ from loguru import logger
 import os
 import time
 
-# Logging configuration
-LOG_BASE_DIR = "logs"
+# Logging configuration - Store in root workspace to avoid uvicorn reloads
+# backend/middleware/logging_middleware.py -> middleware -> backend -> root
+ROOT_DIR = Path(__file__).parent.parent.parent
+LOG_BASE_DIR = ROOT_DIR / "workspace" / "logs"
 os.makedirs(LOG_BASE_DIR, exist_ok=True)
 
 # Ensure subdirectories exist

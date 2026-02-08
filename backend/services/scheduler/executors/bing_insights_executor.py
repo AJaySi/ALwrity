@@ -15,6 +15,7 @@ from ..core.exception_handler import TaskExecutionError, DatabaseError, Schedule
 from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
 from services.integrations.bing_oauth import BingOAuthService
+from services.database import get_user_db_path
 from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("bing_insights_executor")
@@ -34,8 +35,6 @@ class BingInsightsExecutor(TaskExecutor):
     def __init__(self):
         self.logger = logger
         self.exception_handler = SchedulerExceptionHandler()
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///alwrity.db')
-        self.storage_service = BingAnalyticsStorageService(database_url)
         self.bing_oauth = BingOAuthService()
     
     async def execute_task(self, task: PlatformInsightsTask, db: Session) -> TaskExecutionResult:
@@ -53,6 +52,11 @@ class BingInsightsExecutor(TaskExecutor):
         user_id = task.user_id
         site_url = task.site_url
         
+        # Initialize storage service for this user
+        db_path = get_user_db_path(user_id)
+        database_url = f'sqlite:///{db_path}'
+        storage_service = BingAnalyticsStorageService(database_url)
+        
         try:
             self.logger.info(
                 f"Executing Bing insights fetch: task_id={task.id} | "
@@ -69,7 +73,7 @@ class BingInsightsExecutor(TaskExecutor):
             db.flush()
             
             # Fetch insights
-            result = await self._fetch_insights(task, db)
+            result = await self._fetch_insights(task, db, storage_service)
             
             # Update execution log
             execution_time_ms = int((time.time() - start_time) * 1000)
@@ -184,7 +188,7 @@ class BingInsightsExecutor(TaskExecutor):
             
             return error_result
     
-    async def _fetch_insights(self, task: PlatformInsightsTask, db: Session) -> TaskExecutionResult:
+    async def _fetch_insights(self, task: PlatformInsightsTask, db: Session, storage_service: BingAnalyticsStorageService) -> TaskExecutionResult:
         """
         Fetch Bing insights data.
         
@@ -201,7 +205,7 @@ class BingInsightsExecutor(TaskExecutor):
             if is_first_run:
                 # First run: Try to load from cache
                 self.logger.info(f"First run for Bing insights task {task.id} - loading cached data")
-                cached_data = self._load_cached_data(user_id, site_url)
+                cached_data = self._load_cached_data(user_id, site_url, storage_service)
                 
                 if cached_data:
                     self.logger.info(f"Loaded cached Bing data for user {user_id}")
@@ -216,11 +220,11 @@ class BingInsightsExecutor(TaskExecutor):
                 else:
                     # No cached data - try to fetch from API
                     self.logger.info(f"No cached data found, fetching from Bing API")
-                    return await self._fetch_fresh_data(user_id, site_url)
+                    return await self._fetch_fresh_data(user_id, site_url, storage_service)
             else:
                 # Subsequent run: Always fetch fresh data
                 self.logger.info(f"Subsequent run for Bing insights task {task.id} - fetching fresh data")
-                return await self._fetch_fresh_data(user_id, site_url)
+                return await self._fetch_fresh_data(user_id, site_url, storage_service)
                 
         except Exception as e:
             self.logger.error(f"Error fetching Bing insights for user {user_id}: {e}", exc_info=True)
@@ -230,11 +234,11 @@ class BingInsightsExecutor(TaskExecutor):
                 result_data={'error': str(e)}
             )
     
-    def _load_cached_data(self, user_id: str, site_url: Optional[str]) -> Optional[Dict[str, Any]]:
+    def _load_cached_data(self, user_id: str, site_url: Optional[str], storage_service: BingAnalyticsStorageService) -> Optional[Dict[str, Any]]:
         """Load most recent cached Bing data from database."""
         try:
             # Get analytics summary from storage service
-            summary = self.storage_service.get_analytics_summary(
+            summary = storage_service.get_analytics_summary(
                 user_id=user_id,
                 site_url=site_url or '',
                 days=30
@@ -250,7 +254,7 @@ class BingInsightsExecutor(TaskExecutor):
             self.logger.warning(f"Error loading cached Bing data: {e}")
             return None
     
-    async def _fetch_fresh_data(self, user_id: str, site_url: Optional[str]) -> TaskExecutionResult:
+    async def _fetch_fresh_data(self, user_id: str, site_url: Optional[str], storage_service: BingAnalyticsStorageService) -> TaskExecutionResult:
         """Fetch fresh Bing insights from API."""
         try:
             # Check if user has active tokens
@@ -288,7 +292,7 @@ class BingInsightsExecutor(TaskExecutor):
             
             # For now, use stored analytics data (Bing API integration can be added later)
             # This ensures we have data available even if the API class doesn't exist yet
-            summary = self.storage_service.get_analytics_summary(user_id, site_url, days=30)
+            summary = storage_service.get_analytics_summary(user_id, site_url, days=30)
             
             if summary and isinstance(summary, dict):
                 # Format insights data from stored analytics

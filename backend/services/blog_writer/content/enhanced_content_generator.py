@@ -22,7 +22,7 @@ class EnhancedContentGenerator:
         self.transitioner = TransitionGenerator()
         self.flow = FlowAnalyzer()
 
-    async def generate_section(self, section: Any, research: Any, mode: str = "polished") -> Dict[str, Any]:
+    async def generate_section(self, section: Any, research: Any, mode: str = "polished", user_id: str = None) -> Dict[str, Any]:
         prev_summary = self.memory.build_previous_sections_summary(limit=2)
         urls = self.url_manager.pick_relevant_urls(section, research)
         prompt = self._build_prompt(section, research, prev_summary, urls)
@@ -33,6 +33,7 @@ class EnhancedContentGenerator:
                 prompt=prompt,
                 json_struct=None,
                 system_prompt=None,
+                user_id=user_id
             )
             if isinstance(ai_resp, dict) and ai_resp.get("text"):
                 content_text = ai_resp.get("text", "")

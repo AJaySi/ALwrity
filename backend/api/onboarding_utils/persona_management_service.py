@@ -13,7 +13,7 @@ class PersonaManagementService:
     def __init__(self):
         pass
     
-    async def check_persona_generation_readiness(self, user_id: int = 1) -> Dict[str, Any]:
+    async def check_persona_generation_readiness(self, user_id: str) -> Dict[str, Any]:
         """Check if user has sufficient data for persona generation."""
         try:
             from api.persona import validate_persona_generation_readiness
@@ -22,7 +22,7 @@ class PersonaManagementService:
             logger.error(f"Error checking persona readiness: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    async def generate_persona_preview(self, user_id: int = 1) -> Dict[str, Any]:
+    async def generate_persona_preview(self, user_id: str) -> Dict[str, Any]:
         """Generate a preview of the writing persona without saving."""
         try:
             from api.persona import generate_persona_preview
@@ -31,7 +31,7 @@ class PersonaManagementService:
             logger.error(f"Error generating persona preview: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    async def generate_writing_persona(self, user_id: int = 1) -> Dict[str, Any]:
+    async def generate_writing_persona(self, user_id: str) -> Dict[str, Any]:
         """Generate and save a writing persona from onboarding data."""
         try:
             from api.persona import generate_persona, PersonaGenerationRequest
@@ -41,7 +41,7 @@ class PersonaManagementService:
             logger.error(f"Error generating writing persona: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    async def get_user_writing_personas(self, user_id: int = 1) -> Dict[str, Any]:
+    async def get_user_writing_personas(self, user_id: str) -> Dict[str, Any]:
         """Get all writing personas for the user."""
         try:
             from api.persona import get_user_personas

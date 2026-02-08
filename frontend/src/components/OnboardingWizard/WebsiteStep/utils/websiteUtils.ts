@@ -107,6 +107,7 @@ export const loadExistingAnalysis = async (analysisId: number, website: string):
   success: boolean;
   analysis?: any;
   domainName?: string;
+  crawlResult?: any;
   error?: string;
 }> => {
   try {
@@ -127,6 +128,8 @@ export const loadExistingAnalysis = async (analysisId: number, website: string):
         content_type: result.analysis.content_type,
         brand_analysis: result.analysis.brand_analysis,
         content_strategy_insights: result.analysis.content_strategy_insights,
+        seo_audit: result.analysis.seo_audit,
+        sitemap_analysis: result.analysis.crawl_result?.sitemap_analysis,
         recommended_settings: result.analysis.recommended_settings,
         
         // Extract guidelines from style_guidelines object
@@ -147,7 +150,8 @@ export const loadExistingAnalysis = async (analysisId: number, website: string):
       return {
         success: true,
         analysis: comprehensiveAnalysis,
-        domainName: extractedDomain
+        domainName: extractedDomain,
+        crawlResult: result.analysis.crawl_result
       };
     }
     return {
@@ -176,6 +180,7 @@ export const performAnalysis = async (
   success: boolean;
   analysis?: any;
   domainName?: string;
+  crawlResult?: any;
   warning?: string;
   error?: string;
 }> => {
@@ -208,6 +213,8 @@ export const performAnalysis = async (
       // Combine all analysis data into a comprehensive object
       const comprehensiveAnalysis = {
         ...result.style_analysis,
+        seo_audit: result.seo_audit,
+        sitemap_analysis: result.crawl_result?.sitemap_analysis,
         guidelines: result.style_guidelines?.guidelines,
         best_practices: result.style_guidelines?.best_practices,
         avoid_elements: result.style_guidelines?.avoid_elements,
@@ -224,6 +231,7 @@ export const performAnalysis = async (
         success: true,
         analysis: comprehensiveAnalysis,
         domainName: extractedDomain,
+        crawlResult: result.crawl_result,
         warning: result.warning
       };
     } else {

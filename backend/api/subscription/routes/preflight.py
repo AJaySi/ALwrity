@@ -115,8 +115,15 @@ async def preflight_check(
                     if op['provider'] in [APIProvider.VIDEO, APIProvider.IMAGE_EDIT, APIProvider.STABILITY]:
                         cost = pricing_info.get('cost_per_request', 0.0) or pricing_info.get('cost_per_image', 0.0) or 0.0
                     elif op['provider'] == APIProvider.AUDIO:
-                        # Audio pricing is per character (every character is 1 token)
-                        cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * (op['tokens_requested'] / 1000.0)
+                        model_lower = (model_name or "").lower()
+                        if model_lower == "minimax/voice-clone":
+                            cost = pricing_info.get('cost_per_request', 0.5) or 0.5
+                        elif model_lower == "wavespeed-ai/qwen3-tts/voice-clone":
+                            chars = max(0, int(op.get('tokens_requested') or 0))
+                            cost = max(0.005, 0.005 * (chars / 100.0))
+                        else:
+                            # Audio pricing is per character (every character is 1 token)
+                            cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * (op['tokens_requested'] / 1000.0)
                     elif op['tokens_requested'] > 0:
                         # Token-based cost estimation (rough estimate)
                         cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * (op['tokens_requested'] / 1000)

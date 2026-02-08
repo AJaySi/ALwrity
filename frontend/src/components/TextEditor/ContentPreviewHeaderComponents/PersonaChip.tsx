@@ -295,7 +295,7 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
           boxShadow: '0 0 6px rgba(255, 255, 255, 0.5)'
         }} />
         <span style={{ whiteSpace: 'nowrap' }}>
-          {personaData.persona_name || 'Untitled Persona'}
+          {personaData.persona_name || 'Untitled Brand Voice'}
         </span>
         <div style={{
           fontSize: '10px',

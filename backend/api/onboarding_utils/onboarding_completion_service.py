@@ -4,17 +4,15 @@ Handles the complex logic for completing the onboarding process.
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import HTTPException
 from loguru import logger
 
-from services.onboarding.progress_service import get_onboarding_progress_service
-from services.onboarding.database_service import OnboardingDatabaseService
-from services.database import get_db
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
+from services.database import get_session_for_user
 from services.persona_analysis_service import PersonaAnalysisService
 from services.research.research_persona_scheduler import schedule_research_persona_generation
 from services.persona.facebook.facebook_persona_scheduler import schedule_facebook_persona_generation
-from services.oauth_token_monitoring_service import create_oauth_monitoring_tasks
 
 class OnboardingCompletionService:
     """Service for handling onboarding completion logic."""
@@ -26,11 +24,12 @@ class OnboardingCompletionService:
     async def complete_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Complete the onboarding process with full validation."""
         try:
+            from services.onboarding.progress_service import OnboardingProgressService
             user_id = str(current_user.get('id'))
-            progress_service = get_onboarding_progress_service()
+            progress_service = OnboardingProgressService()
             
             # Strict DB-only validation now that step persistence is solid
-            missing_steps = self._validate_required_steps_database(user_id)
+            missing_steps = await self._validate_required_steps_database(user_id)
             if missing_steps:
                 missing_steps_str = ", ".join(missing_steps)
                 raise HTTPException(
@@ -39,7 +38,7 @@ class OnboardingCompletionService:
                 )
 
             # Require API keys in DB for completion
-            self._validate_api_keys(user_id)
+            await self._validate_api_keys(user_id)
             
             # Generate writing persona from onboarding data only if not already present
             persona_generated = await self._generate_persona_from_onboarding(user_id)
@@ -67,9 +66,18 @@ class OnboardingCompletionService:
             
             # Create OAuth token monitoring tasks for connected platforms
             try:
-                from services.database import SessionLocal
-                db = SessionLocal()
+                from services.progressive_setup_service import ProgressiveSetupService
+                
+                db = get_session_for_user(user_id)
                 try:
+                    # Initialize user environment (create workspace, setup features)
+                    try:
+                        setup_service = ProgressiveSetupService(db)
+                        setup_service.initialize_user_environment(user_id)
+                        logger.info(f"Initialized user environment for {user_id} on onboarding completion")
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize user environment for {user_id}: {e}")
+
                     monitoring_tasks = create_oauth_monitoring_tasks(user_id, db)
                     logger.info(
                         f"Created {len(monitoring_tasks)} OAuth token monitoring tasks for user {user_id} "
@@ -81,29 +89,200 @@ class OnboardingCompletionService:
                 # Non-critical: log but don't fail onboarding completion
                 logger.warning(f"Failed to create OAuth token monitoring tasks for user {user_id}: {e}")
             
-            # Create website analysis tasks for user's website and competitors
+            # Schedule website analysis task creation 5 minutes after onboarding completion
+            try:
+                from services.website_analysis_monitoring_service import schedule_website_analysis_task_creation
+                schedule_website_analysis_task_creation(user_id=user_id, delay_minutes=5)
+                logger.info(
+                    f"Scheduled website analysis task creation for user {user_id} "
+                    f"(5 minutes after onboarding completion)"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to schedule website analysis task creation for user {user_id}: {e}")
+
+            # Schedule onboarding full-site SEO audit (non-blocking) ~10 minutes after completion
             try:
                 from services.database import SessionLocal
-                from services.website_analysis_monitoring_service import create_website_analysis_tasks
+                from models.website_analysis_monitoring_models import (
+                    OnboardingFullWebsiteAnalysisTask,
+                    DeepCompetitorAnalysisTask,
+                    SIFIndexingTask,
+                    MarketTrendsTask
+                )
+                from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
+
                 db = SessionLocal()
                 try:
-                    result = create_website_analysis_tasks(user_id=user_id, db=db)
-                    if result.get('success'):
-                        tasks_count = result.get('tasks_created', 0)
+                    integration_service = OnboardingDataIntegrationService()
+                    integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+                    website_analysis = integrated_data.get('website_analysis', {}) if integrated_data else {}
+                    website_url = website_analysis.get('website_url')
+
+                    if not website_url:
+                        try:
+                            from services.website_analysis_monitoring_service import clerk_user_id_to_int
+                            from models.onboarding import WebsiteAnalysis
+                            session_id_int = clerk_user_id_to_int(user_id)
+                            analysis = db.query(WebsiteAnalysis).filter(
+                                WebsiteAnalysis.session_id == session_id_int
+                            ).order_by(WebsiteAnalysis.created_at.desc()).first()
+                            if analysis and analysis.website_url:
+                                website_url = analysis.website_url
+                        except Exception:
+                            website_url = None
+
+                    if website_url:
+                        # 1. Schedule Full Site SEO Audit
+                        next_execution = datetime.utcnow() + timedelta(minutes=5)
+                        existing = db.query(OnboardingFullWebsiteAnalysisTask).filter(
+                            OnboardingFullWebsiteAnalysisTask.user_id == user_id,
+                            OnboardingFullWebsiteAnalysisTask.website_url == website_url
+                        ).first()
+
+                        payload = {
+                            'website_url': website_url,
+                            'max_urls': 500,
+                            'created_from': 'onboarding_completion'
+                        }
+
+                        if existing:
+                            existing.status = 'active'
+                            existing.next_execution = next_execution
+                            existing.payload = payload
+                            db.add(existing)
+                        else:
+                            db.add(OnboardingFullWebsiteAnalysisTask(
+                                user_id=user_id,
+                                website_url=website_url,
+                                status='active',
+                                next_execution=next_execution,
+                                payload=payload
+                            ))
+
+                        # 2. Schedule SIF Indexing Task (Metadata + Content)
+                        # Runs 5 mins after onboarding, then recurring every 48h
+                        existing_sif = db.query(SIFIndexingTask).filter(
+                            SIFIndexingTask.user_id == user_id,
+                            SIFIndexingTask.website_url == website_url
+                        ).first()
+                        
+                        payload_sif = {
+                            'website_url': website_url,
+                            'mode': 'initial_indexing',
+                            'created_from': 'onboarding_completion'
+                        }
+                        
+                        if existing_sif:
+                            existing_sif.status = 'active'
+                            existing_sif.next_execution = next_execution
+                            existing_sif.frequency_hours = 48
+                            existing_sif.payload = payload_sif
+                            db.add(existing_sif)
+                        else:
+                            db.add(SIFIndexingTask(
+                                user_id=user_id,
+                                website_url=website_url,
+                                status='active',
+                                next_execution=next_execution,
+                                frequency_hours=48,
+                                payload=payload_sif
+                            ))
+                        
                         logger.info(
-                            f"Created {tasks_count} website analysis tasks for user {user_id} "
-                            f"on onboarding completion"
+                            f"Scheduled SIF indexing task for user {user_id} "
+                            f"({website_url}) at {next_execution.isoformat()}"
                         )
+
+                        # 3. Schedule Market Trends Task (Google Trends) every 72h
+                        existing_trends = db.query(MarketTrendsTask).filter(
+                            MarketTrendsTask.user_id == user_id,
+                            MarketTrendsTask.website_url == website_url
+                        ).first()
+
+                        payload_trends = {
+                            "website_url": website_url,
+                            "geo": "US",
+                            "timeframe": "today 12-m",
+                            "created_from": "onboarding_completion"
+                        }
+
+                        if existing_trends:
+                            existing_trends.status = "active"
+                            existing_trends.next_execution = next_execution
+                            existing_trends.frequency_hours = 72
+                            existing_trends.payload = payload_trends
+                            db.add(existing_trends)
+                        else:
+                            db.add(MarketTrendsTask(
+                                user_id=user_id,
+                                website_url=website_url,
+                                status="active",
+                                next_execution=next_execution,
+                                frequency_hours=72,
+                                payload=payload_trends
+                            ))
+
+                        db.commit()
+                        logger.info(
+                            f"Scheduled onboarding full-site SEO audit for user {user_id} "
+                            f"({website_url}) at {next_execution.isoformat()}"
+                        )
+
+                        try:
+                            research_prefs = integrated_data.get("research_preferences", {}) if isinstance(integrated_data, dict) else {}
+                            competitors = research_prefs.get("competitors") if isinstance(research_prefs, dict) else None
+
+                            if isinstance(competitors, list) and len(competitors) > 0:
+                                existing_deep = db.query(DeepCompetitorAnalysisTask).filter(
+                                    DeepCompetitorAnalysisTask.user_id == user_id,
+                                    DeepCompetitorAnalysisTask.website_url == website_url
+                                ).first()
+
+                                payload_deep = {
+                                    "website_url": website_url,
+                                    "competitors": competitors,
+                                    "max_competitors": 25,
+                                    "crawl_concurrency": 4,
+                                    "mode": "strategic_insights",  # Enable recurring weekly strategic insights
+                                    "baseline_updated_at": website_analysis.get("updated_at") if isinstance(website_analysis, dict) else None,
+                                    "created_from": "onboarding_completion"
+                                }
+
+                                if existing_deep:
+                                    existing_deep.status = "active"
+                                    existing_deep.next_execution = next_execution
+                                    existing_deep.payload = payload_deep
+                                    db.add(existing_deep)
+                                else:
+                                    db.add(DeepCompetitorAnalysisTask(
+                                        user_id=user_id,
+                                        website_url=website_url,
+                                        status="active",
+                                        next_execution=next_execution,
+                                        payload=payload_deep
+                                    ))
+
+                                db.commit()
+                                logger.info(
+                                    f"Scheduled deep competitor analysis for user {user_id} "
+                                    f"({website_url}) at {next_execution.isoformat()} with {len(competitors)} competitors"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Deep competitor analysis not scheduled for user {user_id}: "
+                                    f"no Step 3 competitors available"
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to schedule deep competitor analysis for user {user_id}: {e}")
                     else:
-                        error = result.get('error', 'Unknown error')
                         logger.warning(
-                            f"Failed to create website analysis tasks for user {user_id}: {error}"
+                            f"Could not schedule onboarding full-site SEO audit for user {user_id}: "
+                            f"website_url missing"
                         )
                 finally:
                     db.close()
             except Exception as e:
-                # Non-critical: log but don't fail onboarding completion
-                logger.warning(f"Failed to create website analysis tasks for user {user_id}: {e}")
+                logger.warning(f"Failed to schedule onboarding full-site SEO audit for user {user_id}: {e}")
             
             return {
                 "message": "Onboarding completed successfully",
@@ -118,37 +297,45 @@ class OnboardingCompletionService:
             logger.error(f"Error completing onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
     
-    def _validate_required_steps_database(self, user_id: str) -> List[str]:
-        """Validate that all required steps are completed using database only."""
+    async def _validate_required_steps_database(self, user_id: str) -> List[str]:
+        """Validate that all required steps are completed using SSOT integration service."""
         missing_steps = []
         try:
-            db = next(get_db())
-            db_service = OnboardingDatabaseService()
+            db = get_session_for_user(user_id)
+            integration_service = OnboardingDataIntegrationService()
             
             # Debug logging
             logger.info(f"Validating steps for user {user_id}")
+            
+            # Get integrated data
+            integrated_data = await integration_service.process_onboarding_data(user_id, db)
+            db.close()
             
             # Check each required step
             for step_num in self.required_steps:
                 step_completed = False
                 
                 if step_num == 1:  # API Keys
-                    api_keys = db_service.get_api_keys(user_id, db)
-                    logger.info(f"Step 1 - API Keys: {api_keys}")
-                    step_completed = any(v for v in api_keys.values() if v)
+                    api_keys_data = integrated_data.get('api_keys_data', {})
+                    logger.info(f"Step 1 - API Keys: {api_keys_data}")
+                    step_completed = bool(
+                        api_keys_data.get('openai_api_key') or 
+                        api_keys_data.get('anthropic_api_key') or 
+                        api_keys_data.get('google_api_key')
+                    )
                     logger.info(f"Step 1 completed: {step_completed}")
                 elif step_num == 2:  # Website Analysis
-                    website = db_service.get_website_analysis(user_id, db)
+                    website = integrated_data.get('website_analysis', {})
                     logger.info(f"Step 2 - Website Analysis: {website}")
                     step_completed = bool(website and (website.get('website_url') or website.get('writing_style')))
                     logger.info(f"Step 2 completed: {step_completed}")
                 elif step_num == 3:  # Research Preferences
-                    research = db_service.get_research_preferences(user_id, db)
+                    research = integrated_data.get('research_preferences', {})
                     logger.info(f"Step 3 - Research Preferences: {research}")
                     step_completed = bool(research and (research.get('research_depth') or research.get('content_types')))
                     logger.info(f"Step 3 completed: {step_completed}")
                 elif step_num == 4:  # Persona Generation
-                    persona = db_service.get_persona_data(user_id, db)
+                    persona = integrated_data.get('persona_data', {})
                     logger.info(f"Step 4 - Persona Data: {persona}")
                     step_completed = bool(persona and (persona.get('corePersona') or persona.get('platformPersonas')))
                     logger.info(f"Step 4 completed: {step_completed}")
@@ -167,125 +354,23 @@ class OnboardingCompletionService:
             logger.error(f"Error validating required steps: {e}")
             return ["Validation error"]
     
-    def _validate_required_steps(self, user_id: str, progress) -> List[str]:
-        """Validate that all required steps are completed.
-
-        This method trusts the progress tracker, but also falls back to
-        database presence for Steps 2 and 3 so migration from file→DB
-        does not block completion.
-        """
-        missing_steps = []
-        db = None
-        db_service = None
+    async def _validate_api_keys(self, user_id: str):
+        """Validate that API keys are configured for the current user (SSOT)."""
         try:
-            db = next(get_db())
-            db_service = OnboardingDatabaseService(db)
-        except Exception:
-            db = None
-            db_service = None
-
-        logger.info(f"OnboardingCompletionService: Validating steps for user {user_id}")
-        logger.info(f"OnboardingCompletionService: Current step: {progress.current_step}")
-        logger.info(f"OnboardingCompletionService: Required steps: {self.required_steps}")
-
-        for step_num in self.required_steps:
-            step = progress.get_step_data(step_num)
-            logger.info(f"OnboardingCompletionService: Step {step_num} - status: {step.status if step else 'None'}")
-            if step and step.status in [StepStatus.COMPLETED, StepStatus.SKIPPED]:
-                logger.info(f"OnboardingCompletionService: Step {step_num} already completed/skipped")
-                continue
-
-            # DB-aware fallbacks for migration period
-            try:
-                if db_service:
-                    if step_num == 1:
-                        # Treat as completed if user has any API key in DB
-                        keys = db_service.get_api_keys(user_id, db)
-                        if keys and any(v for v in keys.values()):
-                            try:
-                                progress.mark_step_completed(1, {'source': 'db-fallback'})
-                            except Exception:
-                                pass
-                            continue
-                    if step_num == 2:
-                        # Treat as completed if website analysis exists in DB
-                        website = db_service.get_website_analysis(user_id, db)
-                        if website and (website.get('website_url') or website.get('writing_style')):
-                            # Optionally mark as completed in progress to keep state consistent
-                            try:
-                                progress.mark_step_completed(2, {'source': 'db-fallback'})
-                            except Exception:
-                                pass
-                            continue
-                        # Secondary fallback: research preferences captured style data
-                        prefs = db_service.get_research_preferences(user_id, db)
-                        if prefs and (prefs.get('writing_style') or prefs.get('content_characteristics')):
-                            try:
-                                progress.mark_step_completed(2, {'source': 'research-prefs-fallback'})
-                            except Exception:
-                                pass
-                            continue
-                        # Tertiary fallback: persona data created implies earlier steps done
-                        persona = None
-                        try:
-                            persona = db_service.get_persona_data(user_id, db)
-                        except Exception:
-                            persona = None
-                        if persona and persona.get('corePersona'):
-                            try:
-                                progress.mark_step_completed(2, {'source': 'persona-fallback'})
-                            except Exception:
-                                pass
-                            continue
-                    if step_num == 3:
-                        # Treat as completed if research preferences exist in DB
-                        prefs = db_service.get_research_preferences(user_id, db)
-                        if prefs and prefs.get('research_depth'):
-                            try:
-                                progress.mark_step_completed(3, {'source': 'db-fallback'})
-                            except Exception:
-                                pass
-                            continue
-                    if step_num == 4:
-                        # Treat as completed if persona data exists in DB
-                        persona = None
-                        try:
-                            persona = db_service.get_persona_data(user_id, db)
-                        except Exception:
-                            persona = None
-                        if persona and persona.get('corePersona'):
-                            try:
-                                progress.mark_step_completed(4, {'source': 'db-fallback'})
-                            except Exception:
-                                pass
-                            continue
-                    if step_num == 5:
-                        # Treat as completed if integrations data exists in DB
-                        # For now, we'll consider step 5 completed if the user has reached the final step
-                        # This is a simplified approach - in the future, we could check for specific integration data
-                        try:
-                            # Check if user has completed previous steps and is on final step
-                            if progress.current_step >= 6:  # FinalStep is step 6
-                                progress.mark_step_completed(5, {'source': 'final-step-fallback'})
-                                continue
-                        except Exception:
-                            pass
-            except Exception:
-                # If DB check fails, fall back to progress status only
-                pass
-
-            if step:
-                missing_steps.append(step.title)
-        
-        return missing_steps
-    
-    def _validate_api_keys(self, user_id: str):
-        """Validate that API keys are configured for the current user (DB-only)."""
-        try:
-            db = next(get_db())
-            db_service = OnboardingDatabaseService()
-            user_keys = db_service.get_api_keys(user_id, db)
-            if not user_keys or not any(v for v in user_keys.values()):
+            db = get_session_for_user(user_id)
+            integration_service = OnboardingDataIntegrationService()
+            integrated_data = await integration_service.process_onboarding_data(user_id, db)
+            db.close()
+            
+            api_keys_data = integrated_data.get('api_keys_data', {})
+            
+            has_keys = bool(
+                api_keys_data.get('openai_api_key') or 
+                api_keys_data.get('anthropic_api_key') or 
+                api_keys_data.get('google_api_key')
+            )
+            
+            if not has_keys:
                 raise HTTPException(
                     status_code=400,
                     detail="Cannot complete onboarding. At least one AI provider API key must be configured in your account."
@@ -303,9 +388,8 @@ class OnboardingCompletionService:
         try:
             persona_service = PersonaAnalysisService()
             
-            # If a persona already exists for this user, skip regeneration
             try:
-                existing = persona_service.get_user_personas(int(user_id))
+                existing = persona_service.get_user_personas(user_id)
                 if existing and len(existing) > 0:
                     logger.info("Persona already exists for user %s; skipping regeneration during completion", user_id)
                     return False
@@ -313,8 +397,7 @@ class OnboardingCompletionService:
                 # Non-fatal; proceed to attempt generation
                 pass
 
-            # Generate persona for this user
-            persona_result = persona_service.generate_persona_from_onboarding(int(user_id))
+            persona_result = persona_service.generate_persona_from_onboarding(user_id)
             
             if "error" not in persona_result:
                 logger.info(f"✅ Writing persona generated during onboarding completion: {persona_result.get('persona_id')}")

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 from datetime import datetime
 
-from services.database import get_db_session
+from services.database import get_session_for_user
 from services.content_planning_db import ContentPlanningDBService
 from services.ai_service_manager import AIServiceManager
 from models.content_planning import ContentStrategy, CalendarEvent, ContentAnalytics
@@ -16,27 +16,16 @@ from models.content_planning import ContentStrategy, CalendarEvent, ContentAnaly
 class ContentPlanningService:
     """Service for managing content planning operations with database integration."""
     
-    def __init__(self, db_session: Optional[Session] = None):
-        self.db_session = db_session
-        self.db_service = None
+    def __init__(self):
         self.ai_manager = AIServiceManager()
-        
-        if db_session:
-            self.db_service = ContentPlanningDBService(db_session)
     
-    def _get_db_session(self) -> Session:
+    def _get_db_session(self, user_id: int) -> Session:
         """Get database session."""
-        if not self.db_session:
-            self.db_session = get_db_session()
-            if self.db_session:
-                self.db_service = ContentPlanningDBService(self.db_session)
-        return self.db_session
+        return get_session_for_user(str(user_id))
     
-    def _get_db_service(self) -> ContentPlanningDBService:
+    def _get_db_service(self, user_id: int) -> ContentPlanningDBService:
         """Get database service."""
-        if not self.db_service:
-            self._get_db_session()
-        return self.db_service
+        return ContentPlanningDBService(self._get_db_session(user_id))
     
     async def analyze_content_strategy_with_ai(self, industry: str, target_audience: Dict[str, Any], 
                                              business_goals: List[str], content_preferences: Dict[str, Any],
@@ -79,7 +68,7 @@ class ContentPlanningService:
             }
             
             # Create strategy in database
-            db_service = self._get_db_service()
+            db_service = self._get_db_service(user_id)
             if db_service:
                 strategy = await db_service.create_content_strategy(strategy_data)
                 
@@ -87,7 +76,7 @@ class ContentPlanningService:
                     logger.info(f"Content strategy created with AI recommendations: {strategy.id}")
                     
                     # Store AI analytics
-                    await self._store_ai_analytics(strategy.id, ai_recommendations, 'strategy_analysis')
+                    await self._store_ai_analytics(user_id, strategy.id, ai_recommendations, 'strategy_analysis')
                     
                     return strategy
                 else:
@@ -120,7 +109,7 @@ class ContentPlanningService:
             strategy_data['ai_recommendations'] = ai_recommendations
             
             # Create strategy in database
-            db_service = self._get_db_service()
+            db_service = self._get_db_service(user_id)
             if db_service:
                 strategy = await db_service.create_content_strategy(strategy_data)
                 
@@ -128,7 +117,7 @@ class ContentPlanningService:
                     logger.info(f"Content strategy created with AI recommendations: {strategy.id}")
                     
                     # Store AI analytics
-                    await self._store_ai_analytics(strategy.id, ai_recommendations, 'strategy_creation')
+                    await self._store_ai_analytics(user_id, strategy.id, ai_recommendations, 'strategy_creation')
                     
                     return strategy
                 else:
@@ -156,7 +145,7 @@ class ContentPlanningService:
         try:
             logger.info(f"Getting content strategy for user: {user_id}")
             
-            db_service = self._get_db_service()
+            db_service = self._get_db_service(user_id)
             if db_service:
                 if strategy_id:
                     strategy = await db_service.get_content_strategy(strategy_id)
@@ -178,25 +167,26 @@ class ContentPlanningService:
             logger.error(f"Error getting content strategy: {str(e)}")
             return None
     
-    async def create_calendar_event_with_ai(self, event_data: Dict[str, Any]) -> Optional[CalendarEvent]:
+    async def create_calendar_event_with_ai(self, user_id: int, event_data: Dict[str, Any]) -> Optional[CalendarEvent]:
         """
         Create calendar event with AI recommendations and database storage.
         
         Args:
+            user_id: User ID
             event_data: Event configuration data
             
         Returns:
             Created calendar event or None if failed
         """
         try:
-            logger.info(f"Creating calendar event with AI: {event_data.get('title', 'Untitled')}")
+            logger.info(f"Creating calendar event with AI: {event_data.get('title', 'Untitled')} (user {user_id})")
             
             # Generate AI recommendations for the event
             ai_recommendations = await self._generate_event_ai_recommendations(event_data)
             event_data['ai_recommendations'] = ai_recommendations
             
             # Create event in database
-            db_service = self._get_db_service()
+            db_service = self._get_db_service(user_id)
             if db_service:
                 event = await db_service.create_calendar_event(event_data)
                 
@@ -204,7 +194,7 @@ class ContentPlanningService:
                     logger.info(f"Calendar event created with AI recommendations: {event.id}")
                     
                     # Store AI analytics
-                    await self._store_ai_analytics(event.strategy_id, ai_recommendations, 'event_creation', event.id)
+                    await self._store_ai_analytics(user_id, event.strategy_id, ai_recommendations, 'event_creation', event.id)
                     
                     return event
                 else:
@@ -218,20 +208,21 @@ class ContentPlanningService:
             logger.error(f"Error creating calendar event with AI: {str(e)}")
             return None
     
-    async def get_calendar_events(self, strategy_id: Optional[int] = None) -> List[CalendarEvent]:
+    async def get_calendar_events(self, user_id: int, strategy_id: Optional[int] = None) -> List[CalendarEvent]:
         """
         Get calendar events from database.
         
         Args:
+            user_id: User ID
             strategy_id: Optional strategy ID to filter events
             
         Returns:
             List of calendar events
         """
         try:
-            logger.info("Getting calendar events from database")
+            logger.info(f"Getting calendar events from database for user {user_id}")
             
-            db_service = self._get_db_service()
+            db_service = self._get_db_service(user_id)
             if db_service:
                 if strategy_id:
                     events = await db_service.get_strategy_calendar_events(strategy_id)
@@ -286,7 +277,7 @@ class ContentPlanningService:
                 'opportunities': ai_analysis.get('opportunities', {})
             }
             
-            db_service = self._get_db_service()
+            db_service = self._get_db_service(user_id)
             if db_service:
                 analysis = await db_service.create_content_gap_analysis(analysis_data)
                 
@@ -294,7 +285,7 @@ class ContentPlanningService:
                     logger.info(f"Content gap analysis stored in database: {analysis.id}")
                     
                     # Store AI analytics
-                    await self._store_ai_analytics(user_id, ai_analysis, 'gap_analysis')
+                    await self._store_ai_analytics(user_id, user_id, ai_analysis, 'gap_analysis')
                     
                     return {
                         'analysis_id': analysis.id,
@@ -472,11 +463,11 @@ class ContentPlanningService:
             logger.error(f"Error generating event AI recommendations: {str(e)}")
             return {}
     
-    async def _store_ai_analytics(self, strategy_id: int, ai_results: Dict[str, Any], 
+    async def _store_ai_analytics(self, user_id: int, strategy_id: int, ai_results: Dict[str, Any], 
                                  analysis_type: str, event_id: Optional[int] = None) -> None:
         """Store AI analytics results in database."""
         try:
-            db_service = self._get_db_service()
+            db_service = self._get_db_service(user_id)
             if not db_service:
                 return
             
@@ -498,8 +489,5 @@ class ContentPlanningService:
     
     def __del__(self):
         """Cleanup database session."""
-        if self.db_session:
-            try:
-                self.db_session.close()
-            except:
-                pass 
+        # No explicit session cleanup needed as sessions are managed per request
+        pass 

@@ -3,7 +3,7 @@ Onboarding Data Integration Service
 Onboarding data integration and processing.
 """
 
-import logging
+from utils.logger_utils import get_service_logger
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -19,11 +19,16 @@ from models.onboarding import (
     ResearchPreferences,
     APIKey,
     PersonaData,
-    CompetitorAnalysis
+    CompetitorAnalysis,
+    SEOPageAudit
+)
+from models.website_analysis_monitoring_models import (
+    DeepCompetitorAnalysisTask,
+    DeepCompetitorAnalysisExecutionLog
 )
 import os
 
-logger = logging.getLogger(__name__)
+logger = get_service_logger("onboarding.data_integration")
 
 class OnboardingDataIntegrationService:
     """Service for onboarding data integration and processing."""
@@ -31,6 +36,162 @@ class OnboardingDataIntegrationService:
     def __init__(self):
         self.data_freshness_threshold = timedelta(hours=24)
         self.max_analysis_age = timedelta(days=7)
+
+    def get_integrated_data_sync(self, user_id: str, db: Session) -> Dict[str, Any]:
+        """Synchronous version of process_onboarding_data for sync contexts.
+           Note: Does not include async data sources like GSC/Bing analytics.
+        """
+        try:
+            # Get all onboarding data sources (DB only)
+            website_analysis = self._get_website_analysis(user_id, db)
+            research_preferences = self._get_research_preferences(user_id, db)
+            api_keys_data = self._get_api_keys_data(user_id, db)
+            onboarding_session = self._get_onboarding_session(user_id, db)
+            persona_data = self._get_persona_data(user_id, db)
+            competitor_analysis = self._get_competitor_analysis(user_id, db)
+            deep_competitor_analysis = self._get_deep_competitor_analysis(user_id, db)
+            
+            # Skip async sources
+            gsc_analytics = {}
+            bing_analytics = {}
+
+            canonical_profile = self._build_canonical_profile(
+                website_analysis,
+                research_preferences,
+                persona_data,
+                onboarding_session,
+                competitor_analysis,
+                deep_competitor_analysis
+            )
+
+            integrated_data = {
+                'website_analysis': website_analysis,
+                'research_preferences': research_preferences,
+                'api_keys_data': api_keys_data,
+                'onboarding_session': onboarding_session,
+                'persona_data': persona_data,
+                'competitor_analysis': competitor_analysis,
+                'deep_competitor_analysis': deep_competitor_analysis,
+                'gsc_analytics': gsc_analytics,
+                'bing_analytics': bing_analytics,
+                'canonical_profile': canonical_profile,
+                'data_quality': self._assess_data_quality(website_analysis, research_preferences, api_keys_data, persona_data, competitor_analysis, gsc_analytics, bing_analytics),
+                'processing_timestamp': datetime.utcnow().isoformat()
+            }
+            
+            return integrated_data
+            
+        except Exception as e:
+            logger.error(f"Error processing onboarding data (sync) for user {user_id}: {str(e)}")
+            return self._get_fallback_data()
+
+    async def refresh_integrated_data(self, user_id: str, db: Session) -> None:
+        """
+        Refresh and store integrated data (DB-only sources) to ensure SSOT is up-to-date.
+        This is a lightweight version of process_onboarding_data suitable for calling
+        after individual step completion.
+        """
+        try:
+            # Re-use sync logic but await the storage
+            integrated_data = self.get_integrated_data_sync(user_id, db)
+            await self._store_integrated_data(user_id, integrated_data, db)
+            logger.info(f"Refreshed integrated data (SSOT) for user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to refresh integrated data for user {user_id}: {e}")
+            # Non-blocking failure
+
+    async def store_competitive_sitemap_benchmarking(self, user_id: str, report: Dict[str, Any], db: Session) -> bool:
+        try:
+            if not user_id:
+                return False
+            if not isinstance(report, dict):
+                return False
+
+            session = db.query(OnboardingSession).filter(
+                OnboardingSession.user_id == user_id
+            ).order_by(OnboardingSession.updated_at.desc()).first()
+
+            if not session:
+                return False
+
+            website_analysis = db.query(WebsiteAnalysis).filter(
+                WebsiteAnalysis.session_id == session.id
+            ).order_by(WebsiteAnalysis.updated_at.desc()).first()
+
+            if not website_analysis:
+                return False
+
+            existing = website_analysis.seo_audit if isinstance(website_analysis.seo_audit, dict) else {}
+            existing["competitive_sitemap_benchmarking"] = report
+            website_analysis.seo_audit = existing
+            website_analysis.updated_at = datetime.utcnow()
+            
+            # Use flag_modified to ensure JSON update is detected by SQLAlchemy
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(website_analysis, "seo_audit")
+            
+            db.commit()
+
+            try:
+                await self.refresh_integrated_data(user_id, db)
+            except Exception:
+                pass
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store competitive sitemap benchmarking for user {user_id}: {e}")
+            db.rollback()
+            return False
+
+    async def update_competitive_sitemap_benchmarking_status(self, user_id: str, status: str, db: Session, error: Optional[str] = None) -> bool:
+        """Update the status of the competitive sitemap benchmarking task."""
+        try:
+            if not user_id:
+                return False
+
+            session = db.query(OnboardingSession).filter(
+                OnboardingSession.user_id == user_id
+            ).order_by(OnboardingSession.updated_at.desc()).first()
+
+            if not session:
+                return False
+
+            website_analysis = db.query(WebsiteAnalysis).filter(
+                WebsiteAnalysis.session_id == session.id
+            ).order_by(WebsiteAnalysis.updated_at.desc()).first()
+
+            if not website_analysis:
+                return False
+
+            existing = website_analysis.seo_audit if isinstance(website_analysis.seo_audit, dict) else {}
+            
+            # Get existing benchmarking data or initialize
+            benchmarking = existing.get("competitive_sitemap_benchmarking", {})
+            if not isinstance(benchmarking, dict):
+                benchmarking = {}
+            
+            benchmarking["status"] = status
+            if error:
+                benchmarking["error"] = error
+            if status == "processing":
+                benchmarking["started_at"] = datetime.utcnow().isoformat()
+            
+            existing["competitive_sitemap_benchmarking"] = benchmarking
+            website_analysis.seo_audit = existing
+            # Force update flag if needed, but assignment should trigger it
+            website_analysis.updated_at = datetime.utcnow()
+            
+            # Use flag_modified if using JSON type with SQLAlchemy to ensure update
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(website_analysis, "seo_audit")
+            
+            db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update competitive sitemap benchmarking status for user {user_id}: {e}")
+            if db:
+                db.rollback()
+            return False
 
     async def process_onboarding_data(self, user_id: str, db: Session) -> Dict[str, Any]:
         """Process and integrate all onboarding data for a user.
@@ -49,6 +210,7 @@ class OnboardingDataIntegrationService:
             onboarding_session = self._get_onboarding_session(user_id, db)
             persona_data = self._get_persona_data(user_id, db)
             competitor_analysis = self._get_competitor_analysis(user_id, db)
+            deep_competitor_analysis = self._get_deep_competitor_analysis(user_id, db)
             gsc_analytics = await self._get_gsc_analytics(user_id)
             bing_analytics = await self._get_bing_analytics(user_id)
 
@@ -63,7 +225,15 @@ class OnboardingDataIntegrationService:
             logger.info(f"  - GSC Analytics: {'✅ Found' if gsc_analytics else '❌ Missing'}")
             logger.info(f"  - Bing Analytics: {'✅ Found' if bing_analytics else '❌ Missing'}")
 
-            # Process and integrate data
+            canonical_profile = self._build_canonical_profile(
+                website_analysis,
+                research_preferences,
+                persona_data,
+                onboarding_session,
+                competitor_analysis,
+                deep_competitor_analysis
+            )
+
             integrated_data = {
                 'website_analysis': website_analysis,
                 'research_preferences': research_preferences,
@@ -71,8 +241,10 @@ class OnboardingDataIntegrationService:
                 'onboarding_session': onboarding_session,
                 'persona_data': persona_data,
                 'competitor_analysis': competitor_analysis,
+                'deep_competitor_analysis': deep_competitor_analysis,
                 'gsc_analytics': gsc_analytics,
                 'bing_analytics': bing_analytics,
+                'canonical_profile': canonical_profile,
                 'data_quality': self._assess_data_quality(website_analysis, research_preferences, api_keys_data, persona_data, competitor_analysis, gsc_analytics, bing_analytics),
                 'processing_timestamp': datetime.utcnow().isoformat()
             }
@@ -105,7 +277,7 @@ class OnboardingDataIntegrationService:
             ).order_by(OnboardingSession.updated_at.desc()).first()
             
             if not session:
-                logger.warning(f"No onboarding session found for user {user_id}")
+                logger.info(f"No onboarding session found for user {user_id}")
                 return {}
             
             # Get the latest website analysis for this session
@@ -114,19 +286,53 @@ class OnboardingDataIntegrationService:
             ).order_by(WebsiteAnalysis.updated_at.desc()).first()
             
             if not website_analysis:
-                logger.warning(f"No website analysis found for user {user_id}")
+                logger.info(f"No website analysis found for user {user_id}")
                 return {}
             
             # Convert to dictionary and add metadata
             analysis_data = website_analysis.to_dict()
             analysis_data['data_freshness'] = self._calculate_freshness(website_analysis.updated_at)
             analysis_data['confidence_level'] = 0.9 if website_analysis.status == 'completed' else 0.5
+
+            site_url = website_analysis.website_url
+            if site_url:
+                analysis_data["full_site_seo_summary"] = self._get_full_site_seo_summary(user_id, site_url, db)
             
             logger.info(f"Retrieved website analysis for user {user_id}: {website_analysis.website_url}")
             return analysis_data
 
         except Exception as e:
             logger.error(f"Error getting website analysis for user {user_id}: {str(e)}")
+            return {}
+
+    def _get_full_site_seo_summary(self, user_id: str, website_url: str, db: Session) -> Dict[str, Any]:
+        try:
+            rows = db.query(SEOPageAudit).filter(
+                SEOPageAudit.user_id == user_id,
+                SEOPageAudit.website_url == website_url
+            ).all()
+
+            if not rows:
+                return {}
+
+            scored = [r for r in rows if r.overall_score is not None]
+            scores = [int(r.overall_score) for r in scored if isinstance(r.overall_score, (int, float))]
+            avg_score = round(sum(scores) / len(scores), 1) if scores else 0
+
+            fix_scheduled_count = len([r for r in scored if (r.status or "").lower() == "fix_scheduled"])
+
+            worst = sorted(scored, key=lambda r: r.overall_score if r.overall_score is not None else 10**9)[:5]
+            worst_pages = [{"page_url": r.page_url, "overall_score": r.overall_score, "status": r.status} for r in worst]
+
+            return {
+                "pages_audited": len(rows),
+                "pages_scored": len(scored),
+                "avg_score": avg_score,
+                "fix_scheduled_pages": fix_scheduled_count,
+                "worst_pages": worst_pages
+            }
+        except Exception as e:
+            logger.error(f"Error building full-site SEO summary for user {user_id}: {str(e)}")
             return {}
 
     def _get_research_preferences(self, user_id: str, db: Session) -> Dict[str, Any]:
@@ -138,7 +344,7 @@ class OnboardingDataIntegrationService:
             ).order_by(OnboardingSession.updated_at.desc()).first()
             
             if not session:
-                logger.warning(f"No onboarding session found for user {user_id}")
+                logger.info(f"No onboarding session found for user {user_id}")
                 return {}
             
             # Get research preferences for this session
@@ -147,7 +353,7 @@ class OnboardingDataIntegrationService:
             ).first()
             
             if not research_prefs:
-                logger.warning(f"No research preferences found for user {user_id}")
+                logger.info(f"No research preferences found for user {user_id}")
                 return {}
             
             # Convert to dictionary and add metadata
@@ -171,7 +377,7 @@ class OnboardingDataIntegrationService:
             ).order_by(OnboardingSession.updated_at.desc()).first()
             
             if not session:
-                logger.warning(f"No onboarding session found for user {user_id}")
+                logger.info(f"No onboarding session found for user {user_id}")
                 return {}
             
             # Get all API keys for this session
@@ -180,7 +386,7 @@ class OnboardingDataIntegrationService:
             ).all()
             
             if not api_keys:
-                logger.warning(f"No API keys found for user {user_id}")
+                logger.info(f"No API keys found for user {user_id}")
                 return {}
             
             # Convert to dictionary format
@@ -202,16 +408,14 @@ class OnboardingDataIntegrationService:
     def _get_onboarding_session(self, user_id: str, db: Session) -> Dict[str, Any]:
         """Get onboarding session data for the user."""
         try:
-            # Get the latest onboarding session for the user
             session = db.query(OnboardingSession).filter(
                 OnboardingSession.user_id == user_id
             ).order_by(OnboardingSession.updated_at.desc()).first()
             
             if not session:
-                logger.warning(f"No onboarding session found for user {user_id}")
+                logger.info(f"No onboarding session found for user {user_id}")
                 return {}
             
-            # Convert to dictionary
             session_data = {
                 'id': session.id,
                 'user_id': session.user_id,
@@ -225,9 +429,301 @@ class OnboardingDataIntegrationService:
             
             logger.info(f"Retrieved onboarding session for user {user_id}: step {session.current_step}, progress {session.progress}%")
             return session_data
-
+            
         except Exception as e:
             logger.error(f"Error getting onboarding session for user {user_id}: {str(e)}")
+            return {}
+
+    def _build_canonical_profile(
+        self,
+        website_analysis: Dict[str, Any],
+        research_preferences: Dict[str, Any],
+        persona_data: Dict[str, Any],
+        onboarding_session: Dict[str, Any],
+        competitor_analysis: List[Dict[str, Any]],
+        deep_competitor_analysis: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        try:
+            core_persona = None
+            if persona_data:
+                if isinstance(persona_data, dict):
+                    core_persona = persona_data.get('corePersona') or persona_data.get('core_persona')
+
+            website_target = {}
+            if website_analysis and isinstance(website_analysis, dict):
+                value = website_analysis.get('target_audience') or {}
+                if isinstance(value, dict):
+                    website_target = value
+
+            research_target = {}
+            if research_preferences and isinstance(research_preferences, dict):
+                value = research_preferences.get('target_audience') or {}
+                if isinstance(value, dict):
+                    research_target = value
+
+            industry = None
+            if core_persona and isinstance(core_persona, dict):
+                value = core_persona.get('industry')
+                if value:
+                    industry = value
+            if not industry and website_target:
+                value = website_target.get('industry_focus')
+                if value:
+                    industry = value
+            if not industry and research_target:
+                value = research_target.get('industry_focus')
+                if value:
+                    industry = value
+
+            target_audience = None
+            target_source = None
+            if core_persona and isinstance(core_persona, dict):
+                value = core_persona.get('target_audience')
+                if value:
+                    target_audience = value
+                    target_source = 'persona_core'
+            if not target_audience and website_target:
+                value = website_target.get('demographics') or website_target.get('target_audience')
+                if value:
+                    target_audience = value
+                    target_source = 'website_analysis'
+            if not target_audience and research_target:
+                value = research_target.get('demographics') or research_target.get('target_audience')
+                if value:
+                    target_audience = value
+                    target_source = 'research_preferences'
+
+            writing_style = {}
+            if website_analysis and isinstance(website_analysis, dict):
+                value = website_analysis.get('writing_style')
+                if isinstance(value, dict):
+                    writing_style = value
+            if not writing_style and research_preferences and isinstance(research_preferences, dict):
+                value = research_preferences.get('writing_style')
+                if isinstance(value, dict):
+                    writing_style = value
+
+            writing_tone = None
+            writing_voice = None
+            writing_complexity = None
+            writing_engagement = None
+            writing_source = None
+            if writing_style:
+                value = writing_style.get('tone')
+                if value:
+                    writing_tone = value
+                
+                value = writing_style.get('voice')
+                if value:
+                    writing_voice = value
+
+                value = writing_style.get('complexity')
+                if value:
+                    writing_complexity = value
+
+                value = writing_style.get('engagement_level')
+                if value:
+                    writing_engagement = value
+
+                if website_analysis and website_analysis.get('writing_style'):
+                    writing_source = 'website_analysis'
+                elif research_preferences and research_preferences.get('writing_style'):
+                    writing_source = 'research_preferences'
+
+            # Brand & Visual Identity
+            brand_colors = []
+            brand_values = []
+            visual_style = {}
+            brand_source = None
+            
+            if website_analysis and isinstance(website_analysis, dict):
+                brand_analysis = website_analysis.get('brand_analysis', {})
+                if brand_analysis:
+                    brand_colors = brand_analysis.get('color_palette', [])
+                    brand_values = brand_analysis.get('brand_values', [])
+                    brand_source = 'website_analysis'
+                
+                style_guidelines = website_analysis.get('style_guidelines', {})
+                if style_guidelines:
+                    visual_style = {
+                        'aesthetic': style_guidelines.get('aesthetic'),
+                        'visual_style': style_guidelines.get('visual_style')
+                    }
+
+            # Content Strategy Insights
+            strategy_insights = {}
+            if website_analysis and isinstance(website_analysis, dict):
+                strategy_insights = website_analysis.get('content_strategy_insights', {})
+
+            seo_profile: Dict[str, Any] = {}
+            if website_analysis and isinstance(website_analysis, dict):
+                seo_profile["homepage_seo_audit"] = website_analysis.get("seo_audit") or {}
+                seo_profile["full_site_seo_summary"] = website_analysis.get("full_site_seo_summary") or {}
+                sitemap_strategy = website_analysis.get("sitemap_strategy_insights")
+                if sitemap_strategy:
+                    seo_profile["sitemap_strategy_insights"] = sitemap_strategy
+
+            competitor_seo_benchmarks = self._build_competitor_seo_benchmarks(competitor_analysis)
+            if competitor_seo_benchmarks:
+                seo_profile["competitor_seo_benchmarks"] = competitor_seo_benchmarks
+
+            # Platform Preferences
+            platform_preferences = []
+            platform_source = None
+            
+            if core_persona and isinstance(core_persona, dict):
+                # Check persona_data for platforms
+                if isinstance(persona_data, dict):
+                    selected = persona_data.get('selectedPlatforms')
+                    if selected:
+                        platform_preferences = selected
+                        platform_source = 'persona_data'
+                    else:
+                        platform_personas = persona_data.get('platformPersonas')
+                        if platform_personas:
+                            platform_preferences = list(platform_personas.keys())
+                            platform_source = 'persona_data'
+
+            content_types = []
+            content_source = None
+            if research_preferences and isinstance(research_preferences, dict):
+                prefs_content = research_preferences.get('content_types')
+                if isinstance(prefs_content, list):
+                    content_types = list(prefs_content)
+                    if content_types:
+                        content_source = 'research_preferences'
+            if not content_types and website_analysis and isinstance(website_analysis, dict):
+                content_type_data = website_analysis.get('content_type') or {}
+                if isinstance(content_type_data, dict):
+                    primary = content_type_data.get('primary_type')
+                    if primary:
+                        content_types.append(primary)
+                    secondary = content_type_data.get('secondary_types')
+                    if isinstance(secondary, list):
+                        content_types.extend(secondary)
+                    if content_types:
+                        content_source = 'website_analysis'
+
+            research_depth = None
+            auto_research = None
+            factual_content = None
+            if research_preferences and isinstance(research_preferences, dict):
+                research_depth = research_preferences.get('research_depth')
+                auto_research = research_preferences.get('auto_research')
+                factual_content = research_preferences.get('factual_content')
+
+            business_info = {}
+            if industry:
+                business_info['industry'] = industry
+            if target_audience:
+                business_info['target_audience'] = target_audience
+
+            sources = {
+                'industry': None,
+                'target_audience': target_source,
+                'writing_tone': writing_source,
+                'content_types': content_source,
+                'brand_identity': brand_source,
+                'platform_preferences': platform_source,
+                'seo_profile': 'website_analysis' if website_analysis else None
+            }
+            if core_persona and isinstance(core_persona, dict) and core_persona.get('industry'):
+                sources['industry'] = 'persona_core'
+            elif website_target.get('industry_focus'):
+                sources['industry'] = 'website_analysis'
+            elif research_target.get('industry_focus'):
+                sources['industry'] = 'research_preferences'
+
+            competitive_sitemap_benchmarking = {}
+            try:
+                if website_analysis and isinstance(website_analysis, dict):
+                    seo_audit = website_analysis.get("seo_audit")
+                    if isinstance(seo_audit, dict):
+                        report = seo_audit.get("competitive_sitemap_benchmarking")
+                        if isinstance(report, dict):
+                            benchmark = report.get("benchmark") if isinstance(report.get("benchmark"), dict) else {}
+                            gaps = benchmark.get("gaps") if isinstance(benchmark.get("gaps"), dict) else {}
+                            missing_sections = gaps.get("missing_sections") if isinstance(gaps.get("missing_sections"), list) else []
+                            competitive_sitemap_benchmarking = {
+                                "status": "available",
+                                "last_run": report.get("timestamp") or report.get("analysis_date"),
+                                "competitors_analyzed": benchmark.get("competitors_analyzed"),
+                                "missing_sections_count": len(missing_sections)
+                            }
+            except Exception:
+                competitive_sitemap_benchmarking = {}
+
+            competitive_intelligence = {
+                'deep_competitor_analysis': deep_competitor_analysis or {},
+                'competitive_sitemap_benchmarking': competitive_sitemap_benchmarking,
+                'strategic_insights_history': website_analysis.get("strategic_insights_history", []) if isinstance(website_analysis, dict) else []
+            }
+
+            return {
+                'industry': industry,
+                'target_audience': target_audience,
+                'writing_tone': writing_tone or 'professional',
+                'writing_voice': writing_voice or 'authoritative',
+                'writing_complexity': writing_complexity or 'intermediate',
+                'writing_engagement': writing_engagement or 'moderate',
+                'content_types': content_types,
+                'brand_colors': brand_colors,
+                'brand_values': brand_values,
+                'visual_style': visual_style,
+                'strategy_insights': strategy_insights,
+                'seo_profile': seo_profile,
+                'competitive_intelligence': competitive_intelligence,
+                'platform_preferences': platform_preferences,
+                'research_depth': research_depth,
+                'auto_research': auto_research,
+                'factual_content': factual_content,
+                'business_info': business_info,
+                'sources': sources
+            }
+        except Exception as e:
+            logger.error(f"Error building canonical profile: {str(e)}")
+            return {}
+
+    def _build_competitor_seo_benchmarks(self, competitor_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
+        try:
+            if not competitor_analysis:
+                return {}
+
+            rows = []
+            for comp in competitor_analysis:
+                analysis_data = comp.get("analysis_data") if isinstance(comp, dict) else None
+                if not isinstance(analysis_data, dict):
+                    continue
+                seo_audit = analysis_data.get("seo_audit")
+                if not isinstance(seo_audit, dict):
+                    continue
+                score = seo_audit.get("overall_score")
+                if score is None:
+                    continue
+                rows.append({
+                    "competitor_url": comp.get("competitor_url") or comp.get("url") or comp.get("website_url"),
+                    "competitor_domain": comp.get("competitor_domain") or comp.get("domain"),
+                    "overall_score": score,
+                    "last_analyzed_at": comp.get("updated_at") or comp.get("analysis_date")
+                })
+
+            if not rows:
+                return {}
+
+            scores = [r["overall_score"] for r in rows if isinstance(r.get("overall_score"), (int, float))]
+            avg_score = round(sum(scores) / len(scores), 1) if scores else None
+
+            best = max(rows, key=lambda r: r.get("overall_score") or 0)
+            worst = min(rows, key=lambda r: r.get("overall_score") or 0)
+
+            return {
+                "competitors_with_seo_audit": len(rows),
+                "avg_homepage_seo_score": avg_score,
+                "best_competitor": best,
+                "worst_competitor": worst
+            }
+        except Exception as e:
+            logger.error(f"Error building competitor SEO benchmarks: {str(e)}")
             return {}
 
     def _assess_data_quality(self, website_analysis: Dict, research_preferences: Dict, api_keys_data: Dict, persona_data: Dict = None, competitor_analysis: List = None, gsc_analytics: Dict = None, bing_analytics: Dict = None) -> Dict[str, Any]:
@@ -432,7 +928,7 @@ class OnboardingDataIntegrationService:
             ).first()
             
             if not persona:
-                logger.warning(f"No persona data found for user {user_id}")
+                logger.info(f"[Persona] No persona data found for user {user_id}")
                 return {}
             
             # Convert to dictionary and add metadata
@@ -456,10 +952,10 @@ class OnboardingDataIntegrationService:
             ).order_by(OnboardingSession.updated_at.desc()).first()
             
             if not session:
-                logger.warning(f"🔍 COMPETITOR VALIDATION: No onboarding session found for user {user_id}")
+                logger.info(f"[CompetitorAnalysis] No onboarding session found for user {user_id}")
                 return []
             
-            logger.warning(f"🔍 COMPETITOR VALIDATION: Found session {session.id} for user {user_id}")
+            logger.info(f"[CompetitorAnalysis] user={user_id} session={session.id} (latest)")
             
             # Get all competitor analyses for this session
             competitor_records = db.query(CompetitorAnalysis).filter(
@@ -467,22 +963,10 @@ class OnboardingDataIntegrationService:
             ).order_by(CompetitorAnalysis.updated_at.desc()).all()
             
             if not competitor_records:
-                logger.warning(f"🔍 COMPETITOR VALIDATION: No competitor analysis records found for user {user_id}, session {session.id}")
-                logger.warning(f"  Checking all sessions for user {user_id}...")
-                # Check all sessions for this user
-                all_sessions = db.query(OnboardingSession).filter(
-                    OnboardingSession.user_id == user_id
-                ).all()
-                logger.warning(f"  Total sessions for user: {len(all_sessions)}")
-                for sess in all_sessions:
-                    comp_count = db.query(CompetitorAnalysis).filter(
-                        CompetitorAnalysis.session_id == sess.id
-                    ).count()
-                    session_timestamp = getattr(sess, 'started_at', None) or getattr(sess, 'updated_at', None)
-                    logger.warning(f"  Session {sess.id} (timestamp: {session_timestamp}): {comp_count} competitors")
+                logger.info(f"[CompetitorAnalysis] No competitor records found for user={user_id} session={session.id}")
                 return []
             
-            logger.warning(f"🔍 COMPETITOR VALIDATION: Found {len(competitor_records)} competitor records for user {user_id}")
+            logger.info(f"[CompetitorAnalysis] session={session.id} records={len(competitor_records)} user={user_id}")
             
             # Convert to list of dictionaries
             # Use to_dict() which includes competitor_url, competitor_domain, analysis_data
@@ -496,17 +980,60 @@ class OnboardingDataIntegrationService:
                 competitor_dict['confidence_level'] = 0.9 if record.status == 'completed' else 0.5
                 competitors.append(competitor_dict)
             
-            logger.info(f"Retrieved {len(competitors)} competitor analyses for user {user_id}")
+            logger.info(f"[CompetitorAnalysis] retrieved={len(competitors)} user={user_id}")
             if competitors:
-                logger.warning(f"🔍 Sample competitor keys: {list(competitors[0].keys())}")
-                logger.warning(f"🔍 Sample competitor has analysis_data: {'analysis_data' in competitors[0]}")
-                if 'analysis_data' in competitors[0]:
-                    logger.warning(f"🔍 Sample analysis_data keys: {list(competitors[0]['analysis_data'].keys()) if isinstance(competitors[0]['analysis_data'], dict) else 'Not a dict'}")
+                try:
+                    sample = competitors[0]
+                    logger.debug(f"[CompetitorAnalysis] sample_keys={list(sample.keys())} has_analysis_data={'analysis_data' in sample}")
+                    if isinstance(sample.get('analysis_data'), dict):
+                        logger.debug(f"[CompetitorAnalysis] analysis_data_keys={list(sample['analysis_data'].keys())}")
+                except Exception:
+                    pass
             return competitors
 
         except Exception as e:
             logger.error(f"Error getting competitor analysis for user {user_id}: {str(e)}")
             return []
+
+    def _get_deep_competitor_analysis(self, user_id: str, db: Session) -> Dict[str, Any]:
+        try:
+            task = db.query(DeepCompetitorAnalysisTask).filter(
+                DeepCompetitorAnalysisTask.user_id == user_id
+            ).order_by(DeepCompetitorAnalysisTask.updated_at.desc()).first()
+
+            if not task:
+                return {
+                    "status": "not_scheduled",
+                    "last_run": None,
+                    "report": None
+                }
+
+            latest_log = db.query(DeepCompetitorAnalysisExecutionLog).filter(
+                DeepCompetitorAnalysisExecutionLog.task_id == task.id
+            ).order_by(DeepCompetitorAnalysisExecutionLog.execution_date.desc()).first()
+
+            last_run = None
+            if latest_log and latest_log.execution_date:
+                last_run = latest_log.execution_date.isoformat()
+
+            report = None
+            if latest_log and latest_log.status == "success":
+                report = latest_log.result_data
+
+            payload = task.payload if isinstance(task.payload, dict) else {}
+            competitors = payload.get("competitors") if isinstance(payload, dict) else None
+
+            return {
+                "status": task.status,
+                "next_execution": task.next_execution.isoformat() if task.next_execution else None,
+                "last_run": last_run,
+                "last_status": latest_log.status if latest_log else None,
+                "competitors_count": len(competitors) if isinstance(competitors, list) else None,
+                "report": report
+            }
+        except Exception as e:
+            logger.error(f"Error getting deep competitor analysis for user {user_id}: {str(e)}")
+            return {}
 
     async def _get_gsc_analytics(self, user_id: str) -> Dict[str, Any]:
         """Get Google Search Console analytics data for the user."""
@@ -514,7 +1041,7 @@ class OnboardingDataIntegrationService:
             from services.seo.dashboard_service import SEODashboardService
             from services.database import get_db_session
             
-            db = get_db_session()
+            db = get_db_session(user_id)
             try:
                 dashboard_service = SEODashboardService(db)
                 gsc_data = await dashboard_service.get_gsc_data(user_id)
@@ -545,7 +1072,7 @@ class OnboardingDataIntegrationService:
             from services.bing_analytics_storage_service import BingAnalyticsStorageService
             from services.database import get_db_session
             
-            db = get_db_session()
+            db = get_db_session(user_id)
             try:
                 dashboard_service = SEODashboardService(db)
                 bing_data = await dashboard_service.get_bing_data(user_id)
@@ -553,13 +1080,15 @@ class OnboardingDataIntegrationService:
                 db.close()
             
             # Also try to get from storage service for more detailed metrics
-            bing_storage = BingAnalyticsStorageService(os.getenv('DATABASE_URL', 'sqlite:///alwrity.db'))
+            from services.database import get_user_db_path
+            db_path = get_user_db_path(user_id)
+            bing_storage = BingAnalyticsStorageService(f'sqlite:///{db_path}')
             
             # Get site URL from onboarding session if available
             site_url = None
             try:
                 from services.database import get_db_session
-                with get_db_session() as db:
+                with get_db_session(user_id) as db:
                     session = db.query(OnboardingSession).filter(
                         OnboardingSession.user_id == user_id
                     ).order_by(OnboardingSession.updated_at.desc()).first()

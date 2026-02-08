@@ -17,19 +17,27 @@ from PIL import Image
 from loguru import logger
 
 
+from services.database import get_user_db_path
+
 class WordPressService:
-    """Main WordPress service class for managing WordPress integrations."""
+    """Service for WordPress integration."""
     
-    def __init__(self, db_path: str = "alwrity.db"):
-        """Initialize WordPress service with database path."""
+    def __init__(self, db_path: str = None):
+        # db_path is deprecated in favor of dynamic user_id based paths
         self.db_path = db_path
         self.api_version = "v2"
-        self._ensure_tables()
+        # self._ensure_tables() # Deferred to per-user calls
     
-    def _ensure_tables(self) -> None:
+    def _get_db_path(self, user_id: str) -> str:
+        return get_user_db_path(user_id)
+    
+    def _ensure_tables(self, user_id: str) -> None:
         """Ensure required database tables exist."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 
                 # WordPress sites table
@@ -64,10 +72,10 @@ class WordPressService:
                 ''')
                 
                 conn.commit()
-                logger.info("WordPress database tables ensured")
+                # logger.info("WordPress database tables ensured")
                 
         except Exception as e:
-            logger.error(f"Error ensuring WordPress tables: {e}")
+            logger.error(f"Error ensuring WordPress tables for user {user_id}: {e}")
             raise
     
     def add_site(self, user_id: str, site_url: str, site_name: str, username: str, app_password: str) -> bool:
@@ -82,7 +90,10 @@ class WordPressService:
                 logger.error(f"Failed to connect to WordPress site: {site_url}")
                 return False
             
-            with sqlite3.connect(self.db_path) as conn:
+            self._ensure_tables(user_id)
+            db_path = self._get_db_path(user_id)
+            
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT OR REPLACE INTO wordpress_sites 
@@ -101,8 +112,18 @@ class WordPressService:
     def get_user_sites(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all WordPress sites for a user."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            if not os.path.exists(db_path):
+                return []
+                
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
+                
+                # Check if table exists
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='wordpress_sites'")
+                if not cursor.fetchone():
+                    return []
+                    
                 cursor.execute('''
                     SELECT id, site_url, site_name, username, is_active, created_at, updated_at
                     FROM wordpress_sites 
@@ -129,16 +150,17 @@ class WordPressService:
             logger.error(f"Error getting WordPress sites for user {user_id}: {e}")
             return []
     
-    def get_site_credentials(self, site_id: int) -> Optional[Dict[str, str]]:
+    def get_site_credentials(self, user_id: str, site_id: int) -> Optional[Dict[str, str]]:
         """Get credentials for a specific WordPress site."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT site_url, username, app_password
                     FROM wordpress_sites 
-                    WHERE id = ? AND is_active = 1
-                ''', (site_id,))
+                    WHERE id = ? AND user_id = ? AND is_active = 1
+                ''', (site_id, user_id))
                 
                 result = cursor.fetchone()
                 if result:
@@ -174,7 +196,8 @@ class WordPressService:
     def disconnect_site(self, user_id: str, site_id: int) -> bool:
         """Disconnect a WordPress site."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE wordpress_sites 
@@ -190,10 +213,10 @@ class WordPressService:
             logger.error(f"Error disconnecting WordPress site {site_id}: {e}")
             return False
     
-    def get_site_info(self, site_id: int) -> Optional[Dict[str, Any]]:
+    def get_site_info(self, user_id: str, site_id: int) -> Optional[Dict[str, Any]]:
         """Get detailed information about a WordPress site."""
         try:
-            credentials = self.get_site_credentials(site_id)
+            credentials = self.get_site_credentials(user_id, site_id)
             if not credentials:
                 return None
             
@@ -224,26 +247,40 @@ class WordPressService:
 
     def get_posts_for_all_sites(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all tracked WordPress posts for all sites of a user."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT wp.id, wp.wordpress_post_id, wp.title, wp.status, wp.published_at, wp.last_updated_at,
-                       ws.site_name, ws.site_url
-                FROM wordpress_posts wp
-                JOIN wordpress_sites ws ON wp.site_id = ws.id
-                WHERE wp.user_id = ? AND ws.is_active = TRUE
-                ORDER BY wp.published_at DESC
-            ''', (user_id,))
-            posts = []
-            for post_data in cursor.fetchall():
-                posts.append({
-                    "id": post_data[0],
-                    "wp_post_id": post_data[1],
-                    "title": post_data[2],
-                    "status": post_data[3],
-                    "published_at": post_data[4],
-                    "created_at": post_data[5],
-                    "site_name": post_data[6],
-                    "site_url": post_data[7]
-                })
-        return posts
+        db_path = self._get_db_path(user_id)
+        if not os.path.exists(db_path):
+            return []
+            
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Check if table exists
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='wordpress_posts'")
+                if not cursor.fetchone():
+                    return []
+                    
+                cursor.execute('''
+                    SELECT wp.id, wp.wp_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
+                           ws.site_name, ws.site_url
+                    FROM wordpress_posts wp
+                    JOIN wordpress_sites ws ON wp.site_id = ws.id
+                    WHERE wp.user_id = ? AND ws.is_active = 1
+                    ORDER BY wp.published_at DESC
+                ''', (user_id,))
+                posts = []
+                for post_data in cursor.fetchall():
+                    posts.append({
+                        "id": post_data[0],
+                        "wp_post_id": post_data[1],
+                        "title": post_data[2],
+                        "status": post_data[3],
+                        "published_at": post_data[4],
+                        "created_at": post_data[5],
+                        "site_name": post_data[6],
+                        "site_url": post_data[7]
+                    })
+            return posts
+        except Exception as e:
+            logger.error(f"Error getting posts for user {user_id}: {e}")
+            return []

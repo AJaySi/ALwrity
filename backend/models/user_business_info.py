@@ -12,7 +12,7 @@ class UserBusinessInfo(Base):
     __tablename__ = 'user_business_info'
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True, nullable=True)
+    user_id = Column(String(255), index=True, nullable=True)
     business_description = Column(Text, nullable=False)
     industry = Column(String(100), nullable=True)
     target_audience = Column(Text, nullable=True)

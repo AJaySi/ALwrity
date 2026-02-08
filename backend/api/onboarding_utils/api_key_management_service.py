@@ -20,14 +20,8 @@ class APIKeyManagementService:
         # Ensure database service is available
         if not hasattr(self.api_key_manager, 'use_database'):
             self.api_key_manager.use_database = True
-            try:
-                from services.onboarding.database_service import OnboardingDatabaseService
-                self.api_key_manager.db_service = OnboardingDatabaseService()
-                logger.info("Database service initialized for APIKeyManager")
-            except Exception as e:
-                logger.warning(f"Database service not available: {e}")
-                self.api_key_manager.use_database = False
-                self.api_key_manager.db_service = None
+            # Legacy service removed - using direct DB access
+            self.api_key_manager.db_service = None
         
         # Simple cache for API keys
         self._api_keys_cache = None
@@ -77,18 +71,28 @@ class APIKeyManagementService:
         """
         try:
             # Prefer DB per-user keys when user_id is provided and DB is available
-            if user_id and getattr(self.api_key_manager, 'use_database', False) and getattr(self.api_key_manager, 'db_service', None):
+            if user_id and getattr(self.api_key_manager, 'use_database', False):
                 try:
                     from services.database import SessionLocal
+                    from models.onboarding import APIKey
+                    
                     db = SessionLocal()
                     try:
-                        api_keys = self.api_key_manager.db_service.get_api_keys(user_id, db) or {}
-                        logger.info(f"Loaded {len(api_keys)} API keys from database for user {user_id}")
-                        return {
-                            "api_keys": api_keys,
-                            "total_providers": len(api_keys),
-                            "configured_providers": [k for k, v in api_keys.items() if v]
-                        }
+                        # Direct DB query instead of legacy service
+                        api_keys_records = db.query(APIKey).filter(
+                            APIKey.user_id == user_id,
+                            APIKey.is_active == True
+                        ).all()
+                        
+                        api_keys = {k.provider: k.api_key for k in api_keys_records}
+                        
+                        if api_keys:
+                            logger.info(f"Loaded {len(api_keys)} API keys from database for user {user_id}")
+                            return {
+                                "api_keys": api_keys,
+                                "total_providers": len(api_keys),
+                                "configured_providers": [k for k, v in api_keys.items() if v]
+                            }
                     finally:
                         db.close()
                 except Exception as db_err:

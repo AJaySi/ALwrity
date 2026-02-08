@@ -22,6 +22,7 @@ interface MainContentPreviewHeaderProps {
   assistantOn?: boolean;
   onAssistantToggle?: (enabled: boolean) => void;
   topic?: string;
+  platform?: string;
 }
 
 const MainContentPreviewHeader: React.FC<MainContentPreviewHeaderProps> = ({
@@ -34,7 +35,8 @@ const MainContentPreviewHeader: React.FC<MainContentPreviewHeaderProps> = ({
   onPreviewToggle,
   assistantOn,
   onAssistantToggle,
-  topic
+  topic,
+  platform = 'linkedin'
 }) => {
   const getChipColor = (v?: number) => {
     if (typeof v !== 'number') return '#6b7280';
@@ -69,6 +71,8 @@ const MainContentPreviewHeader: React.FC<MainContentPreviewHeaderProps> = ({
     Coverage: 'Citation Coverage indicates how much of the content is supported with citations. Higher is better.'
   };
 
+  const displayPlatform = platform.charAt(0).toUpperCase() + platform.slice(1);
+
   return (
     <div style={{
       padding: '12px 16px',
@@ -82,11 +86,11 @@ const MainContentPreviewHeader: React.FC<MainContentPreviewHeaderProps> = ({
       justifyContent: 'space-between'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <span>{topic ? `${topic} - LinkedIn Content Preview` : 'LinkedIn Content Preview'}</span>
+        <span>{topic ? `${topic} - ${displayPlatform} Content Preview` : `${displayPlatform} Content Preview`}</span>
         
         {/* Persona Chip */}
         <PersonaChip 
-          platform="linkedin" 
+          platform={platform} 
           onPersonaUpdate={(personaData) => {
             console.log('Persona updated:', personaData);
             // You can add additional logic here to handle persona updates

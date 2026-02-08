@@ -63,8 +63,17 @@ async def get_usage_alerts(
         }
     
     except Exception as e:
-        logger.error(f"Error getting usage alerts: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting usage alerts: {e}", exc_info=True)
+        # Return empty alerts instead of 500
+        return {
+            "success": True,
+            "data": {
+                "alerts": [],
+                "total": 0,
+                "unread_count": 0,
+                "message": f"Error retrieving alerts: {str(e)}"
+            }
+        }
 
 
 @router.post("/alerts/{alert_id}/mark-read")

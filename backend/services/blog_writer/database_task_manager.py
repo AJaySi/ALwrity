@@ -20,7 +20,7 @@ from models.blog_models import (
     MediumBlogGenerateResult,
 )
 from services.blog_writer.blog_service import BlogWriterService
-
+from services.database import SessionLocal
 
 class DatabaseTaskManager:
     """Database-backed task manager for blog writer operations."""
@@ -423,7 +423,7 @@ class DatabaseTaskManager:
             operation="medium_blog_generation"
         )
         
-        asyncio.create_task(self._run_medium_generation_task(task_id, request))
+        asyncio.create_task(self._run_medium_generation_task(task_id, request, user_id))
         return task_id
     
     async def _run_research_task(self, task_id: str, request: BlogResearchRequest):
@@ -512,6 +512,8 @@ class DatabaseTaskManager:
             result: MediumBlogGenerateResult = await self.service.generate_medium_blog_with_progress(
                 request,
                 task_id,
+                user_id=request.user_id if hasattr(request, 'user_id') else (await self.get_task_status(task_id))['user_id'],
+                db=self.db
             )
             
             if not result or not getattr(result, "sections", None):

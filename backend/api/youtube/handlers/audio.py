@@ -19,8 +19,9 @@ router = APIRouter(tags=["youtube-audio"])
 logger = get_service_logger("api.youtube.audio")
 
 # Audio output directory
-base_dir = Path(__file__).parent.parent.parent.parent
-YOUTUBE_AUDIO_DIR = base_dir / "youtube_audio"
+# api/youtube/handlers/audio.py -> handlers -> youtube -> api -> backend -> root
+base_dir = Path(__file__).resolve().parents[4]
+YOUTUBE_AUDIO_DIR = base_dir / "workspace" / "media" / "youtube_audio"
 YOUTUBE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 # Initialize audio service

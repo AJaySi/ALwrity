@@ -3,6 +3,7 @@ Speech generation generator for WaveSpeed API.
 """
 
 import time
+import base64
 import requests
 from typing import Optional
 from requests import exceptions as requests_exceptions
@@ -177,6 +178,145 @@ class SpeechGenerator:
         if not outputs:
             raise HTTPException(status_code=502, detail="WaveSpeed speech generator returned no outputs")
         
+        audio_url = self._extract_audio_url(outputs)
+        return self._download_audio(audio_url, timeout)
+
+    def voice_clone(
+        self,
+        audio_bytes: bytes,
+        custom_voice_id: str,
+        model: str = "speech-02-hd",
+        *,
+        audio_mime_type: str = "audio/wav",
+        text: Optional[str] = None,
+        need_noise_reduction: bool = False,
+        need_volume_normalization: bool = False,
+        accuracy: float = 0.7,
+        language_boost: Optional[str] = None,
+        timeout: int = 180,
+    ) -> bytes:
+        url = f"{self.base_url}/minimax/voice-clone"
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        mime = audio_mime_type or "audio/wav"
+        audio_data_url = f"data:{mime};base64,{audio_b64}"
+
+        payload = {
+            "audio": audio_data_url,
+            "custom_voice_id": custom_voice_id,
+            "model": model,
+            "need_noise_reduction": need_noise_reduction,
+            "need_volume_normalization": need_volume_normalization,
+            "accuracy": accuracy,
+        }
+        if text:
+            payload["text"] = text
+        if language_boost:
+            payload["language_boost"] = language_boost
+
+        logger.info(f"[WaveSpeed] Voice clone via {url} (voice_id={custom_voice_id})")
+
+        try:
+            response = requests.post(
+                url,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=(30, 90),
+            )
+        except requests_exceptions.Timeout as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed voice clone timed out", "message": str(e)})
+        except (requests_exceptions.ConnectionError, requests_exceptions.ConnectTimeout) as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed voice clone connection failed", "message": str(e)})
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "WaveSpeed voice clone failed",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                },
+            )
+
+        response_json = response.json()
+        data = response_json.get("data") or response_json
+
+        outputs = data.get("outputs") or []
+        status = data.get("status")
+        prediction_id = data.get("id")
+
+        if not outputs and prediction_id and status in {"created", "processing"}:
+            result = self.polling.poll_until_complete(prediction_id, timeout_seconds=timeout, interval_seconds=0.8)
+            outputs = result.get("outputs") or []
+
+        if not outputs:
+            raise HTTPException(status_code=502, detail="WaveSpeed voice clone returned no outputs")
+
+        audio_url = self._extract_audio_url(outputs)
+        return self._download_audio(audio_url, timeout)
+
+    def qwen3_voice_clone(
+        self,
+        audio_bytes: bytes,
+        text: str,
+        *,
+        audio_mime_type: str = "audio/wav",
+        language: str = "auto",
+        reference_text: Optional[str] = None,
+        timeout: int = 180,
+    ) -> bytes:
+        url = f"{self.base_url}/wavespeed-ai/qwen3-tts/voice-clone"
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        mime = audio_mime_type or "audio/wav"
+        audio_data_url = f"data:{mime};base64,{audio_b64}"
+
+        payload = {
+            "audio": audio_data_url,
+            "text": text,
+            "language": language or "auto",
+        }
+        if reference_text:
+            payload["reference_text"] = reference_text
+
+        logger.info(f"[WaveSpeed] Qwen3 voice clone via {url} (language={payload.get('language')})")
+
+        try:
+            response = requests.post(
+                url,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=(30, 90),
+            )
+        except requests_exceptions.Timeout as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed Qwen3 voice clone timed out", "message": str(e)})
+        except (requests_exceptions.ConnectionError, requests_exceptions.ConnectTimeout) as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed Qwen3 voice clone connection failed", "message": str(e)})
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "WaveSpeed Qwen3 voice clone failed",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                },
+            )
+
+        response_json = response.json()
+        data = response_json.get("data") or response_json
+
+        outputs = data.get("outputs") or []
+        status = data.get("status")
+        prediction_id = data.get("id")
+
+        if not outputs and prediction_id and status in {"created", "processing"}:
+            result = self.polling.poll_until_complete(prediction_id, timeout_seconds=timeout, interval_seconds=0.8)
+            outputs = result.get("outputs") or []
+
+        if not outputs:
+            raise HTTPException(status_code=502, detail="WaveSpeed Qwen3 voice clone returned no outputs")
+
         audio_url = self._extract_audio_url(outputs)
         return self._download_audio(audio_url, timeout)
     

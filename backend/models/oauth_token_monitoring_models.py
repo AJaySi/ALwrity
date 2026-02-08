@@ -52,11 +52,10 @@ class OAuthTokenMonitoringTask(Base):
         cascade="all, delete-orphan"
     )
     
-    # Indexes for efficient queries
     __table_args__ = (
-        Index('idx_user_platform', 'user_id', 'platform'),
-        Index('idx_next_check', 'next_check'),
-        Index('idx_status', 'status'),
+        Index('idx_oauth_token_tasks_user_platform', 'user_id', 'platform'),
+        Index('idx_oauth_token_tasks_next_check', 'next_check'),
+        Index('idx_oauth_token_tasks_status', 'status'),
     )
     
     def __repr__(self):
@@ -91,10 +90,9 @@ class OAuthTokenExecutionLog(Base):
     # Relationship to task
     task = relationship("OAuthTokenMonitoringTask", back_populates="execution_logs")
     
-    # Indexes for efficient queries
     __table_args__ = (
-        Index('idx_task_execution_date', 'task_id', 'execution_date'),
-        Index('idx_status', 'status'),
+        Index('idx_oauth_token_logs_task_execution_date', 'task_id', 'execution_date'),
+        Index('idx_oauth_token_logs_status', 'status'),
     )
     
     def __repr__(self):

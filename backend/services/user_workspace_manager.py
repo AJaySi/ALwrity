@@ -13,6 +13,8 @@ from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from services.database import init_user_database
+
 class UserWorkspaceManager:
     """Manages user-specific workspaces and progressive setup."""
     
@@ -24,42 +26,62 @@ class UserWorkspaceManager:
             self.base_workspace_dir = Path("/tmp/alwrity_workspace")
             self.user_workspaces_dir = self.base_workspace_dir / "users"
         else:
-            # In development, use local directories
-            self.base_workspace_dir = Path("lib/workspace")
-            self.user_workspaces_dir = self.base_workspace_dir / "users"
+            # In development, use project root 'workspace' directory
+            # services/user_workspace_manager.py -> services -> backend -> root
+            root_dir = Path(__file__).parent.parent.parent
+            self.base_workspace_dir = root_dir / "workspace"
+            self.user_workspaces_dir = self.base_workspace_dir
         
+    def _sanitize_user_id(self, user_id: str) -> str:
+        """Sanitize user_id to be safe for filesystem (matches database.py logic)."""
+        return "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
+
     def create_user_workspace(self, user_id: str) -> Dict[str, Any]:
         """Create a complete user workspace with progressive setup."""
         try:
             logger.info(f"Creating workspace for user {user_id}")
+            
+            # Sanitize user_id
+            safe_user_id = self._sanitize_user_id(user_id)
             
             # Check if we're in production and skip file operations if needed
             if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("HEROKU"):
                 logger.info("Production environment detected - skipping file workspace creation")
                 return {
                     "user_id": user_id,
-                    "workspace_path": "/tmp/alwrity_workspace/users/user_" + user_id,
+                    "workspace_path": "/tmp/alwrity_workspace/users/user_" + safe_user_id,
                     "config": self._create_user_config(user_id),
                     "created_at": datetime.utcnow().isoformat(),
                     "production_mode": True
                 }
             
             # Create user-specific directories
-            user_dir = self.user_workspaces_dir / f"user_{user_id}"
+            # Format: workspaces/workspace_{user_id}
+            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
             user_dir.mkdir(parents=True, exist_ok=True)
             
             # Create subdirectories
             subdirs = [
                 "content",
+                "content/images",
+                "content/videos",
+                "content/audio",
+                "content/text",
+                "content/youtube", # Consolidated
+                "content/story",   # Consolidated
                 "research", 
                 "config",
                 "cache",
                 "exports",
-                "templates"
+                "templates",
+                "database",
+                "db",              # Requested 'db' folder
+                "media",           # Requested 'media' folder
+                "data"             # User specific data folder
             ]
             
             for subdir in subdirs:
-                (user_dir / subdir).mkdir(exist_ok=True)
+                (user_dir / subdir).mkdir(parents=True, exist_ok=True)
             
             # Create user-specific configuration
             config = self._create_user_config(user_id)
@@ -67,8 +89,16 @@ class UserWorkspaceManager:
             with open(config_file, 'w') as f:
                 json.dump(config, f, indent=2)
             
-            # Create user-specific database tables if needed
-            self._create_user_database_tables(user_id)
+            # Create user-specific database tables
+            # Use database.py's init_user_database to ensure proper schema
+            try:
+                init_user_database(user_id)
+            except Exception as db_err:
+                logger.error(f"Failed to initialize user database: {db_err}")
+                # We don't raise here to allow workspace creation to proceed, 
+                # but it might be critical. Let's log and continue for now or raise?
+                # If DB init fails, the app might not work.
+                raise db_err
             
             logger.info(f"✅ User workspace created: {user_dir}")
             return {
@@ -138,7 +168,8 @@ class UserWorkspaceManager:
     
     def get_user_workspace(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user workspace information."""
-        user_dir = self.user_workspaces_dir / f"user_{user_id}"
+        safe_user_id = self._sanitize_user_id(user_id)
+        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
         
         if not user_dir.exists():
             return None
@@ -157,7 +188,8 @@ class UserWorkspaceManager:
     def update_user_config(self, user_id: str, updates: Dict[str, Any]) -> bool:
         """Update user configuration."""
         try:
-            user_dir = self.user_workspaces_dir / f"user_{user_id}"
+            safe_user_id = self._sanitize_user_id(user_id)
+            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
             config_file = user_dir / "config" / "user_config.json"
             
             if config_file.exists():
@@ -207,21 +239,18 @@ class UserWorkspaceManager:
             
             # Step 2: Website Analysis - Enable content analysis
             if onboarding_step >= 2:
-                self._setup_content_analysis(user_id)
+                # Tables are created by init_user_database
                 setup_status["features_enabled"].append("content_analysis")
-                setup_status["tables_created"].append(f"user_{user_id}_content_analysis")
             
             # Step 3: Research - Enable research capabilities
             if onboarding_step >= 3:
-                self._setup_research_services(user_id)
+                # Tables are created by init_user_database
                 setup_status["features_enabled"].append("research_services")
-                setup_status["tables_created"].append(f"user_{user_id}_research_cache")
             
             # Step 4: Personalization - Enable user-specific features
             if onboarding_step >= 4:
-                self._setup_personalization(user_id)
+                # Tables are created by init_user_database
                 setup_status["features_enabled"].append("personalization")
-                setup_status["tables_created"].append(f"user_{user_id}_preferences")
             
             # Step 5: Integrations - Enable external integrations
             if onboarding_step >= 5:
@@ -234,7 +263,6 @@ class UserWorkspaceManager:
             if onboarding_step >= 6:
                 self._setup_complete_features(user_id)
                 setup_status["features_enabled"].append("all_features")
-                setup_status["tables_created"].append(f"user_{user_id}_complete_workspace")
             
             logger.info(f"✅ Progressive setup completed for user {user_id} at step {onboarding_step}")
             return setup_status
@@ -245,8 +273,9 @@ class UserWorkspaceManager:
     
     def _setup_ai_services(self, user_id: str):
         """Set up AI services for the user."""
+        safe_user_id = self._sanitize_user_id(user_id)
         # Create user-specific AI service configuration
-        user_dir = self.user_workspaces_dir / f"user_{user_id}"
+        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
         ai_config = user_dir / "config" / "ai_services.json"
         
         ai_services = {
@@ -255,58 +284,32 @@ class UserWorkspaceManager:
             "copilotkit": {"enabled": True, "assistant_type": "content"}
         }
         
+        # Ensure config directory exists
+        ai_config.parent.mkdir(parents=True, exist_ok=True)
+        
         with open(ai_config, 'w') as f:
             json.dump(ai_services, f, indent=2)
     
     def _setup_content_analysis(self, user_id: str):
         """Set up content analysis capabilities."""
-        # Create content analysis tables
-        create_sql = f"""
-        CREATE TABLE IF NOT EXISTS user_{user_id}_content_analysis (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content_id VARCHAR(100),
-            analysis_type VARCHAR(50),
-            results JSON,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-        self.db.execute(text(create_sql))
-        self.db.commit()
+        # Tables handled by database.py init_user_database
+        pass
     
     def _setup_research_services(self, user_id: str):
         """Set up research services."""
-        # Create research cache table
-        create_sql = f"""
-        CREATE TABLE IF NOT EXISTS user_{user_id}_research_cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            query_hash VARCHAR(64),
-            research_data JSON,
-            expires_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-        self.db.execute(text(create_sql))
-        self.db.commit()
+        # Tables handled by database.py init_user_database
+        pass
     
     def _setup_personalization(self, user_id: str):
         """Set up personalization features."""
-        # Create user preferences table
-        create_sql = f"""
-        CREATE TABLE IF NOT EXISTS user_{user_id}_preferences (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            preference_type VARCHAR(50),
-            preference_data JSON,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-        self.db.execute(text(create_sql))
-        self.db.commit()
+        # Tables handled by database.py init_user_database
+        pass
     
     def _setup_integrations(self, user_id: str):
         """Set up external integrations."""
+        safe_user_id = self._sanitize_user_id(user_id)
         # Create integrations configuration
-        user_dir = self.user_workspaces_dir / f"user_{user_id}"
+        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
         integrations_config = user_dir / "config" / "integrations.json"
         
         integrations = {
@@ -315,13 +318,17 @@ class UserWorkspaceManager:
             "wordpress": {"enabled": False, "connected": False}
         }
         
+        # Ensure config directory exists
+        integrations_config.parent.mkdir(parents=True, exist_ok=True)
+        
         with open(integrations_config, 'w') as f:
             json.dump(integrations, f, indent=2)
     
     def _setup_complete_features(self, user_id: str):
         """Set up complete feature set."""
+        safe_user_id = self._sanitize_user_id(user_id)
         # Create comprehensive workspace
-        user_dir = self.user_workspaces_dir / f"user_{user_id}"
+        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
         
         # Create additional directories for complete setup
         complete_dirs = [
@@ -346,27 +353,15 @@ class UserWorkspaceManager:
     def cleanup_user_workspace(self, user_id: str) -> bool:
         """Clean up user workspace (for account deletion)."""
         try:
-            user_dir = self.user_workspaces_dir / f"user_{user_id}"
+            safe_user_id = self._sanitize_user_id(user_id)
+            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
             if user_dir.exists():
                 shutil.rmtree(user_dir)
             
-            # Drop user-specific tables
-            user_tables = [
-                f"user_{user_id}_content_items",
-                f"user_{user_id}_research_cache",
-                f"user_{user_id}_ai_analyses", 
-                f"user_{user_id}_exports",
-                f"user_{user_id}_content_analysis",
-                f"user_{user_id}_preferences"
-            ]
+            # Note: We do not drop tables here because each user has their own DB file 
+            # (alwrity.db) inside their workspace. Deleting the workspace folder 
+            # deletes the DB file as well.
             
-            for table in user_tables:
-                try:
-                    self.db.execute(text(f"DROP TABLE IF EXISTS {table}"))
-                except:
-                    pass  # Table might not exist
-            
-            self.db.commit()
             logger.info(f"✅ User workspace cleaned up for user {user_id}")
             return True
             

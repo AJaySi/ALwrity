@@ -34,10 +34,16 @@ interface TargetAudience {
 
 interface TargetAudienceAnalysisSectionProps {
   targetAudience?: TargetAudience;
+  isEditable?: boolean;
+  onUpdate?: (field: string, value: any) => void;
+  hideHeader?: boolean;
 }
 
 const TargetAudienceAnalysisSection: React.FC<TargetAudienceAnalysisSectionProps> = ({
-  targetAudience
+  targetAudience,
+  isEditable,
+  onUpdate,
+  hideHeader
 }) => {
   const styles = useOnboardingStyles();
 

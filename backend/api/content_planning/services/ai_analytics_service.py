@@ -13,7 +13,8 @@ import time
 from services.content_planning_db import ContentPlanningDBService
 from services.ai_analysis_db_service import AIAnalysisDBService
 from services.ai_analytics_service import AIAnalyticsService
-from services.onboarding.data_service import OnboardingDataService
+from services.database import SessionLocal
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 # Import utilities
 from ..utils.error_handlers import ContentPlanningErrorHandler
@@ -26,15 +27,16 @@ class ContentPlanningAIAnalyticsService:
     def __init__(self):
         self.ai_analysis_db_service = AIAnalysisDBService()
         self.ai_analytics_service = AIAnalyticsService()
-        self.onboarding_service = OnboardingDataService()
+        self.onboarding_integration_service = OnboardingDataIntegrationService()
     
-    async def analyze_content_evolution(self, strategy_id: int, time_period: str = "30d") -> Dict[str, Any]:
+    async def analyze_content_evolution(self, user_id: int, strategy_id: int, time_period: str = "30d") -> Dict[str, Any]:
         """Analyze content evolution over time for a specific strategy."""
         try:
-            logger.info(f"Starting content evolution analysis for strategy {strategy_id}")
+            logger.info(f"Starting content evolution analysis for strategy {strategy_id} (user {user_id})")
             
             # Perform content evolution analysis
             evolution_analysis = await self.ai_analytics_service.analyze_content_evolution(
+                user_id=user_id,
                 strategy_id=strategy_id,
                 time_period=time_period
             )
@@ -55,13 +57,14 @@ class ContentPlanningAIAnalyticsService:
             logger.error(f"Error analyzing content evolution: {str(e)}")
             raise ContentPlanningErrorHandler.handle_general_error(e, "analyze_content_evolution")
     
-    async def analyze_performance_trends(self, strategy_id: int, metrics: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def analyze_performance_trends(self, user_id: int, strategy_id: int, metrics: Optional[List[str]] = None) -> Dict[str, Any]:
         """Analyze performance trends for content strategy."""
         try:
-            logger.info(f"Starting performance trends analysis for strategy {strategy_id}")
+            logger.info(f"Starting performance trends analysis for strategy {strategy_id} (user {user_id})")
             
             # Perform performance trends analysis
             trends_analysis = await self.ai_analytics_service.analyze_performance_trends(
+                user_id=user_id,
                 strategy_id=strategy_id,
                 metrics=metrics
             )
@@ -191,24 +194,31 @@ class ContentPlanningAIAnalyticsService:
             # 🚨 CRITICAL: Always run fresh AI analysis for refresh operations
             logger.info(f"🔄 Running FRESH AI analysis for user {current_user_id} (force_refresh: {force_refresh})")
             
-            # Get personalized inputs from onboarding data
-            personalized_inputs = self.onboarding_service.get_personalized_ai_inputs(current_user_id)
+            # Get personalized inputs from onboarding data (SSOT)
+            db = SessionLocal()
+            try:
+                personalized_inputs = await self.onboarding_integration_service.process_onboarding_data(str(current_user_id), db)
+            finally:
+                db.close()
             
             logger.info(f"📊 Using personalized inputs: {len(personalized_inputs)} data points")
             
             # Generate real AI insights using personalized data
             logger.info("🔍 Generating performance analysis...")
             performance_analysis = await self.ai_analytics_service.analyze_performance_trends(
+                user_id=current_user_id,
                 strategy_id=strategy_id or 1
             )
             
             logger.info("🧠 Generating strategic intelligence...")
             strategic_intelligence = await self.ai_analytics_service.generate_strategic_intelligence(
+                user_id=current_user_id,
                 strategy_id=strategy_id or 1
             )
             
             logger.info("📈 Analyzing content evolution...")
             evolution_analysis = await self.ai_analytics_service.analyze_content_evolution(
+                user_id=current_user_id,
                 strategy_id=strategy_id or 1
             )
             
@@ -255,9 +265,9 @@ class ContentPlanningAIAnalyticsService:
                 "data_source": "ai_analysis",
                 "user_profile": {
                     "website_url": personalized_inputs.get('website_analysis', {}).get('website_url', ''),
-                    "content_types": personalized_inputs.get('website_analysis', {}).get('content_types', []),
-                    "target_audience": personalized_inputs.get('website_analysis', {}).get('target_audience', []),
-                    "industry_focus": personalized_inputs.get('website_analysis', {}).get('industry_focus', 'general')
+                    "content_types": personalized_inputs.get('canonical_profile', {}).get('content_types', []),
+                    "target_audience": personalized_inputs.get('canonical_profile', {}).get('target_audience', []),
+                    "industry_focus": personalized_inputs.get('canonical_profile', {}).get('industry', 'general')
                 }
             }
             

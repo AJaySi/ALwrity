@@ -10,7 +10,7 @@ from loguru import logger
 from services.database import get_db_session
 from services.persona_data_service import PersonaDataService
 from services.persona.facebook.facebook_persona_service import FacebookPersonaService
-from services.onboarding.database_service import OnboardingDatabaseService
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from models.scheduler_models import SchedulerEventLog
 
 
@@ -34,7 +34,6 @@ async def generate_facebook_persona_task(user_id: str):
         
         # Get persona data service
         persona_data_service = PersonaDataService(db_session=db)
-        onboarding_service = OnboardingDatabaseService(db=db)
         
         # Get core persona (required for Facebook persona)
         persona_data = persona_data_service.get_user_persona_data(user_id)
@@ -44,9 +43,12 @@ async def generate_facebook_persona_task(user_id: str):
         
         core_persona = persona_data.get('core_persona', {})
         
-        # Get onboarding data for context
-        website_analysis = onboarding_service.get_website_analysis(user_id, db)
-        research_prefs = onboarding_service.get_research_preferences(user_id, db)
+        # Get onboarding data for context using SSOT
+        integration_service = OnboardingDataIntegrationService()
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+        
+        website_analysis = integrated_data.get('website_analysis', {})
+        research_prefs = integrated_data.get('research_preferences', {})
         
         onboarding_data = {
             "website_url": website_analysis.get('website_url', '') if website_analysis else '',

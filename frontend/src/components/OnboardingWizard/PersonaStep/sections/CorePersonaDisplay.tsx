@@ -51,7 +51,7 @@ export const CorePersonaDisplay: React.FC<CorePersonaDisplayProps> = ({
       {/* 1. Identity & Brand Voice Section */}
       <SectionAccordion
         title="Identity & Brand Voice"
-        subtitle="Core personality and brand characteristics"
+        subtitle="Brand personality and communication characteristics"
         icon={<PsychologyIcon />}
         defaultExpanded={true}
         color="primary.main"
@@ -66,16 +66,16 @@ export const CorePersonaDisplay: React.FC<CorePersonaDisplayProps> = ({
           overflow: 'visible'
         }}>
           <Typography variant="h6" sx={{ fontWeight: 600, color: '#1e293b', mb: 2 }}>
-            Core Identity
+            Brand Identity
           </Typography>
           <Grid container spacing={2} sx={{ width: '100%' }}>
             <Grid item xs={12} sm={6} sx={{ width: '100%' }}>
               <EditableTextField
-                label="Persona Name"
+                label="Brand Voice Name"
                 value={getNestedValue(persona, ['identity', 'persona_name'])}
                 onChange={(val) => updateField(['identity', 'persona_name'], val)}
                 placeholder="e.g., The Thought Leader"
-                helperText="A descriptive name for this writing persona"
+                helperText="A descriptive name for your brand voice"
                 tooltipInfo={corePersonaTooltips.personaName}
               />
             </Grid>
@@ -85,17 +85,17 @@ export const CorePersonaDisplay: React.FC<CorePersonaDisplayProps> = ({
                 value={getNestedValue(persona, ['identity', 'archetype'])}
                 onChange={(val) => updateField(['identity', 'archetype'], val)}
                 placeholder="e.g., Expert Educator, Innovator, Storyteller"
-                helperText="The primary archetype this persona embodies"
+                helperText="The primary role your brand embodies"
                 tooltipInfo={corePersonaTooltips.archetype}
               />
             </Grid>
             <Grid item xs={12} sx={{ width: '100%' }}>
               <EditableTextField
-                label="Core Belief"
+                label="Brand Mission & Belief"
                 value={getNestedValue(persona, ['identity', 'core_belief'])}
                 onChange={(val) => updateField(['identity', 'core_belief'], val)}
                 multiline
-                placeholder="What is the fundamental belief driving this persona?"
+                placeholder="What is the fundamental belief driving your brand?"
                 helperText="The underlying philosophy or conviction"
                 tooltipInfo={corePersonaTooltips.coreBelief}
               />

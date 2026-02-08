@@ -293,9 +293,11 @@ class BackgroundJobService:
             
             # Import here to avoid circular imports
             from services.bing_analytics_storage_service import BingAnalyticsStorageService
+            from services.database import DB_DATA_DIR
             import os
             
-            database_url = os.getenv('DATABASE_URL', 'sqlite:///./bing_analytics.db')
+            db_path = os.path.join(DB_DATA_DIR, 'bing_analytics.db')
+            database_url = os.getenv('DATABASE_URL', f'sqlite:///{db_path}')
             storage_service = BingAnalyticsStorageService(database_url)
             
             job.progress = 20

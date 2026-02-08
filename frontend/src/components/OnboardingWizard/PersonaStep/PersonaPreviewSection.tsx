@@ -80,10 +80,10 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
         }}>
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 700, color: '#1e293b', mb: 0.5 }}>
-              Your AI Writing Persona
+              Your AI Writing Brand Voice
             </Typography>
             <Typography variant="body2" sx={{ color: '#64748b' }}>
-              Comprehensive analysis of your unique writing style and brand voice
+              Comprehensive analysis of your unique brand identity and communication style
             </Typography>
           </Box>
           <Button
@@ -103,6 +103,25 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
             Regenerate
           </Button>
         </Box>
+
+        <Alert 
+          severity="info" 
+          icon={<AutoAwesomeIcon />}
+          sx={{ 
+            mb: 4, 
+            borderRadius: 3,
+            backgroundColor: '#f0f9ff',
+            border: '1px solid #bae6fd',
+            '& .MuiAlert-message': { color: '#0369a1' }
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            Adaptive Learning Active
+          </Typography>
+          <Typography variant="body2">
+            This Brand Voice was initialized from your website's home page. As you generate more content, ALwrity will automatically refine and update your brand identity to match your evolving style.
+          </Typography>
+        </Alert>
 
         {/* Core Persona */}
         <Accordion
@@ -148,10 +167,10 @@ export const PersonaPreviewSection: React.FC<PersonaPreviewSectionProps> = ({
               </Box>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: '#1e293b', mb: 0.5 }}>
-                  Core Writing Style
+                  Brand Writing Style
                 </Typography>
                 <Typography variant="body2" sx={{ color: '#64748b' }}>
-                  Your unique voice and writing characteristics
+                  Your unique brand voice and communication characteristics
                 </Typography>
               </Box>
               {qualityMetrics && (

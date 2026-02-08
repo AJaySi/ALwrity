@@ -282,11 +282,18 @@ class WebsiteAnalysisExecutor(TaskExecutor):
                     None, 
                     partial(self.style_logic.analyze_style_patterns, crawl_result['content'])
                 )
+
+            async def run_seo_audit():
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(
+                    None,
+                    partial(self.style_logic.perform_seo_audit, website_url, crawl_result['content'])
+                )
             
-            # Execute style and patterns analysis in parallel
-            style_analysis, patterns_result = await asyncio.gather(
+            style_analysis, patterns_result, seo_audit_result = await asyncio.gather(
                 run_style_analysis(),
                 run_patterns_analysis(),
+                run_seo_audit(),
                 return_exceptions=True
             )
             
@@ -302,6 +309,12 @@ class WebsiteAnalysisExecutor(TaskExecutor):
             if isinstance(patterns_result, Exception):
                 self.logger.warning(f"Patterns analysis exception: {patterns_result}")
                 patterns_result = None
+
+            seo_audit = None
+            if isinstance(seo_audit_result, Exception):
+                self.logger.warning(f"SEO audit exception: {seo_audit_result}")
+            else:
+                seo_audit = seo_audit_result
             
             # Step 3: Generate style guidelines
             style_guidelines = None
@@ -320,6 +333,7 @@ class WebsiteAnalysisExecutor(TaskExecutor):
                 'style_analysis': style_analysis.get('analysis') if style_analysis and style_analysis.get('success') else None,
                 'style_patterns': patterns_result if patterns_result and not isinstance(patterns_result, Exception) else None,
                 'style_guidelines': style_guidelines,
+                'seo_audit': seo_audit,
             }
             
             # Step 4: Store results based on task type
@@ -366,10 +380,12 @@ class WebsiteAnalysisExecutor(TaskExecutor):
     ):
         """Update existing WebsiteAnalysis record for user's website."""
         try:
-            # Convert Clerk user ID to integer (same as component_logic.py)
-            # Use the same conversion logic as the website analysis API
-            import hashlib
-            user_id_int = int(hashlib.sha256(user_id.encode()).hexdigest()[:15], 16)
+            session = db.query(OnboardingSession).filter(
+                OnboardingSession.user_id == user_id
+            ).order_by(OnboardingSession.updated_at.desc()).first()
+            
+            if not session:
+                raise ValueError(f"No onboarding session found for user {user_id}")
             
             # Use WebsiteAnalysisService to update
             analysis_service = WebsiteAnalysisService(db)
@@ -380,13 +396,15 @@ class WebsiteAnalysisExecutor(TaskExecutor):
                 'style_analysis': analysis_data.get('style_analysis'),
                 'style_patterns': analysis_data.get('style_patterns'),
                 'style_guidelines': analysis_data.get('style_guidelines'),
+                'seo_audit': analysis_data.get('seo_audit'),
             }
             
             # Save/update analysis
             analysis_id = analysis_service.save_analysis(
-                session_id=user_id_int,
+                session_id=session.id,
                 website_url=website_url,
-                analysis_data=response_data
+                analysis_data=response_data,
+                preserve_persona=True
             )
             
             if analysis_id:
@@ -489,4 +507,83 @@ class WebsiteAnalysisExecutor(TaskExecutor):
                 f"Using frequency_days={task.frequency_days}."
             )
             return last_execution + timedelta(days=task.frequency_days)
+
+    async def _perform_full_site_analysis(self, user_id: str, website_url: str, db: Session):
+        """
+        Discover sitemap and perform non-AI SEO audit on all found pages.
+        """
+        try:
+            self.logger.info(f"Starting full site scan for {website_url}")
+            sitemap_service = SitemapService()
+            
+            # 1. Discover Sitemap
+            sitemap_url = await sitemap_service.discover_sitemap_url(website_url)
+            if not sitemap_url:
+                self.logger.warning(f"No sitemap found for {website_url}, skipping full site scan")
+                return
+
+            # 2. Get URLs (Raw mode)
+            sitemap_data = await sitemap_service.analyze_sitemap(
+                sitemap_url=sitemap_url,
+                analyze_content_trends=False,
+                analyze_publishing_patterns=False,
+                include_ai_insights=False
+            )
+            
+            urls = [u.get('loc') for u in sitemap_data.get('urls', []) if u.get('loc')]
+            self.logger.info(f"Found {len(urls)} URLs in sitemap for {website_url}")
+            
+            # 3. Batch Process (Limit to 50 for safety during testing)
+            urls_to_scan = urls[:50]
+            
+            for page_url in urls_to_scan:
+                try:
+                    # Check if exists
+                    existing = db.query(SEOPageAudit).filter(
+                        SEOPageAudit.user_id == user_id,
+                        SEOPageAudit.page_url == page_url
+                    ).first()
+                    
+                    # Run in executor to avoid blocking
+                    loop = asyncio.get_event_loop()
+                    # Pass empty content dict to trigger internal fetching in perform_seo_audit
+                    audit_result = await loop.run_in_executor(
+                        None,
+                        partial(self.style_logic.perform_seo_audit, page_url, {})
+                    )
+                    
+                    if existing:
+                        existing.overall_score = audit_result.get('overall_score')
+                        existing.category_scores = {k: v.get('score') for k, v in audit_result.items() if isinstance(v, dict) and 'score' in v}
+                        existing.issues = audit_result.get('summary', {}).get('critical_issues', [])
+                        existing.warnings = audit_result.get('summary', {}).get('warnings', [])
+                        existing.audit_data = audit_result
+                        existing.last_analyzed_at = datetime.utcnow()
+                        existing.status = 'completed'
+                    else:
+                        new_audit = SEOPageAudit(
+                            user_id=user_id,
+                            website_url=website_url,
+                            page_url=page_url,
+                            overall_score=audit_result.get('overall_score'),
+                            category_scores={k: v.get('score') for k, v in audit_result.items() if isinstance(v, dict) and 'score' in v},
+                            issues=audit_result.get('summary', {}).get('critical_issues', []),
+                            warnings=audit_result.get('summary', {}).get('warnings', []),
+                            audit_data=audit_result,
+                            analysis_source='scheduled_full_site',
+                            status='completed'
+                        )
+                        db.add(new_audit)
+                    
+                    db.commit() # Commit each page to show progress
+                    
+                except Exception as e:
+                    self.logger.error(f"Error auditing page {page_url}: {e}")
+                    db.rollback()
+            
+            self.logger.info(f"Completed full site scan for {website_url}")
+            
+        except Exception as e:
+            self.logger.error(f"Error in full site analysis: {e}")
+
 

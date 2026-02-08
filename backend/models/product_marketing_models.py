@@ -67,8 +67,8 @@ class Campaign(Base):
     
     # Composite indexes
     __table_args__ = (
-        Index('idx_user_status', 'user_id', 'status'),
-        Index('idx_user_created', 'user_id', 'created_at'),
+        Index('idx_pm_campaign_user_status', 'user_id', 'status'),
+        Index('idx_pm_campaign_user_created', 'user_id', 'created_at'),
     )
 
 
@@ -109,10 +109,10 @@ class CampaignProposal(Base):
     campaign = relationship("Campaign", back_populates="proposals")
     generated_asset = relationship("CampaignAsset", back_populates="proposal", uselist=False)
     
-    # Composite indexes
+    ## Composite indexes
     __table_args__ = (
-        Index('idx_campaign_node', 'campaign_id', 'asset_node_id'),
-        Index('idx_user_status', 'user_id', 'status'),
+        Index('idx_pm_proposal_campaign_node', 'campaign_id', 'asset_node_id'),
+        Index('idx_pm_proposal_user_status', 'user_id', 'status'),
     )
 
 
@@ -156,7 +156,7 @@ class CampaignAsset(Base):
     
     # Composite indexes
     __table_args__ = (
-        Index('idx_campaign_node', 'campaign_id', 'asset_node_id'),
-        Index('idx_user_status', 'user_id', 'status'),
+        Index('idx_pm_asset_campaign_node', 'campaign_id', 'asset_node_id'),
+        Index('idx_pm_asset_user_status', 'user_id', 'status'),
     )
 

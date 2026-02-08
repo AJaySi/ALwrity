@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Card,
@@ -15,63 +15,269 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Alert
+  Alert,
+  Tooltip,
+  CircularProgress,
+  LinearProgress
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Analytics as AnalyticsIcon,
-  CheckCircle as CheckIcon,
-  Insights as InsightsIcon
+  Check as CheckIcon,
+  Insights as InsightsIcon,
+  CheckCircleOutline as CheckCircleIcon,
+  AutoAwesome as AIIcon
 } from '@mui/icons-material';
+import { apiClient, longRunningApiClient } from '../../../api/client';
+import { SitemapBenchmarkResults } from './SitemapBenchmarkResults';
+import { StrategicInsightsResults } from './StrategicInsightsResults';
 
-export const ComingSoonSection: React.FC = () => {
+export const ComingSoonSection: React.FC<{ missingData?: boolean }> = ({ missingData = false }) => {
   const [openModal, setOpenModal] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
+  const [scheduledStatus, setScheduledStatus] = useState<any>(null);
+  const [sitemapBenchmarkRunning, setSitemapBenchmarkRunning] = useState(false);
+  const [sitemapBenchmarkError, setSitemapBenchmarkError] = useState<string | null>(null);
+  const [sitemapBenchmarkData, setSitemapBenchmarkData] = useState<any>(null);
+  const [loadingBenchmarkData, setLoadingBenchmarkData] = useState(false);
+  const [isLongRunning, setIsLongRunning] = useState(false);
+  const [strategicInsightsRunning, setStrategicInsightsRunning] = useState(false);
+  const [strategicInsightsError, setStrategicInsightsError] = useState<string | null>(null);
+  const [strategicInsightsData, setStrategicInsightsData] = useState<any>(null);
+  const [loadingStrategicHistory, setLoadingStrategicHistory] = useState(false);
+
+  useEffect(() => {
+    const loadStatus = async () => {
+      try {
+        const res = await apiClient.get('/api/onboarding/step3/scheduled-tasks-status');
+        setScheduledStatus(res.data);
+        
+        // If report is available, fetch the full data
+        if (res.data?.competitive_sitemap_benchmarking?.report?.available) {
+          fetchBenchmarkData();
+        }
+      } catch {
+        setScheduledStatus(null);
+      }
+    };
+
+    const loadHistory = async () => {
+      setLoadingStrategicHistory(true);
+      try {
+        const res = await apiClient.get('/api/seo-dashboard/strategic-insights/history');
+        if (res.data?.history?.length > 0) {
+          setStrategicInsightsData(res.data.history[0]); // Show latest
+        }
+      } catch (e) {
+        console.error("Failed to fetch strategic insights history", e);
+      } finally {
+        setLoadingStrategicHistory(false);
+      }
+    };
+
+    loadStatus();
+    loadHistory();
+  }, []);
+
+  const fetchBenchmarkData = async () => {
+    setLoadingBenchmarkData(true);
+    try {
+      const res = await apiClient.get('/api/onboarding/step3/sitemap-benchmark-report');
+      setSitemapBenchmarkData(res.data);
+    } catch (e) {
+      console.error("Failed to fetch benchmark report", e);
+    } finally {
+      setLoadingBenchmarkData(false);
+    }
+  };
+
+  const deepStatus = scheduledStatus?.deep_competitor_analysis;
+  const deepBulb = deepStatus?.bulb || 'unknown';
+  const deepReason = deepStatus?.reason;
+  const deepTask = deepStatus?.task;
+
+  const sitemapStatus = scheduledStatus?.competitive_sitemap_benchmarking;
+  const sitemapBulb = sitemapStatus?.bulb || 'unknown';
+  const sitemapReason = sitemapStatus?.reason;
+  const sitemapReport = sitemapStatus?.report;
+
+  const getBulbColor = (bulb: string) => {
+    if (bulb === 'green') return '#22c55e';
+    if (bulb === 'red') return '#ef4444';
+    return '#94a3b8';
+  };
+
+  const getFeatureStatusLabel = (featureId: string, fallback: string) => {
+    if (featureId === 'sitemap-benchmarking') {
+      if (sitemapReport?.available) return 'Report Ready (No AI)';
+      return 'Available (No AI)';
+    }
+    return fallback;
+  };
+
+  const runSitemapBenchmark = async () => {
+    setSitemapBenchmarkError(null);
+    setSitemapBenchmarkRunning(true);
+    setIsLongRunning(false);
+    try {
+      await longRunningApiClient.post('/api/seo/competitive-sitemap-benchmarking/run', { max_competitors: 5 });
+      
+      // Poll for completion with adaptive backoff
+      let attempts = 0;
+      const maxAttempts = 60; // Adjusted for ~10-12 mins (matching backend timeout)
+      let currentInterval = 2000;
+      
+      const poll = async () => {
+        try {
+          attempts++;
+          
+          // Mark as long running after ~2 minutes (approx 30 attempts)
+          if (attempts > 30) {
+            setIsLongRunning(true);
+          }
+
+          const res = await apiClient.get('/api/onboarding/step3/scheduled-tasks-status');
+          setScheduledStatus(res.data);
+          
+          // Check status flag
+          const reportAvailable = res.data?.competitive_sitemap_benchmarking?.report?.available;
+          const reportStatus = res.data?.competitive_sitemap_benchmarking?.report?.status;
+          const reportError = res.data?.competitive_sitemap_benchmarking?.report?.error;
+          let reportFetched = false;
+
+          // Check for failure
+          if (reportStatus === 'failed' || reportError) {
+            setSitemapBenchmarkRunning(false);
+            setSitemapBenchmarkError(reportError || "Benchmark failed during execution.");
+            return; // Stop polling
+          }
+
+          // If available, try to fetch data
+          if (reportAvailable && !sitemapBenchmarkData) {
+            try {
+              const reportRes = await apiClient.get('/api/onboarding/step3/sitemap-benchmark-report');
+              if (reportRes?.data) {
+                setSitemapBenchmarkData(reportRes.data);
+                reportFetched = true;
+              }
+            } catch {
+              // Report might be saving or transient error
+            }
+          }
+
+          if (reportAvailable || reportFetched) {
+            if (!reportFetched && !sitemapBenchmarkData) {
+              await fetchBenchmarkData();
+            }
+            setOpenModal(false); // Close modal on success
+            setSitemapBenchmarkRunning(false);
+            setIsLongRunning(false);
+            
+            // Focus on results
+            setTimeout(() => {
+              const element = document.getElementById('sitemap-benchmark-results');
+              if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }, 500);
+            return; // Stop polling
+          } else if (attempts >= maxAttempts) {
+            setSitemapBenchmarkRunning(false);
+            setIsLongRunning(false);
+            setSitemapBenchmarkError("Benchmark timed out (10 mins limit). It may still be running in the background.");
+            return;
+          }
+
+          // Adaptive backoff: Slow down polling over time
+          if (attempts > 5) currentInterval = 4000;   // After ~10s, slow to 4s
+          if (attempts > 15) currentInterval = 8000;  // After ~50s, slow to 8s
+          if (attempts > 25) currentInterval = 15000; // After ~2m, slow to 15s
+
+          setTimeout(poll, currentInterval);
+
+        } catch (e) {
+          console.error("Polling error", e);
+          // Continue polling on error, but maybe wait longer
+          setTimeout(poll, currentInterval + 1000);
+        }
+      };
+
+      // Start polling
+      setTimeout(poll, currentInterval);
+      
+    } catch (e: any) {
+      setSitemapBenchmarkError(e?.response?.data?.detail || e?.message || 'Failed to run benchmark');
+      setSitemapBenchmarkRunning(false);
+    }
+  };
+
+  const runStrategicInsights = async () => {
+    setStrategicInsightsError(null);
+    setStrategicInsightsRunning(true);
+    try {
+      const res = await apiClient.post('/api/seo-dashboard/strategic-insights/run');
+      if (res.data?.success) {
+        setStrategicInsightsData(res.data.report);
+        setOpenModal(false);
+        // Focus on results
+        setTimeout(() => {
+          const element = document.getElementById('strategic-insights-results');
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 500);
+      }
+    } catch (e: any) {
+      setStrategicInsightsError(e?.response?.data?.detail || e?.message || 'Failed to run strategic insights');
+    } finally {
+      setStrategicInsightsRunning(false);
+    }
+  };
 
   const features = [
     {
       id: 'deep-competitor-analysis',
       title: 'Deep Competitor Analysis',
-      description: 'Comprehensive analysis of competitor websites and content strategies',
+      description: 'We dig deep into your competitors\' strategies so you don\'t have to.',
       icon: <SearchIcon />,
-      status: 'Coming Soon',
+      status: 'Auto-scheduled',
       color: '#3b82f6',
       details: [
-        'Analyze 15-25 relevant competitors automatically discovered',
-        'Crawl competitor homepages for content strategy analysis',
-        'Extract competitive advantages and market positioning',
-        'Identify content gaps and opportunities',
-        'Generate strategic recommendations based on competitive intelligence'
+        'Uncover their top-performing content and keywords',
+        'Identify their unique selling propositions (USPs)',
+        'Spot gaps in their content strategy you can exploit',
+        'Analyze their publishing frequency and patterns',
+        'Get a clear roadmap to outperform them'
       ]
     },
     {
       id: 'sitemap-benchmarking',
       title: 'Competitive Sitemap Benchmarking',
-      description: 'Compare your site structure against competitors',
+      description: 'See exactly how your website stacks up against the market leaders.',
       icon: <AnalyticsIcon />,
-      status: 'In Development',
+      status: 'Available (No AI)',
       color: '#10b981',
       details: [
-        'Analyze competitor sitemaps for structure insights',
-        'Benchmark content volume against market leaders',
-        'Compare publishing frequency and patterns',
-        'Identify missing content categories',
-        'Get SEO structure optimization recommendations'
+        'Visualize your content volume vs. competitors',
+        'Compare site structure and ease of navigation',
+        'Check if you are publishing enough content',
+        'Find missing categories your competitors have',
+        'Get instant, data-backed improvement ideas'
       ]
     },
     {
       id: 'ai-competitive-insights',
       title: 'AI-Powered Competitive Insights',
-      description: 'Advanced AI analysis of competitive landscape',
+      description: 'Turn raw data into a winning game plan with AI.',
       icon: <InsightsIcon />,
       status: 'Planned',
       color: '#8b5cf6',
       details: [
-        'AI-generated competitive intelligence reports',
-        'Market positioning analysis with business impact',
-        'Content strategy recommendations based on competitor data',
-        'Competitive advantage identification',
-        'Strategic roadmap for competitive differentiation'
+        'Receive a personalized "Winning Moves" report',
+        'Understand the business impact of your strategy',
+        'Get specific content ideas to steal market share',
+        'Identify your true competitive advantages',
+        'Build a roadmap for long-term growth'
       ]
     }
   ];
@@ -87,10 +293,10 @@ export const ComingSoonSection: React.FC = () => {
     <>
       <Box sx={{ mt: 4, mb: 2 }}>
         <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b', mb: 1.5 }}>
-          🔍 Coming Soon
+          🔍 Scheduled Tasks
         </Typography>
         <Typography variant="body1" sx={{ color: '#64748b', mb: 4, fontSize: '1.1rem' }}>
-          Advanced competitor analysis features to give you the competitive edge
+          Long-running analyses that run automatically after onboarding
         </Typography>
 
         <Grid container spacing={2}>
@@ -134,18 +340,48 @@ export const ComingSoonSection: React.FC = () => {
                       {feature.icon}
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b', mb: 1 }}>
-                        {feature.title}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b' }}>
+                          {feature.title}
+                        </Typography>
+                      {feature.id === 'deep-competitor-analysis' && (
+                          <Tooltip title={deepReason || 'Scheduled automatically after onboarding completion'}>
+                            <Box
+                              sx={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: '50%',
+                                bgcolor: getBulbColor(deepBulb),
+                                boxShadow: `0 0 0 4px ${getBulbColor(deepBulb)}20`
+                              }}
+                            />
+                          </Tooltip>
+                        )}
+                      {feature.id === 'sitemap-benchmarking' && (
+                        <Tooltip title={sitemapReport?.available ? `Last run: ${sitemapReport?.last_run || 'available'}` : (sitemapReason || 'Run anytime (No AI)')}>
+                          <Box
+                            sx={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: '50%',
+                              bgcolor: getBulbColor(sitemapBulb),
+                              boxShadow: `0 0 0 4px ${getBulbColor(sitemapBulb)}20`
+                            }}
+                          />
+                        </Tooltip>
+                      )}
+                      </Box>
                       <Chip
-                        label={feature.status}
+                        label={getFeatureStatusLabel(feature.id, feature.status)}
                         size="small"
+                        icon={feature.status === 'Auto-scheduled' ? <CheckCircleIcon sx={{ '&&': { color: feature.color, fontSize: '1rem' } }} /> : undefined}
                         sx={{
-                          backgroundColor: `${feature.color}20`,
-                          color: feature.color,
-                          fontWeight: 600,
+                          backgroundColor: feature.status === 'Auto-scheduled' ? '#ecfdf5' : `${feature.color}20`,
+                          color: feature.status === 'Auto-scheduled' ? '#059669' : feature.color,
+                          fontWeight: 700,
                           fontSize: '0.75rem',
                           height: 24,
+                          border: feature.status === 'Auto-scheduled' ? '1px solid #a7f3d0' : 'none',
                           '& .MuiChip-label': {
                             px: 1.5
                           }
@@ -204,10 +440,36 @@ export const ComingSoonSection: React.FC = () => {
         </Alert>
       </Box>
 
+      {sitemapReport?.available && sitemapBenchmarkData && (
+        <Box id="sitemap-benchmark-results" sx={{ mt: 4, animation: 'fadeIn 0.5s ease-out' }}>
+          <SitemapBenchmarkResults 
+            data={{
+              user: sitemapBenchmarkData.user,
+              competitors: sitemapBenchmarkData.competitors,
+              timestamp: sitemapBenchmarkData.timestamp,
+              benchmark: sitemapBenchmarkData.benchmark || {}
+            }} 
+          />
+        </Box>
+      )}
+
+      {strategicInsightsData && (
+        <Box id="strategic-insights-results" sx={{ mt: 4 }}>
+          <StrategicInsightsResults report={strategicInsightsData} />
+        </Box>
+      )}
+
       {/* Feature Details Modal */}
       <Dialog
         open={openModal}
-        onClose={() => setOpenModal(false)}
+        onClose={(event, reason) => {
+          if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
+            setOpenModal(false);
+          } else if (!sitemapBenchmarkRunning) {
+             setOpenModal(false);
+          }
+        }}
+        disableEscapeKeyDown={sitemapBenchmarkRunning}
         maxWidth="md"
         fullWidth
         PaperProps={{
@@ -292,69 +554,173 @@ export const ComingSoonSection: React.FC = () => {
                     How It Works:
                   </Typography>
                   <Typography variant="body1" sx={{ color: '#64748b', fontSize: '1.05rem', lineHeight: 1.7 }}>
-                    Our AI automatically discovers 15-25 relevant competitors using advanced search algorithms. 
-                    Then we crawl each competitor's homepage to analyze their content strategy, identify their 
-                    competitive advantages, and find content gaps that present opportunities for your business.
+                    Once you finish onboarding, Alwrity automatically starts analyzing the competitors we found. 
+                    We compare your website's performance against theirs to find hidden opportunities. 
+                    You'll see the results in your SEO Dashboard, including a breakdown of what makes them successful and how you can do better.
                   </Typography>
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="body2" sx={{ color: '#334155', fontWeight: 600 }}>
+                      Status:
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
+                      {deepBulb === 'red'
+                        ? (deepReason || "Not eligible yet. No competitors found.")
+                        : "Eligible. This will run automatically after onboarding."}
+                    </Typography>
+                    {deepTask?.exists && (
+                      <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
+                        {deepTask.last_status
+                          ? `Last run: ${deepTask.last_status}${deepTask.last_run ? ` at ${deepTask.last_run}` : ''}`
+                          : (deepTask.next_execution ? `Next scheduled: ${deepTask.next_execution}` : `Task status: ${deepTask.status || 'unknown'}`)}
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
               )}
 
               {selectedFeatureData.id === 'sitemap-benchmarking' && (
                 <Box sx={{ mt: 3, p: 3, backgroundColor: '#f0f9ff', borderRadius: 3, border: '1px solid #e2e8f0' }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#1e293b', fontSize: '1.1rem' }}>
-                    Competitive Intelligence:
+                    Why This Matters:
                   </Typography>
                   <Typography variant="body1" sx={{ color: '#64748b', fontSize: '1.05rem', lineHeight: 1.7 }}>
-                    We analyze competitor sitemaps to understand their content structure, publishing patterns, 
-                    and SEO optimization. This gives you data-driven insights into how your site compares to 
-                    market leaders and what improvements will have the biggest competitive impact.
+                    We scan competitor websites to understand how they organize their content and how often they publish. 
+                    This shows you exactly where you need to improve to match or beat the market leaders.
                   </Typography>
+
+                  {sitemapBenchmarkRunning && (
+                    <Box sx={{ mt: 3, mb: 2 }}>
+                      <LinearProgress />
+                      <Typography variant="caption" sx={{ mt: 1, display: 'block', textAlign: 'center', color: '#64748b' }}>
+                        {isLongRunning 
+                          ? "This is taking longer than usual. Large websites can take a few minutes..." 
+                          : "Analyzing competitor websites... please wait."}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {loadingBenchmarkData ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : sitemapReport?.available ? (
+                     <Box sx={{ mt: 2 }}>
+                       <Alert severity="success">
+                         Benchmark Report is ready! Close this window to view the detailed analysis below.
+                       </Alert>
+                     </Box>
+                   ) : (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ color: '#334155', fontWeight: 700 }}>
+                        Status:
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: sitemapReport?.status === 'failed' ? '#ef4444' : '#64748b', mt: 0.5 }}>
+                        {sitemapReport?.available 
+                          ? 'Report is ready.' 
+                          : sitemapReport?.status === 'failed'
+                            ? `Failed: ${sitemapReport?.error || 'Unknown error'}`
+                            : sitemapReport?.status === 'processing'
+                              ? 'Analysis in progress...'
+                              : 'No report yet. You can run it now (No AI).'}
+                      </Typography>
+                      {sitemapReport?.last_run && (
+                        <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: '#64748b' }}>
+                          Last run: {sitemapReport.last_run}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+
+                  {sitemapBenchmarkError && (
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: '#ef4444' }}>
+                      {sitemapBenchmarkError}
+                    </Typography>
+                  )}
                 </Box>
               )}
 
               {selectedFeatureData.id === 'ai-competitive-insights' && (
                 <Box sx={{ mt: 3, p: 3, backgroundColor: '#f0f9ff', borderRadius: 3, border: '1px solid #e2e8f0' }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#1e293b', fontSize: '1.1rem' }}>
-                    Strategic Value:
+                    The "Winning Moves" Advantage:
                   </Typography>
                   <Typography variant="body1" sx={{ color: '#64748b', fontSize: '1.05rem', lineHeight: 1.7 }}>
-                    Our AI analyzes the competitive landscape to provide strategic recommendations with 
-                    business impact estimates. You'll get specific content priorities, competitive positioning 
-                    advice, and a roadmap for differentiating your brand in the market.
+                    We turn millions of data points into a clear "Winning Moves" report. 
+                    See exactly which content will drive the most traffic and revenue, 
+                    and get a step-by-step plan to steal market share from your competitors.
                   </Typography>
+
+                  {strategicInsightsRunning && (
+                    <Box sx={{ mt: 3, mb: 2 }}>
+                      <LinearProgress />
+                      <Typography variant="caption" sx={{ mt: 1, display: 'block', textAlign: 'center', color: '#64748b' }}>
+                        Our AI is analyzing market shifts and competitor moves... this takes about 30-45 seconds.
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {strategicInsightsError && (
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: '#ef4444', textAlign: 'center' }}>
+                      {strategicInsightsError}
+                    </Typography>
+                  )}
                 </Box>
               )}
             </>
           )}
         </DialogContent>
         
-        <DialogActions sx={{ p: 3, pt: 1, backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-          <Button 
-            onClick={() => setOpenModal(false)}
-            variant="outlined"
-            sx={{
-              borderColor: '#d1d5db',
-              color: '#6b7280',
-              '&:hover': {
-                borderColor: '#9ca3af',
-                backgroundColor: '#f9fafb'
-              }
-            }}
-          >
-            Close
-          </Button>
+        <DialogActions sx={{ p: 3, pt: 1, backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0', justifyContent: 'space-between' }}>
+          {selectedFeatureData?.id === 'sitemap-benchmarking' && (
+            <Button
+              onClick={runSitemapBenchmark}
+              variant="contained"
+              disabled={sitemapBenchmarkRunning}
+              startIcon={sitemapBenchmarkRunning ? <CircularProgress size={20} color="inherit" /> : null}
+              sx={{
+                backgroundColor: '#10b981',
+                '&:hover': { backgroundColor: '#059669' },
+                textTransform: 'none',
+                fontWeight: 700
+              }}
+            >
+              {sitemapBenchmarkRunning ? 'Running Benchmark...' : 'Run Benchmark Now (No AI)'}
+            </Button>
+          )}
+          {selectedFeatureData?.id === 'ai-competitive-insights' && (
+              <Button
+                onClick={runStrategicInsights}
+                variant="contained"
+                disabled={strategicInsightsRunning || missingData}
+                startIcon={strategicInsightsRunning ? <CircularProgress size={20} color="inherit" /> : <AIIcon />}
+                sx={{
+                  backgroundColor: '#8b5cf6',
+                  '&:hover': { backgroundColor: '#7c3aed' },
+                  textTransform: 'none',
+                  fontWeight: 700
+                }}
+              >
+                {strategicInsightsRunning ? 'Generating Winning Moves...' : (missingData ? 'Complete Step 2 First' : 'Run AI Analysis Now')}
+              </Button>
+            )}
           <Button 
             onClick={() => setOpenModal(false)}
             variant="contained"
             sx={{
-              backgroundColor: selectedFeatureData?.color || '#3b82f6',
+              backgroundColor: '#3b82f6',
+              px: 4,
+              py: 1,
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.5)',
               '&:hover': {
-                backgroundColor: selectedFeatureData?.color || '#3b82f6',
-                opacity: 0.9
+                backgroundColor: '#2563eb',
+                boxShadow: '0 10px 15px -3px rgba(59, 130, 246, 0.5)',
               }
             }}
           >
-            Notify Me When Ready
+            Got it, thanks!
           </Button>
         </DialogActions>
       </Dialog>

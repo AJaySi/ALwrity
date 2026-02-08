@@ -70,8 +70,11 @@ def check_environment():
         print("  ✅ GEMINI_API_KEY configured")
     
     # Check database
-    db_url = os.getenv('DATABASE_URL', 'sqlite:///./alwrity.db')
-    print(f"  ✅ Database URL: {db_url}")
+    db_url = os.getenv('DATABASE_URL')
+    if db_url:
+        print(f"  ✅ Database URL: {db_url}")
+    else:
+        print("  ✅ Database: Using Multi-tenant Workspace Architecture (dynamic paths)")
     
     # Check log level
     log_level = os.getenv('LOG_LEVEL', 'INFO')

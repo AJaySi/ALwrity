@@ -3,7 +3,7 @@ Website Analysis Monitoring Service
 Creates and manages website analysis monitoring tasks.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from urllib.parse import urlparse
@@ -11,10 +11,84 @@ import hashlib
 
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask
 from models.onboarding import OnboardingSession
-from services.onboarding.database_service import OnboardingDatabaseService
+from models.scheduler_models import SchedulerEventLog
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
+from services.database import get_db_session
 from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("website_analysis_monitoring")
+
+async def generate_website_analysis_tasks_task(user_id: str):
+    db = None
+    start_time = datetime.utcnow()
+    try:
+        db = get_db_session(user_id)
+        if not db:
+            raise RuntimeError(f"Failed to get database session for user {user_id}")
+
+        result = create_website_analysis_tasks(user_id=user_id, db=db)
+        success = bool(result.get("success"))
+
+        try:
+            event_log = SchedulerEventLog(
+                event_type="job_completed" if success else "job_failed",
+                event_date=start_time,
+                job_id=f"website_analysis_tasks_{user_id}",
+                job_type="one_time",
+                user_id=user_id,
+                error_message=None if success else str(result.get("error") or "website analysis task creation failed"),
+                event_data={
+                    "job_function": "generate_website_analysis_tasks_task",
+                    "status": "success" if success else "failed",
+                    "tasks_created": int(result.get("tasks_created") or 0),
+                },
+            )
+            db.add(event_log)
+            db.commit()
+        except Exception as log_error:
+            logger.warning(f"Failed to log website analysis task creation event for user {user_id}: {log_error}")
+            db.rollback()
+
+    except Exception as e:
+        logger.error(f"Scheduled website analysis task creation failed for user {user_id}: {e}", exc_info=True)
+        if db:
+            try:
+                event_log = SchedulerEventLog(
+                    event_type="job_failed",
+                    event_date=start_time,
+                    job_id=f"website_analysis_tasks_{user_id}",
+                    job_type="one_time",
+                    user_id=user_id,
+                    error_message=str(e),
+                    event_data={
+                        "job_function": "generate_website_analysis_tasks_task",
+                        "status": "failed",
+                        "exception_type": type(e).__name__,
+                    },
+                )
+                db.add(event_log)
+                db.commit()
+            except Exception:
+                db.rollback()
+    finally:
+        if db:
+            db.close()
+
+
+def schedule_website_analysis_task_creation(user_id: str, delay_minutes: int = 5) -> str:
+    from services.scheduler import get_scheduler
+
+    scheduler = get_scheduler()
+    run_date = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+    job_id = f"website_analysis_tasks_{user_id}"
+
+    return scheduler.schedule_one_time_task(
+        func=generate_website_analysis_tasks_task,
+        run_date=run_date,
+        job_id=job_id,
+        kwargs={"user_id": user_id},
+        replace_existing=True,
+    )
 
 
 def clerk_user_id_to_int(user_id: str) -> int:
@@ -49,9 +123,11 @@ def create_website_analysis_tasks(user_id: str, db: Session) -> Dict[str, Any]:
     try:
         logger.info(f"[Website Analysis Tasks] Creating tasks for user: {user_id}")
         
-        # Get user's website URL from onboarding
-        onboarding_service = OnboardingDatabaseService(db=db)
-        website_analysis = onboarding_service.get_website_analysis(user_id, db)
+        # Get user's website URL from onboarding using SSOT
+        integration_service = OnboardingDataIntegrationService()
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+        
+        website_analysis = integrated_data.get('website_analysis', {})
         
         if not website_analysis:
             logger.warning(f"[Website Analysis Tasks] No website analysis found for user {user_id}")
@@ -212,7 +288,8 @@ def create_website_analysis_tasks(user_id: str, db: Session) -> Dict[str, Any]:
                 website_url=competitor_url,
                 task_type='competitor',
                 competitor_id=competitor_id,
-                frequency_days=10  # Recurring every 10 days
+                frequency_days=10,  # Recurring every 10 days
+                initial_delay_minutes=5
             )
             if competitor_task:
                 tasks_created.append(competitor_task)
@@ -248,7 +325,8 @@ def _create_or_update_task(
     website_url: str,
     task_type: str,
     competitor_id: Optional[str] = None,
-    frequency_days: int = 10
+    frequency_days: int = 10,
+    initial_delay_minutes: Optional[int] = None
 ) -> Optional[WebsiteAnalysisTask]:
     """Create or update a website analysis task."""
     try:
@@ -271,6 +349,10 @@ def _create_or_update_task(
             return existing
         
         # Create new task
+        next_check = datetime.utcnow() + timedelta(days=frequency_days)
+        if initial_delay_minutes is not None:
+            next_check = datetime.utcnow() + timedelta(minutes=initial_delay_minutes)
+
         task = WebsiteAnalysisTask(
             user_id=user_id,
             website_url=website_url,
@@ -278,7 +360,7 @@ def _create_or_update_task(
             competitor_id=competitor_id,
             status='active',
             frequency_days=frequency_days,
-            next_check=datetime.utcnow() + timedelta(days=frequency_days)
+            next_check=next_check
         )
         db.add(task)
         db.flush()
@@ -298,52 +380,61 @@ def _get_competitors_from_onboarding(user_id: str, db: Session) -> List[Dict[str
     or via Step3ResearchService.
     """
     try:
-        # Get onboarding session
-        onboarding_service = OnboardingDatabaseService(db=db)
-        session = onboarding_service.get_session_by_user(user_id, db)
+        # Get onboarding session using SSOT
+        integration_service = OnboardingDataIntegrationService()
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db)
         
-        if not session:
-            logger.warning(f"No onboarding session found for user {user_id}")
-            return []
+        # Get competitors from integrated data (SSOT handles fallback logic)
+        # Priority 1: Check competitor_analysis (from CompetitorAnalysis table)
+        competitors = integrated_data.get('competitor_analysis', [])
         
-        # Try to get from step_data JSON column
-        competitors = []
-        
-        # Method 1: Check if step_data column exists and has competitors
-        if hasattr(session, 'step_data') and session.step_data:
-            step_data = session.step_data if isinstance(session.step_data, dict) else {}
-            research_data = step_data.get('step3_research_data', {})
-            competitors = research_data.get('competitors', [])
-            logger.info(f"[Competitor Retrieval] Method 1 (step_data): found {len(competitors)} competitors")
-        
-        # Method 2: If not found, try Step3ResearchService
+        # Priority 2: Check research_preferences
         if not competitors:
-            logger.info(f"[Competitor Retrieval] Attempting Step3ResearchService for user {user_id}, session_id: {session.id}")
+            research_preferences = integrated_data.get('research_preferences', {})
+            competitors = research_preferences.get('competitors', [])
+        
+        # If not found in research_preferences, try session step_data fallback
+        if not competitors:
+            session = integrated_data.get('onboarding_session')
+            if session:
+                # Method 1: Check if step_data column exists and has competitors
+                if hasattr(session, 'step_data') and session.step_data:
+                    step_data = session.step_data if isinstance(session.step_data, dict) else {}
+                    research_data = step_data.get('step3_research_data', {})
+                    competitors = research_data.get('competitors', [])
+                    logger.info(f"[Competitor Retrieval] Method 1 (step_data): found {len(competitors)} competitors")
+
+        # Method 2: If still not found, try Step3ResearchService (Legacy Fallback)
+        if not competitors:
+            logger.info(f"[Competitor Retrieval] Attempting Step3ResearchService for user {user_id}")
             try:
-                from api.onboarding_utils.step3_research_service import Step3ResearchService
-                import asyncio
-                step3_service = Step3ResearchService()
-                
-                # Run async function - handle both new and existing event loops
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                
-                research_data_result = loop.run_until_complete(
-                    step3_service.get_research_data(str(session.id))
-                )
-                
-                logger.info(f"[Competitor Retrieval] Step3ResearchService result: {research_data_result.get('success')}")
-                
-                if research_data_result.get('success'):
-                    research_data = research_data_result.get('research_data', {})
-                    step3_data = research_data.get('step3_research_data', {})
-                    competitors = step3_data.get('competitors', [])
-                    logger.info(f"[Competitor Retrieval] Retrieved {len(competitors)} competitors from Step3ResearchService")
-                else:
-                    logger.warning(f"[Competitor Retrieval] Step3ResearchService returned error: {research_data_result.get('error')}")
+                # We need session_id for Step3ResearchService
+                session = integrated_data.get('onboarding_session')
+                if session and hasattr(session, 'id'):
+                    from api.onboarding_utils.step3_research_service import Step3ResearchService
+                    import asyncio
+                    step3_service = Step3ResearchService()
+                    
+                    # Run async function - handle both new and existing event loops
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    research_data_result = loop.run_until_complete(
+                        step3_service.get_research_data(str(session.id))
+                    )
+                    
+                    logger.info(f"[Competitor Retrieval] Step3ResearchService result: {research_data_result.get('success')}")
+                    
+                    if research_data_result.get('success'):
+                        research_data = research_data_result.get('research_data', {})
+                        step3_data = research_data.get('step3_research_data', {})
+                        competitors = step3_data.get('competitors', [])
+                        logger.info(f"[Competitor Retrieval] Retrieved {len(competitors)} competitors from Step3ResearchService")
+                    else:
+                        logger.warning(f"[Competitor Retrieval] Step3ResearchService returned error: {research_data_result.get('error')}")
             except Exception as e:
                 logger.warning(f"[Competitor Retrieval] Could not fetch competitors from Step3ResearchService: {e}", exc_info=True)
         

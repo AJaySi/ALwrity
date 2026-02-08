@@ -214,25 +214,71 @@ class ExaService:
             List of processed competitor data
         """
         competitors = []
-        user_domain = urlparse(user_url).netloc
+        try:
+            user_domain = urlparse(user_url).netloc
+        except Exception:
+            user_domain = ""
         
         # Extract results from the SDK response
-        results = getattr(search_result, 'results', [])
+        # Handle case where search_result might be a dict or an object
+        if isinstance(search_result, dict):
+            results = search_result.get('results', [])
+        else:
+            results = getattr(search_result, 'results', [])
         
         for result in results:
             try:
-                # Extract basic information from the result object
-                competitor_url = getattr(result, 'url', '')
-                competitor_domain = urlparse(competitor_url).netloc
+                # Helper to safely get attribute or dict key
+                def get_val(obj, key, default=None):
+                    if isinstance(obj, dict):
+                        return obj.get(key, default)
+                    return getattr(obj, key, default)
+
+                # Extract basic information
+                raw_url = get_val(result, 'url', '')
+                # Clean URL (remove backticks and whitespace that might be in the response)
+                competitor_url = raw_url.strip().strip('`').strip() if raw_url else ''
                 
-                # Skip if it's the same domain as the user
-                if competitor_domain == user_domain:
+                # Fallback to ID if URL is missing/empty but ID looks like a URL
+                if not competitor_url:
+                    raw_id = get_val(result, 'id', '')
+                    cleaned_id = raw_id.strip().strip('`').strip() if raw_id else ''
+                    if cleaned_id and (cleaned_id.startswith('http://') or cleaned_id.startswith('https://')):
+                        competitor_url = cleaned_id
+                
+                if not competitor_url:
+                    continue
+
+                try:
+                    competitor_domain = urlparse(competitor_url).netloc
+                except Exception:
+                    competitor_domain = ""
+                
+                # Skip if it's the same domain as the user (fuzzy match)
+                if user_domain and competitor_domain and (user_domain in competitor_domain or competitor_domain in user_domain):
                     continue
                 
                 # Extract content insights
-                summary = getattr(result, 'summary', '')
-                highlights = getattr(result, 'highlights', [])
-                highlight_scores = getattr(result, 'highlight_scores', [])
+                summary = get_val(result, 'summary', '')
+                highlights = get_val(result, 'highlights', [])
+                highlight_scores = get_val(result, 'highlight_scores', [])
+                subpages = get_val(result, 'subpages', [])
+                
+                # Ensure subpages are dicts
+                processed_subpages = []
+                if subpages:
+                    for sp in subpages:
+                        if isinstance(sp, dict):
+                            processed_subpages.append(sp)
+                        elif hasattr(sp, '__dict__'):
+                            processed_subpages.append(sp.__dict__)
+                        else:
+                            processed_subpages.append({
+                                "id": getattr(sp, 'id', ''),
+                                "url": getattr(sp, 'url', ''),
+                                "title": getattr(sp, 'title', '')
+                            })
+                subpages = processed_subpages
                 
                 # Calculate competitive relevance score
                 relevance_score = self._calculate_relevance_score(result, user_url)
@@ -240,14 +286,15 @@ class ExaService:
                 competitor_data = {
                     "url": competitor_url,
                     "domain": competitor_domain,
-                    "title": getattr(result, 'title', ''),
-                    "published_date": getattr(result, 'published_date', None),
-                    "author": getattr(result, 'author', None),
-                    "favicon": getattr(result, 'favicon', None),
-                    "image": getattr(result, 'image', None),
+                    "title": get_val(result, 'title', ''),
+                    "published_date": get_val(result, 'published_date', None),
+                    "author": get_val(result, 'author', None),
+                    "favicon": get_val(result, 'favicon', None),
+                    "image": get_val(result, 'image', None),
                     "summary": summary,
                     "highlights": highlights,
                     "highlight_scores": highlight_scores,
+                    "subpages": subpages,
                     "relevance_score": relevance_score,
                     "competitive_insights": self._extract_competitive_insights(summary, highlights),
                     "content_analysis": self._analyze_content_quality(result)
@@ -439,6 +486,11 @@ class ExaService:
             
             # Log the raw Exa API response for debugging
             logger.info(f"Raw Exa social media response for {user_url}:")
+            if hasattr(result, 'to_json'):
+                 logger.info(result.to_json())
+            else:
+                 logger.info(str(result))
+
             logger.info(f"  - Request ID: {getattr(result, 'request_id', 'N/A')}")
             logger.info(f"  └─ Cost: ${getattr(getattr(result, 'cost_dollars', None), 'total', 0)}")
             # Note: Full raw response contains verbose content - logging only summary
@@ -477,9 +529,22 @@ class ExaService:
                 import json
                 import re
                 
-                if answer_text.strip().startswith('{'):
+                logger.warning(f"Parsing Exa answer text: {answer_text[:200]}...")
+
+                # Clean markdown code blocks if present
+                clean_text = answer_text.strip()
+                if clean_text.startswith('```json'):
+                    clean_text = clean_text[7:]
+                if clean_text.startswith('```'):
+                    clean_text = clean_text[3:]
+                if clean_text.endswith('```'):
+                    clean_text = clean_text[:-3]
+                
+                clean_text = clean_text.strip()
+
+                if clean_text.startswith('{'):
                     # Direct JSON format
-                    answer_data = json.loads(answer_text.strip())
+                    answer_data = json.loads(clean_text)
                 else:
                     # Parse markdown format with URLs
                     answer_data = {

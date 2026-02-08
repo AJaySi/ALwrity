@@ -17,6 +17,7 @@ from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
 from services.integrations.wordpress_oauth import WordPressOAuthService
 from services.integrations.wix_oauth import WixOAuthService
+from services.database import get_user_db_path
 
 
 def get_connected_platforms(user_id: str) -> List[str]:
@@ -41,8 +42,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
     logger.debug(f"[OAuth Monitoring] Checking connected platforms for user: {user_id}")
     
     try:
-        # Check GSC - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
+        # Check GSC - use dynamic database path
+        db_path = get_user_db_path(user_id)
         gsc_service = GSCService(db_path=db_path)
         gsc_credentials = gsc_service.load_user_credentials(user_id)
         if gsc_credentials:
@@ -54,9 +55,9 @@ def get_connected_platforms(user_id: str) -> List[str]:
         logger.warning(f"[OAuth Monitoring] ⚠️ GSC check failed for user {user_id}: {e}", exc_info=True)
     
     try:
-        # Check Bing - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
-        bing_service = BingOAuthService(db_path=db_path)
+        # Check Bing - use dynamic database path
+        db_path = get_user_db_path(user_id)
+        bing_service = BingOAuthService()
         token_status = bing_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)
         has_expired_tokens = token_status.get('has_expired_tokens', False)
@@ -75,8 +76,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
         logger.warning(f"[OAuth Monitoring] ⚠️ Bing check failed for user {user_id}: {e}", exc_info=True)
     
     try:
-        # Check WordPress - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
+        # Check WordPress - use dynamic database path
+        db_path = get_user_db_path(user_id)
         wordpress_service = WordPressOAuthService(db_path=db_path)
         token_status = wordpress_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)
@@ -93,8 +94,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
         logger.warning(f"[OAuth Monitoring] ⚠️ WordPress check failed for user {user_id}: {e}", exc_info=True)
     
     try:
-        # Check Wix - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
+        # Check Wix - use dynamic database path
+        db_path = get_user_db_path(user_id)
         wix_service = WixOAuthService(db_path=db_path)
         token_status = wix_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)

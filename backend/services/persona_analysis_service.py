@@ -44,7 +44,7 @@ class PersonaAnalysisService:
             logger.debug("PersonaAnalysisService initialized")
             self._initialized = True
     
-    def generate_persona_from_onboarding(self, user_id: int, onboarding_session_id: int = None) -> Dict[str, Any]:
+    def generate_persona_from_onboarding(self, user_id: str, onboarding_session_id: int = None) -> Dict[str, Any]:
         """
         Generate a comprehensive writing persona from user's onboarding data.
         

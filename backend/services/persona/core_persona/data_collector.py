@@ -15,7 +15,7 @@ from models.onboarding import OnboardingSession, WebsiteAnalysis, ResearchPrefer
 class OnboardingDataCollector:
     """Collects comprehensive onboarding data for persona analysis."""
     
-    def collect_onboarding_data(self, user_id: int, session_id: int = None) -> Optional[Dict[str, Any]]:
+    def collect_onboarding_data(self, user_id: str, session_id: int = None) -> Optional[Dict[str, Any]]:
         """Collect comprehensive onboarding data for persona analysis."""
         try:
             session = get_db_session()
@@ -86,7 +86,9 @@ class OnboardingDataCollector:
             "brand_voice_analysis": {},
             "technical_writing_metrics": {},
             "competitive_analysis": {},
-            "content_strategy_insights": {}
+            "content_strategy_insights": {},
+            "sitemap_analysis": {},
+            "meta_data": {}
         }
         
         if not website_analyses:
@@ -164,6 +166,14 @@ class OnboardingDataCollector:
                 "content_structure": crawl_data.get("content_structure", {}),
                 "meta_optimization": crawl_data.get("meta_tags", {})
             }
+            
+            # Extract meta info if available
+            if crawl_data.get("meta_info"):
+                enhanced_data["meta_data"] = crawl_data.get("meta_info")
+                
+            # Extract sitemap analysis if available
+            if crawl_data.get("sitemap_analysis"):
+                enhanced_data["sitemap_analysis"] = crawl_data.get("sitemap_analysis")
         
         # Extract content strategy insights from style guidelines
         if latest_analysis.style_guidelines:

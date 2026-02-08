@@ -12,8 +12,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from utils.logger_utils import get_service_logger
-from services.onboarding.data_service import OnboardingDataService
-from services.calendar_generation_datasource_framework.data_processing.comprehensive_user_data import ComprehensiveUserDataProcessor
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 logger = get_service_logger("competitive_analyzer")
 
@@ -23,8 +22,7 @@ class CompetitiveAnalyzer:
     def __init__(self, db: Session):
         """Initialize the competitive analyzer."""
         self.db = db
-        self.user_data_service = OnboardingDataService(db)
-        self.comprehensive_processor = ComprehensiveUserDataProcessor(db)
+        self.integration_service = OnboardingDataIntegrationService()
     
     async def get_competitive_insights(self, user_id: str) -> Dict[str, Any]:
         """
@@ -37,8 +35,9 @@ class CompetitiveAnalyzer:
             Dictionary containing competitive insights
         """
         try:
-            # Get user's research preferences and competitor data
-            research_prefs = self.user_data_service.get_user_research_preferences(user_id)
+            # Get user's research preferences and competitor data via SSOT
+            onboarding_data = await self.integration_service.process_onboarding_data(user_id, self.db)
+            research_prefs = onboarding_data.get('research_preferences', {})
             competitors = research_prefs.get('competitors', []) if research_prefs else []
             
             if not competitors:
@@ -51,9 +50,8 @@ class CompetitiveAnalyzer:
                     "last_updated": datetime.now().isoformat()
                 }
             
-            # Get comprehensive user data including competitor analysis
-            comprehensive_data = self.comprehensive_processor.get_comprehensive_user_data(user_id)
-            competitor_analysis = comprehensive_data.get('competitor_analysis', {})
+            # Get competitor analysis directly from SSOT data
+            competitor_analysis = onboarding_data.get('competitor_analysis', {})
             
             # Extract competitor keywords and content topics
             competitor_keywords = self._extract_competitor_keywords(competitor_analysis, competitors)
@@ -300,6 +298,7 @@ class CompetitiveAnalyzer:
                 else:
                     keyword_map[keyword] = {
                         'keyword': kw['keyword'],
+                        'competitor': kw['competitor'],  # Primary competitor
                         'competitors': [kw['competitor']],
                         'source': kw['source'],
                         'volume_estimate': kw['volume_estimate'],

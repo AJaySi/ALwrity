@@ -6,6 +6,7 @@ export interface OnboardingData {
   integrations?: any;
   styleAnalysis?: any;
   personaReadiness?: any;
+  canonicalProfile?: any;
 }
 
 export interface Capability {

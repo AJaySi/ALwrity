@@ -4,24 +4,315 @@ Handles onboarding step operations and progress tracking.
 """
 
 from typing import Dict, Any, List, Optional
+from datetime import datetime
 from fastapi import HTTPException
 from loguru import logger
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
-from services.onboarding.progress_service import get_onboarding_progress_service
-from services.onboarding.database_service import OnboardingDatabaseService
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from services.database import get_db
+from models.onboarding import OnboardingSession, APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
 
 class StepManagementService:
     """Service for handling onboarding step management."""
     
     def __init__(self):
-        pass
+        self.integration_service = OnboardingDataIntegrationService()
+
+    def _get_or_create_session(self, user_id: str, db: Session) -> OnboardingSession:
+        """Get or create onboarding session."""
+        session = db.query(OnboardingSession).filter(
+            OnboardingSession.user_id == user_id
+        ).first()
+        
+        if not session:
+            session = OnboardingSession(
+                user_id=user_id,
+                current_step=1,
+                progress=0.0,
+                started_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+            
+        return session
+
+    def _save_api_key(self, user_id: str, provider: str, api_key: str, db: Session) -> bool:
+        """Save API key directly to database."""
+        try:
+            session = self._get_or_create_session(user_id, db)
+            
+            existing_key = db.query(APIKey).filter(
+                APIKey.session_id == session.id,
+                APIKey.provider == provider
+            ).first()
+            
+            if existing_key:
+                existing_key.key = api_key
+                existing_key.updated_at = datetime.utcnow()
+            else:
+                new_key = APIKey(
+                    session_id=session.id,
+                    provider=provider,
+                    key=api_key
+                )
+                db.add(new_key)
+            
+            db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving API key for user {user_id}: {e}")
+            db.rollback()
+            raise e
+
+    def _save_website_analysis(self, user_id: str, analysis_data: Dict[str, Any], db: Session) -> bool:
+        """Save website analysis directly to database."""
+        try:
+            session = self._get_or_create_session(user_id, db)
+            
+            # Normalize payload
+            incoming = analysis_data or {}
+            nested = incoming.get('analysis') if isinstance(incoming.get('analysis'), dict) else None
+            
+            # Extract extra fields
+            brand_analysis = (nested or incoming).get('brand_analysis')
+            content_strategy_insights = (nested or incoming).get('content_strategy_insights')
+            meta_info = (nested or incoming).get('meta_info')
+            
+            # Fix: Check both nested and incoming for social_media_presence
+            social_media_presence = (nested or {}).get('social_media_presence') or incoming.get('social_media_presence')
+            
+            seo_audit = (nested or incoming).get('seo_audit')
+            style_patterns = (nested or incoming).get('style_patterns')
+            style_guidelines = (nested or incoming).get('guidelines')
+            sitemap_analysis = (nested or incoming).get('sitemap_analysis')
+            
+            # Prepare crawl_result
+            crawl_result = incoming.get('crawl_result') or {}
+            if not isinstance(crawl_result, dict):
+                crawl_result = {"raw": crawl_result}
+                
+            # Meta info still goes to crawl_result as we didn't add a column for it
+            if meta_info:
+                crawl_result['meta_info'] = meta_info
+                
+            # Store sitemap_analysis in crawl_result as we don't have a dedicated column yet
+            if sitemap_analysis:
+                crawl_result['sitemap_analysis'] = sitemap_analysis
+
+            normalized = {
+                'website_url': incoming.get('website') or incoming.get('website_url') or '',
+                'writing_style': (nested or incoming).get('writing_style'),
+                'content_characteristics': (nested or incoming).get('content_characteristics'),
+                'target_audience': (nested or incoming).get('target_audience'),
+                'content_type': (nested or incoming).get('content_type'),
+                'recommended_settings': (nested or incoming).get('recommended_settings'),
+                'brand_analysis': brand_analysis,
+                'content_strategy_insights': content_strategy_insights,
+                'social_media_presence': social_media_presence,
+                'crawl_result': crawl_result,
+                'seo_audit': seo_audit,
+                'style_patterns': style_patterns,
+                'style_guidelines': style_guidelines
+            }
+            
+            # Filter only valid columns to prevent TypeError
+            valid_columns = [c.name for c in WebsiteAnalysis.__table__.columns if c.name not in ['id', 'session_id', 'created_at', 'updated_at']]
+            filtered_data = {k: v for k, v in normalized.items() if k in valid_columns and v is not None}
+
+            existing_analysis = db.query(WebsiteAnalysis).filter(
+                WebsiteAnalysis.session_id == session.id
+            ).first()
+            
+            if existing_analysis:
+                for key, value in filtered_data.items():
+                    setattr(existing_analysis, key, value)
+                existing_analysis.updated_at = datetime.utcnow()
+            else:
+                new_analysis = WebsiteAnalysis(
+                    session_id=session.id,
+                    **filtered_data
+                )
+                db.add(new_analysis)
+            
+            db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving website analysis for user {user_id}: {e}")
+            db.rollback()
+            raise e
+
+    def _save_research_preferences(self, user_id: str, research_data: Dict[str, Any], db: Session) -> bool:
+        """Save research preferences directly to database."""
+        try:
+            session = self._get_or_create_session(user_id, db)
+            
+            # Add defaults for required fields if missing to prevent 500 errors
+            # The frontend Step 3 (Competitor Analysis) might not send these
+            if 'research_depth' not in research_data:
+                research_data['research_depth'] = 'Comprehensive'
+            if 'content_types' not in research_data:
+                research_data['content_types'] = ["Blog Posts", "Social Media", "Newsletters"]
+            if 'auto_research' not in research_data:
+                research_data['auto_research'] = True
+            if 'factual_content' not in research_data:
+                research_data['factual_content'] = True
+            
+            existing_prefs = db.query(ResearchPreferences).filter(
+                ResearchPreferences.session_id == session.id
+            ).first()
+            
+            if existing_prefs:
+                # Fix for SQLite DateTime issue: Ensure created_at is a datetime object
+                if hasattr(existing_prefs, 'created_at') and isinstance(existing_prefs.created_at, str):
+                    try:
+                        existing_prefs.created_at = datetime.fromisoformat(existing_prefs.created_at)
+                    except (ValueError, TypeError):
+                        pass
+
+                for key, value in research_data.items():
+                    # Skip metadata fields and id
+                    if key in ['id', 'session_id', 'created_at', 'updated_at']:
+                        continue
+                        
+                    if hasattr(existing_prefs, key) and value is not None:
+                        setattr(existing_prefs, key, value)
+                existing_prefs.updated_at = datetime.utcnow()
+            else:
+                # Filter valid columns only to avoid errors
+                valid_columns = [c.name for c in ResearchPreferences.__table__.columns if c.name not in ['id', 'session_id', 'created_at', 'updated_at']]
+                filtered_data = {k: v for k, v in research_data.items() if k in valid_columns}
+                
+                new_prefs = ResearchPreferences(
+                    session_id=session.id,
+                    **filtered_data
+                )
+                db.add(new_prefs)
+            
+            db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving research preferences for user {user_id}: {e}")
+            db.rollback()
+            raise e
+
+    def _save_competitor_analysis(self, user_id: str, competitors: List[Dict[str, Any]], industry_context: Optional[str], db: Session) -> bool:
+        """Save competitor analysis results to database."""
+        try:
+            session = self._get_or_create_session(user_id, db)
+            
+            logger.info(f"🔍 COMPETITOR SAVE: Starting to save {len(competitors)} competitors for session {session.id}")
+            
+            saved_count = 0
+            failed_count = 0
+            
+            for idx, competitor in enumerate(competitors):
+                try:
+                    if not competitor or not isinstance(competitor, dict):
+                        logger.warning(f"  ⚠️ Skipping invalid competitor entry at index {idx}: {competitor}")
+                        continue
+
+                    # Use full URL (Text column supports it) and clean it
+                    raw_url = competitor.get("url", "")
+                    competitor_url = raw_url.strip().strip('`').strip() if raw_url else ""
+
+                    # Prepare analysis data
+                    analysis_data = {
+                        "title": competitor.get("title", ""),
+                        "summary": competitor.get("summary", ""),
+                        "relevance_score": competitor.get("relevance_score", 0.5),
+                        "highlights": competitor.get("highlights", []),
+                        "subpages": competitor.get("subpages", []),
+                        "favicon": competitor.get("favicon"),
+                        "image": competitor.get("image"),
+                        "published_date": competitor.get("published_date"),
+                        "author": competitor.get("author"),
+                        "competitive_analysis": competitor.get("competitive_analysis") or competitor.get("competitive_insights", {}),
+                        "content_insights": competitor.get("content_insights", {}),
+                        "industry_context": industry_context,
+                        "completed_at": datetime.utcnow().isoformat()
+                    }
+                    
+                    # Check if competitor already exists for this session
+                    existing_competitor = db.query(CompetitorAnalysis).filter(
+                        CompetitorAnalysis.session_id == session.id,
+                        CompetitorAnalysis.competitor_url == competitor.get("url", "")
+                    ).first()
+
+                    has_details = bool(analysis_data.get("summary") or analysis_data.get("highlights"))
+                    detail_msg = "with rich details" if has_details else "basic info only"
+
+                    if existing_competitor:
+                        existing_competitor.analysis_data = analysis_data
+                        existing_competitor.updated_at = datetime.utcnow()
+                        logger.info(f"  Updated existing competitor {idx + 1} ({detail_msg})")
+                    else:
+                        competitor_record = CompetitorAnalysis(
+                            session_id=session.id,
+                            competitor_url=competitor_url,
+                            competitor_domain=competitor.get("domain", ""),
+                            analysis_data=analysis_data,
+                            status="completed"
+                        )
+                        db.add(competitor_record)
+                        logger.info(f"  Added new competitor {idx + 1} ({detail_msg})")
+                    
+                    saved_count += 1
+                    
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"  ❌ Failed to save competitor {idx + 1}: {str(e)}")
+            
+            db.commit()
+            logger.info(f"✅ Saved {saved_count} competitors ({failed_count} failed)")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving competitor analysis for user {user_id}: {e}")
+            db.rollback()
+            raise e
+
+
+    def _save_persona_data(self, user_id: str, persona_data: Dict[str, Any], db: Session) -> bool:
+        """Save persona data directly to database."""
+        try:
+            session = self._get_or_create_session(user_id, db)
+            
+            existing = db.query(PersonaData).filter(
+                PersonaData.session_id == session.id
+            ).first()
+            
+            if existing:
+                existing.core_persona = persona_data.get('corePersona')
+                existing.platform_personas = persona_data.get('platformPersonas')
+                existing.quality_metrics = persona_data.get('qualityMetrics')
+                existing.selected_platforms = persona_data.get('selectedPlatforms', [])
+                existing.updated_at = datetime.utcnow()
+            else:
+                persona = PersonaData(
+                    session_id=session.id,
+                    core_persona=persona_data.get('corePersona'),
+                    platform_personas=persona_data.get('platformPersonas'),
+                    quality_metrics=persona_data.get('qualityMetrics'),
+                    selected_platforms=persona_data.get('selectedPlatforms', [])
+                )
+                db.add(persona)
+            
+            db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving persona data for user {user_id}: {e}")
+            db.rollback()
+            raise e
     
     async def get_onboarding_status(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Get the current onboarding status (per user)."""
         try:
+            from services.onboarding.progress_service import OnboardingProgressService
             user_id = str(current_user.get('id'))
-            status = get_onboarding_progress_service().get_onboarding_status(user_id)
+            status = OnboardingProgressService().get_onboarding_status(user_id)
             return {
                 "is_completed": status["is_completed"],
                 "current_step": status["current_step"],
@@ -38,8 +329,9 @@ class StepManagementService:
     async def get_onboarding_progress_full(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Get the full onboarding progress data."""
         try:
+            from services.onboarding.progress_service import OnboardingProgressService
             user_id = str(current_user.get('id'))
-            progress_service = get_onboarding_progress_service()
+            progress_service = OnboardingProgressService()
             status = progress_service.get_onboarding_status(user_id)
             data = progress_service.get_completion_data(user_id)
 
@@ -125,11 +417,13 @@ class StepManagementService:
         """Get data for a specific step."""
         try:
             user_id = str(current_user.get('id'))
-            db = next(get_db())
-            db_service = OnboardingDatabaseService()
+            db = next(get_db(current_user))
+            
+            # Use SSOT for reading step data
+            integrated_data = self.integration_service.get_integrated_data_sync(user_id, db)
 
             if step_number == 2:
-                website = db_service.get_website_analysis(user_id, db) or {}
+                website = integrated_data.get('website_analysis', {})
                 return {
                     "step_number": 2,
                     "title": "Website",
@@ -140,18 +434,27 @@ class StepManagementService:
                     "validation_errors": []
                 }
             if step_number == 3:
-                research = db_service.get_research_preferences(user_id, db) or {}
+                research = integrated_data.get('research_preferences', {})
+                competitors = integrated_data.get('competitor_analysis', [])
+                website = integrated_data.get('website_analysis', {})
+                social_media = website.get('social_media_presence') or website.get('social_media_accounts', {})
+                
+                # Merge competitors into the data
+                step_data = research.copy() if research else {}
+                step_data['competitors'] = competitors
+                step_data['social_media_accounts'] = social_media
+                
                 return {
                     "step_number": 3,
                     "title": "Research",
                     "description": "Discover competitors",
-                    "status": 'completed' if (research.get('research_depth') or research.get('content_types')) else 'pending',
+                    "status": 'completed' if (research.get('research_depth') or research.get('content_types') or competitors) else 'pending',
                     "completed_at": None,
-                    "data": research,
+                    "data": step_data,
                     "validation_errors": []
                 }
             if step_number == 4:
-                persona = db_service.get_persona_data(user_id, db) or {}
+                persona = integrated_data.get('persona_data', {})
                 return {
                     "step_number": 4,
                     "title": "Personalization",
@@ -162,7 +465,8 @@ class StepManagementService:
                     "validation_errors": []
                 }
 
-            status = get_onboarding_progress_service().get_onboarding_status(user_id)
+            from services.onboarding.progress_service import OnboardingProgressService
+            status = OnboardingProgressService().get_onboarding_status(user_id)
             mapping = {
                 1: ('API Keys', 'Connect your AI services', status['current_step'] >= 1),
                 5: ('Integrations', 'Connect additional services', status['current_step'] >= 5),
@@ -201,8 +505,7 @@ class StepManagementService:
             except ImportError:
                 pass
 
-            db = next(get_db())
-            db_service = OnboardingDatabaseService()
+            db = next(get_db(current_user))
             
             save_errors = []  # Track save failures
 
@@ -218,12 +521,9 @@ class StepManagementService:
                     for provider, key in api_keys.items():
                         if key:
                             try:
-                                saved = db_service.save_api_key(user_id, provider, key, db)
+                                saved = self._save_api_key(user_id, provider, key, db)
                                 if saved:
                                     logger.info(f"✅ Saved API key for provider {provider}")
-                                else:
-                                    # This should not happen anymore since save_api_key now raises exceptions
-                                    raise Exception(f"API key save returned False for provider {provider}")
                             except Exception as e:
                                 logger.error(f"❌ BLOCKING ERROR: Failed to save API key for provider {provider}: {str(e)}")
                                 raise HTTPException(
@@ -236,18 +536,36 @@ class StepManagementService:
                 website_data = request_data.get('data') or request_data
                 logger.info(f"🔍 Step 2: Raw request_data keys: {list(request_data.keys()) if request_data else 'None'}")
                 logger.info(f"🔍 Step 2: Extracted website_data keys: {list(website_data.keys()) if website_data else 'None'}")
-                logger.info(f"🔍 Step 2: website_data.website: {website_data.get('website') if website_data else 'None'}")
-                logger.info(f"🔍 Step 2: website_data.analysis: {bool(website_data.get('analysis')) if website_data else 'None'}")
-                if website_data.get('analysis'):
-                    logger.info(f"🔍 Step 2: analysis keys: {list(website_data['analysis'].keys()) if isinstance(website_data.get('analysis'), dict) else 'Not dict'}")
                 if website_data:
                     try:
-                        saved = db_service.save_website_analysis(user_id, website_data, db)
+                        saved = self._save_website_analysis(user_id, website_data, db)
                         if saved:
                             logger.info(f"✅ Saved website analysis for user {user_id}")
-                        else:
-                            # This should not happen anymore since save_website_analysis now raises exceptions
-                            raise Exception("Website analysis save returned False")
+                            
+                            # Trigger Advertools persona augmentation (Phase 1)
+                            try:
+                                from services.scheduler import get_scheduler
+                                
+                                website_url = website_data.get('website') or website_data.get('website_url')
+                                if website_url:
+                                    scheduler = get_scheduler()
+                                    # Schedule content audit for persona augmentation
+                                    scheduler.schedule_one_time_task(
+                                        func=scheduler.execute_task_by_type,
+                                        run_date=datetime.utcnow() + timedelta(seconds=10), # Start in 10s
+                                        job_id=f"advertools_persona_augmentation_{user_id}",
+                                        kwargs={
+                                            "task_type": "advertools_intelligence",
+                                            "user_id": user_id,
+                                            "payload": {
+                                                "type": "content_audit",
+                                                "website_url": website_url
+                                            }
+                                        }
+                                    )
+                                    logger.info(f"🚀 Triggered Advertools persona augmentation for {website_url}")
+                            except Exception as sched_err:
+                                logger.error(f"Failed to trigger Advertools augmentation: {sched_err}")
                     except Exception as e:
                         logger.error(f"❌ BLOCKING ERROR: Failed to save website analysis: {str(e)}")
                         raise HTTPException(
@@ -261,15 +579,38 @@ class StepManagementService:
                 logger.info(f"🔍 Step 3: Raw request_data keys: {list(request_data.keys()) if request_data else 'None'}")
                 logger.info(f"🔍 Step 3: Extracted research_data keys: {list(research_data.keys()) if research_data else 'None'}")
                 if research_data:
-                    # Note: Competitor data is saved separately via discover-competitors endpoint
-                    # This saves research preferences (content_types, target_audience, etc.)
                     try:
-                        saved = db_service.save_research_preferences(user_id, research_data, db)
+                        saved = self._save_research_preferences(user_id, research_data, db)
                         if saved:
                             logger.info(f"✅ Saved research preferences for user {user_id}")
-                        else:
-                            # This should not happen anymore since save_research_preferences now raises exceptions
-                            raise Exception("Research preferences save returned False")
+                            
+                        # Also save competitors if present
+                        competitors = research_data.get('competitors')
+                        if competitors:
+                            industry_context = research_data.get('industryContext') or research_data.get('industry_context')
+                            logger.info(f"🔍 Step 3: Found {len(competitors)} competitors to save")
+                            self._save_competitor_analysis(user_id, competitors, industry_context, db)
+                            
+                        # Save social media presence if available (Update WebsiteAnalysis)
+                        social_media = research_data.get('social_media_accounts')
+                        if social_media:
+                            logger.info(f"🔍 Step 3: Found social media accounts to save")
+                            try:
+                                session = self._get_or_create_session(user_id, db)
+                                existing_analysis = db.query(WebsiteAnalysis).filter(
+                                    WebsiteAnalysis.session_id == session.id
+                                ).first()
+                                if existing_analysis:
+                                    existing_analysis.social_media_presence = social_media
+                                    existing_analysis.updated_at = datetime.utcnow()
+                                    db.commit()
+                                    logger.info(f"✅ Updated social media presence for user {user_id}")
+                                else:
+                                    logger.warning(f"⚠️ Could not save social media: WebsiteAnalysis not found for user {user_id}")
+                            except Exception as e:
+                                logger.error(f"❌ Failed to save social media presence: {str(e)}")
+                                # Don't block completion for this, as it's secondary data
+                    
                     except Exception as e:
                         logger.error(f"❌ BLOCKING ERROR: Failed to save research preferences: {str(e)}")
                         raise HTTPException(
@@ -284,12 +625,9 @@ class StepManagementService:
                 logger.info(f"🔍 Step 4: Extracted persona_data keys: {list(persona_data.keys()) if persona_data else 'None'}")
                 if persona_data:
                     try:
-                        saved = db_service.save_persona_data(user_id, persona_data, db)
+                        saved = self._save_persona_data(user_id, persona_data, db)
                         if saved:
                             logger.info(f"✅ Saved persona data for user {user_id}")
-                        else:
-                            # This should not happen anymore since save_persona_data now raises exceptions
-                            raise Exception("Persona data save returned False")
                     except Exception as e:
                         logger.error(f"❌ BLOCKING ERROR: Failed to save persona data: {str(e)}")
                         raise HTTPException(
@@ -298,16 +636,22 @@ class StepManagementService:
                         ) from e
 
             # Persist current step and progress in DB
-            db_service.update_step(user_id, step_number, db)
+            from services.onboarding.progress_service import OnboardingProgressService
+            progress_service = OnboardingProgressService()
+            progress_service.update_step(user_id, step_number)
             try:
                 progress_pct = min(100.0, round((step_number / 6) * 100))
-                db_service.update_progress(user_id, float(progress_pct), db)
+                progress_service.update_progress(user_id, float(progress_pct))
             except Exception as e:
                 logger.warning(f"Failed to update progress: {e}")
 
             # Log save errors but don't block step completion (non-blocking)
             if save_errors:
                 logger.warning(f"⚠️ Step {step_number} completed but some data save operations failed: {save_errors}")
+            
+            # Refresh SSOT (Canonical Profile) - non-blocking try/except inside method
+            if not save_errors:
+                await self.integration_service.refresh_integrated_data(user_id, db)
             
             logger.info(f"[complete_step] Step {step_number} persisted to DB for user {user_id}")
             return {
@@ -327,6 +671,7 @@ class StepManagementService:
     async def skip_step(self, step_number: int, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Skip a step (for optional steps)."""
         try:
+            from services.onboarding.api_key_manager import get_onboarding_progress_for_user
             user_id = str(current_user.get('id'))
             progress = get_onboarding_progress_for_user(user_id)
             step = progress.get_step_data(step_number)

@@ -19,7 +19,7 @@ from models.monitoring_models import TaskExecutionLog, MonitoringTask
 from models.scheduler_models import SchedulerEventLog
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
 from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
-from models.website_analysis_monitoring_models import WebsiteAnalysisTask, WebsiteAnalysisExecutionLog
+from models.website_analysis_monitoring_models import WebsiteAnalysisTask, WebsiteAnalysisExecutionLog, DeepWebsiteCrawlTask
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler-dashboard"])
 
@@ -271,6 +271,43 @@ async def get_scheduler_dashboard(
                 formatted_jobs.append(job_info)
         except Exception as e:
             logger.error(f"Error loading platform insights tasks: {e}", exc_info=True)
+            
+        # Load deep website crawl tasks
+        try:
+            crawl_tasks = db.query(DeepWebsiteCrawlTask).filter(
+                DeepWebsiteCrawlTask.status.in_(['active', 'retry'])
+            ).all()
+            
+            # Filter by user if user_id_str is provided
+            if user_id_str:
+                crawl_tasks = [t for t in crawl_tasks if t.user_id == user_id_str]
+            
+            for task in crawl_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception as e:
+                    user_job_store = 'default'
+                    logger.debug(f"Could not get job store for user {task.user_id}: {e}")
+                
+                # Format as recurring weekly job
+                job_info = {
+                    'id': f"deep_website_crawl_{task.user_id}_{task.id}",
+                    'trigger_type': 'CronTrigger',  # Weekly recurring
+                    'next_run_time': task.next_execution.isoformat() if task.next_execution else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': 'deep_website_crawl_executor.execute_task',
+                    'website_url': task.website_url,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': 'Weekly',
+                    'task_category': 'deep_website_crawl'
+                }
+                
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading deep website crawl tasks: {e}", exc_info=True)
         
         # Get active strategies count
         active_strategies = stats.get('active_strategies_count', 0)

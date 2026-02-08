@@ -11,6 +11,8 @@ export interface PersonaGenerationRequest {
     competitorResearch?: any;
     sitemapAnalysis?: any;
     businessData?: any;
+    researchPreferences?: any;
+    deepCompetitorAnalysis?: any;
   };
   selected_platforms: string[];
   user_preferences?: any;
@@ -124,15 +126,26 @@ export const getPersonaGenerationOptions = async (): Promise<PersonaOptions> => 
  * Utility function to prepare onboarding data for persona generation.
  */
 export const prepareOnboardingData = (stepData: any) => {
-  return {
-    websiteAnalysis: stepData?.analysis || null,
-    competitorResearch: {
+  const websiteAnalysis =
+    stepData?.websiteAnalysis ??
+    stepData?.analysis ??
+    null;
+
+  const competitorResearch =
+    stepData?.competitorResearch ??
+    {
       competitors: stepData?.competitors || [],
       researchSummary: stepData?.researchSummary || null,
-      socialMediaAccounts: stepData?.socialMediaAccounts || {}
-    },
-    sitemapAnalysis: stepData?.sitemapAnalysis || null,
-    businessData: stepData?.businessData || null
+      socialMediaAccounts: stepData?.socialMediaAccounts || {},
+    };
+
+  return {
+    websiteAnalysis,
+    competitorResearch,
+    sitemapAnalysis: stepData?.sitemapAnalysis ?? null,
+    businessData: stepData?.businessData ?? null,
+    researchPreferences: stepData?.researchPreferences ?? null,
+    deepCompetitorAnalysis: stepData?.deepCompetitorAnalysis ?? null,
   };
 };
 

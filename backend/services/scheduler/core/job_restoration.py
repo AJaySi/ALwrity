@@ -7,7 +7,7 @@ Preserves original scheduled times from database to avoid rescheduling on server
 from typing import TYPE_CHECKING
 from datetime import datetime, timezone, timedelta
 from utils.logger_utils import get_service_logger
-from services.database import get_db_session
+from services.database import get_db_session, get_all_user_ids, get_session_for_user
 from models.scheduler_models import SchedulerEventLog
 
 if TYPE_CHECKING:
@@ -28,35 +28,39 @@ async def restore_persona_jobs(scheduler: 'TaskScheduler'):
         scheduler: TaskScheduler instance
     """
     try:
-        db = get_db_session()
-        if not db:
-            logger.warning("Could not get database session to restore persona jobs")
-            return
+        user_ids = get_all_user_ids()
+        logger.info(f"[Restoration] Found {len(user_ids)} users to check for persona jobs")
         
-        try:
-            from models.onboarding import OnboardingSession
-            from services.research.research_persona_scheduler import (
-                schedule_research_persona_generation,
-                generate_research_persona_task
-            )
-            from services.persona.facebook.facebook_persona_scheduler import (
-                schedule_facebook_persona_generation,
-                generate_facebook_persona_task
-            )
-            from services.research.research_persona_service import ResearchPersonaService
-            from services.persona_data_service import PersonaDataService
+        for user_id in user_ids:
+            db = get_session_for_user(user_id)
+            if not db:
+                logger.warning(f"Could not get database session for user {user_id}")
+                continue
             
-            # Get all users who completed onboarding
-            completed_sessions = db.query(OnboardingSession).filter(
-                OnboardingSession.progress == 100.0
-            ).all()
-            
-            restored_count = 0
-            skipped_count = 0
-            now = datetime.utcnow().replace(tzinfo=timezone.utc)
-            
-            for session in completed_sessions:
-                user_id = session.user_id
+            try:
+                from models.onboarding import OnboardingSession
+                from services.research.research_persona_scheduler import (
+                    schedule_research_persona_generation,
+                    generate_research_persona_task
+                )
+                from services.persona.facebook.facebook_persona_scheduler import (
+                    schedule_facebook_persona_generation,
+                    generate_facebook_persona_task
+                )
+                from services.research.research_persona_service import ResearchPersonaService
+                from services.persona_data_service import PersonaDataService
+                
+                # Check if user completed onboarding
+                session = db.query(OnboardingSession).filter(
+                    OnboardingSession.user_id == user_id
+                ).order_by(OnboardingSession.updated_at.desc()).first()
+                
+                if not session or session.progress < 100.0:
+                    continue
+                
+                restored_count = 0
+                skipped_count = 0
+                now = datetime.utcnow().replace(tzinfo=timezone.utc)
                 
                 # Restore research persona job
                 try:
@@ -69,7 +73,7 @@ async def restore_persona_jobs(scheduler: 'TaskScheduler'):
                         research_persona_exists = bool(research_persona_data)
                     
                     if not research_persona_exists:
-                        # Note: Clerk user_id already includes "user_" prefix
+                        # Note: Clerk user_id already includes "user_" prefix if applicable, or we use the string as is
                         job_id = f"research_persona_{user_id}"
                         
                         # Check if job already exists in scheduler (just started, so unlikely)
@@ -256,13 +260,13 @@ async def restore_persona_jobs(scheduler: 'TaskScheduler'):
                 except Exception as e:
                     logger.debug(f"Could not restore Facebook persona for user {user_id}: {e}")
             
-            if restored_count > 0:
-                logger.warning(f"[Scheduler] ✅ Restored {restored_count} persona generation job(s) on startup (preserved original scheduled times)")
-            if skipped_count > 0:
-                logger.debug(f"[Scheduler] Skipped {skipped_count} persona job(s) (already completed/failed or exist)")
-                
-        finally:
-            db.close()
+                if restored_count > 0:
+                    logger.warning(f"[Scheduler] ✅ Restored {restored_count} persona generation job(s) for user {user_id}")
+                if skipped_count > 0:
+                    logger.debug(f"[Scheduler] Skipped {skipped_count} persona job(s) for user {user_id}")
+                    
+            finally:
+                db.close()
             
     except Exception as e:
         logger.warning(f"Error restoring persona jobs: {e}")

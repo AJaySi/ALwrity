@@ -31,13 +31,13 @@ from services.component_logic.style_detection_logic import StyleDetectionLogic
 from services.component_logic.web_crawler_logic import WebCrawlerLogic
 from services.research_preferences_service import ResearchPreferencesService
 from services.database import get_db
-from services.onboarding import OnboardingDatabaseService
 
 # Import authentication for user isolation
 from middleware.auth_middleware import get_current_user
 
 # Import the website analysis service
 from services.website_analysis_service import WebsiteAnalysisService
+from services.seo_tools.sitemap_service import SitemapService
 from services.database import get_db_session
 
 # Initialize services
@@ -67,12 +67,33 @@ def clerk_user_id_to_int(user_id: str) -> int:
 
 
 def _get_onboarding_session(db_session: Session, user_id: str, create_if_missing: bool = False) -> Optional[OnboardingSession]:
-    """Fetch onboarding session for a user, optionally creating one."""
-    db_service = OnboardingDatabaseService(db_session)
-    session = db_service.get_session_by_user(user_id, db_session)
-    if not session and create_if_missing:
-        session = db_service.get_or_create_session(user_id, db_session)
-    return session
+    """Fetch onboarding session for a user, optionally creating one.
+    Refactored to use direct DB access instead of legacy OnboardingDatabaseService.
+    """
+    try:
+        session = db_session.query(OnboardingSession).filter(
+            OnboardingSession.user_id == user_id
+        ).first()
+        
+        if not session and create_if_missing:
+            logger.info(f"Creating new onboarding session for user {user_id}")
+            session = OnboardingSession(
+                user_id=user_id,
+                current_step=1,
+                progress=0.0,
+                started_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db_session.add(session)
+            db_session.commit()
+            db_session.refresh(session)
+            
+        return session
+    except Exception as e:
+        logger.error(f"Error getting/creating onboarding session: {e}")
+        if create_if_missing:
+            db_session.rollback()
+        return None
 
 # AI Research Endpoints
 
@@ -218,8 +239,12 @@ async def validate_content_style(request: ContentStyleRequest):
         )
         
     except Exception as e:
-        logger.error(f"Error in validate_content_style: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in validate_content_style: {str(e)}", exc_info=True)
+        return ContentStyleResponse(
+            valid=False,
+            style_config=None,
+            errors=[f"Internal error validating content style: {str(e)}"]
+        )
 
 @router.post("/personalization/configure-brand", response_model=BrandVoiceResponse)
 async def configure_brand_voice(request: BrandVoiceRequest):
@@ -242,8 +267,12 @@ async def configure_brand_voice(request: BrandVoiceRequest):
         )
         
     except Exception as e:
-        logger.error(f"Error in configure_brand_voice: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in configure_brand_voice: {str(e)}", exc_info=True)
+        return BrandVoiceResponse(
+            valid=False,
+            brand_config=None,
+            errors=[f"Internal error configuring brand voice: {str(e)}"]
+        )
 
 @router.post("/personalization/process-settings", response_model=PersonalizationSettingsResponse)
 async def process_personalization_settings(request: PersonalizationSettingsRequest):
@@ -278,8 +307,12 @@ async def process_personalization_settings(request: PersonalizationSettingsReque
         )
         
     except Exception as e:
-        logger.error(f"Error in process_personalization_settings: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in process_personalization_settings: {str(e)}", exc_info=True)
+        return PersonalizationSettingsResponse(
+            valid=False,
+            settings=None,
+            errors=[f"Internal error processing settings: {str(e)}"]
+        )
 
 @router.get("/personalization/configuration-options")
 async def get_personalization_configuration_options():
@@ -295,8 +328,21 @@ async def get_personalization_configuration_options():
         }
         
     except Exception as e:
-        logger.error(f"Error in get_personalization_configuration_options: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in get_personalization_configuration_options: {str(e)}", exc_info=True)
+        # Fallback to default options to prevent 500 error
+        return {
+            'success': False,
+            'options': {
+                'writing_styles': ["Professional", "Casual", "Technical", "Conversational", "Academic"],
+                'tones': ["Formal", "Semi-Formal", "Neutral", "Friendly", "Humorous"],
+                'content_lengths': ["Concise", "Standard", "Detailed", "Comprehensive"],
+                'personality_traits': ["Professional", "Innovative", "Friendly", "Trustworthy", "Creative", "Expert"],
+                'readability_levels': ["Simple", "Standard", "Advanced", "Expert"],
+                'content_structures': ["Introduction", "Key Points", "Examples", "Conclusion", "Call-to-Action"],
+                'seo_optimization_options': [True, False]
+            },
+            'message': f"Error loading options: {str(e)}"
+        }
 
 @router.post("/personalization/generate-guidelines")
 async def generate_content_guidelines(settings: Dict[str, Any]):
@@ -395,10 +441,14 @@ async def generate_research_report(results: Dict[str, Any]):
 
 # Style Detection Endpoints
 @router.post("/style-detection/analyze", response_model=StyleAnalysisResponse)
-async def analyze_content_style(request: StyleAnalysisRequest):
+async def analyze_content_style(
+    request: StyleAnalysisRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Analyze content style using AI."""
     try:
-        logger.info("[analyze_content_style] Starting style analysis")
+        user_id = str(current_user.get('id'))
+        logger.info(f"[analyze_content_style] Starting style analysis for user: {user_id}")
         
         # Initialize style detection logic
         style_logic = StyleDetectionLogic()
@@ -414,9 +464,9 @@ async def analyze_content_style(request: StyleAnalysisRequest):
         
         # Perform style analysis
         if request.analysis_type == "comprehensive":
-            result = style_logic.analyze_content_style(validation['content'])
+            result = style_logic.analyze_content_style(validation['content'], user_id=user_id)
         elif request.analysis_type == "patterns":
-            result = style_logic.analyze_style_patterns(validation['content'])
+            result = style_logic.analyze_style_patterns(validation['content'], user_id=user_id)
         else:
             return StyleAnalysisResponse(
                 success=False,
@@ -515,7 +565,7 @@ async def complete_style_detection(
         logger.info(f"[complete_style_detection] Starting complete style detection for user: {user_id}")
         
         # Get database session
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         if not db_session:
             return StyleDetectionResponse(
                 success=False,
@@ -527,6 +577,7 @@ async def complete_style_detection(
         crawler_logic = WebCrawlerLogic()
         style_logic = StyleDetectionLogic()
         analysis_service = WebsiteAnalysisService(db_session)
+        sitemap_service = SitemapService()
         
         session = _get_onboarding_session(db_session, user_id, create_if_missing=True)
         if not session:
@@ -573,19 +624,49 @@ async def complete_style_detection(
         async def run_style_analysis():
             """Run style analysis in executor"""
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, partial(style_logic.analyze_content_style, crawl_result['content']))
+            return await loop.run_in_executor(None, partial(style_logic.analyze_content_style, crawl_result['content'], user_id=user_id))
         
         async def run_patterns_analysis():
             """Run patterns analysis in executor (if requested)"""
             if not request.include_patterns:
                 return None
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, partial(style_logic.analyze_style_patterns, crawl_result['content']))
+            return await loop.run_in_executor(None, partial(style_logic.analyze_style_patterns, crawl_result['content'], user_id=user_id))
         
-        # Execute style and patterns analysis in parallel
-        style_analysis, patterns_result = await asyncio.gather(
+        async def run_seo_audit():
+            """Run SEO audit in executor"""
+            if not request.url:
+                return None
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, partial(style_logic.perform_seo_audit, request.url, crawl_result['content']))
+        
+        async def run_sitemap_analysis():
+            """Run AI sitemap analysis for home page"""
+            if not request.url:
+                return None
+            try:
+                # Discover sitemap URL
+                sitemap_url = await sitemap_service.discover_sitemap_url(request.url)
+                if sitemap_url:
+                     # Analyze sitemap with AI insights
+                     return await sitemap_service.analyze_sitemap(
+                         sitemap_url=sitemap_url,
+                         analyze_content_trends=True,
+                         analyze_publishing_patterns=True,
+                         include_ai_insights=True,
+                         user_id=user_id
+                     )
+                return None
+            except Exception as e:
+                logger.error(f"Sitemap analysis failed: {e}")
+                return None
+
+        # Execute style, patterns, SEO analysis and sitemap analysis in parallel
+        style_analysis, patterns_result, seo_audit_result, sitemap_result = await asyncio.gather(
             run_style_analysis(),
             run_patterns_analysis(),
+            run_seo_audit(),
+            run_sitemap_analysis(),
             return_exceptions=True
         )
         
@@ -622,13 +703,27 @@ async def complete_style_detection(
             if patterns_result.get('success'):
                 style_patterns = patterns_result.get('patterns')
         
+        # Process SEO audit result
+        seo_audit = None
+        if seo_audit_result and not isinstance(seo_audit_result, Exception):
+            seo_audit = seo_audit_result
+        elif isinstance(seo_audit_result, Exception):
+            logger.warning(f"SEO audit failed: {seo_audit_result}")
+
+        # Process sitemap analysis result
+        sitemap_analysis = None
+        if sitemap_result and not isinstance(sitemap_result, Exception):
+            sitemap_analysis = sitemap_result
+        elif isinstance(sitemap_result, Exception):
+            logger.warning(f"Sitemap analysis failed: {sitemap_result}")
+
         # Step 4: Generate guidelines (depends on style_analysis, must run after)
         style_guidelines = None
         if request.include_guidelines:
             loop = asyncio.get_event_loop()
             guidelines_result = await loop.run_in_executor(
                 None, 
-                partial(style_logic.generate_style_guidelines, style_analysis.get('analysis', {}))
+                partial(style_logic.generate_style_guidelines, style_analysis.get('analysis', {}), user_id=user_id)
             )
             if guidelines_result and guidelines_result.get('success'):
                 style_guidelines = guidelines_result.get('guidelines')
@@ -644,6 +739,8 @@ async def complete_style_detection(
             'style_analysis': style_analysis.get('analysis') if style_analysis else None,
             'style_patterns': style_patterns,
             'style_guidelines': style_guidelines,
+            'seo_audit': seo_audit,
+            'sitemap_analysis': sitemap_analysis,
             'warning': warning
         }
         
@@ -659,6 +756,8 @@ async def complete_style_detection(
             style_analysis=style_analysis.get('analysis') if style_analysis else None,
             style_patterns=style_patterns,
             style_guidelines=style_guidelines,
+            seo_audit=seo_audit,
+            sitemap_analysis=sitemap_analysis,
             warning=warning,
             timestamp=datetime.now().isoformat()
         )
@@ -682,19 +781,20 @@ async def check_existing_analysis(
         logger.info(f"[check_existing_analysis] Checking for URL: {website_url} (user: {user_id})")
         
         # Get database session
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         if not db_session:
             return {"error": "Database connection not available"}
         
         # Initialize service
         analysis_service = WebsiteAnalysisService(db_session)
         
-        # Use authenticated Clerk user ID for proper user isolation
-        # Use consistent SHA256-based conversion
-        user_id_int = clerk_user_id_to_int(user_id)
+        # Get onboarding session to ensure we check the correct session
+        session = _get_onboarding_session(db_session, user_id)
+        if not session:
+            return {'exists': False}
         
-        # Check for existing analysis for THIS USER ONLY
-        existing_analysis = analysis_service.check_existing_analysis(user_id_int, website_url)
+        # Check for existing analysis for THIS USER'S SESSION
+        existing_analysis = analysis_service.check_existing_analysis(session.id, website_url)
         
         return existing_analysis
         
@@ -703,23 +803,33 @@ async def check_existing_analysis(
         return {"error": f"Error checking existing analysis: {str(e)}"}
 
 @router.get("/style-detection/analysis/{analysis_id}")
-async def get_analysis_by_id(analysis_id: int):
+async def get_analysis_by_id(
+    analysis_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Get analysis by ID."""
     try:
-        logger.info(f"[get_analysis_by_id] Getting analysis: {analysis_id}")
+        user_id = str(current_user.get('id'))
+        logger.info(f"[get_analysis_by_id] Getting analysis: {analysis_id} (user: {user_id})")
         
         # Get database session
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         if not db_session:
             return {"error": "Database connection not available"}
         
         # Initialize service
         analysis_service = WebsiteAnalysisService(db_session)
         
+        # Get onboarding session to ensure ownership
+        session = _get_onboarding_session(db_session, user_id)
+        if not session:
+            return {"success": False, "error": "Analysis not found"}
+        
         # Get analysis
         analysis = analysis_service.get_analysis(analysis_id)
         
-        if analysis:
+        # Verify ownership (session_id must match)
+        if analysis and analysis.get('session_id') == session.id:
             return {"success": True, "analysis": analysis}
         else:
             return {"success": False, "error": "Analysis not found"}
@@ -733,22 +843,23 @@ async def get_session_analyses(current_user: Dict[str, Any] = Depends(get_curren
     """Get all analyses for the current user with proper user isolation."""
     try:
         user_id = str(current_user.get('id'))
-        logger.info(f"[get_session_analyses] Getting analyses for user: {user_id}")
+        logger.info(f"[get_session_analyses] Getting analyses for user: {user_id})")
         
         # Get database session
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         if not db_session:
             return {"error": "Database connection not available"}
         
         # Initialize service
         analysis_service = WebsiteAnalysisService(db_session)
         
-        # Use authenticated Clerk user ID for proper user isolation
-        # Use consistent SHA256-based conversion
-        user_id_int = clerk_user_id_to_int(user_id)
+        # Get onboarding session to ensure we fetch analyses for the correct session
+        session = _get_onboarding_session(db_session, user_id)
+        if not session:
+            return {"success": True, "analyses": []}
         
-        # Get analyses for THIS USER ONLY (not all users!)
-        analyses = analysis_service.get_session_analyses(user_id_int)
+        # Get analyses for THIS USER'S SESSION
+        analyses = analysis_service.get_session_analyses(session.id)
         
         logger.info(f"[get_session_analyses] Found {len(analyses) if analyses else 0} analyses for user {user_id}")
         return {"success": True, "analyses": analyses}
@@ -757,28 +868,107 @@ async def get_session_analyses(current_user: Dict[str, Any] = Depends(get_curren
         logger.error(f"[get_session_analyses] Error: {str(e)}")
         return {"error": f"Error retrieving session analyses: {str(e)}"}
 
-@router.delete("/style-detection/analysis/{analysis_id}")
-async def delete_analysis(analysis_id: int):
-    """Delete an analysis."""
+@router.put("/style-detection/analysis/{analysis_id}")
+async def update_analysis(
+    analysis_id: int,
+    analysis_data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Update an existing analysis with edited content."""
     try:
-        logger.info(f"[delete_analysis] Deleting analysis: {analysis_id}")
+        user_id = str(current_user.get('id'))
+        logger.info(f"[update_analysis] Updating analysis: {analysis_id} (user: {user_id})")
         
         # Get database session
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         if not db_session:
             return {"error": "Database connection not available"}
         
         # Initialize service
         analysis_service = WebsiteAnalysisService(db_session)
         
+        # Get onboarding session to ensure ownership
+        session = _get_onboarding_session(db_session, user_id)
+        if not session:
+            return {"success": False, "error": "Analysis not found"}
+        
+        # Check ownership first
+        analysis = analysis_service.get_analysis(analysis_id)
+        if not analysis or analysis.get('session_id') != session.id:
+            return {"success": False, "error": "Analysis not found"}
+            
+        # Update analysis
+        # Reconstruct style_guidelines if individual fields are passed
+        # The frontend flat structure: guidelines, best_practices, etc.
+        # The DB structure: style_guidelines JSON
+        
+        if any(k in analysis_data for k in ['guidelines', 'best_practices', 'avoid_elements', 'content_strategy', 'ai_generation_tips', 'competitive_advantages', 'content_calendar_suggestions']):
+            # Fetch existing style_guidelines to merge or create new
+            existing_guidelines = analysis.get('style_guidelines') or {}
+            
+            mapping = {
+                'guidelines': 'guidelines',
+                'best_practices': 'best_practices',
+                'avoid_elements': 'avoid_elements',
+                'content_strategy': 'content_strategy',
+                'ai_generation_tips': 'ai_generation_tips',
+                'competitive_advantages': 'competitive_advantages',
+                'content_calendar_suggestions': 'content_calendar_suggestions'
+            }
+            
+            for frontend_key, db_key in mapping.items():
+                if frontend_key in analysis_data:
+                    existing_guidelines[db_key] = analysis_data[frontend_key]
+            
+            analysis_data['style_guidelines'] = existing_guidelines
+
+        success = analysis_service.update_analysis_content(analysis_id, analysis_data)
+        
+        if success:
+            return {"success": True}
+        else:
+            return {"success": False, "error": "Failed to update analysis"}
+            
+    except Exception as e:
+        logger.error(f"[update_analysis] Error: {str(e)}")
+        return {"error": f"Error updating analysis: {str(e)}"}
+
+@router.delete("/style-detection/analysis/{analysis_id}")
+async def delete_analysis(
+    analysis_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Delete an analysis."""
+    try:
+        user_id = str(current_user.get('id'))
+        logger.info(f"[delete_analysis] Deleting analysis: {analysis_id} (user: {user_id})")
+        
+        # Get database session
+        db_session = get_db_session(user_id)
+        if not db_session:
+            return {"error": "Database connection not available"}
+        
+        # Initialize service
+        analysis_service = WebsiteAnalysisService(db_session)
+        
+        # Get onboarding session to ensure ownership
+        session = _get_onboarding_session(db_session, user_id)
+        if not session:
+            return {"success": False, "error": "Analysis not found"}
+        
+        # Check ownership first
+        analysis = analysis_service.get_analysis(analysis_id)
+        if not analysis or analysis.get('session_id') != session.id:
+            return {"success": False, "error": "Analysis not found"}
+            
         # Delete analysis
         success = analysis_service.delete_analysis(analysis_id)
         
         if success:
-            return {"success": True, "message": "Analysis deleted successfully"}
+            return {"success": True}
         else:
-            return {"success": False, "error": "Analysis not found or could not be deleted"}
-        
+            return {"success": False, "error": "Failed to delete analysis"}
+            
     except Exception as e:
         logger.error(f"[delete_analysis] Error: {str(e)}")
         return {"error": f"Error deleting analysis: {str(e)}"}

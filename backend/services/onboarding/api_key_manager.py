@@ -11,7 +11,8 @@ from datetime import datetime
 from loguru import logger
 from enum import Enum
 
-from services.database import get_db_session
+from services.database import get_session_for_user
+from models.onboarding import OnboardingSession, APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData
 
 
 class StepStatus(Enum):
@@ -50,15 +51,16 @@ class OnboardingProgress:
         
         # Initialize database service for persistence
         try:
-            from .database_service import OnboardingDatabaseService
-            self.db_service = OnboardingDatabaseService()
+            from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
+            self.integration_service = OnboardingDataIntegrationService()
             self.use_database = True
-            logger.info(f"Database service initialized for user {user_id}")
+            logger.info(f"Database/Integration service initialized for user {user_id}")
         except Exception as e:
             logger.error(f"Database service not available: {e}")
-            self.db_service = None
+            self.integration_service = None
             self.use_database = False
-            raise Exception(f"Database service required but not available: {e}")
+            # raise Exception(f"Database service required but not available: {e}") # Don't raise, fallback gracefully if possible
+
         
         # Load existing progress from database if available
         if self.use_database and self.user_id:
@@ -219,23 +221,136 @@ class OnboardingProgress:
         self.save_progress()
         logger.info("Onboarding completed successfully")
     
+    def _save_api_key_to_db(self, db, provider: str, key: str):
+        """Save API key to database."""
+        try:
+            api_key_record = db.query(APIKey).filter(
+                APIKey.user_id == self.user_id,
+                APIKey.provider == provider
+            ).first()
+            
+            if not api_key_record:
+                api_key_record = APIKey(
+                    user_id=self.user_id, 
+                    provider=provider, 
+                    api_key=key,
+                    is_active=True,
+                    created_at=datetime.utcnow()
+                )
+                db.add(api_key_record)
+            else:
+                api_key_record.api_key = key
+                api_key_record.updated_at = datetime.utcnow()
+            
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error saving API key to DB: {e}")
+            # db.rollback() # Handled by outer try/except
+
+    def _save_website_analysis_to_db(self, db, analysis_data: Dict[str, Any]):
+        """Save website analysis to database."""
+        try:
+            # Get session ID
+            session = db.query(OnboardingSession).filter(OnboardingSession.user_id == self.user_id).first()
+            if not session:
+                logger.warning(f"No session found for user {self.user_id} when saving website analysis")
+                return
+
+            analysis = db.query(WebsiteAnalysis).filter(WebsiteAnalysis.session_id == session.id).first()
+            
+            # Filter valid columns only to avoid errors
+            valid_cols = WebsiteAnalysis.__table__.columns.keys()
+            filtered_data = {k: v for k, v in analysis_data.items() if k in valid_cols}
+            
+            if not analysis:
+                analysis = WebsiteAnalysis(session_id=session.id, **filtered_data)
+                db.add(analysis)
+            else:
+                for k, v in filtered_data.items():
+                    setattr(analysis, k, v)
+                analysis.updated_at = datetime.utcnow()
+            
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error saving website analysis to DB: {e}")
+
+    def _save_research_preferences_to_db(self, db, prefs_data: Dict[str, Any]):
+        """Save research preferences to database."""
+        try:
+            session = db.query(OnboardingSession).filter(OnboardingSession.user_id == self.user_id).first()
+            if not session:
+                return
+
+            prefs = db.query(ResearchPreferences).filter(ResearchPreferences.session_id == session.id).first()
+            
+            valid_cols = ResearchPreferences.__table__.columns.keys()
+            filtered_data = {k: v for k, v in prefs_data.items() if k in valid_cols}
+
+            if not prefs:
+                prefs = ResearchPreferences(session_id=session.id, **filtered_data)
+                db.add(prefs)
+            else:
+                for k, v in filtered_data.items():
+                    setattr(prefs, k, v)
+                prefs.updated_at = datetime.utcnow()
+            
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error saving research prefs to DB: {e}")
+
+    def _save_persona_data_to_db(self, db, persona_data: Dict[str, Any]):
+        """Save persona data to database."""
+        try:
+            session = db.query(OnboardingSession).filter(OnboardingSession.user_id == self.user_id).first()
+            if not session:
+                return
+
+            persona = db.query(PersonaData).filter(PersonaData.session_id == session.id).first()
+            
+            valid_cols = PersonaData.__table__.columns.keys()
+            filtered_data = {k: v for k, v in persona_data.items() if k in valid_cols}
+
+            if not persona:
+                persona = PersonaData(session_id=session.id, **filtered_data)
+                db.add(persona)
+            else:
+                for k, v in filtered_data.items():
+                    setattr(persona, k, v)
+                persona.updated_at = datetime.utcnow()
+            
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error saving persona data to DB: {e}")
+
     def save_progress(self):
-        """Save progress to database."""
-        if not self.use_database or not self.db_service or not self.user_id:
+        """Save progress to database using direct access (no legacy service)."""
+        if not self.use_database or not self.user_id:
             logger.error("Cannot save progress: database service not available or user_id not set")
             return
             
         try:
-            from services.database import SessionLocal
-            db = SessionLocal()
+            db = get_session_for_user(self.user_id)
             try:
                 # Update session progress
-                self.db_service.update_step(self.user_id, self.current_step, db)
+                session = db.query(OnboardingSession).filter(OnboardingSession.user_id == self.user_id).first()
+                if not session:
+                    session = OnboardingSession(
+                        user_id=self.user_id,
+                        current_step=self.current_step,
+                        progress=0.0,
+                        started_at=datetime.utcnow()
+                    )
+                    db.add(session)
+                
+                session.current_step = self.current_step
                 
                 # Calculate progress percentage
                 completed_count = sum(1 for s in self.steps if s.status == StepStatus.COMPLETED)
                 progress_pct = (completed_count / len(self.steps)) * 100
-                self.db_service.update_progress(self.user_id, progress_pct, db)
+                session.progress = progress_pct
+                session.updated_at = datetime.utcnow()
+                
+                db.commit()
                 
                 # Save step-specific data to appropriate tables
                 for step in self.steps:
@@ -245,11 +360,9 @@ class OnboardingProgress:
                             for provider, key in api_keys.items():
                                 if key:
                                     # Save to database (for user isolation in production)
-                                    self.db_service.save_api_key(self.user_id, provider, key, db)
+                                    self._save_api_key_to_db(db, provider, key)
                                     
                                     # Also save to .env file ONLY in local development
-                                    # This allows local developers to have keys in .env for convenience
-                                    # In production, keys are fetched from database per user
                                     is_local = os.getenv('DEPLOY_ENV', 'local') == 'local'
                                     if is_local:
                                         try:
@@ -285,13 +398,13 @@ class OnboardingProgress:
                                 if 'status' not in analysis_for_db:
                                     analysis_for_db['status'] = 'completed'
                             
-                            self.db_service.save_website_analysis(self.user_id, analysis_for_db, db)
+                            self._save_website_analysis_to_db(db, analysis_for_db)
                             logger.info(f"✅ DATABASE: Website analysis saved to database for user {self.user_id}")
                         elif step.step_number == 3:  # Research Preferences
-                            self.db_service.save_research_preferences(self.user_id, step.data, db)
+                            self._save_research_preferences_to_db(db, step.data)
                             logger.info(f"✅ DATABASE: Research preferences saved to database for user {self.user_id}")
                         elif step.step_number == 4:  # Persona Generation
-                            self.db_service.save_persona_data(self.user_id, step.data, db)
+                            self._save_persona_data_to_db(db, step.data)
                             logger.info(f"✅ DATABASE: Persona data saved to database for user {self.user_id}")
                 
                 logger.info(f"Progress saved to database for user {self.user_id}")
@@ -303,46 +416,56 @@ class OnboardingProgress:
             raise
     
     def load_progress_from_db(self):
-        """Load progress from database."""
-        if not self.use_database or not self.db_service or not self.user_id:
+        """Load progress from database using SSOT Integration Service."""
+        if not self.use_database or not self.user_id:
             logger.warning("Cannot load progress: database service not available or user_id not set")
             return
             
         try:
-            from services.database import SessionLocal
-            db = SessionLocal()
+            db = get_session_for_user(self.user_id)
             try:
+                # Get integrated data (SSOT)
+                integrated_data = self.integration_service.get_integrated_data_sync(self.user_id, db)
+                
                 # Get session data
-                session = self.db_service.get_session_by_user(self.user_id, db)
-                if not session:
+                session_data = integrated_data.get('onboarding_session', {})
+                if not session_data:
                     logger.info(f"No existing onboarding session found for user {self.user_id}, starting fresh")
                     return
                 
                 # Restore session data
-                self.current_step = session.current_step or 1
-                self.started_at = session.started_at.isoformat() if session.started_at else self.started_at
-                self.last_updated = session.last_updated.isoformat() if session.last_updated else self.last_updated
-                self.is_completed = session.is_completed or False
-                self.completed_at = session.completed_at.isoformat() if session.completed_at else None
+                self.current_step = session_data.get('current_step', 1)
+                self.started_at = session_data.get('started_at') or self.started_at
+                self.last_updated = session_data.get('updated_at') or self.last_updated
                 
-                # Load step-specific data from database
-                self._load_step_data_from_db(db)
+                # Calculate completion status
+                self.is_completed = (self.current_step >= 6) or (session_data.get('progress', 0) >= 100.0)
+                if self.is_completed:
+                    self.completed_at = session_data.get('updated_at')
+                
+                # Load step-specific data from integrated data
+                self._load_step_data_from_integrated_data(integrated_data)
                 
                 # Fix any corrupted state
                 self._fix_corrupted_state()
                 
-                logger.info(f"Progress loaded from database for user {self.user_id}")
+                logger.info(f"Progress loaded from database (SSOT) for user {self.user_id}")
             finally:
                 db.close()
         except Exception as e:
             logger.error(f"Error loading progress from database: {str(e)}")
             # Don't fail if database loading fails - start fresh
-    
-    def _load_step_data_from_db(self, db):
-        """Load step-specific data from database tables."""
+
+    def _load_step_data_from_integrated_data(self, integrated_data: Dict[str, Any]):
+        """Load step-specific data from integrated data dictionary."""
         try:
             # Load API keys (step 1)
-            api_keys = self.db_service.get_api_keys(self.user_id, db)
+            api_keys_data = integrated_data.get('api_keys_data', {})
+            # api_keys_data structure from integration service might be different, let's check
+            # It usually returns {'openai_api_key': '...', ...}
+            # We need to filter for actual keys
+            api_keys = {k: v for k, v in api_keys_data.items() if v and 'api_key' in k}
+            
             if api_keys:
                 step1 = self.get_step_data(1)
                 if step1:
@@ -351,7 +474,7 @@ class OnboardingProgress:
                     step1.completed_at = datetime.now().isoformat()
             
             # Load website analysis (step 2)
-            website_analysis = self.db_service.get_website_analysis(self.user_id, db)
+            website_analysis = integrated_data.get('website_analysis', {})
             if website_analysis:
                 step2 = self.get_step_data(2)
                 if step2:
@@ -360,7 +483,7 @@ class OnboardingProgress:
                     step2.completed_at = datetime.now().isoformat()
             
             # Load research preferences (step 3)
-            research_prefs = self.db_service.get_research_preferences(self.user_id, db)
+            research_prefs = integrated_data.get('research_preferences', {})
             if research_prefs:
                 step3 = self.get_step_data(3)
                 if step3:
@@ -369,7 +492,7 @@ class OnboardingProgress:
                     step3.completed_at = datetime.now().isoformat()
             
             # Load persona data (step 4)
-            persona_data = self.db_service.get_persona_data(self.user_id, db)
+            persona_data = integrated_data.get('persona_data', {})
             if persona_data:
                 step4 = self.get_step_data(4)
                 if step4:
@@ -377,9 +500,9 @@ class OnboardingProgress:
                     step4.data = persona_data
                     step4.completed_at = datetime.now().isoformat()
             
-            logger.info("Step data loaded from database")
+            logger.info("Step data loaded from integrated data")
         except Exception as e:
-            logger.error(f"Error loading step data from database: {str(e)}")
+            logger.error(f"Error loading step data from integrated data: {str(e)}")
     
     def _fix_corrupted_state(self):
         """Fix any corrupted progress state."""

@@ -10,6 +10,9 @@ from datetime import datetime
 from loguru import logger
 import json
 
+# Import auth middleware
+from middleware.auth_middleware import get_current_user
+
 # Import database service
 from services.database import get_db_session, get_db
 from services.content_planning_db import ContentPlanningDBService
@@ -54,12 +57,13 @@ async def create_content_gap_analysis(
 
 @router.get("/", response_model=Dict[str, Any])
 async def get_content_gap_analyses(
-    user_id: Optional[int] = Query(None, description="User ID"),
     strategy_id: Optional[int] = Query(None, description="Strategy ID"),
-    force_refresh: bool = Query(False, description="Force refresh gap analysis")
+    force_refresh: bool = Query(False, description="Force refresh gap analysis"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get content gap analysis with real AI insights - Database first approach."""
     try:
+        user_id = str(current_user.get('id'))
         logger.info(f"🚀 Starting content gap analysis for user: {user_id}, strategy: {strategy_id}, force_refresh: {force_refresh}")
         
         result = await gap_analysis_service.get_gap_analyses(user_id, strategy_id, force_refresh)
@@ -88,24 +92,27 @@ async def get_content_gap_analysis(
         raise ContentPlanningErrorHandler.handle_general_error(e, "get_content_gap_analysis")
 
 @router.post("/analyze", response_model=ContentGapAnalysisFullResponse)
-async def analyze_content_gaps(request: ContentGapAnalysisRequest):
+async def analyze_content_gaps(
+    request: ContentGapAnalysisRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Analyze content gaps between your website and competitors.
     """
     try:
         logger.info(f"Starting content gap analysis for: {request.website_url}")
         
+        user_id = str(current_user.get('id'))
         request_data = request.dict()
-        result = await gap_analysis_service.analyze_content_gaps(request_data)
+        result = await gap_analysis_service.analyze_content_gaps(request_data, user_id)
         
         return ContentGapAnalysisFullResponse(**result)
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error analyzing content gaps: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error analyzing content gaps: {str(e)}"
-        )
+        raise ContentPlanningErrorHandler.handle_general_error(e, "analyze_content_gaps")
 
 @router.get("/user/{user_id}/analyses")
 async def get_user_gap_analyses(

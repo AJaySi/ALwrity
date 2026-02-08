@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 interface PersonaInitializationProps {
+  onboardingData?: any;
   stepData?: {
     corePersona?: any;
     platformPersonas?: Record<string, any>;
@@ -23,6 +24,7 @@ interface PersonaInitializationProps {
 }
 
 export const usePersonaInitialization = ({
+  onboardingData,
   stepData,
   updateHeaderContent,
   setCorePersona,
@@ -42,10 +44,30 @@ export const usePersonaInitialization = ({
   const initialize = useCallback(async () => {
     console.log('PersonaStep: Initialization started');
     
+    // Extract domain for personalization
+    const websiteUrl = onboardingData?.websiteAnalysis?.website_url || 
+                       onboardingData?.website || 
+                       onboardingData?.userUrl || 
+                       '';
+    
+    let domainName = '';
+    try {
+      if (websiteUrl) {
+        const url = new URL(websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`);
+        domainName = url.hostname.replace('www.', '');
+      }
+    } catch (e) {
+      domainName = websiteUrl;
+    }
+
+    const personalizedTitle = domainName 
+      ? `Brand Voice for ${domainName}` 
+      : 'Your AI Brand Voice';
+
     // Update header immediately
     updateHeaderContent({
-      title: 'AI Writing Persona Generation',
-      description: 'ALwrity is analyzing your content and creating a sophisticated AI writing persona that captures your unique style, brand voice, and content preferences across all platforms.'
+      title: personalizedTitle,
+      description: "Your 'Brand Voice' is a unique AI profile that captures how your business sounds. It analyzes your website's tone, audience, and style to ensure every post generated matches your brand identity perfectly."
     });
 
     // Check if we already have persona data from stepData (when navigating back)
@@ -104,6 +126,7 @@ export const usePersonaInitialization = ({
     await generatePersonas();
     setHasCheckedCache(true);
   }, [
+    onboardingData,
     stepData,
     updateHeaderContent,
     setCorePersona,

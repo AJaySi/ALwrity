@@ -7,6 +7,7 @@ Drops old conflicting indexes and ensures proper index names.
 import sys
 import os
 import sqlite3
+import argparse
 from pathlib import Path
 from loguru import logger
 
@@ -14,9 +15,17 @@ from loguru import logger
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-def fix_indexes():
+from services.database import get_user_db_path
+
+def fix_indexes(user_id=None):
     """Fix index name conflicts."""
-    db_path = backend_dir / "alwrity.db"
+    if user_id:
+        db_path = Path(get_user_db_path(user_id))
+        logger.info(f"Targeting user database: {db_path}")
+    else:
+        # Legacy fallback
+        db_path = Path(get_user_db_path('alwrity'))
+        logger.info(f"Targeting default/legacy database: {db_path}")
     
     if not db_path.exists():
         logger.error(f"Database not found at {db_path}")
@@ -79,8 +88,12 @@ def fix_indexes():
         conn.close()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Fix website analysis index conflicts.")
+    parser.add_argument("--user_id", help="Target specific user ID")
+    args = parser.parse_args()
+
     logger.info("🔧 Fixing website analysis index conflicts...")
-    success = fix_indexes()
+    success = fix_indexes(args.user_id)
     if success:
         logger.info("✅ Index fix complete. You can now restart the backend.")
         sys.exit(0)

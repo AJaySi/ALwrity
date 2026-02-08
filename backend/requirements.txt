@@ -19,9 +19,13 @@ copilotkit
 exa-py==1.9.1
 httpx>=0.27.2,<0.28.0
 
-# AI/ML dependencies
+# AI/ML dependencies - Windows-compatible versions
 openai>=1.3.0
 google-genai>=1.0.0
+sentence-transformers>=2.2.2
+
+# txtai with Windows-compatible dependencies
+txtai[agent]>=7.0.0
 
 
 google-api-python-client>=2.100.0
@@ -79,3 +83,4 @@ apscheduler>=3.10.0
 # Optional dependencies (for enhanced features)
 redis>=5.0.0
 schedule>=1.2.0 
+pytrends>=4.9.0

@@ -5,7 +5,7 @@ from fastapi import HTTPException, Depends
 
 from middleware.auth_middleware import get_current_user
 
-from services.onboarding.progress_service import get_onboarding_progress_service
+from services.onboarding.progress_service import OnboardingProgressService
 
 
 def health_check():
@@ -14,12 +14,15 @@ def health_check():
 
 async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
+        if not current_user or not current_user.get('id'):
+            logger.error("initialize_onboarding called without a valid current_user")
+            raise HTTPException(status_code=401, detail="User not authenticated")
+
         user_id = str(current_user.get('id'))
-        progress_service = get_onboarding_progress_service()
+        progress_service = OnboardingProgressService()
         status = progress_service.get_onboarding_status(user_id)
 
-        # Get completion data for step validation
-        completion_data = progress_service.get_completion_data(user_id)
+        completion_data = progress_service.get_completion_data(user_id) or {}
         
         # Build steps data based on database state
         steps_data = []
@@ -29,20 +32,20 @@ async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_curre
             
             # Check if step is completed based on database data
             if step_num == 1:  # API Keys
-                api_keys = completion_data.get('api_keys', {})
+                api_keys = completion_data.get('api_keys') or {}
                 step_completed = any(v for v in api_keys.values() if v)
             elif step_num == 2:  # Website Analysis
-                website = completion_data.get('website_analysis', {})
+                website = completion_data.get('website_analysis') or {}
                 step_completed = bool(website.get('website_url') or website.get('writing_style'))
                 if step_completed:
                     step_data = website
             elif step_num == 3:  # Research Preferences
-                research = completion_data.get('research_preferences', {})
+                research = completion_data.get('research_preferences') or {}
                 step_completed = bool(research.get('research_depth') or research.get('content_types'))
                 if step_completed:
                     step_data = research
             elif step_num == 4:  # Persona Generation
-                persona = completion_data.get('persona_data', {})
+                persona = completion_data.get('persona_data') or {}
                 step_completed = bool(persona.get('corePersona') or persona.get('platformPersonas'))
                 if step_completed:
                     step_data = persona
@@ -65,7 +68,7 @@ async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_curre
         try:
             if not status['is_completed']:
                 all_have = (
-                    any(v for v in completion_data.get('api_keys', {}).values() if v) and
+                    any(v for v in (completion_data.get('api_keys') or {}).values() if v) and
                     bool((completion_data.get('website_analysis') or {}).get('website_url') or (completion_data.get('website_analysis') or {}).get('writing_style')) and
                     bool((completion_data.get('research_preferences') or {}).get('research_depth') or (completion_data.get('research_preferences') or {}).get('content_types')) and
                     bool((completion_data.get('persona_data') or {}).get('corePersona') or (completion_data.get('persona_data') or {}).get('platformPersonas'))

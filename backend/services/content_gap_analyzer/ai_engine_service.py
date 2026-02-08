@@ -16,7 +16,7 @@ from services.llm_providers.main_text_generation import llm_text_gen
 from services.llm_providers.gemini_provider import gemini_structured_json_response
 
 # Import services
-from services.ai_service_manager import AIServiceManager
+from services.ai_service_manager import AIServiceManager, AIServiceType
 
 # Import existing modules (will be updated to use FastAPI services)
 from services.database import get_db_session
@@ -40,12 +40,13 @@ class AIEngineService:
             logger.debug("AIEngineService initialized")
             self._initialized = True
     
-    async def analyze_content_gaps(self, analysis_summary: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_content_gaps(self, analysis_summary: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Analyze content gaps using AI insights.
         
         Args:
             analysis_summary: Summary of content analysis
+            user_id: User ID for subscription checking
             
         Returns:
             AI-powered content gap insights
@@ -54,7 +55,7 @@ class AIEngineService:
             logger.info("🤖 Generating AI-powered content gap insights using centralized AI service")
             
             # Use the centralized AI service manager for strategic analysis
-            result = await self.ai_service_manager.generate_content_gap_analysis(analysis_summary)
+            result = await self.ai_service_manager.generate_content_gap_analysis(analysis_summary, user_id=user_id)
             
             logger.info("✅ Advanced AI content gap analysis completed")
             return result
@@ -97,12 +98,13 @@ class AIEngineService:
                 }
             }
     
-    async def analyze_market_position(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_market_position(self, market_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Analyze market position using AI insights.
         
         Args:
             market_data: Market analysis data
+            user_id: User ID for subscription checking
             
         Returns:
             AI-powered market position analysis
@@ -111,7 +113,7 @@ class AIEngineService:
             logger.info("🤖 Generating AI-powered market position analysis using centralized AI service")
             
             # Use the centralized AI service manager for market position analysis
-            result = await self.ai_service_manager.generate_market_position_analysis(market_data)
+            result = await self.ai_service_manager.generate_market_position_analysis(market_data, user_id=user_id)
             
             logger.info("✅ Advanced AI market position analysis completed")
             return result
@@ -165,12 +167,13 @@ class AIEngineService:
                 ]
             }
     
-    async def generate_content_recommendations(self, analysis_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def generate_content_recommendations(self, analysis_data: Dict[str, Any], user_id: str) -> List[Dict[str, Any]]:
         """
         Generate AI-powered content recommendations.
         
         Args:
             analysis_data: Content analysis data
+            user_id: User ID for subscription checking
             
         Returns:
             List of AI-generated content recommendations
@@ -196,35 +199,38 @@ class AIEngineService:
             """
             
             # Use structured JSON response for better parsing
-            response = gemini_structured_json_response(
-                prompt=prompt,
-                schema={
-                    "type": "object",
-                    "properties": {
-                        "recommendations": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "type": {"type": "string"},
-                                    "title": {"type": "string"},
-                                    "description": {"type": "string"},
-                                    "priority": {"type": "string"},
-                                    "estimated_impact": {"type": "string"},
-                                    "implementation_time": {"type": "string"},
-                                    "ai_confidence": {"type": "number"},
-                                    "content_suggestions": {
-                                        "type": "array",
-                                        "items": {"type": "string"}
-                                    }
+            schema = {
+                "type": "object",
+                "properties": {
+                    "recommendations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string"},
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "priority": {"type": "string"},
+                                "estimated_impact": {"type": "string"},
+                                "implementation_time": {"type": "string"},
+                                "ai_confidence": {"type": "number"},
+                                "content_suggestions": {
+                                    "type": "array",
+                                    "items": {"type": "string"}
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            response = llm_text_gen(
+                prompt=prompt,
+                json_struct=schema,
+                user_id=user_id
             )
             
-            # Handle response - gemini_structured_json_response returns dict directly
+            # Handle response - llm_text_gen returns structured dict when json_struct is provided
             if isinstance(response, dict):
                 result = response
             elif isinstance(response, str):
@@ -292,12 +298,13 @@ class AIEngineService:
                 }
             ]
     
-    async def predict_content_performance(self, content_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def predict_content_performance(self, content_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Predict content performance using AI.
         
         Args:
             content_data: Content analysis data
+            user_id: User ID for subscription checking
             
         Returns:
             AI-powered performance predictions
@@ -323,61 +330,64 @@ class AIEngineService:
             """
             
             # Use structured JSON response for better parsing
-            response = gemini_structured_json_response(
-                prompt=prompt,
-                schema={
-                    "type": "object",
-                    "properties": {
-                        "traffic_predictions": {
-                            "type": "object",
-                            "properties": {
-                                "estimated_monthly_traffic": {"type": "string"},
-                                "traffic_growth_rate": {"type": "string"},
-                                "peak_traffic_month": {"type": "string"},
-                                "confidence_level": {"type": "string"}
-                            }
-                        },
-                        "engagement_predictions": {
-                            "type": "object",
-                            "properties": {
-                                "estimated_time_on_page": {"type": "string"},
-                                "estimated_bounce_rate": {"type": "string"},
-                                "estimated_social_shares": {"type": "string"},
-                                "estimated_comments": {"type": "string"},
-                                "confidence_level": {"type": "string"}
-                            }
-                        },
-                        "ranking_predictions": {
-                            "type": "object",
-                            "properties": {
-                                "estimated_ranking_position": {"type": "string"},
-                                "estimated_ranking_time": {"type": "string"},
-                                "ranking_confidence": {"type": "string"},
-                                "competition_level": {"type": "string"}
-                            }
-                        },
-                        "conversion_predictions": {
-                            "type": "object",
-                            "properties": {
-                                "estimated_conversion_rate": {"type": "string"},
-                                "estimated_lead_generation": {"type": "string"},
-                                "estimated_revenue_impact": {"type": "string"},
-                                "confidence_level": {"type": "string"}
-                            }
-                        },
-                        "risk_factors": {
-                            "type": "array",
-                            "items": {"type": "string"}
-                        },
-                        "success_factors": {
-                            "type": "array",
-                            "items": {"type": "string"}
+            schema = {
+                "type": "object",
+                "properties": {
+                    "traffic_predictions": {
+                        "type": "object",
+                        "properties": {
+                            "estimated_monthly_traffic": {"type": "string"},
+                            "traffic_growth_rate": {"type": "string"},
+                            "peak_traffic_month": {"type": "string"},
+                            "confidence_level": {"type": "string"}
                         }
+                    },
+                    "engagement_predictions": {
+                        "type": "object",
+                        "properties": {
+                            "estimated_time_on_page": {"type": "string"},
+                            "estimated_bounce_rate": {"type": "string"},
+                            "estimated_social_shares": {"type": "string"},
+                            "estimated_comments": {"type": "string"},
+                            "confidence_level": {"type": "string"}
+                        }
+                    },
+                    "ranking_predictions": {
+                        "type": "object",
+                        "properties": {
+                            "estimated_ranking_position": {"type": "string"},
+                            "estimated_ranking_time": {"type": "string"},
+                            "ranking_confidence": {"type": "string"},
+                            "competition_level": {"type": "string"}
+                        }
+                    },
+                    "conversion_predictions": {
+                        "type": "object",
+                        "properties": {
+                            "estimated_conversion_rate": {"type": "string"},
+                            "estimated_lead_generation": {"type": "string"},
+                            "estimated_revenue_impact": {"type": "string"},
+                            "confidence_level": {"type": "string"}
+                        }
+                    },
+                    "risk_factors": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "success_factors": {
+                        "type": "array",
+                        "items": {"type": "string"}
                     }
                 }
+            }
+            
+            response = llm_text_gen(
+                prompt=prompt,
+                json_struct=schema,
+                user_id=user_id
             )
             
-            # Handle response - gemini_structured_json_response returns dict directly
+            # Handle response - llm_text_gen returns structured dict when json_struct is provided
             if isinstance(response, dict):
                 predictions = response
             elif isinstance(response, str):
@@ -437,12 +447,13 @@ class AIEngineService:
                 ]
             }
     
-    async def analyze_competitive_intelligence(self, competitor_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_competitive_intelligence(self, competitor_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         """
         Analyze competitive intelligence using AI.
         
         Args:
             competitor_data: Competitor analysis data
+            user_id: User ID for subscription checking
             
         Returns:
             AI-powered competitive intelligence
@@ -467,82 +478,71 @@ class AIEngineService:
             """
             
             # Use structured JSON response for better parsing
-            response = gemini_structured_json_response(
-                prompt=prompt,
-                schema={
-                    "type": "object",
-                    "properties": {
-                        "market_analysis": {
+            schema = {
+                "type": "object",
+                "properties": {
+                    "market_analysis": {
+                        "type": "object",
+                        "properties": {
+                            "market_leader": {"type": "string"},
+                            "market_share_estimate": {"type": "string"},
+                            "market_trends": {"type": "array", "items": {"type": "string"}}
+                        }
+                    },
+                    "content_strategy_insights": {
+                        "type": "object",
+                        "properties": {
+                            "content_focus": {"type": "string"},
+                            "content_frequency": {"type": "string"},
+                            "content_channels": {"type": "array", "items": {"type": "string"}}
+                        }
+                    },
+                    "competitive_advantages": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "threat_analysis": {
+                        "type": "object",
+                        "properties": {
+                            "direct_threats": {"type": "array", "items": {"type": "string"}},
+                            "indirect_threats": {"type": "array", "items": {"type": "string"}}
+                        }
+                    },
+                    "opportunity_analysis": {
+                        "type": "array",
+                        "items": {
                             "type": "object",
                             "properties": {
-                                "market_leader": {"type": "string"},
-                                "content_leader": {"type": "string"},
-                                "innovation_leader": {"type": "string"},
-                                "market_gaps": {
-                                    "type": "array",
-                                    "items": {"type": "string"}
-                                }
-                            }
-                        },
-                        "content_strategy_insights": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "insight": {"type": "string"},
-                                    "opportunity": {"type": "string"},
-                                    "priority": {"type": "string"},
-                                    "estimated_impact": {"type": "string"}
-                                }
-                            }
-                        },
-                        "competitive_advantages": {
-                            "type": "array",
-                            "items": {"type": "string"}
-                        },
-                        "threat_analysis": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "threat": {"type": "string"},
-                                    "risk_level": {"type": "string"},
-                                    "mitigation": {"type": "string"}
-                                }
-                            }
-                        },
-                        "opportunity_analysis": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "opportunity": {"type": "string"},
-                                    "market_gap": {"type": "string"},
-                                    "estimated_impact": {"type": "string"},
-                                    "implementation_time": {"type": "string"}
-                                }
+                                "opportunity": {"type": "string"},
+                                "potential_impact": {"type": "string"},
+                                "implementation_difficulty": {"type": "string"}
                             }
                         }
                     }
                 }
+            }
+            
+            response = llm_text_gen(
+                prompt=prompt,
+                json_struct=schema,
+                user_id=user_id
             )
             
-            # Parse and return the AI response
-            # Handle response - gemini_structured_json_response returns dict directly
+            # Handle response - llm_text_gen returns structured dict when json_struct is provided
             if isinstance(response, dict):
-                competitive_intelligence = response
+                intelligence = response
             elif isinstance(response, str):
                 # If it's a string, try to parse as JSON
                 try:
-                    competitive_intelligence = json.loads(response)
+                    intelligence = json.loads(response)
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse AI response as JSON: {e}")
                     raise Exception(f"Invalid AI response format: {str(e)}")
             else:
                 logger.error(f"Unexpected response type from AI service: {type(response)}")
                 raise Exception(f"Unexpected response type from AI service: {type(response)}")
-            logger.info("✅ AI competitive intelligence completed")
-            return competitive_intelligence
+            logger.info("✅ AI competitive intelligence analysis completed")
+            return intelligence
             
         except Exception as e:
             logger.error(f"Error in AI competitive intelligence: {str(e)}")
@@ -833,14 +833,9 @@ class AIEngineService:
         try:
             logger.info("Performing health check for AIEngineService")
             
-            # Test AI functionality with a simple prompt
-            test_prompt = "Hello, this is a health check test."
-            try:
-                test_response = llm_text_gen(test_prompt)
-                ai_status = "operational" if test_response else "degraded"
-            except Exception as e:
-                ai_status = "error"
-                logger.warning(f"AI health check failed: {str(e)}")
+            # Check if AIServiceManager is healthy
+            ai_manager_health = await self.ai_service_manager.health_check()
+            ai_status = ai_manager_health.get('capabilities', {}).get('ai_integration', 'unknown')
             
             health_status = {
                 'service': 'AIEngineService',

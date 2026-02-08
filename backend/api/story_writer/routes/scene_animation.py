@@ -94,7 +94,7 @@ async def animate_scene_preview(
         request.image_url,
     )
 
-    image_bytes = load_story_image_bytes(request.image_url)
+    image_bytes = load_story_image_bytes(request.image_url, user_id=user_id)
     if not image_bytes:
         scene_logger.warning("[AnimateScene] Missing image bytes for user=%s scene=%s", user_id, request.scene_number)
         raise HTTPException(status_code=404, detail="Scene image not found. Generate images first.")
@@ -114,29 +114,35 @@ async def animate_scene_preview(
         duration=duration,
     )
 
-    base_dir = Path(__file__).parent.parent.parent.parent
-    ai_video_dir = base_dir / "story_videos" / AI_VIDEO_SUBDIR
-    ai_video_dir.mkdir(parents=True, exist_ok=True)
-    video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
-
-    save_result = video_service.save_scene_video(
-        video_bytes=animation_result["video_bytes"],
-        scene_number=request.scene_number,
-        user_id=user_id,
-    )
-    video_filename = save_result["video_filename"]
-    video_url = _build_authenticated_media_url(
-        request_obj, f"/api/story/videos/ai/{video_filename}"
-    )
-
-    usage_info = track_video_usage(
-        user_id=user_id,
-        provider=animation_result["provider"],
-        model_name=animation_result["model_name"],
-        prompt=animation_result["prompt"],
-        video_bytes=animation_result["video_bytes"],
-        cost_override=animation_result["cost"],
-    )
+    # Save video asset to library
+    db = next(get_db())
+    try:
+        video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
+    
+        save_result = video_service.save_scene_video(
+            video_bytes=animation_result["video_bytes"],
+            scene_number=request.scene_number,
+            user_id=user_id,
+            db=db
+        )
+        video_filename = save_result["video_filename"]
+        video_url = _build_authenticated_media_url(
+            request_obj, f"/api/story/videos/ai/{video_filename}"
+        )
+    
+        usage_info = track_video_usage(
+            user_id=user_id,
+            provider=animation_result["provider"],
+            model_name=animation_result["model_name"],
+            prompt=animation_result["prompt"],
+            video_bytes=animation_result["video_bytes"],
+            cost_override=animation_result["cost"],
+        )
+    except Exception as e:
+        logger.error(f"Failed to track usage for generated video: {e}")
+        # Don't fail the request if tracking fails, just log it
+        pass
+    
     if usage_info:
         scene_logger.warning(
             "[AnimateScene] Video usage tracked user=%s: %s → %s / %s (cost +$%.2f, total=$%.2f)",

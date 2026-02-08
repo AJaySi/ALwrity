@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from models.product_marketing_models import Campaign, CampaignProposal, CampaignAsset, CampaignStatus
-from services.database import SessionLocal
+from services.database import get_session_for_user
 
 
 class CampaignStorageService:
@@ -35,7 +35,10 @@ class CampaignStorageService:
         Returns:
             Saved Campaign object
         """
-        db = SessionLocal()
+        db = get_session_for_user(user_id)
+        if not db:
+            raise ValueError(f"Could not create database session for user {user_id}")
+
         try:
             campaign_id = campaign_data.get('campaign_id')
             
@@ -91,7 +94,11 @@ class CampaignStorageService:
         campaign_id: str
     ) -> Optional[Campaign]:
         """Get campaign by ID."""
-        db = SessionLocal()
+        db = get_session_for_user(user_id)
+        if not db:
+            logger.error(f"Could not create database session for user {user_id}")
+            return None
+
         try:
             campaign = db.query(Campaign).filter(
                 Campaign.campaign_id == campaign_id,
@@ -111,7 +118,7 @@ class CampaignStorageService:
         limit: int = 50
     ) -> List[Campaign]:
         """List campaigns for user."""
-        db = SessionLocal()
+        db = get_session_for_user(user_id)
         try:
             query = db.query(Campaign).filter(Campaign.user_id == user_id)
             
@@ -133,7 +140,7 @@ class CampaignStorageService:
         proposals: Dict[str, Any]
     ) -> List[CampaignProposal]:
         """Save asset proposals for a campaign."""
-        db = SessionLocal()
+        db = get_session_for_user(user_id)
         try:
             # Delete existing proposals for this campaign
             db.query(CampaignProposal).filter(
@@ -180,7 +187,7 @@ class CampaignStorageService:
         campaign_id: str
     ) -> List[CampaignProposal]:
         """Get proposals for a campaign."""
-        db = SessionLocal()
+        db = get_session_for_user(user_id)
         try:
             proposals = db.query(CampaignProposal).filter(
                 CampaignProposal.campaign_id == campaign_id,
@@ -200,7 +207,7 @@ class CampaignStorageService:
         status: str
     ) -> bool:
         """Update campaign status."""
-        db = SessionLocal()
+        db = get_session_for_user(user_id)
         try:
             campaign = db.query(Campaign).filter(
                 Campaign.campaign_id == campaign_id,
@@ -241,7 +248,7 @@ class CampaignStorageService:
         Returns:
             True if updated successfully
         """
-        db = SessionLocal()
+        db = get_session_for_user(user_id)
         try:
             # Update proposal status
             proposal = db.query(CampaignProposal).filter(

@@ -202,11 +202,24 @@ async def get_latest_persona(current_user: Dict[str, Any] = Depends(get_current_
             raise HTTPException(status_code=404, detail="Cached persona expired")
 
         return {"success": True, "persona": cached}
-    except HTTPException:
-        raise
+    except HTTPException as he:
+        # Return 200 even for HTTP exceptions (like 404) to prevent frontend connection errors
+        # if the endpoint is called during an auto-initialization phase.
+        logger.warning(f"Persona retrieval notice (returning success=False): {he.detail}")
+        return {
+            "success": False, 
+            "persona": None, 
+            "message": he.detail,
+            "status_code": he.status_code
+        }
     except Exception as e:
-        logger.error(f"Error getting latest persona: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting latest persona: {e}", exc_info=True)
+        return {
+            "success": False, 
+            "persona": None, 
+            "message": f"Internal error retrieving persona: {str(e)}",
+            "status_code": 500
+        }
 
 @router.post("/step4/persona-save", response_model=Dict[str, Any])
 async def save_persona_update(
@@ -228,8 +241,12 @@ async def save_persona_update(
         logger.info(f"Saved latest persona to cache for user {user_id}")
         return {"success": True}
     except Exception as e:
-        logger.error(f"Error saving latest persona: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error saving latest persona: {e}", exc_info=True)
+        return {
+            "success": False, 
+            "message": f"Failed to save persona: {str(e)}",
+            "status_code": 500
+        }
 
 @router.get("/step4/persona-task/{task_id}", response_model=PersonaTaskStatus)
 async def get_persona_task_status(task_id: str):

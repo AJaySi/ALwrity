@@ -21,10 +21,11 @@ if services_dir not in sys.path:
     sys.path.insert(0, services_dir)
 
 # Import real services - NO FALLBACKS
-from services.onboarding.data_service import OnboardingDataService
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from services.ai_analytics_service import AIAnalyticsService
 from services.content_gap_analyzer.ai_engine_service import AIEngineService
 from services.active_strategy_service import ActiveStrategyService
+from services.database import SessionLocal
 
 logger.info("✅ Successfully imported real data processing services")
 
@@ -33,17 +34,24 @@ class ComprehensiveUserDataProcessor:
     """Process comprehensive user data from all database sources with active strategy management."""
     
     def __init__(self, db_session=None):
-        self.onboarding_service = OnboardingDataService()
+        self.integration_service = OnboardingDataIntegrationService()
         self.active_strategy_service = ActiveStrategyService(db_session)
         self.content_planning_db_service = None  # Will be injected
+        self.db_session = db_session
     
     async def get_comprehensive_user_data(self, user_id: int, strategy_id: Optional[int]) -> Dict[str, Any]:
         """Get comprehensive user data from all database sources."""
         try:
             logger.info(f"Getting comprehensive user data for user {user_id}")
             
-            # Get onboarding data (not async)
-            onboarding_data = self.onboarding_service.get_personalized_ai_inputs(user_id)
+            # Get onboarding data (async via SSOT)
+            db = self.db_session if self.db_session else SessionLocal()
+            try:
+                integrated_data = await self.integration_service.process_onboarding_data(str(user_id), db)
+                onboarding_data = integrated_data.get('canonical_profile', {})
+            finally:
+                if not self.db_session:
+                    db.close()
             
             if not onboarding_data:
                 raise ValueError(f"No onboarding data found for user_id: {user_id}")

@@ -419,10 +419,17 @@ You have written approximately {current_word_count} words so far, leaving approx
         width: int = 1024,
         height: int = 1024,
         model: Optional[str] = None,
+        db: Optional[Session] = None,
     ) -> List[Dict[str, Any]]:
         """Generate images for story scenes."""
         image_service = StoryImageGenerationService()
         return image_service.generate_scene_images(
-            scenes=scenes, user_id=user_id, provider=provider, width=width, height=height, model=model
+            scenes=scenes,
+            user_id=user_id,
+            provider=provider,
+            width=width,
+            height=height,
+            model=model,
+            db=db,
         )
 

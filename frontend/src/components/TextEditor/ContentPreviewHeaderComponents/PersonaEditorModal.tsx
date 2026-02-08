@@ -44,7 +44,7 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
   platform
 }) => {
   const [editedData, setEditedData] = useState<PersonaData | null>(null);
-  const [activeTab, setActiveTab] = useState<'core' | 'linguistic' | 'platform' | 'optimization'>('core');
+  const [activeTab, setActiveTab] = useState<'core' | 'style' | 'platforms' | 'strategy'>('core');
   const [saveToDatabase, setSaveToDatabase] = useState(true);
 
   useEffect(() => {
@@ -93,12 +93,12 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
     return current || defaultValue;
   };
 
-  const tabs = [
-    { id: 'core', label: 'Core Identity', icon: '🎭' },
-    { id: 'linguistic', label: 'Linguistic', icon: '📝' },
-    { id: 'platform', label: 'Platform', icon: '🔗' },
-    { id: 'optimization', label: 'Optimization', icon: '⚡' }
-  ] as const;
+  const tabs: { id: 'core' | 'style' | 'platforms' | 'strategy'; label: string; icon: string }[] = [
+    { id: 'core', label: 'Brand Identity', icon: '🎭' },
+    { id: 'style', label: 'Linguistic Fingerprint', icon: '✍️' },
+    { id: 'platforms', label: 'Platform Adaptations', icon: '📱' },
+    { id: 'strategy', label: 'Content Strategy', icon: '🎯' }
+  ];
 
   return (
     <div style={{
@@ -135,7 +135,7 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
               <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '700' }}>
-                Edit Persona: {getFieldValue('persona_name', 'Untitled Persona')}
+                Edit Brand Voice: {getFieldValue('persona_name', 'Untitled Brand Voice')}
               </h2>
               <p style={{ margin: '4px 0 0 0', fontSize: '14px', opacity: 0.9 }}>
                 Platform: {platform} • Confidence: {(() => {
@@ -345,7 +345,7 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'linguistic' && (
+          {activeTab === 'style' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#374151' }}>
@@ -501,7 +501,7 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'platform' && (
+          {activeTab === 'platforms' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#374151' }}>
@@ -650,7 +650,7 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'optimization' && (
+          {activeTab === 'strategy' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600', color: '#374151' }}>

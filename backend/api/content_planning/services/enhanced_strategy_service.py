@@ -64,11 +64,11 @@ class EnhancedStrategyService:
         """Create a new enhanced content strategy - delegates to core service."""
         return await self.core_service.create_enhanced_strategy(strategy_data, db)
     
-    async def get_enhanced_strategies(self, user_id: Optional[int] = None, strategy_id: Optional[int] = None, db: Session = None) -> Dict[str, Any]:
+    async def get_enhanced_strategies(self, user_id: Optional[str] = None, strategy_id: Optional[int] = None, db: Session = None) -> Dict[str, Any]:
         """Get enhanced content strategies - delegates to core service."""
         return await self.core_service.get_enhanced_strategies(user_id, strategy_id, db)
 
-    async def _enhance_strategy_with_onboarding_data(self, strategy: Any, user_id: int, db: Session) -> None:
+    async def _enhance_strategy_with_onboarding_data(self, strategy: Any, user_id: str, db: Session) -> None:
         """Enhance strategy with onboarding data - delegates to core service."""
         return await self.core_service._enhance_strategy_with_onboarding_data(strategy, user_id, db)
 

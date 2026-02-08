@@ -22,7 +22,7 @@ class EnhancedStrategyDBService:
     def __init__(self, db: Session):
         self.db = db
     
-    async def get_enhanced_strategy(self, strategy_id: int, user_id: Optional[int] = None) -> Optional[EnhancedContentStrategy]:
+    async def get_enhanced_strategy(self, strategy_id: int, user_id: Optional[str] = None) -> Optional[EnhancedContentStrategy]:
         """
         Get an enhanced strategy by ID.
         
@@ -54,7 +54,7 @@ class EnhancedStrategyDBService:
             logger.error(f"Error getting enhanced strategy {strategy_id}: {str(e)}")
             return None
     
-    async def get_enhanced_strategies(self, user_id: Optional[int] = None, strategy_id: Optional[int] = None) -> List[EnhancedContentStrategy]:
+    async def get_enhanced_strategies(self, user_id: Optional[str] = None, strategy_id: Optional[int] = None) -> List[EnhancedContentStrategy]:
         """Get enhanced strategies with optional filtering."""
         try:
             query = self.db.query(EnhancedContentStrategy)
@@ -183,7 +183,7 @@ class EnhancedStrategyDBService:
             logger.error(f"Error getting onboarding integration for strategy {strategy_id}: {str(e)}")
             return None
     
-    async def get_strategy_completion_stats(self, user_id: int) -> Dict[str, Any]:
+    async def get_strategy_completion_stats(self, user_id: str) -> Dict[str, Any]:
         """Get completion statistics for all strategies of a user."""
         try:
             strategies = await self.get_enhanced_strategies(user_id=user_id)
@@ -207,7 +207,7 @@ class EnhancedStrategyDBService:
                 'user_id': user_id
             }
     
-    async def search_enhanced_strategies(self, user_id: int, search_term: str) -> List[EnhancedContentStrategy]:
+    async def search_enhanced_strategies(self, user_id: str, search_term: str) -> List[EnhancedContentStrategy]:
         """Search enhanced strategies by name or industry."""
         try:
             return self.db.query(EnhancedContentStrategy).filter(
@@ -256,7 +256,7 @@ class EnhancedStrategyDBService:
             logger.error(f"Error getting strategy export data for strategy {strategy_id}: {str(e)}")
             return None 
 
-    async def save_autofill_insights(self, *, strategy_id: int, user_id: int, payload: Dict[str, Any]) -> Optional[ContentStrategyAutofillInsights]:
+    async def save_autofill_insights(self, *, strategy_id: int, user_id: str, payload: Dict[str, Any]) -> Optional[ContentStrategyAutofillInsights]:
         """Persist accepted auto-fill inputs used to create a strategy."""
         try:
             record = ContentStrategyAutofillInsights(

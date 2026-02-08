@@ -54,7 +54,7 @@ class BusinessInfoService:
         logger.warning(f"No business info found for ID: {business_info_id}")
         return None
 
-    def get_business_info_by_user(self, user_id: int) -> Optional[BusinessInfoResponse]:
+    def get_business_info_by_user(self, user_id: str) -> Optional[BusinessInfoResponse]:
         db: Session = next(get_db())
         logger.debug(f"Retrieving business info by user ID: {user_id}")
         business_info = db.query(UserBusinessInfo).filter(UserBusinessInfo.user_id == user_id).first()

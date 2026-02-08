@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 import time
 import uuid
 from loguru import logger
+from sqlalchemy.orm import Session
 
 from models.blog_models import (
     BlogResearchRequest,
@@ -137,7 +138,7 @@ class BlogWriterService:
         return self.outline_service.rebalance_word_counts(outline, target_words)
     
     # Content Generation Methods
-    async def generate_section(self, request: BlogSectionRequest) -> BlogSectionResponse:
+    async def generate_section(self, request: BlogSectionRequest, user_id: str = None) -> BlogSectionResponse:
         """Generate section content from outline."""
         # Compose research-lite object with minimal continuity summary if available
         research_ctx: Any = getattr(request, 'research', None)
@@ -146,6 +147,7 @@ class BlogWriterService:
                 section=request.section,
                 research=research_ctx,
                 mode=(request.mode or "polished"),
+                user_id=user_id
             )
             markdown = ai_result.get('content') or ai_result.get('markdown') or ''
             citations = []
@@ -341,17 +343,18 @@ class BlogWriterService:
         # TODO: Move to content module
         return BlogPublishResponse(success=True, platform=request.platform, url="https://example.com/post")
 
-    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str, user_id: str) -> MediumBlogGenerateResult:
+    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str, user_id: str, db: Session = None) -> MediumBlogGenerateResult:
         """Use Gemini structured JSON to generate a medium-length blog in one call.
         
         Args:
             req: Medium blog generation request
             task_id: Task ID for progress updates
             user_id: User ID (required for subscription checks and usage tracking)
+            db: Database session (optional, for saving assets)
         """
         if not user_id:
             raise ValueError("user_id is required for medium blog generation (subscription checks and usage tracking)")
-        return await self.medium_blog_generator.generate_medium_blog_with_progress(req, task_id, user_id)
+        return await self.medium_blog_generator.generate_medium_blog_with_progress(req, task_id, user_id, db)
 
     async def analyze_flow_basic(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze flow metrics for entire blog using single AI call (cost-effective)."""

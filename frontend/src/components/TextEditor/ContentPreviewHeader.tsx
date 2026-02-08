@@ -12,6 +12,7 @@ interface ContentPreviewHeaderProps {
   assistantOn?: boolean;
   onAssistantToggle?: (enabled: boolean) => void;
   topic?: string;
+  platform?: string;
 }
 
 // Main ContentPreviewHeader component - now just a wrapper that uses the extracted component

@@ -19,7 +19,7 @@ from .exception_handler import (
     SchedulerExceptionHandler, SchedulerException, TaskExecutionError, DatabaseError,
     TaskLoaderError, SchedulerConfigError
 )
-from services.database import get_db_session
+from services.database import get_all_user_ids, get_session_for_user
 from utils.logger_utils import get_service_logger
 from ..utils.user_job_store import get_user_job_store_name
 from models.scheduler_models import SchedulerEventLog
@@ -28,6 +28,7 @@ from .job_restoration import restore_persona_jobs
 from .oauth_task_restoration import restore_oauth_monitoring_tasks
 from .website_analysis_task_restoration import restore_website_analysis_tasks
 from .platform_insights_task_restoration import restore_platform_insights_tasks
+from .advertools_task_restoration import restore_advertools_tasks
 from .check_cycle_handler import check_and_execute_due_tasks
 from .task_execution_handler import execute_task_async
 
@@ -185,13 +186,17 @@ class TaskScheduler:
             await restore_persona_jobs(self)
             
             # Restore/create missing OAuth token monitoring tasks for connected platforms
-            await restore_oauth_monitoring_tasks(self)
+            total_oauth_tasks = await restore_oauth_monitoring_tasks(self)
+            oauth_tasks_count = total_oauth_tasks
             
             # Restore/create missing website analysis tasks for users who completed onboarding
-            await restore_website_analysis_tasks(self)
+            website_analysis_tasks_count = await restore_website_analysis_tasks(self)
             
             # Restore/create missing platform insights tasks for users with connected GSC/Bing
-            await restore_platform_insights_tasks(self)
+            platform_insights_tasks_count = await restore_platform_insights_tasks(self)
+            
+            # Restore/create missing Advertools intelligence tasks
+            advertools_tasks_count = await restore_advertools_tasks(self)
             
             # Validate and rebuild cumulative stats if needed
             await self._validate_and_rebuild_cumulative_stats()
@@ -203,99 +208,47 @@ class TaskScheduler:
             
             # Count OAuth token monitoring tasks from database (recurring weekly tasks)
             oauth_tasks_count = 0
-            oauth_tasks_details = []
-            try:
-                db = get_db_session()
-                if db:
-                    from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
-                    # Count active tasks
-                    oauth_tasks_count = db.query(OAuthTokenMonitoringTask).filter(
-                        OAuthTokenMonitoringTask.status == 'active'
-                    ).count()
-                    
-                    # Get all tasks (for detailed logging)
-                    all_oauth_tasks = db.query(OAuthTokenMonitoringTask).all()
-                    total_oauth_tasks = len(all_oauth_tasks)
-                    
-                    # Show platform breakdown for ALL tasks (active and inactive)
-                    all_platforms = {}
-                    active_platforms = {}
-                    for task in all_oauth_tasks:
-                        all_platforms[task.platform] = all_platforms.get(task.platform, 0) + 1
-                        if task.status == 'active':
-                            active_platforms[task.platform] = active_platforms.get(task.platform, 0) + 1
-                    
-                    if total_oauth_tasks > 0:
-                        # Log details about all tasks (not just active)
-                        for task in all_oauth_tasks:
-                            oauth_tasks_details.append(
-                                f"user={task.user_id}, platform={task.platform}, status={task.status}"
-                            )
-                    
-                    if total_oauth_tasks > 0 and oauth_tasks_count == 0:
-                        all_platform_summary = ", ".join([f"{p}: {c}" for p, c in sorted(all_platforms.items())])
-                        logger.warning(
-                            f"[Scheduler] Found {total_oauth_tasks} OAuth monitoring tasks in database, "
-                            f"but {oauth_tasks_count} are active. "
-                            f"All platforms: {all_platform_summary}. "
-                            f"Task details: {', '.join(oauth_tasks_details[:5])}"  # Limit to first 5 for readability
-                        )
-                    elif oauth_tasks_count > 0:
-                        # Show platform breakdown for active tasks
-                        active_platform_summary = ", ".join([f"{platform}: {count}" for platform, count in sorted(active_platforms.items())])
-                        all_platform_summary = ", ".join([f"{p}: {c}" for p, c in sorted(all_platforms.items())])
-                        
-                        # Check for missing platforms (expected: gsc, bing, wordpress, wix)
-                        expected_platforms = ['gsc', 'bing', 'wordpress', 'wix']
-                        missing_in_db = [p for p in expected_platforms if p not in all_platforms]
-                        
-                        if missing_in_db:
-                            logger.warning(
-                                f"[Scheduler] Found {oauth_tasks_count} active OAuth monitoring tasks "
-                                f"(total: {total_oauth_tasks}). Active platforms: {active_platform_summary}. "
-                                f"All platforms: {all_platform_summary}. "
-                                f"⚠️ Missing platforms (not connected or no tasks): {', '.join(missing_in_db)}"
-                            )
-                        else:
-                            logger.warning(
-                                f"[Scheduler] Found {oauth_tasks_count} active OAuth monitoring tasks "
-                                f"(total: {total_oauth_tasks}). Active platforms: {active_platform_summary}. "
-                                f"All platforms: {all_platform_summary}"
-                            )
-                    
-                    db.close()
-            except Exception as e:
-                logger.warning(
-                    f"[Scheduler] Could not get OAuth token monitoring tasks count: {e}. "
-                    f"This may indicate the oauth_token_monitoring_tasks table doesn't exist yet or "
-                    f"tasks haven't been created. Error type: {type(e).__name__}"
-                )
-            
-            # Get website analysis tasks count
             website_analysis_tasks_count = 0
-            try:
-                from models.website_analysis_monitoring_models import WebsiteAnalysisTask
-                website_analysis_tasks_count = db.query(WebsiteAnalysisTask).filter(
-                    WebsiteAnalysisTask.status == 'active'
-                ).count()
-            except Exception as e:
-                logger.debug(f"Could not get website analysis tasks count: {e}")
-            
-            # Get platform insights tasks count
             platform_insights_tasks_count = 0
-            try:
-                from models.platform_insights_monitoring_models import PlatformInsightsTask
-                platform_insights_tasks_count = db.query(PlatformInsightsTask).filter(
-                    PlatformInsightsTask.status == 'active'
-                ).count()
-            except Exception as e:
-                logger.debug(f"Could not get platform insights tasks count: {e}")
+            advertools_tasks_count = 0
             
+            user_ids = get_all_user_ids()
+            for user_id in user_ids:
+                try:
+                    db = get_session_for_user(user_id)
+                    if not db:
+                        continue
+                        
+                    try:
+                        from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
+                        oauth_tasks_count += db.query(OAuthTokenMonitoringTask).filter(
+                            OAuthTokenMonitoringTask.status == 'active'
+                        ).count()
+                        
+                        from models.website_analysis_monitoring_models import WebsiteAnalysisTask
+                        website_analysis_tasks_count += db.query(WebsiteAnalysisTask).filter(
+                            WebsiteAnalysisTask.status == 'active'
+                        ).count()
+                        
+                        from models.platform_insights_monitoring_models import PlatformInsightsTask
+                        platform_insights_tasks_count += db.query(PlatformInsightsTask).filter(
+                            PlatformInsightsTask.status == 'active'
+                        ).count()
+
+                        from models.advertools_monitoring_models import AdvertoolsTask
+                        advertools_tasks_count += db.query(AdvertoolsTask).filter(
+                            AdvertoolsTask.status == 'active'
+                        ).count()
+                    finally:
+                        db.close()
+                except Exception as e:
+                    logger.debug(f"Error counting tasks for user {user_id}: {e}")
+
             # Calculate job counts
             apscheduler_recurring = 1  # check_due_tasks
             apscheduler_one_time = len(all_jobs) - 1
-            total_recurring = apscheduler_recurring + oauth_tasks_count + website_analysis_tasks_count + platform_insights_tasks_count
-            total_jobs = len(all_jobs) + oauth_tasks_count + website_analysis_tasks_count + platform_insights_tasks_count
+            total_recurring = apscheduler_recurring + oauth_tasks_count + website_analysis_tasks_count + platform_insights_tasks_count + advertools_tasks_count
+            total_jobs = len(all_jobs) + oauth_tasks_count + website_analysis_tasks_count + platform_insights_tasks_count + advertools_tasks_count
             
             # Build comprehensive startup log message
             recurring_breakdown = f"check_due_tasks: {apscheduler_recurring}"
@@ -305,6 +258,8 @@ class TaskScheduler:
                 recurring_breakdown += f", Website analysis: {website_analysis_tasks_count}"
             if platform_insights_tasks_count > 0:
                 recurring_breakdown += f", Platform insights: {platform_insights_tasks_count}"
+            if advertools_tasks_count > 0:
+                recurring_breakdown += f", Advertools: {advertools_tasks_count}"
             
             startup_lines = [
                 f"[Scheduler] ✅ Task Scheduler Started",
@@ -347,7 +302,7 @@ class TaskScheduler:
                     
                     if user_id_from_job:
                         try:
-                            db = get_db_session()
+                            db = get_session_for_user(user_id_from_job)
                             if db:
                                 user_job_store = get_user_job_store_name(user_id_from_job, db)
                                 if user_job_store == 'default':
@@ -357,6 +312,8 @@ class TaskScheduler:
                                     )
                                 user_context = f" | User: {user_id_from_job} | Store: {user_job_store}"
                                 db.close()
+                            else:
+                                user_context = f" | User: {user_id_from_job} | DB: Not Found"
                         except Exception as e:
                             logger.warning(
                                 f"[Scheduler] Could not extract job store name for user {user_id_from_job}: {e}. "
@@ -370,134 +327,172 @@ class TaskScheduler:
             # Show ALL OAuth tasks (active and inactive) for complete visibility
             if total_oauth_tasks > 0:
                 try:
-                    db = get_db_session()
-                    if db:
-                        from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
-                        # Get ALL tasks, not just active ones
-                        oauth_tasks = db.query(OAuthTokenMonitoringTask).all()
-                        
-                        for idx, task in enumerate(oauth_tasks):
-                            is_last = idx == len(oauth_tasks) - 1 and website_analysis_tasks_count == 0 and platform_insights_tasks_count == 0 and len(all_jobs) == 0
-                            prefix = "   └─" if is_last else "   ├─"
-                            
-                            try:
-                                user_job_store = get_user_job_store_name(task.user_id, db)
-                                if user_job_store == 'default':
-                                    logger.debug(
-                                        f"[Scheduler] Job store extraction returned 'default' for user {task.user_id}. "
-                                        f"This may indicate no onboarding data or website URL not found."
+                    user_ids = get_all_user_ids()
+                    for user_id in user_ids:
+                        try:
+                            db = get_session_for_user(user_id)
+                            if db:
+                                from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
+                                # Get ALL tasks for this user
+                                oauth_tasks = db.query(OAuthTokenMonitoringTask).all()
+                                
+                                for idx, task in enumerate(oauth_tasks):
+                                    is_last = idx == len(oauth_tasks) - 1 and website_analysis_tasks_count == 0 and platform_insights_tasks_count == 0 and len(all_jobs) == 0 and user_id == user_ids[-1]
+                                    prefix = "   ├─" # Simplified prefix logic for multi-user list
+                                    
+                                    try:
+                                        user_job_store = get_user_job_store_name(task.user_id, db)
+                                        if user_job_store == 'default':
+                                            logger.debug(
+                                                f"[Scheduler] Job store extraction returned 'default' for user {task.user_id}. "
+                                                f"This may indicate no onboarding data or website URL not found."
+                                            )
+                                    except Exception as e:
+                                        logger.warning(
+                                            f"[Scheduler] Could not extract job store name for user {task.user_id}: {e}. "
+                                            f"Using 'default'. Error type: {type(e).__name__}"
+                                        )
+                                        user_job_store = 'default'
+                                    
+                                    next_check = task.next_check.isoformat() if task.next_check else 'Not scheduled'
+                                    # Include status in the log line for visibility
+                                    status_indicator = "✅" if task.status == 'active' else f"[{task.status}]"
+                                    startup_lines.append(
+                                        f"{prefix} Job: oauth_token_monitoring_{task.platform}_{task.user_id} | "
+                                        f"Trigger: CronTrigger (Weekly) | Next Run: {next_check} | "
+                                        f"User: {task.user_id} | Store: {user_job_store} | Platform: {task.platform} {status_indicator}"
                                     )
-                            except Exception as e:
-                                logger.warning(
-                                    f"[Scheduler] Could not extract job store name for user {task.user_id}: {e}. "
-                                    f"Using 'default'. Error type: {type(e).__name__}"
-                                )
-                                user_job_store = 'default'
-                            
-                            next_check = task.next_check.isoformat() if task.next_check else 'Not scheduled'
-                            # Include status in the log line for visibility
-                            status_indicator = "✅" if task.status == 'active' else f"[{task.status}]"
-                            startup_lines.append(
-                                f"{prefix} Job: oauth_token_monitoring_{task.platform}_{task.user_id} | "
-                                f"Trigger: CronTrigger (Weekly) | Next Run: {next_check} | "
-                                f"User: {task.user_id} | Store: {user_job_store} | Platform: {task.platform} {status_indicator}"
-                            )
-                        db.close()
+                                db.close()
+                        except Exception as e:
+                             logger.warning(f"Error checking OAuth tasks for user {user_id}: {e}")
                 except Exception as e:
                     logger.debug(f"Could not get OAuth token monitoring task details: {e}")
             
             # Add website analysis tasks details
             if website_analysis_tasks_count > 0:
                 try:
-                    db = get_db_session()
-                    if db:
-                        from models.website_analysis_monitoring_models import WebsiteAnalysisTask
-                        website_analysis_tasks = db.query(WebsiteAnalysisTask).all()
-                        
-                        for idx, task in enumerate(website_analysis_tasks):
-                            is_last = idx == len(website_analysis_tasks) - 1 and platform_insights_tasks_count == 0 and len(all_jobs) == 0 and total_oauth_tasks == 0
-                            prefix = "   └─" if is_last else "   ├─"
-                            
-                            try:
-                                user_job_store = get_user_job_store_name(task.user_id, db)
-                            except Exception as e:
-                                logger.debug(f"Could not extract job store name for user {task.user_id}: {e}")
-                                user_job_store = 'default'
-                            
-                            next_check = task.next_check.isoformat() if task.next_check else 'Not scheduled'
-                            frequency = f"Every {task.frequency_days} days"
-                            task_type_label = "User Website" if task.task_type == 'user_website' else "Competitor"
-                            status_indicator = "✅" if task.status == 'active' else f"[{task.status}]"
-                            website_display = task.website_url[:50] + "..." if task.website_url and len(task.website_url) > 50 else (task.website_url or 'N/A')
-                            
-                            startup_lines.append(
-                                f"{prefix} Job: website_analysis_{task.task_type}_{task.user_id}_{task.id} | "
-                                f"Trigger: CronTrigger ({frequency}) | Next Run: {next_check} | "
-                                f"User: {task.user_id} | Store: {user_job_store} | Type: {task_type_label} | URL: {website_display} {status_indicator}"
-                            )
-                        db.close()
+                    user_ids = get_all_user_ids()
+                    for user_id in user_ids:
+                        try:
+                            db = get_session_for_user(user_id)
+                            if db:
+                                from models.website_analysis_monitoring_models import WebsiteAnalysisTask
+                                website_analysis_tasks = db.query(WebsiteAnalysisTask).all()
+                                
+                                for idx, task in enumerate(website_analysis_tasks):
+                                    is_last = idx == len(website_analysis_tasks) - 1 and platform_insights_tasks_count == 0 and len(all_jobs) == 0 and total_oauth_tasks == 0 and user_id == user_ids[-1]
+                                    prefix = "   ├─" # Simplified
+                                    
+                                    try:
+                                        user_job_store = get_user_job_store_name(task.user_id, db)
+                                    except Exception as e:
+                                        logger.debug(f"Could not extract job store name for user {task.user_id}: {e}")
+                                        user_job_store = 'default'
+                                    
+                                    next_check = task.next_check.isoformat() if task.next_check else 'Not scheduled'
+                                    frequency = f"Every {task.frequency_days} days"
+                                    task_type_label = "User Website" if task.task_type == 'user_website' else "Competitor"
+                                    status_indicator = "✅" if task.status == 'active' else f"[{task.status}]"
+                                    website_display = task.website_url[:50] + "..." if task.website_url and len(task.website_url) > 50 else (task.website_url or 'N/A')
+                                    
+                                    startup_lines.append(
+                                        f"{prefix} Job: website_analysis_{task.task_type}_{task.user_id}_{task.id} | "
+                                        f"Trigger: CronTrigger ({frequency}) | Next Run: {next_check} | "
+                                        f"User: {task.user_id} | Store: {user_job_store} | Type: {task_type_label} | URL: {website_display} {status_indicator}"
+                                    )
+                                db.close()
+                        except Exception as e:
+                            logger.warning(f"Error checking website analysis tasks for user {user_id}: {e}")
                 except Exception as e:
                     logger.debug(f"Could not get website analysis task details: {e}")
             
             # Add platform insights tasks details
             if platform_insights_tasks_count > 0:
                 try:
-                    db = get_db_session()
-                    if db:
-                        from models.platform_insights_monitoring_models import PlatformInsightsTask
-                        platform_insights_tasks = db.query(PlatformInsightsTask).all()
-                        
-                        for idx, task in enumerate(platform_insights_tasks):
-                            is_last = idx == len(platform_insights_tasks) - 1 and len(all_jobs) == 0 and total_oauth_tasks == 0 and website_analysis_tasks_count == 0
-                            prefix = "   └─" if is_last else "   ├─"
-                            
-                            try:
-                                user_job_store = get_user_job_store_name(task.user_id, db)
-                            except Exception as e:
-                                logger.debug(f"Could not extract job store name for user {task.user_id}: {e}")
-                                user_job_store = 'default'
-                            
-                            next_check = task.next_check.isoformat() if task.next_check else 'Not scheduled'
-                            platform_label = task.platform.upper() if task.platform else 'Unknown'
-                            site_display = task.site_url[:50] + "..." if task.site_url and len(task.site_url) > 50 else (task.site_url or 'N/A')
-                            status_indicator = "✅" if task.status == 'active' else f"[{task.status}]"
-                            
-                            startup_lines.append(
-                                f"{prefix} Job: platform_insights_{task.platform}_{task.user_id} | "
-                                f"Trigger: CronTrigger (Weekly) | Next Run: {next_check} | "
-                                f"User: {task.user_id} | Store: {user_job_store} | Platform: {platform_label} | Site: {site_display} {status_indicator}"
-                            )
-                        db.close()
+                    user_ids = get_all_user_ids()
+                    for user_id in user_ids:
+                        try:
+                            db = get_session_for_user(user_id)
+                            if db:
+                                from models.platform_insights_monitoring_models import PlatformInsightsTask
+                                platform_insights_tasks = db.query(PlatformInsightsTask).all()
+                                
+                                for idx, task in enumerate(platform_insights_tasks):
+                                    is_last = idx == len(platform_insights_tasks) - 1 and len(all_jobs) == 0 and total_oauth_tasks == 0 and website_analysis_tasks_count == 0 and user_id == user_ids[-1]
+                                    prefix = "   ├─" # Simplified
+                                    
+                                    try:
+                                        user_job_store = get_user_job_store_name(task.user_id, db)
+                                    except Exception as e:
+                                        logger.debug(f"Could not extract job store name for user {task.user_id}: {e}")
+                                        user_job_store = 'default'
+                                    
+                                    next_check = task.next_check.isoformat() if task.next_check else 'Not scheduled'
+                                    platform_label = task.platform.upper() if task.platform else 'Unknown'
+                                    site_display = task.site_url[:50] + "..." if task.site_url and len(task.site_url) > 50 else (task.site_url or 'N/A')
+                                    status_indicator = "✅" if task.status == 'active' else f"[{task.status}]"
+                                    
+                                    startup_lines.append(
+                                        f"{prefix} Job: platform_insights_{task.platform}_{task.user_id} | "
+                                        f"Trigger: CronTrigger (Weekly) | Next Run: {next_check} | "
+                                        f"User: {task.user_id} | Store: {user_job_store} | Platform: {platform_label} | Site: {site_display} {status_indicator}"
+                                    )
+                                db.close()
+                        except Exception as e:
+                            logger.warning(f"Error checking platform insights tasks for user {user_id}: {e}")
                 except Exception as e:
                     logger.debug(f"Could not get platform insights task details: {e}")
             
+            # Add Advertools tasks details
+            if advertools_tasks_count > 0:
+                try:
+                    user_ids = get_all_user_ids()
+                    for user_id in user_ids:
+                        try:
+                            db = get_session_for_user(user_id)
+                            if db:
+                                from models.advertools_monitoring_models import AdvertoolsTask
+                                advertools_tasks = db.query(AdvertoolsTask).all()
+                                
+                                for idx, task in enumerate(advertools_tasks):
+                                    is_last = idx == len(advertools_tasks) - 1 and len(all_jobs) == 0 and total_oauth_tasks == 0 and website_analysis_tasks_count == 0 and platform_insights_tasks_count == 0 and user_id == user_ids[-1]
+                                    prefix = "   ├─"
+                                    
+                                    try:
+                                        user_job_store = get_user_job_store_name(task.user_id, db)
+                                    except Exception as e:
+                                        logger.debug(f"Could not extract job store name for user {task.user_id}: {e}")
+                                        user_job_store = 'default'
+                                    
+                                    next_check = task.next_execution.isoformat() if task.next_execution else 'Not scheduled'
+                                    task_type = task.payload.get('type') if task.payload else 'unknown'
+                                    status_indicator = "✅" if task.status == 'active' else f"[{task.status}]"
+                                    
+                                    startup_lines.append(
+                                        f"{prefix} Job: advertools_{task_type}_{task.user_id}_{task.id} | "
+                                        f"Trigger: CronTrigger (Weekly) | Next Run: {next_check} | "
+                                        f"User: {task.user_id} | Store: {user_job_store} | Type: {task_type} {status_indicator}"
+                                    )
+                                db.close()
+                        except Exception as e:
+                            logger.warning(f"Error checking Advertools tasks for user {user_id}: {e}")
+                except Exception as e:
+                    logger.debug(f"Could not get Advertools task details: {e}")
+
             # Log comprehensive startup information in single message
             logger.warning("\n".join(startup_lines))
             
             # Save scheduler start event to database
-            try:
-                db = get_db_session()
-                if db:
-                    event_log = SchedulerEventLog(
-                        event_type='start',
-                        event_date=datetime.utcnow(),
-                        check_interval_minutes=initial_interval,
-                        active_strategies_count=active_strategies,
-                        event_data={
-                            'registered_types': registered_types,
-                            'total_jobs': total_jobs,
-                            'recurring_jobs': total_recurring,
-                            'one_time_jobs': apscheduler_one_time,
-                            'oauth_monitoring_tasks': oauth_tasks_count,
-                            'website_analysis_tasks': website_analysis_tasks_count,
-                            'platform_insights_tasks': platform_insights_tasks_count
-                        }
-                    )
-                    db.add(event_log)
-                    db.commit()
-                    db.close()
-            except Exception as e:
-                logger.warning(f"Failed to save scheduler start event log: {e}")
+            # Disabled in multi-tenant mode as there is no global DB
+            # try:
+            #     db = get_db_session()
+            #     if db:
+            #         event_log = SchedulerEventLog(...)
+            #         db.add(event_log)
+            #         db.commit()
+            #         db.close()
+            # except Exception as e:
+            #     logger.warning(f"Failed to save scheduler start event log: {e}")
             
         except Exception as e:
             logger.error(f"Failed to start scheduler: {e}")
@@ -544,25 +539,26 @@ class TaskScheduler:
             logger.warning(shutdown_message)
             
             # Save scheduler stop event to database
-            try:
-                db = get_db_session()
-                if db:
-                    event_log = SchedulerEventLog(
-                        event_type='stop',
-                        event_date=datetime.utcnow(),
-                        check_interval_minutes=self.current_check_interval_minutes,
-                        event_data={
-                            'total_checks': total_checks,
-                            'total_executed': total_executed,
-                            'total_failed': total_failed,
-                            'jobs_cancelled': len(all_jobs_before)
-                        }
-                    )
-                    db.add(event_log)
-                    db.commit()
-                    db.close()
-            except Exception as e:
-                logger.warning(f"Failed to save scheduler stop event log: {e}")
+            # Disabled in multi-tenant mode as there is no global DB
+            # try:
+            #     db = get_db_session()
+            #     if db:
+            #         event_log = SchedulerEventLog(
+            #             event_type='stop',
+            #             event_date=datetime.utcnow(),
+            #             check_interval_minutes=self.current_check_interval_minutes,
+            #             event_data={
+            #                 'total_checks': total_checks,
+            #                 'total_executed': total_executed,
+            #                 'total_failed': total_failed,
+            #                 'jobs_cancelled': len(all_jobs_before)
+            #             }
+            #         )
+            #         db.add(event_log)
+            #         db.commit()
+            #         db.close()
+            # except Exception as e:
+            #     logger.warning(f"Failed to save scheduler stop event log: {e}")
             
         except Exception as e:
             logger.error(f"Error stopping scheduler: {e}")
@@ -630,12 +626,8 @@ class TaskScheduler:
             return
         
         try:
-            db = get_db_session()
-            if db:
-                await adjust_check_interval_if_needed(self, db)
-                db.close()
-            else:
-                logger.warning("Could not get database session for interval adjustment")
+            # Multi-tenant aware adjustment (iterates all users internally)
+            await adjust_check_interval_if_needed(self)
         except Exception as e:
             logger.warning(f"Error triggering interval adjustment: {e}")
     
@@ -643,125 +635,14 @@ class TaskScheduler:
         """
         Validate cumulative stats on scheduler startup and rebuild if needed.
         This ensures cumulative stats are accurate after restarts.
+        
+        NOTE: Disabled in multi-tenant mode as there is no global database for cumulative stats.
+        TODO: Implement per-user cumulative stats or a global admin database.
         """
-        db = None
-        try:
-            db = get_db_session()
-            if not db:
-                logger.warning("[Scheduler] Could not get database session for cumulative stats validation")
-                return
-            
-            try:
-                from models.scheduler_cumulative_stats_model import SchedulerCumulativeStats
-                from models.scheduler_models import SchedulerEventLog
-                from sqlalchemy import func
-                
-                # Get cumulative stats from persistent table
-                cumulative_stats = db.query(SchedulerCumulativeStats).filter(
-                    SchedulerCumulativeStats.id == 1
-                ).first()
-                
-                # Count check_cycle events in database
-                check_cycle_count = db.query(func.count(SchedulerEventLog.id)).filter(
-                    SchedulerEventLog.event_type == 'check_cycle'
-                ).scalar() or 0
-                
-                if cumulative_stats:
-                    # Validate: cumulative stats should match event log count
-                    if cumulative_stats.total_check_cycles != check_cycle_count:
-                        logger.warning(
-                            f"[Scheduler] ⚠️ Cumulative stats validation failed on startup: "
-                            f"cumulative_stats.total_check_cycles={cumulative_stats.total_check_cycles} "
-                            f"vs event_logs.count={check_cycle_count}. "
-                            f"Rebuilding cumulative stats from event logs..."
-                        )
-                        
-                        # Rebuild from event logs
-                        result = db.query(
-                            func.count(SchedulerEventLog.id),
-                            func.sum(SchedulerEventLog.tasks_found),
-                            func.sum(SchedulerEventLog.tasks_executed),
-                            func.sum(SchedulerEventLog.tasks_failed)
-                        ).filter(
-                            SchedulerEventLog.event_type == 'check_cycle'
-                        ).first()
-                        
-                        if result:
-                            total_cycles = result[0] if result[0] is not None else 0
-                            total_found = result[1] if result[1] is not None else 0
-                            total_executed = result[2] if result[2] is not None else 0
-                            total_failed = result[3] if result[3] is not None else 0
-                            
-                            # Update cumulative stats
-                            cumulative_stats.total_check_cycles = int(total_cycles)
-                            cumulative_stats.cumulative_tasks_found = int(total_found)
-                            cumulative_stats.cumulative_tasks_executed = int(total_executed)
-                            cumulative_stats.cumulative_tasks_failed = int(total_failed)
-                            cumulative_stats.last_updated = datetime.utcnow()
-                            cumulative_stats.updated_at = datetime.utcnow()
-                            
-                            db.commit()
-                            logger.warning(
-                                f"[Scheduler] ✅ Rebuilt cumulative stats on startup: "
-                                f"cycles={total_cycles}, found={total_found}, "
-                                f"executed={total_executed}, failed={total_failed}"
-                            )
-                        else:
-                            logger.warning("[Scheduler] No check_cycle events found to rebuild from")
-                    else:
-                        logger.warning(
-                            f"[Scheduler] ✅ Cumulative stats validated: "
-                            f"{cumulative_stats.total_check_cycles} check cycles match event logs"
-                        )
-                else:
-                    # Cumulative stats table doesn't exist, create it from event logs
-                    logger.warning(
-                        "[Scheduler] Cumulative stats table not found. "
-                        "Creating from event logs..."
-                    )
-                    
-                    result = db.query(
-                        func.count(SchedulerEventLog.id),
-                        func.sum(SchedulerEventLog.tasks_found),
-                        func.sum(SchedulerEventLog.tasks_executed),
-                        func.sum(SchedulerEventLog.tasks_failed)
-                    ).filter(
-                        SchedulerEventLog.event_type == 'check_cycle'
-                    ).first()
-                    
-                    if result:
-                        total_cycles = result[0] if result[0] is not None else 0
-                        total_found = result[1] if result[1] is not None else 0
-                        total_executed = result[2] if result[2] is not None else 0
-                        total_failed = result[3] if result[3] is not None else 0
-                        
-                        cumulative_stats = SchedulerCumulativeStats.get_or_create(db)
-                        cumulative_stats.total_check_cycles = int(total_cycles)
-                        cumulative_stats.cumulative_tasks_found = int(total_found)
-                        cumulative_stats.cumulative_tasks_executed = int(total_executed)
-                        cumulative_stats.cumulative_tasks_failed = int(total_failed)
-                        cumulative_stats.last_updated = datetime.utcnow()
-                        cumulative_stats.updated_at = datetime.utcnow()
-                        
-                        db.commit()
-                        logger.warning(
-                            f"[Scheduler] ✅ Created cumulative stats from event logs: "
-                            f"cycles={total_cycles}, found={total_found}, "
-                            f"executed={total_executed}, failed={total_failed}"
-                        )
-            except ImportError:
-                logger.warning(
-                    "[Scheduler] Cumulative stats model not available. "
-                    "Migration may not have been run yet. "
-                    "Run: python backend/scripts/run_cumulative_stats_migration.py"
-                )
-        except Exception as e:
-            logger.error(f"[Scheduler] Error validating cumulative stats: {e}", exc_info=True)
-        finally:
-            if db:
-                db.close()
+        logger.info("[Scheduler] Cumulative stats validation skipped (multi-tenant mode)")
+        return
     
-    async def _process_task_type(self, task_type: str, db: Session, cycle_summary: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+    async def _process_task_type(self, task_type: str, db: Session, cycle_summary: Dict[str, Any] = None, user_id: str = None) -> Optional[Dict[str, Any]]:
         """
         Process due tasks for a specific task type.
         
@@ -816,7 +697,7 @@ class TaskScheduler:
                 # Execute task asynchronously
                 # Note: Each task gets its own database session to prevent concurrent access issues
                 execution_task = asyncio.create_task(
-                    execute_task_async(self, task_type, task, summary)
+                    execute_task_async(self, task_type, task, summary, user_id=user_id)
                 )
                 
                 task_id = f"{task_type}_{getattr(task, 'id', id(task))}"
@@ -970,7 +851,7 @@ class TaskScheduler:
             job_store_name = 'default'
             if user_id:
                 try:
-                    db = get_db_session()
+                    db = get_session_for_user(user_id)
                     if db:
                         job_store_name = get_user_job_store_name(user_id, db)
                         db.close()
@@ -996,27 +877,28 @@ class TaskScheduler:
             logger.warning(log_message)
             
             # Log job scheduling to event log for dashboard
-            try:
-                event_db = get_db_session()
-                if event_db:
-                    event_log = SchedulerEventLog(
-                        event_type='job_scheduled',
-                        event_date=datetime.utcnow(),
-                        job_id=job_id,
-                        job_type='one_time',
-                        user_id=user_id,
-                        event_data={
-                            'function_name': func_name,
-                            'job_store': job_store_name,
-                            'scheduled_for': run_date.isoformat(),
-                            'replace_existing': replace_existing
-                        }
-                    )
-                    event_db.add(event_log)
-                    event_db.commit()
-                    event_db.close()
-            except Exception as e:
-                logger.debug(f"Failed to log job scheduling event: {e}")
+            if user_id:
+                try:
+                    event_db = get_session_for_user(user_id)
+                    if event_db:
+                        event_log = SchedulerEventLog(
+                            event_type='job_scheduled',
+                            event_date=datetime.utcnow(),
+                            job_id=job_id,
+                            job_type='one_time',
+                            user_id=user_id,
+                            event_data={
+                                'function_name': func_name,
+                                'job_store': job_store_name,
+                                'scheduled_for': run_date.isoformat(),
+                                'replace_existing': replace_existing
+                            }
+                        )
+                        event_db.add(event_log)
+                        event_db.commit()
+                        event_db.close()
+                except Exception as e:
+                    logger.debug(f"Failed to log job scheduling event: {e}")
             
             return job_id
         except Exception as e:
@@ -1026,4 +908,15 @@ class TaskScheduler:
     def is_running(self) -> bool:
         """Check if scheduler is running."""
         return self._running
+
+    async def execute_task_by_type(self, task_type: str, user_id: str, payload: Dict[str, Any]):
+        """
+        Execute a task by type and payload immediately.
+        Used for one-time tasks triggered by system events.
+        """
+        from collections import namedtuple
+        TaskStub = namedtuple('TaskStub', ['user_id', 'payload', 'id'])
+        task_stub = TaskStub(user_id=user_id, payload=payload, id=f"manual_{datetime.utcnow().timestamp()}")
+        
+        await execute_task_async(self, task_type, task_stub, execution_source="manual")
 

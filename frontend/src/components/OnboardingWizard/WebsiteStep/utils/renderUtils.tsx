@@ -28,7 +28,11 @@ import {
   Business as BusinessIcon,
   AutoAwesome as AutoAwesomeIcon,
   Star as StarIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  Search as SearchIcon,
+  AccountTree as SitemapIcon,
+  Speed as SpeedIcon,
+  Devices as DevicesIcon
 } from '@mui/icons-material';
 
 /**
@@ -470,6 +474,144 @@ export const renderAnalysisSection = (
 );
 
 /**
+ * Renders the SEO audit section
+ */
+export const renderSeoAuditSection = (seoAudit: any) => (
+  <Zoom in timeout={900}>
+    <Card sx={{ mb: 2, border: '2px solid primary.light', background: 'primary.50' }}>
+      <CardContent>
+        <Box display="flex" alignItems="center" gap={1} mb={2}>
+          <SearchIcon color="primary" />
+          <Typography variant="h6" fontWeight={600} color="primary.main">
+            SEO Audit
+          </Typography>
+        </Box>
+        
+        <Grid container spacing={2}>
+          {seoAudit.title_tag && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="primary" gutterBottom>
+                Title Tag:
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                {seoAudit.title_tag}
+              </Typography>
+            </Grid>
+          )}
+          
+          {seoAudit.meta_description && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="primary" gutterBottom>
+                Meta Description:
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                {seoAudit.meta_description}
+              </Typography>
+            </Grid>
+          )}
+          
+          {seoAudit.h1_tags && seoAudit.h1_tags.length > 0 && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="primary" gutterBottom>
+                H1 Tags:
+              </Typography>
+              <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                {seoAudit.h1_tags.map((tag: string, index: number) => (
+                  <Typography component="li" variant="body2" key={index} sx={{ mb: 0.5 }}>
+                    {tag}
+                  </Typography>
+                ))}
+              </Box>
+            </Grid>
+          )}
+          
+          {seoAudit.page_load_speed && (
+            <Grid item xs={12} sm={6}>
+              <Box display="flex" alignItems="center" gap={1}>
+                <SpeedIcon color="action" fontSize="small" />
+                <Typography variant="body2">
+                  <strong>Load Speed:</strong> {seoAudit.page_load_speed}
+                </Typography>
+              </Box>
+            </Grid>
+          )}
+          
+          {seoAudit.mobile_friendliness && (
+            <Grid item xs={12} sm={6}>
+              <Box display="flex" alignItems="center" gap={1}>
+                <DevicesIcon color="action" fontSize="small" />
+                <Typography variant="body2">
+                  <strong>Mobile Friendly:</strong> {seoAudit.mobile_friendliness}
+                </Typography>
+              </Box>
+            </Grid>
+          )}
+        </Grid>
+      </CardContent>
+    </Card>
+  </Zoom>
+);
+
+/**
+ * Renders the sitemap analysis section
+ */
+export const renderSitemapAnalysisSection = (sitemapAnalysis: any) => (
+  <Zoom in timeout={900}>
+    <Card sx={{ mb: 2, border: '2px solid info.light', background: 'info.50' }}>
+      <CardContent>
+        <Box display="flex" alignItems="center" gap={1} mb={2}>
+          <SitemapIcon color="info" />
+          <Typography variant="h6" fontWeight={600} color="info.main">
+            Sitemap Analysis
+          </Typography>
+        </Box>
+        
+        <Grid container spacing={2}>
+          {sitemapAnalysis.total_pages && (
+            <Grid item xs={6} sm={4}>
+              <Typography variant="subtitle2" color="info.main">
+                Total Pages
+              </Typography>
+              <Typography variant="h6">
+                {sitemapAnalysis.total_pages}
+              </Typography>
+            </Grid>
+          )}
+          
+          {sitemapAnalysis.content_types && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="info.main" gutterBottom>
+                Content Types Distribution:
+              </Typography>
+              <Box display="flex" flexWrap="wrap" gap={1}>
+                {Object.entries(sitemapAnalysis.content_types).map(([type, count]) => (
+                  <Paper key={type} variant="outlined" sx={{ p: 1, borderColor: 'info.light' }}>
+                    <Typography variant="body2">
+                      <strong>{type}:</strong> {String(count)}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
+            </Grid>
+          )}
+          
+          {sitemapAnalysis.structure_depth && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="info.main" gutterBottom>
+                Site Structure:
+              </Typography>
+              <Typography variant="body2">
+                Max Depth: {sitemapAnalysis.structure_depth} levels
+              </Typography>
+            </Grid>
+          )}
+        </Grid>
+      </CardContent>
+    </Card>
+  </Zoom>
+);
+
+/**
  * Renders the guidelines section accordion
  */
 export const renderGuidelinesSection = (guidelines: any) => (
@@ -594,3 +736,6 @@ export const renderStylePatternsSection = (patterns: any) => (
     </AccordionDetails>
   </Accordion>
 );
+
+
+

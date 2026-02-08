@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from loguru import logger
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
+from services.user_workspace_manager import UserWorkspaceManager
 
 
 class StoryAudioGenerationService:
@@ -26,14 +28,33 @@ class StoryAudioGenerationService:
         if output_dir:
             self.output_dir = Path(output_dir)
         else:
-            # Default to backend/story_audio directory
-            base_dir = Path(__file__).parent.parent.parent
-            self.output_dir = base_dir / "story_audio"
+            # Default to root/data/media/story_audio directory
+            base_dir = Path(__file__).resolve().parents[3]
+            self.output_dir = base_dir / "data" / "media" / "story_audio"
         
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"[StoryAudioGeneration] Initialized with output directory: {self.output_dir}")
     
+    def _get_user_audio_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
+        """
+        Get the audio directory for a specific user.
+        Falls back to default output_dir if workspace not found.
+        """
+        if db and user_id:
+            try:
+                workspace_manager = UserWorkspaceManager(db)
+                workspace = workspace_manager.get_user_workspace(user_id)
+                if workspace:
+                    # Use content/story_audio inside user workspace
+                    user_audio_dir = Path(workspace['workspace_path']) / "content" / "story_audio"
+                    user_audio_dir.mkdir(parents=True, exist_ok=True)
+                    return user_audio_dir
+            except Exception as e:
+                logger.warning(f"[StoryAudioGeneration] Failed to resolve user workspace path for {user_id}: {e}")
+        
+        return self.output_dir
+
     def _generate_audio_filename(self, scene_number: int, scene_title: str) -> str:
         """Generate a unique filename for a scene audio file."""
         # Clean scene title for filename
@@ -136,7 +157,8 @@ class StoryAudioGenerationService:
         provider: str = "gtts",
         lang: str = "en",
         slow: bool = False,
-        rate: int = 150
+        rate: int = 150,
+        db: Optional[Session] = None
     ) -> Dict[str, Any]:
         """
         Generate audio narration for a single story scene.
@@ -148,6 +170,7 @@ class StoryAudioGenerationService:
             lang (str): Language code for TTS (default: "en").
             slow (bool): Whether to speak slowly (default: False, gTTS only).
             rate (int): Speech rate (default: 150, pyttsx3 only).
+            db (Session, optional): Database session.
         
         Returns:
             Dict[str, Any]: Audio metadata including file path, URL, and scene info.
@@ -163,9 +186,12 @@ class StoryAudioGenerationService:
             logger.info(f"[StoryAudioGeneration] Generating audio for scene {scene_number}: {scene_title}")
             logger.debug(f"[StoryAudioGeneration] Audio narration: {audio_narration[:100]}...")
             
+            # Determine output directory (user workspace or default)
+            output_dir = self._get_user_audio_dir(user_id, db)
+            
             # Generate audio filename
             audio_filename = self._generate_audio_filename(scene_number, scene_title)
-            audio_path = self.output_dir / audio_filename
+            audio_path = output_dir / audio_filename
             
             # Generate audio based on provider
             success = False
@@ -226,7 +252,8 @@ class StoryAudioGenerationService:
         lang: str = "en",
         slow: bool = False,
         rate: int = 150,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        db: Optional[Session] = None
     ) -> List[Dict[str, Any]]:
         """
         Generate audio narration for multiple story scenes.
@@ -239,6 +266,7 @@ class StoryAudioGenerationService:
             slow (bool): Whether to speak slowly (default: False, gTTS only).
             rate (int): Speech rate (default: 150, pyttsx3 only).
             progress_callback (callable, optional): Callback function for progress updates.
+            db (Session, optional): Database session.
         
         Returns:
             List[Dict[str, Any]]: List of audio metadata for each scene.
@@ -260,7 +288,8 @@ class StoryAudioGenerationService:
                     provider=provider,
                     lang=lang,
                     slow=slow,
-                    rate=rate
+                    rate=rate,
+                    db=db
                 )
                 
                 audio_results.append(audio_result)
@@ -307,6 +336,7 @@ class StoryAudioGenerationService:
         format: Optional[str] = None,
         language_boost: Optional[str] = None,
         enable_sync_mode: Optional[bool] = True,
+        db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         """
         Generate AI audio for a single scene using main_audio_generation.
@@ -322,6 +352,7 @@ class StoryAudioGenerationService:
             pitch (float): Speech pitch (-12 to 12, default: 0.0).
             emotion (str): Emotion for speech (default: "happy").
             english_normalization (bool): Enable English text normalization for better number reading (default: False).
+            db (Session, optional): Database session.
         
         Returns:
             Dict[str, Any]: Audio metadata including file path, URL, and scene info.
@@ -354,9 +385,12 @@ class StoryAudioGenerationService:
                 enable_sync_mode=enable_sync_mode,
             )
             
+            # Determine output directory (user workspace or default)
+            output_dir = self._get_user_audio_dir(user_id, db)
+            
             # Save audio to file
             audio_filename = self._generate_audio_filename(scene_number, scene_title)
-            audio_path = self.output_dir / audio_filename
+            audio_path = output_dir / audio_filename
             
             with open(audio_path, "wb") as f:
                 f.write(result.audio_bytes)

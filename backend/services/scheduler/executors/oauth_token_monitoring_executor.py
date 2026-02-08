@@ -21,6 +21,7 @@ from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
 from services.integrations.wordpress_oauth import WordPressOAuthService
 from services.wix_service import WixService
+from services.database import get_user_db_path
 
 logger = get_service_logger("oauth_token_monitoring_executor")
 
@@ -289,8 +290,8 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         GSC service auto-refreshes tokens if expired when loading credentials.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
+            # Use dynamic database path
+            db_path = get_user_db_path(user_id)
             gsc_service = GSCService(db_path=db_path)
             credentials = gsc_service.load_user_credentials(user_id)
             
@@ -341,9 +342,8 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         Checks token expiration and attempts refresh if needed.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
-            bing_service = BingOAuthService(db_path=db_path)
+            # Initialize Bing service
+            bing_service = BingOAuthService()
             
             # Get token status (includes expired tokens)
             token_status = bing_service.get_user_token_status(user_id)
@@ -502,8 +502,8 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         and require user re-authorization. We only check if token is valid.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
+            # Use dynamic database path
+            db_path = get_user_db_path(user_id)
             wordpress_service = WordPressOAuthService(db_path=db_path)
             tokens = wordpress_service.get_user_tokens(user_id)
             

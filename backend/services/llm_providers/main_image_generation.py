@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import sys
+import base64
 from datetime import datetime
 from typing import Optional, Dict, Any
+from fastapi.concurrency import run_in_threadpool
 
 from .image_generation import (
     ImageGenerationOptions,
@@ -104,13 +106,13 @@ def _validate_image_operation(
         logger.warning(f"{log_prefix} ⚠️ No user_id provided - skipping pre-flight validation (this should not happen in production)")
         return
     
-    from services.database import get_db
+    from services.database import get_session_for_user
     from services.subscription import PricingService
     from services.subscription.preflight_validator import validate_image_generation_operations
     from fastapi import HTTPException
     
     logger.info(f"{log_prefix} 🔍 Starting pre-flight validation for user_id={user_id}")
-    db = next(get_db())
+    db = get_session_for_user(user_id)
     try:
         pricing_service = PricingService(db)
         # Raises HTTPException immediately if validation fails - frontend gets immediate response
@@ -162,8 +164,8 @@ def _track_image_operation_usage(
         Dictionary with tracking information (current_calls, cost, etc.)
     """
     try:
-        from services.database import get_db as get_db_track
-        db_track = next(get_db_track())
+        from services.database import get_session_for_user
+        db_track = get_session_for_user(user_id)
         try:
             from models.subscription_models import UsageSummary, APIUsageLog, APIProvider
             from services.subscription.provider_detection import detect_actual_provider
@@ -704,5 +706,67 @@ def generate_face_swap(
         logger.warning(f"[Image Edit] ⚠️ Skipping usage tracking: user_id={user_id}, image_bytes={len(result.image_bytes) if result.image_bytes else 0} bytes")
     
     return result
+
+
+async def generate_image_with_provider(
+    prompt: str,
+    user_id: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Async wrapper for generate_image to support step4_asset_routes.
+    """
+    # Construct options from kwargs
+    options = kwargs.copy()
+    
+    try:
+        # Run in threadpool since generate_image is blocking
+        result = await run_in_threadpool(
+            generate_image,
+            prompt=prompt,
+            options=options,
+            user_id=user_id
+        )
+        
+        image_base64 = base64.b64encode(result.image_bytes).decode('utf-8')
+        
+        return {
+            "success": True,
+            "image_base64": image_base64,
+            "image_url": None, 
+            "error": None,
+            "metadata": result.metadata
+        }
+    except Exception as e:
+        logger.error(f"Error in generate_image_with_provider: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+async def enhance_image_prompt(prompt: str, user_id: Optional[str] = None) -> str:
+    """
+    Enhance image prompt using LLM.
+    Placeholder implementation.
+    """
+    return prompt
+
+
+async def generate_image_variation(
+    image: Any, 
+    prompt: str,
+    user_id: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Generate variation of an existing image.
+    Placeholder implementation.
+    """
+    return {
+        "success": False,
+        "error": "Not implemented yet"
+    }
+
 
 

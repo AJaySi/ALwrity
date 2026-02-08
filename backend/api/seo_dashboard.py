@@ -14,9 +14,16 @@ from services.onboarding.api_key_manager import APIKeyManager
 from services.validation import check_all_api_keys
 from services.seo_analyzer import ComprehensiveSEOAnalyzer, SEOAnalysisResult, SEOAnalysisService
 from services.user_data_service import UserDataService
-from services.database import get_db_session
+from services.database import get_db_session, get_session_for_user
 from services.seo import SEODashboardService
 from middleware.auth_middleware import get_current_user
+from services.llm_providers.main_text_generation import llm_text_gen
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
+from models.onboarding import SEOPageAudit, WebsiteAnalysis, OnboardingSession
+from sqlalchemy.orm.attributes import flag_modified
+
+# Phase 2B: Import semantic monitoring
+from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor, SemanticHealthMetric
 
 # Initialize the SEO analyzer
 seo_analyzer = ComprehensiveSEOAnalyzer()
@@ -63,6 +70,9 @@ class SEODashboardData(BaseModel):
 class SEOAnalysisRequest(BaseModel):
     url: str
     target_keywords: Optional[List[str]] = None
+
+class AnalyzeURLsRequest(BaseModel):
+    urls: List[str]
 
 class SEOAnalysisResponse(BaseModel):
     url: str
@@ -239,12 +249,105 @@ def generate_ai_insights(metrics: Dict[str, Any], platforms: Dict[str, Any]) -> 
     
     return insights
 
+from services.seo.deep_competitor_analysis_service import DeepCompetitorAnalysisService
+
 # API Endpoints
+async def run_strategic_insights(
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Manually trigger AI-Powered Competitive Insights (Weekly Strategy Brief).
+    """
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session(user_id)
+        
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+            
+        try:
+            # 1. Get Website Analysis (with fallback)
+            website_analysis_data = None
+            analysis_id = None
+            
+            # Try SSOT first
+            integration_service = OnboardingDataIntegrationService()
+            integrated_data = integration_service.get_integrated_data_sync(user_id, db_session)
+            if integrated_data and integrated_data.get("website_analysis"):
+                 website_analysis_data = integrated_data.get("website_analysis")
+                 analysis_id = website_analysis_data.get("id")
+            
+            # Fallback: Find latest WebsiteAnalysis across sessions
+            if not website_analysis_data:
+                latest_analysis = db_session.query(WebsiteAnalysis).join(
+                    OnboardingSession, WebsiteAnalysis.session_id == OnboardingSession.id
+                ).filter(
+                    OnboardingSession.user_id == user_id
+                ).order_by(WebsiteAnalysis.updated_at.desc()).first()
+                
+                if latest_analysis:
+                    # Convert to dict
+                    from fastapi.encoders import jsonable_encoder
+                    website_analysis_data = jsonable_encoder(latest_analysis)
+                    analysis_id = latest_analysis.id
+            
+            if not website_analysis_data:
+                raise HTTPException(status_code=400, detail="No website analysis found. Please complete Onboarding Step 2.")
+
+            # 2. Get Competitors
+            competitors = []
+            if integrated_data:
+                competitors = integrated_data.get("competitor_analysis", [])
+                
+            if not competitors:
+                 # Fallback to research preferences
+                 research_prefs = integrated_data.get("research_preferences", {})
+                 competitors = research_prefs.get("competitors", [])
+
+            if not competitors:
+                 raise HTTPException(status_code=400, detail="No competitors found. Please complete Onboarding Step 3.")
+
+            # 3. Run Analysis
+            service = DeepCompetitorAnalysisService()
+            report = await service.generate_weekly_strategy_brief(
+                user_id=user_id,
+                website_analysis=website_analysis_data,
+                competitors=competitors
+            )
+            
+            # 4. Persist to History
+            if analysis_id:
+                wa = db_session.query(WebsiteAnalysis).filter(WebsiteAnalysis.id == analysis_id).first()
+                if wa:
+                    history = wa.strategic_insights_history or []
+                    # Ensure history is a list
+                    if not isinstance(history, list):
+                        history = []
+                    
+                    # Prepend new report
+                    history.insert(0, report)
+                    
+                    # Keep last 52 weeks
+                    wa.strategic_insights_history = history[:52]
+                    flag_modified(wa, "strategic_insights_history")
+                    db_session.commit()
+            
+            return report
+
+        finally:
+            db_session.close()
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error running strategic insights: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run analysis: {str(e)}")
+
 async def get_seo_dashboard_data(current_user: dict = Depends(get_current_user)) -> SEODashboardData:
     """Get comprehensive SEO dashboard data."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             logger.error("No database session available")
@@ -278,7 +381,7 @@ async def get_seo_health_score(current_user: dict = Depends(get_current_user)) -
     """Get current SEO health score."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             raise HTTPException(status_code=500, detail="Database connection unavailable")
@@ -299,7 +402,7 @@ async def get_seo_metrics(current_user: dict = Depends(get_current_user)) -> Dic
     """Get SEO metrics."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             raise HTTPException(status_code=500, detail="Database connection unavailable")
@@ -322,7 +425,7 @@ async def get_platform_status(
     """Get platform connection status."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             logger.error("No database session available")
@@ -347,7 +450,7 @@ async def get_ai_insights(current_user: dict = Depends(get_current_user)) -> Lis
     """Get AI-generated insights."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             raise HTTPException(status_code=500, detail="Database connection unavailable")
@@ -367,6 +470,59 @@ async def get_ai_insights(current_user: dict = Depends(get_current_user)) -> Lis
 async def seo_dashboard_health_check():
     """Health check for SEO dashboard."""
     return {"status": "healthy", "service": "SEO Dashboard API"}
+
+# Phase 2B: Semantic health monitoring endpoint
+async def get_semantic_health(current_user: dict = Depends(get_current_user)) -> SemanticHealthMetric:
+    """
+    Get real-time semantic health metrics for the user's content and competitors.
+    This endpoint provides Phase 2B semantic intelligence monitoring data.
+    
+    Returns:
+        SemanticHealthMetric with current health status, score, and recommendations
+    """
+    try:
+        user_id = str(current_user.get('id'))
+        
+        # Initialize semantic monitor for this user
+        semantic_monitor = RealTimeSemanticMonitor(user_id)
+        
+        # Get current semantic health (will use cache if available)
+        semantic_health = await semantic_monitor.check_semantic_health(user_id)
+        
+        logger.info(f"[Semantic Health API] Retrieved health data for user {user_id}: {semantic_health.status} (score: {semantic_health.value:.2f})")
+        
+        return semantic_health
+        
+    except Exception as e:
+        logger.error(f"[Semantic Health API] Error retrieving semantic health for user: {e}")
+        # Return a default healthy state with warning message
+        return SemanticHealthMetric(
+            metric_name="semantic_health",
+            value=0.5,
+            threshold=0.6,
+            status="warning",
+            timestamp=datetime.utcnow().isoformat(),
+            description="Semantic monitoring temporarily unavailable",
+            recommendations=["Please try again later", "Check system status"]
+        )
+
+
+async def get_semantic_cache_stats(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Get statistics for the semantic cache.
+    """
+    try:
+        user_id = str(current_user.get('id'))
+        # Initialize semantic monitor to access its cache manager
+        semantic_monitor = RealTimeSemanticMonitor(user_id)
+        return await semantic_monitor.get_cache_stats()
+    except Exception as e:
+        logger.error(f"[Semantic Cache API] Error retrieving cache stats: {e}")
+        return {
+            "error": "Failed to retrieve cache statistics",
+            "hit_rate": 0.0,
+            "memory_usage_mb": 0.0
+        }
 
 # New comprehensive SEO analysis endpoints
 async def analyze_seo_comprehensive(request: SEOAnalysisRequest) -> SEOAnalysisResponse:
@@ -650,6 +806,107 @@ async def batch_analyze_urls(urls: List[str]) -> Dict[str, Any]:
             detail=f"Error in batch analysis: {str(e)}"
         )
 
+async def analyze_urls_ai(request: AnalyzeURLsRequest, current_user: dict) -> Dict[str, Any]:
+    """Run AI analysis on selected URLs."""
+    user_id = str(current_user.get('id'))
+    db_session = get_db_session()
+    results = []
+    
+    try:
+        for url in request.urls:
+            # Check if audit exists
+            audit = db_session.query(SEOPageAudit).filter(
+                SEOPageAudit.user_id == user_id,
+                SEOPageAudit.page_url == url
+            ).first()
+            
+            if not audit:
+                results.append({"url": url, "status": "skipped", "reason": "No audit found"})
+                continue
+                
+            # Prepare Prompt
+            # We use the existing audit data (algorithmic) to feed the AI
+            audit_summary = {
+                "score": audit.overall_score,
+                "issues": audit.issues,
+                "warnings": audit.warnings
+            }
+            
+            prompt = f"""
+            As an expert SEO consultant, analyze these technical audit results for the page: {url}
+            
+            AUDIT DATA:
+            {json.dumps(audit_summary, default=str)[:3000]}
+            
+            TASK:
+            Provide 3 specific, high-impact AI recommendations to improve this page's SEO.
+            Focus on content relevance, user intent, and semantic SEO, which the algorithmic audit might miss.
+            
+            OUTPUT JSON format:
+            [
+                {{ "category": "Content|Technical|UX", "recommendation": "...", "impact": "High|Medium", "effort": "Low|Medium" }}
+            ]
+            """
+            
+            try:
+                ai_response = llm_text_gen(prompt, user_id=user_id)
+                # Parse JSON
+                import re
+                cleaned = ai_response.strip().replace("```json", "").replace("```", "")
+                # Simple regex to find the JSON array if extra text exists
+                match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+                if match:
+                    cleaned = match.group(0)
+                
+                recommendations = json.loads(cleaned)
+                
+                # Update audit
+                current_recs = audit.recommendations or []
+                if isinstance(current_recs, list):
+                    # Tag new ones
+                    for r in recommendations:
+                        r['source'] = 'ai_on_demand'
+                    current_recs.extend(recommendations)
+                    audit.recommendations = current_recs
+                
+                audit.last_analyzed_at = datetime.utcnow()
+                results.append({"url": url, "status": "success"})
+                
+            except Exception as e:
+                logger.error(f"AI Analysis failed for {url}: {e}")
+                results.append({"url": url, "status": "failed", "error": str(e)})
+        
+        db_session.commit()
+        return {"results": results}
+        
+    finally:
+        db_session.close()
+
+async def get_analyzed_pages(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """Get list of pages that have been analyzed by AI."""
+    user_id = str(current_user.get('id'))
+    db_session = get_db_session()
+    
+    try:
+        audits = db_session.query(SEOPageAudit).filter(
+            SEOPageAudit.user_id == user_id
+        ).all()
+        
+        results = []
+        for audit in audits:
+            if audit.recommendations:
+                results.append({
+                    "url": audit.page_url,
+                    "analyzed_at": audit.last_analyzed_at,
+                    "score": audit.overall_score,
+                    "recommendations_count": len(audit.recommendations)
+                })
+        
+        return {"results": results}
+    finally:
+        db_session.close()
+
+
 # New SEO Dashboard Endpoints with Real Data
 
 async def get_seo_dashboard_overview(
@@ -659,7 +916,7 @@ async def get_seo_dashboard_overview(
     """Get comprehensive SEO dashboard overview with real GSC/Bing data."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_session_for_user(user_id)
         
         if not db_session:
             logger.error("No database session available")
@@ -715,7 +972,7 @@ async def get_bing_raw_data(
     """Get raw Bing data for the specified site."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             logger.error("No database session available")
@@ -743,7 +1000,7 @@ async def get_competitive_insights(
     """Get competitive insights from onboarding step 3 data."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             logger.error("No database session available")
@@ -764,6 +1021,153 @@ async def get_competitive_insights(
         logger.error(f"Error getting competitive insights: {e}")
         raise HTTPException(status_code=500, detail="Failed to get competitive insights")
 
+
+async def get_deep_competitor_analysis(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None
+) -> Dict[str, Any]:
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_session_for_user(user_id)
+
+        if not db_session:
+            logger.error("No database session available")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        try:
+            integration_service = OnboardingDataIntegrationService()
+            integrated = integration_service.get_integrated_data_sync(user_id, db_session)
+            deep = integrated.get("deep_competitor_analysis") if isinstance(integrated, dict) else None
+            return deep or {
+                "status": "not_available",
+                "last_run": None,
+                "report": None
+            }
+        finally:
+            db_session.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting deep competitor analysis: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get deep competitor analysis")
+
+
+async def run_strategic_insights(
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Run AI-powered strategic insights analysis manually."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_session_for_user(user_id)
+        
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        try:
+            integration_service = OnboardingDataIntegrationService()
+            integrated = integration_service.get_integrated_data_sync(user_id, db_session)
+            
+            website_analysis_data = integrated.get("website_analysis")
+            logger.info(f"Integrated data for user {user_id}: website_analysis found? {bool(website_analysis_data)}")
+            
+            # Fallback: If not found in integrated data (e.g. strict session mismatch), find latest analysis for user
+            if not website_analysis_data:
+                logger.info(f"Attempting fallback for user {user_id}")
+                # Find latest WebsiteAnalysis for this user across all sessions
+                latest_analysis = db_session.query(WebsiteAnalysis).join(
+                    OnboardingSession, WebsiteAnalysis.session_id == OnboardingSession.id
+                ).filter(
+                    OnboardingSession.user_id == user_id
+                ).order_by(WebsiteAnalysis.updated_at.desc()).first()
+                
+                if latest_analysis:
+                    logger.info(f"Found fallback WebsiteAnalysis {latest_analysis.id} for user {user_id}")
+                    website_analysis_data = latest_analysis.to_dict()
+                    # Ensure ID is present for updates
+                    website_analysis_data['id'] = latest_analysis.id
+                else:
+                    logger.warning(f"Fallback failed for user {user_id}. No WebsiteAnalysis found.")
+
+            if not website_analysis_data:
+                raise HTTPException(status_code=400, detail="Website analysis (Step 2) not found. Please complete onboarding.")
+            
+            research_prefs = integrated.get("research_preferences")
+            competitors = (research_prefs.get("competitors") if isinstance(research_prefs, dict) else None)
+            
+            if not competitors:
+                # Try competitor_analysis as fallback
+                competitors = integrated.get("competitor_analysis") or []
+
+            if not competitors:
+                raise HTTPException(status_code=400, detail="No competitors found. Please add competitors in Step 3.")
+
+            from services.seo.deep_competitor_analysis_service import DeepCompetitorAnalysisService
+            analysis_service = DeepCompetitorAnalysisService()
+            
+            logger.info(f"Running manual strategic insights for user {user_id}")
+            report = await analysis_service.generate_weekly_strategy_brief(
+                user_id=user_id,
+                website_analysis=website_analysis_data if isinstance(website_analysis_data, dict) else {},
+                competitors=competitors if isinstance(competitors, list) else []
+            )
+            
+            # Find the WebsiteAnalysis record to persist history
+            analysis_id = website_analysis_data.get('id') if isinstance(website_analysis_data, dict) else None
+            if analysis_id:
+                website_analysis = db_session.query(WebsiteAnalysis).filter(WebsiteAnalysis.id == analysis_id).first()
+                
+                if website_analysis:
+                    history = website_analysis.strategic_insights_history or []
+                    if not isinstance(history, list):
+                        history = []
+                    
+                    # Append new report at the beginning (latest first)
+                    history.insert(0, report)
+                    # Keep last 52 weeks (1 year)
+                    website_analysis.strategic_insights_history = history[:52]
+                    flag_modified(website_analysis, "strategic_insights_history")
+                    db_session.commit()
+                    logger.info(f"Persisted strategic insight for user {user_id} to history")
+            
+            return {"success": True, "report": report}
+        finally:
+            db_session.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running strategic insights: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run strategic insights: {str(e)}")
+
+
+async def get_strategic_insights_history(
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Fetch the history of strategic insights for the user."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_session_for_user(user_id)
+        
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        try:
+            integration_service = OnboardingDataIntegrationService()
+            integrated = integration_service.get_integrated_data_sync(user_id, db_session)
+            
+            website_analysis = integrated.get("website_analysis")
+            if not website_analysis or not isinstance(website_analysis, dict):
+                return {"history": []}
+            
+            history = website_analysis.get("strategic_insights_history") or []
+            return {"history": history}
+        finally:
+            db_session.close()
+    except Exception as e:
+        logger.error(f"Error fetching strategic insights history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch strategic insights history")
+
 async def refresh_analytics_data(
     current_user: dict = Depends(get_current_user),
     site_url: Optional[str] = None
@@ -771,7 +1175,7 @@ async def refresh_analytics_data(
     """Refresh analytics data by invalidating cache and fetching fresh data."""
     try:
         user_id = str(current_user.get('id'))
-        db_session = get_db_session()
+        db_session = get_db_session(user_id)
         
         if not db_session:
             logger.error("No database session available")

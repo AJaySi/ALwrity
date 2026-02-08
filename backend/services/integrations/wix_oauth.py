@@ -10,16 +10,26 @@ from datetime import datetime, timedelta
 from loguru import logger
 
 
+from services.database import get_user_db_path
+
 class WixOAuthService:
     """Manages Wix OAuth2 authentication flow and token storage."""
     
-    def __init__(self, db_path: str = "alwrity.db"):
+    def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path
-        self._init_db()
     
-    def _init_db(self):
+    def _get_db_path(self, user_id: str) -> str:
+        if self.db_path:
+            return self.db_path
+        return get_user_db_path(user_id)
+    
+    def _init_db(self, user_id: str):
         """Initialize database tables for OAuth tokens."""
-        with sqlite3.connect(self.db_path) as conn:
+        db_path = self._get_db_path(user_id)
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS wix_oauth_tokens (
@@ -39,7 +49,6 @@ class WixOAuthService:
                 )
             ''')
             conn.commit()
-        logger.info("Wix OAuth database initialized.")
     
     def store_tokens(
         self,
@@ -69,11 +78,15 @@ class WixOAuthService:
             True if tokens were stored successfully
         """
         try:
+            # Ensure DB is initialized for this user
+            self._init_db(user_id)
+            db_path = self._get_db_path(user_id)
+            
             expires_at = None
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO wix_oauth_tokens 
@@ -92,7 +105,14 @@ class WixOAuthService:
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active Wix tokens for a user."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            # Ensure database tables exist to prevent 'no such table' errors
+            self._init_db(user_id)
+            
+            db_path = self._get_db_path(user_id)
+            if not os.path.exists(db_path):
+                return []
+                
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id, created_at
@@ -125,7 +145,22 @@ class WixOAuthService:
     def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
         """Get detailed token status for a user including expired tokens."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            # Ensure database tables exist to prevent 'no such table' errors
+            self._init_db(user_id)
+
+            db_path = self._get_db_path(user_id)
+            if not os.path.exists(db_path):
+                return {
+                    "has_tokens": False,
+                    "has_active_tokens": False,
+                    "has_expired_tokens": False,
+                    "active_tokens": [],
+                    "expired_tokens": [],
+                    "total_tokens": 0,
+                    "last_token_date": None
+                }
+
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 
                 # Get all tokens (active and expired)
@@ -213,11 +248,15 @@ class WixOAuthService:
     ) -> bool:
         """Update tokens for a user (e.g., after refresh)."""
         try:
+            # Ensure DB initialized for this user
+            self._init_db(user_id)
+            db_path = self._get_db_path(user_id)
+
             expires_at = None
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 if refresh_token:
                     cursor.execute('''
@@ -245,7 +284,8 @@ class WixOAuthService:
     def revoke_token(self, user_id: str, token_id: int) -> bool:
         """Revoke a Wix OAuth token."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE wix_oauth_tokens 

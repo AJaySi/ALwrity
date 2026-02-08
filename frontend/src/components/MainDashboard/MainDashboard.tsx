@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import AskAlwrityIcon from '../../assets/images/AskAlwrity-min.ico';
 import { SubscriptionGuard } from '../SubscriptionGuard';
 
@@ -67,14 +68,13 @@ const MainDashboard: React.FC = () => {
     pauseWorkflow,
     stopWorkflow
   } = useWorkflowStore();
+  const { userId } = useAuth();
 
   // Initialize workflow on component mount
   React.useEffect(() => {
     const initializeWorkflow = async () => {
       try {
-        // Generate daily workflow for current user
-        // In a real app, you'd get the actual user ID from auth context
-        const userId = 'demo-user'; // Replace with actual user ID
+        if (!userId) return;
         await generateDailyWorkflow(userId);
       } catch (error) {
         console.warn('Failed to initialize workflow:', error);
@@ -82,7 +82,7 @@ const MainDashboard: React.FC = () => {
     };
 
     initializeWorkflow();
-  }, [generateDailyWorkflow]);
+  }, [generateDailyWorkflow, userId]);
 
   // Debug logging for workflow state (only in development)
   React.useEffect(() => {
@@ -113,7 +113,7 @@ const MainDashboard: React.FC = () => {
         await startWorkflow(currentWorkflow.id);
       } else {
         // Generate workflow first, then mark that we should start it
-        await generateDailyWorkflow('demo-user');
+        await generateDailyWorkflow(userId || 'demo-user');
         setShouldStartWorkflow(true);
       }
     } catch (error) {

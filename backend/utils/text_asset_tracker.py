@@ -58,10 +58,30 @@ def save_and_track_text_content(
         
         # Determine output directory
         if base_dir is None:
-            # Default to backend/{module}_text
-            base_dir = Path(__file__).parent.parent
-            module_name = source_module.replace('_', '')
-            output_dir = base_dir / f"{module_name}_text"
+            try:
+                # Try to get user workspace path
+                from services.user_workspace_manager import UserWorkspaceManager
+                workspace_manager = UserWorkspaceManager(db)
+                workspace_info = workspace_manager.get_user_workspace(user_id)
+                
+                if workspace_info and workspace_info.get('workspace_path'):
+                    user_workspace_path = Path(workspace_info['workspace_path'])
+                    # Use 'media' subdirectory in workspace
+                    # Structure: workspace/users/user_{id}/media/{module}_text
+                    module_name = source_module.replace('_', '')
+                    output_dir = user_workspace_path / "media" / f"{module_name}_text"
+                else:
+                    # Fallback to root/data/media directory if workspace not found
+                    logger.warning(f"Workspace not found for user {user_id}, using default directory")
+                    base_dir = Path(__file__).resolve().parents[2]  # root
+                    module_name = source_module.replace('_', '')
+                    output_dir = base_dir / "data" / "media" / f"{module_name}_text"
+            except Exception as e:
+                logger.error(f"Error resolving workspace path: {e}")
+                # Fallback
+                base_dir = Path(__file__).resolve().parents[2]  # root
+                module_name = source_module.replace('_', '')
+                output_dir = base_dir / "data" / "media" / f"{module_name}_text"
         else:
             output_dir = base_dir
         
@@ -91,8 +111,16 @@ def save_and_track_text_content(
             return None
         
         # Generate file URL
-        relative_path = file_path.relative_to(base_dir)
-        file_url = f"/api/text-assets/{relative_path.as_posix()}"
+        if base_dir:
+            try:
+                relative_path = file_path.relative_to(base_dir)
+                file_url = f"/api/text-assets/{relative_path.as_posix()}"
+            except ValueError:
+                 # If file_path is not relative to base_dir (shouldn't happen if logic is correct, but safe fallback)
+                 logger.warning(f"File path {file_path} is not relative to base_dir {base_dir}")
+                 file_url = f"/api/text-assets/{file_path.name}"
+        else:
+             file_url = f"/api/text-assets/{file_path.name}"
         
         # Prepare metadata
         final_metadata = asset_metadata or {}

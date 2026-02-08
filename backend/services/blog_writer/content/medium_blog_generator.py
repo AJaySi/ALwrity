@@ -254,4 +254,35 @@ class MediumBlogGenerator:
             logger.warning(f"Failed to cache content result: {cache_error}")
             # Don't fail the entire operation if caching fails
         
+        # Save content to user workspace if db session is available
+        if user_id and db:
+            try:
+                # Construct full blog content
+                full_content = f"# {result.title}\n\n"
+                for section in result.sections:
+                    full_content += f"## {section.heading}\n\n"
+                    full_content += f"{section.content}\n\n"
+                
+                # Save to workspace
+                save_and_track_text_content(
+                    db=db,
+                    user_id=user_id,
+                    content=full_content,
+                    source_module="medium_blog_writer",
+                    title=result.title,
+                    description=f"Generated medium blog: {result.title}",
+                    tags=req.researchKeywords or ["medium_blog", "ai_generated"],
+                    asset_metadata={
+                        "model": result.model,
+                        "generation_time_ms": result.generation_time_ms,
+                        "word_count": sum(s.wordCount for s in result.sections)
+                    },
+                    subdirectory="medium_blogs"
+                )
+                logger.info(f"Saved medium blog content to user workspace for user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to save medium blog content to workspace: {e}")
+        elif not db:
+             logger.warning("Database session not provided, skipping workspace save for medium blog")
+
         return result

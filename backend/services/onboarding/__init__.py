@@ -5,10 +5,10 @@ This package contains all onboarding-related services and utilities.
 All onboarding data is stored in the database with proper user isolation.
 
 Services:
-- OnboardingDatabaseService: Core database operations for onboarding data
+- OnboardingDataIntegrationService: Canonical SSOT for onboarding data
 - OnboardingProgressService: Progress tracking and step management
-- OnboardingDataService: Data validation and processing
-- OnboardingProgress: Progress tracking with database persistence (from api_key_manager)
+- APIKeyManager: API key management
+
 
 Architecture:
 - Database-first: All data stored in PostgreSQL with proper foreign keys
@@ -18,15 +18,11 @@ Architecture:
 """
 
 # Import all public classes for easy access
-from .database_service import OnboardingDatabaseService
 from .progress_service import OnboardingProgressService
-from .data_service import OnboardingDataService
 from .api_key_manager import OnboardingProgress, APIKeyManager, get_onboarding_progress, get_user_onboarding_progress, get_onboarding_progress_for_user
 
 __all__ = [
-    'OnboardingDatabaseService',
     'OnboardingProgressService', 
-    'OnboardingDataService',
     'OnboardingProgress',
     'APIKeyManager',
     'get_onboarding_progress',

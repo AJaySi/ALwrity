@@ -9,6 +9,7 @@ OAuth connections from onboarding step 5.
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from loguru import logger
 
 from utils.logger_utils import get_service_logger
@@ -16,9 +17,12 @@ from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
 from services.analytics_cache_service import AnalyticsCacheService
-from services.onboarding.data_service import OnboardingDataService
+from api.content_planning.services.content_strategy.onboarding.data_integration import OnboardingDataIntegrationService
 from .analytics_aggregator import AnalyticsAggregator
 from .competitive_analyzer import CompetitiveAnalyzer
+from models.onboarding import SEOPageAudit, WebsiteAnalysis, OnboardingSession
+from models.website_analysis_monitoring_models import OnboardingFullWebsiteAnalysisTask
+from models.advertools_monitoring_models import AdvertoolsTask
 
 logger = get_service_logger("seo_dashboard")
 
@@ -30,11 +34,18 @@ class SEODashboardService:
         self.db = db
         self.gsc_service = GSCService()
         self.bing_oauth = BingOAuthService()
-        self.bing_storage = BingAnalyticsStorageService("sqlite:///alwrity.db")
+        # Bing storage is initialized per-user dynamically
         self.analytics_cache = AnalyticsCacheService()
-        self.user_data_service = OnboardingDataService(db)
+        self.integration_service = OnboardingDataIntegrationService()
         self.analytics_aggregator = AnalyticsAggregator()
         self.competitive_analyzer = CompetitiveAnalyzer(db)
+        
+    def _get_bing_storage(self, user_id: str) -> BingAnalyticsStorageService:
+        """Get Bing storage service for user."""
+        from services.database import get_user_db_path
+        db_path = get_user_db_path(user_id)
+        db_url = f"sqlite:///{db_path}"
+        return BingAnalyticsStorageService(db_url)
         
     async def get_platform_status(self, user_id: str) -> Dict[str, Any]:
         """Get connection status for GSC and Bing platforms."""
@@ -81,8 +92,10 @@ class SEODashboardService:
         try:
             # Get user's website URL if not provided
             if not site_url:
-                # Try to get from website analysis first
-                website_analysis = self.user_data_service.get_user_website_analysis(int(user_id))
+                # Use SSOT for onboarding data
+                onboarding_data = await self.integration_service.process_onboarding_data(user_id, self.db)
+                website_analysis = onboarding_data.get('website_analysis', {})
+                
                 if website_analysis and website_analysis.get('website_url'):
                     site_url = website_analysis['website_url']
                 else:
@@ -115,6 +128,10 @@ class SEODashboardService:
             
             # Generate AI insights
             ai_insights = await self._generate_ai_insights(summary, timeseries, competitor_insights)
+
+            technical_seo_audit = self._get_technical_seo_audit_overview(user_id, site_url)
+            
+            advertools_insights = self._get_advertools_insights(user_id, site_url)
             
             return {
                 "website_url": site_url,
@@ -124,12 +141,71 @@ class SEODashboardService:
                 "competitor_insights": competitor_insights,
                 "health_score": health_score,
                 "ai_insights": ai_insights,
+                "technical_seo_audit": technical_seo_audit,
+                "advertools_insights": advertools_insights,
                 "last_updated": datetime.now().isoformat()
             }
             
         except Exception as e:
             logger.error(f"Error getting dashboard overview for user {user_id}: {e}")
             raise
+
+    def _get_technical_seo_audit_overview(self, user_id: str, site_url: str) -> Dict[str, Any]:
+        site_key = (site_url or "").rstrip("/")
+
+        try:
+            q = self.db.query(SEOPageAudit).filter(SEOPageAudit.user_id == str(user_id))
+
+            if site_key:
+                q = q.filter(SEOPageAudit.website_url.like(f"{site_key}%"))
+
+            audits = q.order_by(func.coalesce(SEOPageAudit.overall_score, 1000).asc()).all()
+
+            pages_audited = len(audits)
+            scores = [a.overall_score for a in audits if isinstance(a.overall_score, int)]
+            avg_score = round(sum(scores) / len(scores)) if scores else 0
+            fix_scheduled_pages = len([a for a in audits if a.status == 'fix_scheduled'])
+
+            worst_pages = [
+                {
+                    "page_url": a.page_url,
+                    "overall_score": a.overall_score,
+                    "status": a.status,
+                    "issues_count": len(a.issues or []) if isinstance(a.issues, list) else 0
+                }
+                for a in audits[:10]
+            ]
+
+            task = self.db.query(OnboardingFullWebsiteAnalysisTask).filter(
+                OnboardingFullWebsiteAnalysisTask.user_id == str(user_id),
+                OnboardingFullWebsiteAnalysisTask.website_url.like(f"{site_key}%")
+            ).order_by(OnboardingFullWebsiteAnalysisTask.updated_at.desc()).first()
+
+            task_status = None
+            next_execution = None
+            if task:
+                task_status = task.status
+                next_execution = task.next_execution.isoformat() if task.next_execution else None
+
+            return {
+                "status": "ready" if pages_audited > 0 else ("scheduled" if task_status == "active" else "pending"),
+                "task_status": task_status,
+                "next_execution": next_execution,
+                "pages_audited": pages_audited,
+                "avg_score": avg_score,
+                "fix_scheduled_pages": fix_scheduled_pages,
+                "worst_pages": worst_pages
+            }
+        except Exception as e:
+            logger.warning(f"Failed to build technical SEO audit overview for user {user_id}: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "pages_audited": 0,
+                "avg_score": 0,
+                "fix_scheduled_pages": 0,
+                "worst_pages": []
+            }
     
     async def get_gsc_data(self, user_id: str, site_url: Optional[str] = None) -> Dict[str, Any]:
         """Get GSC data for the specified site."""
@@ -181,13 +257,15 @@ class SEODashboardService:
             
             # Get data from Bing storage service
             if site_url:
-                bing_data = self.bing_storage.get_analytics_summary(user_id, site_url, days=30)
+                bing_storage = self._get_bing_storage(user_id)
+                bing_data = bing_storage.get_analytics_summary(user_id, site_url, days=30)
             else:
                 # Get all sites for user
                 sites = self._get_bing_sites(user_id)
                 if sites:
                     logger.info(f"Using first Bing site for analysis: {sites[0]}")
-                    bing_data = self.bing_storage.get_analytics_summary(user_id, sites[0], days=30)
+                    bing_storage = self._get_bing_storage(user_id)
+                    bing_data = bing_storage.get_analytics_summary(user_id, sites[0], days=30)
                 else:
                     logger.warning(f"No Bing sites found for user {user_id}")
                     return {"error": "No Bing sites found", "data": [], "status": "disconnected"}
@@ -249,6 +327,46 @@ class SEODashboardService:
                 "last_updated": datetime.now().isoformat()
             }
     
+    def _get_advertools_insights(self, user_id: str, site_url: str) -> Dict[str, Any]:
+        """Fetch Advertools-based insights from WebsiteAnalysis and AdvertoolsTasks."""
+        try:
+            # 1. Get augmented persona themes from WebsiteAnalysis
+            session = self.db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
+            if not session:
+                return {}
+
+            analysis = self.db.query(WebsiteAnalysis).filter(WebsiteAnalysis.session_id == session.id).first()
+            
+            # 2. Get latest tasks status
+            tasks = self.db.query(AdvertoolsTask).filter(AdvertoolsTask.user_id == user_id).all()
+            
+            audit_status = "pending"
+            health_status = "pending"
+            
+            for task in tasks:
+                t_type = task.payload.get('type') if task.payload else None
+                if t_type == 'content_audit':
+                    audit_status = task.status
+                elif t_type == 'site_health':
+                    health_status = task.status
+
+            brand_analysis = analysis.brand_analysis or {} if analysis else {}
+            seo_audit = analysis.seo_audit or {} if analysis else {}
+
+            return {
+                "augmented_themes": brand_analysis.get('augmented_themes', []),
+                "last_audit": brand_analysis.get('last_advertools_audit'),
+                "site_health": seo_audit.get('site_health', {}),
+                "last_health_check": seo_audit.get('last_advertools_health_check'),
+                "tasks": {
+                    "content_audit": audit_status,
+                    "site_health": health_status
+                }
+            }
+        except Exception as e:
+            logger.warning(f"Failed to fetch Advertools insights for user {user_id}: {e}")
+            return {}
+
     def _get_gsc_sites(self, user_id: str) -> List[str]:
         """Get GSC sites for user."""
         try:

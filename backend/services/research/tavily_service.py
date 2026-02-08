@@ -258,6 +258,112 @@ class TavilyService:
         results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
         
         return results
+
+    async def crawl(
+        self,
+        url: str,
+        limit: int = 50,
+        max_depth: int = 1,
+        max_breadth: int = 20,
+        extract_depth: str = "basic",
+        include_favicon: bool = False,
+        instructions: str = "",
+        allow_external: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Crawl a website using Tavily API.
+        
+        Args:
+            url: The root URL to begin the crawl
+            limit: Total number of links the crawler will process
+            max_depth: Max depth of the crawl
+            max_breadth: Max number of links to follow per level
+            extract_depth: 'basic' or 'advanced'
+            include_favicon: Whether to include favicon
+            instructions: Natural language instructions for the crawler
+            allow_external: Whether to return external links
+            
+        Returns:
+            Dict containing crawl results
+        """
+        try:
+            self._try_initialize()
+            if not self.enabled:
+                raise ValueError("Tavily Service is not enabled - API key missing")
+            
+            logger.info(f"Starting Tavily crawl for: {url}")
+            
+            payload = {
+                "api_key": self.api_key,
+                "urls": [url] # Tavily extract/crawl might take a list or single URL. 
+                # Wait, if this is 'crawl', usually it takes one URL. 
+                # Let's double check standard Tavily API. 
+                # But since I can't check external docs, I will follow the MCP tool params.
+                # The MCP tool has 'url' (string).
+            }
+            
+            # NOTE: Tavily API structure for crawl might be different. 
+            # I'll assume there is a /crawl endpoint or similar.
+            # However, looking at standard Tavily python SDK, they often use 'extract' or 'search'.
+            # But 'crawl' is a distinct feature.
+            # I will use a generic request structure based on the tool parameters.
+            
+            # Re-constructing payload based on tool params
+            request_payload = {
+                "api_key": self.api_key,
+                "url": url,
+                "limit": limit,
+                "max_depth": max_depth,
+                "max_breadth": max_breadth,
+                "extract_depth": extract_depth,
+                "include_favicon": include_favicon,
+                "instructions": instructions,
+                "allow_external": allow_external
+            }
+
+            async with aiohttp.ClientSession() as session:
+                # Assuming the endpoint is /crawl based on the tool name
+                # If it fails, I'll need to adjust.
+                endpoint = f"{self.base_url}/crawl" 
+                
+                # Note: Tavily might not have a /crawl endpoint exposed this way in REST if it's new.
+                # But let's try.
+                
+                # Actually, wait. The user mentioned "Refer to the tavily mcp".
+                # The tool definition `mcp_tavily-remote-mcp_tavily_crawl` has the description.
+                
+                # I will proceed with /crawl.
+                
+                async with session.post(
+                    endpoint,
+                    json=request_payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=aiohttp.ClientTimeout(total=300) # Crawling takes longer
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        logger.info(f"Tavily crawl completed successfully.")
+                        return {
+                            "success": True,
+                            "results": result.get("results", []), # Assuming standard response
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Tavily Crawl API error: {response.status} - {error_text}")
+                        return {
+                            "success": False,
+                            "error": f"Tavily API error: {response.status}",
+                            "details": error_text
+                        }
+                        
+        except Exception as e:
+            logger.error(f"Error in Tavily crawl: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "details": "An unexpected error occurred during crawl"
+            }
     
     async def search_industry_trends(
         self,

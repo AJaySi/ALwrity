@@ -1,7 +1,6 @@
 import { ResearchProvider, ResearchConfig } from "./blogWriterApi";
 import {
   storyWriterApi,
-  StoryScene,
   StorySetupGenerationResponse,
 } from "./storyWriterApi";
 import { getResearchConfig, ResearchPersona } from "../api/researchConfig";

@@ -28,7 +28,10 @@ from services.seo_tools.on_page_seo_service import OnPageSEOService
 from services.seo_tools.technical_seo_service import TechnicalSEOService
 from services.seo_tools.enterprise_seo_service import EnterpriseSEOService
 from services.seo_tools.content_strategy_service import ContentStrategyService
+from services.database import get_session_for_user
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from middleware.logging_middleware import log_api_call, save_to_file
+from middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/api/seo", tags=["AI SEO Tools"])
 
@@ -113,6 +116,10 @@ class WorkflowRequest(BaseModel):
     target_keywords: Optional[List[str]] = Field(None, description="Target keywords")
     custom_parameters: Optional[Dict[str, Any]] = Field(None, description="Custom workflow parameters")
 
+class CompetitiveSitemapBenchmarkingRunRequest(BaseModel):
+    max_competitors: int = Field(default=5, ge=1, le=10, description="Max competitors to analyze")
+    competitors: Optional[List[HttpUrl]] = Field(None, description="Optional explicit competitor URLs")
+
 # Exception Handler
 async def handle_seo_tool_exception(func_name: str, error: Exception, request_data: Dict) -> ErrorResponse:
     """Handle exceptions from SEO tools with intelligent logging"""
@@ -150,7 +157,8 @@ async def handle_seo_tool_exception(func_name: str, error: Exception, request_da
 @log_api_call
 async def generate_meta_description(
     request: MetaDescriptionRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
 ) -> Union[BaseResponse, ErrorResponse]:
     """
     Generate AI-powered SEO meta descriptions
@@ -161,13 +169,15 @@ async def generate_meta_description(
     start_time = datetime.utcnow()
     
     try:
+        user_id = str(current_user.get("id")) if current_user else None
         service = MetaDescriptionService()
         result = await service.generate_meta_description(
             keywords=request.keywords,
             tone=request.tone,
             search_intent=request.search_intent,
             language=request.language,
-            custom_prompt=request.custom_prompt
+            custom_prompt=request.custom_prompt,
+            user_id=user_id
         )
         
         execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -197,7 +207,8 @@ async def generate_meta_description(
 @log_api_call
 async def analyze_pagespeed(
     request: PageSpeedRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
 ) -> Union[BaseResponse, ErrorResponse]:
     """
     Analyze website performance using Google PageSpeed Insights
@@ -208,12 +219,14 @@ async def analyze_pagespeed(
     start_time = datetime.utcnow()
     
     try:
+        user_id = str(current_user.get("id")) if current_user else None
         service = PageSpeedService()
         result = await service.analyze_pagespeed(
             url=str(request.url),
             strategy=request.strategy,
             locale=request.locale,
-            categories=request.categories
+            categories=request.categories,
+            user_id=user_id
         )
         
         execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -243,7 +256,8 @@ async def analyze_pagespeed(
 @log_api_call
 async def analyze_sitemap(
     request: SitemapAnalysisRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
 ) -> Union[BaseResponse, ErrorResponse]:
     """
     Analyze website sitemap for content structure and trends
@@ -254,11 +268,13 @@ async def analyze_sitemap(
     start_time = datetime.utcnow()
     
     try:
+        user_id = str(current_user.get("id")) if current_user else None
         service = SitemapService()
         result = await service.analyze_sitemap(
             sitemap_url=str(request.sitemap_url),
             analyze_content_trends=request.analyze_content_trends,
-            analyze_publishing_patterns=request.analyze_publishing_patterns
+            analyze_publishing_patterns=request.analyze_publishing_patterns,
+            user_id=user_id
         )
         
         execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -538,7 +554,8 @@ async def execute_website_audit(
 @log_api_call
 async def execute_content_analysis(
     request: WorkflowRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
 ) -> Union[BaseResponse, ErrorResponse]:
     """
     AI-powered content analysis workflow
@@ -549,12 +566,14 @@ async def execute_content_analysis(
     start_time = datetime.utcnow()
     
     try:
+        user_id = str(current_user.get("id")) if current_user else None
         service = ContentStrategyService()
         result = await service.analyze_content_strategy(
             website_url=str(request.website_url),
             competitors=[str(comp) for comp in request.competitors] if request.competitors else [],
             target_keywords=request.target_keywords or [],
-            custom_parameters=request.custom_parameters or {}
+            custom_parameters=request.custom_parameters or {},
+            user_id=user_id
         )
         
         execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -579,6 +598,164 @@ async def execute_content_analysis(
         
     except Exception as e:
         return await handle_seo_tool_exception("execute_content_analysis", e, request.dict())
+
+# Background Task for Sitemap Benchmarking
+async def _run_sitemap_benchmark_background(
+    user_id: str,
+    website_url: str,
+    competitors: List[str],
+    max_competitors: int
+):
+    """Background task for running sitemap benchmarking"""
+    logger.info(f"Starting background sitemap benchmark for user {user_id}")
+    
+    # Create a new session for the background task
+    db = get_session_for_user(user_id)
+    if not db:
+        logger.error(f"Failed to get database session for user {user_id}")
+        return
+
+    try:
+        service = ContentStrategyService()
+        integration_service = OnboardingDataIntegrationService()
+        
+        # Run analysis (long running)
+        report = await service.analyze_competitive_sitemap_benchmarking(
+            website_url=website_url,
+            competitors=competitors,
+            max_competitors=max_competitors,
+            user_id=user_id
+        )
+
+        # Persist results
+        persisted = await integration_service.store_competitive_sitemap_benchmarking(user_id, report, db)
+        
+        if persisted:
+            logger.info(f"✅ Background sitemap benchmark completed and saved for user {user_id}")
+        else:
+            logger.error(f"❌ Failed to persist background sitemap benchmark for user {user_id}")
+            await integration_service.update_competitive_sitemap_benchmarking_status(user_id, "failed", db, error="Failed to persist results")
+
+    except Exception as e:
+        logger.error(f"❌ Error in background sitemap benchmark for user {user_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        try:
+            integration_service = OnboardingDataIntegrationService()
+            await integration_service.update_competitive_sitemap_benchmarking_status(user_id, "failed", db, error=str(e))
+        except Exception as update_err:
+            logger.error(f"Failed to update error status: {update_err}")
+    finally:
+        db.close()
+
+@router.post("/competitive-sitemap-benchmarking/run", response_model=BaseResponse)
+@log_api_call
+async def run_competitive_sitemap_benchmarking(
+    request: CompetitiveSitemapBenchmarkingRunRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    start_time = datetime.utcnow()
+
+    try:
+        user_id = str(current_user.get("id")) if current_user else None
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        # Get initial data to validate request
+        db = get_session_for_user(user_id)
+        if not db:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        try:
+            integration_service = OnboardingDataIntegrationService()
+            integrated = integration_service.get_integrated_data_sync(user_id, db)
+            website_analysis = integrated.get("website_analysis") if isinstance(integrated, dict) else {}
+            website_url = website_analysis.get("website_url") if isinstance(website_analysis, dict) else None
+
+            competitor_urls: List[str] = []
+            if request.competitors:
+                competitor_urls = [str(c) for c in request.competitors]
+            else:
+                competitor_analysis = integrated.get("competitor_analysis") if isinstance(integrated, dict) else []
+                if isinstance(competitor_analysis, list):
+                    for comp in competitor_analysis:
+                        if not isinstance(comp, dict):
+                            continue
+                        url = comp.get("competitor_url") or comp.get("url") or comp.get("website_url")
+                        if url:
+                            competitor_urls.append(str(url))
+
+            if not website_url:
+                raise HTTPException(status_code=400, detail="No website_url found. Complete onboarding step 2 first.")
+
+            # Set status to processing
+            await integration_service.update_competitive_sitemap_benchmarking_status(user_id, "processing", db)
+
+            # Queue background task
+            background_tasks.add_task(
+                _run_sitemap_benchmark_background,
+                user_id=user_id,
+                website_url=str(website_url),
+                competitors=competitor_urls,
+                max_competitors=request.max_competitors
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+
+            return BaseResponse(
+                success=True,
+                message="Competitive sitemap benchmarking started in background",
+                execution_time=execution_time,
+                data={
+                    "status": "queued",
+                    "competitors_count": len(competitor_urls)
+                }
+            )
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+    except Exception as e:
+        return await handle_seo_tool_exception("run_competitive_sitemap_benchmarking", e, request.dict())
+
+@router.get("/competitive-sitemap-benchmarking", response_model=BaseResponse)
+@log_api_call
+async def get_competitive_sitemap_benchmarking(
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    try:
+        user_id = str(current_user.get("id")) if current_user else None
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        db = get_session_for_user(user_id)
+        if not db:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        try:
+            integration_service = OnboardingDataIntegrationService()
+            integrated = integration_service.get_integrated_data_sync(user_id, db)
+            website_analysis = integrated.get("website_analysis") if isinstance(integrated, dict) else {}
+            seo_audit = website_analysis.get("seo_audit") if isinstance(website_analysis, dict) else {}
+            report = seo_audit.get("competitive_sitemap_benchmarking") if isinstance(seo_audit, dict) else None
+
+            return BaseResponse(
+                success=True,
+                message="Competitive sitemap benchmarking loaded",
+                data={
+                    "report": report
+                }
+            )
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+    except Exception as e:
+        return await handle_seo_tool_exception("get_competitive_sitemap_benchmarking", e, {})
 
 # Health and Status Endpoints
 

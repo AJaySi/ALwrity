@@ -41,8 +41,10 @@ class LinkedInImageStorage:
         if storage_path:
             self.base_storage_path = Path(storage_path)
         else:
-            # Default to project-relative path
-            self.base_storage_path = Path(__file__).parent.parent.parent.parent / "linkedin_images"
+            # Default to project-relative path: root/data/media/linkedin_images
+            # services/linkedin/image_generation/linkedin_image_storage.py -> image_generation -> linkedin -> services -> backend -> root
+            root_dir = Path(__file__).parent.parent.parent.parent.parent
+            self.base_storage_path = root_dir / "data" / "media" / "linkedin_images"
         
         # Create storage directories
         self.images_path = self.base_storage_path / "images"
@@ -82,15 +84,17 @@ class LinkedInImageStorage:
         self, 
         image_data: bytes, 
         metadata: Dict[str, Any],
-        content_type: str = "post"
+        content_type: str = "post",
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Store generated image with metadata.
         
         Args:
             image_data: Image data in bytes
-            image_metadata: Image metadata and context
+            metadata: Image metadata and context
             content_type: Type of LinkedIn content (post, article, carousel, video_script)
+            user_id: Optional user ID for workspace storage
             
         Returns:
             Dict containing storage result and image ID
@@ -110,7 +114,7 @@ class LinkedInImageStorage:
                 }
             
             # Determine storage path based on content type
-            storage_path = self._get_storage_path(content_type, image_id)
+            storage_path = self._get_storage_path(content_type, image_id, user_id)
             
             # Store image file
             image_stored = await self._store_image_file(image_data, storage_path)
@@ -121,7 +125,7 @@ class LinkedInImageStorage:
                 }
             
             # Store metadata
-            metadata_stored = await self._store_metadata(image_id, metadata, storage_path)
+            metadata_stored = await self._store_metadata(image_id, metadata, storage_path, user_id)
             if not metadata_stored:
                 # Clean up image file if metadata storage fails
                 await self._cleanup_failed_storage(storage_path)
@@ -154,19 +158,20 @@ class LinkedInImageStorage:
                 'error': f"Image storage failed: {str(e)}"
             }
     
-    async def retrieve_image(self, image_id: str) -> Dict[str, Any]:
+    async def retrieve_image(self, image_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieve stored image by ID.
         
         Args:
             image_id: Unique image identifier
+            user_id: Optional user ID to locate the image
             
         Returns:
             Dict containing image data and metadata
         """
         try:
             # Find image file
-            image_path = await self._find_image_by_id(image_id)
+            image_path = await self._find_image_by_id(image_id, user_id)
             if not image_path:
                 return {
                     'success': False,
@@ -174,7 +179,7 @@ class LinkedInImageStorage:
                 }
             
             # Load metadata
-            metadata = await self._load_metadata(image_id)
+            metadata = await self._load_metadata(image_id, user_id)
             if not metadata:
                 return {
                     'success': False,
@@ -199,19 +204,20 @@ class LinkedInImageStorage:
                 'error': f"Image retrieval failed: {str(e)}"
             }
     
-    async def delete_image(self, image_id: str) -> Dict[str, Any]:
+    async def delete_image(self, image_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Delete stored image and metadata.
         
         Args:
             image_id: Unique image identifier
+            user_id: Optional user ID to locate the image
             
         Returns:
             Dict containing deletion result
         """
         try:
             # Find image file
-            image_path = await self._find_image_by_id(image_id)
+            image_path = await self._find_image_by_id(image_id, user_id)
             if not image_path:
                 return {
                     'success': False,
@@ -224,7 +230,8 @@ class LinkedInImageStorage:
                 logger.info(f"Deleted image file: {image_path}")
             
             # Delete metadata
-            metadata_path = self.metadata_path / f"{image_id}.json"
+            _, metadata_base = self._get_workspace_paths(user_id)
+            metadata_path = metadata_base / f"{image_id}.json"
             if metadata_path.exists():
                 metadata_path.unlink()
                 logger.info(f"Deleted metadata file: {metadata_path}")
@@ -449,7 +456,35 @@ class LinkedInImageStorage:
                 'error': f'Validation error: {str(e)}'
             }
     
-    def _get_storage_path(self, content_type: str, image_id: str) -> Path:
+    def _get_workspace_paths(self, user_id: Optional[str]) -> Tuple[Path, Path]:
+        """
+        Get images and metadata paths for a user or default global paths.
+        Returns (images_path, metadata_path).
+        """
+        if user_id:
+            try:
+                # Use local import to avoid circular dependency
+                from services.database import get_db
+                from services.user_workspace_manager import UserWorkspaceManager
+                
+                db_gen = get_db()
+                db = next(db_gen)
+                try:
+                    workspace_manager = UserWorkspaceManager(db)
+                    workspace = workspace_manager.get_user_workspace(user_id)
+                    if workspace:
+                        # Align with global structure: linkedin_images/images and linkedin_images/metadata
+                        base = Path(workspace['workspace_path']) / "media" / "linkedin_images"
+                        return (base / "images", base / "metadata")
+                finally:
+                    if 'db' in locals():
+                        db.close()
+            except Exception as e:
+                logger.warning(f"Failed to resolve user workspace path: {e}")
+        
+        return (self.images_path, self.metadata_path)
+
+    def _get_storage_path(self, content_type: str, image_id: str, user_id: Optional[str] = None) -> Path:
         """Get storage path for image based on content type."""
         # Map content types to directory names
         content_type_map = {
@@ -460,7 +495,9 @@ class LinkedInImageStorage:
         }
         
         directory = content_type_map.get(content_type, 'posts')
-        return self.images_path / directory / f"{image_id}.png"
+        
+        images_path, _ = self._get_workspace_paths(user_id)
+        return images_path / directory / f"{image_id}.png"
     
     async def _store_image_file(self, image_data: bytes, storage_path: Path) -> bool:
         """Store image file to disk."""
@@ -479,7 +516,7 @@ class LinkedInImageStorage:
             logger.error(f"Error storing image file: {str(e)}")
             return False
     
-    async def _store_metadata(self, image_id: str, metadata: Dict[str, Any], storage_path: Path) -> bool:
+    async def _store_metadata(self, image_id: str, metadata: Dict[str, Any], storage_path: Path, user_id: Optional[str] = None) -> bool:
         """Store image metadata to JSON file."""
         try:
             # Add storage metadata
@@ -487,8 +524,12 @@ class LinkedInImageStorage:
             metadata['storage_path'] = str(storage_path)
             metadata['stored_at'] = datetime.now().isoformat()
             
+            # Determine metadata path
+            _, metadata_base = self._get_workspace_paths(user_id)
+            metadata_base.mkdir(parents=True, exist_ok=True)
+            
             # Write metadata file
-            metadata_path = self.metadata_path / f"{image_id}.json"
+            metadata_path = metadata_base / f"{image_id}.json"
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2, default=str)
             
@@ -499,20 +540,42 @@ class LinkedInImageStorage:
             logger.error(f"Error storing metadata: {str(e)}")
             return False
     
-    async def _find_image_by_id(self, image_id: str) -> Optional[Path]:
+    async def _find_image_by_id(self, image_id: str, user_id: Optional[str] = None) -> Optional[Path]:
         """Find image file by ID across all content type directories."""
-        for content_dir in self.images_path.iterdir():
-            if content_dir.is_dir():
-                image_path = content_dir / f"{image_id}.png"
-                if image_path.exists():
-                    return image_path
+        images_path, _ = self._get_workspace_paths(user_id)
+        
+        # If user_id is NOT provided, we might want to check global path only, 
+        # OR we might want to check if it's a global image. 
+        # Current implementation assumes if user_id is provided, look there.
+        # If not provided, look in global.
+        
+        if images_path.exists():
+            for content_dir in images_path.iterdir():
+                if content_dir.is_dir():
+                    image_path = content_dir / f"{image_id}.png"
+                    if image_path.exists():
+                        return image_path
         
         return None
     
-    async def _load_metadata(self, image_id: str) -> Optional[Dict[str, Any]]:
+    async def get_image_metadata(self, image_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get metadata for an image.
+        
+        Args:
+            image_id: Unique image identifier
+            user_id: Optional user ID
+            
+        Returns:
+            Dict containing image metadata if found
+        """
+        return await self._load_metadata(image_id, user_id)
+
+    async def _load_metadata(self, image_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Load metadata for image ID."""
         try:
-            metadata_path = self.metadata_path / f"{image_id}.json"
+            _, metadata_base = self._get_workspace_paths(user_id)
+            metadata_path = metadata_base / f"{image_id}.json"
             if metadata_path.exists():
                 with open(metadata_path, 'r') as f:
                     return json.load(f)

@@ -11,9 +11,70 @@ from loguru import logger
 
 class PersonaPromptBuilder:
     """Builds comprehensive prompts for persona generation."""
+
+    def _prune_for_prompt(
+        self,
+        value: Any,
+        *,
+        max_depth: int = 4,
+        max_list_items: int = 24,
+        max_dict_items: int = 60,
+        max_str_len: int = 1800,
+        _depth: int = 0,
+    ) -> Any:
+        if _depth >= max_depth:
+            if isinstance(value, (dict, list)):
+                return {"_truncated": True}
+            if isinstance(value, str) and len(value) > max_str_len:
+                return value[:max_str_len] + "…"
+            return value
+
+        if isinstance(value, dict):
+            pruned: Dict[str, Any] = {}
+            for i, (k, v) in enumerate(value.items()):
+                if i >= max_dict_items:
+                    pruned["_truncated_keys"] = True
+                    break
+                pruned[k] = self._prune_for_prompt(
+                    v,
+                    max_depth=max_depth,
+                    max_list_items=max_list_items,
+                    max_dict_items=max_dict_items,
+                    max_str_len=max_str_len,
+                    _depth=_depth + 1,
+                )
+            return pruned
+
+        if isinstance(value, list):
+            pruned_list = []
+            for i, item in enumerate(value[:max_list_items]):
+                pruned_list.append(
+                    self._prune_for_prompt(
+                        item,
+                        max_depth=max_depth,
+                        max_list_items=max_list_items,
+                        max_dict_items=max_dict_items,
+                        max_str_len=max_str_len,
+                        _depth=_depth + 1,
+                    )
+                )
+            if len(value) > max_list_items:
+                pruned_list.append({"_truncated_items": True})
+            return pruned_list
+
+        if isinstance(value, str) and len(value) > max_str_len:
+            return value[:max_str_len] + "…"
+
+        return value
+
+    def _json_for_prompt(self, value: Any) -> str:
+        try:
+            return json.dumps(self._prune_for_prompt(value), indent=2, ensure_ascii=False)
+        except Exception:
+            return json.dumps({"_error": "Failed to serialize"}, indent=2)
     
     def build_persona_analysis_prompt(self, onboarding_data: Dict[str, Any]) -> str:
-        """Build the main persona analysis prompt with comprehensive data."""
+        """Build the main brand voice analysis prompt with comprehensive data."""
         
         # Handle both frontend-style data and backend database-style data
         # Frontend sends: {websiteAnalysis, competitorResearch, sitemapAnalysis, businessData}
@@ -26,6 +87,11 @@ class PersonaPromptBuilder:
             competitor_research = onboarding_data.get("competitorResearch", {}) or {}
             sitemap_analysis = onboarding_data.get("sitemapAnalysis", {}) or {}
             business_data = onboarding_data.get("businessData", {}) or {}
+            research_preferences = onboarding_data.get("researchPreferences", {}) or {}
+            deep_competitor_analysis = onboarding_data.get("deepCompetitorAnalysis", {}) or {}
+
+            crawl_result = website_analysis.get("crawl_result", {}) or {}
+            meta_info = website_analysis.get("meta_info") or crawl_result.get("meta_info") or {}
             
             # Create enhanced_analysis from frontend data
             enhanced_analysis = {
@@ -33,8 +99,14 @@ class PersonaPromptBuilder:
                 "content_insights": website_analysis.get("content_characteristics", {}),
                 "audience_intelligence": website_analysis.get("target_audience", {}),
                 "technical_writing_metrics": website_analysis.get("style_patterns", {}),
+                "brand_dna": website_analysis.get("brand_analysis", {}),
+                "style_guidelines": website_analysis.get("style_guidelines", {}),
+                "social_media_presence": website_analysis.get("social_media_presence", {}),
                 "competitive_analysis": competitor_research,
-                "sitemap_data": sitemap_analysis,
+                "deep_competitor_analysis": deep_competitor_analysis,
+                "sitemap_analysis": sitemap_analysis,
+                "meta_data": meta_info,
+                "research_preferences": research_preferences,
                 "business_context": business_data
             }
             research_prefs = {}
@@ -42,10 +114,18 @@ class PersonaPromptBuilder:
             # Backend database-style data
             enhanced_analysis = onboarding_data.get("enhanced_analysis", {})
             website_analysis = onboarding_data.get("website_analysis", {}) or {}
+            # Ensure Brand DNA and Guidelines are present if available in website_analysis but not enhanced_analysis
+            if "brand_dna" not in enhanced_analysis:
+                enhanced_analysis["brand_dna"] = website_analysis.get("brand_analysis", {})
+            if "style_guidelines" not in enhanced_analysis:
+                enhanced_analysis["style_guidelines"] = website_analysis.get("style_guidelines", {})
+            if "social_media_presence" not in enhanced_analysis:
+                enhanced_analysis["social_media_presence"] = website_analysis.get("social_media_presence", {})
+            
             research_prefs = onboarding_data.get("research_preferences", {}) or {}
         
         prompt = f"""
-COMPREHENSIVE PERSONA GENERATION TASK: Create a highly detailed, data-driven writing persona based on extensive AI analysis of user's website and content strategy.
+COMPREHENSIVE BRAND VOICE GENERATION TASK: Create a highly detailed, data-driven Brand Writing Style and Identity based on extensive AI analysis of user's website and content strategy.
 
 === COMPREHENSIVE ONBOARDING DATA ANALYSIS ===
 
@@ -54,42 +134,62 @@ WEBSITE ANALYSIS OVERVIEW:
 - Analysis Date: {website_analysis.get('analysis_date', 'Not provided')}
 - Status: {website_analysis.get('status', 'Not provided')}
 
+=== BRAND DNA & VALUES ===
+{self._json_for_prompt(enhanced_analysis.get('brand_dna', {}))}
+
 === DETAILED STYLE ANALYSIS ===
-{json.dumps(enhanced_analysis.get('comprehensive_style_analysis', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('comprehensive_style_analysis', {}))}
+
+=== STYLE GUIDELINES ===
+{self._json_for_prompt(enhanced_analysis.get('style_guidelines', {}))}
 
 === CONTENT INSIGHTS ===
-{json.dumps(enhanced_analysis.get('content_insights', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('content_insights', {}))}
 
 === AUDIENCE INTELLIGENCE ===
-{json.dumps(enhanced_analysis.get('audience_intelligence', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('audience_intelligence', {}))}
+
+=== SOCIAL MEDIA PRESENCE ===
+{self._json_for_prompt(enhanced_analysis.get('social_media_presence', {}))}
 
 === BRAND VOICE ANALYSIS ===
-{json.dumps(enhanced_analysis.get('brand_voice_analysis', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('brand_voice_analysis', {}))}
 
 === TECHNICAL WRITING METRICS ===
-{json.dumps(enhanced_analysis.get('technical_writing_metrics', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('technical_writing_metrics', {}))}
 
 === COMPETITIVE ANALYSIS ===
-{json.dumps(enhanced_analysis.get('competitive_analysis', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('competitive_analysis', {}))}
+
+=== DEEP COMPETITOR INSIGHTS ===
+{self._json_for_prompt(enhanced_analysis.get('deep_competitor_analysis', {}))}
+
+=== SITEMAP ANALYSIS ===
+{self._json_for_prompt(enhanced_analysis.get('sitemap_analysis', {}) or enhanced_analysis.get('sitemap_data', {}))}
+
+=== META DATA ANALYSIS ===
+{self._json_for_prompt(enhanced_analysis.get('meta_data', {}))}
 
 === CONTENT STRATEGY INSIGHTS ===
-{json.dumps(enhanced_analysis.get('content_strategy_insights', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('content_strategy_insights', {}))}
 
 === RESEARCH PREFERENCES ===
-{json.dumps(enhanced_analysis.get('research_preferences', {}), indent=2)}
+{self._json_for_prompt(enhanced_analysis.get('research_preferences', {}))}
 
-=== LEGACY DATA (for compatibility) ===
-Website Analysis: {json.dumps(website_analysis.get('writing_style', {}), indent=2)}
-Content Characteristics: {json.dumps(website_analysis.get('content_characteristics', {}) or {}, indent=2)}
-Target Audience: {json.dumps(website_analysis.get('target_audience', {}), indent=2)}
-Style Patterns: {json.dumps(website_analysis.get('style_patterns', {}), indent=2)}
+=== LEGACY FIELDS (minimal; use if needed) ===
+{self._json_for_prompt({
+    "writing_style": website_analysis.get("writing_style", {}),
+    "content_characteristics": website_analysis.get("content_characteristics", {}) or {},
+    "target_audience": website_analysis.get("target_audience", {}),
+    "style_patterns": website_analysis.get("style_patterns", {}),
+})}
 
-=== COMPREHENSIVE PERSONA GENERATION REQUIREMENTS ===
+=== COMPREHENSIVE BRAND IDENTITY GENERATION REQUIREMENTS ===
 
-1. IDENTITY CREATION (Based on Brand Analysis):
-   - Create a memorable persona name that captures the essence of the brand personality and writing style
+1. BRAND IDENTITY CREATION (Based on Brand Analysis):
+   - Create a memorable brand voice name that captures the essence of the brand personality and writing style
    - Define a clear archetype that reflects the brand's positioning and audience appeal
-   - Articulate a core belief that drives the writing philosophy and brand values
+   - Articulate a core mission and belief that drives the writing philosophy and brand values
    - Write a comprehensive brand voice description incorporating all style elements
 
 2. LINGUISTIC FINGERPRINT (Quantitative Analysis from Technical Metrics):
@@ -138,9 +238,11 @@ Style Patterns: {json.dumps(website_analysis.get('style_patterns', {}), indent=2
 - Apply audience intelligence for targeted communication
 - Include competitive analysis for market positioning
 - Use content strategy insights for practical application
-- Ensure the persona reflects the brand's unique elements and competitive advantages
+- Leverage sitemap structure to identify core content pillars and authority areas
+- Extract brand essence and value propositions from meta data
+- Ensure the Brand Voice reflects the brand's unique elements and competitive advantages
 
-Generate a comprehensive, data-driven persona profile that accurately captures the writing style and brand voice to replicate consistently across different platforms.
+Generate a comprehensive, data-driven Brand Voice profile that accurately captures the writing style and brand identity to replicate consistently across different platforms.
 """
         
         return prompt

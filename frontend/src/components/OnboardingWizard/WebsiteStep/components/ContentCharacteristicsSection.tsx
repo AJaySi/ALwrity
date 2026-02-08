@@ -33,10 +33,16 @@ interface ContentCharacteristics {
 
 interface ContentCharacteristicsSectionProps {
   contentCharacteristics?: ContentCharacteristics;
+  isEditable?: boolean;
+  onUpdate?: (field: string, value: any) => void;
+  hideHeader?: boolean;
 }
 
 const ContentCharacteristicsSection: React.FC<ContentCharacteristicsSectionProps> = ({
-  contentCharacteristics
+  contentCharacteristics,
+  isEditable,
+  onUpdate,
+  hideHeader
 }) => {
   const styles = useOnboardingStyles();
 

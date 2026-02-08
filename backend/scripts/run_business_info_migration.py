@@ -14,11 +14,18 @@ from loguru import logger
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-def run_migration():
+from services.database import get_user_db_path
+
+def run_migration(user_id=None):
     """Run the business info table migration."""
     try:
         # Get the database path
-        db_path = backend_dir / "alwrity.db"
+        if user_id:
+            db_path = Path(get_user_db_path(user_id))
+            logger.info(f"Targeting user database: {db_path}")
+        else:
+            logger.error("❌ Error: user_id is required for migration.")
+            return False
         
         logger.info(f"🔄 Starting business info table migration...")
         logger.info(f"📁 Database path: {db_path}")
@@ -90,7 +97,11 @@ def run_migration():
 if __name__ == "__main__":
     logger.info("🚀 Starting ALwrity Business Info Migration")
     
-    success = run_migration()
+    parser = argparse.ArgumentParser(description="Run business info migration")
+    parser.add_argument("--user_id", help="Target specific user ID")
+    args = parser.parse_args()
+    
+    success = run_migration(args.user_id)
     
     if success:
         logger.success("🎉 Migration completed successfully!")

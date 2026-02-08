@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 
 class BusinessInfoRequest(BaseModel):
-    user_id: Optional[int] = None
+    user_id: Optional[str] = None
     business_description: str = Field(..., min_length=10, max_length=1000, description="Description of the business")
     industry: Optional[str] = Field(None, max_length=100, description="Industry sector")
     target_audience: Optional[str] = Field(None, max_length=500, description="Target audience description")
@@ -12,7 +12,7 @@ class BusinessInfoRequest(BaseModel):
 
 class BusinessInfoResponse(BaseModel):
     id: int
-    user_id: Optional[int]
+    user_id: Optional[str]
     business_description: str
     industry: Optional[str]
     target_audience: Optional[str]

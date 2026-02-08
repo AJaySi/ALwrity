@@ -99,6 +99,8 @@ from api.content_planning.strategy_copilot import router as strategy_copilot_rou
 # Import database service
 from services.database import init_database, close_database
 
+# Trigger reload for monitoring fix
+
 # Import OAuth token monitoring routes
 from api.oauth_token_monitoring_routes import router as oauth_token_monitoring_router
 
@@ -120,7 +122,14 @@ from api.seo_dashboard import (
     get_gsc_raw_data,
     get_bing_raw_data,
     get_competitive_insights,
-    refresh_analytics_data
+    get_deep_competitor_analysis,
+    run_strategic_insights,
+    get_strategic_insights_history,
+    refresh_analytics_data,
+    analyze_urls_ai,
+    AnalyzeURLsRequest,
+    get_analyzed_pages,
+    get_semantic_health  # Phase 2B: Semantic health monitoring
 )
 
 # Initialize FastAPI app
@@ -282,6 +291,21 @@ async def competitive_insights_endpoint(current_user: dict = Depends(get_current
     """Get competitive insights from onboarding step 3 data."""
     return await get_competitive_insights(current_user, site_url)
 
+@app.get("/api/seo-dashboard/deep-competitor-analysis")
+async def deep_competitor_analysis_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Get deep competitor analysis results (auto-scheduled post-onboarding)."""
+    return await get_deep_competitor_analysis(current_user, site_url)
+
+@app.post("/api/seo-dashboard/strategic-insights/run")
+async def run_strategic_insights_endpoint(current_user: dict = Depends(get_current_user)):
+    """Run AI-powered strategic insights analysis manually."""
+    return await run_strategic_insights(current_user)
+
+@app.get("/api/seo-dashboard/strategic-insights/history")
+async def get_strategic_insights_history_endpoint(current_user: dict = Depends(get_current_user)):
+    """Fetch the history of strategic insights for the user."""
+    return await get_strategic_insights_history(current_user)
+
 @app.post("/api/seo-dashboard/refresh")
 async def refresh_analytics_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
     """Refresh analytics data by invalidating cache and fetching fresh data."""
@@ -291,6 +315,27 @@ async def refresh_analytics_data_endpoint(current_user: dict = Depends(get_curre
 async def seo_dashboard_health():
     """Health check for SEO dashboard."""
     return await seo_dashboard_health_check()
+
+# Phase 2B: Semantic health monitoring endpoint (24-hour polling)
+@app.get("/api/seo-dashboard/semantic-health")
+async def semantic_health_endpoint(current_user: dict = Depends(get_current_user)):
+    """
+    Get real-time semantic health metrics for content and competitors.
+    This endpoint provides Phase 2B semantic intelligence monitoring data.
+    
+    Returns semantic health score, status, and recommendations.
+    Data is cached and updated every 24 hours via scheduler.
+    """
+    return await get_semantic_health(current_user)
+
+
+@app.get("/api/seo-dashboard/cache-stats")
+async def semantic_cache_stats_endpoint(current_user: dict = Depends(get_current_user)):
+    """
+    Get semantic cache performance statistics.
+    Returns hit rate, memory usage, and eviction counts.
+    """
+    return await get_semantic_cache_stats(current_user)
 
 # Comprehensive SEO Analysis endpoints
 @app.post("/api/seo-dashboard/analyze-comprehensive")
@@ -317,6 +362,11 @@ async def seo_analysis_summary(url: str):
 async def batch_analyze_urls_endpoint(urls: list[str]):
     """Analyze multiple URLs in batch."""
     return await batch_analyze_urls(urls)
+
+@app.post("/api/seo-dashboard/analyze-urls-ai")
+async def analyze_urls_ai_endpoint(request: AnalyzeURLsRequest, current_user: dict = Depends(get_current_user)):
+    """Run AI-powered SEO analysis on selected URLs."""
+    return await analyze_urls_ai(request, current_user)
 
 # Include platform analytics router
 from routers.platform_analytics import router as platform_analytics_router
@@ -349,6 +399,14 @@ app.include_router(research_engine_router, tags=["Research Engine"])
 from api.scheduler_dashboard import router as scheduler_dashboard_router
 app.include_router(scheduler_dashboard_router)
 app.include_router(oauth_token_monitoring_router)
+
+# Autonomous Agents API routes (Phase 3A)
+from api.agents_api import router as agents_router
+app.include_router(agents_router)
+
+# Today workflow routes
+from api.today_workflow import router as today_workflow_router
+app.include_router(today_workflow_router)
 
 # Setup frontend serving using modular utilities
 frontend_serving.setup_frontend_serving()

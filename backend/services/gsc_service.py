@@ -3,6 +3,7 @@
 import os
 import json
 import sqlite3
+import secrets
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from google.auth.transport.requests import Request as GoogleRequest
@@ -11,12 +12,16 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from loguru import logger
 
+from services.database import get_user_db_path
+
 class GSCService:
     """Service for Google Search Console integration."""
     
-    def __init__(self, db_path: str = "alwrity.db"):
-        """Initialize GSC service with database connection."""
+    def __init__(self, db_path: str = None):
+        """Initialize GSC service."""
+        # db_path is deprecated in favor of dynamic user_id based paths
         self.db_path = db_path
+        
         # Resolve credentials file robustly: env override or project-relative default
         env_credentials_path = os.getenv("GSC_CREDENTIALS_FILE")
         if env_credentials_path:
@@ -28,13 +33,19 @@ class GSCService:
             self.credentials_file = os.path.join(backend_dir, "gsc_credentials.json")
         logger.info(f"GSC credentials file path set to: {self.credentials_file}")
         self.scopes = ['https://www.googleapis.com/auth/webmasters.readonly']
-        self._init_gsc_tables()
+        # Note: Tables are initialized lazily per user
         logger.info("GSC Service initialized successfully")
     
-    def _init_gsc_tables(self):
+    def _get_db_path(self, user_id: str) -> str:
+        return get_user_db_path(user_id)
+    
+    def _init_gsc_tables(self, user_id: str):
         """Initialize GSC-related database tables."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 
                 # GSC credentials table
@@ -61,16 +72,28 @@ class GSCService:
                     )
                 ''')
                 
+                # GSC OAuth states table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS gsc_oauth_states (
+                        state TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
                 conn.commit()
-                logger.info("GSC database tables initialized successfully")
+                # logger.debug(f"GSC database tables initialized for user {user_id}")
                 
         except Exception as e:
-            logger.error(f"Error initializing GSC tables: {e}")
+            logger.error(f"Error initializing GSC tables for user {user_id}: {e}")
             raise
     
     def save_user_credentials(self, user_id: str, credentials: Credentials) -> bool:
         """Save user's GSC credentials to database."""
         try:
+            self._init_gsc_tables(user_id)
+            db_path = self._get_db_path(user_id)
+            
             # Read client credentials from file to ensure we have all required fields
             with open(self.credentials_file, 'r') as f:
                 client_config = json.load(f)
@@ -86,7 +109,7 @@ class GSCService:
                 'scopes': credentials.scopes
             })
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT OR REPLACE INTO gsc_credentials 
@@ -105,8 +128,17 @@ class GSCService:
     def load_user_credentials(self, user_id: str) -> Optional[Credentials]:
         """Load user's GSC credentials from database."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            if not os.path.exists(db_path):
+                return None
+                
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
+                # Check if table exists first to avoid error on fresh DB
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='gsc_credentials'")
+                if not cursor.fetchone():
+                    return None
+                    
                 cursor.execute('''
                     SELECT credentials_json FROM gsc_credentials 
                     WHERE user_id = ?
@@ -162,26 +194,23 @@ class GSCService:
                 redirect_uri=redirect_uri
             )
             
-            authorization_url, state = flow.authorization_url(
+            # Use a custom state that includes user_id for routing the callback to the correct DB
+            random_state = secrets.token_urlsafe(32)
+            state = f"{user_id}:{random_state}"
+            
+            authorization_url, _ = flow.authorization_url(
                 access_type='offline',
                 include_granted_scopes='true',
-                prompt='consent'  # Force consent screen to get refresh token
+                prompt='consent',
+                state=state
             )
             
-            logger.info(f"OAuth URL generated for user: {user_id}")
+            # Store state for verification in the user-specific DB
+            self._init_gsc_tables(user_id)
+            db_path = self._get_db_path(user_id)
             
-            # Store state for verification
-            
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS gsc_oauth_states (
-                        state TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                ''')
-                
                 cursor.execute('''
                     INSERT OR REPLACE INTO gsc_oauth_states (state, user_id) 
                     VALUES (?, ?)
@@ -193,46 +222,34 @@ class GSCService:
             
         except Exception as e:
             logger.error(f"Error generating OAuth URL for user {user_id}: {e}")
-            logger.error(f"Error type: {type(e).__name__}")
-            logger.error(f"Error details: {str(e)}")
             raise
-    
+
     def handle_oauth_callback(self, authorization_code: str, state: str) -> bool:
         """Handle OAuth callback and save credentials."""
         try:
-            logger.info(f"Handling OAuth callback with state: {state}")
+            logger.info(f"Handling GSC OAuth callback with state: {state[:20]}...")
             
-            # Verify state
-            with sqlite3.connect(self.db_path) as conn:
+            # Extract user_id from state
+            if ':' not in state:
+                logger.error(f"Invalid GSC state format: {state}")
+                return False
+                
+            user_id = state.split(':')[0]
+            db_path = self._get_db_path(user_id)
+            
+            if not os.path.exists(db_path):
+                logger.error(f"User database not found for user {user_id}")
+                return False
+
+            # Verify state in user's DB
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
-                
-                cursor.execute('''
-                    SELECT user_id FROM gsc_oauth_states WHERE state = ?
-                ''', (state,))
-                
+                cursor.execute('SELECT user_id FROM gsc_oauth_states WHERE state = ?', (state,))
                 result = cursor.fetchone()
                 
                 if not result:
-                    # Check if this is a duplicate callback by looking for recent credentials
-                    cursor.execute('SELECT user_id, credentials_json FROM gsc_credentials ORDER BY updated_at DESC LIMIT 1')
-                    recent_credentials = cursor.fetchone()
-                    
-                    if recent_credentials:
-                        logger.info("Duplicate callback detected - returning success")
-                        return True
-                    
-                    # If no recent credentials, try to find any recent state
-                    cursor.execute('SELECT state, user_id FROM gsc_oauth_states ORDER BY created_at DESC LIMIT 1')
-                    recent_state = cursor.fetchone()
-                    if recent_state:
-                        user_id = recent_state[1]
-                        # Clean up the old state
-                        cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (recent_state[0],))
-                        conn.commit()
-                    else:
-                        raise ValueError("Invalid OAuth state")
-                else:
-                    user_id = result[0]
+                    logger.error(f"Invalid or expired GSC OAuth state for user {user_id}")
+                    return False
                 
                 # Clean up state
                 cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (state,))
@@ -249,18 +266,12 @@ class GSCService:
             credentials = flow.credentials
             
             # Save credentials
-            success = self.save_user_credentials(user_id, credentials)
-            
-            if success:
-                logger.info(f"OAuth callback handled successfully for user: {user_id}")
-            else:
-                logger.error(f"Failed to save credentials for user: {user_id}")
-            
-            return success
+            return self.save_user_credentials(user_id, credentials)
             
         except Exception as e:
-            logger.error(f"Error handling OAuth callback: {e}")
+            logger.error(f"Error handling GSC OAuth callback: {e}")
             return False
+
     
     def get_authenticated_service(self, user_id: str):
         """Get authenticated GSC service for user."""

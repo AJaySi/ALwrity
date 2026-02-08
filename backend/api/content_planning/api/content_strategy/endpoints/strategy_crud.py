@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 
 # Import database
-from services.database import get_db_session
+from services.database import get_db
 
 # Import authentication middleware
 from middleware.auth_middleware import get_current_user
@@ -31,13 +31,6 @@ from ....utils.data_parsers import parse_strategy_data
 
 router = APIRouter(tags=["Strategy CRUD"])
 
-# Helper function to get database session
-def get_db():
-    db = get_db_session()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.post("/create")
 async def create_enhanced_strategy(
@@ -104,7 +97,7 @@ async def create_enhanced_strategy(
 
 @router.get("/")
 async def get_enhanced_strategies(
-    user_id: Optional[int] = Query(None, description="User ID to filter strategies (deprecated - use authenticated user)"),
+    user_id: Optional[str] = Query(None, description="User ID to filter strategies (deprecated - use authenticated user)"),
     strategy_id: Optional[int] = Query(None, description="Specific strategy ID"),
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -119,8 +112,7 @@ async def get_enhanced_strategies(
                 detail="Invalid user ID in authentication token"
             )
         
-        # Use authenticated user_id (override query parameter for security)
-        authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+        authenticated_user_id = clerk_user_id
         
         logger.info(f"Getting enhanced strategies for authenticated user: {authenticated_user_id}, strategy: {strategy_id}")
         
@@ -148,7 +140,6 @@ async def get_enhanced_strategy_by_id(
 ) -> Dict[str, Any]:
     """Get a specific enhanced strategy by ID."""
     try:
-        # Extract authenticated user_id from Clerk
         clerk_user_id = str(current_user.get('id', ''))
         if not clerk_user_id:
             raise HTTPException(
@@ -156,7 +147,7 @@ async def get_enhanced_strategy_by_id(
                 detail="Invalid user ID in authentication token"
             )
         
-        authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+        authenticated_user_id = clerk_user_id
         
         logger.info(f"Getting enhanced strategy by ID: {strategy_id} for authenticated user: {authenticated_user_id}")
         
@@ -201,7 +192,6 @@ async def update_enhanced_strategy(
 ) -> Dict[str, Any]:
     """Update an enhanced strategy."""
     try:
-        # Extract authenticated user_id from Clerk
         clerk_user_id = str(current_user.get('id', ''))
         if not clerk_user_id:
             raise HTTPException(
@@ -209,7 +199,7 @@ async def update_enhanced_strategy(
                 detail="Invalid user ID in authentication token"
             )
         
-        authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+        authenticated_user_id = clerk_user_id
         
         logger.info(f"Updating enhanced strategy: {strategy_id} for authenticated user: {authenticated_user_id}")
         
@@ -270,7 +260,7 @@ async def delete_enhanced_strategy(
                 detail="Invalid user ID in authentication token"
             )
         
-        authenticated_user_id = int(clerk_user_id) if clerk_user_id.isdigit() else None
+        authenticated_user_id = clerk_user_id
         
         logger.info(f"Deleting enhanced strategy: {strategy_id} for authenticated user: {authenticated_user_id}")
         

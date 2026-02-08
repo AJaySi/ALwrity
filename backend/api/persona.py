@@ -69,7 +69,7 @@ def get_persona_service() -> PersonaAnalysisService:
     """Get the persona analysis service instance."""
     return PersonaAnalysisService()
 
-async def generate_persona(user_id: int, request: PersonaGenerationRequest):
+async def generate_persona(user_id: str, request: PersonaGenerationRequest):
     """Generate a new writing persona from onboarding data."""
     try:
         logger.info(f"Generating persona for user {user_id}")
@@ -302,10 +302,10 @@ async def generate_platform_persona(user_id: str, platform: str, db_session):
         
         # Import services
         from services.persona_data_service import PersonaDataService
-        from services.onboarding.database_service import OnboardingDatabaseService
+        from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
         
         persona_data_service = PersonaDataService(db_session=db_session)
-        onboarding_service = OnboardingDatabaseService(db=db_session)
+        integration_service = OnboardingDataIntegrationService()
         
         # Get core persona data
         persona_data = persona_data_service.get_user_persona_data(user_id)
@@ -316,14 +316,16 @@ async def generate_platform_persona(user_id: str, platform: str, db_session):
         if not core_persona:
             raise HTTPException(status_code=404, detail="Core persona data is empty")
         
-        # Get onboarding data for context
-        onboarding_session = onboarding_service.get_session_by_user(user_id)
+        # Get onboarding data for context using SSOT
+        integrated_data = integration_service.get_integrated_data_sync(user_id, db_session)
+        onboarding_session = integrated_data.get('onboarding_session')
+        
         if not onboarding_session:
             raise HTTPException(status_code=404, detail="Onboarding session not found")
         
         # Get website analysis for context
-        website_analysis = onboarding_service.get_website_analysis(user_id)
-        research_prefs = onboarding_service.get_research_preferences(user_id)
+        website_analysis = integrated_data.get('website_analysis', {})
+        research_prefs = integrated_data.get('research_preferences', {})
         
         onboarding_data = {
             "website_url": website_analysis.get('website_url', '') if website_analysis else '',
@@ -456,7 +458,7 @@ async def validate_persona_generation_readiness(user_id: int):
         logger.error(f"Error validating persona generation readiness: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to validate readiness: {str(e)}")
 
-async def generate_persona_preview(user_id: int):
+async def generate_persona_preview(user_id: str):
     """Generate a preview of what the persona would look like without saving."""
     try:
         persona_service = get_persona_service()

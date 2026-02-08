@@ -5,6 +5,7 @@ import { Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, CheckCirc
 import { billingService } from '../../services/billingService';
 import { useAuth } from '@clerk/clerk-react';
 import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../../api/schedulerDashboard';
+import { apiClient } from '../../api/client';
 
 interface Alert {
   id: string;
@@ -15,7 +16,7 @@ interface Alert {
   priority: 'high' | 'medium' | 'low';
   is_read: boolean;
   created_at: string;
-  source: 'billing' | 'scheduler' | 'task';
+  source: 'billing' | 'scheduler' | 'agents' | 'task';
   metadata?: Record<string, any>;
   groupKey?: string;
 }
@@ -163,6 +164,33 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
         console.error('Error fetching scheduler alerts:', error);
       }
 
+      // Phase 3: Fetch agents team alerts
+      try {
+        const resp = await apiClient.get('/api/agents/alerts', {
+          params: { unread_only: true, limit: 50 }
+        });
+        const agentAlerts = resp?.data?.data?.alerts || [];
+        const formattedAgentAlerts: Alert[] = agentAlerts.map((a: any) => ({
+          id: `agents-${a.id}`,
+          type: a.type || 'agent_alert',
+          title: a.title || 'Agents Alert',
+          message: a.message || '',
+          severity: (a.severity as any) || 'info',
+          priority: mapSeverityToPriority(a.severity || 'info'),
+          is_read: Boolean(a.read_at),
+          created_at: a.created_at || new Date().toISOString(),
+          source: 'agents' as const,
+          metadata: {
+            ctaPath: a.cta_path,
+            payload: a.payload,
+          },
+          groupKey: `agents-${a.type || 'agent_alert'}-${a.title || 'alert'}`
+        }));
+        allAlerts.push(...formattedAgentAlerts);
+      } catch (error) {
+        console.error('Error fetching agent alerts:', error);
+      }
+
       // Sort alerts by created_at (newest first)
       allAlerts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
@@ -213,6 +241,11 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
         }
       } else if (alert.source === 'scheduler') {
         dismissSchedulerAlert(alert.id);
+      } else if (alert.source === 'agents') {
+        const numericId = Number(alert.id.replace('agents-', ''));
+        if (!Number.isNaN(numericId)) {
+          await apiClient.post(`/api/agents/alerts/${numericId}/mark-read`);
+        }
       }
       // Update local state
       const updated = alerts.map(a => (a.id === alert.id ? { ...a, is_read: true } : a));
@@ -371,7 +404,7 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
                           {group.title}
                         </Typography>
                         <Chip
-                          label={group.source}
+                          label={group.source === 'agents' ? 'Agents Team' : group.source === 'scheduler' ? 'Scheduler' : group.source === 'billing' ? 'Billing' : group.source}
                           size="small"
                           sx={{
                             height: 18,
@@ -536,6 +569,13 @@ const getAlertAction = (alert: Alert): { label?: string; href?: string } => {
       label: 'View Scheduler',
       href: '/scheduler#tasks',
     };
+  }
+  if (alert.source === 'agents') {
+    const ctaPath = alert.metadata?.ctaPath;
+    if (typeof ctaPath === 'string' && ctaPath.trim()) {
+      return { label: 'Open', href: ctaPath };
+    }
+    return { label: 'View Agents', href: '/content-planning' };
   }
   if (alert.source === 'task') {
     return {

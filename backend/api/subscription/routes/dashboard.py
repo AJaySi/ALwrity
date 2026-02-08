@@ -164,7 +164,29 @@ async def get_dashboard_data(
                 return response_payload
             except Exception as retry_err:
                 logger.error(f"Schema fix and retry failed: {retry_err}")
-                raise HTTPException(status_code=500, detail=f"Database schema error: {str(e)}")
+                return {
+                    "success": False,
+                    "error": str(retry_err),
+                    "data": {
+                        "current_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}},
+                        "trends": [],
+                        "limits": {"limits": {"monthly_cost": 0}},
+                        "alerts": [],
+                        "projections": {"projected_monthly_cost": 0, "cost_limit": 0, "projected_usage_percentage": 0},
+                        "summary": {"total_api_calls_this_month": 0, "total_cost_this_month": 0, "usage_status": "error", "unread_alerts": 0}
+                    }
+                }
         
         logger.error(f"Error getting dashboard data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "success": False,
+            "error": str(e),
+            "data": {
+                "current_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}},
+                "trends": [],
+                "limits": {"limits": {"monthly_cost": 0}},
+                "alerts": [],
+                "projections": {"projected_monthly_cost": 0, "cost_limit": 0, "projected_usage_percentage": 0},
+                "summary": {"total_api_calls_this_month": 0, "total_cost_this_month": 0, "usage_status": "error", "unread_alerts": 0}
+            }
+        }

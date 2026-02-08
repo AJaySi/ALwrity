@@ -17,6 +17,10 @@ from models.enhanced_calendar_models import (
     ContentTrendAnalysis, ContentOptimization, CalendarGenerationSession,
     Base as EnhancedCalendarBase
 )
+from models.enhanced_strategy_models import (
+    EnhancedContentStrategy, EnhancedAIAnalysisResult, OnboardingDataIntegration,
+    Base as EnhancedStrategyBase
+)
 
 def migrate_table(db, table_name, base_metadata):
     """Migrate user_id column for a specific table from INTEGER to VARCHAR(255)."""
@@ -27,13 +31,7 @@ def migrate_table(db, table_name, base_metadata):
         check_table_query = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';"
         result = db.execute(text(check_table_query))
         if not result.scalar():
-            logger.warning(f"Table '{table_name}' does not exist. Skipping check, but will try to create it.")
-            # If it doesn't exist, we can just create it with the new schema
-            try:
-                base_metadata.create_all(bind=engine, tables=[base_metadata.tables[table_name]], checkfirst=True)
-                logger.success(f"✅ Created {table_name} with new schema")
-            except Exception as e:
-                logger.error(f"Failed to create {table_name}: {e}")
+            logger.warning(f"Table '{table_name}' does not exist. Skipping migration for this table.")
             return True
 
         # Check current column type
@@ -131,6 +129,16 @@ def migrate_all():
         
         for table in ec_tables:
             migrate_table(db, table, EnhancedCalendarBase.metadata)
+        
+        # Enhanced Strategy Tables
+        es_tables = [
+            "enhanced_content_strategies",
+            "enhanced_ai_analysis_results",
+            "onboarding_data_integrations"
+        ]
+        
+        for table in es_tables:
+            migrate_table(db, table, EnhancedStrategyBase.metadata)
             
     finally:
         db.close()

@@ -23,7 +23,8 @@
     "typeRoots": [
       "./node_modules/@types",
       "./src/types"
-    ]
+    ],
+    "types": ["jest", "node"]
   },
   "include": [
     "src"

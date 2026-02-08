@@ -17,15 +17,22 @@ from loguru import logger
 class PersistentOutlineCache:
     """Database-backed cache for outline generation results with exact parameter matching."""
     
-    def __init__(self, db_path: str = "outline_cache.db", max_cache_size: int = 500, cache_ttl_hours: int = 48):
+    def __init__(self, db_path: str = None, max_cache_size: int = 500, cache_ttl_hours: int = 48):
         """
         Initialize the persistent outline cache.
         
         Args:
-            db_path: Path to SQLite database file
+            db_path: Path to SQLite database file. Defaults to 'data/cache/outline_cache.db' in project root.
             max_cache_size: Maximum number of cached entries
             cache_ttl_hours: Time-to-live for cache entries in hours (longer than research cache)
         """
+        if db_path is None:
+            # Default to root/data/cache/outline_cache.db
+            root_dir = Path(__file__).parent.parent.parent.parent
+            cache_dir = root_dir / "data" / "cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            db_path = str(cache_dir / "outline_cache.db")
+
         self.db_path = db_path
         self.max_cache_size = max_cache_size
         self.cache_ttl = timedelta(hours=cache_ttl_hours)

@@ -31,7 +31,8 @@ class PageSpeedService:
         url: str,
         strategy: str = "DESKTOP",
         locale: str = "en",
-        categories: List[str] = None
+        categories: List[str] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Analyze website performance using Google PageSpeed Insights
@@ -70,7 +71,7 @@ class PageSpeedService:
             structured_results = self._structure_pagespeed_results(pagespeed_data)
             
             # Generate AI-enhanced insights
-            ai_insights = await self._generate_ai_insights(structured_results, url, strategy)
+            ai_insights = await self._generate_ai_insights(structured_results, url, strategy, user_id=user_id)
             
             # Calculate optimization priority
             optimization_plan = self._create_optimization_plan(structured_results)
@@ -281,7 +282,8 @@ class PageSpeedService:
         self,
         structured_results: Dict[str, Any],
         url: str,
-        strategy: str
+        strategy: str,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate AI-powered insights and recommendations"""
         
@@ -299,7 +301,8 @@ class PageSpeedService:
             # Generate AI insights
             ai_response = llm_text_gen(
                 prompt=prompt,
-                system_prompt=self._get_system_prompt()
+                system_prompt=self._get_system_prompt(),
+                user_id=user_id
             )
             
             # Parse AI response

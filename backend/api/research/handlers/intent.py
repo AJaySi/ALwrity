@@ -76,20 +76,22 @@ async def analyze_research_intent(
         
         if request.use_persona or request.use_competitor_data:
             from services.research.research_persona_service import ResearchPersonaService
-            from services.onboarding.database_service import OnboardingDatabaseService
+            from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
             from sqlalchemy.orm import Session
             
             # Get database session
             db = next(get_db())
             try:
                 persona_service = ResearchPersonaService(db)
-                onboarding_service = OnboardingDatabaseService(db=db)
+                integration_service = OnboardingDataIntegrationService()
                 
                 if request.use_persona:
                     research_persona = persona_service.get_or_generate(user_id)
                 
                 if request.use_competitor_data:
-                    competitor_data = onboarding_service.get_competitor_analysis(user_id, db)
+                    # Use SSOT integration service
+                    integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+                    competitor_data = integrated_data.get('competitor_analysis', [])
             finally:
                 db.close()
         

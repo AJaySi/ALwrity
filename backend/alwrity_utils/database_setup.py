@@ -131,6 +131,11 @@ class DatabaseSetup:
             from services.database import engine
             from sqlalchemy import inspect
             
+            if engine is None:
+                if verbose:
+                    print("   ⚠️  Global engine is None (Multi-tenant mode), skipping global table verification")
+                return True
+            
             inspector = inspect(engine)
             tables = inspector.get_table_names()
             
@@ -181,20 +186,9 @@ class DatabaseSetup:
     
     def _setup_monitoring_tables(self) -> bool:
         """Set up API monitoring tables."""
-        try:
-            sys.path.append(str(Path(__file__).parent.parent))
-            from scripts.create_monitoring_tables import create_monitoring_tables
-            
-            if create_monitoring_tables():
-                print("   ✅ API monitoring tables created")
-                return True
-            else:
-                print("   ⚠️  API monitoring setup failed")
-                return True  # Non-critical
-                
-        except Exception as e:
-            print(f"   ⚠️  Monitoring setup failed: {e}")
-            return True  # Non-critical
+        # Reuse the existing method that uses SQLAlchemy metadata
+        # This avoids the script dependency that requires user_id
+        return self._create_monitoring_tables()
     
     def _setup_billing_tables(self) -> bool:
         """Set up billing and subscription tables."""
@@ -203,17 +197,23 @@ class DatabaseSetup:
             from scripts.create_billing_tables import create_billing_tables, check_existing_tables
             from services.database import engine
             
+            # Check if engine is available (it might be None in multi-tenant mode)
+            if engine is None:
+                # In multi-tenant mode, we can't setup global billing tables
+                # They will be created per-user when they are initialized
+                return True
+
             # Check if tables already exist
             if check_existing_tables(engine):
                 logger.debug("✅ Billing tables already exist")
                 return True
             
-            if create_billing_tables():
-                logger.debug("✅ Billing tables created")
-                return True
-            else:
-                logger.warning("Billing setup failed")
-                return True  # Non-critical
+            # For global setup, we can't call create_billing_tables() without user_id
+            # But if engine is not None, it implies we have a global DB.
+            # However, the script is designed for user_id.
+            # We'll skip this call to avoid the TypeError and rely on per-user init.
+            logger.debug("ℹ️  Skipping global billing table creation (handled per-user)")
+            return True
                 
         except Exception as e:
             logger.warning(f"Billing setup failed: {e}")

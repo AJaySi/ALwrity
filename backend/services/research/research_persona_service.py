@@ -9,13 +9,14 @@ from datetime import datetime, timedelta
 from loguru import logger
 from fastapi import HTTPException
 
+from sqlalchemy import text
 from services.database import get_db_session
 from models.onboarding import PersonaData, OnboardingSession
 from models.research_persona_models import ResearchPersona
 from .research_persona_prompt_builder import ResearchPersonaPromptBuilder
 from services.llm_providers.main_text_generation import llm_text_gen
-from services.onboarding.database_service import OnboardingDatabaseService
 from services.persona_data_service import PersonaDataService
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 
 class ResearchPersonaService:
@@ -24,10 +25,62 @@ class ResearchPersonaService:
     CACHE_TTL_DAYS = 7  # 7-day cache TTL
     
     def __init__(self, db_session=None):
-        self.db = db_session or get_db_session()
+        self.db = db_session
         self.prompt_builder = ResearchPersonaPromptBuilder()
-        self.onboarding_service = OnboardingDatabaseService(db=self.db)
-        self.persona_data_service = PersonaDataService(db_session=self.db)
+        # self.persona_data_service was initialized here but unused in this service
+        self.integration_service = OnboardingDataIntegrationService()
+        self._research_persona_cols_checked = False
+
+    def _get_session(self, user_id: str):
+        """Helper to get a database session."""
+        if self.db:
+            return self.db, False
+        return get_db_session(user_id), True
+
+    def _ensure_research_persona_columns(self, session_db) -> None:
+        """Ensure research_persona columns exist in persona_data table (runtime migration)."""
+        if self._research_persona_cols_checked:
+            return
+        
+        try:
+            # Check if columns exist using PRAGMA (SQLite) or information_schema (PostgreSQL)
+            db_url = str(session_db.bind.url) if session_db.bind else ""
+            
+            if 'sqlite' in db_url.lower():
+                # SQLite: Use PRAGMA to check columns
+                result = session_db.execute(text("PRAGMA table_info(persona_data)"))
+                cols = {row[1] for row in result}  # Column name is at index 1
+                
+                if 'research_persona' not in cols:
+                    logger.info("Adding missing column research_persona to persona_data table")
+                    session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona JSON"))
+                    session_db.commit()
+                
+                if 'research_persona_generated_at' not in cols:
+                    logger.info("Adding missing column research_persona_generated_at to persona_data table")
+                    session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona_generated_at TIMESTAMP"))
+                    session_db.commit()
+            else:
+                # PostgreSQL: Try to query the columns (will fail if they don't exist)
+                try:
+                    session_db.execute(text("SELECT research_persona, research_persona_generated_at FROM persona_data LIMIT 0"))
+                except Exception:
+                    # Columns don't exist, add them
+                    logger.info("Adding missing columns research_persona and research_persona_generated_at to persona_data table")
+                    try:
+                        session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona JSONB"))
+                        session_db.execute(text("ALTER TABLE persona_data ADD COLUMN research_persona_generated_at TIMESTAMP"))
+                        session_db.commit()
+                    except Exception as alter_err:
+                        logger.error(f"Failed to add research_persona columns: {alter_err}")
+                        session_db.rollback()
+                        raise
+        except Exception as e:
+            logger.error(f"Error ensuring research_persona columns: {e}")
+            session_db.rollback()
+            raise
+        finally:
+            self._research_persona_cols_checked = True
     
     def get_cached_only(
         self, 
@@ -46,9 +99,16 @@ class ResearchPersonaService:
         Returns:
             ResearchPersona if exists in database, None otherwise
         """
+        db = None
+        should_close = False
         try:
+            db, should_close = self._get_session(user_id)
+            if not db:
+                logger.error(f"Could not get database session for user {user_id}")
+                return None
+                
             # Get persona data record
-            persona_data = self._get_persona_data_record(user_id)
+            persona_data = self._get_persona_data_record(user_id, db)
             
             if not persona_data:
                 logger.debug(f"[get_cached_only] No persona data record found for user {user_id}")
@@ -110,6 +170,9 @@ class ResearchPersonaService:
         except Exception as e:
             logger.error(f"[get_cached_only] ❌ Error getting research persona for user {user_id}: {e}", exc_info=True)
             return None
+        finally:
+            if should_close and db:
+                db.close()
 
     def get_or_generate(
         self, 
@@ -126,9 +189,16 @@ class ResearchPersonaService:
         Returns:
             ResearchPersona if successful, None otherwise
         """
+        db = None
+        should_close = False
         try:
+            db, should_close = self._get_session(user_id)
+            if not db:
+                logger.error(f"Could not get database session for get_or_generate (user {user_id})")
+                return None
+                
             # Get persona data record
-            persona_data = self._get_persona_data_record(user_id)
+            persona_data = self._get_persona_data_record(user_id, db)
             
             if not persona_data:
                 logger.warning(f"No persona data found for user {user_id}, cannot generate research persona")
@@ -168,18 +238,14 @@ class ResearchPersonaService:
             # 3. Parsing of existing persona failed
             try:
                 logger.info(f"Generating research persona for user {user_id}")
-                research_persona = self.generate_research_persona(user_id)
+                research_persona = self.generate_research_persona(user_id, db)
             except HTTPException:
                 # Re-raise HTTPExceptions (e.g., 429 subscription limit) so they propagate to API
                 raise
             
             if research_persona:
-                # Save to database
-                if self.save_research_persona(user_id, research_persona):
-                    logger.info(f"✅ Research persona generated and saved for user {user_id}")
-                else:
-                    logger.warning(f"Failed to save research persona for user {user_id}")
-                
+                # generate_research_persona saves it automatically now
+                logger.info(f"✅ Research persona generated and saved for user {user_id}")
                 return research_persona
             else:
                 # Log detailed error for debugging expensive failures
@@ -196,22 +262,36 @@ class ResearchPersonaService:
         except Exception as e:
             logger.error(f"Error getting/generating research persona for user {user_id}: {e}")
             return None
+        finally:
+            if should_close and db:
+                db.close()
     
-    def generate_research_persona(self, user_id: str) -> Optional[ResearchPersona]:
+    def generate_research_persona(self, user_id: str, db=None) -> Optional[ResearchPersona]:
         """
         Generate a new research persona for the user.
         
         Args:
             user_id: User ID (Clerk string)
+            db: Optional database session
             
         Returns:
             ResearchPersona if successful, None otherwise
         """
+        session_db = None
+        should_close = False
         try:
+            session_db = db
+            if not session_db:
+                session_db, should_close = self._get_session(user_id)
+            
+            if not session_db:
+                logger.error(f"Could not get database session for generate_research_persona (user {user_id})")
+                return None
+
             logger.info(f"Generating research persona for user {user_id}")
             
             # Collect onboarding data
-            onboarding_data = self._collect_onboarding_data(user_id)
+            onboarding_data = self._collect_onboarding_data(user_id, session_db)
             
             if not onboarding_data:
                 logger.warning(f"Insufficient onboarding data for user {user_id}")
@@ -275,6 +355,12 @@ class ResearchPersonaService:
                 try:
                     research_persona = ResearchPersona(**persona_dict)
                     logger.info(f"✅ Research persona generated successfully for user {user_id}")
+                    
+                    # Save the generated persona
+                    save_success = self.save_research_persona(user_id, research_persona, session_db)
+                    if not save_success:
+                        logger.warning(f"Failed to save generated persona for user {user_id}")
+                    
                     return research_persona
                 except Exception as validation_error:
                     logger.error(f"Failed to validate ResearchPersona from dict: {validation_error}")
@@ -297,6 +383,9 @@ class ResearchPersonaService:
         except Exception as e:
             logger.error(f"Error generating research persona for user {user_id}: {e}")
             return None
+        finally:
+            if should_close and session_db:
+                session_db.close()
     
     def is_cache_valid(self, persona_data: PersonaData) -> bool:
         """
@@ -323,7 +412,8 @@ class ResearchPersonaService:
     def save_research_persona(
         self, 
         user_id: str, 
-        research_persona: ResearchPersona
+        research_persona: ResearchPersona,
+        db=None
     ) -> bool:
         """
         Save research persona to database.
@@ -331,12 +421,23 @@ class ResearchPersonaService:
         Args:
             user_id: User ID (Clerk string)
             research_persona: ResearchPersona to save
+            db: Optional database session
             
         Returns:
             True if successful, False otherwise
         """
+        session_db = None
+        should_close = False
         try:
-            persona_data = self._get_persona_data_record(user_id)
+            session_db = db
+            if not session_db:
+                session_db, should_close = self._get_session(user_id)
+            
+            if not session_db:
+                logger.error(f"Could not get database session for save_research_persona (user {user_id})")
+                return False
+
+            persona_data = self._get_persona_data_record(user_id, session_db)
             
             if not persona_data:
                 logger.error(f"No persona data record found for user {user_id}")
@@ -349,24 +450,33 @@ class ResearchPersonaService:
             persona_data.research_persona = persona_dict
             persona_data.research_persona_generated_at = datetime.utcnow()
             
-            self.db.commit()
+            session_db.commit()
             
             logger.info(f"✅ Research persona saved for user {user_id}")
             return True
             
         except Exception as e:
             logger.error(f"Error saving research persona for user {user_id}: {e}")
-            self.db.rollback()
+            if session_db:
+                session_db.rollback()
             return False
+        finally:
+            if should_close and session_db:
+                session_db.close()
     
-    def _get_persona_data_record(self, user_id: str) -> Optional[PersonaData]:
+    def _get_persona_data_record(self, user_id: str, db=None) -> Optional[PersonaData]:
         """Get PersonaData database record for user."""
         try:
+            session_db = db or self.db
+            if not session_db:
+                logger.error(f"No database session provided for _get_persona_data_record (user {user_id})")
+                return None
+
             # Ensure research_persona columns exist before querying
-            self.onboarding_service._ensure_research_persona_columns(self.db)
+            self._ensure_research_persona_columns(session_db)
             
             # Get onboarding session
-            session = self.db.query(OnboardingSession).filter(
+            session = session_db.query(OnboardingSession).filter(
                 OnboardingSession.user_id == user_id
             ).first()
             
@@ -374,7 +484,7 @@ class ResearchPersonaService:
                 return None
             
             # Get persona data
-            persona_data = self.db.query(PersonaData).filter(
+            persona_data = session_db.query(PersonaData).filter(
                 PersonaData.session_id == session.id
             ).first()
             
@@ -384,7 +494,7 @@ class ResearchPersonaService:
             logger.error(f"Error getting persona data record for user {user_id}: {e}")
             return None
     
-    def _collect_onboarding_data(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def _collect_onboarding_data(self, user_id: str, db=None) -> Optional[Dict[str, Any]]:
         """
         Collect all onboarding data needed for research persona generation.
         
@@ -392,40 +502,44 @@ class ResearchPersonaService:
             Dictionary with website_analysis, persona_data, research_preferences, business_info
         """
         try:
-            # Get website analysis
-            website_analysis = self.onboarding_service.get_website_analysis(user_id, self.db) or {}
+            session_db = db or self.db
+            if not session_db:
+                logger.error(f"No database session provided for _collect_onboarding_data (user {user_id})")
+                return None
+                
+            # Get integrated data via SSOT
+            integrated_data = self.integration_service.get_integrated_data_sync(user_id, session_db)
             
-            # Get persona data
-            persona_data_dict = self.onboarding_service.get_persona_data(user_id, self.db) or {}
+            if not integrated_data:
+                logger.warning(f"No integrated data found for user {user_id}")
+                return None
+                
+            website_analysis = integrated_data.get('website_analysis', {})
+            persona_data_dict = integrated_data.get('persona_data', {})
+            research_prefs = integrated_data.get('research_preferences', {})
+            canonical_profile = integrated_data.get('canonical_profile', {})
             
-            # Get research preferences
-            research_prefs = self.onboarding_service.get_research_preferences(user_id, self.db) or {}
-            
-            # Get business info - construct from persona data and website analysis
             business_info = {}
+            canonical_business = canonical_profile.get('business_info')
+            if isinstance(canonical_business, dict):
+                business_info.update(canonical_business)
+
+            # Use canonical profile data (SSOT) instead of manual logic if possible
+            # The canonical profile already handles logic for industry/target_audience from various sources
+            if not business_info.get('industry') and canonical_profile.get('industry'):
+                 business_info['industry'] = canonical_profile.get('industry')
             
-            # Try to extract from persona data
-            if persona_data_dict:
-                core_persona = persona_data_dict.get('corePersona') or persona_data_dict.get('core_persona')
-                if core_persona:
-                    if core_persona.get('industry'):
-                        business_info['industry'] = core_persona['industry']
-                    if core_persona.get('target_audience'):
-                        business_info['target_audience'] = core_persona['target_audience']
+            if not business_info.get('target_audience') and canonical_profile.get('target_audience'):
+                 business_info['target_audience'] = canonical_profile.get('target_audience')
             
-            # Fallback to website analysis if not in persona
+            # Fallback logic if canonical profile is missing these (though it should have them)
             if not business_info.get('industry') and website_analysis:
                 target_audience_data = website_analysis.get('target_audience', {})
                 if isinstance(target_audience_data, dict):
                     industry_focus = target_audience_data.get('industry_focus')
                     if industry_focus:
                         business_info['industry'] = industry_focus
-                    demographics = target_audience_data.get('demographics')
-                    if demographics:
-                        business_info['target_audience'] = demographics if isinstance(demographics, str) else str(demographics)
             
-            # Check if we have enough data - be more lenient since we can infer from minimal data
-            # We need at least some basic information to generate a meaningful persona
             has_basic_data = bool(
                 website_analysis or
                 persona_data_dict or
@@ -457,20 +571,17 @@ class ResearchPersonaService:
                 business_info['inferred'] = True
             
             # Get competitor analysis data (if available)
-            competitor_analysis = None
-            try:
-                competitor_analysis = self.onboarding_service.get_competitor_analysis(user_id, self.db)
-                if competitor_analysis:
-                    logger.info(f"Found {len(competitor_analysis)} competitors for research persona generation")
-            except Exception as e:
-                logger.debug(f"Could not retrieve competitor analysis for persona generation: {e}")
+            # Use SSOT (Integrated data contains competitor info)
+            competitor_analysis = integrated_data.get('competitor_analysis')
+            if not competitor_analysis:
+                competitor_analysis = []
             
             return {
                 "website_analysis": website_analysis,
                 "persona_data": persona_data_dict,
                 "research_preferences": research_prefs,
                 "business_info": business_info,
-                "competitor_analysis": competitor_analysis  # Add competitor data for better preset generation
+                "competitor_analysis": competitor_analysis
             }
             
         except Exception as e:

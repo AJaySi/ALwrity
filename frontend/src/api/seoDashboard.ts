@@ -52,10 +52,26 @@ export interface SEODashboardData {
     position: number;
   };
   timeseries?: any[];
+  advertools_insights?: any;
   competitor_insights?: {
     competitor_keywords: any[];
     content_gaps: any[];
     opportunity_score: number;
+  };
+  technical_seo_audit?: {
+    status: string;
+    task_status?: string | null;
+    next_execution?: string | null;
+    pages_audited: number;
+    avg_score: number;
+    fix_scheduled_pages: number;
+    worst_pages: Array<{
+      page_url: string;
+      overall_score: number;
+      status: string;
+      issues_count?: number;
+    }>;
+    error?: string;
   };
 }
 

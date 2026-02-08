@@ -7,8 +7,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 
 from services.ai_prompt_optimizer import AIPromptOptimizer
-from services.onboarding import OnboardingDataService
-from services.onboarding.database_service import OnboardingDatabaseService
+from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from services.persona_data_service import PersonaDataService
 from services.database import SessionLocal
 
@@ -19,7 +18,7 @@ class CampaignPromptBuilder(AIPromptOptimizer):
     def __init__(self):
         """Initialize Campaign Prompt Builder."""
         super().__init__()
-        self.onboarding_data_service = OnboardingDataService()
+        self.integration_service = OnboardingDataIntegrationService()
         self.logger = logger
         logger.info("[Campaign Prompt Builder] Initialized")
     
@@ -45,52 +44,50 @@ class CampaignPromptBuilder(AIPromptOptimizer):
             Enhanced prompt with brand DNA, persona style, and marketing context
         """
         try:
-            # Get onboarding data
+            # Get onboarding data via SSOT
             db = SessionLocal()
             try:
-                onboarding_db = OnboardingDatabaseService(db)
-                website_analysis = onboarding_db.get_website_analysis(user_id, db)
-                persona_data = onboarding_db.get_persona_data(user_id, db)
-                competitor_analyses = onboarding_db.get_competitor_analysis(user_id, db)
+                integrated_data = self.integration_service.get_integrated_data_sync(user_id, db)
+                # Use canonical profile as primary source
+                canonical_profile = integrated_data.get('canonical_profile', {})
+                # Keep raw data access for deep fields not yet in canonical
+                website_analysis = integrated_data.get('website_analysis', {})
+                persona_data = integrated_data.get('persona_data', {})
             finally:
                 db.close()
             
             # Build prompt layers
             enhanced_prompt = base_prompt
             
-            # Layer 1: Brand DNA (from website_analysis)
-            if website_analysis:
-                writing_style = website_analysis.get('writing_style', {})
-                target_audience = website_analysis.get('target_audience', {})
-                brand_analysis = website_analysis.get('brand_analysis', {})
-                style_guidelines = website_analysis.get('style_guidelines', {})
-                
-                # Add brand tone and style
-                tone = writing_style.get('tone', 'professional')
-                voice = writing_style.get('voice', 'authoritative')
-                brand_enhancement = f", {tone} tone, {voice} voice"
-                
-                # Add target audience context
+            # Layer 1: Brand DNA (Prioritize Canonical Profile)
+            writing_tone = canonical_profile.get('writing_tone', 'professional')
+            writing_voice = canonical_profile.get('writing_voice', 'authoritative')
+            brand_colors = canonical_profile.get('brand_colors', [])
+            target_audience = canonical_profile.get('target_audience', {})
+            
+            # Add brand tone and style
+            brand_enhancement = f", {writing_tone} tone, {writing_voice} voice"
+            enhanced_prompt += brand_enhancement
+            
+            # Add target audience context
+            if isinstance(target_audience, dict):
                 demographics = target_audience.get('demographics', [])
                 if demographics:
                     audience_context = f", targeting {', '.join(demographics[:2])}"
                     enhanced_prompt += audience_context
-                
-                # Add brand visual identity if available
-                if brand_analysis:
-                    color_palette = brand_analysis.get('color_palette', [])
-                    if color_palette:
-                        colors = ', '.join(color_palette[:3])
-                        enhanced_prompt += f", brand colors: {colors}"
             
-            # Layer 2: Persona Visual Style (from persona_data)
+            # Add brand visual identity
+            if brand_colors:
+                colors = ', '.join(brand_colors[:3])
+                enhanced_prompt += f", brand colors: {colors}"
+            
+            # Layer 2: Persona Visual Style (from persona_data fallback if needed)
             if persona_data:
                 core_persona = persona_data.get('corePersona', {})
                 platform_personas = persona_data.get('platformPersonas', {})
                 
                 if core_persona:
                     persona_name = core_persona.get('persona_name', '')
-                    archetype = core_persona.get('archetype', '')
                     if persona_name:
                         enhanced_prompt += f", {persona_name} style"
                 
@@ -172,13 +169,13 @@ class CampaignPromptBuilder(AIPromptOptimizer):
             Enhanced prompt with persona style, brand voice, and marketing context
         """
         try:
-            # Get onboarding data
+            # Get onboarding data via SSOT
             db = SessionLocal()
             try:
-                onboarding_db = OnboardingDatabaseService(db)
-                website_analysis = onboarding_db.get_website_analysis(user_id, db)
-                persona_data = onboarding_db.get_persona_data(user_id, db)
-                competitor_analyses = onboarding_db.get_competitor_analysis(user_id, db)
+                integrated_data = self.integration_service.get_integrated_data_sync(user_id, db)
+                website_analysis = integrated_data.get('website_analysis', {})
+                persona_data = integrated_data.get('persona_data', {})
+                competitor_analyses = integrated_data.get('competitor_analysis', {})
             finally:
                 db.close()
             

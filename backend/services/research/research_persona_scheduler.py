@@ -26,7 +26,7 @@ async def generate_research_persona_task(user_id: str):
         logger.info(f"Scheduled research persona generation started for user {user_id}")
         
         # Get database session
-        db = get_db_session()
+        db = get_db_session(user_id)
         if not db:
             logger.error(f"Failed to get database session for research persona generation (user: {user_id})")
             return

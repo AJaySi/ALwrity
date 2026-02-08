@@ -12,6 +12,8 @@ from datetime import datetime
 from typing import Any, Dict, List
 from fastapi import HTTPException
 from loguru import logger
+from sqlalchemy.orm import Session
+from services.database import SessionLocal, get_session_for_user
 
 from models.blog_models import (
     BlogResearchRequest,
@@ -261,11 +263,17 @@ class TaskManager:
             if total_target > 1000:
                 raise ValueError("Global target words exceed 1000; medium generation not allowed")
 
-            result: MediumBlogGenerateResult = await self.service.generate_medium_blog_with_progress(
-                request,
-                task_id,
-                user_id
-            )
+            # Create a sync session for asset saving
+            db_session = SessionLocal()
+            try:
+                result: MediumBlogGenerateResult = await self.service.generate_medium_blog_with_progress(
+                    request,
+                    task_id,
+                    user_id,
+                    db=db_session
+                )
+            finally:
+                db_session.close()
 
             if not result or not getattr(result, "sections", None):
                 raise ValueError("Empty generation result from model")

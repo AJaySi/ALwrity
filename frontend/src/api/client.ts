@@ -121,16 +121,23 @@ apiClient.interceptors.request.use(
         try {
           const token = await authTokenGetter();
       if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+            config.headers = config.headers || {};
+            (config.headers as any)['Authorization'] = `Bearer ${token}`;
             console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
           } else {
-          // Token getter returned null - reject request to prevent 401 errors
-          // ProtectedRoute should ensure user is authenticated before components render
-          console.error(`[apiClient] ❌ authTokenGetter returned null for ${config.url} - rejecting request`);
-          console.error(`[apiClient] User ID from localStorage: ${localStorage.getItem('user_id') || 'none'}`);
-          console.error(`[apiClient] This usually means user is not signed in or token expired. ProtectedRoute should prevent this.`);
-          return Promise.reject(new Error('Authentication token not available. Please sign in to continue.'));
+            // Token getter returned null - reject request to prevent 401 errors
+            // ProtectedRoute should ensure user is authenticated before components render
+            console.error(`[apiClient] ❌ authTokenGetter returned null for ${config.url} - rejecting request`);
+            console.error(`[apiClient] User ID from localStorage: ${localStorage.getItem('user_id') || 'none'}`);
+            
+            // Redirect if on protected route to force re-auth
+            const isRootRoute = window.location.pathname === '/';
+            if (!isRootRoute) {
+               console.warn('[apiClient] Redirecting to login due to missing auth token');
+               try { window.location.assign('/'); } catch {}
+            }
+
+            return Promise.reject(new Error('Authentication token not available. Please sign in to continue.'));
           }
         } catch (tokenError) {
           console.error(`[apiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
@@ -208,13 +215,12 @@ apiClient.interceptors.response.use(
       }
 
       // If retry failed, token is expired - sign out user and redirect to sign in
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
       const isRootRoute = window.location.pathname === '/';
       const isContentPlanningRoute = window.location.pathname.includes('/content-planning');
       
       // Don't redirect from root route or content-planning during app initialization
       // ProtectedRoute should handle authentication state
-      if (!isRootRoute && !isOnboardingRoute && !isContentPlanningRoute) {
+      if (!isRootRoute && !isContentPlanningRoute) {
         // Token expired - sign out user and redirect to landing/sign-in
         console.warn('401 Unauthorized - token expired, signing out user');
         
@@ -248,13 +254,12 @@ apiClient.interceptors.response.use(
 
     // Handle 401 errors that weren't retried (e.g., no authTokenGetter, already retried, etc.)
     if (error?.response?.status === 401 && (originalRequest._retry || !authTokenGetter)) {
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
       const isRootRoute = window.location.pathname === '/';
       const isContentPlanningRoute = window.location.pathname.includes('/content-planning');
       
       // Don't redirect for content-planning during initial load - let ProtectedRoute handle it
       // This prevents redirect loops when requests are made before auth is fully ready
-      if (!isRootRoute && !isOnboardingRoute && !isContentPlanningRoute) {
+      if (!isRootRoute && !isContentPlanningRoute) {
         // Token expired - sign out user and redirect
         console.warn('401 Unauthorized - token expired (not retried), signing out user');
         localStorage.removeItem('user_id');
@@ -343,11 +348,10 @@ aiApiClient.interceptors.response.use(
         console.error('Token refresh failed:', retryError);
       }
       
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
       const isRootRoute = window.location.pathname === '/';
       
       // Don't redirect from root route during app initialization
-      if (!isRootRoute && !isOnboardingRoute) {
+      if (!isRootRoute) {
         // Token expired - sign out user and redirect
         console.warn('401 Unauthorized - token expired, signing out user');
         localStorage.removeItem('user_id');
@@ -388,12 +392,35 @@ longRunningApiClient.interceptors.request.use(
   async (config) => {
     console.log(`Making long-running ${config.method?.toUpperCase()} request to ${config.url}`);
     try {
-      const token = authTokenGetter ? await authTokenGetter() : null;
-      if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+      if (!authTokenGetter) {
+        console.warn(`[longRunningApiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
+      } else {
+        try {
+          const token = await authTokenGetter();
+          if (token) {
+            config.headers = config.headers || {};
+            (config.headers as any)['Authorization'] = `Bearer ${token}`;
+          } else {
+            console.warn(`[longRunningApiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
+            
+            // Redirect if on protected route to force re-auth
+            const isRootRoute = window.location.pathname === '/';
+            if (!isRootRoute) {
+               console.warn('[longRunningApiClient] Redirecting to login due to missing auth token');
+               try { window.location.assign('/'); } catch {}
+            }
+            
+            return Promise.reject(new Error('Authentication token not available. Please sign in or reload the page.'));
+          }
+        } catch (tokenError) {
+          console.error(`[longRunningApiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
+          return Promise.reject(new Error('Failed to get authentication token.'));
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error(`[longRunningApiClient] ❌ Unexpected error in request interceptor for ${config.url}:`, e);
+      return Promise.reject(e);
+    }
     return config;
   },
   (error) => {
@@ -406,13 +433,29 @@ longRunningApiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
+    const originalRequest = error.config;
+
+    // If 401 and we haven't retried yet, try to refresh token and retry
+    if (error?.response?.status === 401 && !originalRequest._retry && authTokenGetter) {
+      originalRequest._retry = true;
+
+      try {
+        const newToken = await authTokenGetter();
+        if (newToken) {
+          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+          return longRunningApiClient(originalRequest);
+        }
+      } catch (retryError) {
+        console.error('Token refresh failed:', retryError);
+      }
+    }
+
     if (error?.response?.status === 401) {
-      // Only redirect on 401 if we're not in onboarding flow or root route
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
+      // Redirect on 401 unless we're on root route (app initialization)
+      // We allow redirect on onboarding to handle expired sessions
       const isRootRoute = window.location.pathname === '/';
       
-      // Don't redirect from root route during app initialization
-      if (!isRootRoute && !isOnboardingRoute) {
+      if (!isRootRoute) {
         try { window.location.assign('/'); } catch {}
       } else {
         console.warn('401 Unauthorized during initialization - token may need refresh (not redirecting)');
@@ -431,7 +474,7 @@ longRunningApiClient.interceptors.response.use(
       }
     }
 
-    console.error('Long-running API Error:', error.response?.status, error.response?.data);
+    console.error('Long-running API Error:', error.message || error, error.response?.status, error.response?.data);
     return Promise.reject(error);
   }
 );
@@ -441,12 +484,35 @@ pollingApiClient.interceptors.request.use(
   async (config) => {
     console.log(`Making polling ${config.method?.toUpperCase()} request to ${config.url}`);
     try {
-      const token = authTokenGetter ? await authTokenGetter() : null;
-      if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+      if (!authTokenGetter) {
+        console.warn(`[pollingApiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
+      } else {
+        try {
+          const token = await authTokenGetter();
+          if (token) {
+            config.headers = config.headers || {};
+            (config.headers as any)['Authorization'] = `Bearer ${token}`;
+          } else {
+            console.warn(`[pollingApiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
+
+            // Redirect if on protected route to force re-auth
+            const isRootRoute = window.location.pathname === '/';
+            if (!isRootRoute) {
+               console.warn('[pollingApiClient] Redirecting to login due to missing auth token');
+               try { window.location.assign('/'); } catch {}
+            }
+
+            return Promise.reject(new Error('Authentication token not available. Please sign in or reload the page.'));
+          }
+        } catch (tokenError) {
+          console.error(`[pollingApiClient] ❌ Error getting auth token for ${config.url}:`, tokenError);
+          return Promise.reject(new Error('Failed to get authentication token.'));
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error(`[pollingApiClient] ❌ Unexpected error in request interceptor for ${config.url}:`, e);
+      return Promise.reject(e);
+    }
     return config;
   },
   (error) => {
@@ -459,13 +525,29 @@ pollingApiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
+    const originalRequest = error.config;
+
+    // If 401 and we haven't retried yet, try to refresh token and retry
+    if (error?.response?.status === 401 && !originalRequest._retry && authTokenGetter) {
+      originalRequest._retry = true;
+
+      try {
+        const newToken = await authTokenGetter();
+        if (newToken) {
+          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+          return pollingApiClient(originalRequest);
+        }
+      } catch (retryError) {
+        console.error('Token refresh failed:', retryError);
+      }
+    }
+
     if (error?.response?.status === 401) {
-      // Only redirect on 401 if we're not in onboarding flow or root route
-      const isOnboardingRoute = window.location.pathname.includes('/onboarding');
+      // Redirect on 401 unless we're on root route (app initialization)
+      // We allow redirect on onboarding to handle expired sessions
       const isRootRoute = window.location.pathname === '/';
       
-      // Don't redirect from root route during app initialization
-      if (!isRootRoute && !isOnboardingRoute) {
+      if (!isRootRoute) {
         try { window.location.assign('/'); } catch {}
       } else {
         console.warn('401 Unauthorized during initialization - token may need refresh (not redirecting)');
@@ -494,7 +576,7 @@ pollingApiClient.interceptors.response.use(
       }
     }
 
-    console.error('Polling API Error:', error.response?.status, error.response?.data);
+    console.error('Polling API Error:', error.message || error, error.response?.status, error.response?.data);
     return Promise.reject(error);
   }
 ); 

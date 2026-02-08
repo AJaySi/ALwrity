@@ -27,7 +27,8 @@ class MetaDescriptionService:
         tone: str = "General",
         search_intent: str = "Informational Intent",
         language: str = "English",
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate AI-powered meta descriptions based on keywords and parameters
@@ -65,7 +66,8 @@ class MetaDescriptionService:
             
             ai_response = llm_text_gen(
                 prompt=prompt,
-                system_prompt=self._get_system_prompt(language)
+                system_prompt=self._get_system_prompt(language),
+                user_id=user_id
             )
             
             # Parse and structure the response

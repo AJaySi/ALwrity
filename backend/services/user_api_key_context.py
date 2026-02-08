@@ -70,14 +70,15 @@ class UserAPIKeyContext:
     def _load_from_database(self, user_id: str) -> Dict[str, str]:
         """Load API keys from database for specific user."""
         try:
-            from services.onboarding.database_service import OnboardingDatabaseService
+            from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
             from services.database import SessionLocal
             
-            db_service = OnboardingDatabaseService()
+            integration_service = OnboardingDataIntegrationService()
             db = SessionLocal()
             try:
-                keys = db_service.get_api_keys(user_id, db)
-                logger.info(f"Loaded {len(keys)} API keys from database for user {user_id}")
+                integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+                keys = integrated_data.get('api_keys_data', {})
+                logger.info(f"Loaded {len(keys)} API keys from database (SSOT) for user {user_id}")
                 return keys
             finally:
                 db.close()
