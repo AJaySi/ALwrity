@@ -1,4 +1,4 @@
-"""
+﻿"""
 WordPress OAuth2 Service
 Handles WordPress.com OAuth2 authentication flow for simplified user connection.
 """
