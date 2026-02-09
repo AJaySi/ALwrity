@@ -34,6 +34,7 @@ from models.product_asset_models import Base as ProductAssetBase
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask
 from models.platform_insights_monitoring_models import PlatformInsightsTask
+from models.oauth_token_models import BingOAuthToken, WordPressOAuthToken, WixOAuthToken
 
 # OAuth token and integration models (platform database)
 from models.oauth_token_models import Base as OAuthTokenBase
