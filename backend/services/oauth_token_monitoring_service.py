@@ -36,6 +36,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
     # Use DEBUG level for routine checks (called frequently by dashboard)
     logger.debug(f"[OAuth Monitoring] Checking connected platforms for user: {user_id}")
 
+    # Provider registry abstracts the storage backend. Providers now read
+    # from PostgreSQL while SQLite writes remain for rollback.
     registry = ProviderRegistry()
 
     def _has_refreshable_tokens(status: dict) -> bool:
@@ -49,6 +51,7 @@ def get_connected_platforms(user_id: str) -> List[str]:
                 logger.warning(f"[OAuth Monitoring] ⚠️ Provider {platform} not available")
                 continue
 
+            # Token status is read from PostgreSQL (SSOT) inside provider services.
             token_status = service.get_user_token_status(user_id)
             has_tokens = token_status.get("has_tokens", False)
             has_active_tokens = token_status.get("has_active_tokens", False)

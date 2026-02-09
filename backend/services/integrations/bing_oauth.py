@@ -136,6 +136,7 @@ class BingOAuthService:
             state = secrets.token_urlsafe(32)
 
             # Store state in database for validation
+            # PostgreSQL is the primary read path; SQLite is still written for rollback.
             self._execute_postgres(
                 """
                 INSERT INTO bing_oauth_states (state, user_id, expires_at)
@@ -183,6 +184,7 @@ class BingOAuthService:
             logger.info(f"Bing Webmaster OAuth callback started - code: {code[:20]}..., state: {state[:20]}...")
             
             # Validate state parameter
+            # Read OAuth state from PostgreSQL (SSOT).
             row = self._execute_postgres(
                 """
                 SELECT user_id, created_at, expires_at
@@ -257,6 +259,7 @@ class BingOAuthService:
             # Calculate expiration
             expires_at = datetime.now() + timedelta(seconds=expires_in)
             
+            # Persist tokens to PostgreSQL first, then SQLite for rollback.
             self._execute_postgres(
                 """
                 INSERT INTO bing_oauth_tokens
@@ -377,6 +380,7 @@ class BingOAuthService:
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active Bing tokens for a user."""
         try:
+            # Read from PostgreSQL SSOT (primary).
             result = self._execute_postgres(
                 """
                 SELECT id, access_token, refresh_token, token_type, expires_at, scope, created_at
@@ -412,6 +416,7 @@ class BingOAuthService:
     def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
         """Get detailed token status for a user including expired tokens."""
         try:
+            # Read from PostgreSQL SSOT (primary).
             result = self._execute_postgres(
                 """
                 SELECT id, access_token, refresh_token, token_type, expires_at, scope, created_at, is_active

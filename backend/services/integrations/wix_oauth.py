@@ -121,6 +121,7 @@ class WixOAuthService:
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
 
+            # Persist tokens to PostgreSQL first, then SQLite for rollback.
             self._execute_postgres(
                 """
                 INSERT INTO wix_oauth_tokens
@@ -162,6 +163,7 @@ class WixOAuthService:
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active Wix tokens for a user."""
         try:
+            # Read from PostgreSQL SSOT (primary).
             result = self._execute_postgres(
                 """
                 SELECT id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id, created_at
@@ -200,6 +202,7 @@ class WixOAuthService:
     def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
         """Get detailed token status for a user including expired tokens."""
         try:
+            # Read from PostgreSQL SSOT (primary).
             result = self._execute_postgres(
                 """
                 SELECT id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id, created_at, is_active

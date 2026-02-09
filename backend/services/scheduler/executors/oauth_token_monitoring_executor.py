@@ -622,6 +622,7 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         Check Wix token validity.
         """
         try:
+            # Wix monitoring now checks backend token storage instead of frontend sessionStorage.
             wix_service = self.provider_registry.get_service("wix")
             if not wix_service:
                 raise ValueError("Wix service not available")

@@ -165,7 +165,7 @@ async def handle_bing_callback(
             from services.database import SessionLocal
             from services.platform_insights_monitoring_service import create_platform_insights_task
             
-            # Get user_id from Bing OAuth callback result
+            # Use user_id returned from the PostgreSQL-backed OAuth handler.
             db = SessionLocal()
             try:
                 user_id = result.get("user_id")

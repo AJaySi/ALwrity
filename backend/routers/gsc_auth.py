@@ -72,7 +72,7 @@ async def handle_gsc_callback(
                 from services.database import SessionLocal
                 from services.platform_insights_monitoring_service import create_platform_insights_task
                 
-                # Get user_id from most recent GSC credentials (since state was deleted)
+                # Read user_id from PostgreSQL-backed GSC credentials (state was deleted).
                 db = SessionLocal()
                 try:
                     user_id = gsc_service.get_latest_credentials_user_id()

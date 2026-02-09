@@ -25,6 +25,8 @@ class ProviderRegistry:
     """Registry for provider services."""
 
     def __init__(self):
+        # Centralized provider mapping keeps the registry as the single place
+        # to change provider instantiation during storage migrations.
         self._configs: Dict[str, ProviderConfig] = {
             "gsc": ProviderConfig(platform="gsc", factory=GSCService),
             "bing": ProviderConfig(platform="bing", factory=BingOAuthService),
@@ -39,6 +41,8 @@ class ProviderRegistry:
 
     def get_service(self, platform: str) -> Optional[Any]:
         """Get (or create) a provider service instance."""
+        # Lazy initialization avoids unnecessary DB connections when only a
+        # subset of providers is accessed in a given request.
         if platform not in self._configs:
             return None
         if platform not in self._instances:

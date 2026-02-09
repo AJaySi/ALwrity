@@ -136,6 +136,7 @@ class WordPressOAuthService:
             state = secrets.token_urlsafe(32)
 
             # Store state in database for validation
+            # PostgreSQL is the primary read path; SQLite writes remain for rollback.
             self._execute_postgres(
                 """
                 INSERT INTO wordpress_oauth_states (state, user_id, expires_at)
@@ -184,6 +185,7 @@ class WordPressOAuthService:
             logger.info(f"WordPress OAuth callback started - code: {code[:20]}..., state: {state[:20]}...")
             
             # Validate state parameter
+            # Read OAuth state from PostgreSQL (SSOT).
             result = self._execute_postgres(
                 """
                 SELECT user_id, expires_at
@@ -251,6 +253,7 @@ class WordPressOAuthService:
             # Calculate expiration (WordPress tokens typically expire in 2 weeks)
             expires_at = datetime.now() + timedelta(days=14)
             
+            # Persist tokens to PostgreSQL first, then SQLite for rollback.
             self._execute_postgres(
                 """
                 INSERT INTO wordpress_oauth_tokens
@@ -299,6 +302,7 @@ class WordPressOAuthService:
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active WordPress tokens for a user."""
         try:
+            # Read from PostgreSQL SSOT (primary).
             result = self._execute_postgres(
                 """
                 SELECT id, access_token, token_type, expires_at, scope, blog_id, blog_url, created_at
@@ -335,6 +339,7 @@ class WordPressOAuthService:
     def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
         """Get detailed token status for a user including expired tokens."""
         try:
+            # Read from PostgreSQL SSOT (primary).
             result = self._execute_postgres(
                 """
                 SELECT id, access_token, refresh_token, token_type, expires_at, scope, blog_id, blog_url, created_at, is_active

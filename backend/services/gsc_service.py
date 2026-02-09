@@ -144,6 +144,7 @@ class GSCService:
                 'scopes': credentials.scopes
             })
             
+            # PostgreSQL is the primary store for reads (SSOT).
             self._execute_postgres(
                 """
                 INSERT INTO gsc_credentials (user_id, credentials_json, updated_at)
@@ -156,6 +157,7 @@ class GSCService:
                 {"user_id": user_id, "credentials_json": credentials_json},
             )
 
+            # Dual-write to SQLite for rollback safety during migration.
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -178,6 +180,7 @@ class GSCService:
     def load_user_credentials(self, user_id: str) -> Optional[Credentials]:
         """Load user's GSC credentials from database."""
         try:
+            # Read from PostgreSQL SSOT.
             result = self._execute_postgres(
                 "SELECT credentials_json FROM gsc_credentials WHERE user_id = :user_id",
                 {"user_id": user_id},
@@ -186,31 +189,31 @@ class GSCService:
                 return None
 
             credentials_data = json.loads(result[0])
-                
-                # Check for required fields, but allow connection without refresh token
-                required_fields = ['token_uri', 'client_id', 'client_secret']
-                missing_fields = [field for field in required_fields if not credentials_data.get(field)]
-                
-                if missing_fields:
-                    logger.warning(f"GSC credentials for user {user_id} missing required fields: {missing_fields}")
-                    return None
-                
-                credentials = Credentials.from_authorized_user_info(credentials_data, self.scopes)
-                
-                # Refresh token if needed and possible
-                if credentials.expired:
-                    if credentials.refresh_token:
-                        try:
-                            credentials.refresh(GoogleRequest())
-                            self.save_user_credentials(user_id, credentials)
-                        except Exception as e:
-                            logger.error(f"Failed to refresh GSC token for user {user_id}: {e}")
-                            return None
-                    else:
-                        logger.warning(f"GSC token expired for user {user_id} but no refresh token available - user needs to re-authorize")
+
+            # Check for required fields, but allow connection without refresh token
+            required_fields = ['token_uri', 'client_id', 'client_secret']
+            missing_fields = [field for field in required_fields if not credentials_data.get(field)]
+
+            if missing_fields:
+                logger.warning(f"GSC credentials for user {user_id} missing required fields: {missing_fields}")
+                return None
+
+            credentials = Credentials.from_authorized_user_info(credentials_data, self.scopes)
+
+            # Refresh token if needed and possible
+            if credentials.expired:
+                if credentials.refresh_token:
+                    try:
+                        credentials.refresh(GoogleRequest())
+                        self.save_user_credentials(user_id, credentials)
+                    except Exception as e:
+                        logger.error(f"Failed to refresh GSC token for user {user_id}: {e}")
                         return None
-                
-                return credentials
+                else:
+                    logger.warning(f"GSC token expired for user {user_id} but no refresh token available - user needs to re-authorize")
+                    return None
+
+            return credentials
                 
         except Exception as e:
             logger.error(f"Error loading GSC credentials for user {user_id}: {e}")
