@@ -9,10 +9,16 @@ import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from loguru import logger
+<<<<<<< HEAD
 from sqlalchemy.orm import Session
 
 from services.database import get_platform_db_session
 from models.oauth_token_models import WordPressOAuthToken, WordPressOauthState
+=======
+import json
+import base64
+from services.oauth_redirects import get_redirect_uri
+>>>>>>> origin/codex/add-oauth-endpoints-and-validations
 
 class WordPressOAuthService:
     """Manages WordPress.com OAuth2 authentication flow."""
@@ -22,7 +28,12 @@ class WordPressOAuthService:
         # WordPress.com OAuth2 credentials
         self.client_id = os.getenv('WORDPRESS_CLIENT_ID', '')
         self.client_secret = os.getenv('WORDPRESS_CLIENT_SECRET', '')
-        self.redirect_uri = os.getenv('WORDPRESS_REDIRECT_URI', 'https://alwrity-ai.vercel.app/wp/callback')
+        # Enforce redirect URI from env so the callback origin matches deployment.
+        try:
+            self.redirect_uri = get_redirect_uri("WordPress", "WORDPRESS_REDIRECT_URI")
+        except ValueError as exc:
+            logger.error(f"WordPress OAuth redirect URI configuration error: {exc}")
+            self.redirect_uri = None
         self.base_url = "https://public-api.wordpress.com"
 
         # Validate configuration
@@ -42,7 +53,12 @@ class WordPressOAuthService:
         """Generate WordPress OAuth2 authorization URL."""
         try:
             # Check if credentials are properly configured
-            if not self.client_id or not self.client_secret or self.client_id == 'your_wordpress_com_client_id_here':
+            if (
+                not self.client_id
+                or not self.client_secret
+                or self.client_id == 'your_wordpress_com_client_id_here'
+                or not self.redirect_uri
+            ):
                 logger.error("WordPress OAuth client credentials not configured")
                 return None
 

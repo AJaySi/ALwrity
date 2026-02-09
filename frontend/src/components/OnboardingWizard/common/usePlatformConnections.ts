@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { createClient, OAuthStrategy } from '@wix/sdk';
+import { apiClient } from '../../../api/client';
 
 export const usePlatformConnections = () => {
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  // Trusted origins come from the backend (validated redirect origin) + current origin.
+  // This prevents accepting messages from unexpected popups or mismatched environments.
+  const [trustedOrigins, setTrustedOrigins] = useState<string[]>([window.location.origin]);
 
   // Handle Wix OAuth popup messages
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      const trusted = [window.location.origin, 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'];
-      if (!trusted.includes(event.origin)) return;
+      // Only accept postMessage events from trusted origins to avoid spoofing.
+      if (!trustedOrigins.includes(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
 
       if (event.data.type === 'WIX_OAUTH_SUCCESS') {
@@ -31,7 +34,7 @@ export const usePlatformConnections = () => {
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [setConnectedPlatforms, setToastMessage]);
+  }, [setConnectedPlatforms, setToastMessage, trustedOrigins]);
 
   // Fallback: detect wix_connected query param after full-page redirect
   useEffect(() => {
@@ -53,6 +56,8 @@ export const usePlatformConnections = () => {
 
   const handleWixConnect = async () => {
     try {
+      // We persist the current location before redirecting so we can reliably
+      // return users to where they started (onboarding/blog writer).
       // Store current page URL BEFORE redirecting (critical for proper redirect back)
       // This ensures we can redirect back to the correct page (e.g., Blog Writer) after OAuth
       // Only store if not already set (allows WixConnectModal to override if needed)
@@ -69,24 +74,33 @@ export const usePlatformConnections = () => {
         console.warn('[Wix OAuth] Failed to store redirect URL:', e);
       }
 
-      // Use the working Wix OAuth flow from WixTestPage
-      const wixClient = createClient({
-        auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' })
-      });
+      // Fetch canonical OAuth configuration from the backend (validated origin + PKCE).
+      const response = await apiClient.get('/api/oauth/wix/auth-url');
+      const { auth_url: authUrl, oauth_data: oauthData, trusted_origins: apiOrigins, client_id: clientId } = response.data;
 
-      const NGROK_ORIGIN = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const redirectOrigin = window.location.origin.includes('localhost') ? NGROK_ORIGIN : window.location.origin;
-      const redirectUri = `${redirectOrigin}/wix/callback`;
-      const oauthData = await wixClient.auth.generateOAuthData(redirectUri);
+      if (!authUrl || !oauthData) {
+        throw new Error('Missing Wix OAuth configuration from backend.');
+      }
+
+      // Merge backend-supplied origins to match environment-driven redirect validation.
+      if (Array.isArray(apiOrigins) && apiOrigins.length > 0) {
+        setTrustedOrigins(prev => Array.from(new Set([...prev, ...apiOrigins])));
+      }
       
-      // Persist OAuth data robustly so callback can always recover it
+      // Persist OAuth data robustly so callback can always recover it.
+      // The Wix SDK requires this PKCE + state payload to validate the callback.
       // 1) SessionStorage for same-origin same-tab flows
       try { sessionStorage.setItem('wix_oauth_data', JSON.stringify(oauthData)); } catch {}
       // 2) Key by state so callback can look up by state value
       try { sessionStorage.setItem(`wix_oauth_data_${oauthData.state}`, JSON.stringify(oauthData)); } catch {}
+      // 2.1) Persist client ID for callback usage
+      try {
+        if (clientId) {
+          sessionStorage.setItem('wix_oauth_client_id', clientId);
+        }
+      } catch {}
       // 3) window.name persists across top-level redirects even when origin changes
       try { (window as any).name = `WIX_OAUTH::${btoa(JSON.stringify(oauthData))}`; } catch {}
-      const { authUrl } = await wixClient.auth.getAuthUrl(oauthData);
       window.location.href = authUrl;
     } catch (error) {
       console.error('Wix connection error:', error);

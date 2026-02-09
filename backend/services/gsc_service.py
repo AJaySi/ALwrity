@@ -8,12 +8,9 @@ from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from utils.logging import get_logger
-logger = get_logger("gsc_service", migration_mode=True)
-from sqlalchemy.orm import Session
-
-from services.database import get_platform_db_session
-from models.oauth_token_models import GscCredential, GscDataCache, GscOauthState
+from loguru import logger
+from services.oauth_redirects import get_redirect_uri
+>>>>>>> origin/codex/add-oauth-endpoints-and-validations
 
 class GSCService:
     """Service for Google Search Console integration."""
@@ -144,7 +141,7 @@ class GSCService:
             if not os.path.exists(self.credentials_file):
                 raise FileNotFoundError(f"GSC credentials file not found: {self.credentials_file}")
             
-            redirect_uri = os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
+            redirect_uri = get_redirect_uri("GSC", "GSC_REDIRECT_URI")
             flow = Flow.from_client_secrets_file(
                 self.credentials_file,
                 scopes=self.scopes,
@@ -236,7 +233,7 @@ class GSCService:
             flow = Flow.from_client_secrets_file(
                 self.credentials_file,
                 scopes=self.scopes,
-                redirect_uri=os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
+                redirect_uri=get_redirect_uri("GSC", "GSC_REDIRECT_URI")
             )
             
             flow.fetch_token(code=authorization_code)
