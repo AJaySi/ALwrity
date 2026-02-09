@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
@@ -105,6 +105,7 @@ class WixIntegrationProvider:
 
 
 _INTEGRATION_PROVIDERS: Dict[str, IntegrationProvider] = {}
+_INTEGRATION_PROVIDER_FACTORIES: Dict[str, Callable[[], IntegrationProvider]] = {}
 
 
 def register_provider(provider: IntegrationProvider) -> None:
@@ -112,16 +113,32 @@ def register_provider(provider: IntegrationProvider) -> None:
     _INTEGRATION_PROVIDERS[provider.key] = provider
 
 
+def register_provider_factory(key: str, factory: Callable[[], IntegrationProvider]) -> None:
+    """Register a provider factory for lazy initialization."""
+    _INTEGRATION_PROVIDER_FACTORIES[key] = factory
+
+
 def get_provider(key: str) -> Optional[IntegrationProvider]:
+    if key not in _INTEGRATION_PROVIDERS and key in _INTEGRATION_PROVIDER_FACTORIES:
+        _INTEGRATION_PROVIDERS[key] = _INTEGRATION_PROVIDER_FACTORIES[key]()
     return _INTEGRATION_PROVIDERS.get(key)
 
 
 def list_providers() -> Dict[str, IntegrationProvider]:
+    for key in list(_INTEGRATION_PROVIDER_FACTORIES.keys()):
+        get_provider(key)
     return dict(_INTEGRATION_PROVIDERS)
 
 
+def ensure_default_providers_registered() -> None:
+    """Register default providers for the Week 3 migration bridge."""
+    if _INTEGRATION_PROVIDER_FACTORIES:
+        return
+    register_provider_factory("gsc", GSCIntegrationProvider)
+    register_provider_factory("bing", BingIntegrationProvider)
+    register_provider_factory("wordpress", WordPressIntegrationProvider)
+    register_provider_factory("wix", WixIntegrationProvider)
+
+
 # Keep legacy paths in use for onboarding/monitoring until Week 3.
-register_provider(GSCIntegrationProvider())
-register_provider(BingIntegrationProvider())
-register_provider(WordPressIntegrationProvider())
-register_provider(WixIntegrationProvider())
+ensure_default_providers_registered()
