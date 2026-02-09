@@ -1,4 +1,4 @@
-﻿"""
+"""
 Bing Webmaster OAuth2 Service
 Handles Bing Webmaster Tools OAuth2 authentication flow for SEO analytics access.
 """

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Wix OAuth2 Service
 Handles Wix OAuth2 authentication flow and token storage.
 """

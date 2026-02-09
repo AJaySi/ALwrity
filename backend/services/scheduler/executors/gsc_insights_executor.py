@@ -1,4 +1,4 @@
-﻿"""
+"""
 GSC Insights Task Executor
 Handles execution of GSC insights fetch tasks for connected platforms.
 """
