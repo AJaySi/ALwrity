@@ -34,15 +34,6 @@ const PerformancePredictionsCard: React.FC<PerformancePredictionsCardProps> = ({
   const sectionStyles = getSectionStyles();
   const listItemStyles = getListItemStyles();
 
-  // Helper function to safely render text content
-  const safeRenderText = (content: any): string => {
-    if (typeof content === 'string') return content;
-    if (typeof content === 'object' && content !== null) {
-      return JSON.stringify(content);
-    }
-    return 'Data not available';
-  };
-
   if (!strategyData?.performance_predictions) {
     return (
       <ProgressiveCard
