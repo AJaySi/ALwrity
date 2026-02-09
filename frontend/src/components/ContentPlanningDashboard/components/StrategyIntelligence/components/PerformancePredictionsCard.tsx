@@ -1,5 +1,16 @@
 import React from 'react';
 import {
+  Grid,
+  Typography,
+  Box,
+  Chip,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Divider
+} from '@mui/material';
+import {
   ShowChart as ShowChartIcon,
   TrendingUp as TrendingUpIcon,
   Assessment as AssessmentIcon
