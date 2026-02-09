@@ -12,20 +12,20 @@ import {
   CardHeader,
   Typography,
   Box,
-  Grid,
-  Button,
+  IconButton,
+  Divider,
+  Tooltip,
+  Avatar,
+  Badge,
   Chip,
+  Button,
+  Grid,
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Avatar,
-  Badge,
-  IconButton,
-  Tooltip,
   useTheme,
   useMediaQuery,
   alpha,
-  Divider,
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -38,7 +38,6 @@ import {
   TrendingUp as TrendingUpIcon,
   Campaign as CampaignIcon,
   PlayArrow as ActivityIcon,
-  PlayArrow as PlayIcon,
   Pause as PauseIcon,
   CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
@@ -142,9 +141,6 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   onEdit,
   onLaunch,
 }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -163,7 +159,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'active':
-        return <PlayIcon sx={{ fontSize: 12 }} />;
+        return <ActivityIcon sx={{ fontSize: 12 }} />;
       case 'paused':
         return <PauseIcon sx={{ fontSize: 12 }} />;
       case 'draft':
@@ -452,7 +448,6 @@ export const EmailCampaignsPanel: React.FC<EmailCampaignsPanelProps> = ({
   maxHeight,
   showCreateButtons = true,
 }) => {
-  const theme = useTheme();
   const navigate = useNavigate();
   const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
   const [expanded, setExpanded] = useState<string | false>('campaigns');

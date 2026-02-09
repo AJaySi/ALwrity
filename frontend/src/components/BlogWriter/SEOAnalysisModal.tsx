@@ -10,21 +10,16 @@ import {
   Dialog,
   DialogContent,
   Button,
-  Chip,
   LinearProgress,
   Card,
-  CardContent,
-  CardHeader,
   Typography,
   Box,
   Tabs,
   Tab,
   Alert,
-  Grid,
   Paper,
   IconButton,
   Tooltip,
-  Avatar,
   CircularProgress
 } from '@mui/material';
 import { apiClient, triggerSubscriptionError } from '../../api/client';
@@ -384,7 +379,7 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
       setError(err instanceof Error ? err.message : 'Analysis failed');
       setIsAnalyzing(false);
     }
-  }, [blogContent, blogTitle, researchData, contentHash, onAnalysisComplete]);
+  }, [blogContent, blogTitle, researchData, contentHash, onAnalysisComplete, isAnalyzing]);
 
   // Precompute hash when modal opens and trigger cache check
   // Use a ref to prevent multiple simultaneous calls

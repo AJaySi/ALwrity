@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Paper, Typography, Box, Button, Alert, Grid, CircularProgress } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import { useStoryWriterState } from '../../../../hooks/useStoryWriterState';
 import { storyWriterApi, StoryScene } from '../../../../services/storyWriterApi';
 import { triggerSubscriptionError } from '../../../../api/client';
 import { StoryParametersSection } from './StoryParametersSection';
@@ -120,7 +119,7 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
     ) {
       state.setAudienceAgeGroup(normalizedAudienceAgeGroup);
     }
-  }, [state.audienceAgeGroup, normalizedAudienceAgeGroup, state.setAudienceAgeGroup, allAudienceAgeGroups]);
+  }, [state.audienceAgeGroup, normalizedAudienceAgeGroup, state.setAudienceAgeGroup, allAudienceAgeGroups, state]);
 
   const handleRegeneratePremise = async () => {
     // Validate required fields

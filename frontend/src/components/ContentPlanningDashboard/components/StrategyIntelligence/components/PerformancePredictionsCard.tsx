@@ -1,19 +1,7 @@
 import React from 'react';
 import {
-  Grid,
-  Typography,
-  Box,
-  Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider
-} from '@mui/material';
-import {
   ShowChart as ShowChartIcon,
   TrendingUp as TrendingUpIcon,
-  Timeline as TimelineIcon,
   Assessment as AssessmentIcon
 } from '@mui/icons-material';
 import { StrategyData } from '../types/strategy.types';

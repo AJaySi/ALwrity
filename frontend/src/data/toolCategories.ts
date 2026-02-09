@@ -14,7 +14,7 @@ import {
   Twitter as TwitterIcon,
   Instagram as InstagramIcon,
   Web as WebIcon,
-  Timeline as StrategyIcon,
+  // Timeline as StrategyIcon,
   CalendarMonth as CalendarIcon,
   Image as ImageIcon,
   Audiotrack as AudioIcon,

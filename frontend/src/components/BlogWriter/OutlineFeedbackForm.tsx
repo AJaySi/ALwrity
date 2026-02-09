@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { BlogOutlineSection, BlogResearchResponse, blogWriterApi, mediumBlogApi } from '../../services/blogWriterApi';
-import { useMediumGenerationPolling } from '../../hooks/usePolling';
 
 // Simple toast notification function
 const showToast = (message: string, type: 'success' | 'error' = 'success') => {

@@ -51,8 +51,8 @@ export const usePriority2Alerts = (
 
   const [alerts, setAlerts] = useState<Priority2Alert[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  // const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  // const [lastCheck, setLastCheck] = useState<Date | null>(null);
 
   const generateAlerts = useCallback((data: DashboardData): Priority2Alert[] => {
     const generatedAlerts: Priority2Alert[] = [];

@@ -7,7 +7,6 @@ import {
   Typography
 } from '@mui/material';
 import {
-  BarChart as BarChartIcon
 } from '@mui/icons-material';
 import { useContentPlanningStore } from '../../../stores/contentPlanningStore';
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Stack, Typography, FormControl, InputLabel, Select, MenuItem, TextField, FormControlLabel, Switch, Chip, Button, CircularProgress, Tooltip, Paper } from '@mui/material';
+import { Box, Stack, Typography, FormControl, Select, MenuItem, TextField, FormControlLabel, Switch, Chip, Button, CircularProgress, Tooltip, Paper } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import type { ExtendResolution, ExtendModel } from '../hooks/useExtendVideo';
 import { optimizePrompt } from '../../../../../api/videoStudioApi';

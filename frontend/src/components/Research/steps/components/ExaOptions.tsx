@@ -184,19 +184,6 @@ export const ExaOptions: React.FC<ExaOptionsProps> = ({ config, onConfigUpdate, 
       case 'numResults':
         tooltip = `${baseTooltip.description}\n\n${(baseTooltip as any).limits || ''}\n\nRecommendations:\n${Object.entries((baseTooltip as any).recommendations || {}).map(([key, val]) => `• ${key} results: ${val}`).join('\n')}`;
         break;
-      case 'dateFilter':
-      case 'endPublishedDate':
-      case 'startCrawlDate':
-      case 'endCrawlDate':
-      case 'includeText':
-      case 'excludeText':
-      case 'highlightsNumSentences':
-      case 'highlightsPerUrl':
-      case 'contextMaxCharacters':
-      case 'textMaxCharacters':
-      case 'summaryQuery':
-        tooltip = `${baseTooltip.description}\n\nWhen to use:\n${((baseTooltip as any).whenToUse || []).map((u: string) => `• ${u}`).join('\n')}\n\n${(baseTooltip as any).format || ''}\n\nExample: ${(baseTooltip as any).example || ''}\n\n${(baseTooltip as any).recommendation || ''}\n\n${(baseTooltip as any).limit || ''}\n\n${(baseTooltip as any).note || ''}`;
-        break;
       case 'highlights':
         tooltip = `${baseTooltip.description}\n\nBenefits:\n${((baseTooltip as any).benefits || []).map((b: string) => `• ${b}`).join('\n')}\n\n${(baseTooltip as any).whenToUse || ''}`;
         break;
@@ -208,12 +195,6 @@ export const ExaOptions: React.FC<ExaOptionsProps> = ({ config, onConfigUpdate, 
         break;
       case 'excludeDomains':
         tooltip = `${baseTooltip.description}\n\nWhen to use:\n${((baseTooltip as any).whenToUse || []).map((u: string) => `• ${u}`).join('\n')}\n\n${(baseTooltip as any).format || ''}\n\nExample: ${(baseTooltip as any).example || ''}\n\n${(baseTooltip as any).limit || ''}`;
-        break;
-      case 'dateFilter':
-      case 'endPublishedDate':
-      case 'startCrawlDate':
-      case 'endCrawlDate':
-        tooltip = `${baseTooltip.description}\n\nWhen to use:\n${((baseTooltip as any).whenToUse || []).map((u: string) => `• ${u}`).join('\n')}\n\n${(baseTooltip as any).format || ''}\n\nExample: ${(baseTooltip as any).example || ''}\n\n${(baseTooltip as any).note || ''}`;
         break;
       default:
         tooltip = (baseTooltip as any).description || '';

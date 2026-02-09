@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, TextField, FormControl, InputLabel, Select, MenuItem, Paper, Stack } from '@mui/material';
+import { Typography, TextField, FormControl, InputLabel, Select, MenuItem, Paper, Stack } from '@mui/material';
 import { Resolution, FaceSwapModel, TargetGender } from '../hooks/useFaceSwap';
 
 interface SettingsPanelProps {
