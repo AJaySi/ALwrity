@@ -12,6 +12,10 @@ from datetime import datetime, timedelta
 from loguru import logger
 import json
 import base64
+from sqlalchemy import func
+
+from ..database import get_user_data_db_session
+from models.oauth_token_models import WordPressOAuthToken
 
 class WordPressOAuthService:
     """Manages WordPress.com OAuth2 authentication flow."""
@@ -62,6 +66,70 @@ class WordPressOAuthService:
             ''')
             conn.commit()
         logger.info("WordPress OAuth database initialized.")
+
+    def _get_postgres_session(self):
+        try:
+            session = get_user_data_db_session()
+            if session is None:
+                logger.warning("WordPress OAuth: PostgreSQL session unavailable; skipping dual-write")
+            return session
+        except Exception as e:
+            logger.warning(f"WordPress OAuth: Unable to create PostgreSQL session: {e}")
+            return None
+
+    def _insert_postgres_token(self, **fields) -> None:
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            session.add(WordPressOAuthToken(**fields))
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"WordPress OAuth: Failed to insert token into PostgreSQL: {e}")
+        finally:
+            session.close()
+
+    def _log_token_count_comparison(self, user_id: str) -> None:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM wordpress_oauth_tokens WHERE user_id = ?",
+                    (user_id,),
+                )
+                sqlite_count = cursor.fetchone()[0] or 0
+        except Exception as e:
+            logger.warning(f"WordPress OAuth: Unable to read SQLite token count: {e}")
+            return
+
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            postgres_count = (
+                session.query(func.count(WordPressOAuthToken.id))
+                .filter(WordPressOAuthToken.user_id == user_id)
+                .scalar()
+                or 0
+            )
+            if sqlite_count != postgres_count:
+                logger.warning(
+                    "WordPress OAuth: Token count mismatch for user %s (sqlite=%s, postgres=%s)",
+                    user_id,
+                    sqlite_count,
+                    postgres_count,
+                )
+            else:
+                logger.info(
+                    "WordPress OAuth: Token count match for user %s (count=%s)",
+                    user_id,
+                    sqlite_count,
+                )
+        except Exception as e:
+            logger.warning(f"WordPress OAuth: Unable to compare token counts: {e}")
+        finally:
+            session.close()
     
     def generate_authorization_url(self, user_id: str, scope: str = "global") -> Dict[str, Any]:
         """Generate WordPress OAuth2 authorization URL."""
@@ -172,6 +240,17 @@ class WordPressOAuthService:
                 ''', (user_id, access_token, 'bearer', expires_at, scope, blog_id, blog_url))
                 conn.commit()
                 logger.info(f"WordPress OAuth: Token inserted into database for user {user_id}")
+
+            self._insert_postgres_token(
+                user_id=user_id,
+                access_token=access_token,
+                token_type="bearer",
+                expires_at=expires_at,
+                scope=scope,
+                blog_id=blog_id,
+                blog_url=blog_url,
+            )
+            self._log_token_count_comparison(user_id)
             
             logger.info(f"WordPress OAuth token stored successfully for user {user_id}, blog: {blog_url}")
             return {

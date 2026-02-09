@@ -8,6 +8,10 @@ import sqlite3
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from loguru import logger
+from sqlalchemy import func
+
+from ..database import get_user_data_db_session
+from models.oauth_token_models import WixOAuthToken
 
 
 class WixOAuthService:
@@ -40,6 +44,96 @@ class WixOAuthService:
             ''')
             conn.commit()
         logger.info("Wix OAuth database initialized.")
+
+    def _get_postgres_session(self):
+        try:
+            session = get_user_data_db_session()
+            if session is None:
+                logger.warning("Wix OAuth: PostgreSQL session unavailable; skipping dual-write")
+            return session
+        except Exception as e:
+            logger.warning(f"Wix OAuth: Unable to create PostgreSQL session: {e}")
+            return None
+
+    def _insert_postgres_token(self, **fields) -> None:
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            session.add(WixOAuthToken(**fields))
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Wix OAuth: Failed to insert token into PostgreSQL: {e}")
+        finally:
+            session.close()
+
+    def _update_postgres_token(
+        self,
+        user_id: str,
+        refresh_token: Optional[str] = None,
+        **updates: Any,
+    ) -> None:
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            query = session.query(WixOAuthToken).filter(WixOAuthToken.user_id == user_id)
+            if refresh_token:
+                query = query.filter(WixOAuthToken.refresh_token == refresh_token)
+            token = query.order_by(WixOAuthToken.created_at.desc()).first()
+            if not token:
+                logger.warning("Wix OAuth: No matching PostgreSQL token found for update")
+                return
+            for key, value in updates.items():
+                setattr(token, key, value)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Wix OAuth: Failed to update token in PostgreSQL: {e}")
+        finally:
+            session.close()
+
+    def _log_token_count_comparison(self, user_id: str) -> None:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM wix_oauth_tokens WHERE user_id = ?",
+                    (user_id,),
+                )
+                sqlite_count = cursor.fetchone()[0] or 0
+        except Exception as e:
+            logger.warning(f"Wix OAuth: Unable to read SQLite token count: {e}")
+            return
+
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            postgres_count = (
+                session.query(func.count(WixOAuthToken.id))
+                .filter(WixOAuthToken.user_id == user_id)
+                .scalar()
+                or 0
+            )
+            if sqlite_count != postgres_count:
+                logger.warning(
+                    "Wix OAuth: Token count mismatch for user %s (sqlite=%s, postgres=%s)",
+                    user_id,
+                    sqlite_count,
+                    postgres_count,
+                )
+            else:
+                logger.info(
+                    "Wix OAuth: Token count match for user %s (count=%s)",
+                    user_id,
+                    sqlite_count,
+                )
+        except Exception as e:
+            logger.warning(f"Wix OAuth: Unable to compare token counts: {e}")
+        finally:
+            session.close()
     
     def store_tokens(
         self,
@@ -82,6 +176,19 @@ class WixOAuthService:
                 ''', (user_id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id))
                 conn.commit()
                 logger.info(f"Wix OAuth: Token inserted into database for user {user_id}")
+
+            self._insert_postgres_token(
+                user_id=user_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type=token_type,
+                expires_at=expires_at,
+                expires_in=expires_in,
+                scope=scope,
+                site_id=site_id,
+                member_id=member_id,
+            )
+            self._log_token_count_comparison(user_id)
             
             return True
             
@@ -235,6 +342,16 @@ class WixOAuthService:
                     ''', (access_token, expires_at, expires_in, user_id, user_id))
                 conn.commit()
                 logger.info(f"Wix OAuth: Tokens updated for user {user_id}")
+
+            self._update_postgres_token(
+                user_id=user_id,
+                refresh_token=refresh_token,
+                access_token=access_token,
+                expires_at=expires_at,
+                expires_in=expires_in,
+                is_active=True,
+            )
+            self._log_token_count_comparison(user_id)
             
             return True
             
@@ -247,6 +364,11 @@ class WixOAuthService:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT refresh_token FROM wix_oauth_tokens WHERE user_id = ? AND id = ?",
+                    (user_id, token_id),
+                )
+                token_row = cursor.fetchone()
                 cursor.execute('''
                     UPDATE wix_oauth_tokens 
                     SET is_active = FALSE, updated_at = datetime('now')
@@ -256,10 +378,16 @@ class WixOAuthService:
                 
                 if cursor.rowcount > 0:
                     logger.info(f"Wix token {token_id} revoked for user {user_id}")
+                    refresh_token = token_row[0] if token_row else None
+                    self._update_postgres_token(
+                        user_id=user_id,
+                        refresh_token=refresh_token,
+                        is_active=False,
+                    )
+                    self._log_token_count_comparison(user_id)
                     return True
                 return False
                 
         except Exception as e:
             logger.error(f"Error revoking Wix token: {e}")
             return False
-

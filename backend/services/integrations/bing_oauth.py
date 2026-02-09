@@ -13,6 +13,10 @@ from loguru import logger
 import json
 from urllib.parse import quote
 from ..analytics_cache_service import analytics_cache
+from sqlalchemy import func
+
+from ..database import get_user_data_db_session
+from models.oauth_token_models import BingOAuthToken
 
 class BingOAuthService:
     """Manages Bing Webmaster Tools OAuth2 authentication flow."""
@@ -63,6 +67,99 @@ class BingOAuthService:
             ''')
             conn.commit()
         logger.info("Bing Webmaster OAuth database initialized.")
+
+    def _get_postgres_session(self):
+        try:
+            session = get_user_data_db_session()
+            if session is None:
+                logger.warning("Bing OAuth: PostgreSQL session unavailable; skipping dual-write")
+            return session
+        except Exception as e:
+            logger.warning(f"Bing OAuth: Unable to create PostgreSQL session: {e}")
+            return None
+
+    def _insert_postgres_token(self, **fields) -> None:
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            session.add(BingOAuthToken(**fields))
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Bing OAuth: Failed to insert token into PostgreSQL: {e}")
+        finally:
+            session.close()
+
+    def _update_postgres_token(
+        self,
+        user_id: str,
+        refresh_token: Optional[str] = None,
+        filter_access_token: Optional[str] = None,
+        **updates: Any,
+    ) -> None:
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            query = session.query(BingOAuthToken).filter(BingOAuthToken.user_id == user_id)
+            if refresh_token:
+                query = query.filter(BingOAuthToken.refresh_token == refresh_token)
+            elif filter_access_token:
+                query = query.filter(BingOAuthToken.access_token == filter_access_token)
+            token = query.order_by(BingOAuthToken.created_at.desc()).first()
+            if not token:
+                logger.warning("Bing OAuth: No matching PostgreSQL token found for update")
+                return
+            for key, value in updates.items():
+                setattr(token, key, value)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Bing OAuth: Failed to update token in PostgreSQL: {e}")
+        finally:
+            session.close()
+
+    def _log_token_count_comparison(self, user_id: str) -> None:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM bing_oauth_tokens WHERE user_id = ?",
+                    (user_id,),
+                )
+                sqlite_count = cursor.fetchone()[0] or 0
+        except Exception as e:
+            logger.warning(f"Bing OAuth: Unable to read SQLite token count: {e}")
+            return
+
+        session = self._get_postgres_session()
+        if not session:
+            return
+        try:
+            postgres_count = (
+                session.query(func.count(BingOAuthToken.id))
+                .filter(BingOAuthToken.user_id == user_id)
+                .scalar()
+                or 0
+            )
+            if sqlite_count != postgres_count:
+                logger.warning(
+                    "Bing OAuth: Token count mismatch for user %s (sqlite=%s, postgres=%s)",
+                    user_id,
+                    sqlite_count,
+                    postgres_count,
+                )
+            else:
+                logger.info(
+                    "Bing OAuth: Token count match for user %s (count=%s)",
+                    user_id,
+                    sqlite_count,
+                )
+        except Exception as e:
+            logger.warning(f"Bing OAuth: Unable to compare token counts: {e}")
+        finally:
+            session.close()
     
     def generate_authorization_url(self, user_id: str, scope: str = "webmaster.manage") -> Dict[str, Any]:
         """Generate Bing Webmaster OAuth2 authorization URL."""
@@ -189,6 +286,16 @@ class BingOAuthService:
                 ''', (user_id, access_token, refresh_token, token_type, expires_at, 'webmaster.manage'))
                 conn.commit()
                 logger.info(f"Bing OAuth: Token inserted into database for user {user_id}")
+
+            self._insert_postgres_token(
+                user_id=user_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type=token_type,
+                expires_at=expires_at,
+                scope="webmaster.manage",
+            )
+            self._log_token_count_comparison(user_id)
             
             # Proactively fetch and cache user sites using the fresh token
             try:
@@ -447,6 +554,15 @@ class BingOAuthService:
                 conn.commit()
             
             logger.info(f"Bing access token refreshed for user {user_id}")
+            self._update_postgres_token(
+                user_id=user_id,
+                refresh_token=refresh_token,
+                filter_access_token=access_token,
+                access_token=access_token,
+                expires_at=expires_at,
+                is_active=True,
+            )
+            self._log_token_count_comparison(user_id)
 
             # Invalidate caches that depend on token validity
             try:
@@ -469,6 +585,11 @@ class BingOAuthService:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT access_token, refresh_token FROM bing_oauth_tokens WHERE user_id = ? AND id = ?",
+                    (user_id, token_id),
+                )
+                token_row = cursor.fetchone()
                 cursor.execute('''
                     UPDATE bing_oauth_tokens 
                     SET is_active = FALSE, updated_at = datetime('now')
@@ -478,6 +599,15 @@ class BingOAuthService:
                 
                 if cursor.rowcount > 0:
                     logger.info(f"Bing token {token_id} revoked for user {user_id}")
+                    access_token = token_row[0] if token_row else None
+                    refresh_token = token_row[1] if token_row else None
+                    self._update_postgres_token(
+                        user_id=user_id,
+                        refresh_token=refresh_token,
+                        filter_access_token=access_token,
+                        is_active=False,
+                    )
+                    self._log_token_count_comparison(user_id)
                     return True
                 return False
                 
@@ -644,6 +774,11 @@ class BingOAuthService:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT user_id, refresh_token, access_token FROM bing_oauth_tokens WHERE id = ?",
+                    (token_id,),
+                )
+                token_row = cursor.fetchone()
                 # Compute expires_at from expires_in if expires_at missing
                 expires_at_value = refreshed_token.get("expires_at")
                 if not expires_at_value and refreshed_token.get("expires_in"):
@@ -662,6 +797,17 @@ class BingOAuthService:
                 ))
                 conn.commit()
                 logger.info(f"Bing token {token_id} updated in database")
+                if token_row:
+                    user_id, refresh_token, access_token = token_row
+                    self._update_postgres_token(
+                        user_id=user_id,
+                        refresh_token=refresh_token,
+                        filter_access_token=access_token,
+                        access_token=refreshed_token["access_token"],
+                        expires_at=expires_at_value,
+                        is_active=True,
+                    )
+                    self._log_token_count_comparison(user_id)
                 return True
         except Exception as e:
             logger.error(f"Error updating Bing token in database: {e}")
@@ -672,6 +818,11 @@ class BingOAuthService:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT user_id, refresh_token, access_token FROM bing_oauth_tokens WHERE id = ?",
+                    (token_id,),
+                )
+                token_row = cursor.fetchone()
                 cursor.execute('''
                     UPDATE bing_oauth_tokens 
                     SET is_active = FALSE, updated_at = datetime('now')
@@ -679,6 +830,15 @@ class BingOAuthService:
                 ''', (token_id,))
                 conn.commit()
                 logger.info(f"Bing token {token_id} marked as inactive")
+                if token_row:
+                    user_id, refresh_token, access_token = token_row
+                    self._update_postgres_token(
+                        user_id=user_id,
+                        refresh_token=refresh_token,
+                        filter_access_token=access_token,
+                        is_active=False,
+                    )
+                    self._log_token_count_comparison(user_id)
                 return True
         except Exception as e:
             logger.error(f"Error marking Bing token as inactive: {e}")
