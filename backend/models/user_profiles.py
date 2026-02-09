@@ -37,10 +37,10 @@ class UserProfile(Base):
     business_address = Column(JSON, nullable=True)  # Address object
     
     # Content preferences
-    content_goals = Column(JSON, default={})  # SEO, lead generation, brand awareness, etc.
-    target_audience = Column(JSON, default={})  # Demographics, interests, pain points
-    brand_voice = Column(JSON, default={})  # Tone, style, personality traits
-    content_types = Column(JSON, default=[])  # blog, social, email, video, etc.
+    content_goals = Column(JSON, default=dict)  # SEO, lead generation, brand awareness, etc.
+    target_audience = Column(JSON, default=dict)  # Demographics, interests, pain points
+    brand_voice = Column(JSON, default=dict)  # Tone, style, personality traits
+    content_types = Column(JSON, default=list)  # blog, social, email, video, etc.
     
     # Writing preferences
     writing_style = Column(String, nullable=True)  # formal, casual, professional, creative
@@ -48,7 +48,7 @@ class UserProfile(Base):
     seo_focus = Column(Boolean, default=True)
     
     # AI preferences
-    preferred_ai_models = Column(JSON, default=[])  # GPT-4, Claude, etc.
+    preferred_ai_models = Column(JSON, default=list)  # GPT-4, Claude, etc.
     creativity_level = Column(Integer, default=5)  # 1-10 scale
     temperature = Column(Float, default=0.7)  # AI creativity parameter
     
@@ -58,11 +58,11 @@ class UserProfile(Base):
     weekly_reports = Column(Boolean, default=True)
     
     # Integration settings
-    integrations = Column(JSON, default={})  # Connected tools and services
-    api_keys = Column(JSON, default={})  # Encrypted API keys for external services
+    integrations = Column(JSON, default=dict)  # Connected tools and services
+    api_keys = Column(JSON, default=dict)  # Encrypted API keys for external services
     
     # Metadata
-    profile_metadata = Column(JSON, default={})
+    profile_metadata = Column(JSON, default=dict)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

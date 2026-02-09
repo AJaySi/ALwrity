@@ -235,4 +235,4 @@ When onboarding data is incomplete, the AI uses intelligent inference:
 - **Prompt Builder**: `backend/services/research/research_persona_prompt_builder.py`
 - **Models**: `backend/models/research_persona_models.py`
 - **API**: `backend/api/research_config.py`
-- **Frontend**: `frontend/src/pages/ResearchTest.tsx` (Persona Details Modal)
+- **Frontend**: `frontend/src/pages/ResearchDashboard/ResearchDashboard.tsx` (Persona Details Modal)
