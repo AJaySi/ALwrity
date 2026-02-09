@@ -11,6 +11,7 @@ from services.integrations.wix_oauth import WixOAuthService
 from services.wix_service import WixService
 
 from .base import AuthUrlPayload, ConnectionStatus, IntegrationProvider
+from .enhanced_integration_provider import create_enhanced_provider
 
 
 class GSCIntegrationProvider:
@@ -120,7 +121,9 @@ def register_provider_factory(key: str, factory: Callable[[], IntegrationProvide
 
 def get_provider(key: str) -> Optional[IntegrationProvider]:
     if key not in _INTEGRATION_PROVIDERS and key in _INTEGRATION_PROVIDER_FACTORIES:
-        _INTEGRATION_PROVIDERS[key] = _INTEGRATION_PROVIDER_FACTORIES[key]()
+        base_provider = _INTEGRATION_PROVIDER_FACTORIES[key]()
+        # Wrap with enhanced error handling
+        _INTEGRATION_PROVIDERS[key] = create_enhanced_provider(base_provider)
     return _INTEGRATION_PROVIDERS.get(key)
 
 
