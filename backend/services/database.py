@@ -32,6 +32,9 @@ from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask
 from models.platform_insights_monitoring_models import PlatformInsightsTask
 
+# OAuth token and integration models (platform database)
+from models.oauth_token_models import Base as OAuthTokenBase
+
 # SSOT Core Models - Platform Database
 from models.users import Base as UsersBase
 from models.user_subscriptions import Base as UserSubscriptionsBase
@@ -242,6 +245,9 @@ This is intentional - we no longer support SQLite or single database setups.
             UserSubscriptionsBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             SubscriptionPlansBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             PlatformUsageLogsBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+
+            # OAuth tokens and integration tables
+            OAuthTokenBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             
             # Create monitoring tables on platform database (system-level monitoring)
             OAuthTokenMonitoringTask.__table__.create(bind=platform_engine, checkfirst=True)

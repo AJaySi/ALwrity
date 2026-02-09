@@ -3,8 +3,6 @@ OAuth Token Monitoring Task Executor
 Handles execution of OAuth token monitoring tasks for connected platforms.
 """
 
-import logging
-import os
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
@@ -20,7 +18,7 @@ from utils.logger_utils import get_service_logger
 from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
 from services.integrations.wordpress_oauth import WordPressOAuthService
-from services.wix_service import WixService
+from services.integrations.wix_oauth import WixOAuthService
 
 logger = get_service_logger("oauth_token_monitoring_executor")
 
@@ -289,9 +287,7 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         GSC service auto-refreshes tokens if expired when loading credentials.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
-            gsc_service = GSCService(db_path=db_path)
+            gsc_service = GSCService()
             credentials = gsc_service.load_user_credentials(user_id)
             
             if not credentials:
@@ -341,9 +337,7 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         Checks token expiration and attempts refresh if needed.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
-            bing_service = BingOAuthService(db_path=db_path)
+            bing_service = BingOAuthService()
             
             # Get token status (includes expired tokens)
             token_status = bing_service.get_user_token_status(user_id)
@@ -502,9 +496,7 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         and require user re-authorization. We only check if token is valid.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
-            wordpress_service = WordPressOAuthService(db_path=db_path)
+            wordpress_service = WordPressOAuthService()
             tokens = wordpress_service.get_user_tokens(user_id)
             
             if not tokens:
@@ -610,24 +602,64 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
     async def _check_wix_token(self, user_id: str) -> TaskExecutionResult:
         """
         Check Wix token validity.
-        
-        Note: Wix tokens are currently stored in frontend sessionStorage.
-        Backend storage needs to be implemented for automated checking.
         """
         try:
-            # TODO: Wix tokens are stored in frontend sessionStorage, not backend database
-            # Once backend storage is implemented, we can check tokens here
-            # For now, return not supported
+            wix_service = WixOAuthService()
+            token_status = wix_service.get_user_token_status(user_id)
             
+            if not token_status.get('has_tokens'):
+                return TaskExecutionResult(
+                    success=False,
+                    error_message="No Wix tokens found for user",
+                    result_data={
+                        'platform': 'wix',
+                        'user_id': user_id,
+                        'status': 'not_found',
+                        'check_time': datetime.utcnow().isoformat()
+                    },
+                    retryable=False
+                )
+
+            active_tokens = token_status.get('active_tokens', [])
+            expired_tokens = token_status.get('expired_tokens', [])
+            has_refreshable_tokens = any(token.get('refresh_token') for token in expired_tokens)
+
+            if active_tokens:
+                return TaskExecutionResult(
+                    success=True,
+                    result_data={
+                        'platform': 'wix',
+                        'user_id': user_id,
+                        'status': 'valid',
+                        'check_time': datetime.utcnow().isoformat(),
+                        'message': 'Wix token is valid',
+                        'valid_tokens_count': len(active_tokens)
+                    }
+                )
+
+            if has_refreshable_tokens:
+                return TaskExecutionResult(
+                    success=False,
+                    error_message="Wix token expired but refreshable",
+                    result_data={
+                        'platform': 'wix',
+                        'user_id': user_id,
+                        'status': 'expired_refreshable',
+                        'check_time': datetime.utcnow().isoformat(),
+                        'message': 'Wix token expired but has refresh token; user may need reconnection.'
+                    },
+                    retryable=False
+                )
+
             return TaskExecutionResult(
                 success=False,
-                error_message="Wix token monitoring not yet supported - tokens stored in frontend sessionStorage",
+                error_message="Wix token expired and cannot be refreshed",
                 result_data={
                     'platform': 'wix',
                     'user_id': user_id,
-                    'status': 'not_supported',
+                    'status': 'expired',
                     'check_time': datetime.utcnow().isoformat(),
-                    'message': 'Wix token monitoring requires backend token storage implementation'
+                    'message': 'Wix token expired. User needs to reconnect.'
                 },
                 retryable=False
             )
@@ -786,4 +818,3 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                 f"Defaulting to Weekly (7 days)."
             )
             return last_execution + timedelta(days=7)
-

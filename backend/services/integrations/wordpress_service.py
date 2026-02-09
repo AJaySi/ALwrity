@@ -3,75 +3,38 @@ WordPress Service for ALwrity
 Handles WordPress site connections, content publishing, and media management.
 """
 
-import os
-import json
-import sqlite3
-import base64
-import mimetypes
-import tempfile
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, List, Any
 from datetime import datetime
 import requests
 from requests.auth import HTTPBasicAuth
-from PIL import Image
 from loguru import logger
+from sqlalchemy.orm import Session
+
+from services.database import get_platform_db_session
+from models.oauth_token_models import WordPressSite, WordPressPost
 
 
 class WordPressService:
     """Main WordPress service class for managing WordPress integrations."""
     
-    def __init__(self, db_path: str = "alwrity.db"):
-        """Initialize WordPress service with database path."""
-        self.db_path = db_path
+    def __init__(self, db_session: Optional[Session] = None):
+        """Initialize WordPress service with database session."""
+        self.db_session = db_session
         self.api_version = "v2"
-        self._ensure_tables()
-    
-    def _ensure_tables(self) -> None:
-        """Ensure required database tables exist."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # WordPress sites table
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS wordpress_sites (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id TEXT NOT NULL,
-                        site_url TEXT NOT NULL,
-                        site_name TEXT,
-                        username TEXT NOT NULL,
-                        app_password TEXT NOT NULL,
-                        is_active BOOLEAN DEFAULT 1,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(user_id, site_url)
-                    )
-                ''')
-                
-                # WordPress posts table for tracking published content
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS wordpress_posts (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id TEXT NOT NULL,
-                        site_id INTEGER NOT NULL,
-                        wp_post_id INTEGER NOT NULL,
-                        title TEXT NOT NULL,
-                        status TEXT DEFAULT 'draft',
-                        published_at TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (site_id) REFERENCES wordpress_sites (id)
-                    )
-                ''')
-                
-                conn.commit()
-                logger.info("WordPress database tables ensured")
-                
-        except Exception as e:
-            logger.error(f"Error ensuring WordPress tables: {e}")
-            raise
+
+    def _get_db_session(self) -> Optional[Session]:
+        return self.db_session or get_platform_db_session()
+
+    def _cleanup_session(self, db: Optional[Session]) -> None:
+        if db is not None and self.db_session is None:
+            db.close()
     
     def add_site(self, user_id: str, site_url: str, site_name: str, username: str, app_password: str) -> bool:
         """Add a new WordPress site connection."""
+        db = self._get_db_session()
+        if not db:
+            logger.error("Error adding WordPress site: database session unavailable")
+            return False
         try:
             # Validate site URL format
             if not site_url.startswith(('http://', 'https://')):
@@ -82,76 +45,110 @@ class WordPressService:
                 logger.error(f"Failed to connect to WordPress site: {site_url}")
                 return False
             
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT OR REPLACE INTO wordpress_sites 
-                    (user_id, site_url, site_name, username, app_password, updated_at)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (user_id, site_url, site_name, username, app_password))
-                conn.commit()
+            existing = (
+                db.query(WordPressSite)
+                .filter(
+                    WordPressSite.user_id == user_id,
+                    WordPressSite.site_url == site_url,
+                )
+                .first()
+            )
+            now = datetime.utcnow()
+            if existing:
+                existing.site_name = site_name
+                existing.username = username
+                existing.app_password = app_password
+                existing.updated_at = now
+                existing.is_active = True
+            else:
+                db.add(WordPressSite(
+                    user_id=user_id,
+                    site_url=site_url,
+                    site_name=site_name,
+                    username=username,
+                    app_password=app_password,
+                    created_at=now,
+                    updated_at=now,
+                ))
+            db.commit()
             
             logger.info(f"WordPress site added for user {user_id}: {site_name}")
             return True
             
         except Exception as e:
+            db.rollback()
             logger.error(f"Error adding WordPress site: {e}")
             return False
+        finally:
+            self._cleanup_session(db)
     
     def get_user_sites(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all WordPress sites for a user."""
+        db = self._get_db_session()
+        if not db:
+            logger.error("Error getting WordPress sites: database session unavailable")
+            return []
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT id, site_url, site_name, username, is_active, created_at, updated_at
-                    FROM wordpress_sites 
-                    WHERE user_id = ? AND is_active = 1
-                    ORDER BY updated_at DESC
-                ''', (user_id,))
-                
-                sites = []
-                for row in cursor.fetchall():
-                    sites.append({
-                        'id': row[0],
-                        'site_url': row[1],
-                        'site_name': row[2],
-                        'username': row[3],
-                        'is_active': bool(row[4]),
-                        'created_at': row[5],
-                        'updated_at': row[6]
-                    })
-                
-                logger.info(f"Retrieved {len(sites)} WordPress sites for user {user_id}")
-                return sites
+            records = (
+                db.query(WordPressSite)
+                .filter(
+                    WordPressSite.user_id == user_id,
+                    WordPressSite.is_active.is_(True),
+                )
+                .order_by(WordPressSite.updated_at.desc())
+                .all()
+            )
+            
+            sites = []
+            for record in records:
+                sites.append({
+                    'id': record.id,
+                    'site_url': record.site_url,
+                    'site_name': record.site_name,
+                    'username': record.username,
+                    'is_active': bool(record.is_active),
+                    'created_at': record.created_at,
+                    'updated_at': record.updated_at,
+                })
+            
+            logger.info(f"Retrieved {len(sites)} WordPress sites for user {user_id}")
+            return sites
                 
         except Exception as e:
             logger.error(f"Error getting WordPress sites for user {user_id}: {e}")
             return []
+        finally:
+            self._cleanup_session(db)
     
     def get_site_credentials(self, site_id: int) -> Optional[Dict[str, str]]:
         """Get credentials for a specific WordPress site."""
+        db = self._get_db_session()
+        if not db:
+            logger.error("Error getting WordPress credentials: database session unavailable")
+            return None
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT site_url, username, app_password
-                    FROM wordpress_sites 
-                    WHERE id = ? AND is_active = 1
-                ''', (site_id,))
-                
-                result = cursor.fetchone()
-                if result:
-                    return {
-                        'site_url': result[0],
-                        'username': result[1],
-                        'app_password': result[2]
-                    }
-                return None
+            result = (
+                db.query(WordPressSite)
+                .filter(
+                    WordPressSite.id == site_id,
+                    WordPressSite.is_active.is_(True),
+                )
+                .first()
+            )
+            
+            if result:
+                return {
+                    'site_url': result.site_url,
+                    'username': result.username,
+                    'app_password': result.app_password,
+                }
+            return None
                 
         except Exception as e:
             logger.error(f"Error getting credentials for site {site_id}: {e}")
             return None
+        finally:
+            self._cleanup_session(db)
     
     def _test_connection(self, site_url: str, username: str, app_password: str) -> bool:
         """Test WordPress site connection."""
@@ -173,22 +170,28 @@ class WordPressService:
     
     def disconnect_site(self, user_id: str, site_id: int) -> bool:
         """Disconnect a WordPress site."""
+        db = self._get_db_session()
+        if not db:
+            logger.error("Error disconnecting WordPress site: database session unavailable")
+            return False
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE wordpress_sites 
-                    SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND user_id = ?
-                ''', (site_id, user_id))
-                conn.commit()
+            db.query(WordPressSite).filter(
+                WordPressSite.id == site_id,
+                WordPressSite.user_id == user_id,
+            ).update(
+                {"is_active": False, "updated_at": datetime.utcnow()}
+            )
+            db.commit()
             
             logger.info(f"WordPress site {site_id} disconnected for user {user_id}")
             return True
             
         except Exception as e:
+            db.rollback()
             logger.error(f"Error disconnecting WordPress site {site_id}: {e}")
             return False
+        finally:
+            self._cleanup_session(db)
     
     def get_site_info(self, site_id: int) -> Optional[Dict[str, Any]]:
         """Get detailed information about a WordPress site."""
@@ -224,26 +227,33 @@ class WordPressService:
 
     def get_posts_for_all_sites(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all tracked WordPress posts for all sites of a user."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT wp.id, wp.wordpress_post_id, wp.title, wp.status, wp.published_at, wp.last_updated_at,
-                       ws.site_name, ws.site_url
-                FROM wordpress_posts wp
-                JOIN wordpress_sites ws ON wp.site_id = ws.id
-                WHERE wp.user_id = ? AND ws.is_active = TRUE
-                ORDER BY wp.published_at DESC
-            ''', (user_id,))
+        db = self._get_db_session()
+        if not db:
+            logger.error("Error getting WordPress posts: database session unavailable")
+            return []
+        try:
             posts = []
-            for post_data in cursor.fetchall():
+            records = (
+                db.query(WordPressPost, WordPressSite)
+                .join(WordPressSite, WordPressPost.site_id == WordPressSite.id)
+                .filter(
+                    WordPressPost.user_id == user_id,
+                    WordPressSite.is_active.is_(True),
+                )
+                .order_by(WordPressPost.published_at.desc())
+                .all()
+            )
+            for post, site in records:
                 posts.append({
-                    "id": post_data[0],
-                    "wp_post_id": post_data[1],
-                    "title": post_data[2],
-                    "status": post_data[3],
-                    "published_at": post_data[4],
-                    "created_at": post_data[5],
-                    "site_name": post_data[6],
-                    "site_url": post_data[7]
+                    "id": post.id,
+                    "wp_post_id": post.wp_post_id,
+                    "title": post.title,
+                    "status": post.status,
+                    "published_at": post.published_at,
+                    "created_at": post.created_at,
+                    "site_name": site.site_name,
+                    "site_url": site.site_url,
                 })
-        return posts
+            return posts
+        finally:
+            self._cleanup_session(db)

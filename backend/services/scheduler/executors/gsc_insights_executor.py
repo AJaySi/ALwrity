@@ -3,14 +3,13 @@ GSC Insights Task Executor
 Handles execution of GSC insights fetch tasks for connected platforms.
 """
 
-import logging
-import os
 import time
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
-import sqlite3
+from services.database import get_platform_db_session
+from models.oauth_token_models import GscDataCache
 
 from ..core.executor_interface import TaskExecutor, TaskExecutionResult
 from ..core.exception_handler import TaskExecutionError, DatabaseError, SchedulerExceptionHandler
@@ -231,47 +230,35 @@ class GSCInsightsExecutor(TaskExecutor):
     
     def _load_cached_data(self, user_id: str, site_url: Optional[str]) -> Optional[Dict[str, Any]]:
         """Load most recent cached GSC data from database."""
+        db = get_platform_db_session()
+        if not db:
+            self.logger.warning("Database session unavailable for cached GSC data")
+            return None
         try:
-            db_path = self.gsc_service.db_path
+            query = db.query(GscDataCache).filter(
+                GscDataCache.user_id == user_id,
+                GscDataCache.data_type == 'analytics',
+            )
+            if site_url:
+                query = query.filter(GscDataCache.site_url == site_url)
+            result = query.order_by(GscDataCache.created_at.desc()).first()
             
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
+            if result:
+                insights_data = json.loads(result.data_json) if isinstance(result.data_json, str) else result.data_json
                 
-                # Find most recent cached data
-                if site_url:
-                    cursor.execute('''
-                        SELECT data_json, created_at
-                        FROM gsc_data_cache
-                        WHERE user_id = ? AND site_url = ? AND data_type = 'analytics'
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    ''', (user_id, site_url))
-                else:
-                    cursor.execute('''
-                        SELECT data_json, created_at
-                        FROM gsc_data_cache
-                        WHERE user_id = ? AND data_type = 'analytics'
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    ''', (user_id,))
+                self.logger.info(
+                    f"Found cached GSC data from {result.created_at} for user {user_id}"
+                )
                 
-                result = cursor.fetchone()
-                
-                if result:
-                    data_json, created_at = result
-                    insights_data = json.loads(data_json) if isinstance(data_json, str) else data_json
-                    
-                    self.logger.info(
-                        f"Found cached GSC data from {created_at} for user {user_id}"
-                    )
-                    
-                    return insights_data
-                
-                return None
+                return insights_data
+            
+            return None
                 
         except Exception as e:
             self.logger.warning(f"Error loading cached GSC data: {e}")
             return None
+        finally:
+            db.close()
     
     async def _fetch_fresh_data(self, user_id: str, site_url: Optional[str]) -> TaskExecutionResult:
         """Fetch fresh GSC insights from API."""
@@ -360,4 +347,3 @@ class GSCInsightsExecutor(TaskExecutor):
         else:
             # Default to weekly
             return last_execution + timedelta(days=7)
-
