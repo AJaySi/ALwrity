@@ -13,6 +13,7 @@ from loguru import logger
 import json
 from urllib.parse import quote
 from ..analytics_cache_service import analytics_cache
+from services.oauth_redirects import get_redirect_uri
 
 class BingOAuthService:
     """Manages Bing Webmaster Tools OAuth2 authentication flow."""
@@ -22,7 +23,12 @@ class BingOAuthService:
         # Bing Webmaster OAuth2 credentials
         self.client_id = os.getenv('BING_CLIENT_ID', '')
         self.client_secret = os.getenv('BING_CLIENT_SECRET', '')
-        self.redirect_uri = os.getenv('BING_REDIRECT_URI', 'https://littery-sonny-unscrutinisingly.ngrok-free.dev/bing/callback')
+        # Use environment-driven redirect URI validation to prevent mismatches.
+        try:
+            self.redirect_uri = get_redirect_uri("Bing", "BING_REDIRECT_URI")
+        except ValueError as exc:
+            logger.error(f"Bing OAuth redirect URI configuration error: {exc}")
+            self.redirect_uri = None
         self.base_url = "https://www.bing.com"
         self.api_base_url = "https://www.bing.com/webmaster/api.svc/json"
 
@@ -68,7 +74,12 @@ class BingOAuthService:
         """Generate Bing Webmaster OAuth2 authorization URL."""
         try:
             # Check if credentials are properly configured
-            if not self.client_id or not self.client_secret or self.client_id == 'your_bing_client_id_here':
+            if (
+                not self.client_id
+                or not self.client_secret
+                or self.client_id == 'your_bing_client_id_here'
+                or not self.redirect_uri
+            ):
                 logger.error("Bing Webmaster OAuth client credentials not configured")
                 return None
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 import requests
 from loguru import logger
 import base64
@@ -12,13 +12,14 @@ class WixAuthService:
         self.redirect_uri = redirect_uri
         self.base_url = base_url
 
-    def generate_authorization_url(self, state: Optional[str] = None) -> Tuple[str, str]:
+    def generate_authorization_url(self, state: Optional[str] = None) -> Dict[str, str]:
         if not self.client_id:
             raise ValueError("Wix client ID not configured")
         code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
         code_challenge = base64.urlsafe_b64encode(
             hashlib.sha256(code_verifier.encode('utf-8')).digest()
         ).decode('utf-8').rstrip('=')
+        state = state or secrets.token_urlsafe(16)
         oauth_url = 'https://www.wix.com/oauth/authorize'
         from urllib.parse import urlencode
         params = {
@@ -33,9 +34,14 @@ class WixAuthService:
             'code_challenge': code_challenge,
             'code_challenge_method': 'S256'
         }
-        if state:
-            params['state'] = state
-        return f"{oauth_url}?{urlencode(params)}", code_verifier
+        params['state'] = state
+        return {
+            "auth_url": f"{oauth_url}?{urlencode(params)}",
+            "code_verifier": code_verifier,
+            "code_challenge": code_challenge,
+            "state": state,
+            "redirect_uri": self.redirect_uri,
+        }
 
     def exchange_code_for_tokens(self, code: str, code_verifier: str) -> Dict[str, Any]:
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
@@ -82,5 +88,4 @@ class WixAuthService:
         response = requests.get(f"{self.base_url}/members/v1/members/my", headers=headers)
         response.raise_for_status()
         return response.json()
-
 

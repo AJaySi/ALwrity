@@ -10,6 +10,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from loguru import logger
+from services.oauth_redirects import get_redirect_uri
 
 class GSCService:
     """Service for Google Search Console integration."""
@@ -155,7 +156,7 @@ class GSCService:
             if not os.path.exists(self.credentials_file):
                 raise FileNotFoundError(f"GSC credentials file not found: {self.credentials_file}")
             
-            redirect_uri = os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
+            redirect_uri = get_redirect_uri("GSC", "GSC_REDIRECT_URI")
             flow = Flow.from_client_secrets_file(
                 self.credentials_file,
                 scopes=self.scopes,
@@ -242,7 +243,7 @@ class GSCService:
             flow = Flow.from_client_secrets_file(
                 self.credentials_file,
                 scopes=self.scopes,
-                redirect_uri=os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
+                redirect_uri=get_redirect_uri("GSC", "GSC_REDIRECT_URI")
             )
             
             flow.fetch_token(code=authorization_code)
