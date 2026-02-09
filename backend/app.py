@@ -370,13 +370,26 @@ async def serve_frontend():
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
+    logger.info("🚀 APP STARTUP EVENT TRIGGERED")
     try:
         # Initialize database
+        logger.info("📊 Initializing database...")
         init_database()
+        logger.info("✅ Database initialization completed")
         
         # Start task scheduler
-        from services.scheduler import get_scheduler
-        await get_scheduler().start()
+        try:
+            logger.info("🚀 Starting task scheduler...")
+            from services.scheduler import get_scheduler
+            scheduler = get_scheduler()
+            logger.info("📋 Scheduler instance obtained, starting...")
+            await scheduler.start()
+            logger.info("✅ Task scheduler started successfully")
+        except Exception as scheduler_error:
+            logger.error(f"❌ Failed to start task scheduler: {scheduler_error}")
+            import traceback
+            logger.error(f"Scheduler startup traceback: {traceback.format_exc()}")
+            # Continue with other startup steps even if scheduler fails
         
         # Check Wix API key configuration
         wix_api_key = os.getenv('WIX_API_KEY')

@@ -11,7 +11,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from loguru import logger
+from utils.logging import get_logger
 import os
 
 from models.subscription_models import (
@@ -33,6 +33,9 @@ class PricingService:
         # Cache for schema feature detection (ai_text_generation_calls_limit column)
         self._ai_text_gen_col_checked: bool = False
         self._ai_text_gen_col_available: bool = False
+        
+        # Initialize unified logger
+        self.logger = get_logger("pricing_service", migration_mode=True)
 
     # ------------------- Billing period helpers -------------------
     def _compute_next_period_end(self, start: datetime, cycle: str) -> datetime:
@@ -84,6 +87,10 @@ class PricingService:
         keys_to_remove = [key for key in cls._limits_cache.keys() if key.startswith(f"{user_id}:")]
         for key in keys_to_remove:
             del cls._limits_cache[key]
+        
+        # Use module-level logger for class method
+        from utils.logging import get_logger
+        logger = get_logger("pricing_service", migration_mode=True)
         logger.info(f"Cleared {len(keys_to_remove)} cache entries for user {user_id}")
         return len(keys_to_remove)
         
@@ -419,14 +426,14 @@ class PricingService:
                     existing.cost_per_output_token = pricing_data["cost_per_output_token"]
                     existing.description = pricing_data["description"]
                     existing.updated_at = datetime.utcnow()
-                    logger.debug(f"Updated pricing for {pricing_data['provider'].value}:{pricing_data['model_name']}")
+                    self.logger.debug(f"Updated pricing for {pricing_data['provider'].value}:{pricing_data['model_name']}")
             else:
                 pricing = APIProviderPricing(**pricing_data)
                 self.db.add(pricing)
-                logger.debug(f"Added new pricing for {pricing_data['provider'].value}:{pricing_data['model_name']}")
+                self.logger.debug(f"Added new pricing for {pricing_data['provider'].value}:{pricing_data['model_name']}")
         
         self.db.commit()
-        logger.info("Default API pricing initialized/updated. HuggingFace pricing loaded from env vars if available.")
+        self.logger.info("Default API pricing initialized/updated. HuggingFace pricing loaded from env vars if available.")
     
     def initialize_default_plans(self):
         """Initialize default subscription plans."""
@@ -555,12 +562,12 @@ class PricingService:
                         except (AttributeError, Exception) as e:
                             # If attribute doesn't exist yet (column not migrated), skip it
                             # Schema migration will add it, then this will update it on next run
-                            logger.debug(f"Could not set {key} on plan {existing.name}: {e}")
+                            self.logger.debug(f"Could not set {key} on plan {existing.name}: {e}")
                 existing.updated_at = datetime.utcnow()
-                logger.debug(f"Updated existing plan: {existing.name}")
+                self.logger.debug(f"Updated existing plan: {existing.name}")
         
         self.db.commit()
-        logger.debug("Default subscription plans initialized")
+        self.logger.debug("Default subscription plans initialized")
     
     def calculate_api_cost(self, provider: APIProvider, model_name: str, 
                           tokens_input: int = 0, tokens_output: int = 0, 
@@ -620,19 +627,19 @@ class PricingService:
                 # Use environment variables for HuggingFace pricing if available
                 hf_input_cost = float(os.getenv('HUGGINGFACE_INPUT_TOKEN_COST', '0.000001'))
                 hf_output_cost = float(os.getenv('HUGGINGFACE_OUTPUT_TOKEN_COST', '0.000003'))
-                logger.info(f"Using HuggingFace pricing from env vars: input={hf_input_cost}, output={hf_output_cost} for model {model_name}")
+                self.logger.info(f"Using HuggingFace pricing from env vars: input={hf_input_cost}, output={hf_output_cost} for model {model_name}")
                 cost_input = tokens_input * hf_input_cost
                 cost_output = tokens_output * hf_output_cost
                 cost_total = cost_input + cost_output
             else:
-                logger.warning(f"No pricing found for {provider.value}:{model_name}, using default estimates")
+                self.logger.warning(f"No pricing found for {provider.value}:{model_name}, using default estimates")
                 # Use default estimates
                 cost_input = tokens_input * 0.000001  # $1 per 1M tokens default
                 cost_output = tokens_output * 0.000001
                 cost_total = cost_input + cost_output
         else:
             # Calculate based on actual pricing from database
-            logger.debug(f"Using pricing from DB for {provider.value}:{model_name} - input: {pricing.cost_per_input_token}, output: {pricing.cost_per_output_token}")
+            self.logger.debug(f"Using pricing from DB for {provider.value}:{model_name} - input: {pricing.cost_per_input_token}, output: {pricing.cost_per_output_token}")
             cost_input = tokens_input * (pricing.cost_per_input_token or 0.0)
             cost_output = tokens_output * (pricing.cost_per_output_token or 0.0)
             cost_request = request_count * (pricing.cost_per_request or 0.0)
@@ -683,7 +690,7 @@ class PricingService:
         ).first()
         
         if not plan:
-            logger.error(f"Plan not found for subscription plan_id={subscription.plan_id}")
+            self.logger.error(f"Plan not found for subscription plan_id={subscription.plan_id}")
             return None
         
         # Refresh plan to ensure fresh limits

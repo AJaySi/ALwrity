@@ -3,7 +3,6 @@ Bing Insights Task Executor
 Handles execution of Bing insights fetch tasks for connected platforms.
 """
 
-import logging
 import os
 import time
 from datetime import datetime, timedelta
@@ -31,7 +30,7 @@ from ..core.exception_handler import TaskExecutionError, DatabaseError, Schedule
 from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
 from services.integrations.bing_oauth import BingOAuthService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 
 def _raise_postgresql_required():

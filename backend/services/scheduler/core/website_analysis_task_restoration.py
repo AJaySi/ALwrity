@@ -6,7 +6,7 @@ but don't have monitoring tasks created yet.
 
 from typing import List
 from sqlalchemy.orm import Session
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 from services.database import get_platform_db_session
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask

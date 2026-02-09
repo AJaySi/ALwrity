@@ -1,0 +1,2 @@
+﻿"""
+Dual API Search Executor

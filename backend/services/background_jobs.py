@@ -141,7 +141,7 @@ class BackgroundJobService:
             job.progress = 100
             job.message = "Job completed successfully"
             
-            logger.info("Completed job {job_id} in {(job.completed_at - job.started_at)", job_type="background", service="background_jobs", operation_type="job_execution").total_seconds():.2f}s")
+            logger.info(f"Completed job {job_id} in {(job.completed_at - job.started_at).total_seconds():.2f}s", job_type="background", service="background_jobs", operation_type="job_execution")
             
         except Exception as e:
             logger.error(f"Job {job_id} failed: {e}")
@@ -229,7 +229,7 @@ class BackgroundJobService:
             del self.jobs[job_id]
         
         if jobs_to_remove:
-            logger.info("Cleaned up {len(jobs_to_remove)", job_type="background", service="background_jobs", operation_type="job_execution")} old jobs")
+            logger.info(f"Cleaned up {len(jobs_to_remove)} old jobs", job_type="background", service="background_jobs", operation_type="job_cleanup")
     
     # Job Handlers
     

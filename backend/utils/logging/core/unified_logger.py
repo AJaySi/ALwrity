@@ -77,9 +77,19 @@ class UnifiedLogger:
             self._create_scheduler_event_log(event_type, **context)
     
     def warning(self, message: str, **context):
-        """Warning level logging using Loguru"""
+        """Warning level logging using Loguru with automatic multi-line preservation"""
         bound_logger = self.logger.bind(**context, structured_logging=False)
-        bound_logger.warning(message)
+        
+        # Check if message contains multiple lines or tree structure
+        if '\n' in message or any(char in message for char in ['├', '└', '│', '─']):
+            # Multi-line message - log each line separately to preserve formatting
+            lines = message.split('\n') if isinstance(message, str) else message
+            for line in lines:
+                if line.strip():  # Only log non-empty lines
+                    bound_logger.warning(line)
+        else:
+            # Single line message - log normally
+            bound_logger.warning(message)
     
     def error(self, message: str, exc_info: bool = True, **context):
         """Error level logging with exception details using Loguru"""

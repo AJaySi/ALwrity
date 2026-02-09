@@ -3,7 +3,6 @@ OAuth Token Monitoring Task Executor
 Handles execution of OAuth token monitoring tasks for connected platforms.
 """
 
-import logging
 import os
 import time
 from datetime import datetime, timedelta
@@ -14,7 +13,7 @@ from ..core.executor_interface import TaskExecutor, TaskExecutionResult
 from ..core.exception_handler import TaskExecutionError, DatabaseError, SchedulerExceptionHandler
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask, OAuthTokenExecutionLog
 from models.subscription_models import UsageAlert
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 # Import platform-specific services
 from services.gsc_service import GSCService

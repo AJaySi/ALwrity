@@ -3,13 +3,13 @@ Task Registry
 Manages registration of task executors and loaders.
 """
 
-import logging
 from typing import Dict, Callable, List, Any
 from sqlalchemy.orm import Session
 
 from .executor_interface import TaskExecutor
+from utils.logging import get_service_logger
 
-logger = logging.getLogger(__name__)
+logger = get_service_logger("task_registry")
 
 
 class TaskRegistry:

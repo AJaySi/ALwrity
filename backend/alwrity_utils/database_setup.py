@@ -134,13 +134,14 @@ class DatabaseSetup:
             from services.database import engine
             from sqlalchemy import inspect
             
-            inspector = inspect(engine)
+            db_engine = engine()
+            inspector = inspect(db_engine)
             tables = inspector.get_table_names()
             
             essential_tables = [
-                'api_monitoring_logs',
+                'task_execution_logs',  # monitoring logs
                 'subscription_plans',
-                'user_subscriptions',
+                'user_subscriptions', 
                 'onboarding_sessions',
                 'persona_data'
             ]

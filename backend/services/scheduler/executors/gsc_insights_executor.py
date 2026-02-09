@@ -3,7 +3,6 @@ GSC Insights Task Executor
 Handles execution of GSC insights fetch tasks for connected platforms.
 """
 
-import logging
 import os
 import time
 import json
@@ -16,7 +15,7 @@ from ..core.executor_interface import TaskExecutor, TaskExecutionResult
 from ..core.exception_handler import TaskExecutionError, DatabaseError, SchedulerExceptionHandler
 from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
 from services.gsc_service import GSCService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("gsc_insights_executor")
 

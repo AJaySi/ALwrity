@@ -13,13 +13,16 @@ sys.path.insert(0, str(backend_dir))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from loguru import logger
+from utils.logging import get_logger
 import traceback
 
 # Import models
 from models.subscription_models import Base as SubscriptionBase
 from services.database import engine
 from services.subscription.pricing_service import PricingService
+
+# Initialize logger
+logger = get_logger("create_billing_tables", migration_mode=True)
 
 def create_billing_tables():
     """Create all billing and subscription-related tables."""

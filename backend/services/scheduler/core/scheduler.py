@@ -85,6 +85,9 @@ class TaskScheduler:
             }
         )
         
+        # Configure APScheduler to use unified logging system
+        self._configure_apscheduler_logging()
+        
         # Task executor registry
         self.registry = TaskRegistry()
         
@@ -151,6 +154,64 @@ class TaskScheduler:
         """
         self.registry.register(task_type, executor, task_loader)
         logger.info(f"Registered executor for task type: {task_type}")
+    
+    def _configure_apscheduler_logging(self):
+        """Configure APScheduler to use unified logging system."""
+        import logging
+        
+        # Get APScheduler loggers and redirect them to unified logging
+        apscheduler_logger = logging.getLogger("apscheduler")
+        apscheduler_scheduler_logger = logging.getLogger("apscheduler.scheduler")
+        apscheduler_executors_logger = logging.getLogger("apscheduler.executors")
+        apscheduler_jobstores_logger = logging.getLogger("apscheduler.jobstores")
+        
+        # Create a custom handler that redirects to unified logger
+        class APSchedulerUnifiedHandler(logging.Handler):
+            def __init__(self, service_logger):
+                super().__init__()
+                self.service_logger = service_logger
+            
+            def emit(self, record):
+                try:
+                    # Format the message
+                    msg = self.format(record)
+                    
+                    # Map APScheduler log levels to unified logger
+                    if record.levelno >= logging.ERROR:
+                        self.service_logger.error(f"[APScheduler] {msg}")
+                    elif record.levelno >= logging.WARNING:
+                        self.service_logger.warning(f"[APScheduler] {msg}")
+                    elif record.levelno >= logging.INFO:
+                        self.service_logger.info(f"[APScheduler] {msg}")
+                    else:
+                        self.service_logger.debug(f"[APScheduler] {msg}")
+                except Exception:
+                    # Don't let logging errors break the scheduler
+                    pass
+        
+        # Create and add the handler
+        unified_handler = APSchedulerUnifiedHandler(logger)
+        unified_handler.setLevel(logging.DEBUG)
+        
+        # Add handler to all APScheduler loggers
+        apscheduler_logger.addHandler(unified_handler)
+        apscheduler_scheduler_logger.addHandler(unified_handler)
+        apscheduler_executors_logger.addHandler(unified_handler)
+        apscheduler_jobstores_logger.addHandler(unified_handler)
+        
+        # Set levels to capture all logs
+        apscheduler_logger.setLevel(logging.DEBUG)
+        apscheduler_scheduler_logger.setLevel(logging.DEBUG)
+        apscheduler_executors_logger.setLevel(logging.DEBUG)
+        apscheduler_jobstores_logger.setLevel(logging.DEBUG)
+        
+        # Prevent propagation to avoid duplicate logs
+        apscheduler_logger.propagate = False
+        apscheduler_scheduler_logger.propagate = False
+        apscheduler_executors_logger.propagate = False
+        apscheduler_jobstores_logger.propagate = False
+        
+        logger.info("APScheduler logging configured to use unified logging system")
     
     async def start(self):
         """Start the scheduler with intelligent interval adjustment."""
@@ -472,8 +533,9 @@ class TaskScheduler:
                 except Exception as e:
                     logger.debug(f"Could not get platform insights task details: {e}")
             
-            # Log comprehensive startup information in single message
-            logger.warning("\n".join(startup_lines))
+            # Log comprehensive startup information line by line to prevent truncation
+            startup_message = "\n".join(startup_lines)
+            logger.warning(startup_message)
             
             # Save scheduler start event to database
             try:

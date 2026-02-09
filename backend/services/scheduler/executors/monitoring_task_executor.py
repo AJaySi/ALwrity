@@ -3,7 +3,6 @@ Monitoring Task Executor
 Handles execution of content strategy monitoring tasks.
 """
 
-import logging
 import time
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -14,7 +13,7 @@ from ..core.exception_handler import TaskExecutionError, DatabaseError, Schedule
 from ..utils.frequency_calculator import calculate_next_execution
 from models.monitoring_models import MonitoringTask, TaskExecutionLog
 from models.enhanced_strategy_models import EnhancedContentStrategy
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("monitoring_task_executor")
 

@@ -7,7 +7,7 @@ but don't have insights tasks created yet.
 from datetime import datetime, timedelta
 from typing import List
 from sqlalchemy.orm import Session
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 from services.database import get_db_session
 from models.platform_insights_monitoring_models import PlatformInsightsTask

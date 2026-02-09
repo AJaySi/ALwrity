@@ -140,7 +140,7 @@ def start_backend(enable_reload=False, production_mode=False):
         # Import and run the app
         from app import app
         import uvicorn
-
+        
         # Note: Database already initialized by DatabaseSetup in main()
         
         print("\n🌐 ALwrity Backend Server")

@@ -7,6 +7,11 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Load environment variables
+from dotenv import load_dotenv
+from pathlib import Path
+backend_dir = Path(__file__).parent.parent
+load_dotenv(backend_dir / '.env')
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -45,8 +50,8 @@ def create_monitoring_tables():
         create_tables_sql = [
             """
             CREATE TABLE IF NOT EXISTS api_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 path VARCHAR(500) NOT NULL,
                 method VARCHAR(10) NOT NULL,
                 status_code INTEGER NOT NULL,
@@ -61,7 +66,7 @@ def create_monitoring_tables():
             """,
             """
             CREATE TABLE IF NOT EXISTS api_endpoint_stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 endpoint VARCHAR(500) NOT NULL UNIQUE,
                 total_requests INTEGER DEFAULT 0,
                 total_errors INTEGER DEFAULT 0,
@@ -69,17 +74,17 @@ def create_monitoring_tables():
                 avg_duration FLOAT DEFAULT 0.0,
                 min_duration FLOAT,
                 max_duration FLOAT,
-                last_called DATETIME,
+                last_called TIMESTAMP,
                 cache_hits INTEGER DEFAULT 0,
                 cache_misses INTEGER DEFAULT 0,
                 cache_hit_rate FLOAT DEFAULT 0.0,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """,
             """
             CREATE TABLE IF NOT EXISTS system_health (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 status VARCHAR(20) NOT NULL,
                 total_requests INTEGER DEFAULT 0,
                 total_errors INTEGER DEFAULT 0,
@@ -92,8 +97,8 @@ def create_monitoring_tables():
             """,
             """
             CREATE TABLE IF NOT EXISTS cache_performance (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 cache_type VARCHAR(50) NOT NULL,
                 hits INTEGER DEFAULT 0,
                 misses INTEGER DEFAULT 0,
