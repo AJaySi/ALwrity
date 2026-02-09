@@ -1,15 +1,14 @@
 """Google Search Console Authentication Router for ALwrity."""
 
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
+import os
 
 from services.gsc_service import GSCService
 from middleware.auth_middleware import get_current_user
-from services.database import get_platform_db_session
-from models.oauth_token_models import GscCredential
 
 # Initialize router
 router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
@@ -70,39 +69,30 @@ async def handle_gsc_callback(
             
             # Create GSC insights task immediately after successful connection
             try:
+                from services.database import SessionLocal
                 from services.platform_insights_monitoring_service import create_platform_insights_task
                 
-                # Get user_id from state (stored during OAuth flow)
-                # Note: handle_oauth_callback already deleted state, so we need to get user_id from recent credentials
-                db = get_platform_db_session()
+                # Read user_id from PostgreSQL-backed GSC credentials (state was deleted).
+                db = SessionLocal()
                 try:
-                    # Get user_id from most recent GSC credentials (since state was deleted)
-                    if db:
-                        recent_credentials = (
-                            db.query(GscCredential)
-                            .order_by(GscCredential.updated_at.desc())
-                            .first()
+                    user_id = gsc_service.get_latest_credentials_user_id()
+                    if user_id:
+                        # Don't fetch site_url here - it requires API calls
+                        # The executor will fetch it when the task runs (weekly)
+                        # Create insights task without site_url to avoid API calls
+                        task_result = create_platform_insights_task(
+                            user_id=user_id,
+                            platform='gsc',
+                            site_url=None,  # Will be fetched by executor when task runs
+                            db=db
                         )
-                        if recent_credentials:
-                            user_id = recent_credentials.user_id
-                            
-                            # Don't fetch site_url here - it requires API calls
-                            # The executor will fetch it when the task runs (weekly)
-                            # Create insights task without site_url to avoid API calls
-                            task_result = create_platform_insights_task(
-                                user_id=user_id,
-                                platform='gsc',
-                                site_url=None,  # Will be fetched by executor when task runs
-                                db=db
-                            )
-                            
-                            if task_result.get('success'):
-                                logger.info(f"Created GSC insights task for user {user_id}")
-                            else:
-                                logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
+                        
+                        if task_result.get('success'):
+                            logger.info(f"Created GSC insights task for user {user_id}")
+                        else:
+                            logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
                 finally:
-                    if db:
-                        db.close()
+                    db.close()
             except Exception as e:
                 # Non-critical: log but don't fail OAuth callback
                 logger.warning(f"Failed to create GSC insights task after OAuth: {e}", exc_info=True)

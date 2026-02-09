@@ -4,15 +4,13 @@ Handles Bing Webmaster Tools OAuth2 authentication flow.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
 
 from services.integrations.bing_oauth import BingOAuthService
 from middleware.auth_middleware import get_current_user
-from services.database import get_platform_db_session
-from models.oauth_token_models import BingOAuthToken
 
 router = APIRouter(prefix="/bing", tags=["Bing Webmaster OAuth"])
 
@@ -164,20 +162,14 @@ async def handle_bing_callback(
         
         # Create Bing insights task immediately after successful connection
         try:
+            from services.database import SessionLocal
             from services.platform_insights_monitoring_service import create_platform_insights_task
             
-            db = get_platform_db_session()
+            # Use user_id returned from the PostgreSQL-backed OAuth handler.
+            db = SessionLocal()
             try:
                 user_id = result.get("user_id")
-                if not user_id and db:
-                    latest_token = (
-                        db.query(BingOAuthToken)
-                        .order_by(BingOAuthToken.created_at.desc())
-                        .first()
-                    )
-                    if latest_token:
-                        user_id = latest_token.user_id
-                if user_id and db:
+                if user_id:
                     # Don't fetch site_url here - it requires API calls
                     # The executor will fetch it when the task runs (weekly)
                     # Create insights task without site_url to avoid API calls
@@ -193,8 +185,7 @@ async def handle_bing_callback(
                     else:
                         logger.warning(f"Failed to create Bing insights task: {task_result.get('error')}")
             finally:
-                if db:
-                    db.close()
+                db.close()
         except Exception as e:
             # Non-critical: log but don't fail OAuth callback
             logger.warning(f"Failed to create Bing insights task after OAuth: {e}")
