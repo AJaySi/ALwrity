@@ -36,5 +36,7 @@ if provider:
     status = provider.get_connection_status(user_id)
 ```
 
+The registry lazily constructs providers on first access, so importing the
+registry module does not initialize provider services until they are needed.
 ## Migration Note
 Onboarding and monitoring codepaths **must continue to use legacy services** until Week 3. The registry exists to introduce a normalized interface for future migrations without changing storage or endpoints today.
