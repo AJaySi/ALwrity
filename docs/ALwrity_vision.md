@@ -299,7 +299,7 @@ Developing Alwrity requires a strategic, phased approach, with careful attention
 
 A. Core Technology Stack
 
-Alwrity's backend will be built using FastAPI, a high-performance Python web framework known for its speed, ease of coding, and automatic interactive API documentation (Swagger UI, ReDoc)..28 This choice ensures a robust and scalable foundation for the AI-driven services. FastAPI is highly scalable and can be implemented as a serverless function (e.g., AWS Lambda).29
+Alwrity's backend will be built using FastAPI, a high-performance Python web framework known for its speed, ease of coding, and automatic interactive API documentation (Swagger UI, ReDoc).28 This choice ensures a robust and scalable foundation for the AI-driven services. FastAPI is highly scalable and can be implemented as a serverless function (e.g., AWS Lambda).29
 For the database, PostgreSQL will be the relational database management system (RDMS), coupled with SQLAlchemy as the Object-Relational Mapper (ORM) for simplified database interactions..30
 SQLModel, built on SQLAlchemy and Pydantic, will be used for defining database models, offering a seamless integration with FastAPI..31
 Alembic will manage database migrations, ensuring schema versioning and automated updates..30
