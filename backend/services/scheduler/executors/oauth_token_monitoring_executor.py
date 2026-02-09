@@ -1,4 +1,4 @@
-"""
+﻿"""
 OAuth Token Monitoring Task Executor
 Handles execution of OAuth token monitoring tasks for connected platforms.
 """
