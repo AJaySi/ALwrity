@@ -1,14 +1,15 @@
 """Google Search Console Authentication Router for ALwrity."""
 
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
-import os
 
 from services.gsc_service import GSCService
 from middleware.auth_middleware import get_current_user
+from services.database import get_platform_db_session
+from models.oauth_token_models import GscCredential
 
 # Initialize router
 router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
@@ -69,21 +70,21 @@ async def handle_gsc_callback(
             
             # Create GSC insights task immediately after successful connection
             try:
-                from services.database import SessionLocal
                 from services.platform_insights_monitoring_service import create_platform_insights_task
                 
                 # Get user_id from state (stored during OAuth flow)
                 # Note: handle_oauth_callback already deleted state, so we need to get user_id from recent credentials
-                db = SessionLocal()
+                db = get_platform_db_session()
                 try:
                     # Get user_id from most recent GSC credentials (since state was deleted)
-                    import sqlite3
-                    with sqlite3.connect(gsc_service.db_path) as conn:
-                        cursor = conn.cursor()
-                        cursor.execute('SELECT user_id FROM gsc_credentials ORDER BY updated_at DESC LIMIT 1')
-                        result = cursor.fetchone()
-                        if result:
-                            user_id = result[0]
+                    if db:
+                        recent_credentials = (
+                            db.query(GscCredential)
+                            .order_by(GscCredential.updated_at.desc())
+                            .first()
+                        )
+                        if recent_credentials:
+                            user_id = recent_credentials.user_id
                             
                             # Don't fetch site_url here - it requires API calls
                             # The executor will fetch it when the task runs (weekly)
@@ -100,7 +101,8 @@ async def handle_gsc_callback(
                             else:
                                 logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
                 finally:
-                    db.close()
+                    if db:
+                        db.close()
             except Exception as e:
                 # Non-critical: log but don't fail OAuth callback
                 logger.warning(f"Failed to create GSC insights task after OAuth: {e}", exc_info=True)

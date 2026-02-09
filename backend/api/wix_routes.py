@@ -13,7 +13,6 @@ from pydantic import BaseModel
 from services.wix_service import WixService
 from services.integrations.wix_oauth import WixOAuthService
 from middleware.auth_middleware import get_current_user
-import os
 
 router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
 
@@ -21,7 +20,7 @@ router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
 wix_service = WixService()
 
 # Initialize Wix OAuth service for token storage
-wix_oauth_service = WixOAuthService(db_path=os.path.abspath("alwrity.db"))
+wix_oauth_service = WixOAuthService()
 
 
 class WixAuthRequest(BaseModel):

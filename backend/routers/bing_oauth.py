@@ -4,13 +4,15 @@ Handles Bing Webmaster Tools OAuth2 authentication flow.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
 
 from services.integrations.bing_oauth import BingOAuthService
 from middleware.auth_middleware import get_current_user
+from services.database import get_platform_db_session
+from models.oauth_token_models import BingOAuthToken
 
 router = APIRouter(prefix="/bing", tags=["Bing Webmaster OAuth"])
 
@@ -162,37 +164,37 @@ async def handle_bing_callback(
         
         # Create Bing insights task immediately after successful connection
         try:
-            from services.database import SessionLocal
             from services.platform_insights_monitoring_service import create_platform_insights_task
             
-            # Get user_id from state (stored during OAuth flow)
-            db = SessionLocal()
+            db = get_platform_db_session()
             try:
-                # Get user_id from Bing OAuth service state lookup
-                import sqlite3
-                with sqlite3.connect(oauth_service.db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT user_id FROM bing_oauth_states WHERE state = ?', (state,))
-                    result_db = cursor.fetchone()
-                    if result_db:
-                        user_id = result_db[0]
-                        
-                        # Don't fetch site_url here - it requires API calls
-                        # The executor will fetch it when the task runs (weekly)
-                        # Create insights task without site_url to avoid API calls
-                        task_result = create_platform_insights_task(
-                            user_id=user_id,
-                            platform='bing',
-                            site_url=None,  # Will be fetched by executor when task runs
-                            db=db
-                        )
-                        
-                        if task_result.get('success'):
-                            logger.info(f"Created Bing insights task for user {user_id}")
-                        else:
-                            logger.warning(f"Failed to create Bing insights task: {task_result.get('error')}")
+                user_id = result.get("user_id")
+                if not user_id and db:
+                    latest_token = (
+                        db.query(BingOAuthToken)
+                        .order_by(BingOAuthToken.created_at.desc())
+                        .first()
+                    )
+                    if latest_token:
+                        user_id = latest_token.user_id
+                if user_id and db:
+                    # Don't fetch site_url here - it requires API calls
+                    # The executor will fetch it when the task runs (weekly)
+                    # Create insights task without site_url to avoid API calls
+                    task_result = create_platform_insights_task(
+                        user_id=user_id,
+                        platform='bing',
+                        site_url=None,  # Will be fetched by executor when task runs
+                        db=db
+                    )
+                    
+                    if task_result.get('success'):
+                        logger.info(f"Created Bing insights task for user {user_id}")
+                    else:
+                        logger.warning(f"Failed to create Bing insights task: {task_result.get('error')}")
             finally:
-                db.close()
+                if db:
+                    db.close()
         except Exception as e:
             # Non-critical: log but don't fail OAuth callback
             logger.warning(f"Failed to create Bing insights task after OAuth: {e}")
