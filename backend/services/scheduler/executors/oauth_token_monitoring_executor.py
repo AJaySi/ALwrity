@@ -4,7 +4,6 @@ Handles execution of OAuth token monitoring tasks for connected platforms.
 """
 
 import logging
-import os
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
@@ -17,10 +16,7 @@ from models.subscription_models import UsageAlert
 from utils.logger_utils import get_service_logger
 
 # Import platform-specific services
-from services.gsc_service import GSCService
-from services.integrations.bing_oauth import BingOAuthService
-from services.integrations.wordpress_oauth import WordPressOAuthService
-from services.wix_service import WixService
+from services.integrations.provider_registry import ProviderRegistry
 
 logger = get_service_logger("oauth_token_monitoring_executor")
 
@@ -41,6 +37,20 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         self.exception_handler = SchedulerExceptionHandler()
         # Expiration warning window (7 days before expiration)
         self.expiration_warning_days = 7
+        self.provider_registry = ProviderRegistry()
+
+    @staticmethod
+    def _normalize_datetime(value: Any) -> Optional[datetime]:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace('Z', '+00:00'))
+            except Exception:
+                return None
+        return None
     
     async def execute_task(self, task: OAuthTokenMonitoringTask, db: Session) -> TaskExecutionResult:
         """
@@ -289,9 +299,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         GSC service auto-refreshes tokens if expired when loading credentials.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
-            gsc_service = GSCService(db_path=db_path)
+            gsc_service = self.provider_registry.get_service("gsc")
+            if not gsc_service:
+                raise ValueError("GSC service not available")
             credentials = gsc_service.load_user_credentials(user_id)
             
             if not credentials:
@@ -341,9 +351,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         Checks token expiration and attempts refresh if needed.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
-            bing_service = BingOAuthService(db_path=db_path)
+            bing_service = self.provider_registry.get_service("bing")
+            if not bing_service:
+                raise ValueError("Bing service not available")
             
             # Get token status (includes expired tokens)
             token_status = bing_service.get_user_token_status(user_id)
@@ -372,9 +382,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                 
                 for token in active_tokens:
                     expires_at_str = token.get('expires_at')
-                    if expires_at_str:
+                    expires_at = self._normalize_datetime(expires_at_str)
+                    if expires_at:
                         try:
-                            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
                             # Check if expires within warning window (7 days)
                             days_until_expiry = (expires_at - now).days
                             if days_until_expiry < self.expiration_warning_days:
@@ -435,9 +445,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                 if refresh_token:
                     # Check if token expired recently (within grace period)
                     expires_at_str = latest_token.get('expires_at')
-                    if expires_at_str:
+                    expires_at = self._normalize_datetime(expires_at_str)
+                    if expires_at:
                         try:
-                            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
                             # Only refresh if expired within last 24 hours (grace period)
                             hours_since_expiry = (datetime.utcnow() - expires_at).total_seconds() / 3600
                             if hours_since_expiry < 24:
@@ -502,9 +512,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         and require user re-authorization. We only check if token is valid.
         """
         try:
-            # Use absolute database path for consistency with onboarding
-            db_path = os.path.abspath("alwrity.db")
-            wordpress_service = WordPressOAuthService(db_path=db_path)
+            wordpress_service = self.provider_registry.get_service("wordpress")
+            if not wordpress_service:
+                raise ValueError("WordPress service not available")
             tokens = wordpress_service.get_user_tokens(user_id)
             
             if not tokens:
@@ -528,9 +538,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
             
             for token in tokens:
                 expires_at_str = token.get('expires_at')
-                if expires_at_str:
+                expires_at = self._normalize_datetime(expires_at_str)
+                if expires_at:
                     try:
-                        expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
                         days_until_expiry = (expires_at - now).days
                         
                         if days_until_expiry < 0:
@@ -610,26 +620,68 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
     async def _check_wix_token(self, user_id: str) -> TaskExecutionResult:
         """
         Check Wix token validity.
-        
-        Note: Wix tokens are currently stored in frontend sessionStorage.
-        Backend storage needs to be implemented for automated checking.
         """
         try:
-            # TODO: Wix tokens are stored in frontend sessionStorage, not backend database
-            # Once backend storage is implemented, we can check tokens here
-            # For now, return not supported
-            
+            wix_service = self.provider_registry.get_service("wix")
+            if not wix_service:
+                raise ValueError("Wix service not available")
+
+            token_status = wix_service.get_user_token_status(user_id)
+
+            if not token_status.get("has_tokens"):
+                return TaskExecutionResult(
+                    success=False,
+                    error_message="No Wix tokens found for user",
+                    result_data={
+                        'platform': 'wix',
+                        'user_id': user_id,
+                        'status': 'not_found',
+                        'check_time': datetime.utcnow().isoformat(),
+                    },
+                    retryable=False,
+                )
+
+            active_tokens = token_status.get("active_tokens", [])
+            expired_tokens = token_status.get("expired_tokens", [])
+
+            if active_tokens:
+                return TaskExecutionResult(
+                    success=True,
+                    result_data={
+                        'platform': 'wix',
+                        'user_id': user_id,
+                        'status': 'valid',
+                        'check_time': datetime.utcnow().isoformat(),
+                        'message': 'Wix token is valid',
+                    },
+                )
+
+            has_refreshable = any(token.get("refresh_token") for token in expired_tokens)
+            if has_refreshable:
+                return TaskExecutionResult(
+                    success=False,
+                    error_message="Wix token expired and requires refresh",
+                    result_data={
+                        'platform': 'wix',
+                        'user_id': user_id,
+                        'status': 'expired',
+                        'check_time': datetime.utcnow().isoformat(),
+                        'message': 'Wix token expired. User needs to reconnect.',
+                    },
+                    retryable=False,
+                )
+
             return TaskExecutionResult(
                 success=False,
-                error_message="Wix token monitoring not yet supported - tokens stored in frontend sessionStorage",
+                error_message="Wix token expired and cannot be refreshed",
                 result_data={
                     'platform': 'wix',
                     'user_id': user_id,
-                    'status': 'not_supported',
+                    'status': 'expired',
                     'check_time': datetime.utcnow().isoformat(),
-                    'message': 'Wix token monitoring requires backend token storage implementation'
+                    'message': 'Wix token expired. User needs to reconnect.',
                 },
-                retryable=False
+                retryable=False,
             )
             
         except Exception as e:
@@ -786,4 +838,3 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                 f"Defaulting to Weekly (7 days)."
             )
             return last_execution + timedelta(days=7)
-
