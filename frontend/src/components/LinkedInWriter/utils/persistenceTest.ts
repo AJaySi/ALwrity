@@ -2,13 +2,15 @@
  * Utility to test and debug CopilotKit persistence
  */
 
+import { STORAGE_KEYS } from './enhancedPersistence';
+
 export const testPersistence = () => {
   console.log('🧪 Testing CopilotKit persistence...');
   
   // Check localStorage for persisted data
-  const chatData = localStorage.getItem('alwrity-copilot-chat');
-  const prefsData = localStorage.getItem('alwrity-copilot-preferences');
-  const contextData = localStorage.getItem('alwrity-copilot-context');
+  const chatData = localStorage.getItem(STORAGE_KEYS.CHAT_HISTORY);
+  const prefsData = localStorage.getItem(STORAGE_KEYS.USER_PREFERENCES);
+  const contextData = localStorage.getItem(STORAGE_KEYS.CONVERSATION_CONTEXT);
   
   console.log('📊 Persistence Test Results:', {
     chat: {
@@ -43,9 +45,9 @@ export const testPersistence = () => {
 export const clearPersistence = () => {
   console.log('🗑️ Clearing CopilotKit persistence...');
   
-  localStorage.removeItem('alwrity-copilot-chat');
-  localStorage.removeItem('alwrity-copilot-preferences');
-  localStorage.removeItem('alwrity-copilot-context');
+  Object.values(STORAGE_KEYS).forEach((key) => {
+    localStorage.removeItem(key);
+  });
   
   // Clear any other CopilotKit related data
   const allKeys = Object.keys(localStorage);
@@ -71,13 +73,13 @@ export const simulateChatMessage = () => {
   
   // Try to store in the expected format
   try {
-    const existingChat = localStorage.getItem('alwrity-copilot-chat');
+    const existingChat = localStorage.getItem(STORAGE_KEYS.CHAT_HISTORY);
     const chatArray = existingChat ? JSON.parse(existingChat) : [];
     chatArray.push(testMessage);
     
     // Keep only last 10 messages for testing
     const trimmedChat = chatArray.slice(-10);
-    localStorage.setItem('alwrity-copilot-chat', JSON.stringify(trimmedChat));
+    localStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(trimmedChat));
     
     console.log('✅ Test message stored:', testMessage);
     return true;
