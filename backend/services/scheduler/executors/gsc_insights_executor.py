@@ -3,20 +3,16 @@ GSC Insights Task Executor
 Handles execution of GSC insights fetch tasks for connected platforms.
 """
 
-import os
 import time
-import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
-from services.database import get_platform_db_session
-from models.oauth_token_models import GscDataCache
 
 from ..core.executor_interface import TaskExecutor, TaskExecutionResult
 from ..core.exception_handler import TaskExecutionError, DatabaseError, SchedulerExceptionHandler
 from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
 from services.gsc_service import GSCService
-from utils.logging import get_service_logger
+from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("gsc_insights_executor")
 
@@ -231,35 +227,18 @@ class GSCInsightsExecutor(TaskExecutor):
     
     def _load_cached_data(self, user_id: str, site_url: Optional[str]) -> Optional[Dict[str, Any]]:
         """Load most recent cached GSC data from database."""
-        db = get_platform_db_session()
-        if not db:
-            self.logger.warning("Database session unavailable for cached GSC data")
-            return None
         try:
-            query = db.query(GscDataCache).filter(
-                GscDataCache.user_id == user_id,
-                GscDataCache.data_type == 'analytics',
-            )
-            if site_url:
-                query = query.filter(GscDataCache.site_url == site_url)
-            result = query.order_by(GscDataCache.created_at.desc()).first()
-            
-            if result:
-                insights_data = json.loads(result.data_json) if isinstance(result.data_json, str) else result.data_json
-                
+            cached = self.gsc_service.get_latest_cached_analytics(user_id, site_url=site_url)
+            if cached:
                 self.logger.info(
-                    f"Found cached GSC data from {result.created_at} for user {user_id}"
+                    f"Found cached GSC data from {cached['created_at']} for user {user_id}"
                 )
-                
-                return insights_data
-            
+                return cached["data"]
             return None
                 
         except Exception as e:
             self.logger.warning(f"Error loading cached GSC data: {e}")
             return None
-        finally:
-            db.close()
     
     async def _fetch_fresh_data(self, user_id: str, site_url: Optional[str]) -> TaskExecutionResult:
         """Fetch fresh GSC insights from API."""

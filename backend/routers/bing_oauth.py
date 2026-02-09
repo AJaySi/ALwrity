@@ -165,11 +165,11 @@ async def handle_bing_callback(
             from services.database import SessionLocal
             from services.platform_insights_monitoring_service import create_platform_insights_task
             
-            # Use user_id returned from the PostgreSQL-backed OAuth handler.
-            db = SessionLocal()
-            try:
-                user_id = result.get("user_id")
-                if user_id:
+            # Get user_id from OAuth result
+            user_id = result.get("user_id")
+            if user_id:
+                db = SessionLocal()
+                try:
                     # Don't fetch site_url here - it requires API calls
                     # The executor will fetch it when the task runs (weekly)
                     # Create insights task without site_url to avoid API calls
@@ -184,8 +184,8 @@ async def handle_bing_callback(
                         logger.info(f"Created Bing insights task for user {user_id}")
                     else:
                         logger.warning(f"Failed to create Bing insights task: {task_result.get('error')}")
-            finally:
-                db.close()
+                finally:
+                    db.close()
         except Exception as e:
             # Non-critical: log but don't fail OAuth callback
             logger.warning(f"Failed to create Bing insights task after OAuth: {e}")

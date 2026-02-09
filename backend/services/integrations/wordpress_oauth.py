@@ -5,22 +5,19 @@ Handles WordPress.com OAuth2 authentication flow for simplified user connection.
 
 import os
 import secrets
-import sqlite3
+from contextlib import contextmanager
 import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from loguru import logger
 import json
-import base64
 from sqlalchemy import text
-
-from services.database import get_user_data_engine
+from services.database import get_user_data_db_session
 
 class WordPressOAuthService:
     """Manages WordPress.com OAuth2 authentication flow."""
     
-    def __init__(self, db_path: str = "alwrity.db"):
-        self.db_path = db_path
+    def __init__(self):
         # WordPress.com OAuth2 credentials
         self.client_id = os.getenv('WORDPRESS_CLIENT_ID', '')
         self.client_secret = os.getenv('WORDPRESS_CLIENT_SECRET', '')
@@ -33,15 +30,27 @@ class WordPressOAuthService:
             logger.error("To get credentials: 1. Go to https://developer.wordpress.com/apps/ 2. Create a new application 3. Set redirect URI to: https://your-domain.com/wp/callback")
 
         self._init_db()
-        self._init_postgres_tables()
+
+    @contextmanager
+    def _db_session(self):
+        db = get_user_data_db_session()
+        if db is None:
+            raise ValueError("User data database session unavailable")
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
     
     def _init_db(self):
         """Initialize database tables for OAuth tokens."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        with self._db_session() as db:
+            db.execute(text('''
                 CREATE TABLE IF NOT EXISTS wordpress_oauth_tokens (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     access_token TEXT NOT NULL,
                     refresh_token TEXT,
@@ -54,75 +63,17 @@ class WordPressOAuthService:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE
                 )
-            ''')
-            cursor.execute('''
+            '''))
+            db.execute(text('''
                 CREATE TABLE IF NOT EXISTS wordpress_oauth_states (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     state TEXT NOT NULL UNIQUE,
                     user_id TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP DEFAULT (datetime('now', '+10 minutes'))
+                    expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '10 minutes')
                 )
-            ''')
-            conn.commit()
+            '''))
         logger.info("WordPress OAuth database initialized.")
-
-    def _init_postgres_tables(self):
-        """Initialize PostgreSQL tables for OAuth tokens."""
-        engine = get_user_data_engine()
-        with engine.begin() as conn:
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS wordpress_oauth_tokens (
-                        id SERIAL PRIMARY KEY,
-                        user_id TEXT NOT NULL,
-                        access_token TEXT NOT NULL,
-                        refresh_token TEXT,
-                        token_type TEXT DEFAULT 'bearer',
-                        expires_at TIMESTAMP,
-                        scope TEXT,
-                        blog_id TEXT,
-                        blog_url TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        is_active BOOLEAN DEFAULT TRUE
-                    )
-                    """
-                )
-            )
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS wordpress_oauth_states (
-                        id SERIAL PRIMARY KEY,
-                        state TEXT NOT NULL UNIQUE,
-                        user_id TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        expires_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP + INTERVAL '10 minutes'
-                    )
-                    """
-                )
-            )
-        logger.info("WordPress OAuth PostgreSQL tables initialized.")
-
-    def _execute_postgres(self, query: str, params: Optional[Dict[str, Any]] = None):
-        engine = get_user_data_engine()
-        with engine.begin() as conn:
-            return conn.execute(text(query), params or {})
-
-    @staticmethod
-    def _normalize_datetime(value: Any) -> Optional[datetime]:
-        if not value:
-            return None
-        if isinstance(value, datetime):
-            return value.replace(tzinfo=None)
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
-            except Exception:
-                return None
-        return None
     
     def generate_authorization_url(self, user_id: str, scope: str = "global") -> Dict[str, Any]:
         """Generate WordPress OAuth2 authorization URL."""
@@ -136,25 +87,14 @@ class WordPressOAuthService:
             state = secrets.token_urlsafe(32)
 
             # Store state in database for validation
-            # PostgreSQL is the primary read path; SQLite writes remain for rollback.
-            self._execute_postgres(
-                """
-                INSERT INTO wordpress_oauth_states (state, user_id, expires_at)
-                VALUES (:state, :user_id, CURRENT_TIMESTAMP + INTERVAL '10 minutes')
-                """,
-                {"state": state, "user_id": user_id},
-            )
-
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    '''
-                    INSERT INTO wordpress_oauth_states (state, user_id)
-                    VALUES (?, ?)
-                    ''',
-                    (state, user_id),
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO wordpress_oauth_states (state, user_id)
+                        VALUES (:state, :user_id)
+                    '''),
+                    {"state": state, "user_id": user_id}
                 )
-                conn.commit()
 
             # Build authorization URL
             # For WordPress.com, use "global" scope for full access to enable posting
@@ -185,41 +125,35 @@ class WordPressOAuthService:
             logger.info(f"WordPress OAuth callback started - code: {code[:20]}..., state: {state[:20]}...")
             
             # Validate state parameter
-            # Read OAuth state from PostgreSQL (SSOT).
-            result = self._execute_postgres(
-                """
-                SELECT user_id, expires_at
-                FROM wordpress_oauth_states
-                WHERE state = :state
-                """,
-                {"state": state},
-            ).fetchone()
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT user_id, expires_at FROM wordpress_oauth_states
+                        WHERE state = :state
+                    '''),
+                    {"state": state}
+                ).fetchone()
 
-            if not result:
-                logger.error(f"Invalid or expired state parameter: {state}")
-                return None
+                if not result:
+                    logger.error(f"Invalid or expired state parameter: {state}")
+                    return None
 
-            user_id, expires_at = result
-            expires_at_dt = self._normalize_datetime(expires_at)
-            if expires_at_dt and expires_at_dt <= datetime.utcnow():
-                logger.error(f"Invalid or expired state parameter: {state}")
-                self._execute_postgres(
-                    "DELETE FROM wordpress_oauth_states WHERE state = :state",
-                    {"state": state},
+                user_id, expires_at = result
+                if expires_at and expires_at <= datetime.utcnow():
+                    logger.error(f"Expired state parameter: {state}")
+                    db.execute(
+                        text('DELETE FROM wordpress_oauth_states WHERE state = :state'),
+                        {"state": state}
+                    )
+                    return None
+
+                logger.info(f"WordPress OAuth: State validated for user {user_id}")
+
+                # Clean up used state
+                db.execute(
+                    text('DELETE FROM wordpress_oauth_states WHERE state = :state'),
+                    {"state": state}
                 )
-                return None
-
-            logger.info(f"WordPress OAuth: State validated for user {user_id}")
-
-            self._execute_postgres(
-                "DELETE FROM wordpress_oauth_states WHERE state = :state",
-                {"state": state},
-            )
-
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM wordpress_oauth_states WHERE state = ?', (state,))
-                conn.commit()
             
             # Exchange authorization code for access token
             token_data = {
@@ -253,46 +187,33 @@ class WordPressOAuthService:
             # Calculate expiration (WordPress tokens typically expire in 2 weeks)
             expires_at = datetime.now() + timedelta(days=14)
             
-            # Persist tokens to PostgreSQL first, then SQLite for rollback.
-            self._execute_postgres(
-                """
-                INSERT INTO wordpress_oauth_tokens
-                (user_id, access_token, token_type, expires_at, scope, blog_id, blog_url)
-                VALUES (:user_id, :access_token, :token_type, :expires_at, :scope, :blog_id, :blog_url)
-                """,
-                {
-                    "user_id": user_id,
-                    "access_token": access_token,
-                    "token_type": "bearer",
-                    "expires_at": expires_at,
-                    "scope": scope,
-                    "blog_id": blog_id,
-                    "blog_url": blog_url,
-                },
-            )
-
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    '''
-                    INSERT INTO wordpress_oauth_tokens 
-                    (user_id, access_token, token_type, expires_at, scope, blog_id, blog_url)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    (user_id, access_token, 'bearer', expires_at, scope, blog_id, blog_url),
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO wordpress_oauth_tokens
+                        (user_id, access_token, token_type, expires_at, scope, blog_id, blog_url)
+                        VALUES (:user_id, :access_token, :token_type, :expires_at, :scope, :blog_id, :blog_url)
+                    '''),
+                    {
+                        "user_id": user_id,
+                        "access_token": access_token,
+                        "token_type": "bearer",
+                        "expires_at": expires_at,
+                        "scope": scope,
+                        "blog_id": blog_id,
+                        "blog_url": blog_url
+                    }
                 )
-                conn.commit()
                 logger.info(f"WordPress OAuth: Token inserted into database for user {user_id}")
             
             logger.info(f"WordPress OAuth token stored successfully for user {user_id}, blog: {blog_url}")
             return {
                 "success": True,
-                "user_id": user_id,
                 "access_token": access_token,
                 "blog_id": blog_id,
                 "blog_url": blog_url,
                 "scope": scope,
-                "expires_at": expires_at.isoformat(),
+                "expires_at": expires_at.isoformat()
             }
             
         except Exception as e:
@@ -302,23 +223,20 @@ class WordPressOAuthService:
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active WordPress tokens for a user."""
         try:
-            # Read from PostgreSQL SSOT (primary).
-            result = self._execute_postgres(
-                """
-                SELECT id, access_token, token_type, expires_at, scope, blog_id, blog_url, created_at
-                FROM wordpress_oauth_tokens
-                WHERE user_id = :user_id
-                AND is_active = TRUE
-                AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
-                ORDER BY created_at DESC
-                """,
-                {"user_id": user_id},
-            )
+            with self._db_session() as db:
+                rows = db.execute(
+                    text('''
+                        SELECT id, access_token, token_type, expires_at, scope, blog_id, blog_url, created_at
+                        FROM wordpress_oauth_tokens
+                        WHERE user_id = :user_id AND is_active = TRUE AND expires_at > CURRENT_TIMESTAMP
+                        ORDER BY created_at DESC
+                    '''),
+                    {"user_id": user_id}
+                ).fetchall()
 
-            tokens = []
-            for row in result.fetchall():
-                tokens.append(
-                    {
+                tokens = []
+                for row in rows:
+                    tokens.append({
                         "id": row[0],
                         "access_token": row[1],
                         "token_type": row[2],
@@ -326,11 +244,10 @@ class WordPressOAuthService:
                         "scope": row[4],
                         "blog_id": row[5],
                         "blog_url": row[6],
-                        "created_at": row[7],
-                    }
-                )
-
-            return tokens
+                        "created_at": row[7]
+                    })
+                
+                return tokens
                 
         except Exception as e:
             logger.error(f"Error getting WordPress tokens for user {user_id}: {e}")
@@ -339,54 +256,64 @@ class WordPressOAuthService:
     def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
         """Get detailed token status for a user including expired tokens."""
         try:
-            # Read from PostgreSQL SSOT (primary).
-            result = self._execute_postgres(
-                """
-                SELECT id, access_token, refresh_token, token_type, expires_at, scope, blog_id, blog_url, created_at, is_active
-                FROM wordpress_oauth_tokens
-                WHERE user_id = :user_id
-                ORDER BY created_at DESC
-                """,
-                {"user_id": user_id},
-            )
+            with self._db_session() as db:
+                rows = db.execute(
+                    text('''
+                        SELECT id, access_token, refresh_token, token_type, expires_at, scope, blog_id, blog_url, created_at, is_active
+                        FROM wordpress_oauth_tokens
+                        WHERE user_id = :user_id
+                        ORDER BY created_at DESC
+                    '''),
+                    {"user_id": user_id}
+                ).fetchall()
 
-            all_tokens = []
-            active_tokens = []
-            expired_tokens = []
+                all_tokens = []
+                active_tokens = []
+                expired_tokens = []
 
-            for row in result.fetchall():
-                token_data = {
-                    "id": row[0],
-                    "access_token": row[1],
-                    "refresh_token": row[2],
-                    "token_type": row[3],
-                    "expires_at": row[4],
-                    "scope": row[5],
-                    "blog_id": row[6],
-                    "blog_url": row[7],
-                    "created_at": row[8],
-                    "is_active": bool(row[9]),
+                for row in rows:
+                    token_data = {
+                        "id": row[0],
+                        "access_token": row[1],
+                        "refresh_token": row[2],
+                        "token_type": row[3],
+                        "expires_at": row[4],
+                        "scope": row[5],
+                        "blog_id": row[6],
+                        "blog_url": row[7],
+                        "created_at": row[8],
+                        "is_active": bool(row[9])
+                    }
+                    all_tokens.append(token_data)
+                    
+                    # Determine expiry using robust parsing and is_active flag
+                    is_active_flag = bool(row[9])
+                    not_expired = False
+                    try:
+                        expires_at_val = row[4]
+                        if expires_at_val:
+                            dt = datetime.fromisoformat(expires_at_val) if isinstance(expires_at_val, str) else expires_at_val
+                            not_expired = dt > datetime.utcnow()
+                        else:
+                            # No expiry stored => consider not expired
+                            not_expired = True
+                    except Exception:
+                        not_expired = False
+
+                    if is_active_flag and not_expired:
+                        active_tokens.append(token_data)
+                    else:
+                        expired_tokens.append(token_data)
+                
+                return {
+                    "has_tokens": len(all_tokens) > 0,
+                    "has_active_tokens": len(active_tokens) > 0,
+                    "has_expired_tokens": len(expired_tokens) > 0,
+                    "active_tokens": active_tokens,
+                    "expired_tokens": expired_tokens,
+                    "total_tokens": len(all_tokens),
+                    "last_token_date": all_tokens[0]["created_at"] if all_tokens else None
                 }
-                all_tokens.append(token_data)
-
-                is_active_flag = bool(row[9])
-                expires_at_val = self._normalize_datetime(row[4])
-                not_expired = expires_at_val > datetime.utcnow() if expires_at_val else True
-
-                if is_active_flag and not_expired:
-                    active_tokens.append(token_data)
-                else:
-                    expired_tokens.append(token_data)
-
-            return {
-                "has_tokens": len(all_tokens) > 0,
-                "has_active_tokens": len(active_tokens) > 0,
-                "has_expired_tokens": len(expired_tokens) > 0,
-                "active_tokens": active_tokens,
-                "expired_tokens": expired_tokens,
-                "total_tokens": len(all_tokens),
-                "last_token_date": all_tokens[0]["created_at"] if all_tokens else None,
-            }
                 
         except Exception as e:
             logger.error(f"Error getting WordPress token status for user {user_id}: {e}")
@@ -420,31 +347,20 @@ class WordPressOAuthService:
     def revoke_token(self, user_id: str, token_id: int) -> bool:
         """Revoke a WordPress OAuth token."""
         try:
-            result = self._execute_postgres(
-                """
-                UPDATE wordpress_oauth_tokens
-                SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = :user_id AND id = :token_id
-                """,
-                {"user_id": user_id, "token_id": token_id},
-            )
-
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    '''
-                    UPDATE wordpress_oauth_tokens 
-                    SET is_active = FALSE, updated_at = datetime('now')
-                    WHERE user_id = ? AND id = ?
-                    ''',
-                    (user_id, token_id),
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        UPDATE wordpress_oauth_tokens
+                        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = :user_id AND id = :token_id
+                    '''),
+                    {"user_id": user_id, "token_id": token_id}
                 )
-                conn.commit()
 
-            if (result.rowcount or 0) > 0:
-                logger.info(f"WordPress token {token_id} revoked for user {user_id}")
-                return True
-            return False
+                if result.rowcount > 0:
+                    logger.info(f"WordPress token {token_id} revoked for user {user_id}")
+                    return True
+                return False
                 
         except Exception as e:
             logger.error(f"Error revoking WordPress token: {e}")

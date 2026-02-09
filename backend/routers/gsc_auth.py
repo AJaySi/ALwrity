@@ -62,9 +62,9 @@ async def handle_gsc_callback(
     try:
         logger.info(f"Handling GSC OAuth callback with code: {code[:10]}...")
         
-        success = gsc_service.handle_oauth_callback(code, state)
+        result = gsc_service.handle_oauth_callback(code, state)
         
-        if success:
+        if result.get("success"):
             logger.info("GSC OAuth callback handled successfully")
             
             # Create GSC insights task immediately after successful connection
@@ -72,11 +72,10 @@ async def handle_gsc_callback(
                 from services.database import SessionLocal
                 from services.platform_insights_monitoring_service import create_platform_insights_task
                 
-                # Read user_id from PostgreSQL-backed GSC credentials (state was deleted).
-                db = SessionLocal()
-                try:
-                    user_id = gsc_service.get_latest_credentials_user_id()
-                    if user_id:
+                user_id = result.get("user_id")
+                if user_id:
+                    db = SessionLocal()
+                    try:
                         # Don't fetch site_url here - it requires API calls
                         # The executor will fetch it when the task runs (weekly)
                         # Create insights task without site_url to avoid API calls
@@ -91,8 +90,8 @@ async def handle_gsc_callback(
                             logger.info(f"Created GSC insights task for user {user_id}")
                         else:
                             logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
-                finally:
-                    db.close()
+                    finally:
+                        db.close()
             except Exception as e:
                 # Non-critical: log but don't fail OAuth callback
                 logger.warning(f"Failed to create GSC insights task after OAuth: {e}", exc_info=True)

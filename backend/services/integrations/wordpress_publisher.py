@@ -8,27 +8,32 @@ from typing import Optional, Dict, List, Any
 from datetime import datetime
 from loguru import logger
 
-from sqlalchemy.orm import Session
-
 from .wordpress_service import WordPressService
 from .wordpress_content import WordPressContentManager
-from services.database import get_platform_db_session
-from models.oauth_token_models import WordPressPost, WordPressSite
+from contextlib import contextmanager
+from sqlalchemy import text
+from services.database import get_user_data_db_session
 
 
 class WordPressPublisher:
     """High-level WordPress publishing service."""
     
-    def __init__(self, db_session: Optional[Session] = None):
+    def __init__(self):
         """Initialize WordPress publisher."""
-        self.db_session = db_session
-        self.wp_service = WordPressService(db_session)
+        self.wp_service = WordPressService()
 
-    def _get_db_session(self) -> Optional[Session]:
-        return self.db_session or get_platform_db_session()
-
-    def _cleanup_session(self, db: Optional[Session]) -> None:
-        if db is not None and self.db_session is None:
+    @contextmanager
+    def _db_session(self):
+        db = get_user_data_db_session()
+        if db is None:
+            raise ValueError("User data database session unavailable")
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
             db.close()
     
     def publish_blog_post(self, user_id: str, site_id: int, 
@@ -158,89 +163,94 @@ class WordPressPublisher:
     
     def _store_post_reference(self, user_id: str, site_id: int, wp_post_id: int, title: str, status: str) -> None:
         """Store post reference in database."""
-        db = self._get_db_session()
-        if not db:
-            logger.error("Error storing post reference: database session unavailable")
-            return
         try:
-            published_at = datetime.utcnow() if status == 'publish' else None
-            db.add(WordPressPost(
-                user_id=user_id,
-                site_id=site_id,
-                wp_post_id=wp_post_id,
-                title=title,
-                status=status,
-                published_at=published_at,
-                created_at=datetime.utcnow(),
-            ))
-            db.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO wordpress_posts
+                        (user_id, site_id, wordpress_post_id, title, status, published_at, created_at)
+                        VALUES (:user_id, :site_id, :wordpress_post_id, :title, :status, :published_at, CURRENT_TIMESTAMP)
+                    '''),
+                    {
+                        "user_id": user_id,
+                        "site_id": site_id,
+                        "wordpress_post_id": wp_post_id,
+                        "title": title,
+                        "status": status,
+                        "published_at": datetime.utcnow().isoformat() if status == 'publish' else None
+                    }
+                )
                 
         except Exception as e:
-            db.rollback()
             logger.error(f"Error storing post reference: {e}")
-        finally:
-            self._cleanup_session(db)
     
     def get_user_posts(self, user_id: str, site_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get all posts published by user."""
-        db = self._get_db_session()
-        if not db:
-            logger.error("Error getting WordPress posts: database session unavailable")
-            return []
         try:
-            query = (
-                db.query(WordPressPost, WordPressSite)
-                .join(WordPressSite, WordPressPost.site_id == WordPressSite.id)
-                .filter(WordPressPost.user_id == user_id)
-            )
-            if site_id:
-                query = query.filter(WordPressPost.site_id == site_id)
-            query = query.order_by(WordPressPost.created_at.desc())
-            
-            posts = []
-            for post, site in query.all():
-                posts.append({
-                    'id': post.id,
-                    'wp_post_id': post.wp_post_id,
-                    'title': post.title,
-                    'status': post.status,
-                    'published_at': post.published_at,
-                    'created_at': post.created_at,
-                    'site_name': site.site_name,
-                    'site_url': site.site_url,
-                })
-            
-            return posts
+            with self._db_session() as db:
+                if site_id:
+                    rows = db.execute(
+                        text('''
+                            SELECT wp.id, wp.wordpress_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
+                                   ws.site_name, ws.site_url
+                            FROM wordpress_posts wp
+                            JOIN wordpress_sites ws ON wp.site_id = ws.id
+                            WHERE wp.user_id = :user_id AND wp.site_id = :site_id
+                            ORDER BY wp.created_at DESC
+                        '''),
+                        {"user_id": user_id, "site_id": site_id}
+                    ).fetchall()
+                else:
+                    rows = db.execute(
+                        text('''
+                            SELECT wp.id, wp.wordpress_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
+                                   ws.site_name, ws.site_url
+                            FROM wordpress_posts wp
+                            JOIN wordpress_sites ws ON wp.site_id = ws.id
+                            WHERE wp.user_id = :user_id
+                            ORDER BY wp.created_at DESC
+                        '''),
+                        {"user_id": user_id}
+                    ).fetchall()
+
+                posts = []
+                for row in rows:
+                    posts.append({
+                        'id': row[0],
+                        'wp_post_id': row[1],
+                        'title': row[2],
+                        'status': row[3],
+                        'published_at': row[4],
+                        'created_at': row[5],
+                        'site_name': row[6],
+                        'site_url': row[7]
+                    })
+                
+                return posts
                 
         except Exception as e:
             logger.error(f"Error getting user posts: {e}")
             return []
-        finally:
-            self._cleanup_session(db)
     
     def update_post_status(self, user_id: str, post_id: int, status: str) -> bool:
         """Update post status (draft/publish)."""
-        db = self._get_db_session()
-        if not db:
-            logger.error("Error updating WordPress post: database session unavailable")
-            return False
         try:
             # Get post info
-            result = (
-                db.query(WordPressPost, WordPressSite)
-                .join(WordPressSite, WordPressPost.site_id == WordPressSite.id)
-                .filter(WordPressPost.id == post_id, WordPressPost.user_id == user_id)
-                .first()
-            )
-            
-            if not result:
-                return False
-            
-            post, site = result
-            wp_post_id = post.wp_post_id
-            site_url = site.site_url
-            username = site.username
-            app_password = site.app_password
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT wp.site_id, wp.wordpress_post_id, ws.site_url, ws.username, ws.app_password
+                        FROM wordpress_posts wp
+                        JOIN wordpress_sites ws ON wp.site_id = ws.id
+                        WHERE wp.id = :post_id AND wp.user_id = :user_id
+                    '''),
+                    {"post_id": post_id, "user_id": user_id}
+                ).fetchone()
+
+                if not result:
+                    return False
+
+                site_id, wp_post_id, site_url, username, app_password = result
             
             # Update in WordPress
             content_manager = WordPressContentManager(site_url, username, app_password)
@@ -248,9 +258,19 @@ class WordPressPublisher:
             
             if wp_result:
                 # Update in database
-                post.status = status
-                post.published_at = datetime.utcnow() if status == 'publish' else None
-                db.commit()
+                with self._db_session() as db:
+                    db.execute(
+                        text('''
+                            UPDATE wordpress_posts
+                            SET status = :status, published_at = :published_at
+                            WHERE id = :post_id
+                        '''),
+                        {
+                            "status": status,
+                            "published_at": datetime.utcnow().isoformat() if status == 'publish' else None,
+                            "post_id": post_id
+                        }
+                    )
                 
                 logger.info(f"Post {post_id} status updated to {status}")
                 return True
@@ -258,35 +278,28 @@ class WordPressPublisher:
             return False
             
         except Exception as e:
-            db.rollback()
             logger.error(f"Error updating post status: {e}")
             return False
-        finally:
-            self._cleanup_session(db)
     
     def delete_post(self, user_id: str, post_id: int, force: bool = False) -> bool:
         """Delete a WordPress post."""
-        db = self._get_db_session()
-        if not db:
-            logger.error("Error deleting WordPress post: database session unavailable")
-            return False
         try:
             # Get post info
-            result = (
-                db.query(WordPressPost, WordPressSite)
-                .join(WordPressSite, WordPressPost.site_id == WordPressSite.id)
-                .filter(WordPressPost.id == post_id, WordPressPost.user_id == user_id)
-                .first()
-            )
-            
-            if not result:
-                return False
-            
-            post, site = result
-            wp_post_id = post.wp_post_id
-            site_url = site.site_url
-            username = site.username
-            app_password = site.app_password
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT wp.site_id, wp.wordpress_post_id, ws.site_url, ws.username, ws.app_password
+                        FROM wordpress_posts wp
+                        JOIN wordpress_sites ws ON wp.site_id = ws.id
+                        WHERE wp.id = :post_id AND wp.user_id = :user_id
+                    '''),
+                    {"post_id": post_id, "user_id": user_id}
+                ).fetchone()
+
+                if not result:
+                    return False
+
+                site_id, wp_post_id, site_url, username, app_password = result
             
             # Delete from WordPress
             content_manager = WordPressContentManager(site_url, username, app_password)
@@ -294,8 +307,11 @@ class WordPressPublisher:
             
             if wp_result:
                 # Remove from database
-                db.delete(post)
-                db.commit()
+                with self._db_session() as db:
+                    db.execute(
+                        text('DELETE FROM wordpress_posts WHERE id = :post_id'),
+                        {"post_id": post_id}
+                    )
                 
                 logger.info(f"Post {post_id} deleted successfully")
                 return True
@@ -303,8 +319,5 @@ class WordPressPublisher:
             return False
             
         except Exception as e:
-            db.rollback()
             logger.error(f"Error deleting post: {e}")
             return False
-        finally:
-            self._cleanup_session(db)

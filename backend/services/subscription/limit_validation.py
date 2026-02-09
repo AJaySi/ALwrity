@@ -414,7 +414,6 @@ class LimitValidator:
                 error_str = str(query_err).lower()
                 if 'no such column' in error_str and 'exa_calls' in error_str:
                     logger.warning("Missing column detected in usage query, fixing schema and retrying...")
-                    import sqlite3
                     import services.subscription.schema_utils as schema_utils
                     schema_utils._checked_usage_summaries_columns = False
                     from services.subscription.schema_utils import ensure_usage_summaries_columns
@@ -768,7 +767,6 @@ class LimitValidator:
                 if 'no such column' in error_message and 'exa_calls' in error_message:
                     logger.warning("Missing column detected in limit check, attempting schema fix...")
                     try:
-                        import sqlite3
                         import services.subscription.schema_utils as schema_utils
                         schema_utils._checked_usage_summaries_columns = False
                         from services.subscription.schema_utils import ensure_usage_summaries_columns
@@ -797,4 +795,3 @@ class LimitValidator:
             logger.error(f"[Pre-flight Check] ❌ Error during comprehensive limit check: {error_type}: {str(e)}", exc_info=True)
             logger.error(f"[Pre-flight Check] ❌ User: {user_id}, Operations count: {len(operations) if operations else 0}")
             return False, f"Failed to validate limits: {error_type}: {str(e)}", {}
-

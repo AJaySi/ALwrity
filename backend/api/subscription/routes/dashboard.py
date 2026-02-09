@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 from datetime import datetime
 from loguru import logger
-import sqlite3
+from sqlalchemy.exc import SQLAlchemyError
 
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
@@ -95,7 +95,7 @@ async def get_dashboard_data(
         set_cached_dashboard(user_id, response_payload)
         return response_payload
     
-    except (sqlite3.OperationalError, Exception) as e:
+    except (SQLAlchemyError, Exception) as e:
         error_str = str(e).lower()
         if 'no such column' in error_str and ('exa_calls' in error_str or 'exa_cost' in error_str or 'video_calls' in error_str or 'video_cost' in error_str or 'image_edit_calls' in error_str or 'image_edit_cost' in error_str or 'audio_calls' in error_str or 'audio_cost' in error_str):
             logger.warning("Missing column detected in dashboard query, attempting schema fix...")

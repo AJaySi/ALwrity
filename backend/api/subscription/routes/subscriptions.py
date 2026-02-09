@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from loguru import logger
-import sqlite3
+from sqlalchemy.exc import SQLAlchemyError
 
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
@@ -182,7 +182,7 @@ async def get_subscription_status(
             }
         }
 
-    except (sqlite3.OperationalError, Exception) as e:
+    except (SQLAlchemyError, Exception) as e:
         error_str = str(e).lower()
         if 'no such column' in error_str and ('exa_calls_limit' in error_str or 'video_calls_limit' in error_str or 'image_edit_calls_limit' in error_str or 'audio_calls_limit' in error_str):
             # Try to fix schema and retry once
