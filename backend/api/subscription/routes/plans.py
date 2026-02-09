@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 from loguru import logger
-import sqlite3
+from sqlalchemy.exc import SQLAlchemyError
 
 from services.database import get_db
 from models.subscription_models import SubscriptionPlan
@@ -55,7 +55,7 @@ async def get_subscription_plans(
             }
         }
     
-    except (sqlite3.OperationalError, Exception) as e:
+    except (SQLAlchemyError, Exception) as e:
         error_str = str(e).lower()
         if 'no such column' in error_str and ('exa_calls_limit' in error_str or 'video_calls_limit' in error_str or 'image_edit_calls_limit' in error_str or 'audio_calls_limit' in error_str):
             return handle_schema_error(

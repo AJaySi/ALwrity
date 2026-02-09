@@ -5,7 +5,7 @@ Handles Bing Webmaster Tools OAuth2 authentication flow for SEO analytics access
 
 import os
 import secrets
-import sqlite3
+from contextlib import contextmanager
 import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
@@ -13,12 +13,13 @@ from loguru import logger
 import json
 from urllib.parse import quote
 from ..analytics_cache_service import analytics_cache
+from services.database import get_user_data_db_session
+from sqlalchemy import text
 
 class BingOAuthService:
     """Manages Bing Webmaster Tools OAuth2 authentication flow."""
     
-    def __init__(self, db_path: str = "alwrity.db"):
-        self.db_path = db_path
+    def __init__(self):
         # Bing Webmaster OAuth2 credentials
         self.client_id = os.getenv('BING_CLIENT_ID', '')
         self.client_secret = os.getenv('BING_CLIENT_SECRET', '')
@@ -32,14 +33,27 @@ class BingOAuthService:
             logger.error("To get credentials: 1. Go to https://www.bing.com/webmasters/ 2. Sign in to Bing Webmaster Tools 3. Go to Settings > API Access 4. Create OAuth client")
 
         self._init_db()
+
+    @contextmanager
+    def _db_session(self):
+        db = get_user_data_db_session()
+        if db is None:
+            raise ValueError("User data database session unavailable")
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
     
     def _init_db(self):
         """Initialize database tables for OAuth tokens."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        with self._db_session() as db:
+            db.execute(text('''
                 CREATE TABLE IF NOT EXISTS bing_oauth_tokens (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     access_token TEXT NOT NULL,
                     refresh_token TEXT,
@@ -51,17 +65,16 @@ class BingOAuthService:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE
                 )
-            ''')
-            cursor.execute('''
+            '''))
+            db.execute(text('''
                 CREATE TABLE IF NOT EXISTS bing_oauth_states (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     state TEXT NOT NULL UNIQUE,
                     user_id TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP DEFAULT (datetime('now', '+20 minutes'))
+                    expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '20 minutes')
                 )
-            ''')
-            conn.commit()
+            '''))
         logger.info("Bing Webmaster OAuth database initialized.")
     
     def generate_authorization_url(self, user_id: str, scope: str = "webmaster.manage") -> Dict[str, Any]:
@@ -76,13 +89,14 @@ class BingOAuthService:
             state = secrets.token_urlsafe(32)
 
             # Store state in database for validation
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO bing_oauth_states (state, user_id, expires_at)
-                    VALUES (?, ?, datetime('now', '+20 minutes'))
-                ''', (state, user_id))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO bing_oauth_states (state, user_id, expires_at)
+                        VALUES (:state, :user_id, CURRENT_TIMESTAMP + INTERVAL '20 minutes')
+                    '''),
+                    {"state": state, "user_id": user_id}
+                )
 
             # Build authorization URL with proper URL encoding
             params = [
@@ -112,14 +126,15 @@ class BingOAuthService:
             logger.info(f"Bing Webmaster OAuth callback started - code: {code[:20]}..., state: {state[:20]}...")
             
             # Validate state parameter
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                # First, look up the state regardless of expiry to provide clearer logs
-                cursor.execute('''
-                    SELECT user_id, created_at, expires_at FROM bing_oauth_states 
-                    WHERE state = ?
-                ''', (state,))
-                row = cursor.fetchone()
+            with self._db_session() as db:
+                row = db.execute(
+                    text('''
+                        SELECT user_id, created_at, expires_at
+                        FROM bing_oauth_states
+                        WHERE state = :state
+                    '''),
+                    {"state": state}
+                ).fetchone()
 
                 if not row:
                     # State not found - likely already consumed (deleted) or never issued
@@ -127,25 +142,28 @@ class BingOAuthService:
                     return None
 
                 user_id, created_at, expires_at = row
-                # Check expiry explicitly
-                cursor.execute("SELECT datetime('now') < ?", (expires_at,))
-                not_expired = cursor.fetchone()[0] == 1
+                now = datetime.utcnow()
+                not_expired = expires_at is None or expires_at > now
                 if not not_expired:
                     logger.error(
                         f"Bing OAuth: State expired. state='{state[:12]}...', user_id='{user_id}', "
                         f"created_at='{created_at}', expires_at='{expires_at}'"
                     )
                     # Clean up expired state
-                    cursor.execute('DELETE FROM bing_oauth_states WHERE state = ?', (state,))
-                    conn.commit()
+                    db.execute(
+                        text('DELETE FROM bing_oauth_states WHERE state = :state'),
+                        {"state": state}
+                    )
                     return None
 
                 # Valid, not expired
                 logger.info(f"Bing OAuth: State validated for user {user_id}")
-                
+
                 # Clean up used state
-                cursor.execute('DELETE FROM bing_oauth_states WHERE state = ?', (state,))
-                conn.commit()
+                db.execute(
+                    text('DELETE FROM bing_oauth_states WHERE state = :state'),
+                    {"state": state}
+                )
             
             # Exchange authorization code for access token
             token_data = {
@@ -180,14 +198,22 @@ class BingOAuthService:
             # Calculate expiration
             expires_at = datetime.now() + timedelta(seconds=expires_in)
             
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO bing_oauth_tokens 
-                    (user_id, access_token, refresh_token, token_type, expires_at, scope)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (user_id, access_token, refresh_token, token_type, expires_at, 'webmaster.manage'))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO bing_oauth_tokens
+                        (user_id, access_token, refresh_token, token_type, expires_at, scope)
+                        VALUES (:user_id, :access_token, :refresh_token, :token_type, :expires_at, :scope)
+                    '''),
+                    {
+                        "user_id": user_id,
+                        "access_token": access_token,
+                        "refresh_token": refresh_token,
+                        "token_type": token_type,
+                        "expires_at": expires_at,
+                        "scope": "webmaster.manage"
+                    }
+                )
                 logger.info(f"Bing OAuth: Token inserted into database for user {user_id}")
             
             # Proactively fetch and cache user sites using the fresh token
@@ -229,6 +255,7 @@ class BingOAuthService:
             logger.info(f"Bing Webmaster OAuth token stored successfully for user {user_id}")
             return {
                 "success": True,
+                "user_id": user_id,
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "token_type": token_type,
@@ -245,15 +272,16 @@ class BingOAuthService:
         Returns number of rows deleted.
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                # Delete tokens that are expired or explicitly inactive
-                cursor.execute('''
-                    DELETE FROM bing_oauth_tokens
-                    WHERE user_id = ? AND (is_active = FALSE OR (expires_at IS NOT NULL AND expires_at <= datetime('now')))
-                ''', (user_id,))
-                deleted = cursor.rowcount or 0
-                conn.commit()
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        DELETE FROM bing_oauth_tokens
+                        WHERE user_id = :user_id
+                          AND (is_active = FALSE OR (expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP))
+                    '''),
+                    {"user_id": user_id}
+                )
+                deleted = result.rowcount or 0
                 if deleted > 0:
                     logger.info(f"Bing OAuth: Purged {deleted} expired/inactive tokens for user {user_id}")
                 else:
@@ -268,17 +296,19 @@ class BingOAuthService:
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active Bing tokens for a user."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT id, access_token, refresh_token, token_type, expires_at, scope, created_at
-                    FROM bing_oauth_tokens
-                    WHERE user_id = ? AND is_active = TRUE AND expires_at > datetime('now')
-                    ORDER BY created_at DESC
-                ''', (user_id,))
-                
+            with self._db_session() as db:
+                rows = db.execute(
+                    text('''
+                        SELECT id, access_token, refresh_token, token_type, expires_at, scope, created_at
+                        FROM bing_oauth_tokens
+                        WHERE user_id = :user_id AND is_active = TRUE AND expires_at > CURRENT_TIMESTAMP
+                        ORDER BY created_at DESC
+                    '''),
+                    {"user_id": user_id}
+                ).fetchall()
+
                 tokens = []
-                for row in cursor.fetchall():
+                for row in rows:
                     tokens.append({
                         "id": row[0],
                         "access_token": row[1],
@@ -298,22 +328,22 @@ class BingOAuthService:
     def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
         """Get detailed token status for a user including expired tokens."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Get all tokens (active and expired)
-                cursor.execute('''
-                    SELECT id, access_token, refresh_token, token_type, expires_at, scope, created_at, is_active
-                    FROM bing_oauth_tokens
-                    WHERE user_id = ?
-                    ORDER BY created_at DESC
-                ''', (user_id,))
-                
+            with self._db_session() as db:
+                rows = db.execute(
+                    text('''
+                        SELECT id, access_token, refresh_token, token_type, expires_at, scope, created_at, is_active
+                        FROM bing_oauth_tokens
+                        WHERE user_id = :user_id
+                        ORDER BY created_at DESC
+                    '''),
+                    {"user_id": user_id}
+                ).fetchall()
+
                 all_tokens = []
                 active_tokens = []
                 expired_tokens = []
-                
-                for row in cursor.fetchall():
+
+                for row in rows:
                     token_data = {
                         "id": row[0],
                         "access_token": row[1],
@@ -332,14 +362,8 @@ class BingOAuthService:
                     try:
                         expires_at_val = row[4]
                         if expires_at_val:
-                            # First try Python parsing
-                            try:
-                                dt = datetime.fromisoformat(expires_at_val) if isinstance(expires_at_val, str) else expires_at_val
-                                not_expired = dt > datetime.now()
-                            except Exception:
-                                # Fallback to SQLite comparison
-                                cursor.execute("SELECT datetime('now') < ?", (expires_at_val,))
-                                not_expired = cursor.fetchone()[0] == 1
+                            dt = datetime.fromisoformat(expires_at_val) if isinstance(expires_at_val, str) else expires_at_val
+                            not_expired = dt > datetime.utcnow()
                         else:
                             # No expiry stored => consider not expired
                             not_expired = True
@@ -437,14 +461,23 @@ class BingOAuthService:
             expires_in = token_info.get('expires_in', 3600)
             expires_at = datetime.now() + timedelta(seconds=expires_in)
             
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE bing_oauth_tokens 
-                    SET access_token = ?, expires_at = ?, is_active = TRUE, updated_at = datetime('now')
-                    WHERE user_id = ? AND refresh_token = ?
-                ''', (access_token, expires_at, user_id, refresh_token))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        UPDATE bing_oauth_tokens
+                        SET access_token = :access_token,
+                            expires_at = :expires_at,
+                            is_active = TRUE,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = :user_id AND refresh_token = :refresh_token
+                    '''),
+                    {
+                        "access_token": access_token,
+                        "expires_at": expires_at,
+                        "user_id": user_id,
+                        "refresh_token": refresh_token
+                    }
+                )
             
             logger.info(f"Bing access token refreshed for user {user_id}")
 
@@ -467,16 +500,17 @@ class BingOAuthService:
     def revoke_token(self, user_id: str, token_id: int) -> bool:
         """Revoke a Bing OAuth token."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE bing_oauth_tokens 
-                    SET is_active = FALSE, updated_at = datetime('now')
-                    WHERE user_id = ? AND id = ?
-                ''', (user_id, token_id))
-                conn.commit()
-                
-                if cursor.rowcount > 0:
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        UPDATE bing_oauth_tokens
+                        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = :user_id AND id = :token_id
+                    '''),
+                    {"user_id": user_id, "token_id": token_id}
+                )
+
+                if result.rowcount > 0:
                     logger.info(f"Bing token {token_id} revoked for user {user_id}")
                     return True
                 return False
@@ -642,25 +676,29 @@ class BingOAuthService:
     def update_token_in_db(self, token_id: str, refreshed_token: Dict[str, Any]) -> bool:
         """Update the access token in the database after refresh."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
+            with self._db_session() as db:
                 # Compute expires_at from expires_in if expires_at missing
                 expires_at_value = refreshed_token.get("expires_at")
                 if not expires_at_value and refreshed_token.get("expires_in"):
                     try:
-                        expires_at_value = datetime.now() + timedelta(seconds=int(refreshed_token["expires_in"]))
+                        expires_at_value = datetime.utcnow() + timedelta(seconds=int(refreshed_token["expires_in"]))
                     except Exception:
                         expires_at_value = None
-                cursor.execute('''
-                    UPDATE bing_oauth_tokens 
-                    SET access_token = ?, expires_at = ?, is_active = TRUE, updated_at = datetime('now')
-                    WHERE id = ?
-                ''', (
-                    refreshed_token["access_token"],
-                    expires_at_value,
-                    token_id
-                ))
-                conn.commit()
+                db.execute(
+                    text('''
+                        UPDATE bing_oauth_tokens
+                        SET access_token = :access_token,
+                            expires_at = :expires_at,
+                            is_active = TRUE,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = :token_id
+                    '''),
+                    {
+                        "access_token": refreshed_token["access_token"],
+                        "expires_at": expires_at_value,
+                        "token_id": token_id
+                    }
+                )
                 logger.info(f"Bing token {token_id} updated in database")
                 return True
         except Exception as e:
@@ -670,14 +708,15 @@ class BingOAuthService:
     def mark_token_inactive(self, token_id: str) -> bool:
         """Mark a token as inactive in the database."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE bing_oauth_tokens 
-                    SET is_active = FALSE, updated_at = datetime('now')
-                    WHERE id = ?
-                ''', (token_id,))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        UPDATE bing_oauth_tokens
+                        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = :token_id
+                    '''),
+                    {"token_id": token_id}
+                )
                 logger.info(f"Bing token {token_id} marked as inactive")
                 return True
         except Exception as e:

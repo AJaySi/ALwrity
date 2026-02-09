@@ -3,14 +3,10 @@ GSC Insights Task Executor
 Handles execution of GSC insights fetch tasks for connected platforms.
 """
 
-import logging
-import os
 import time
-import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
-import sqlite3
 
 from ..core.executor_interface import TaskExecutor, TaskExecutionResult
 from ..core.exception_handler import TaskExecutionError, DatabaseError, SchedulerExceptionHandler
@@ -232,42 +228,13 @@ class GSCInsightsExecutor(TaskExecutor):
     def _load_cached_data(self, user_id: str, site_url: Optional[str]) -> Optional[Dict[str, Any]]:
         """Load most recent cached GSC data from database."""
         try:
-            db_path = self.gsc_service.db_path
-            
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Find most recent cached data
-                if site_url:
-                    cursor.execute('''
-                        SELECT data_json, created_at
-                        FROM gsc_data_cache
-                        WHERE user_id = ? AND site_url = ? AND data_type = 'analytics'
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    ''', (user_id, site_url))
-                else:
-                    cursor.execute('''
-                        SELECT data_json, created_at
-                        FROM gsc_data_cache
-                        WHERE user_id = ? AND data_type = 'analytics'
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    ''', (user_id,))
-                
-                result = cursor.fetchone()
-                
-                if result:
-                    data_json, created_at = result
-                    insights_data = json.loads(data_json) if isinstance(data_json, str) else data_json
-                    
-                    self.logger.info(
-                        f"Found cached GSC data from {created_at} for user {user_id}"
-                    )
-                    
-                    return insights_data
-                
-                return None
+            cached = self.gsc_service.get_latest_cached_analytics(user_id, site_url=site_url)
+            if cached:
+                self.logger.info(
+                    f"Found cached GSC data from {cached['created_at']} for user {user_id}"
+                )
+                return cached["data"]
+            return None
                 
         except Exception as e:
             self.logger.warning(f"Error loading cached GSC data: {e}")
@@ -360,4 +327,3 @@ class GSCInsightsExecutor(TaskExecutor):
         else:
             # Default to weekly
             return last_execution + timedelta(days=7)
-

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import Dict, Any, Optional
 from loguru import logger
-import sqlite3
+from sqlalchemy.exc import SQLAlchemyError
 
 from services.database import get_db
 from services.subscription.log_wrapping_service import LogWrappingService
@@ -184,7 +184,7 @@ async def get_usage_logs(
     
     except HTTPException:
         raise
-    except (sqlite3.OperationalError, Exception) as e:
+    except (SQLAlchemyError, Exception) as e:
         error_str = str(e).lower()
         if 'no such column' in error_str and 'actual_provider_name' in error_str:
             return handle_schema_error(

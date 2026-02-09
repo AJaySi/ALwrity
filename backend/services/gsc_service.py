@@ -2,21 +2,22 @@
 
 import os
 import json
-import sqlite3
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from loguru import logger
+from services.database import get_user_data_db_session
 
 class GSCService:
     """Service for Google Search Console integration."""
     
-    def __init__(self, db_path: str = "alwrity.db"):
+    def __init__(self):
         """Initialize GSC service with database connection."""
-        self.db_path = db_path
         # Resolve credentials file robustly: env override or project-relative default
         env_credentials_path = os.getenv("GSC_CREDENTIALS_FILE")
         if env_credentials_path:
@@ -30,38 +31,53 @@ class GSCService:
         self.scopes = ['https://www.googleapis.com/auth/webmasters.readonly']
         self._init_gsc_tables()
         logger.info("GSC Service initialized successfully")
+
+    @contextmanager
+    def _db_session(self):
+        db = get_user_data_db_session()
+        if db is None:
+            raise ValueError("User data database session unavailable")
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
     
     def _init_gsc_tables(self):
         """Initialize GSC-related database tables."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # GSC credentials table
-                cursor.execute('''
+            with self._db_session() as db:
+                db.execute(text('''
                     CREATE TABLE IF NOT EXISTS gsc_credentials (
                         user_id TEXT PRIMARY KEY,
                         credentials_json TEXT NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
-                ''')
-                
-                # GSC data cache table
-                cursor.execute('''
+                '''))
+
+                db.execute(text('''
                     CREATE TABLE IF NOT EXISTS gsc_data_cache (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id BIGSERIAL PRIMARY KEY,
                         user_id TEXT NOT NULL,
                         site_url TEXT NOT NULL,
                         data_type TEXT NOT NULL,
                         data_json TEXT NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        expires_at TIMESTAMP NOT NULL,
-                        FOREIGN KEY (user_id) REFERENCES gsc_credentials (user_id)
+                        expires_at TIMESTAMP NOT NULL
                     )
-                ''')
-                
-                conn.commit()
+                '''))
+
+                db.execute(text('''
+                    CREATE TABLE IF NOT EXISTS gsc_oauth_states (
+                        state TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                '''))
                 logger.info("GSC database tables initialized successfully")
                 
         except Exception as e:
@@ -86,14 +102,17 @@ class GSCService:
                 'scopes': credentials.scopes
             })
             
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT OR REPLACE INTO gsc_credentials 
-                    (user_id, credentials_json, updated_at) 
-                    VALUES (?, ?, CURRENT_TIMESTAMP)
-                ''', (user_id, credentials_json))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO gsc_credentials (user_id, credentials_json, updated_at)
+                        VALUES (:user_id, :credentials_json, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id)
+                        DO UPDATE SET credentials_json = EXCLUDED.credentials_json,
+                                      updated_at = CURRENT_TIMESTAMP
+                    '''),
+                    {"user_id": user_id, "credentials_json": credentials_json}
+                )
             
             logger.info(f"GSC credentials saved for user: {user_id}")
             return True
@@ -105,14 +124,14 @@ class GSCService:
     def load_user_credentials(self, user_id: str) -> Optional[Credentials]:
         """Load user's GSC credentials from database."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT credentials_json FROM gsc_credentials 
-                    WHERE user_id = ?
-                ''', (user_id,))
-                
-                result = cursor.fetchone()
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT credentials_json FROM gsc_credentials
+                        WHERE user_id = :user_id
+                    '''),
+                    {"user_id": user_id}
+                ).fetchone()
                 if not result:
                     return None
                 
@@ -172,21 +191,17 @@ class GSCService:
             
             # Store state for verification
             
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS gsc_oauth_states (
-                        state TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                ''')
-                
-                cursor.execute('''
-                    INSERT OR REPLACE INTO gsc_oauth_states (state, user_id) 
-                    VALUES (?, ?)
-                ''', (state, user_id))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO gsc_oauth_states (state, user_id)
+                        VALUES (:state, :user_id)
+                        ON CONFLICT (state)
+                        DO UPDATE SET user_id = EXCLUDED.user_id,
+                                      created_at = CURRENT_TIMESTAMP
+                    '''),
+                    {"state": state, "user_id": user_id}
+                )
             
             logger.info(f"OAuth URL generated successfully for user: {user_id}")
             return authorization_url
@@ -197,46 +212,56 @@ class GSCService:
             logger.error(f"Error details: {str(e)}")
             raise
     
-    def handle_oauth_callback(self, authorization_code: str, state: str) -> bool:
+    def handle_oauth_callback(self, authorization_code: str, state: str) -> Dict[str, Any]:
         """Handle OAuth callback and save credentials."""
         try:
             logger.info(f"Handling OAuth callback with state: {state}")
             
             # Verify state
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    SELECT user_id FROM gsc_oauth_states WHERE state = ?
-                ''', (state,))
-                
-                result = cursor.fetchone()
-                
+            with self._db_session() as db:
+                result = db.execute(
+                    text('SELECT user_id FROM gsc_oauth_states WHERE state = :state'),
+                    {"state": state}
+                ).fetchone()
+
                 if not result:
-                    # Check if this is a duplicate callback by looking for recent credentials
-                    cursor.execute('SELECT user_id, credentials_json FROM gsc_credentials ORDER BY updated_at DESC LIMIT 1')
-                    recent_credentials = cursor.fetchone()
-                    
+                    recent_credentials = db.execute(
+                        text('''
+                            SELECT user_id, credentials_json
+                            FROM gsc_credentials
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                        ''')
+                    ).fetchone()
+
                     if recent_credentials:
                         logger.info("Duplicate callback detected - returning success")
-                        return True
-                    
-                    # If no recent credentials, try to find any recent state
-                    cursor.execute('SELECT state, user_id FROM gsc_oauth_states ORDER BY created_at DESC LIMIT 1')
-                    recent_state = cursor.fetchone()
+                        return {"success": True, "user_id": recent_credentials[0]}
+
+                    recent_state = db.execute(
+                        text('''
+                            SELECT state, user_id
+                            FROM gsc_oauth_states
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                        ''')
+                    ).fetchone()
+
                     if recent_state:
                         user_id = recent_state[1]
-                        # Clean up the old state
-                        cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (recent_state[0],))
-                        conn.commit()
+                        db.execute(
+                            text('DELETE FROM gsc_oauth_states WHERE state = :state'),
+                            {"state": recent_state[0]}
+                        )
                     else:
                         raise ValueError("Invalid OAuth state")
                 else:
                     user_id = result[0]
-                
-                # Clean up state
-                cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (state,))
-                conn.commit()
+
+                db.execute(
+                    text('DELETE FROM gsc_oauth_states WHERE state = :state'),
+                    {"state": state}
+                )
             
             # Exchange code for credentials
             flow = Flow.from_client_secrets_file(
@@ -253,14 +278,14 @@ class GSCService:
             
             if success:
                 logger.info(f"OAuth callback handled successfully for user: {user_id}")
-            else:
-                logger.error(f"Failed to save credentials for user: {user_id}")
-            
-            return success
+                return {"success": True, "user_id": user_id}
+
+            logger.error(f"Failed to save credentials for user: {user_id}")
+            return {"success": False, "user_id": user_id}
             
         except Exception as e:
             logger.error(f"Error handling OAuth callback: {e}")
-            return False
+            return {"success": False, "error": str(e)}
     
     def get_authenticated_service(self, user_id: str):
         """Get authenticated GSC service for user."""
@@ -461,19 +486,19 @@ class GSCService:
     def revoke_user_access(self, user_id: str) -> bool:
         """Revoke user's GSC access."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Delete credentials
-                cursor.execute('DELETE FROM gsc_credentials WHERE user_id = ?', (user_id,))
-                
-                # Delete cached data
-                cursor.execute('DELETE FROM gsc_data_cache WHERE user_id = ?', (user_id,))
-                
-                # Delete OAuth states
-                cursor.execute('DELETE FROM gsc_oauth_states WHERE user_id = ?', (user_id,))
-                
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('DELETE FROM gsc_credentials WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
+                db.execute(
+                    text('DELETE FROM gsc_data_cache WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
+                db.execute(
+                    text('DELETE FROM gsc_oauth_states WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
             
             logger.info(f"GSC access revoked for user: {user_id}")
             return True
@@ -485,10 +510,11 @@ class GSCService:
     def clear_incomplete_credentials(self, user_id: str) -> bool:
         """Clear incomplete GSC credentials that are missing required fields."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM gsc_credentials WHERE user_id = ?', (user_id,))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('DELETE FROM gsc_credentials WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
             
             logger.info(f"Cleared incomplete GSC credentials for user: {user_id}")
             return True
@@ -500,15 +526,18 @@ class GSCService:
     def _get_cached_data(self, user_id: str, site_url: str, data_type: str, cache_key: str) -> Optional[Dict]:
         """Get cached data if not expired."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT data_json FROM gsc_data_cache 
-                    WHERE user_id = ? AND site_url = ? AND data_type = ? 
-                    AND expires_at > CURRENT_TIMESTAMP
-                ''', (user_id, site_url, data_type))
-                
-                result = cursor.fetchone()
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT data_json FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND site_url = :site_url
+                          AND data_type = :data_type
+                          AND expires_at > CURRENT_TIMESTAMP
+                    '''),
+                    {"user_id": user_id, "site_url": site_url, "data_type": data_type}
+                ).fetchone()
+
                 if result:
                     return json.loads(result[0])
                 return None
@@ -522,16 +551,68 @@ class GSCService:
         try:
             expires_at = datetime.now() + timedelta(hours=1)  # Cache for 1 hour
             
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT OR REPLACE INTO gsc_data_cache 
-                    (user_id, site_url, data_type, data_json, expires_at) 
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (user_id, site_url, data_type, json.dumps(data), expires_at))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        DELETE FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND site_url = :site_url
+                          AND data_type = :data_type
+                    '''),
+                    {"user_id": user_id, "site_url": site_url, "data_type": data_type}
+                )
+                db.execute(
+                    text('''
+                        INSERT INTO gsc_data_cache
+                        (user_id, site_url, data_type, data_json, expires_at)
+                        VALUES (:user_id, :site_url, :data_type, :data_json, :expires_at)
+                    '''),
+                    {
+                        "user_id": user_id,
+                        "site_url": site_url,
+                        "data_type": data_type,
+                        "data_json": json.dumps(data),
+                        "expires_at": expires_at
+                    }
+                )
             
             logger.info(f"Data cached for user: {user_id}, type: {data_type}")
             
         except Exception as e:
             logger.error(f"Error caching data: {e}")
+
+    def get_latest_cached_analytics(self, user_id: str, site_url: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get the most recent cached analytics payload for a user/site."""
+        try:
+            with self._db_session() as db:
+                if site_url:
+                    query = text('''
+                        SELECT data_json, created_at
+                        FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND site_url = :site_url
+                          AND data_type = 'analytics'
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ''')
+                    params = {"user_id": user_id, "site_url": site_url}
+                else:
+                    query = text('''
+                        SELECT data_json, created_at
+                        FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND data_type = 'analytics'
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ''')
+                    params = {"user_id": user_id}
+
+                result = db.execute(query, params).fetchone()
+                if not result:
+                    return None
+                data_json, created_at = result
+                insights_data = json.loads(data_json) if isinstance(data_json, str) else data_json
+                return {"data": insights_data, "created_at": created_at}
+        except Exception as e:
+            logger.warning(f"Error loading cached GSC analytics: {e}")
+            return None

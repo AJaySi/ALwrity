@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from utils.logger_utils import get_service_logger
-import os
 
 # Use service logger for consistent logging (WARNING level visible in production)
 logger = get_service_logger("oauth_token_monitoring")
@@ -41,9 +40,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
     logger.debug(f"[OAuth Monitoring] Checking connected platforms for user: {user_id}")
     
     try:
-        # Check GSC - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
-        gsc_service = GSCService(db_path=db_path)
+        # Check GSC
+        gsc_service = GSCService()
         gsc_credentials = gsc_service.load_user_credentials(user_id)
         if gsc_credentials:
             connected.append('gsc')
@@ -54,9 +52,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
         logger.warning(f"[OAuth Monitoring] ⚠️ GSC check failed for user {user_id}: {e}", exc_info=True)
     
     try:
-        # Check Bing - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
-        bing_service = BingOAuthService(db_path=db_path)
+        # Check Bing
+        bing_service = BingOAuthService()
         token_status = bing_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)
         has_expired_tokens = token_status.get('has_expired_tokens', False)
@@ -75,9 +72,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
         logger.warning(f"[OAuth Monitoring] ⚠️ Bing check failed for user {user_id}: {e}", exc_info=True)
     
     try:
-        # Check WordPress - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
-        wordpress_service = WordPressOAuthService(db_path=db_path)
+        # Check WordPress
+        wordpress_service = WordPressOAuthService()
         token_status = wordpress_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)
         has_tokens = token_status.get('has_tokens', False)
@@ -93,9 +89,8 @@ def get_connected_platforms(user_id: str) -> List[str]:
         logger.warning(f"[OAuth Monitoring] ⚠️ WordPress check failed for user {user_id}: {e}", exc_info=True)
     
     try:
-        # Check Wix - use absolute database path
-        db_path = os.path.abspath("alwrity.db")
-        wix_service = WixOAuthService(db_path=db_path)
+        # Check Wix
+        wix_service = WixOAuthService()
         token_status = wix_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)
         has_expired_tokens = token_status.get('has_expired_tokens', False)
@@ -201,4 +196,3 @@ def create_oauth_monitoring_tasks(
         )
         db.rollback()
         return []
-
