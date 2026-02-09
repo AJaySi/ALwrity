@@ -5,16 +5,21 @@ Provides enhanced error handling, circuit breaker, and retry logic for OAuth int
 
 from __future__ import annotations
 
-import asyncio
 import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Callable
-from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Callable, List
+from dataclasses import dataclass
 from enum import Enum
 
 from loguru import logger
 
-from .base import IntegrationProvider, ConnectionStatus, AuthUrlPayload
+from .base import (
+    IntegrationProvider,
+    ConnectionStatus,
+    AuthUrlPayload,
+    ConnectionResult,
+    RefreshResult,
+    ConnectedAccount,
+)
 
 
 class CircuitState(Enum):
@@ -119,23 +124,57 @@ class EnhancedIntegrationProvider:
     def display_name(self) -> str:
         return self.provider.display_name
     
-    async def get_auth_url(self, user_id: str) -> AuthUrlPayload:
+    def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload:
         """Get auth URL with enhanced error handling."""
-        return await self._execute_with_resilience(
+        return self._execute_with_resilience(
             operation="get_auth_url",
             func=self.provider.get_auth_url,
-            user_id=user_id
+            user_id=user_id,
+            redirect_uri=redirect_uri,
         )
-    
-    async def get_connection_status(self, user_id: str) -> ConnectionStatus:
+
+    def handle_callback(self, code: str, state: str) -> ConnectionResult:
+        """Handle OAuth callback with enhanced error handling."""
+        return self._execute_with_resilience(
+            operation="handle_callback",
+            func=self.provider.handle_callback,
+            code=code,
+            state=state,
+        )
+
+    def get_connection_status(self, user_id: str) -> ConnectionStatus:
         """Get connection status with enhanced error handling."""
-        return await self._execute_with_resilience(
+        return self._execute_with_resilience(
             operation="get_connection_status",
             func=self.provider.get_connection_status,
             user_id=user_id
         )
-    
-    async def _execute_with_resilience(
+
+    def refresh_token(self, user_id: str) -> Optional[RefreshResult]:
+        """Refresh token with enhanced error handling."""
+        return self._execute_with_resilience(
+            operation="refresh_token",
+            func=self.provider.refresh_token,
+            user_id=user_id,
+        )
+
+    def disconnect(self, user_id: str) -> bool:
+        """Disconnect provider with enhanced error handling."""
+        return self._execute_with_resilience(
+            operation="disconnect",
+            func=self.provider.disconnect,
+            user_id=user_id,
+        )
+
+    def list_connected_accounts(self, user_id: str) -> List[ConnectedAccount]:
+        """List connected accounts with enhanced error handling."""
+        return self._execute_with_resilience(
+            operation="list_connected_accounts",
+            func=self.provider.list_connected_accounts,
+            user_id=user_id,
+        )
+
+    def _execute_with_resilience(
         self, 
         operation: str, 
         func: Callable, 
@@ -153,11 +192,8 @@ class EnhancedIntegrationProvider:
             try:
                 self.logger.debug(f"Executing {operation} for {kwargs.get('user_id', 'unknown')}, attempt {attempt + 1}")
                 
-                if asyncio.iscoroutinefunction(func):
-                    result = await protected_func(**kwargs)
-                else:
-                    result = protected_func(**kwargs)
-                
+                result = protected_func(**kwargs)
+
                 # Log success on final attempt
                 if attempt > 0:
                     self.logger.info(f"Operation {operation} succeeded after {attempt + 1} attempts")
@@ -174,7 +210,7 @@ class EnhancedIntegrationProvider:
                 if attempt < self.max_retries:
                     delay = self.retry_delay * (self.backoff_factor ** attempt)
                     self.logger.debug(f"Retrying in {delay} seconds...")
-                    await asyncio.sleep(delay)
+                    time.sleep(delay)
         
         # All retries failed
         self.logger.error(
@@ -185,6 +221,7 @@ class EnhancedIntegrationProvider:
         if operation == "get_connection_status":
             return ConnectionStatus(
                 connected=False,
+                provider_id=getattr(self.provider, "key", "unknown"),
                 error=f"Service unavailable after retries: {str(last_exception)}",
                 details={
                     "circuit_breaker": self.circuit_breaker.state.value,
@@ -192,13 +229,32 @@ class EnhancedIntegrationProvider:
                     "last_error": str(last_exception)
                 }
             )
-        elif operation == "get_auth_url":
+        if operation == "get_auth_url":
             return AuthUrlPayload(
-                auth_url="",
+                url="",
+                provider_id=getattr(self.provider, "key", "unknown"),
                 details={"error": f"Service unavailable: {str(last_exception)}"}
             )
-        else:
-            raise last_exception
+        if operation == "handle_callback":
+            return ConnectionResult(
+                success=False,
+                provider_id=getattr(self.provider, "key", "unknown"),
+                error=f"Service unavailable: {str(last_exception)}",
+                details={"error": str(last_exception)},
+            )
+        if operation == "refresh_token":
+            return RefreshResult(
+                success=False,
+                refreshed=False,
+                provider_id=getattr(self.provider, "key", "unknown"),
+                error=f"Service unavailable: {str(last_exception)}",
+                details={"error": str(last_exception)},
+            )
+        if operation == "list_connected_accounts":
+            return []
+        if operation == "disconnect":
+            return False
+        raise last_exception
     
     def get_health_status(self) -> Dict[str, Any]:
         """Get health status of the integration provider."""

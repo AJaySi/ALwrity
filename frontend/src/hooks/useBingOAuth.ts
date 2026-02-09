@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { bingOAuthAPI, BingOAuthStatus, BingOAuthResponse } from '../api/bingOAuth';
+import { useAuth } from '@clerk/clerk-react';
 
 interface UseBingOAuthReturn {
   // Connection state
@@ -38,6 +39,7 @@ interface UseBingOAuthReturn {
 }
 
 export const useBingOAuth = (): UseBingOAuthReturn => {
+  const { getToken } = useAuth();
   const [connected, setConnected] = useState<boolean>(false);
   const [sites, setSites] = useState<Array<any>>([]);
   const [totalSites, setTotalSites] = useState<number>(0);
@@ -45,6 +47,24 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastStatusCheck, setLastStatusCheck] = useState<number>(0);
+
+  useEffect(() => {
+    const setupAuth = async () => {
+      try {
+        bingOAuthAPI.setAuthTokenGetter(async () => {
+          try {
+            return await getToken();
+          } catch (e) {
+            return null;
+          }
+        });
+      } catch (error) {
+        console.error('Error setting up Bing OAuth API auth:', error);
+      }
+    };
+
+    setupAuth();
+  }, [getToken]);
 
   /**
    * Check Bing Webmaster connection status
@@ -98,11 +118,20 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
       // Get authorization URL
       console.log('Bing OAuth: Calling bingOAuthAPI.getAuthUrl()...');
       const authData: BingOAuthResponse = await bingOAuthAPI.getAuthUrl();
-      console.log('Bing OAuth: Got auth URL:', authData.auth_url);
+      console.log('Bing OAuth: Got auth URL:', authData.url);
+
+      const allowedOrigins = new Set<string>([window.location.origin]);
+      if (authData.details?.trusted_origins?.length) {
+        authData.details.trusted_origins.forEach(origin => allowedOrigins.add(origin));
+      } else if (authData.details?.redirect_uri) {
+        try {
+          allowedOrigins.add(new URL(authData.details.redirect_uri).origin);
+        } catch {}
+      }
       
       // Open OAuth popup window
       const popup = window.open(
-        authData.auth_url,
+        authData.url,
         'bing-oauth',
         'width=600,height=700,scrollbars=yes,resizable=yes'
       );
@@ -121,7 +150,7 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
           data: event.data,
           dataType: event.data?.type,
           source: event.source === popup ? 'our-popup' : 'other',
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
+          expectedOrigins: Array.from(allowedOrigins),
           timestamp: new Date().toISOString()
         });
         
@@ -131,11 +160,11 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
         // Check if message is from our expected origin (more reliable than checking source)
         console.log('Bing OAuth: Checking origin match...', {
           receivedOrigin: event.origin,
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
-          originMatch: event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'
+          expectedOrigins: Array.from(allowedOrigins),
+          originMatch: allowedOrigins.has(event.origin)
         });
         
-        if (event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev') {
+        if (allowedOrigins.has(event.origin)) {
           console.log('Bing OAuth: Message from expected origin, processing...');
           console.log('Bing OAuth: Message data:', event.data);
           console.log('Bing OAuth: Message data type:', event.data?.type);

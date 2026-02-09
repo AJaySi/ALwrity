@@ -76,7 +76,10 @@ export const usePlatformConnections = () => {
 
       // Fetch canonical OAuth configuration from the backend (validated origin + PKCE).
       const response = await apiClient.get('/api/oauth/wix/auth-url');
-      const { auth_url: authUrl, oauth_data: oauthData, trusted_origins: apiOrigins, client_id: clientId } = response.data;
+      const { url: authUrl, details } = response.data;
+      const oauthData = details?.oauth_data;
+      const apiOrigins = details?.trusted_origins;
+      const clientId = details?.client_id;
 
       if (!authUrl || !oauthData) {
         throw new Error('Missing Wix OAuth configuration from backend.');

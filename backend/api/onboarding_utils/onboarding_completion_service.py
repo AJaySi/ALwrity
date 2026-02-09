@@ -15,6 +15,7 @@ from services.persona_analysis_service import PersonaAnalysisService
 from services.research.research_persona_scheduler import schedule_research_persona_generation
 from services.persona.facebook.facebook_persona_scheduler import schedule_facebook_persona_generation
 from services.oauth_token_monitoring_service import create_oauth_monitoring_tasks
+from services.integrations.registry import list_providers
 
 class OnboardingCompletionService:
     """Service for handling onboarding completion logic."""
@@ -153,9 +154,17 @@ class OnboardingCompletionService:
                     step_completed = bool(persona and (persona.get('corePersona') or persona.get('platformPersonas')))
                     logger.info(f"Step 4 completed: {step_completed}")
                 elif step_num == 5:  # Integrations
-                    # For now, consider this always completed if we reach this point
-                    step_completed = True
-                    logger.info(f"Step 5 completed: {step_completed}")
+                    providers = list_providers()
+                    connected = []
+                    for provider_id, provider in providers.items():
+                        try:
+                            status = provider.get_connection_status(user_id)
+                            if status.connected:
+                                connected.append(provider_id)
+                        except Exception as exc:
+                            logger.warning(f"Failed to check {provider_id} connection for step 5: {exc}")
+                    step_completed = len(connected) > 0
+                    logger.info(f"Step 5 completed: {step_completed} (connected: {connected})")
                 
                 if not step_completed:
                     missing_steps.append(f"Step {step_num}")

@@ -74,10 +74,10 @@ class GSCAPI {
   /**
    * Get Google Search Console OAuth authorization URL
    */
-  async getAuthUrl(): Promise<{ auth_url: string }> {
+  async getAuthUrl(): Promise<{ url: string }> {
     try {
       const client = await this.getAuthenticatedClient();
-      const response = await client.get(`${this.baseUrl}/auth/url`);
+      const response = await client.get(`/api/oauth/gsc/auth-url`);
       return response.data;
     } catch (error) {
       console.error('GSC API: Error getting OAuth URL:', error);

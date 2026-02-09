@@ -12,10 +12,7 @@ from utils.logger_utils import get_service_logger
 logger = get_service_logger("oauth_token_monitoring")
 
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
-from services.gsc_service import GSCService
-from services.integrations.bing_oauth import BingOAuthService
-from services.integrations.wordpress_oauth import WordPressOAuthService
-from services.integrations.wix_oauth import WixOAuthService
+from services.integrations.registry import list_providers
 
 
 def get_connected_platforms(user_id: str) -> List[str]:
@@ -35,79 +32,25 @@ def get_connected_platforms(user_id: str) -> List[str]:
         List of connected platform identifiers: ['gsc', 'bing', 'wordpress', 'wix']
     """
     connected = []
-    
+
     # Use DEBUG level for routine checks (called frequently by dashboard)
     logger.debug(f"[OAuth Monitoring] Checking connected platforms for user: {user_id}")
-    
-    try:
-        # Check GSC
-        gsc_service = GSCService()
-        gsc_credentials = gsc_service.load_user_credentials(user_id)
-        if gsc_credentials:
-            connected.append('gsc')
-            logger.debug(f"[OAuth Monitoring] ✅ GSC connected for user {user_id}")
-        else:
-            logger.debug(f"[OAuth Monitoring] ❌ GSC not connected for user {user_id}")
-    except Exception as e:
-        logger.warning(f"[OAuth Monitoring] ⚠️ GSC check failed for user {user_id}: {e}", exc_info=True)
-    
-    try:
-        # Check Bing
-        bing_service = BingOAuthService()
-        token_status = bing_service.get_user_token_status(user_id)
-        has_active_tokens = token_status.get('has_active_tokens', False)
-        has_expired_tokens = token_status.get('has_expired_tokens', False)
-        expired_tokens = token_status.get('expired_tokens', [])
-        
-        # Check if expired tokens have refresh tokens (can be refreshed)
-        has_refreshable_tokens = any(token.get('refresh_token') for token in expired_tokens)
-        
-        # Consider connected if user has active tokens OR expired tokens with refresh tokens
-        if has_active_tokens or (has_expired_tokens and has_refreshable_tokens):
-            connected.append('bing')
-            logger.debug(f"[OAuth Monitoring] ✅ Bing connected for user {user_id}")
-        else:
-            logger.debug(f"[OAuth Monitoring] ❌ Bing not connected for user {user_id}")
-    except Exception as e:
-        logger.warning(f"[OAuth Monitoring] ⚠️ Bing check failed for user {user_id}: {e}", exc_info=True)
-    
-    try:
-        # Check WordPress
-        wordpress_service = WordPressOAuthService()
-        token_status = wordpress_service.get_user_token_status(user_id)
-        has_active_tokens = token_status.get('has_active_tokens', False)
-        has_tokens = token_status.get('has_tokens', False)
-        
-        # Consider connected if user has any tokens (WordPress tokens may not have refresh tokens)
-        # If tokens exist, user was connected even if expired (may need re-auth)
-        if has_tokens:
-            connected.append('wordpress')
-            logger.debug(f"[OAuth Monitoring] ✅ WordPress connected for user {user_id}")
-        else:
-            logger.debug(f"[OAuth Monitoring] ❌ WordPress not connected for user {user_id}")
-    except Exception as e:
-        logger.warning(f"[OAuth Monitoring] ⚠️ WordPress check failed for user {user_id}: {e}", exc_info=True)
-    
-    try:
-        # Check Wix
-        wix_service = WixOAuthService()
-        token_status = wix_service.get_user_token_status(user_id)
-        has_active_tokens = token_status.get('has_active_tokens', False)
-        has_expired_tokens = token_status.get('has_expired_tokens', False)
-        expired_tokens = token_status.get('expired_tokens', [])
-        
-        # Check if expired tokens have refresh tokens (can be refreshed)
-        has_refreshable_tokens = any(token.get('refresh_token') for token in expired_tokens)
-        
-        # Consider connected if user has active tokens OR expired tokens with refresh tokens
-        if has_active_tokens or (has_expired_tokens and has_refreshable_tokens):
-            connected.append('wix')
-            logger.debug(f"[OAuth Monitoring] ✅ Wix connected for user {user_id}")
-        else:
-            logger.debug(f"[OAuth Monitoring] ❌ Wix not connected for user {user_id}")
-    except Exception as e:
-        logger.warning(f"[OAuth Monitoring] ⚠️ Wix check failed for user {user_id}: {e}", exc_info=True)
-    
+
+    providers = list_providers()
+    for provider_id, provider in providers.items():
+        try:
+            status = provider.get_connection_status(user_id)
+            if status.connected:
+                connected.append(provider_id)
+                logger.debug(f"[OAuth Monitoring] ✅ {provider_id} connected for user {user_id}")
+            else:
+                logger.debug(f"[OAuth Monitoring] ❌ {provider_id} not connected for user {user_id}")
+        except Exception as e:
+            logger.warning(
+                f"[OAuth Monitoring] ⚠️ {provider_id} check failed for user {user_id}: {e}",
+                exc_info=True,
+            )
+
     # Don't log here - let the caller log a formatted summary if needed
     # This function is called frequently and should be silent
     return connected

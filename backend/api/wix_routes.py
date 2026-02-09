@@ -27,6 +27,7 @@ class WixAuthRequest(BaseModel):
     """Request model for Wix authentication"""
     code: str
     state: Optional[str] = None
+    code_verifier: Optional[str] = None
 
 
 class WixPublishRequest(BaseModel):
@@ -97,8 +98,17 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
         
+        code_verifier = request.code_verifier
+        if not code_verifier and request.state:
+            stored_state = wix_oauth_service.consume_oauth_state(request.state)
+            if stored_state and stored_state.get("user_id") and stored_state.get("user_id") != user_id:
+                raise HTTPException(status_code=400, detail="OAuth state does not match current user.")
+            code_verifier = stored_state.get("code_verifier") if stored_state else None
+        if not code_verifier:
+            raise HTTPException(status_code=400, detail="Missing PKCE code verifier for Wix OAuth.")
+
         # Exchange code for tokens
-        tokens = wix_service.exchange_code_for_tokens(request.code)
+        tokens = wix_service.exchange_code_for_tokens(request.code, code_verifier)
         
         # Get site information to extract site_id and member_id
         site_info = wix_service.get_site_info(tokens['access_token'])
@@ -151,7 +161,14 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
 async def handle_oauth_callback_get(code: str, state: Optional[str] = None, request: Request = None, current_user: dict = Depends(get_current_user)):
     """HTML callback page for Wix OAuth that exchanges code and notifies opener via postMessage."""
     try:
-        tokens = wix_service.exchange_code_for_tokens(code)
+        code_verifier = None
+        if state:
+            stored_state = wix_oauth_service.consume_oauth_state(state)
+            code_verifier = stored_state.get("code_verifier") if stored_state else None
+        if not code_verifier:
+            raise HTTPException(status_code=400, detail="Missing PKCE code verifier for Wix OAuth.")
+
+        tokens = wix_service.exchange_code_for_tokens(code, code_verifier)
         site_info = wix_service.get_site_info(tokens['access_token'])
         permissions = wix_service.check_blog_permissions(tokens['access_token'])
         

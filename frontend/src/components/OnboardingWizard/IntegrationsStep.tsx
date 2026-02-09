@@ -103,7 +103,7 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
       status: 'available',
       features: ['Auto-publish content', 'Analytics tracking', 'SEO optimization'],
       benefits: ['Direct publishing to your Wix site', 'Content performance insights', 'Automated SEO optimization'],
-      oauthUrl: '/api/oauth/wix/connect',
+      oauthUrl: '/api/oauth/wix/auth-url',
       isEnabled: true
     },
     {
@@ -127,7 +127,7 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
       status: 'available',
       features: ['Search performance data', 'Keyword insights', 'Content optimization'],
       benefits: ['Real-time SEO metrics', 'Keyword performance tracking', 'Content gap analysis'],
-      oauthUrl: '/gsc/auth/url',
+      oauthUrl: '/api/oauth/gsc/auth-url',
       isEnabled: true
     },
     {
@@ -139,7 +139,7 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
       status: 'available',
       features: ['Bing search performance', 'SEO insights', 'Index status monitoring'],
       benefits: ['Bing search analytics', 'SEO optimization insights', 'Search engine visibility tracking'],
-      oauthUrl: '/bing/auth/url',
+      oauthUrl: '/api/oauth/bing/auth-url',
       isEnabled: true
     },
     // Social Media Platforms

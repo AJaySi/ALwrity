@@ -94,10 +94,19 @@ export const useWordPressOAuth = (): UseWordPressOAuthReturn => {
       
       const authData = await wordpressOAuthAPI.getAuthUrl();
       
-      if (authData && authData.auth_url) {
+      if (authData && authData.url) {
+        const allowedOrigins = new Set<string>([window.location.origin]);
+        if (authData.details?.trusted_origins?.length) {
+          authData.details.trusted_origins.forEach(origin => allowedOrigins.add(origin));
+        } else if (authData.details?.redirect_uri) {
+          try {
+            allowedOrigins.add(new URL(authData.details.redirect_uri).origin);
+          } catch {}
+        }
+
         // Open OAuth popup window
         const popup = window.open(
-          authData.auth_url,
+          authData.url,
           'wordpress-oauth',
           'width=600,height=700,scrollbars=yes,resizable=yes'
         );
@@ -115,9 +124,8 @@ export const useWordPressOAuth = (): UseWordPressOAuthReturn => {
           });
           
           // Accept messages only from the popup we opened and from trusted origins
-          const trustedOrigins = [window.location.origin, 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'];
           if (event.source !== popup) return;
-          if (!trustedOrigins.includes(event.origin)) return;
+          if (!allowedOrigins.has(event.origin)) return;
 
           console.log('WordPress OAuth: Valid message from popup:', event.data);
 

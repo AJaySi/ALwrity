@@ -51,7 +51,66 @@ class WixOAuthService:
                     is_active BOOLEAN DEFAULT TRUE
                 )
             '''))
+            db.execute(text('''
+                CREATE TABLE IF NOT EXISTS wix_oauth_states (
+                    id BIGSERIAL PRIMARY KEY,
+                    state TEXT NOT NULL UNIQUE,
+                    user_id TEXT NOT NULL,
+                    code_verifier TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '20 minutes')
+                )
+            '''))
         logger.info("Wix OAuth database initialized.")
+
+    def store_oauth_state(self, user_id: str, state: str, code_verifier: str) -> None:
+        """Store Wix OAuth state and PKCE verifier in the database."""
+        with self._db_session() as db:
+            db.execute(
+                text('''
+                    INSERT INTO wix_oauth_states (state, user_id, code_verifier, expires_at)
+                    VALUES (:state, :user_id, :code_verifier, CURRENT_TIMESTAMP + INTERVAL '20 minutes')
+                    ON CONFLICT (state)
+                    DO UPDATE SET user_id = EXCLUDED.user_id,
+                                  code_verifier = EXCLUDED.code_verifier,
+                                  created_at = CURRENT_TIMESTAMP,
+                                  expires_at = CURRENT_TIMESTAMP + INTERVAL '20 minutes'
+                '''),
+                {"state": state, "user_id": user_id, "code_verifier": code_verifier},
+            )
+
+    def consume_oauth_state(self, state: str) -> Optional[Dict[str, str]]:
+        """Fetch and delete an OAuth state entry for Wix."""
+        with self._db_session() as db:
+            row = db.execute(
+                text('''
+                    SELECT user_id, code_verifier, expires_at
+                    FROM wix_oauth_states
+                    WHERE state = :state
+                '''),
+                {"state": state},
+            ).fetchone()
+            if not row:
+                return None
+            user_id, code_verifier, expires_at = row
+            now = datetime.utcnow()
+            expires_at_value = expires_at
+            if isinstance(expires_at_value, str):
+                try:
+                    expires_at_value = datetime.fromisoformat(expires_at_value)
+                except Exception:
+                    expires_at_value = None
+            if expires_at_value and expires_at_value < now:
+                db.execute(
+                    text('DELETE FROM wix_oauth_states WHERE state = :state'),
+                    {"state": state},
+                )
+                return None
+            db.execute(
+                text('DELETE FROM wix_oauth_states WHERE state = :state'),
+                {"state": state},
+            )
+            return {"user_id": user_id, "code_verifier": code_verifier}
     
     def store_tokens(
         self,

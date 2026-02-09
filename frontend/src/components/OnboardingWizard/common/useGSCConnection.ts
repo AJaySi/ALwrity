@@ -63,11 +63,11 @@ export const useGSCConnection = () => {
       setConnectedPlatforms(prev => prev.filter(p => p !== 'gsc'));
       setGscSites(null);
       
-      const { auth_url } = await gscAPI.getAuthUrl();
+      const { url } = await gscAPI.getAuthUrl();
       
 
       const popup = window.open(
-        auth_url,
+        url,
         'gsc-auth',
         'width=600,height=700,scrollbars=yes,resizable=yes'
       );
@@ -76,7 +76,7 @@ export const useGSCConnection = () => {
       if (!popup) {
         // Fallback: navigate directly to OAuth URL if popup is blocked
         console.log('Popup blocked, navigating directly to OAuth URL');
-        window.location.href = auth_url;
+        window.location.href = url;
         return;
       }
 

@@ -32,7 +32,7 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
     if (!isOpen) return;
 
     const handler = (event: MessageEvent) => {
-      const trusted = [window.location.origin, 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'];
+      const trusted = [window.location.origin];
       if (!trusted.includes(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
 
@@ -89,16 +89,8 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
       const currentHash = window.location.hash || '#publish'; // Default to publish phase if no hash
       const currentSearch = window.location.search;
       
-      // Determine the correct origin - if using ngrok, use ngrok origin; otherwise use current origin
-      // This ensures consistency between where OAuth starts and where callback happens
-      const NGROK_ORIGIN = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const isUsingNgrok = window.location.origin.includes('localhost') || 
-                           window.location.origin.includes('127.0.0.1') ||
-                           window.location.origin === NGROK_ORIGIN;
-      const redirectOrigin = isUsingNgrok ? NGROK_ORIGIN : window.location.origin;
-      
-      // Build redirect URL with normalized origin
-      const redirectUrl = `${redirectOrigin}${currentPath}${currentHash}${currentSearch}`;
+      // Build redirect URL with current origin
+      const redirectUrl = `${window.location.origin}${currentPath}${currentHash}${currentSearch}`;
       
       try {
         // Always override any existing redirect URL when connecting from Blog Writer
@@ -106,8 +98,7 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
         console.log('[WixConnectModal] Stored redirect URL (overriding any existing):', {
           redirectUrl,
           currentOrigin: window.location.origin,
-          redirectOrigin,
-          isUsingNgrok
+          redirectOrigin: window.location.origin
         });
       } catch (e) {
         console.warn('[WixConnectModal] Failed to store redirect URL:', e);
@@ -196,4 +187,3 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
 };
 
 export default WixConnectModal;
-

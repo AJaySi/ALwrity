@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { apiClient } from '../../api/client';
 import { createClient, OAuthStrategy } from '@wix/sdk';
+import { apiClient } from '../../api/client';
 import { categories as blogCategoriesModule, tags as blogTagsModule } from '@wix/blog';
 
 interface WixConnectionStatus {
@@ -107,17 +108,19 @@ This integration opens up new possibilities for content creators who want to lev
   const getAuthorizationUrl = async () => {
     setLoading(true);
     try {
-      const wixClient = createClient({
-        auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' })
-      });
-
-      const NGROK_ORIGIN = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const redirectOrigin = window.location.origin.includes('localhost') ? NGROK_ORIGIN : window.location.origin;
-      const redirectUri = `${redirectOrigin}/wix/callback`;
-      const oauthData = await wixClient.auth.generateOAuthData(redirectUri);
+      const response = await apiClient.get('/api/oauth/wix/auth-url');
+      const { url: authUrl, details } = response.data;
+      const oauthData = details?.oauth_data;
+      const clientId = details?.client_id;
+      if (!authUrl || !oauthData) {
+        throw new Error('Missing Wix OAuth configuration from backend.');
+      }
+      if (clientId) {
+        const wixClient = createClient({ auth: OAuthStrategy({ clientId }) });
+        wixClient.auth.setTokens({});
+      }
       // Use sessionStorage to ensure data is scoped to this tab/session
       sessionStorage.setItem('wix_oauth_data', JSON.stringify(oauthData));
-      const { authUrl } = await wixClient.auth.getAuthUrl(oauthData);
       window.location.href = authUrl;
     } catch (error) {
       console.error('Failed to start Wix OAuth flow:', error);

@@ -2,7 +2,15 @@
 
 ## Overview
 
-The ALwrity OAuth Integration Framework provides a unified, extensible architecture for managing OAuth connections across multiple platforms. This framework eliminates fragmented integration logic, provides PostgreSQL-only token storage, and ensures consistent connection validation across all supported platforms.
+The ALwrity OAuth Integration Framework provides a unified, extensible architecture for managing OAuth connections across multiple platforms. This framework eliminates fragmented integration logic, provides PostgreSQL-only token storage, centralizes OAuth URL generation in the backend, and ensures consistent connection validation across all supported platforms.
+
+## What's New in the Unified Framework
+
+- **Single integration contract** for all OAuth providers (auth URL, callback handling, status, refresh, disconnect, and account listing).
+- **Registry-first wiring** so onboarding, monitoring, and dashboard logic resolve providers through the same abstraction.
+- **Centralized auth URL endpoint** (`/api/oauth/{provider}/auth-url`) that returns a normalized payload and enforces redirect origin validation.
+- **Wix PKCE state storage in PostgreSQL**, so the backend is the source of truth for Wix OAuth state and tokens.
+- **Step 5 enforcement** requires at least one connected integration before onboarding completion.
 
 ## Architecture
 
@@ -16,8 +24,12 @@ class IntegrationProvider(Protocol):
     key: str
     display_name: str
     
-    def get_auth_url(self, user_id: str) -> AuthUrlPayload: ...
+    def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload: ...
+    def handle_callback(self, code: str, state: str) -> ConnectionResult: ...
     def get_connection_status(self, user_id: str) -> ConnectionStatus: ...
+    def refresh_token(self, user_id: str) -> Optional[RefreshResult]: ...
+    def disconnect(self, user_id: str) -> bool: ...
+    def list_connected_accounts(self, user_id: str) -> List[ConnectedAccount]: ...
 ```
 
 #### 2. Integration Registry (`services/integrations/registry.py`)
@@ -87,7 +99,7 @@ USER_DATA_DATABASE_URL=postgresql://user:pass@host:5432/user_data_db
 ```python
 from services.integrations.registry import get_provider
 
-async def get_all_connection_status(user_id: str):
+def get_all_connection_status(user_id: str):
     """Get connection status for all supported platforms."""
     platforms = ['gsc', 'bing', 'wordpress', 'wix']
     results = {}
@@ -95,9 +107,12 @@ async def get_all_connection_status(user_id: str):
     for platform_key in platforms:
         provider = get_provider(platform_key)
         if provider:
-            status = await provider.get_connection_status(user_id)
+            status = provider.get_connection_status(user_id)
             results[platform_key] = {
                 'connected': status.connected,
+                'expires_at': status.expires_at,
+                'refreshable': status.refreshable,
+                'warnings': status.warnings,
                 'details': status.details,
                 'error': status.error
             }
@@ -110,16 +125,18 @@ async def get_all_connection_status(user_id: str):
 ```python
 from services.integrations.registry import get_provider
 
-async def generate_auth_url(platform: str, user_id: str):
+def generate_auth_url(platform: str, user_id: str):
     """Generate OAuth authorization URL for a platform."""
     provider = get_provider(platform)
     if not provider:
         raise ValueError(f"Unsupported platform: {platform}")
     
-    auth_payload = await provider.get_auth_url(user_id)
+    auth_payload = provider.get_auth_url(user_id)
     return {
-        'auth_url': auth_payload.auth_url,
+        'provider_id': auth_payload.provider_id,
+        'url': auth_payload.url,
         'state': auth_payload.state,
+        'expires_in': auth_payload.expires_in,
         'details': auth_payload.details
     }
 ```
@@ -129,7 +146,7 @@ async def generate_auth_url(platform: str, user_id: str):
 ```python
 from services.integrations.registry import get_provider
 
-async def validate_step_5_completion(user_id: str):
+def validate_step_5_completion(user_id: str):
     """Validate that user has at least one connected platform."""
     platforms = ['gsc', 'bing', 'wordpress', 'wix']
     connected_platforms = []
@@ -137,7 +154,7 @@ async def validate_step_5_completion(user_id: str):
     for platform_key in platforms:
         provider = get_provider(platform_key)
         if provider:
-            status = await provider.get_connection_status(user_id)
+            status = provider.get_connection_status(user_id)
             if status.connected:
                 connected_platforms.append({
                     'platform': platform_key,
@@ -157,6 +174,36 @@ async def validate_step_5_completion(user_id: str):
         'connected_platforms': connected_platforms,
         'message': f'Connected to {len(connected_platforms)} platform(s)'
     }
+```
+
+## Centralized Auth URL Endpoint
+
+All frontend OAuth entry points should use the backend source of truth:
+
+```
+GET /api/oauth/{provider}/auth-url
+```
+
+Response shape:
+
+```json
+{
+  "provider_id": "wix",
+  "url": "https://www.wix.com/oauth/authorize?...",
+  "state": "opaque_state",
+  "expires_in": null,
+  "details": {
+    "redirect_uri": "https://app.example.com/wix/callback",
+    "trusted_origins": ["https://app.example.com"],
+    "client_id": "wix-client-id",
+    "oauth_data": {
+      "state": "opaque_state",
+      "codeVerifier": "pkce_verifier",
+      "codeChallenge": "pkce_challenge",
+      "redirectUri": "https://app.example.com/wix/callback"
+    }
+  }
+}
 ```
 
 ## Adding New Platforms

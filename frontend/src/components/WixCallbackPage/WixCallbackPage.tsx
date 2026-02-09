@@ -39,13 +39,17 @@ const WixCallbackPage: React.FC = () => {
           setError('Missing OAuth state. Please start the connection again.');
           return;
         }
-        // Use the originally generated state to avoid SDK "Invalid _state" errors
-        const tokens = await wixClient.auth.getMemberTokens(code, state, oauthData);
-        wixClient.auth.setTokens(tokens);
-        // Persist tokens for subsequent API calls on this tab
-        try { sessionStorage.setItem('wix_tokens', JSON.stringify(tokens)); } catch {}
-        // optional: ping backend to mark connected
-        try { await apiClient.get('/api/wix/test/connection/status'); } catch {}
+        const callbackResponse = await apiClient.post('/api/wix/auth/callback', {
+          code,
+          state,
+          code_verifier: oauthData?.codeVerifier
+        });
+        const tokens = callbackResponse.data?.tokens;
+        if (tokens) {
+          wixClient.auth.setTokens(tokens);
+          // Persist tokens for subsequent API calls on this tab
+          try { sessionStorage.setItem('wix_tokens', JSON.stringify(tokens)); } catch {}
+        }
         // Cleanup saved oauth data
         sessionStorage.removeItem('wix_oauth_data');
         sessionStorage.removeItem(`wix_oauth_data_${state}`);

@@ -14,12 +14,7 @@ from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask, OAuth
 from models.subscription_models import UsageAlert
 from utils.logger_utils import get_service_logger
 
-# Import platform-specific services
-from services.gsc_service import GSCService
-from services.integrations.bing_oauth import BingOAuthService
-from services.integrations.wordpress_oauth import WordPressOAuthService
-from services.wix_service import WixService
-from services.integrations.wix_oauth import WixOAuthService
+from services.integrations.registry import get_provider
 
 logger = get_service_logger("oauth_token_monitoring_executor")
 
@@ -233,38 +228,14 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         task: OAuthTokenMonitoringTask,
         db: Session
     ) -> TaskExecutionResult:
-        """
-        Check token status and attempt refresh if needed.
-        
-        Tokens are stored in the database from onboarding step 5:
-        - GSC: gsc_credentials table (via GSCService)
-        - Bing: bing_oauth_tokens table (via BingOAuthService)
-        - WordPress: wordpress_oauth_tokens table (via WordPressOAuthService)
-        - Wix: wix_oauth_tokens table (via WixOAuthService)
-        
-        Args:
-            task: OAuthTokenMonitoringTask instance
-            db: Database session
-            
-        Returns:
-            TaskExecutionResult with success status and details
-        """
+        """Check token status and attempt refresh if needed using the integration registry."""
         platform = task.platform
         user_id = task.user_id
-        
+
         try:
             self.logger.info(f"Checking token for platform: {platform}, user: {user_id}")
-            
-            # Route to platform-specific checking logic
-            if platform == 'gsc':
-                return await self._check_gsc_token(user_id)
-            elif platform == 'bing':
-                return await self._check_bing_token(user_id)
-            elif platform == 'wordpress':
-                return await self._check_wordpress_token(user_id)
-            elif platform == 'wix':
-                return await self._check_wix_token(user_id)
-            else:
+            provider = get_provider(platform)
+            if not provider:
                 return TaskExecutionResult(
                     success=False,
                     error_message=f"Unsupported platform: {platform}",
@@ -275,7 +246,70 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                     },
                     retryable=False
                 )
-            
+
+            status = provider.get_connection_status(user_id)
+            now = datetime.utcnow()
+
+            if not status.connected:
+                return TaskExecutionResult(
+                    success=False,
+                    error_message="OAuth connection not found",
+                    result_data={
+                        'platform': platform,
+                        'user_id': user_id,
+                        'status': 'not_connected',
+                        'check_time': now.isoformat(),
+                        'details': status.details,
+                        'warnings': status.warnings,
+                    },
+                    retryable=False,
+                )
+
+            needs_refresh = False
+            if status.expires_at:
+                try:
+                    days_until_expiry = (status.expires_at - now).days
+                    needs_refresh = days_until_expiry < self.expiration_warning_days
+                except Exception:
+                    needs_refresh = False
+
+            if status.refreshable and needs_refresh:
+                refresh_result = provider.refresh_token(user_id)
+                if refresh_result and refresh_result.success:
+                    return TaskExecutionResult(
+                        success=True,
+                        result_data={
+                            'platform': platform,
+                            'user_id': user_id,
+                            'status': 'refreshed',
+                            'check_time': now.isoformat(),
+                            'message': 'Token refreshed successfully',
+                            'expires_at': refresh_result.expires_at.isoformat() if refresh_result.expires_at else None,
+                        },
+                    )
+                return TaskExecutionResult(
+                    success=False,
+                    error_message="Token refresh failed",
+                    result_data={
+                        'platform': platform,
+                        'user_id': user_id,
+                        'status': 'refresh_failed',
+                        'check_time': now.isoformat(),
+                    },
+                    retryable=False,
+                )
+
+            return TaskExecutionResult(
+                success=True,
+                result_data={
+                    'platform': platform,
+                    'user_id': user_id,
+                    'status': 'valid',
+                    'check_time': now.isoformat(),
+                    'message': 'Token is valid',
+                },
+            )
+
         except Exception as e:
             self.logger.error(
                 f"Error checking/refreshing token for platform {platform}, user {user_id}: {e}",
@@ -290,504 +324,6 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
                     'error': str(e)
                 },
                 retryable=False  # Do not retry automatically
-            )
-    
-    async def _check_gsc_token(self, user_id: str) -> TaskExecutionResult:
-        """
-        Check and refresh GSC (Google Search Console) token.
-        
-        GSC service auto-refreshes tokens if expired when loading credentials.
-        """
-        try:
-            # Use absolute database path for consistency with onboarding
-            gsc_service = GSCService()
-            credentials = gsc_service.load_user_credentials(user_id)
-            
-            if not credentials:
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="GSC credentials not found or could not be loaded",
-                    result_data={
-                        'platform': 'gsc',
-                        'user_id': user_id,
-                        'status': 'not_found',
-                        'check_time': datetime.utcnow().isoformat()
-                    },
-                    retryable=False
-                )
-            
-            # GSC service auto-refreshes if expired, so if we get here, token is valid
-            result_data = {
-                'platform': 'gsc',
-                'user_id': user_id,
-                'status': 'valid',
-                'check_time': datetime.utcnow().isoformat(),
-                'message': 'GSC token is valid (auto-refreshed if expired)'
-            }
-            
-            return TaskExecutionResult(
-                success=True,
-                result_data=result_data
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error checking GSC token for user {user_id}: {e}", exc_info=True)
-            return TaskExecutionResult(
-                success=False,
-                error_message=f"GSC token check failed: {str(e)}",
-                result_data={
-                    'platform': 'gsc',
-                    'user_id': user_id,
-                    'error': str(e)
-                },
-                retryable=False
-            )
-    
-    async def _check_bing_token(self, user_id: str) -> TaskExecutionResult:
-        """
-        Check and refresh Bing Webmaster Tools token.
-        
-        Checks token expiration and attempts refresh if needed.
-        """
-        try:
-            # Use absolute database path for consistency with onboarding
-            bing_service = BingOAuthService()
-            
-            # Get token status (includes expired tokens)
-            token_status = bing_service.get_user_token_status(user_id)
-            
-            if not token_status.get('has_tokens'):
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="No Bing tokens found for user",
-                    result_data={
-                        'platform': 'bing',
-                        'user_id': user_id,
-                        'status': 'not_found',
-                        'check_time': datetime.utcnow().isoformat()
-                    },
-                    retryable=False
-                )
-            
-            active_tokens = token_status.get('active_tokens', [])
-            expired_tokens = token_status.get('expired_tokens', [])
-            
-            # If we have active tokens, check if any are expiring soon (< 7 days)
-            if active_tokens:
-                now = datetime.utcnow()
-                needs_refresh = False
-                token_to_refresh = None
-                
-                for token in active_tokens:
-                    expires_at_str = token.get('expires_at')
-                    if expires_at_str:
-                        try:
-                            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-                            # Check if expires within warning window (7 days)
-                            days_until_expiry = (expires_at - now).days
-                            if days_until_expiry < self.expiration_warning_days:
-                                needs_refresh = True
-                                token_to_refresh = token
-                                break
-                        except Exception:
-                            # If parsing fails, assume token is valid
-                            pass
-                
-                if needs_refresh and token_to_refresh:
-                    self.logger.warning(
-                        f"Bing token expiring soon for user {user_id}; attempting refresh"
-                    )
-                    # Attempt to refresh
-                    refresh_token = token_to_refresh.get('refresh_token')
-                    if refresh_token:
-                        refresh_result = bing_service.refresh_access_token(user_id, refresh_token)
-                        if refresh_result:
-                            return TaskExecutionResult(
-                                success=True,
-                                result_data={
-                                    'platform': 'bing',
-                                    'user_id': user_id,
-                                    'status': 'refreshed',
-                                    'check_time': datetime.utcnow().isoformat(),
-                                    'message': 'Bing token refreshed successfully'
-                                }
-                            )
-                        return TaskExecutionResult(
-                            success=False,
-                            error_message="Failed to refresh Bing token",
-                            result_data={
-                                'platform': 'bing',
-                                'user_id': user_id,
-                                'status': 'refresh_failed',
-                                'check_time': datetime.utcnow().isoformat()
-                            },
-                            retryable=False
-                        )
-                    return TaskExecutionResult(
-                        success=False,
-                        error_message="Bing token expiring soon with no refresh token available",
-                        result_data={
-                            'platform': 'bing',
-                            'user_id': user_id,
-                            'status': 'expiring_soon',
-                            'check_time': datetime.utcnow().isoformat(),
-                            'message': 'Bing token expires soon. User needs to reconnect.'
-                        },
-                        retryable=False
-                    )
-                
-                # Token is valid and not expiring soon
-                return TaskExecutionResult(
-                    success=True,
-                    result_data={
-                        'platform': 'bing',
-                        'user_id': user_id,
-                        'status': 'valid',
-                        'check_time': datetime.utcnow().isoformat(),
-                        'message': 'Bing token is valid'
-                    }
-                )
-            
-            # No active tokens, check if we can refresh expired ones
-            if expired_tokens:
-                # Try to refresh the most recent expired token
-                latest_token = expired_tokens[0]  # Already sorted by created_at DESC
-                refresh_token = latest_token.get('refresh_token')
-                
-                if refresh_token:
-                    # Check if token expired recently (within grace period)
-                    expires_at_str = latest_token.get('expires_at')
-                    if expires_at_str:
-                        try:
-                            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-                            # Only refresh if expired within last 24 hours (grace period)
-                            hours_since_expiry = (datetime.utcnow() - expires_at).total_seconds() / 3600
-                            if hours_since_expiry < 24:
-                                refresh_result = bing_service.refresh_access_token(user_id, refresh_token)
-                                if refresh_result:
-                                    return TaskExecutionResult(
-                                        success=True,
-                                        result_data={
-                                            'platform': 'bing',
-                                            'user_id': user_id,
-                                            'status': 'refreshed',
-                                            'check_time': datetime.utcnow().isoformat(),
-                                            'message': 'Bing token refreshed from expired state'
-                                        }
-                                    )
-                        except Exception:
-                            pass
-                
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="Bing token expired and could not be refreshed",
-                    result_data={
-                        'platform': 'bing',
-                        'user_id': user_id,
-                        'status': 'expired',
-                        'check_time': datetime.utcnow().isoformat(),
-                        'message': 'Bing token expired. User needs to reconnect.'
-                    },
-                    retryable=False
-                )
-            
-            return TaskExecutionResult(
-                success=False,
-                error_message="No valid Bing tokens found",
-                result_data={
-                    'platform': 'bing',
-                    'user_id': user_id,
-                    'status': 'invalid',
-                    'check_time': datetime.utcnow().isoformat()
-                },
-                retryable=False
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error checking Bing token for user {user_id}: {e}", exc_info=True)
-            return TaskExecutionResult(
-                success=False,
-                error_message=f"Bing token check failed: {str(e)}",
-                result_data={
-                    'platform': 'bing',
-                    'user_id': user_id,
-                    'error': str(e)
-                },
-                retryable=False
-            )
-    
-    async def _check_wordpress_token(self, user_id: str) -> TaskExecutionResult:
-        """
-        Check WordPress token validity.
-        
-        Note: WordPress tokens cannot be refreshed. They expire after 2 weeks
-        and require user re-authorization. We only check if token is valid.
-        """
-        try:
-            # Use absolute database path for consistency with onboarding
-            wordpress_service = WordPressOAuthService()
-            tokens = wordpress_service.get_user_tokens(user_id)
-            
-            if not tokens:
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="No WordPress tokens found for user",
-                    result_data={
-                        'platform': 'wordpress',
-                        'user_id': user_id,
-                        'status': 'not_found',
-                        'check_time': datetime.utcnow().isoformat()
-                    },
-                    retryable=False
-                )
-            
-            # Check each token - WordPress tokens expire in 2 weeks
-            now = datetime.utcnow()
-            valid_tokens = []
-            expiring_soon = []
-            expired_tokens = []
-            
-            for token in tokens:
-                expires_at_str = token.get('expires_at')
-                if expires_at_str:
-                    try:
-                        expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-                        days_until_expiry = (expires_at - now).days
-                        
-                        if days_until_expiry < 0:
-                            expired_tokens.append(token)
-                        elif days_until_expiry < self.expiration_warning_days:
-                            expiring_soon.append(token)
-                        else:
-                            valid_tokens.append(token)
-                    except Exception:
-                        # If parsing fails, test token validity via API
-                        access_token = token.get('access_token')
-                        if access_token and wordpress_service.test_token(access_token):
-                            valid_tokens.append(token)
-                        else:
-                            expired_tokens.append(token)
-                else:
-                    # No expiration date - test token validity
-                    access_token = token.get('access_token')
-                    if access_token and wordpress_service.test_token(access_token):
-                        valid_tokens.append(token)
-                    else:
-                        expired_tokens.append(token)
-            
-            if valid_tokens:
-                self.logger.info(
-                    f"WordPress tokens valid for user {user_id} (count={len(valid_tokens)})"
-                )
-                return TaskExecutionResult(
-                    success=True,
-                    result_data={
-                        'platform': 'wordpress',
-                        'user_id': user_id,
-                        'status': 'valid',
-                        'check_time': datetime.utcnow().isoformat(),
-                        'message': 'WordPress token is valid',
-                        'valid_tokens_count': len(valid_tokens)
-                    }
-                )
-            elif expiring_soon:
-                self.logger.warning(
-                    f"WordPress tokens expiring soon for user {user_id} (count={len(expiring_soon)})"
-                )
-                # WordPress tokens cannot be refreshed - user needs to reconnect
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="WordPress token expiring soon and cannot be auto-refreshed",
-                    result_data={
-                        'platform': 'wordpress',
-                        'user_id': user_id,
-                        'status': 'expiring_soon',
-                        'check_time': datetime.utcnow().isoformat(),
-                        'message': 'WordPress token expires soon. User needs to reconnect (WordPress tokens cannot be auto-refreshed).'
-                    },
-                    retryable=False
-                )
-            else:
-                self.logger.warning(f"WordPress tokens expired for user {user_id}")
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="WordPress token expired and cannot be refreshed",
-                    result_data={
-                        'platform': 'wordpress',
-                        'user_id': user_id,
-                        'status': 'expired',
-                        'check_time': datetime.utcnow().isoformat(),
-                        'message': 'WordPress token expired. User needs to reconnect (WordPress tokens cannot be auto-refreshed).'
-                    },
-                    retryable=False
-                )
-            
-        except Exception as e:
-            self.logger.error(f"Error checking WordPress token for user {user_id}: {e}", exc_info=True)
-            return TaskExecutionResult(
-                success=False,
-                error_message=f"WordPress token check failed: {str(e)}",
-                result_data={
-                    'platform': 'wordpress',
-                    'user_id': user_id,
-                    'error': str(e)
-                },
-                retryable=False
-            )
-    
-    async def _check_wix_token(self, user_id: str) -> TaskExecutionResult:
-        """
-        Check Wix token validity.
-        """
-        try:
-            wix_oauth_service = WixOAuthService()
-            wix_service = WixService()
-            token_status = wix_oauth_service.get_user_token_status(user_id)
-
-            if not token_status.get('has_tokens'):
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="No Wix tokens found for user",
-                    result_data={
-                        'platform': 'wix',
-                        'user_id': user_id,
-                        'status': 'not_found',
-                        'check_time': datetime.utcnow().isoformat()
-                    },
-                    retryable=False
-                )
-
-            active_tokens = token_status.get('active_tokens', [])
-            expired_tokens = token_status.get('expired_tokens', [])
-            now = datetime.utcnow()
-
-            if active_tokens:
-                expiring_token = None
-                for token in active_tokens:
-                    expires_at = token.get('expires_at')
-                    if expires_at:
-                        expires_at_dt = datetime.fromisoformat(expires_at) if isinstance(expires_at, str) else expires_at
-                        days_until_expiry = (expires_at_dt - now).days
-                        if days_until_expiry < self.expiration_warning_days:
-                            expiring_token = token
-                            break
-
-                if expiring_token:
-                    refresh_token = expiring_token.get('refresh_token')
-                    if refresh_token:
-                        refresh_result = wix_service.refresh_access_token(refresh_token)
-                        if refresh_result and refresh_result.get("access_token"):
-                            wix_oauth_service.update_tokens(
-                                user_id=user_id,
-                                access_token=refresh_result.get("access_token"),
-                                refresh_token=refresh_result.get("refresh_token"),
-                                expires_in=refresh_result.get("expires_in")
-                            )
-                            return TaskExecutionResult(
-                                success=True,
-                                result_data={
-                                    'platform': 'wix',
-                                    'user_id': user_id,
-                                    'status': 'refreshed',
-                                    'check_time': datetime.utcnow().isoformat(),
-                                    'message': 'Wix token refreshed successfully'
-                                }
-                            )
-                        return TaskExecutionResult(
-                            success=False,
-                            error_message="Failed to refresh Wix token",
-                            result_data={
-                                'platform': 'wix',
-                                'user_id': user_id,
-                                'status': 'refresh_failed',
-                                'check_time': datetime.utcnow().isoformat()
-                            },
-                            retryable=False
-                        )
-
-                    return TaskExecutionResult(
-                        success=False,
-                        error_message="Wix token expiring soon with no refresh token available",
-                        result_data={
-                            'platform': 'wix',
-                            'user_id': user_id,
-                            'status': 'expiring_soon',
-                            'check_time': datetime.utcnow().isoformat(),
-                            'message': 'Wix token expires soon. User needs to reconnect.'
-                        },
-                        retryable=False
-                    )
-
-                return TaskExecutionResult(
-                    success=True,
-                    result_data={
-                        'platform': 'wix',
-                        'user_id': user_id,
-                        'status': 'valid',
-                        'check_time': datetime.utcnow().isoformat(),
-                        'message': 'Wix token is valid'
-                    }
-                )
-
-            if expired_tokens:
-                latest_token = expired_tokens[0]
-                refresh_token = latest_token.get('refresh_token')
-                if refresh_token:
-                    refresh_result = wix_service.refresh_access_token(refresh_token)
-                    if refresh_result and refresh_result.get("access_token"):
-                        wix_oauth_service.update_tokens(
-                            user_id=user_id,
-                            access_token=refresh_result.get("access_token"),
-                            refresh_token=refresh_result.get("refresh_token"),
-                            expires_in=refresh_result.get("expires_in")
-                        )
-                        return TaskExecutionResult(
-                            success=True,
-                            result_data={
-                                'platform': 'wix',
-                                'user_id': user_id,
-                                'status': 'refreshed',
-                                'check_time': datetime.utcnow().isoformat(),
-                                'message': 'Wix token refreshed from expired state'
-                            }
-                        )
-
-                return TaskExecutionResult(
-                    success=False,
-                    error_message="Wix token expired and could not be refreshed",
-                    result_data={
-                        'platform': 'wix',
-                        'user_id': user_id,
-                        'status': 'expired',
-                        'check_time': datetime.utcnow().isoformat(),
-                        'message': 'Wix token expired. User needs to reconnect.'
-                    },
-                    retryable=False
-                )
-
-            return TaskExecutionResult(
-                success=False,
-                error_message="No valid Wix tokens found",
-                result_data={
-                    'platform': 'wix',
-                    'user_id': user_id,
-                    'status': 'invalid',
-                    'check_time': datetime.utcnow().isoformat()
-                },
-                retryable=False
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error checking Wix token for user {user_id}: {e}", exc_info=True)
-            return TaskExecutionResult(
-                success=False,
-                error_message=f"Wix token check failed: {str(e)}",
-                result_data={
-                    'platform': 'wix',
-                    'user_id': user_id,
-                    'error': str(e)
-                },
-                retryable=False
             )
     
     def _create_failure_alert(

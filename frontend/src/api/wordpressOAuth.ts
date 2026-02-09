@@ -6,8 +6,13 @@
 import { apiClient } from './client';
 
 export interface WordPressOAuthResponse {
-  auth_url: string;
-  state: string;
+  provider_id: string;
+  url: string;
+  state?: string;
+  details?: {
+    redirect_uri?: string;
+    trusted_origins?: string[];
+  };
 }
 
 export interface WordPressOAuthStatus {
@@ -58,7 +63,7 @@ class WordPressOAuthAPI {
   async getAuthUrl(): Promise<WordPressOAuthResponse> {
     try {
       const client = await this.getAuthenticatedClient();
-      const response = await client.get(`${this.baseUrl}/auth/url`);
+      const response = await client.get(`/api/oauth/wordpress/auth-url`);
       return response.data;
     } catch (error) {
       console.error('WordPress OAuth API: Error getting auth URL:', error);

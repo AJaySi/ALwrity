@@ -103,11 +103,11 @@ const GSCLoginButton: React.FC<GSCLoginButtonProps> = ({ onStatusChange }) => {
       setLoading(true);
       setError(null);
       
-      const { auth_url } = await gscAPI.getAuthUrl();
+      const { url } = await gscAPI.getAuthUrl();
       
       // Open OAuth popup
       const popup = window.open(
-        auth_url,
+        auth_url: url,
         'gsc-auth',
         'width=600,height=700,scrollbars=yes,resizable=yes'
       );
