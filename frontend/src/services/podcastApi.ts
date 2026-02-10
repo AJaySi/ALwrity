@@ -171,21 +171,6 @@ const mapExaResearchResponse = (response: ExaResearchResult): Research => {
   };
 };
 
-// const splitIntoLines = (text: string, speakers: number): Line[] => {
-  // const sentences = text
-  //   .split(/(?<=[.?!])\s+/)
-  //   .map((s) => s.trim())
-  //   .filter((s) => s.length > 4);
-  // if (!sentences.length) {
-    // return [
-      // {
-        // id: createId("line"),
-        // speaker: "Host",
-        // text: text || "Let's dive into today's topic.",
-      // },
-    // ];
-  // }));
-
 const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StoryScene[] | string | undefined): StoryScene[] => {
   if (!outline) return [];
   if (typeof outline === "string") {
