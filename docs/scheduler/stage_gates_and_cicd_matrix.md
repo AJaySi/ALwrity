@@ -4,6 +4,18 @@ This document codifies the **exact Go/No-Go gates** and a **minimal must-pass CI
 
 ---
 
+
+## Current Completion State
+
+Implementation status and handoff checklist are tracked in:
+- `docs/scheduler/integration_handoff_status.md`
+
+Related implementation/runbook docs:
+- `docs/scheduler/p2a_data_model_consistency.md`
+- `docs/scheduler/p2b_operational_clean_semantics.md`
+
+---
+
 ## Stage Gates (Exact Go/No-Go)
 
 ## Gate 1 (end Week 2) — P0 Complete
