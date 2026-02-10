@@ -7,16 +7,15 @@ import {
   Alert,
   CircularProgress,
   Typography,
-  Divider,
   Paper,
+  TextField,
+  Chip,
 } from '@mui/material';
 import {
   AutoAwesome,
-  PhotoCamera,
   ArrowBack,
   SmartToy,
 } from '@mui/icons-material';
-import { TextField, Chip } from '@mui/material';
 import { ImageStudioLayout } from '../../ImageStudio/ImageStudioLayout';
 import { GlassyCard } from '../../ImageStudio/ui/GlassyCard';
 import { SectionHeader } from '../../ImageStudio/ui/SectionHeader';

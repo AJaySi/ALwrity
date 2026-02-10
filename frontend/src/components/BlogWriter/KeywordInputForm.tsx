@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
-import { blogWriterApi, BlogResearchRequest, BlogResearchResponse } from '../../services/blogWriterApi';
-import ResearchPollingHandler from './ResearchPollingHandler';
-import { researchCache } from '../../services/researchCache';
+import { BlogResearchResponse } from '../../services/blogWriterApi';
 
 const useCopilotActionTyped = useCopilotAction as any;
 

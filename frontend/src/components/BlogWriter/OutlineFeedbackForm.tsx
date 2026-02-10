@@ -2,41 +2,6 @@ import React, { useState } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { BlogOutlineSection, BlogResearchResponse, blogWriterApi, mediumBlogApi } from '../../services/blogWriterApi';
 
-// Simple toast notification function
-const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-  const toast = document.createElement('div');
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 16px 24px;
-    border-radius: 8px;
-    color: white;
-    font-weight: 500;
-    z-index: 10000;
-    max-width: 400px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-    background-color: ${type === 'success' ? '#4caf50' : '#f44336'};
-  `;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  
-  // Animate in
-  setTimeout(() => {
-    toast.style.transform = 'translateX(0)';
-  }, 100);
-  
-  // Remove after 4 seconds
-  setTimeout(() => {
-    toast.style.transform = 'translateX(100%)';
-    setTimeout(() => {
-      document.body.removeChild(toast);
-    }, 300);
-  }, 4000);
-};
-
 const useCopilotActionTyped = useCopilotAction as any;
 
 interface OutlineFeedbackFormProps {
