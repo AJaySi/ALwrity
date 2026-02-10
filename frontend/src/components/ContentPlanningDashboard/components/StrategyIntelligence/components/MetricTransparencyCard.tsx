@@ -13,24 +13,17 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
-  Tooltip,
-  Alert,
-  AlertTitle
+  Tooltip
 } from '@mui/material';
 import {
-  Info as InfoIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Schedule as ScheduleIcon,
   Assessment as AssessmentIcon,
   AutoAwesome as AutoAwesomeIcon,
-  TrendingUp as TrendingUpIcon,
   CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  DataUsage as DataUsageIcon,
   Psychology as PsychologyIcon,
-  Timeline as TimelineIcon,
-  Refresh as RefreshIcon
+  Timeline as TimelineIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { safeRenderText } from '../utils/defensiveRendering';

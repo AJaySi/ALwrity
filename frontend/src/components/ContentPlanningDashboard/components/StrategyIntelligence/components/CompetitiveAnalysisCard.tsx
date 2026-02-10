@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Grid,
   Typography,
   Box,
   Chip,
@@ -17,11 +16,8 @@ import {
   TrendingUp as TrendingUpIcon,
   ExpandMore as ExpandMoreIcon,
   Business as BusinessIcon,
-  Star as StarIcon,
-  Warning as WarningIcon,
   CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Lightbulb as LightbulbIcon
+  Cancel as CancelIcon
 } from '@mui/icons-material';
 import { StrategyData } from '../types/strategy.types';
 import {
@@ -32,7 +28,7 @@ import {
   getListItemStyles
 } from '../styles';
 import ProgressiveCard from './ProgressiveCard';
-import { safeRenderText, safeRenderArray, hasValidData, getFallbackValue } from '../utils/defensiveRendering';
+import { safeRenderText } from '../utils/defensiveRendering';
 
 interface CompetitiveAnalysisCardProps {
   strategyData: StrategyData | null;
