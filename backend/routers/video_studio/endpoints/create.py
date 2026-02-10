@@ -10,7 +10,7 @@ import uuid
 from services.database import get_db
 from models.content_asset_models import AssetSource, AssetType
 from services.video_studio import VideoStudioService
-from services.content_assets.content_asset_service import ContentAssetService
+from services.content_asset_service import ContentAssetService
 from middleware.auth_middleware import get_current_user
 from utils.auth_utils import require_authenticated_user
 from utils.logger_utils import get_service_logger
