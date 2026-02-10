@@ -114,11 +114,12 @@ def start_backend(enable_reload=False, production_mode=False):
     if default_host:
         # Cloud deployment detected - use 0.0.0.0
         os.environ.setdefault("HOST", "0.0.0.0")
+        # Use Render's port dynamically
+        os.environ.setdefault("PORT", os.getenv("PORT", "10000"))
     else:
         # Local deployment - use 127.0.0.1 for better Windows compatibility
         os.environ.setdefault("HOST", "127.0.0.1")
-    
-    os.environ.setdefault("PORT", "8000")
+        os.environ.setdefault("PORT", "8000")
     
     # Set reload based on argument or environment variable
     if enable_reload and not production_mode:

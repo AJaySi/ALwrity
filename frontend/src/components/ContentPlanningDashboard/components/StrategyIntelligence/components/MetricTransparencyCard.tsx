@@ -33,6 +33,7 @@ import {
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
+import { safeRenderText } from '../utils/defensiveRendering';
 
 interface MonitoringTask {
   assignee: 'ALwrity' | 'Human';

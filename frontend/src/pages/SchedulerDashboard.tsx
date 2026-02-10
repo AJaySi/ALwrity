@@ -246,7 +246,7 @@ const SchedulerDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
-  // const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
+  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
 
   // Shared event history data for consistency across sections
   const [eventHistoryData, setEventHistoryData] = useState<{
