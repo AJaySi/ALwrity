@@ -333,25 +333,29 @@ class TaskScheduler:
                     f"tasks haven't been created. Error type: {type(e).__name__}"
                 )
             
-            # Get website analysis tasks count
+            # Get website analysis and platform insights tasks count
+            # Use a separate session to avoid querying on a previously-closed startup session.
             website_analysis_tasks_count = 0
-            try:
-                from models.website_analysis_monitoring_models import WebsiteAnalysisTask
-                website_analysis_tasks_count = db.query(WebsiteAnalysisTask).filter(
-                    WebsiteAnalysisTask.status == 'active'
-                ).count()
-            except Exception as e:
-                logger.debug(f"Could not get website analysis tasks count: {e}")
-            
-            # Get platform insights tasks count
             platform_insights_tasks_count = 0
+            db_counts = None
             try:
-                from models.platform_insights_monitoring_models import PlatformInsightsTask
-                platform_insights_tasks_count = db.query(PlatformInsightsTask).filter(
-                    PlatformInsightsTask.status == 'active'
-                ).count()
+                db_counts = get_db_session()
+                if db_counts:
+                    from models.website_analysis_monitoring_models import WebsiteAnalysisTask
+                    from models.platform_insights_monitoring_models import PlatformInsightsTask
+
+                    website_analysis_tasks_count = db_counts.query(WebsiteAnalysisTask).filter(
+                        WebsiteAnalysisTask.status == 'active'
+                    ).count()
+
+                    platform_insights_tasks_count = db_counts.query(PlatformInsightsTask).filter(
+                        PlatformInsightsTask.status == 'active'
+                    ).count()
             except Exception as e:
-                logger.debug(f"Could not get platform insights tasks count: {e}")
+                logger.debug(f"Could not get website/platform insights tasks count: {e}")
+            finally:
+                if db_counts:
+                    db_counts.close()
             
             # Calculate job counts
             apscheduler_recurring = 1  # check_due_tasks

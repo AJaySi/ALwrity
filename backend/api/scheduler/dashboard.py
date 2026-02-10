@@ -49,7 +49,7 @@ async def get_scheduler_dashboard(
         user_id_str = extract_user_id_from_current_user(current_user)
 
         # Get scheduler stats
-        stats = scheduler.get_stats(user_id=None)  # Get all stats for dashboard
+        stats = scheduler.get_stats(user_id=user_id_str)  # Tenant-scoped stats for dashboard
 
         # Get cumulative stats from database
         cumulative_stats = _get_cumulative_stats(db)
@@ -330,6 +330,20 @@ def _get_cumulative_stats(db: Session) -> Dict[str, int]:
         }
 
 
+
+def _extract_user_id_from_job(job: Any) -> str:
+    """Extract user_id from APScheduler job kwargs/id conventions."""
+    if hasattr(job, 'kwargs') and job.kwargs and job.kwargs.get('user_id'):
+        return str(job.kwargs.get('user_id'))
+
+    if job.id:
+        if job.id.startswith('research_persona_'):
+            return job.id.replace('research_persona_', '')
+        if job.id.startswith('facebook_persona_'):
+            return job.id.replace('facebook_persona_', '')
+
+    return None
+
 def _get_formatted_jobs(db: Session, user_id_str: str = None) -> List[Dict[str, Any]]:
     """Get formatted jobs including database-backed tasks."""
     scheduler = get_scheduler()
@@ -350,13 +364,7 @@ def _get_formatted_jobs(db: Session, user_id_str: str = None) -> List[Dict[str, 
         }
 
         # Extract user_id from job
-        user_id_from_job = None
-        if hasattr(job, 'kwargs') and job.kwargs and job.kwargs.get('user_id'):
-            user_id_from_job = job.kwargs.get('user_id')
-        elif job.id and ('research_persona_' in job.id or 'facebook_persona_' in job.id):
-            parts = job.id.split('_')
-            if len(parts) >= 3:
-                user_id_from_job = parts[2]
+        user_id_from_job = _extract_user_id_from_job(job)
 
         if user_id_from_job:
             job_info['user_id'] = user_id_from_job
@@ -365,6 +373,11 @@ def _get_formatted_jobs(db: Session, user_id_str: str = None) -> List[Dict[str, 
                 job_info['user_job_store'] = user_job_store
             except Exception as e:
                 logger.debug(f"Could not get job store for user {user_id_from_job}: {e}")
+
+        # Enforce tenant scoping for one-time APScheduler jobs.
+        # Keep the system check_due_tasks job visible for all users.
+        if user_id_str and job.id != 'check_due_tasks' and user_id_from_job != user_id_str:
+            continue
 
         formatted_jobs.append(job_info)
 
@@ -383,9 +396,15 @@ def _get_formatted_jobs(db: Session, user_id_str: str = None) -> List[Dict[str, 
 def _add_oauth_monitoring_tasks(db: Session, formatted_jobs: List[Dict[str, Any]], user_id_str: str = None):
     """Add OAuth token monitoring tasks to formatted jobs."""
     try:
-        oauth_tasks = db.query(OAuthTokenMonitoringTask).filter(
+        query = db.query(OAuthTokenMonitoringTask).filter(
             OAuthTokenMonitoringTask.status == 'active'
-        ).all()
+        )
+
+        # Filter by user if user_id_str is provided
+        if user_id_str:
+            query = query.filter(OAuthTokenMonitoringTask.user_id == user_id_str)
+
+        oauth_tasks = query.all()
 
         # Consolidated OAuth logging - only log if there are issues
         oauth_tasks_count = len(oauth_tasks)

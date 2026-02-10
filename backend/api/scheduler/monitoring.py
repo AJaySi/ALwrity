@@ -71,6 +71,8 @@ async def get_execution_logs(
 async def get_event_history(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    event_type: Optional[str] = Query(None, pattern="^(check_cycle|interval_adjustment|start|stop|job_scheduled|job_cancelled|job_completed|job_failed)$"),
+    days: Optional[int] = Query(None, ge=1, le=90),
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -97,7 +99,9 @@ async def get_event_history(
             db=db,
             limit=limit,
             offset=offset,
-            user_id=user_id
+            user_id=user_id,
+            event_type=event_type,
+            days=days
         )
 
         return EventHistoryResponse(**result)

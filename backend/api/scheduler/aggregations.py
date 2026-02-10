@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 from loguru import logger
+from datetime import datetime, timedelta
 
 from models.monitoring_models import TaskExecutionLog
 from models.scheduler_models import SchedulerEventLog
@@ -78,6 +79,8 @@ def aggregate_event_history(
     limit: int = 50,
     offset: int = 0,
     user_id: Optional[str] = None,
+    event_type: Optional[str] = None,
+    days: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Aggregate scheduler event history in frontend-compatible shape."""
     try:
@@ -85,6 +88,19 @@ def aggregate_event_history(
 
         if user_id:
             query = query.filter(SchedulerEventLog.user_id == user_id)
+
+        if event_type:
+            query = query.filter(SchedulerEventLog.event_type == event_type)
+
+        date_filter = None
+        if days:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            query = query.filter(SchedulerEventLog.event_date >= cutoff_date)
+            date_filter = {
+                'days': days,
+                'cutoff_date': cutoff_date.isoformat(),
+                'showing_events_since': cutoff_date.isoformat()
+            }
 
         total = query.count()
         events = query.order_by(desc(SchedulerEventLog.event_date)).offset(offset).limit(limit).all()
@@ -114,13 +130,18 @@ def aggregate_event_history(
                 'created_at': event.created_at.isoformat() if event.created_at else None,
             })
 
-        return {
+        response = {
             'events': event_entries,
             'total_count': total,
             'limit': limit,
             'offset': offset,
             'has_more': offset + limit < total,
         }
+
+        if date_filter:
+            response['date_filter'] = date_filter
+
+        return response
 
     except Exception as e:
         logger.error(f"[Aggregation] Error aggregating event history: {e}", exc_info=True)

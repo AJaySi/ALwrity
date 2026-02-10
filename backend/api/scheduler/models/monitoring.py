@@ -69,6 +69,7 @@ class EventHistoryResponse(BaseModel):
     limit: int = 50
     offset: int = 0
     has_more: bool = False
+    date_filter: Optional[Dict[str, Any]] = None
 
 
 class EventLogStats(BaseModel):
