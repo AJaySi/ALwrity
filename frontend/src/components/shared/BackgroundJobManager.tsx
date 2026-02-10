@@ -9,10 +9,6 @@ import {
   Alert,
   Chip,
   List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -23,7 +19,6 @@ import {
   AccordionDetails,
 } from '@mui/material';
 import {
-  PlayArrow,
   Stop,
   Refresh,
   CheckCircle,

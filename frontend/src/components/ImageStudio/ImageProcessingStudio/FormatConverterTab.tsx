@@ -103,7 +103,7 @@ export const FormatConverterTab: React.FC = () => {
         target_format: targetFormat,
         preserve_transparency: preserveTransparency,
         quality: quality,
-        color_space: colorSpace || undefined,
+        color_space: undefined,
         strip_metadata: stripMetadata,
         optimize,
         progressive,

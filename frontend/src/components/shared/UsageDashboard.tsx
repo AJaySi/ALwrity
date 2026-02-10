@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Chip,
@@ -9,12 +9,10 @@ import {
   IconButton,
   Menu,
   MenuItem,
-  Divider,
   LinearProgress
 } from '@mui/material';
 import {
   TrendingUp,
-  TrendingDown,
   Warning,
   CheckCircle,
   Refresh,
@@ -93,7 +91,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     checkInterval: 120000, // Check every 2 minutes
   });
 
-  const fetchUsageData = async () => {
+  const fetchUsageData = useCallback(async () => {
     if (!userId) return;
     
     setLoading(true);
@@ -109,11 +107,11 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     fetchUsageData();
-  }, [userId]);
+  }, [userId, fetchUsageData]);
 
   const handleRefresh = () => {
     fetchUsageData();
