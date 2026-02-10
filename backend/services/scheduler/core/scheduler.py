@@ -5,6 +5,7 @@ Pluggable task scheduler that can work with any task model.
 
 import asyncio
 import logging
+import os
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,6 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from .executor_interface import TaskExecutor, TaskExecutionResult
 from .task_registry import TaskRegistry
@@ -117,6 +119,16 @@ class TaskScheduler:
         }
         
         self._running = False
+
+        # HA leader-election state (PostgreSQL advisory lock based)
+        self._leader_lock_key = int(os.getenv("SCHEDULER_LEADER_LOCK_KEY", "84321017"))
+        self._leadership_check_interval_seconds = int(os.getenv("SCHEDULER_LEADERSHIP_CHECK_INTERVAL", "15"))
+        self._leader_session = None
+        self._is_leader = False
+        self._execution_enabled = False
+        self._leader_since = None
+        self._last_leadership_check = None
+        self._last_leadership_error = None
     
     def _get_trigger_for_interval(self, interval_minutes: int):
         """
@@ -213,6 +225,89 @@ class TaskScheduler:
         
         logger.info("APScheduler logging configured to use unified logging system")
     
+
+    def _scheduler_identity(self) -> str:
+        return f"{os.getenv('HOSTNAME', 'local')}-{os.getpid()}"
+
+    def _acquire_leadership(self) -> bool:
+        """Try to acquire PostgreSQL advisory lock for scheduler leadership."""
+        try:
+            if self._leader_session is None:
+                self._leader_session = get_db_session()
+
+            if self._leader_session is None:
+                self._last_leadership_error = "no_db_session"
+                return False
+
+            acquired = self._leader_session.execute(
+                text("SELECT pg_try_advisory_lock(:lock_key)"),
+                {"lock_key": self._leader_lock_key},
+            ).scalar()
+            self._leader_session.commit()
+
+            self._last_leadership_check = datetime.utcnow().isoformat()
+            self._is_leader = bool(acquired)
+            self._execution_enabled = bool(acquired)
+            if acquired and not self._leader_since:
+                self._leader_since = datetime.utcnow().isoformat()
+            return bool(acquired)
+        except Exception as e:
+            self._last_leadership_error = str(e)
+            self._last_leadership_check = datetime.utcnow().isoformat()
+            self._is_leader = False
+            self._execution_enabled = False
+            return False
+
+    def _release_leadership(self):
+        """Release PostgreSQL advisory lock and close leadership session."""
+        try:
+            if self._leader_session is not None:
+                try:
+                    self._leader_session.execute(
+                        text("SELECT pg_advisory_unlock(:lock_key)"),
+                        {"lock_key": self._leader_lock_key},
+                    )
+                    self._leader_session.commit()
+                except Exception:
+                    self._leader_session.rollback()
+                finally:
+                    self._leader_session.close()
+        finally:
+            self._leader_session = None
+            self._is_leader = False
+            self._execution_enabled = False
+            self._leader_since = None
+
+    def _sync_check_due_tasks_job(self):
+        """Ensure check_due_tasks job exists only for leader."""
+        job = self.scheduler.get_job('check_due_tasks')
+        if self._is_leader and self._execution_enabled:
+            if job is None:
+                self.scheduler.add_job(
+                    self._check_and_execute_due_tasks,
+                    trigger=self._get_trigger_for_interval(self.current_check_interval_minutes),
+                    id='check_due_tasks',
+                    replace_existing=True
+                )
+        else:
+            if job is not None:
+                self.scheduler.remove_job('check_due_tasks')
+
+    async def _leadership_tick(self):
+        """Periodic leadership check/renewal and failover handling."""
+        if not self._running:
+            return
+
+        was_leader = self._is_leader
+        acquired = self._acquire_leadership()
+
+        if acquired and not was_leader:
+            logger.warning(f"[Scheduler] 👑 Leadership acquired by {self._scheduler_identity()}")
+        elif not acquired and was_leader:
+            logger.error(f"[Scheduler] ⚠️ Leadership lost by {self._scheduler_identity()}; execution paused")
+
+        self._sync_check_due_tasks_job()
+
     async def start(self):
         """Start the scheduler with intelligent interval adjustment."""
         if self._running:
@@ -228,17 +323,28 @@ class TaskScheduler:
             )
             self.current_check_interval_minutes = initial_interval
             
-            # Add periodic job to check for due tasks
-            self.scheduler.add_job(
-                self._check_and_execute_due_tasks,
-                trigger=self._get_trigger_for_interval(initial_interval),
-                id='check_due_tasks',
-                replace_existing=True
-            )
-            
             self.scheduler.start()
             self._running = True
-            
+
+            # Leadership monitor runs on all replicas; only leader executes due-task loop.
+            self.scheduler.add_job(
+                self._leadership_tick,
+                trigger=IntervalTrigger(seconds=self._leadership_check_interval_seconds),
+                id='leadership_monitor',
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+
+            # Initial leader election
+            await self._leadership_tick()
+            if not self._is_leader:
+                logger.warning(
+                    f"[Scheduler] 💤 Standby replica ({self._scheduler_identity()}) started. "
+                    "Leadership lock not acquired; due-task execution disabled."
+                )
+                return
+
             # Check for and execute any missed jobs that are still within grace period
             await self._execute_missed_jobs()
             
@@ -590,7 +696,15 @@ class TaskScheduler:
             
             # Get final job count before shutdown
             all_jobs_before = self.scheduler.get_jobs()
-            
+
+            # Release leadership lock and stop leadership monitor
+            try:
+                if self.scheduler.get_job('leadership_monitor') is not None:
+                    self.scheduler.remove_job('leadership_monitor')
+            except Exception:
+                pass
+            self._release_leadership()
+
             # Shutdown scheduler
             self.scheduler.shutdown(wait=True)
             self._running = False
@@ -640,6 +754,10 @@ class TaskScheduler:
         Main scheduler loop: check for due tasks and execute them.
         This runs periodically with intelligent interval adjustment based on active strategies.
         """
+        if not self._execution_enabled or not self._is_leader:
+            logger.debug("[Scheduler] Skipping due-task loop on standby replica")
+            return
+
         await check_and_execute_due_tasks(self)
     
     async def _adjust_check_interval_if_needed(self, db: Session):
@@ -960,7 +1078,17 @@ class TaskScheduler:
             'check_interval_minutes': self.current_check_interval_minutes,
             'min_check_interval_minutes': self.min_check_interval_minutes,
             'max_check_interval_minutes': self.max_check_interval_minutes,
-            'intelligent_scheduling': True
+            'intelligent_scheduling': True,
+            'leadership': {
+                'mode': 'postgres_advisory_lock',
+                'identity': self._scheduler_identity(),
+                'is_leader': self._is_leader,
+                'execution_enabled': self._execution_enabled,
+                'leader_since': self._leader_since,
+                'lock_key': self._leader_lock_key,
+                'last_check': self._last_leadership_check,
+                'last_error': self._last_leadership_error
+            }
         }
         
         # Include per-user stats (all users or filtered)
