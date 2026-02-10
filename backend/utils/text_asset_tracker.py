@@ -8,9 +8,38 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from utils.asset_tracker import save_asset_to_library
 from utils.file_storage import save_text_file_safely, generate_unique_filename, sanitize_filename
+from models.content_asset_models import AssetSource
 import logging
 
 logger = logging.getLogger(__name__)
+
+SOURCE_MODULE_NORMALIZATION_MAP = {
+    "campaign_creator": AssetSource.CONTENT_STRATEGY.value,
+    "video_studio": AssetSource.MAIN_VIDEO_GENERATION.value,
+}
+
+
+def normalize_source_module(source_module: str) -> Optional[str]:
+    """Normalize caller-provided source module values into supported AssetSource values."""
+    if not source_module or not isinstance(source_module, str):
+        return None
+
+    normalized_source = source_module.strip().lower()
+    if normalized_source in SOURCE_MODULE_NORMALIZATION_MAP:
+        normalized_source = SOURCE_MODULE_NORMALIZATION_MAP[normalized_source]
+
+    valid_source_values = {source.value for source in AssetSource}
+    if normalized_source not in valid_source_values:
+        logger.error(
+            "Invalid source_module provided to text tracker: %s. "
+            "Expected one of %s",
+            source_module,
+            sorted(valid_source_values),
+        )
+        return None
+
+    return normalized_source
+
 
 
 def save_and_track_text_content(
@@ -56,11 +85,15 @@ def save_and_track_text_content(
             logger.error("Invalid user_id provided")
             return None
         
+        normalized_source_module = normalize_source_module(source_module)
+        if not normalized_source_module:
+            return None
+
         # Determine output directory
         if base_dir is None:
             # Default to backend/{module}_text
             base_dir = Path(__file__).parent.parent
-            module_name = source_module.replace('_', '')
+            module_name = normalized_source_module.replace('_', '')
             output_dir = base_dir / f"{module_name}_text"
         else:
             output_dir = base_dir
@@ -107,16 +140,16 @@ def save_and_track_text_content(
             db=db,
             user_id=user_id,
             asset_type="text",
-            source_module=source_module,
+            source_module=normalized_source_module,
             filename=filename,
             file_url=file_url,
             file_path=str(file_path),
             file_size=len(content.encode('utf-8')),
             mime_type="text/plain" if file_extension == ".txt" else "text/markdown",
             title=title,
-            description=description or f"Generated {source_module.replace('_', ' ')} content",
+            description=description or f"Generated {normalized_source_module.replace('_', ' ')} content",
             prompt=prompt,
-            tags=tags or [source_module, "text"],
+            tags=tags or [normalized_source_module, "text"],
             asset_metadata=final_metadata
         )
         

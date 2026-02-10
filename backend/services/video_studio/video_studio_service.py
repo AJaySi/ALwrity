@@ -270,7 +270,7 @@ class VideoStudioService:
                         db=db,
                         user_id=user_id,
                         asset_type="video",
-                        source_module="video_studio",
+                        source_module="main_video_generation",
                         filename=save_result["filename"],
                         file_url=save_result["file_url"],
                         file_path=save_result["file_path"],
