@@ -70,7 +70,8 @@ class MonitoringTaskExecutor(TaskExecutor):
             # Create execution log with user_id for user isolation tracking
             execution_log = TaskExecutionLog(
                 task_id=task.id,
-                user_id=user_id,
+                user_id=user_id if isinstance(user_id, int) else None,
+                user_id_str=str(user_id) if user_id is not None else None,
                 execution_date=datetime.utcnow(),
                 status='running'
             )
@@ -135,7 +136,8 @@ class MonitoringTaskExecutor(TaskExecutor):
             try:
                 execution_log = TaskExecutionLog(
                     task_id=task.id,
-                    user_id=user_id,
+                    user_id=user_id if isinstance(user_id, int) else None,
+                    user_id_str=str(user_id) if user_id is not None else None,
                     execution_date=datetime.utcnow(),
                     status='failed',
                     error_message=str(e),

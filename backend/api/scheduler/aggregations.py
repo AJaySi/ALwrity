@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc
+from sqlalchemy import desc, or_, cast, String
 from loguru import logger
 from datetime import datetime, timedelta
 
@@ -26,7 +26,12 @@ def aggregate_execution_logs(
         if status_filter:
             query = query.filter(TaskExecutionLog.status == status_filter)
         if user_id:
-            query = query.filter(TaskExecutionLog.user_id == user_id)
+            query = query.filter(
+                or_(
+                    TaskExecutionLog.user_id_str == user_id,
+                    cast(TaskExecutionLog.user_id, String) == user_id,
+                )
+            )
 
         total = query.count()
         logs = query.order_by(desc(TaskExecutionLog.execution_date)).offset(offset).limit(limit).all()
@@ -37,7 +42,7 @@ def aggregate_execution_logs(
             log_entries.append({
                 'id': log.id,
                 'task_id': log.task_id,
-                'user_id': str(log.user_id) if log.user_id is not None else None,
+                'user_id': log.user_id_str or (str(log.user_id) if log.user_id is not None else None),
                 'execution_date': log.execution_date.isoformat() if log.execution_date else None,
                 'status': log.status,
                 'error_message': log.error_message,
