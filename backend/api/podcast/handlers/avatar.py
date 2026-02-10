@@ -71,7 +71,7 @@ async def upload_podcast_avatar(
         # Save to asset library if project_id provided
         if project_id:
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="image",
@@ -90,6 +90,11 @@ async def upload_podcast_avatar(
                         "status": "completed",
                     },
                 )
+                if asset_id is None:
+                    logger.warning(
+                        "[Podcast] Avatar uploaded but asset tracking failed",
+                        extra={"user_id": user_id, "filename": avatar_filename},
+                    )
             except Exception as e:
                 logger.warning(f"[Podcast] Failed to save avatar asset: {e}")
         
@@ -163,7 +168,7 @@ async def make_avatar_presentable(
         # Save to asset library
         if project_id:
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="image",
@@ -186,6 +191,11 @@ async def make_avatar_presentable(
                         "status": "completed",
                     },
                 )
+                if asset_id is None:
+                    logger.warning(
+                        "[Podcast] Avatar transformed but asset tracking failed",
+                        extra={"user_id": user_id, "filename": transformed_filename},
+                    )
             except Exception as e:
                 logger.warning(f"[Podcast] Failed to save transformed avatar asset: {e}")
         
@@ -333,7 +343,7 @@ async def generate_podcast_presenters(
             # Save to asset library
             if project_id:
                 try:
-                    save_asset_to_library(
+                    asset_id = save_asset_to_library(
                         db=db,
                         user_id=user_id,
                         asset_type="image",
@@ -358,6 +368,11 @@ async def generate_podcast_presenters(
                         "seed": seed,
                         },
                     )
+                    if asset_id is None:
+                        logger.warning(
+                            "[Podcast] Presenter generated but asset tracking failed",
+                            extra={"user_id": user_id, "filename": avatar_filename},
+                        )
                 except Exception as e:
                     logger.warning(f"[Podcast] Failed to save presenter asset: {e}")
             

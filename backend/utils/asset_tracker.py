@@ -20,6 +20,25 @@ MAX_FILE_SIZE = 100 * 1024 * 1024
 ALLOWED_URL_SCHEMES = ['http', 'https', '/']  # Allow relative paths starting with /
 
 
+def _log_invalid_enum_value(
+    field_name: str,
+    invalid_value: Any,
+    user_id: str,
+    filename: str,
+) -> None:
+    """Log structured details for invalid enum inputs."""
+    logger.error(
+        "Invalid enum value for asset tracking",
+        extra={
+            "event": "asset_tracking_invalid_enum",
+            "field": field_name,
+            "invalid_value": invalid_value,
+            "user_id": user_id,
+            "asset_filename": filename,
+        },
+    )
+
+
 def validate_file_url(file_url: str) -> bool:
     """Validate file URL format."""
     if not file_url or not isinstance(file_url, str):
@@ -104,18 +123,24 @@ def save_asset_to_library(
             logger.warning(f"File size {file_size} exceeds maximum {MAX_FILE_SIZE}")
             # Don't fail, just log warning
         
-        # Convert string enums to enum types
+        # Convert string enums to enum types and fail explicitly for invalid values
+        if not isinstance(asset_type, str):
+            _log_invalid_enum_value("asset_type", asset_type, user_id, filename)
+            return None
         try:
             asset_type_enum = AssetType(asset_type.lower())
         except ValueError:
-            logger.warning(f"Invalid asset type: {asset_type}, defaulting to 'text'")
-            asset_type_enum = AssetType.TEXT
-        
+            _log_invalid_enum_value("asset_type", asset_type, user_id, filename)
+            return None
+
+        if not isinstance(source_module, str):
+            _log_invalid_enum_value("source_module", source_module, user_id, filename)
+            return None
         try:
             source_module_enum = AssetSource(source_module.lower())
         except ValueError:
-            logger.warning(f"Invalid source module: {source_module}, defaulting to 'story_writer'")
-            source_module_enum = AssetSource.STORY_WRITER
+            _log_invalid_enum_value("source_module", source_module, user_id, filename)
+            return None
         
         # Sanitize filename (remove path traversal attempts)
         filename = re.sub(r'[^\w\s\-_\.]', '', filename.split('/')[-1])

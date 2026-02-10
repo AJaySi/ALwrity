@@ -160,7 +160,7 @@ async def animate_scene_preview(
     # Save video asset to library
     db = next(get_db())
     try:
-        save_asset_to_library(
+        asset_id = save_asset_to_library(
             db=db,
             user_id=user_id,
             asset_type="video",
@@ -179,6 +179,11 @@ async def animate_scene_preview(
             cost=animation_result["cost"],
             asset_metadata={"scene_number": request.scene_number, "duration": animation_result["duration"], "status": "completed"}
         )
+        if asset_id is None:
+            scene_logger.warning(
+                "[AnimateScene] Video generated but asset tracking failed",
+                extra={"user_id": user_id, "filename": video_filename},
+            )
     except Exception as e:
         logger.warning(f"[StoryWriter] Failed to save video asset to library: {e}")
     finally:
@@ -420,7 +425,7 @@ def _execute_voiceover_animation_task(
         # Save video asset to library
         db = next(get_db())
         try:
-            save_asset_to_library(
+            asset_id = save_asset_to_library(
                 db=db,
                 user_id=user_id,
                 asset_type="video",
@@ -439,6 +444,11 @@ def _execute_voiceover_animation_task(
                 cost=animation_result["cost"],
                 asset_metadata={"scene_number": request.scene_number, "duration": animation_result["duration"], "status": "completed"}
             )
+            if asset_id is None:
+                scene_logger.warning(
+                    "[AnimateSceneVoiceover] Video generated but asset tracking failed",
+                    extra={"user_id": user_id, "filename": video_filename},
+                )
         except Exception as e:
             logger.warning(f"[StoryWriter] Failed to save video asset to library: {e}")
         finally:
