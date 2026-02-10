@@ -7,7 +7,7 @@ import asyncio
 import logging
 import os
 from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -129,6 +129,11 @@ class TaskScheduler:
         self._leader_since = None
         self._last_leadership_check = None
         self._last_leadership_error = None
+
+
+        # Execution lease registry (prevents duplicate redispatch across check cycles)
+        self._task_leases: Dict[str, str] = {}
+        self._task_lease_ttl_seconds = int(os.getenv("SCHEDULER_TASK_LEASE_TTL_SECONDS", "900"))
     
     def _get_trigger_for_interval(self, interval_minutes: int):
         """
@@ -307,6 +312,46 @@ class TaskScheduler:
             logger.error(f"[Scheduler] ⚠️ Leadership lost by {self._scheduler_identity()}; execution paused")
 
         self._sync_check_due_tasks_job()
+
+    def _acquire_task_lease(self, task_key: str) -> bool:
+        """Acquire in-memory lease for a task key if available/expired."""
+        now = datetime.utcnow()
+        expiry_str = self._task_leases.get(task_key)
+
+        if expiry_str:
+            try:
+                expiry = datetime.fromisoformat(expiry_str)
+                if expiry > now:
+                    return False
+            except Exception:
+                # Corrupted lease value: overwrite safely
+                pass
+
+        expiry = now + timedelta(seconds=self._task_lease_ttl_seconds)
+        self._task_leases[task_key] = expiry.isoformat()
+        return True
+
+    def _release_task_lease(self, task_key: str):
+        """Release lease for task key."""
+        if task_key in self._task_leases:
+            del self._task_leases[task_key]
+
+    def _is_task_leased(self, task_key: str) -> bool:
+        """Check whether task key is currently leased and not expired."""
+        expiry_str = self._task_leases.get(task_key)
+        if not expiry_str:
+            return False
+
+        try:
+            expiry = datetime.fromisoformat(expiry_str)
+            if expiry > datetime.utcnow():
+                return True
+        except Exception:
+            pass
+
+        # Expired/corrupt lease gets cleaned up lazily
+        self._release_task_lease(task_key)
+        return False
 
     async def start(self):
         """Start the scheduler with intelligent interval adjustment."""
@@ -988,6 +1033,7 @@ class TaskScheduler:
             
             # Execute tasks (with concurrency limit)
             execution_tasks = []
+            task_keys = []
             skipped_count = 0
             for task in due_tasks:
                 if len(self.active_executions) >= self.max_concurrent_executions:
@@ -997,22 +1043,49 @@ class TaskScheduler:
                         f"skipping {skipped_count} tasks for {task_type}"
                     )
                     break
-                
+
+                task_key = f"{task_type}_{getattr(task, 'id', id(task))}"
+
+                # Skip dispatch if another cycle already leased this task (duplicate prevention)
+                if self._is_task_leased(task_key):
+                    logger.debug(f"[Scheduler] 🔒 Skipping leased task {task_key} (already in-flight)")
+                    continue
+
+                # Acquire lease before dispatch; if lease cannot be acquired, skip this cycle
+                if not self._acquire_task_lease(task_key):
+                    logger.debug(f"[Scheduler] 🔒 Could not acquire lease for task {task_key}")
+                    continue
+
                 # Execute task asynchronously
                 # Note: Each task gets its own database session to prevent concurrent access issues
                 execution_task = asyncio.create_task(
                     execute_task_async(self, task_type, task, summary)
                 )
-                
-                task_id = f"{task_type}_{getattr(task, 'id', id(task))}"
-                self.active_executions[task_id] = execution_task
-                
+
+                self.active_executions[task_key] = execution_task
+
                 execution_tasks.append(execution_task)
-            
+                task_keys.append(task_key)
+
             # Wait for executions to complete (with timeout per task)
             if execution_tasks:
-                await asyncio.wait(execution_tasks, timeout=300)
-            
+                done, pending = await asyncio.wait(execution_tasks, timeout=300)
+
+                # Deterministic timeout cleanup: cancel pending tasks and ensure lease cleanup
+                if pending:
+                    logger.warning(
+                        f"[Scheduler] ⏱️ Timeout reached for {len(pending)} {task_type} task(s); "
+                        "cancelling pending executions"
+                    )
+                    for pending_task in pending:
+                        pending_task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+
+                    # Release any stale leases tied to tasks no longer actively tracked
+                    for task_key in list(task_keys):
+                        if task_key not in self.active_executions:
+                            self._release_task_lease(task_key)
+
             return summary
             
         except Exception as e:
@@ -1079,6 +1152,7 @@ class TaskScheduler:
             'min_check_interval_minutes': self.min_check_interval_minutes,
             'max_check_interval_minutes': self.max_check_interval_minutes,
             'intelligent_scheduling': True,
+            'leased_tasks': len(self._task_leases),
             'leadership': {
                 'mode': 'postgres_advisory_lock',
                 'identity': self._scheduler_identity(),

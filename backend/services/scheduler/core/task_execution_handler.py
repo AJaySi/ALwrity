@@ -209,3 +209,7 @@ async def execute_task_async(
         if task_id in scheduler.active_executions:
             del scheduler.active_executions[task_id]
 
+        # Release task lease to allow future dispatch
+        if hasattr(scheduler, '_release_task_lease'):
+            scheduler._release_task_lease(task_id)
+
