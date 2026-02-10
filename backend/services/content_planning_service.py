@@ -237,8 +237,7 @@ class ContentPlanningService:
                 if strategy_id:
                     events = await db_service.get_strategy_calendar_events(strategy_id)
                 else:
-                    # TODO: Implement get_all_calendar_events method
-                    events = []
+                    events = await db_service.get_all_calendar_events()
                 
                 logger.info(f"Retrieved {len(events)} calendar events")
                 return events
