@@ -110,7 +110,7 @@ async def get_scheduler_status():
 
 
 @router.get("/health", summary="Comprehensive Health Check")
-async def comprehensive_health_check():
+async def comprehensive_health_check(db: Session = Depends(get_db)):
     """Comprehensive health check for the Scheduler API and all its components."""
     try:
         health_start_time = time.time()

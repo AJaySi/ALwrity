@@ -125,8 +125,8 @@ def calculate_event_log_statistics(db: Session) -> Dict[str, Any]:
         events_by_type = {event_type: count for event_type, count in events_by_type_result}
 
         # Date range
-        oldest_event = db.query(func.min(SchedulerEventLog.timestamp)).scalar()
-        newest_event = db.query(func.max(SchedulerEventLog.timestamp)).scalar()
+        oldest_event = db.query(func.min(SchedulerEventLog.event_date)).scalar()
+        newest_event = db.query(func.max(SchedulerEventLog.event_date)).scalar()
 
         # Aggregations
         total_tasks_found = db.query(func.sum(SchedulerEventLog.tasks_found)).scalar() or 0
@@ -134,8 +134,8 @@ def calculate_event_log_statistics(db: Session) -> Dict[str, Any]:
         total_tasks_failed = db.query(func.sum(SchedulerEventLog.tasks_failed)).scalar() or 0
 
         # Calculate average duration for completed events
-        avg_duration_result = db.query(func.avg(SchedulerEventLog.duration_seconds)).filter(
-            SchedulerEventLog.duration_seconds.isnot(None)
+        avg_duration_result = db.query(func.avg(SchedulerEventLog.check_duration_seconds)).filter(
+            SchedulerEventLog.check_duration_seconds.isnot(None)
         ).scalar()
 
         return {

@@ -21,6 +21,7 @@ from middleware.auth_middleware import get_current_user
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
 from models.platform_insights_monitoring_models import PlatformInsightsTask
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask
+from models.scheduler_models import SchedulerEventLog
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler-dashboard"])
 
