@@ -171,57 +171,24 @@ const mapExaResearchResponse = (response: ExaResearchResult): Research => {
   };
 };
 
-const splitIntoLines = (text: string, speakers: number): Line[] => {
-  const sentences = text
-    .split(/(?<=[.?!])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 4);
-  if (!sentences.length) {
+const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StoryScene[] | string | undefined): StoryScene[] => {
+  if (!outline) return [];
+  if (typeof outline === "string") {
     return [
       {
-        id: createId("line"),
-        speaker: "Host",
-        text: text || "Let's dive into today’s topic.",
-      },
+        scene_number: 1,
+        title: outline.slice(0, 60),
+        description: outline,
+        image_prompt: outline,
+        audio_narration: outline,
+      } as StoryScene,
     ];
   }
-  return sentences.map((sentence, idx) => ({
-    id: createId("line"),
-    speaker: idx % speakers === 0 ? "Host" : `Guest ${((idx % speakers) + 1).toString()}`,
-    text: sentence,
-  }));
+  if (Array.isArray(outline)) {
+    return outline as StoryScene[];
+  }
+  return [];
 };
-
-// Unused helper functions - kept for reference but not currently used
-// const storySceneToPodcastScene = (scene: StoryScene, knobs: Knobs, speakers: number): Scene => {
-//   const text = scene.description || scene.audio_narration || scene.image_prompt || scene.title || "Narration";
-//   return {
-//     id: `scene-${scene.scene_number || createId("scene")}`,
-//     title: scene.title || `Scene ${scene.scene_number}`,
-//     duration: Math.max(20, knobs.scene_length_target || DEFAULT_KNOBS.scene_length_target),
-//     lines: splitIntoLines(text, Math.max(1, speakers)),
-//     approved: false,
-//   };
-// };
-
-// const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StoryScene[] | string | undefined): StoryScene[] => {
-//   if (!outline) return [];
-//   if (typeof outline === "string") {
-//     return [
-//       {
-//         scene_number: 1,
-//         title: outline.slice(0, 60),
-//         description: outline,
-//         image_prompt: outline,
-//         audio_narration: outline,
-//       } as StoryScene,
-//     ];
-//   }
-//   if (Array.isArray(outline)) {
-//     return outline as StoryScene[];
-//   }
-//   return [];
-// };
 
 const ensurePreflight = async (operation: PreflightOperation) => {
   const result = await checkPreflight(operation);

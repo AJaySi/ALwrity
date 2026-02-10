@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, Box, Button, Typography, Stack, CircularProgress, LinearProgress, Alert, Paper } from '@mui/material';
+import { Grid, Box, Button, Typography, Stack, CircularProgress, LinearProgress, Alert } from '@mui/material';
 import { VideoStudioLayout } from '../../VideoStudioLayout';
 import { useFaceSwap } from './hooks/useFaceSwap';
 import { ImageUpload, VideoUpload, SettingsPanel, ModelSelector } from './components';

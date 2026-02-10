@@ -4,7 +4,7 @@
  * Shared utilities, constants, and helper functions
  */
 
-import { Campaign, StatItem } from '../types/dashboard.types';
+import { Campaign } from '../types/dashboard.types';
 import { People as PeopleIcon, Send as SendIcon, TrendingUp as TrendingUpIcon, Business as BusinessIcon } from '@mui/icons-material';
 
 export const getStatusColor = (status: string) => {

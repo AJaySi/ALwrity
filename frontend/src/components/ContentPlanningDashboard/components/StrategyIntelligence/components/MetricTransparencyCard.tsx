@@ -27,24 +27,22 @@ import {
   TrendingUp as TrendingUpIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
-  Error as ErrorIcon,
   DataUsage as DataUsageIcon,
   Psychology as PsychologyIcon,
   Timeline as TimelineIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import { safeRenderText, safeRenderArray, hasValidData, getFallbackValue } from '../utils/defensiveRendering';
 
 interface MonitoringTask {
-  title: string;
-  description: string;
   assignee: 'ALwrity' | 'Human';
   frequency: string;
   metric: string;
   measurementMethod: string;
   successCriteria: string;
   alertThreshold: string;
+  title: string;
+  description: string;
   actionableInsights?: string;
   lastExecuted?: string;
   status: 'pending' | 'active' | 'completed' | 'failed';

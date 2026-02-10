@@ -68,21 +68,6 @@ import { ImageStudioLayout } from './ImageStudioLayout';
 import { useContentAssets, AssetFilters, ContentAsset } from '../../hooks/useContentAssets';
 import { intentResearchApi } from '../../api/intentResearchApi';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
-}
-
 const getStatusIcon = (status: string) => {
   switch (status?.toLowerCase()) {
     case 'completed':
@@ -129,7 +114,7 @@ export const AssetLibrary: React.FC = () => {
   const urlSourceModule = searchParams.get('source_module');
   const urlAssetType = searchParams.get('asset_type');
   
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [idSearch, setIdSearch] = useState('');
   const [modelSearch, setModelSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');

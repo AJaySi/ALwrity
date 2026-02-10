@@ -192,7 +192,7 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
     };
     
     loadImage();
-  }, [currentSceneNumber, currentSceneImageUrl, hasImageLoadError]);
+  }, [currentSceneNumber, currentSceneImageUrl, hasImageLoadError, imageBlobUrls]);
 
   // Cleanup blob URLs when component unmounts
   useEffect(() => {
@@ -202,7 +202,7 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
         URL.revokeObjectURL(blobUrl);
       });
     };
-  }, []);
+  }, [imageBlobUrls]);
 
   const currentSceneImageFullUrl = imageBlobUrls.get(currentSceneNumber) || null;
   const currentSceneAnimatedVideoUrl = sceneAnimatedVideos.get(currentSceneNumber) || null;

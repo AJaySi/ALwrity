@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, TextField, Button, Box, CircularProgress } from '@mui/material';
+import { Grid, Button, Box, CircularProgress } from '@mui/material';
 import { FormFieldWithTooltip } from './FormFieldWithTooltip';
 import { SectionProps } from './types';
 

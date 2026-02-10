@@ -61,12 +61,12 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Memoize filters to create stable reference - only changes when actual values change
-  const stableFilters = useMemo(() => {
+  const apiParams = useMemo(() => {
     return {
       asset_type: filters.asset_type,
       source_module: filters.source_module,
       search: filters.search,
-      tags: filters.tags,
+      tags: filters.tags?.join(','),
       favorites_only: filters.favorites_only,
       collection_id: filters.collection_id,
       date_from: filters.date_from,
@@ -93,14 +93,14 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
 
   // Create stable filter key for comparison
   const filterKey = useMemo(() => {
-    return JSON.stringify(stableFilters);
-  }, [stableFilters]);
+    return JSON.stringify(apiParams);
+  }, [apiParams]);
 
   // Store latest filters in ref for use in fetch function
-  const filtersRef = useRef(stableFilters);
+  const filtersRef = useRef(apiParams);
   useEffect(() => {
-    filtersRef.current = stableFilters;
-  }, [stableFilters]);
+    filtersRef.current = apiParams;
+  }, [apiParams]);
 
   // Fetch function - exposed for manual retry, not called automatically on errors
   const fetchAssets = useCallback(async () => {
@@ -144,7 +144,7 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
         }
       }
       if (currentFilters.search) params.append('search', currentFilters.search);
-      if (currentFilters.tags && currentFilters.tags.length > 0) params.append('tags', currentFilters.tags.join(','));
+      if (currentFilters.tags && Array.isArray(currentFilters.tags) && currentFilters.tags.length > 0) params.append('tags', currentFilters.tags.join(','));
       if (currentFilters.favorites_only) params.append('favorites_only', 'true');
       if (currentFilters.collection_id) params.append('collection_id', String(currentFilters.collection_id));
       if (currentFilters.date_from) params.append('date_from', currentFilters.date_from);

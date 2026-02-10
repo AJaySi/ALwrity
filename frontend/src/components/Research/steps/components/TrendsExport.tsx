@@ -5,7 +5,7 @@
  * Supports CSV export and image export (chart screenshot).
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Button,
@@ -18,7 +18,6 @@ import {
 } from '@mui/material';
 import {
   Download as DownloadIcon,
-  FileDownload as FileDownloadIcon,
   Image as ImageIcon,
   TableChart as TableChartIcon,
 } from '@mui/icons-material';

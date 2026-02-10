@@ -13,14 +13,14 @@ import {
   Chip,
   Grid,
   Paper,
-  Divider,
+  // Divider,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
   Alert,
   LinearProgress,
-  Tooltip,
+  // Tooltip,
   IconButton
 } from '@mui/material';
 import {
@@ -39,7 +39,7 @@ import {
   Visibility as VisibilityIcon,
   AutoAwesome as AutoAwesomeIcon
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion';
 
 interface AutofillDataTransparencyProps {
   open: boolean;
@@ -102,7 +102,7 @@ const AutofillDataTransparency: React.FC<AutofillDataTransparencyProps> = ({
 
   const dataQualityScore = getDataQualityScore();
   const dataFreshness = getDataFreshness();
-  const fieldCountByCategory = getFieldCountByCategory();
+  // const fieldCountByCategory = getFieldCountByCategory();
 
   return (
     <Dialog 

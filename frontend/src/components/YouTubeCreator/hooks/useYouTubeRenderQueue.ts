@@ -80,9 +80,11 @@ export function useYouTubeRenderQueue({
 
   useEffect(() => {
     return () => {
-      pollingRefs.current.forEach((interval) => clearInterval(interval));
-      pollingRefs.current.clear();
-      pollingErrorCounts.current.clear();
+      const currentPollingRefs = pollingRefs.current;
+      const currentErrorCounts = pollingErrorCounts.current;
+      currentPollingRefs.forEach((interval) => clearInterval(interval));
+      currentPollingRefs.clear();
+      currentErrorCounts.clear();
     };
   }, []);
 
@@ -240,7 +242,7 @@ export function useYouTubeRenderQueue({
         console.error('[YouTubeRenderQueue] Failed to list existing videos:', error);
         // Don't show error to user - this is just for restoring state
       });
-  }, []); // Only run on mount
+  }, [scenes, onScenesUpdate, updateSceneStatus]); // Load existing videos on mount
 
   // Periodic check to rescue videos that were generated but not detected by polling
   useEffect(() => {
@@ -436,7 +438,7 @@ export function useYouTubeRenderQueue({
       setCombiningMessage(msg);
       onError?.(msg);
     }
-  }, [onError, resolution, scenes, videoPlan]);
+  }, [onError, onSuccess, resolution, scenes, videoPlan]);
 
   return {
     sceneStatuses,

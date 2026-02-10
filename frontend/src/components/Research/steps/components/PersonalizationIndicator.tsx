@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tooltip } from '@mui/material';
-import { InfoOutlined, AutoAwesome } from '@mui/icons-material';
+import { AutoAwesome } from '@mui/icons-material';
 
 interface PersonalizationIndicatorProps {
   type: 'placeholder' | 'keywords' | 'presets' | 'angles' | 'provider' | 'mode';

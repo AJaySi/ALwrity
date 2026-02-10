@@ -1,9 +1,8 @@
-import React, { useState, memo } from 'react';
+import React, { memo } from 'react';
 import {
   Box,
   Typography,
   Chip,
-  IconButton,
   Tooltip,
   Card,
   CardContent,
@@ -12,17 +11,13 @@ import {
   CircularProgress
 } from '@mui/material';
 import {
-  Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
-  Warning as WarningIcon,
-  PlayArrow as PlayArrowIcon,
   AutoAwesome as AutoAwesomeIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useStrategyReviewStore, StrategyComponent } from '../../../../../stores/strategyReviewStore';
 import { ANALYSIS_CARD_STYLES } from '../styles';
-import { contentPlanningApi } from '../../../../../services/contentPlanningApi';
 import EnhancedStrategyActivationButton from './EnhancedStrategyActivationButton';
 import { StrategyData } from '../types/strategy.types';
 import { useNavigationOrchestrator } from '../../../../../services/navigationOrchestrator';
@@ -39,7 +34,6 @@ const ReviewProgressHeader: React.FC<ReviewProgressHeaderProps> = ({ strategyDat
   const reviewProgress = useStrategyReviewStore(state => state.reviewProgress);
   const isAllReviewed = useStrategyReviewStore(state => state.isAllReviewed);
   const isActivated = useStrategyReviewStore(state => state.isActivated);
-  const resetAllReviews = useStrategyReviewStore(state => state.resetAllReviews);
   const getUnreviewedComponents = useStrategyReviewStore(state => state.getUnreviewedComponents);
   const getReviewedComponents = useStrategyReviewStore(state => state.getReviewedComponents);
   const activateStrategy = useStrategyReviewStore(state => state.activateStrategy);
@@ -59,7 +53,6 @@ const ReviewProgressHeader: React.FC<ReviewProgressHeaderProps> = ({ strategyDat
     return "alwrity.com"; // fallback
   };
 
-  const unreviewedCount = getUnreviewedComponents().length;
   const reviewedCount = getReviewedComponents().length;
   const totalCount = components.length;
 

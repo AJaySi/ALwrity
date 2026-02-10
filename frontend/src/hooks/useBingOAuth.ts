@@ -3,7 +3,7 @@
  * Manages Bing Webmaster Tools OAuth2 authentication state and operations
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { bingOAuthAPI, BingOAuthStatus, BingOAuthResponse } from '../api/bingOAuth';
 
 interface UseBingOAuthReturn {

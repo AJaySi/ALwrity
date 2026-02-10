@@ -18,7 +18,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Divider
+  // Divider
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -31,7 +31,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Assessment as AssessmentIcon,
   History as HistoryIcon,
-  Timeline as TimelineIcon,
+  // Timeline as TimelineIcon,
   ListAlt as ListAltIcon
 } from '@mui/icons-material';
 import { useAuth } from '@clerk/clerk-react';
@@ -246,7 +246,7 @@ const SchedulerDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
-  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
+  // const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
 
   // Shared event history data for consistency across sections
   const [eventHistoryData, setEventHistoryData] = useState<{
@@ -348,7 +348,7 @@ const SchedulerDashboard: React.FC = () => {
     if (isLoaded && isSignedIn && !dashboardData) {
       fetchDashboardData();
     }
-  }, [isLoaded, isSignedIn]); // Removed fetchDashboardData to prevent re-renders
+  }, [isLoaded, isSignedIn, fetchDashboardData]);
 
   // Smart auto-refresh: Poll based on scheduler's check interval or next job execution
   useEffect(() => {

@@ -143,7 +143,7 @@ export interface PreflightValidationResult {
 }
 
 export const useCampaignCreator = () => {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Campaign Blueprint
@@ -417,8 +417,8 @@ export const useCampaignCreator = () => {
   }, []);
 
   // Personalization
-  const [userPreferences, setUserPreferences] = useState<any>(null);
-  const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
+  const [userPreferences] = useState<any>(null);
+  const [isLoadingPreferences] = useState(false);
   const [recommendations, setRecommendations] = useState<any>(null);
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
 

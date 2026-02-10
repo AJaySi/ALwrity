@@ -8,14 +8,14 @@
  *   import { LazyLineChart, Line, XAxis, YAxis } from '../../utils/lazyRecharts';
  *   import { Suspense } from 'react';
  *   
- *   <Suspense fallback={<ChartSkeleton />}>
+ *   <Suspense fallback={<ChartLoadingFallback />}>
  *     <LazyLineChart data={data}>
  *       <Line />
  *     </LazyLineChart>
  *   </Suspense>
  */
 
-import React, { Suspense, lazy } from 'react';
+import React, { lazy } from 'react';
 import { Box, CircularProgress } from '@mui/material';
 
 // Loading fallback for charts

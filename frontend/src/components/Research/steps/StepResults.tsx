@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { WizardStepProps, ResearchExecution } from '../types/research.types';
 import { ResearchResults } from '../../BlogWriter/ResearchResults';
-import { ResearchResponse } from '../../../services/researchApi';
 import { BlogResearchResponse } from '../../../services/blogWriterApi';
 import { IntentResultsDisplay } from './components/IntentResultsDisplay';
 import { IntentDrivenResearchResponse } from '../types/intent.types';

@@ -132,7 +132,7 @@ class PerformanceMonitor {
       stats[metric.componentName].avgTime = stats[metric.componentName].totalTime / stats[metric.componentName].count;
       
       return stats;
-    }, {});
+    }, {} as ComponentStatsMap);
 
     // Show slowest components
     const slowComponents = Object.entries(componentStats)

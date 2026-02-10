@@ -70,7 +70,7 @@ const AnalyticsTab: React.FC = () => {
 
   useEffect(() => {
     loadAnalyticsData();
-  }, []);
+  }, [loadAnalyticsData]);
 
   const loadAnalyticsData = async () => {
     try {

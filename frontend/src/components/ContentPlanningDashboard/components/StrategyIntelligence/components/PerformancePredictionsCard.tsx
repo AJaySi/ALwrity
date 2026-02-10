@@ -6,14 +6,13 @@ import {
   Chip,
   List,
   ListItem,
-  ListItemText,
   ListItemIcon,
+  ListItemText,
   Divider
 } from '@mui/material';
 import {
   ShowChart as ShowChartIcon,
   TrendingUp as TrendingUpIcon,
-  Timeline as TimelineIcon,
   Assessment as AssessmentIcon
 } from '@mui/icons-material';
 import { StrategyData } from '../types/strategy.types';
@@ -34,15 +33,6 @@ const PerformancePredictionsCard: React.FC<PerformancePredictionsCardProps> = ({
   // Get style objects
   const sectionStyles = getSectionStyles();
   const listItemStyles = getListItemStyles();
-
-  // Helper function to safely render text content
-  const safeRenderText = (content: any): string => {
-    if (typeof content === 'string') return content;
-    if (typeof content === 'object' && content !== null) {
-      return JSON.stringify(content);
-    }
-    return 'Data not available';
-  };
 
   if (!strategyData?.performance_predictions) {
     return (

@@ -10,8 +10,6 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CompressIcon from '@mui/icons-material/Compress';
 import BuildIcon from '@mui/icons-material/Build';
 import {
-  Box,
-  Typography,
   Container,
   Grid,
   Paper,

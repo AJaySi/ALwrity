@@ -69,7 +69,7 @@ export const useSceneMedia = ({ imageUrl, audioUrl }: UseSceneMediaProps) => {
     return () => {
       if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl);
     };
-  }, [audioUrl]);
+  }, [audioUrl, audioBlobUrl]);
 
   return {
     imageBlobUrl,

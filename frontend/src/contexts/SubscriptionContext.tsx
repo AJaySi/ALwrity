@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { apiClient, setGlobalSubscriptionErrorHandler } from '../api/client';
 import SubscriptionExpiredModal from '../components/SubscriptionExpiredModal';
 import { saveNavigationState, getCurrentPhaseForTool } from '../utils/navigationState';
-import { showSubscriptionExpiredToast, showUsageLimitToast, showSubscriptionToast } from '../utils/toastNotifications';
+import { showSubscriptionExpiredToast, showUsageLimitToast } from '../utils/toastNotifications';
 
 export interface SubscriptionLimits {
   gemini_calls: number;
@@ -285,7 +285,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     } finally {
       setLoading(false);
     }
-  }, [lastCheckTime, planSignature, showModal, modalErrorData, lastModalShowTime, graceUntil, isUsageLimitModal]);
+  }, [lastCheckTime, planSignature, showModal, modalErrorData, lastModalShowTime, graceUntil, isUsageLimitModal, deferredError, subscription]);
 
   const refreshSubscription = useCallback(async () => {
     await checkSubscription();
@@ -561,7 +561,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       window.removeEventListener('subscription-updated', handleSubscriptionUpdate);
       window.removeEventListener('user-authenticated', handleUserAuth);
     };
-  }, []); // Remove checkSubscription dependency to prevent loop
+  }, [checkSubscription]); // Include checkSubscription dependency
 
   const value: SubscriptionContextType = {
     subscription,

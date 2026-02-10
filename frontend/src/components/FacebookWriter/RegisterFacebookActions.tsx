@@ -115,7 +115,6 @@ const PostHITL: React.FC<{ args: any; respond: (data: any) => void }> = ({ args,
       }
     } catch (e: any) {
       const msg = e?.response?.data?.detail || e?.message || 'Failed to generate post';
-      const tip = `Tip: goals must be one of ${VALID_GOALS.join(', ')}; tones must be one of ${VALID_TONES.join(', ')}.`;
       setError(`${msg}`);
       respond({ success: false, message: `${msg}` });
       console.error('[FB Writer] post.generate error', e);

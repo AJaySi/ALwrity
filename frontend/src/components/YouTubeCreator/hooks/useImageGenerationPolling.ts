@@ -171,8 +171,9 @@ export const useImageGenerationPolling = () => {
   // Cleanup all polling on unmount
   useEffect(() => {
     return () => {
-      activePollingRef.current.forEach((cleanup) => cleanup());
-      activePollingRef.current.clear();
+      const currentPolling = activePollingRef.current;
+      currentPolling.forEach((cleanup) => cleanup());
+      currentPolling.clear();
     };
   }, []);
 

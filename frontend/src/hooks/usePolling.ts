@@ -215,7 +215,7 @@ export function usePolling(
     // Start polling immediately, then at intervals
     poll();
     intervalRef.current = setInterval(poll, interval);
-  }, [isPolling, interval, onProgress, onComplete, onError, pollFunction, stopPolling, progressMessages.length]);
+  }, [isPolling, interval, onProgress, onComplete, onError, pollFunction, stopPolling]);
 
   // Cleanup on unmount - only if actually polling
   useEffect(() => {

@@ -114,7 +114,7 @@ const BillingPage: React.FC = () => {
   useEffect(() => {
     const handleSubscriptionLimitExceeded = (event: Event) => {
       const customEvent = event as CustomEvent;
-      const { provider, usage_info, message, error } = customEvent.detail || {};
+      const { provider, usage_info, message /*, error */ } = customEvent.detail || {};
       
       console.log('BillingPage: Subscription limit exceeded event received', {
         provider,
