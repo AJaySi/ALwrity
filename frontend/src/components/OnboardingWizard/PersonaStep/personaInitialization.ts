@@ -15,7 +15,6 @@ interface PersonaInitializationProps {
   setShowPreview: (show: boolean) => void;
   setGenerationStep: (step: string) => void;
   setProgress: (progress: number) => void;
-  setHasCheckedCache: (checked: boolean) => void;
   setSuccess: (message: string | null) => void;
   loadCachedPersonaData: () => boolean;
   loadServerCachedPersonaData: () => Promise<boolean>;
@@ -32,7 +31,6 @@ export const usePersonaInitialization = ({
   setShowPreview,
   setGenerationStep,
   setProgress,
-  setHasCheckedCache,
   setSuccess,
   loadCachedPersonaData,
   loadServerCachedPersonaData,
@@ -60,7 +58,6 @@ export const usePersonaInitialization = ({
       setShowPreview(true);
       setGenerationStep('preview');
       setProgress(100);
-      setHasCheckedCache(true);
       return;
     }
 
@@ -76,7 +73,6 @@ export const usePersonaInitialization = ({
         if (foundCache) {
           console.log('PersonaStep: Server cache found, using it');
           sessionStorage.setItem('persona_server_cache_checked', 'found');
-          setHasCheckedCache(true);
           return;
         } else {
           // Mark that we checked and got 404
@@ -95,14 +91,12 @@ export const usePersonaInitialization = ({
     foundCache = loadCachedPersonaData();
     if (foundCache) {
       console.log('PersonaStep: Local cache found, using it');
-      setHasCheckedCache(true);
       return;
     }
 
     // No cache found, start generation
     console.log('PersonaStep: No cache found, starting generation');
     await generatePersonas();
-    setHasCheckedCache(true);
   }, [
     stepData,
     updateHeaderContent,
@@ -113,7 +107,6 @@ export const usePersonaInitialization = ({
     setShowPreview,
     setGenerationStep,
     setProgress,
-    setHasCheckedCache,
     loadCachedPersonaData,
     loadServerCachedPersonaData,
     generatePersonas

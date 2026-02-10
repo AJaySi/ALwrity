@@ -82,7 +82,6 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
   // UI state
   const [showPreview, setShowPreview] = useState(false);
   const [expandedAccordion, setExpandedAccordion] = useState<string | false>('core');
-  const [hasCheckedCache, setHasCheckedCache] = useState(false);
 
   // Available platforms are now defined in PersonaPreviewSection
 
@@ -277,7 +276,6 @@ const PersonaStep: React.FC<PersonaStepProps> = ({
     setShowPreview,
     setGenerationStep,
     setProgress,
-    setHasCheckedCache,
     setSuccess,
     loadCachedPersonaData,
     loadServerCachedPersonaData,

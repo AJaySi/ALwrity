@@ -7,7 +7,6 @@ import {
   Typography,
   Stack,
 } from '@mui/material';
-import { motion } from 'framer-motion';
 import CompressIcon from '@mui/icons-material/Compress';
 import TransformIcon from '@mui/icons-material/Transform';
 import AspectRatioIcon from '@mui/icons-material/AspectRatio';

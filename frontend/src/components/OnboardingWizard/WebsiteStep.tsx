@@ -423,7 +423,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
     }
   };
 
-  const handleContinue = () => {
+  const handleWebsiteSubmit = () => {
     setError(null);
     const fixedUrl = fixUrlFormat(website);
     if (!fixedUrl) {
@@ -446,11 +446,11 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
       analysis: analysis,
       hasWebsite: true
     });
-    
+  
     // Store in localStorage for Step 3 (Competitor Analysis)
     localStorage.setItem('website_url', fixedUrl);
     localStorage.setItem('website_analysis_data', JSON.stringify(analysis));
-    
+  
     onContinue(stepData);
   };
 

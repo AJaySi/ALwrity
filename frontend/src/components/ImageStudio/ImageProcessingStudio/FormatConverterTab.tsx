@@ -59,7 +59,6 @@ export const FormatConverterTab: React.FC = () => {
   const [targetFormat, setTargetFormat] = useState<string>('webp');
   const [preserveTransparency, setPreserveTransparency] = useState(true);
   const [quality, setQuality] = useState<number | undefined>(85);
-  const [colorSpace, setColorSpace] = useState<string>('');
   const [stripMetadata, setStripMetadata] = useState(false);
   const [optimize, setOptimize] = useState(true);
   const [progressive, setProgressive] = useState(true);

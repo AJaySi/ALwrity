@@ -54,7 +54,7 @@ interface IntegrationPlatform {
 
 const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateHeaderContent }) => {
   const [email, setEmail] = useState<string>('');
-  
+
   // Use custom hooks
   const { gscSites, connectedPlatforms, setConnectedPlatforms, handleGSCConnect } = useGSCConnection();
 
@@ -64,26 +64,8 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
     cachedAnalyticsAPI.invalidateAll();
   }, []);
 
-  // Force refresh analytics data (bypass cache)
-  const forceRefreshAnalytics = useCallback(async () => {
-    console.log('🔄 IntegrationsStep: Force refreshing analytics data (bypassing cache)');
-    try {
-      // Clear all cache first
-      cachedAnalyticsAPI.clearCache();
-      
-      // Force refresh platform status
-      await cachedAnalyticsAPI.forceRefreshPlatformStatus();
-      
-      // Force refresh analytics data
-      await cachedAnalyticsAPI.forceRefreshAnalyticsData(['bing', 'gsc']);
-      
-      console.log('✅ IntegrationsStep: Analytics data force refreshed successfully');
-    } catch (error) {
-      console.error('❌ IntegrationsStep: Error force refreshing analytics:', error);
-    }
-  }, []);
   const { isLoading, showToast, setShowToast, toastMessage, handleConnect } = usePlatformConnections();
-  
+
   // WordPress OAuth hook
   const { connected: wordpressConnected, sites: wordpressSites } = useWordPressOAuth();
   

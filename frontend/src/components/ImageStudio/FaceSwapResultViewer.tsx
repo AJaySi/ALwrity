@@ -104,7 +104,7 @@ export const FaceSwapResultViewer: React.FC<FaceSwapResultViewerProps> = ({
             >
               <img
                 src={baseImage}
-                alt="Base image"
+                alt="Base"
                 style={{ width: '100%', display: 'block', maxHeight: 300, objectFit: 'contain' }}
               />
             </Box>
@@ -124,7 +124,7 @@ export const FaceSwapResultViewer: React.FC<FaceSwapResultViewerProps> = ({
             >
               <img
                 src={faceImage}
-                alt="Face image"
+                alt="Face"
                 style={{ width: '100%', display: 'block', maxHeight: 300, objectFit: 'contain' }}
               />
             </Box>

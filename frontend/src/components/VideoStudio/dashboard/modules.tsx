@@ -67,13 +67,9 @@ import {
   Link,
   Tooltip,
   Fab,
-  SpeedDial,
-  SpeedDialAction,
-  Backdrop,
-  Modal
+  SpeedDial
 } from '../../../utils/mui-optimizer';
 import type { ModuleConfig } from './types';
-import type { AIModel, PerfectForUseCase, CostDetail } from './InfoModal';
 
 export const statusStyles = {
   live: { label: 'Live', color: '#10b981' },
