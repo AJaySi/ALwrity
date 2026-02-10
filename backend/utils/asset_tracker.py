@@ -3,7 +3,7 @@ Asset Tracker Utility
 Helper utility for modules to easily save generated content to the unified asset library.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from sqlalchemy.orm import Session
 from services.content_asset_service import ContentAssetService
 from models.content_asset_models import AssetType, AssetSource
@@ -92,8 +92,8 @@ def validate_file_url(file_url: str) -> bool:
 def save_asset_to_library(
     db: Session,
     user_id: str,
-    asset_type: str,
-    source_module: str,
+    asset_type: Union[str, AssetType],
+    source_module: Union[str, AssetSource],
     filename: str,
     file_url: str,
     file_path: Optional[str] = None,
@@ -157,20 +157,24 @@ def save_asset_to_library(
             # Don't fail, just log warning
         
         # Convert string enums to enum types and fail explicitly for invalid values
-        if not isinstance(asset_type, str):
-            _log_invalid_enum_value("asset_type", asset_type, user_id, filename)
-            return None
         try:
-            asset_type_enum = AssetType(asset_type.lower())
+            if isinstance(asset_type, AssetType):
+                asset_type_enum = asset_type
+            elif isinstance(asset_type, str):
+                asset_type_enum = AssetType(asset_type.lower())
+            else:
+                raise ValueError(f"Unsupported asset type value: {asset_type}")
         except ValueError:
             _log_invalid_enum_value("asset_type", asset_type, user_id, filename)
             return None
 
-        if not isinstance(source_module, str):
-            _log_invalid_enum_value("source_module", source_module, user_id, filename)
-            return None
         try:
-            source_module_enum = normalize_source_module(source_module)
+            if isinstance(source_module, AssetSource):
+                source_module_enum = source_module
+            elif isinstance(source_module, str):
+                source_module_enum = normalize_source_module(source_module)
+            else:
+                raise ValueError(f"Unsupported source module value: {source_module}")
         except ValueError:
             _log_invalid_enum_value("source_module", source_module, user_id, filename)
             return None
@@ -208,7 +212,10 @@ def save_asset_to_library(
             generation_time=generation_time,
         )
         
-        logger.info(f"✅ Asset saved to library: {asset.id} ({asset_type} from {source_module})")
+        logger.info(
+            f"✅ Asset saved to library: {asset.id} "
+            f"({asset_type_enum.value} from {source_module_enum.value})"
+        )
         return asset.id
         
     except Exception as e:

@@ -488,7 +488,7 @@ Return only the final copy text without explanations or markdown formatting."""
                         db=db,
                         user_id=user_id,
                         content=generated_text.strip(),
-                        source_module="campaign_creator",
+                        source_module="content_strategy",
                         title=f"{channel.title()} Copy: {asset_id.split('_')[-1] if '_' in asset_id else 'Marketing Copy'}",
                         description=f"Marketing copy for {channel} platform generated from campaign proposal",
                         prompt=text_prompt,
