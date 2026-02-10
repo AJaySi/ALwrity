@@ -19,6 +19,39 @@ MAX_FILE_SIZE = 100 * 1024 * 1024
 # Allowed URL schemes
 ALLOWED_URL_SCHEMES = ['http', 'https', '/']  # Allow relative paths starting with /
 
+# Maps legacy/internal aliases to canonical AssetSource values
+SOURCE_MODULE_ALIASES = {
+    "video": "video_studio",
+    "video-generator": "video_studio",
+    "video_generator": "video_studio",
+    "video_creator": "video_studio",
+    "campaign": "campaign_creator",
+    "campaign-builder": "campaign_creator",
+    "campaign_builder": "campaign_creator",
+}
+
+# Keep this list aligned with all producer modules that write content assets.
+KNOWN_PRODUCER_MODULES = {
+    "blog_writer",
+    "campaign_creator",
+    "facebook_writer",
+    "image_studio",
+    "linkedin_writer",
+    "main_video_generation",
+    "podcast_maker",
+    "product_marketing",
+    "story_writer",
+    "video_studio",
+    "youtube_creator",
+}
+
+
+def normalize_source_module(source_module: str) -> AssetSource:
+    """Normalize a source_module string into a valid AssetSource value."""
+    normalized_source = (source_module or "").strip().lower().replace("-", "_").replace(" ", "_")
+    canonical_source = SOURCE_MODULE_ALIASES.get(normalized_source, normalized_source)
+    return AssetSource(canonical_source)
+
 
 def validate_file_url(file_url: str) -> bool:
     """Validate file URL format."""
@@ -112,7 +145,7 @@ def save_asset_to_library(
             asset_type_enum = AssetType.TEXT
         
         try:
-            source_module_enum = AssetSource(source_module.lower())
+            source_module_enum = normalize_source_module(source_module)
         except ValueError:
             logger.warning(f"Invalid source module: {source_module}, defaulting to 'story_writer'")
             source_module_enum = AssetSource.STORY_WRITER
