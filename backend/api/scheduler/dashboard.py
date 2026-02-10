@@ -115,6 +115,45 @@ async def get_scheduler_dashboard(
         raise HTTPException(status_code=500, detail=f"Failed to get scheduler dashboard: {str(e)}")
 
 
+@router.post("/dashboard/cumulative-stats/reconcile")
+async def reconcile_cumulative_stats(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Explicitly rebuild and persist cumulative stats from scheduler events."""
+    try:
+        rebuilt = rebuild_cumulative_stats_from_events(db)
+
+        try:
+            from models.scheduler_cumulative_stats_model import SchedulerCumulativeStats
+            row = SchedulerCumulativeStats.get_or_create(db)
+            row.total_check_cycles = rebuilt.get('total_check_cycles', 0)
+            row.cumulative_tasks_found = rebuilt.get('cumulative_tasks_found', 0)
+            row.cumulative_tasks_executed = rebuilt.get('cumulative_tasks_executed', 0)
+            row.cumulative_tasks_failed = rebuilt.get('cumulative_tasks_failed', 0)
+            row.cumulative_tasks_skipped = rebuilt.get('cumulative_tasks_skipped', 0)
+            db.commit()
+        except ImportError:
+            logger.warning('[Dashboard] SchedulerCumulativeStats model missing; returning computed stats only')
+        except Exception as persist_error:
+            db.rollback()
+            logger.error(f"[Dashboard] Failed to persist reconciled cumulative stats: {persist_error}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to persist cumulative stats: {str(persist_error)}")
+
+        return {
+            'success': True,
+            'auditable': True,
+            'reconciled_at': datetime.utcnow().isoformat(),
+            'stats': rebuilt,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Dashboard] Error reconciling cumulative stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to reconcile cumulative stats: {str(e)}")
+
+
 @router.get("/jobs")
 async def get_scheduler_jobs(
     current_user: Dict[str, Any] = Depends(get_current_user),
@@ -280,8 +319,8 @@ def _get_cumulative_stats(db: Session) -> Dict[str, int]:
 
         try:
             # Try to import and use SchedulerCumulativeStats if it exists
-            from models.scheduler_cumulative_stats import SchedulerCumulativeStats
-            cumulative_stats_row = SchedulerCumulativeStats.get_or_none(db)
+            from models.scheduler_cumulative_stats_model import SchedulerCumulativeStats
+            cumulative_stats_row = db.query(SchedulerCumulativeStats).filter(SchedulerCumulativeStats.id == 1).first()
 
             if cumulative_stats_row:
                 cumulative_stats = {
@@ -294,14 +333,6 @@ def _get_cumulative_stats(db: Session) -> Dict[str, int]:
 
                 # Validate stats against actual event count
                 cumulative_stats = validate_cumulative_stats(cumulative_stats, db)
-
-                # Update the persistent table with validated stats
-                cumulative_stats_row.total_check_cycles = cumulative_stats['total_check_cycles']
-                cumulative_stats_row.cumulative_tasks_found = cumulative_stats['cumulative_tasks_found']
-                cumulative_stats_row.cumulative_tasks_executed = cumulative_stats['cumulative_tasks_executed']
-                cumulative_stats_row.cumulative_tasks_failed = cumulative_stats['cumulative_tasks_failed']
-                cumulative_stats_row.cumulative_tasks_skipped = cumulative_stats.get('cumulative_tasks_skipped', 0)
-                db.commit()
 
                 return cumulative_stats
 
