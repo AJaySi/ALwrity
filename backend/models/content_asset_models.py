@@ -22,7 +22,6 @@ class AssetType(enum.Enum):
 
 
 class AssetSource(enum.Enum):
-    # Add youtube_creator to the enum
     """Source module/tool that generated the asset."""
     # Core Content Generation
     STORY_WRITER = "story_writer"
@@ -48,12 +47,16 @@ class AssetSource(enum.Enum):
     
     # Product Marketing Suite
     PRODUCT_MARKETING = "product_marketing"
+    CAMPAIGN_CREATOR = "campaign_creator"
 
     # Podcast Maker
     PODCAST_MAKER = "podcast_maker"
     
     # YouTube Creator
     YOUTUBE_CREATOR = "youtube_creator"
+
+    # Video Studio
+    VIDEO_STUDIO = "video_studio"
 
 
 class ContentAsset(Base):
@@ -150,4 +153,3 @@ class AssetCollection(Base):
         foreign_keys=[cover_asset_id], 
         uselist=False
     )
-
