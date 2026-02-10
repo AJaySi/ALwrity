@@ -17,10 +17,8 @@ import {
   IconButton,
   Tooltip,
   InputAdornment,
-  Alert,
   Card,
   CardContent,
-  Divider,
   Chip
 } from '@mui/material';
 import {
@@ -47,10 +45,6 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
   onCopyToClipboard,
   copiedItems
 }) => {
-  const handleTextFieldChange = (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    onMetadataEdit(field, event.target.value);
-  };
-
   const handleNestedFieldChange = (parentField: string, childField: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
     const currentValue = metadata[parentField] || {};
     onMetadataEdit(parentField, {

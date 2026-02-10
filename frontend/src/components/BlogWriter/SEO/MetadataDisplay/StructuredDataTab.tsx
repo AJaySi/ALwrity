@@ -9,7 +9,7 @@
  * - Keywords and categories
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Box,
   Typography,
@@ -20,10 +20,6 @@ import {
   Tooltip,
   InputAdornment,
   Alert,
-  Card,
-  CardContent,
-  Divider,
-  Chip,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -36,9 +32,7 @@ import {
   Person as PersonIcon,
   Business as BusinessIcon,
   CalendarToday as CalendarIcon,
-  ExpandMore as ExpandMoreIcon,
-  Visibility as VisibilityIcon,
-  Edit as EditIcon
+  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 
 interface StructuredDataTabProps {
@@ -54,8 +48,6 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
   onCopyToClipboard,
   copiedItems
 }) => {
-  const [showRawJson, setShowRawJson] = useState(false);
-  
   // Helpers for counters and consistent input styling
   const getCharacterCountColor = (current: number, max: number) => {
     if (current > max) return 'error';
@@ -77,18 +69,6 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
       color: '#5f6368'
     }
   } as const;
-  
-  const handleTextFieldChange = (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    onMetadataEdit(field, event.target.value);
-  };
-
-  const handleNestedFieldChange = (parentField: string, childField: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const currentValue = metadata[parentField] || {};
-    onMetadataEdit(parentField, {
-      ...currentValue,
-      [childField]: event.target.value
-    });
-  };
 
   const handleAuthorFieldChange = (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
     const currentSchema = metadata.json_ld_schema || {};
