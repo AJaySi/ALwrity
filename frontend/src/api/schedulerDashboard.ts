@@ -193,10 +193,26 @@ export const getExecutionLogs = async (
       params.status = status;
     }
     
-    const response = await apiClient.get<ExecutionLogsResponse>('/api/scheduler/execution-logs', {
+    const response = await apiClient.get<ExecutionLogsResponse | { logs: any[], pagination: any }>('/api/scheduler/execution-logs', {
       params
     });
-    return response.data;
+    
+    const data = response.data;
+    
+    // Handle both old (flat) and new (nested) pagination formats
+    if ('pagination' in data) {
+      // New format: { logs: [], pagination: { limit, offset, total, has_more } }
+      return {
+        logs: data.logs,
+        total_count: data.pagination.total,
+        limit: data.pagination.limit,
+        offset: data.pagination.offset,
+        has_more: data.pagination.has_more
+      };
+    } else {
+      // Old format: { logs: [], total_count, limit, offset, has_more }
+      return data as ExecutionLogsResponse;
+    }
   } catch (error: any) {
     console.error('Error fetching execution logs:', error);
     throw new Error(
@@ -244,10 +260,26 @@ export const getSchedulerEventHistory = async (
       params.event_type = eventType;
     }
     
-    const response = await apiClient.get<SchedulerEventHistoryResponse>('/api/scheduler/event-history', {
+    const response = await apiClient.get<SchedulerEventHistoryResponse | { events: any[], pagination: any }>('/api/scheduler/event-history', {
       params
     });
-    return response.data;
+    
+    const data = response.data;
+    
+    // Handle both old (flat) and new (nested) pagination formats
+    if ('pagination' in data) {
+      // New format: { events: [], pagination: { limit, offset, total, has_more } }
+      return {
+        events: data.events,
+        total_count: data.pagination.total,
+        limit: data.pagination.limit,
+        offset: data.pagination.offset,
+        has_more: data.pagination.has_more
+      };
+    } else {
+      // Old format: { events: [], total_count, limit, offset, has_more }
+      return data as SchedulerEventHistoryResponse;
+    }
   } catch (error: any) {
     console.error('Error fetching scheduler event history:', error);
     throw new Error(
@@ -265,8 +297,24 @@ export const getSchedulerEventHistory = async (
  */
 export const getRecentSchedulerLogs = async (): Promise<ExecutionLogsResponse> => {
   try {
-    const response = await apiClient.get<ExecutionLogsResponse>('/api/scheduler/recent-scheduler-logs');
-    return response.data;
+    const response = await apiClient.get<ExecutionLogsResponse | { logs: any[], pagination: any }>('/api/scheduler/recent-scheduler-logs');
+    
+    const data = response.data;
+    
+    // Handle both old (flat) and new (nested) pagination formats
+    if ('pagination' in data) {
+      // New format: { logs: [], pagination: { limit, offset, total, has_more } }
+      return {
+        logs: data.logs,
+        total_count: data.pagination.total,
+        limit: data.pagination.limit,
+        offset: data.pagination.offset,
+        has_more: data.pagination.has_more
+      };
+    } else {
+      // Old format: { logs: [], total_count, limit, offset, has_more }
+      return data as ExecutionLogsResponse;
+    }
   } catch (error: any) {
     console.error('Error fetching recent scheduler logs:', error);
     throw new Error(
