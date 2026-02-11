@@ -1,42 +1,40 @@
-import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import { ResearchAction } from '../ResearchAction';
-import { KeywordInputForm } from '../KeywordInputForm';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { useBlogWriterResearchPolling } from '../../../hooks/usePolling';
 import { blogWriterApi } from '../../../services/blogWriterApi';
 
-// Mock the API
 jest.mock('../../../services/blogWriterApi', () => ({
   blogWriterApi: {
-    startResearch: jest.fn(),
     pollResearchStatus: jest.fn()
   }
 }));
 
-// Mock CopilotKit
-jest.mock('@copilotkit/react-core', () => ({
-  useCopilotAction: jest.fn(() => ({
-    name: 'testAction',
-    handler: jest.fn(),
-    render: jest.fn()
-  }))
+jest.mock('../../../api/client', () => ({
+  triggerSubscriptionError: jest.fn().mockResolvedValue(true)
 }));
 
 describe('Polling Integration', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
   });
 
-  it('should use async polling endpoints for research', async () => {
-    const mockStartResearch = blogWriterApi.startResearch as jest.Mock;
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('polls until completion and calls completion callbacks with final result', async () => {
     const mockPollStatus = blogWriterApi.pollResearchStatus as jest.Mock;
+    const onProgress = jest.fn();
+    const onComplete = jest.fn();
 
-    // Mock successful research start
-    mockStartResearch.mockResolvedValue({
-      task_id: 'test-task-123',
-      status: 'started'
-    });
+    const completedResult = {
+      success: true,
+      sources: [],
+      keyword_analysis: {},
+      competitor_analysis: {},
+      suggested_angles: []
+    };
 
-    // Mock polling responses
     mockPollStatus
       .mockResolvedValueOnce({
         task_id: 'test-task-123',
@@ -48,40 +46,77 @@ describe('Polling Integration', () => {
       .mockResolvedValueOnce({
         task_id: 'test-task-123',
         status: 'completed',
-        result: {
-          success: true,
-          sources: [],
-          keyword_analysis: {},
-          competitor_analysis: {},
-          suggested_angles: []
-        }
+        progress_messages: [
+          { timestamp: '2024-01-01T10:00:05Z', message: 'Research complete' }
+        ],
+        result: completedResult
       });
 
-    const onResearchComplete = jest.fn();
-    
-    render(<ResearchAction onResearchComplete={onResearchComplete} />);
+    const { result } = renderHook(() =>
+      useBlogWriterResearchPolling({
+        interval: 100,
+        onProgress,
+        onComplete
+      })
+    );
 
-    // Verify that startResearch was called (this would be triggered by CopilotKit action)
-    expect(mockStartResearch).toHaveBeenCalled();
-  });
-
-  it('should handle polling errors gracefully', async () => {
-    const mockStartResearch = blogWriterApi.startResearch as jest.Mock;
-    const mockPollStatus = blogWriterApi.pollResearchStatus as jest.Mock;
-
-    mockStartResearch.mockResolvedValue({
-      task_id: 'test-task-123',
-      status: 'started'
+    act(() => {
+      result.current.startPolling('test-task-123');
     });
 
-    mockPollStatus.mockRejectedValue(new Error('Polling failed'));
+    await waitFor(() => {
+      expect(mockPollStatus).toHaveBeenCalledTimes(1);
+    });
 
-    const onResearchComplete = jest.fn();
+    expect(mockPollStatus).toHaveBeenNthCalledWith(1, 'test-task-123');
+
+    act(() => {
+      jest.advanceTimersByTime(110);
+    });
+
+    await waitFor(() => {
+      expect(mockPollStatus).toHaveBeenCalledTimes(2);
+    });
+
+    expect(mockPollStatus).toHaveBeenNthCalledWith(2, 'test-task-123');
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledWith(completedResult);
+    });
+
+    expect(onProgress).toHaveBeenCalledWith('Starting research...');
+    expect(onProgress).toHaveBeenCalledWith('Research complete');
+    expect(result.current.currentStatus).toBe('completed');
+    expect(result.current.isPolling).toBe(false);
+    expect(result.current.result).toEqual(completedResult);
+  });
+
+  it('stops polling and reports error for task-not-found failures', async () => {
+    const mockPollStatus = blogWriterApi.pollResearchStatus as jest.Mock;
     const onError = jest.fn();
-    
-    render(<KeywordInputForm onResearchComplete={onResearchComplete} />);
 
-    // The component should handle the error gracefully
-    expect(mockStartResearch).toHaveBeenCalled();
+    mockPollStatus.mockRejectedValue(new Error('404 Task not found'));
+
+    const { result } = renderHook(() =>
+      useBlogWriterResearchPolling({
+        interval: 100,
+        onError
+      })
+    );
+
+    act(() => {
+      result.current.startPolling('missing-task-123');
+    });
+
+    await waitFor(() => {
+      expect(mockPollStatus).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Task not found - it may have expired or been cleaned up');
+    });
+
+    expect(result.current.error).toBe('Task not found - it may have expired or been cleaned up');
+    expect(result.current.isPolling).toBe(false);
   });
 });

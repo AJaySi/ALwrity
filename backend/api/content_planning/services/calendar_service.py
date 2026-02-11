@@ -50,8 +50,7 @@ class CalendarService:
             if strategy_id:
                 events = await db_service.get_strategy_calendar_events(strategy_id)
             else:
-                # TODO: Implement get_all_calendar_events method
-                events = []
+                events = await db_service.get_all_calendar_events()
             
             return [event.to_dict() for event in events]
             
