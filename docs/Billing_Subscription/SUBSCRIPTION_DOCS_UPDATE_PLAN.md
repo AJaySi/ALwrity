@@ -1,27 +1,51 @@
 # Subscription Documentation Update Plan
 
-## Current State Analysis
+## 🔄 **SUPERSEDED BY NEW SSOT DOCUMENT**
 
-### Issues Found
+**⚠️ IMPORTANT**: This document has been superseded by the comprehensive security review.
 
-1. **Pricing Page Discrepancies**:
-   - Documentation shows outdated plan limits
-   - Missing unified `ai_text_generation_calls_limit` for Basic plan (10 calls)
-   - Missing video generation limits and pricing
-   - Missing Exa search pricing details
-   - Gemini pricing is outdated (docs show old models, code has 2.5 Pro, 2.5 Flash, etc.)
-   - Missing detailed Gemini model breakdowns
+### **New Single Source of Truth (SSOT)**
+📄 **Document**: `SUBSCRIPTION_SYSTEM_SECURITY_SSOT.md`
+📅 **Date**: 2026-02-11
+🎯 **Purpose**: Complete security review, architecture documentation, and implementation guidelines
 
-2. **Missing Billing Dashboard Documentation**:
-   - No documentation for dedicated billing dashboard page (`/billing`)
-   - Multiple dashboard components exist (BillingDashboard, EnhancedBillingDashboard, CompactBillingDashboard)
-   - No documentation for billing page features and usage
+### **What's Covered in New SSOT**
+✅ **Complete Security Review**: All security findings and recommendations
+✅ **Architecture Documentation**: System components and data flow
+✅ **Implementation Guidelines**: Security patterns and best practices
+✅ **Production Readiness**: Checklist and roadmap
+✅ **Maintenance Procedures**: Ongoing security processes
+✅ **Related Documentation**: Links to all existing docs
 
-3. **Outdated Implementation Status**:
-   - Documentation doesn't reflect current billing dashboard implementation
-   - Missing information about subscription renewal history
-   - Missing usage logs table documentation
-   - Missing comprehensive API breakdown component
+### **Previous Issues (Now Addressed in SSOT)**
+1. **Pricing Page Discrepancies** → ✅ Covered in SSOT security review
+2. **Missing Billing Dashboard Documentation** → ✅ Referenced in SSOT architecture
+3. **Outdated Implementation Status** → ✅ Current state documented in SSOT
+
+### **Migration Status**
+🔄 **COMPLETE**: All relevant information migrated to new SSOT document
+📋 **Action**: Use `SUBSCRIPTION_SYSTEM_SECURITY_SSOT.md` as primary reference
+🗑️ **Archive**: This document retained for historical reference only
+
+---
+
+## 📚 **Recommended Reference Path**
+
+**For all subscription system documentation:**
+1. **Primary**: `SUBSCRIPTION_SYSTEM_SECURITY_SSOT.md` (Security & Architecture)
+2. **Pricing**: `PRODUCTION_PRICING_STRATEGY.md` (Pricing strategy)
+3. **Implementation**: `PRE_FLIGHT_CHECKLIST.md` (Feature validation)
+4. **Historical**: This document (Archive reference only)
+
+---
+
+## 🎯 **Next Steps**
+
+Refer to `SUBSCRIPTION_SYSTEM_SECURITY_SSOT.md` for:
+- 🚨 Critical security issues requiring immediate attention
+- 📋 Implementation guidelines for security improvements
+- 🏗️ Complete system architecture documentation
+- 📊 Production readiness checklist and timeline
 
 ## Actual Values from Code
 
