@@ -199,11 +199,12 @@ class BingOAuthService:
             expires_at = datetime.now() + timedelta(seconds=expires_in)
             
             with self._db_session() as db:
-                db.execute(
+                token_row = db.execute(
                     text('''
                         INSERT INTO bing_oauth_tokens
                         (user_id, access_token, refresh_token, token_type, expires_at, scope)
                         VALUES (:user_id, :access_token, :refresh_token, :token_type, :expires_at, :scope)
+                        RETURNING id
                     '''),
                     {
                         "user_id": user_id,
@@ -213,7 +214,8 @@ class BingOAuthService:
                         "expires_at": expires_at,
                         "scope": "webmaster.manage"
                     }
-                )
+                ).fetchone()
+                token_id = token_row[0] if token_row else None
                 logger.info(f"Bing OAuth: Token inserted into database for user {user_id}")
             
             # Proactively fetch and cache user sites using the fresh token
@@ -253,14 +255,22 @@ class BingOAuthService:
             logger.info(f"Bing OAuth: Invalidated platform status and sites cache for user {user_id} due to new connection")
             
             logger.info(f"Bing Webmaster OAuth token stored successfully for user {user_id}")
+            sanitized_sites = []
+            for site in sites:
+                if isinstance(site, dict):
+                    sanitized_sites.append({
+                        "name": site.get("Name") or site.get("name") or "",
+                        "url": site.get("Url") or site.get("url") or ""
+                    })
+
             return {
                 "success": True,
                 "user_id": user_id,
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "token_type": token_type,
-                "expires_in": expires_in,
-                "expires_at": expires_at.isoformat()
+                "connection_id": token_id,
+                "connected": True,
+                "site_count": len(sanitized_sites),
+                "sites": sanitized_sites,
+                "connected_at": datetime.utcnow().isoformat()
             }
             
         except Exception as e:
@@ -346,8 +356,7 @@ class BingOAuthService:
                 for row in rows:
                     token_data = {
                         "id": row[0],
-                        "access_token": row[1],
-                        "refresh_token": row[2],
+                        "connection_id": row[0],
                         "token_type": row[3],
                         "expires_at": row[4],
                         "scope": row[5],
@@ -550,9 +559,11 @@ class BingOAuthService:
                 # Don't make external API calls for connection status
                 active_sites.append({
                     "id": token["id"],
-                    "access_token": token["access_token"],
+                    "connection_id": token["id"],
+                    "connected": True,
                     "scope": token["scope"],
                     "created_at": token["created_at"],
+                    "site_count": 0,
                     "sites": []  # Sites will be fetched when needed for analytics
                 })
             
