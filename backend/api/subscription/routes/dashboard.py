@@ -14,6 +14,8 @@ from services.subscription import UsageTrackingService, PricingService
 from services.subscription.schema_utils import ensure_subscription_plan_columns, ensure_usage_summaries_columns
 from models.subscription_models import UsageAlert
 from ..cache import get_cached_dashboard, set_cached_dashboard
+from ..dependencies import verify_user_access
+from middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
@@ -21,9 +23,11 @@ router = APIRouter()
 @router.get("/dashboard/{user_id}")
 async def get_dashboard_data(
     user_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get comprehensive dashboard data for usage monitoring."""
+    verify_user_access(user_id, current_user)
     
     try:
         ensure_subscription_plan_columns(db)

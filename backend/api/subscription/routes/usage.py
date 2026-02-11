@@ -44,9 +44,11 @@ async def get_user_usage(
 async def get_usage_trends(
     user_id: str,
     months: int = Query(6, ge=1, le=24, description="Number of months to include"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get usage trends over time."""
+    verify_user_access(user_id, current_user)
     
     try:
         usage_service = UsageTrackingService(db)
