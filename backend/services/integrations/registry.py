@@ -168,19 +168,113 @@ class BingIntegrationProvider:
     def __init__(self, service: Optional[BingOAuthService] = None) -> None:
         self._service = service or BingOAuthService()
 
-    def get_auth_url(self, user_id: str) -> AuthUrlPayload:
+    def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload:
         payload = self._service.generate_authorization_url(user_id)
         if not payload or "auth_url" not in payload:
-            return AuthUrlPayload(auth_url="", details={"error": "Unable to generate auth URL."})
-        return AuthUrlPayload(auth_url=payload["auth_url"], state=payload.get("state"))
+            return AuthUrlPayload(
+                auth_url="",
+                state="",
+                provider_id=self.key,
+                details={"error": "Unable to generate auth URL."},
+            )
+        return AuthUrlPayload(
+            auth_url=payload["auth_url"],
+            state=payload.get("state") or "",
+            provider_id=self.key,
+        )
+
+    def handle_callback(self, code: str, state: str) -> ConnectionResult:
+        callback_result = self._service.handle_oauth_callback(code, state)
+        if not callback_result:
+            return ConnectionResult(
+                success=False,
+                user_id=state,
+                provider_id=self.key,
+                error="OAuth callback failed",
+            )
+
+        return ConnectionResult(
+            success=bool(callback_result.get("success", True)),
+            user_id=callback_result.get("user_id", state),
+            provider_id=self.key,
+            access_token=callback_result.get("access_token"),
+            refresh_token=callback_result.get("refresh_token"),
+            expires_at=callback_result.get("expires_at"),
+            scope=callback_result.get("scope"),
+            error=callback_result.get("error"),
+            account_info=callback_result,
+        )
 
     def get_connection_status(self, user_id: str) -> ConnectionStatus:
         status = self._service.get_connection_status(user_id)
         return ConnectionStatus(
             connected=bool(status.get("connected")),
+            provider_id=self.key,
+            user_id=user_id,
             details=status,
             error=status.get("error"),
         )
+
+    def refresh_token(self, user_id: str) -> Optional[RefreshResult]:
+        tokens = self._service.get_user_tokens(user_id)
+        if not tokens:
+            return RefreshResult(
+                success=False,
+                user_id=user_id,
+                provider_id=self.key,
+                error="No stored tokens found",
+            )
+
+        refresh_token = tokens[0].get("refresh_token")
+        if not refresh_token:
+            return RefreshResult(
+                success=False,
+                user_id=user_id,
+                provider_id=self.key,
+                error="No refresh token available",
+            )
+
+        refreshed = self._service.refresh_access_token(user_id, refresh_token)
+        if not refreshed:
+            return RefreshResult(
+                success=False,
+                user_id=user_id,
+                provider_id=self.key,
+                error="Token refresh failed",
+            )
+
+        return RefreshResult(
+            success=True,
+            user_id=user_id,
+            provider_id=self.key,
+            access_token=refreshed.get("access_token"),
+            refresh_token=refreshed.get("refresh_token"),
+            expires_at=refreshed.get("expires_at"),
+        )
+
+    def disconnect(self, user_id: str) -> bool:
+        tokens = self._service.get_user_tokens(user_id)
+        disconnected = False
+        for token in tokens:
+            token_id = token.get("id")
+            if token_id is None:
+                continue
+            disconnected = self._service.revoke_token(user_id, token_id) or disconnected
+        return disconnected
+
+    def list_connected_accounts(self, user_id: str) -> list[Account]:
+        tokens = self._service.get_user_tokens(user_id)
+        return [
+            Account(
+                account_id=str(token.get("id", user_id)),
+                provider_id=self.key,
+                display_name=f"Bing account {token.get('id', user_id)}",
+                connected_at=token.get("created_at"),
+                expires_at=token.get("expires_at"),
+                is_active=bool(token.get("is_active", True)),
+            )
+            for token in tokens
+        ]
 
 
 class WordPressIntegrationProvider:
@@ -190,19 +284,79 @@ class WordPressIntegrationProvider:
     def __init__(self, service: Optional[WordPressOAuthService] = None) -> None:
         self._service = service or WordPressOAuthService()
 
-    def get_auth_url(self, user_id: str) -> AuthUrlPayload:
+    def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload:
         payload = self._service.generate_authorization_url(user_id)
         if not payload or "auth_url" not in payload:
-            return AuthUrlPayload(auth_url="", details={"error": "Unable to generate auth URL."})
-        return AuthUrlPayload(auth_url=payload["auth_url"], state=payload.get("state"))
+            return AuthUrlPayload(
+                auth_url="",
+                state="",
+                provider_id=self.key,
+                details={"error": "Unable to generate auth URL."},
+            )
+        return AuthUrlPayload(
+            auth_url=payload["auth_url"],
+            state=payload.get("state") or "",
+            provider_id=self.key,
+        )
+
+    def handle_callback(self, code: str, state: str) -> ConnectionResult:
+        callback_result = self._service.handle_oauth_callback(code, state)
+        if not callback_result:
+            return ConnectionResult(
+                success=False,
+                user_id=state,
+                provider_id=self.key,
+                error="OAuth callback failed",
+            )
+
+        return ConnectionResult(
+            success=bool(callback_result.get("success", True)),
+            user_id=callback_result.get("user_id", state),
+            provider_id=self.key,
+            access_token=callback_result.get("access_token"),
+            refresh_token=callback_result.get("refresh_token"),
+            expires_at=callback_result.get("expires_at"),
+            scope=callback_result.get("scope"),
+            error=callback_result.get("error"),
+            account_info=callback_result,
+        )
 
     def get_connection_status(self, user_id: str) -> ConnectionStatus:
         status = self._service.get_connection_status(user_id)
         return ConnectionStatus(
             connected=bool(status.get("connected")),
+            provider_id=self.key,
+            user_id=user_id,
             details=status,
             error=status.get("error"),
         )
+
+    def refresh_token(self, user_id: str) -> Optional[RefreshResult]:
+        return None
+
+    def disconnect(self, user_id: str) -> bool:
+        tokens = self._service.get_user_tokens(user_id)
+        disconnected = False
+        for token in tokens:
+            token_id = token.get("id")
+            if token_id is None:
+                continue
+            disconnected = self._service.revoke_token(user_id, token_id) or disconnected
+        return disconnected
+
+    def list_connected_accounts(self, user_id: str) -> list[Account]:
+        tokens = self._service.get_user_tokens(user_id)
+        return [
+            Account(
+                account_id=str(token.get("id", user_id)),
+                provider_id=self.key,
+                display_name=str(token.get("blog_url") or token.get("site_url") or "WordPress account"),
+                connected_at=token.get("created_at"),
+                expires_at=token.get("expires_at"),
+                is_active=bool(token.get("is_active", True)),
+            )
+            for token in tokens
+        ]
 
 
 class WixIntegrationProvider:
@@ -213,14 +367,55 @@ class WixIntegrationProvider:
         self._service = service or WixService()
         self._oauth = oauth or WixOAuthService()
 
-    def get_auth_url(self, user_id: str) -> AuthUrlPayload:
+    def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload:
         auth_url = self._service.get_authorization_url(state=user_id)
-        return AuthUrlPayload(auth_url=auth_url, state=user_id)
+        return AuthUrlPayload(auth_url=auth_url, state=user_id, provider_id=self.key)
+
+    def handle_callback(self, code: str, state: str) -> ConnectionResult:
+        return ConnectionResult(
+            success=False,
+            user_id=state,
+            provider_id=self.key,
+            error="Wix callback handling is managed by platform-specific routes",
+        )
 
     def get_connection_status(self, user_id: str) -> ConnectionStatus:
         status = self._oauth.get_user_token_status(user_id)
         connected = bool(status.get("has_active_tokens"))
-        return ConnectionStatus(connected=connected, details=status, error=status.get("error"))
+        return ConnectionStatus(
+            connected=connected,
+            provider_id=self.key,
+            user_id=user_id,
+            details=status,
+            error=status.get("error"),
+        )
+
+    def refresh_token(self, user_id: str) -> Optional[RefreshResult]:
+        return None
+
+    def disconnect(self, user_id: str) -> bool:
+        tokens = self._oauth.get_user_tokens(user_id)
+        disconnected = False
+        for token in tokens:
+            token_id = token.get("id")
+            if token_id is None:
+                continue
+            disconnected = self._oauth.revoke_token(user_id, token_id) or disconnected
+        return disconnected
+
+    def list_connected_accounts(self, user_id: str) -> list[Account]:
+        tokens = self._oauth.get_user_tokens(user_id)
+        return [
+            Account(
+                account_id=str(token.get("id", user_id)),
+                provider_id=self.key,
+                display_name=str(token.get("site_name") or token.get("account_name") or "Wix account"),
+                connected_at=token.get("created_at"),
+                expires_at=token.get("expires_at"),
+                is_active=bool(token.get("is_active", True)),
+            )
+            for token in tokens
+        ]
 
 
 _INTEGRATION_PROVIDERS: Dict[str, IntegrationProvider] = {}
