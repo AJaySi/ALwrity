@@ -14,12 +14,14 @@ from services.subscription.schema_utils import ensure_subscription_plan_columns
 from ..utils import format_plan_limits, handle_schema_error
 from fastapi import Query
 from typing import Optional
+from middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/plans")
 async def get_subscription_plans(
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get all available subscription plans."""
@@ -62,16 +64,17 @@ async def get_subscription_plans(
                 e,
                 db,
                 error_str,
-                lambda: get_subscription_plans(db)
+                lambda: get_subscription_plans(current_user, db)
             )
         
         logger.error(f"Error getting subscription plans: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve subscription plans")
 
 
 @router.get("/pricing")
 async def get_api_pricing(
     provider: Optional[str] = Query(None, description="API provider"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get API pricing information."""
@@ -117,4 +120,4 @@ async def get_api_pricing(
     
     except Exception as e:
         logger.error(f"Error getting API pricing: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve pricing data")
