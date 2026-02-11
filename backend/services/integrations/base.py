@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol
 from datetime import datetime
 
@@ -54,15 +54,9 @@ class ConnectionStatus:
     expires_at: Optional[datetime] = None
     refreshable: bool = True
     last_checked: Optional[datetime] = None
-    warnings: List[str] = None
-    details: Dict[str, Any] = None
+    warnings: List[str] = field(default_factory=list)
+    details: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
-
-    def __post_init__(self):
-        if self.warnings is None:
-            self.warnings = []
-        if self.details is None:
-            self.details = {}
 
 
 @dataclass
@@ -72,30 +66,26 @@ class AuthUrlPayload:
     state: str
     provider_id: str
     expires_in: Optional[int] = None
-    details: Dict[str, Any] = None
-
-    def __post_init__(self):
-        if self.details is None:
-            self.details = {}
+    details: Dict[str, Any] = field(default_factory=dict)
 
 
 class IntegrationProvider(Protocol):
     """Contract for integration providers used by the registry layer."""
-    
+
     @property
     def key(self) -> str: ...
-    
+
     @property
     def display_name(self) -> str: ...
-    
+
     def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload: ...
-    
+
     def handle_callback(self, code: str, state: str) -> ConnectionResult: ...
-    
+
     def get_connection_status(self, user_id: str) -> ConnectionStatus: ...
-    
+
     def refresh_token(self, user_id: str) -> Optional[RefreshResult]: ...
-    
+
     def disconnect(self, user_id: str) -> bool: ...
-    
+
     def list_connected_accounts(self, user_id: str) -> List[Account]: ...
