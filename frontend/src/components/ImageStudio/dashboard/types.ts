@@ -15,6 +15,8 @@ export type ModuleConfig = {
   pricing: {
     estimate: string;
     notes: string;
+    confidence?: string;
+    updatedAt?: string;
   };
   example: {
     title: string;

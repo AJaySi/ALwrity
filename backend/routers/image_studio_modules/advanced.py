@@ -1,6 +1,9 @@
 """Advanced features API endpoints for Image Studio."""
 
 from typing import Optional, Dict, Any, List
+import asyncio
+import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from routers.image_studio_modules.models import (
@@ -8,7 +11,8 @@ from routers.image_studio_modules.models import (
     FaceSwapModelRecommendationRequest, FaceSwapModelRecommendationResponse,
     SocialOptimizeRequest, SocialOptimizeResponse, PlatformFormatsResponse,
     TransformImageToVideoRequestModel, TalkingAvatarRequestModel,
-    TransformVideoResponse, TransformCostEstimateRequest, TransformCostEstimateResponse
+    TransformVideoResponse, TransformCostEstimateRequest, TransformCostEstimateResponse,
+    TransformJobResponse, TransformJobStatusResponse, TransformCancelResponse
 )
 from routers.image_studio_modules.utils import _require_user_id
 from routers.image_studio_modules.dependencies import get_studio_manager
@@ -220,6 +224,191 @@ async def get_platform_specs(
 # ====================
 # TRANSFORM STUDIO ENDPOINTS
 # ====================
+
+
+
+_transform_jobs: Dict[str, Dict[str, Any]] = {}
+_transform_job_tasks: Dict[str, asyncio.Task] = {}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _init_transform_job(user_id: str, operation: str) -> str:
+    job_id = str(uuid.uuid4())
+    now = _utc_now_iso()
+    _transform_jobs[job_id] = {
+        "job_id": job_id,
+        "user_id": user_id,
+        "operation": operation,
+        "status": "queued",
+        "progress": 0.0,
+        "message": "Job queued",
+        "result": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+    return job_id
+
+
+async def _run_transform_job(job_id: str, runner):
+    job = _transform_jobs.get(job_id)
+    if not job or job.get("status") == "cancelled":
+        return
+
+    try:
+        job["status"] = "processing"
+        job["progress"] = 25.0
+        job["message"] = "Processing request"
+        job["updated_at"] = _utc_now_iso()
+
+        result = await runner()
+
+        if job.get("status") == "cancelled":
+            return
+
+        job["status"] = "completed"
+        job["progress"] = 100.0
+        job["message"] = "Completed"
+        job["result"] = result
+        job["updated_at"] = _utc_now_iso()
+    except Exception as exc:
+        if job.get("status") == "cancelled":
+            return
+        job["status"] = "failed"
+        job["progress"] = 100.0
+        job["message"] = "Failed"
+        job["error"] = str(exc)
+        job["updated_at"] = _utc_now_iso()
+        logger.error(f"[Transform Studio Async] Job {job_id} failed: {exc}", exc_info=True)
+
+
+@router.post("/transform/image-to-video/async", response_model=TransformJobResponse, summary="Queue Image to Video Job")
+async def queue_transform_image_to_video(
+    request: TransformImageToVideoRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Queue an async image-to-video job and return a job ID for polling."""
+    user_id = _require_user_id(current_user, "image-to-video transformation")
+    job_id = _init_transform_job(user_id, "image-to-video")
+
+    transform_request = TransformImageToVideoRequest(
+        image_base64=request.image_base64,
+        prompt=request.prompt,
+        audio_base64=request.audio_base64,
+        resolution=request.resolution,
+        duration=request.duration,
+        negative_prompt=request.negative_prompt,
+        seed=request.seed,
+        enable_prompt_expansion=request.enable_prompt_expansion,
+    )
+
+    async def _runner():
+        return await studio_manager.transform_image_to_video(transform_request, user_id=user_id)
+
+    _transform_job_tasks[job_id] = asyncio.create_task(_run_transform_job(job_id, _runner))
+
+    return TransformJobResponse(
+        success=True,
+        job_id=job_id,
+        status="queued",
+        operation="image-to-video",
+        message="Job queued successfully",
+    )
+
+
+@router.post("/transform/talking-avatar/async", response_model=TransformJobResponse, summary="Queue Talking Avatar Job")
+async def queue_talking_avatar(
+    request: TalkingAvatarRequestModel,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Queue an async talking avatar job and return a job ID for polling."""
+    user_id = _require_user_id(current_user, "talking avatar")
+    job_id = _init_transform_job(user_id, "talking-avatar")
+
+    avatar_request = TalkingAvatarRequest(
+        image_base64=request.image_base64,
+        audio_base64=request.audio_base64,
+        resolution=request.resolution,
+        prompt=request.prompt,
+        mask_image_base64=request.mask_image_base64,
+        seed=request.seed,
+    )
+
+    async def _runner():
+        return await studio_manager.create_talking_avatar(avatar_request, user_id=user_id)
+
+    _transform_job_tasks[job_id] = asyncio.create_task(_run_transform_job(job_id, _runner))
+
+    return TransformJobResponse(
+        success=True,
+        job_id=job_id,
+        status="queued",
+        operation="talking-avatar",
+        message="Job queued successfully",
+    )
+
+
+@router.get("/transform/jobs/{job_id}", response_model=TransformJobStatusResponse, summary="Get Transform Job Status")
+async def get_transform_job_status(
+    job_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Get status of a queued transform job."""
+    user_id = _require_user_id(current_user, "transform job status")
+    job = _transform_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Transform job not found")
+    if job.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Access denied to this job")
+
+    return TransformJobStatusResponse(
+        success=job.get("status") == "completed",
+        job_id=job_id,
+        status=job["status"],
+        operation=job["operation"],
+        progress=job.get("progress", 0.0),
+        message=job.get("message"),
+        result=job.get("result"),
+        error=job.get("error"),
+        created_at=job["created_at"],
+        updated_at=job["updated_at"],
+    )
+
+
+@router.post("/transform/jobs/{job_id}/cancel", response_model=TransformCancelResponse, summary="Cancel Transform Job")
+async def cancel_transform_job(
+    job_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Cancel a queued/processing transform job."""
+    user_id = _require_user_id(current_user, "cancel transform job")
+    job = _transform_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Transform job not found")
+    if job.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Access denied to this job")
+
+    task = _transform_job_tasks.get(job_id)
+    if task and not task.done():
+        task.cancel()
+
+    job["status"] = "cancelled"
+    job["progress"] = 100.0
+    job["message"] = "Job cancelled by user"
+    job["updated_at"] = _utc_now_iso()
+
+    return TransformCancelResponse(
+        success=True,
+        job_id=job_id,
+        status="cancelled",
+        message="Job cancelled",
+    )
+
 
 @router.post("/transform/image-to-video", response_model=TransformVideoResponse, summary="Transform Image to Video")
 async def transform_image_to_video(

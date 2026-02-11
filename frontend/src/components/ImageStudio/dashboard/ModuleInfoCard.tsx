@@ -23,6 +23,12 @@ export const ModuleInfoCard: React.FC<{ module: ModuleConfig }> = ({ module }) =
       <Typography variant="caption" color="text.secondary">
         {module.pricing.notes}
       </Typography>
+      {(module.pricing.confidence || module.pricing.updatedAt) && (
+        <Typography variant="caption" color="text.secondary">
+          Confidence: {module.pricing.confidence || "estimated"}
+          {module.pricing.updatedAt ? ` · Updated: ${module.pricing.updatedAt}` : ""}
+        </Typography>
+      )}
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
       <Typography variant="subtitle2" fontWeight={700}>
         {module.example.title}
