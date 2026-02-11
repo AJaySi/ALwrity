@@ -121,8 +121,10 @@ apiClient.interceptors.request.use(
         try {
           const token = await authTokenGetter();
       if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+        config.headers = {
+          ...config.headers,
+          Authorization: `Bearer ${token}`,
+        } as any;
             console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
           } else {
           // Token getter returned null - reject request to prevent 401 errors
@@ -199,7 +201,10 @@ apiClient.interceptors.response.use(
         const newToken = await authTokenGetter();
         if (newToken) {
           // Update the request with new token
-          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+          originalRequest.headers = {
+            ...originalRequest.headers,
+            Authorization: `Bearer ${newToken}`,
+          } as any;
           // Retry the request
           return apiClient(originalRequest);
         }
@@ -302,8 +307,10 @@ aiApiClient.interceptors.request.use(
         try {
           const token = await authTokenGetter();
       if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+        config.headers = {
+          ...config.headers,
+          Authorization: `Bearer ${token}`,
+        } as any;
             console.log(`[aiApiClient] ✅ Added auth token to request: ${config.url}`);
           } else {
             console.warn(`[aiApiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
@@ -336,7 +343,10 @@ aiApiClient.interceptors.response.use(
       try {
         const newToken = await authTokenGetter();
         if (newToken) {
-          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+          originalRequest.headers = {
+            ...originalRequest.headers,
+            Authorization: `Bearer ${newToken}`,
+          } as any;
           return aiApiClient(originalRequest);
         }
       } catch (retryError) {
@@ -390,8 +400,10 @@ longRunningApiClient.interceptors.request.use(
     try {
       const token = authTokenGetter ? await authTokenGetter() : null;
       if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+        config.headers = {
+          ...config.headers,
+          Authorization: `Bearer ${token}`,
+        } as any;
       }
     } catch (e) {}
     return config;
@@ -443,8 +455,10 @@ pollingApiClient.interceptors.request.use(
     try {
       const token = authTokenGetter ? await authTokenGetter() : null;
       if (token) {
-        config.headers = config.headers || {};
-        (config.headers as any)['Authorization'] = `Bearer ${token}`;
+        config.headers = {
+          ...config.headers,
+          Authorization: `Bearer ${token}`,
+        } as any;
       }
     } catch (e) {}
     return config;

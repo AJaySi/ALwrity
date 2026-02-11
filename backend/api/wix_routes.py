@@ -23,31 +23,80 @@ wix_service = WixService()
 wix_oauth_service = WixOAuthService()
 
 
-class WixAuthRequest(BaseModel):
-    """Request model for Wix authentication"""
-    code: str
-    state: Optional[str] = None
+class WixAuthUrlResponse(BaseModel):
+    """Response model for Wix OAuth authorization URL."""
+    auth_url: str
+    state: str
+    oauth_data: Optional[Dict[str, Any]] = None
 
 
-class WixPublishRequest(BaseModel):
-    """Request model for publishing to Wix"""
-    title: str
-    content: str
-    cover_image_url: Optional[str] = None
-    category_ids: Optional[list] = None
-    tag_ids: Optional[list] = None
-    publish: bool = True
-    # Optional access token for test-real publish flow
-    access_token: Optional[str] = None
-class WixCreateCategoryRequest(BaseModel):
-    access_token: str
-    label: str
-    description: Optional[str] = None
-    language: Optional[str] = None
+class WixStatusResponse(BaseModel):
+    """Response model for Wix OAuth status."""
+    connected: bool
+    site_id: Optional[str] = None
+    member_id: Optional[str] = None
+    site_info: Optional[Dict[str, Any]] = None
+    permissions: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
 
 
-class WixCreateTagRequest(BaseModel):
-    access_token: str
+class WixDisconnectResponse(BaseModel):
+    """Response model for Wix OAuth disconnect."""
+    success: bool
+    message: str
+
+
+@router.get("/auth/url", response_model=WixAuthUrlResponse)
+async def get_authorization_url(
+    state: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get Wix OAuth authorization URL.
+    
+    @deprecated Use unified OAuth client: GET /oauth/wix/auth
+    This method is preserved for backward compatibility but will be removed in future versions.
+    """
+    console.warn('Wix Router: get_authorization_url() is deprecated. Use unifiedOAuthClient.getAuthUrl("wix") instead')
+    
+    try:
+        user_id = user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID not found.")
+        
+        # Use unified OAuth client for consistent patterns
+        from frontend.src.api.unifiedOAuth import unifiedOAuthClient
+        unified_client = unifiedOAuthClient()
+        
+        try:
+            auth_response = await unified_client.getAuthUrl('wix')
+            
+            return WixAuthUrlResponse(
+                auth_url=auth_response.auth_url,
+                state=auth_response.state,
+                oauth_data=auth_response.oauth_data
+            )
+        except Exception as unified_error:
+            # Fall back to legacy service if unified client fails
+            logger.warning(f"Unified client failed, falling back to legacy Wix service: {unified_error}")
+            
+            oauth_config = wix_service.get_oauth_config()
+            return WixAuthUrlResponse(
+                auth_url=oauth_config["auth_url"],
+                state=oauth_config["state"],
+                oauth_data={
+                    "codeVerifier": oauth_config["code_verifier"],
+                    "codeChallenge": oauth_config["code_challenge"],
+                    "redirectUri": oauth_config["redirect_uri"],
+                }
+            )
+        
+    except Exception as e:
+        logger.error(f"Error generating Wix OAuth URL: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate Wix OAuth URL."
+        )
     label: str
     language: Optional[str] = None
 

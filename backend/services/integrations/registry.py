@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Callable, Dict, Optional
+from datetime import datetime
 
 from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
@@ -12,6 +13,161 @@ from services.wix_service import WixService
 
 from .base import AuthUrlPayload, ConnectionStatus, IntegrationProvider, ConnectionResult, RefreshResult, Account
 from .enhanced_integration_provider import create_enhanced_provider
+
+
+class WixIntegrationProvider:
+    key = "wix"
+    display_name = "Wix"
+
+    def __init__(self, service: Optional[WixService] = None) -> None:
+        self._service = service or WixService()
+
+    def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload:
+        oauth_config = self._service.get_oauth_config()
+        return AuthUrlPayload(
+            auth_url=oauth_config["auth_url"],
+            state=oauth_config["state"],
+            provider_id=self.key,
+            oauth_data={
+                "codeVerifier": oauth_config["code_verifier"],
+                "codeChallenge": oauth_config["code_challenge"],
+                "redirectUri": oauth_config["redirect_uri"],
+            }
+        )
+
+    def handle_callback(self, code: str, state: str) -> ConnectionResult:
+        try:
+            # Exchange code for tokens
+            tokens = self._service.exchange_code_for_tokens(code)
+            
+            # Get site information
+            site_info = self._service.get_site_info(tokens['access_token'])
+            site_id = site_info.get('siteId') or site_info.get('site_id')
+            
+            # Extract member_id
+            member_id = None
+            try:
+                member_id = self._service.extract_member_id_from_access_token(tokens['access_token'])
+            except Exception:
+                pass
+            
+            return ConnectionResult(
+                success=True,
+                user_id=state,
+                provider_id=self.key,
+                access_token=tokens['access_token'],
+                refresh_token=tokens.get('refresh_token'),
+                expires_at=None,  # Wix uses expires_in instead
+                expires_in=tokens.get('expires_in'),
+                scope=tokens.get('scope'),
+                metadata={
+                    "site_id": site_id,
+                    "member_id": member_id,
+                    "site_info": site_info
+                }
+            )
+        except Exception as e:
+            logger.error(f"Wix callback failed: {e}")
+            return ConnectionResult(
+                success=False,
+                user_id=state,
+                provider_id=self.key,
+                error=str(e)
+            )
+
+    def get_connection_status(self, user_id: str) -> ConnectionStatus:
+        try:
+            # Get tokens from Wix OAuth service
+            with self._service._db_session() as db:
+                result = db.execute(text("""
+                    SELECT access_token, refresh_token, expires_at, scope, site_id, member_id, created_at
+                    FROM wix_oauth_tokens 
+                    WHERE user_id = :user_id 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                """), {"user_id": user_id})
+                row = result.fetchone()
+                
+                if not row:
+                    return ConnectionStatus(
+                        connected=False,
+                        provider_id=self.key,
+                        display_name=self.display_name
+                    )
+                
+                # Check if token is expired
+                expires_at = row[2]
+                is_expired = expires_at and expires_at < datetime.now()
+                
+                # Get site info if connected
+                site_info = None
+                if not is_expired and row[4]:  # site_id
+                    try:
+                        site_info = self._service.get_site_info(row[0])  # access_token
+                    except Exception:
+                        site_info = {"site_id": row[4]}
+                
+                return ConnectionStatus(
+                    connected=not is_expired,
+                    provider_id=self.key,
+                    display_name=self.display_name,
+                    account_name=f"Site ID: {row[4]}" if row[4] else "Wix Account",
+                    details={
+                        "site_id": row[4],
+                        "member_id": row[5],
+                        "site_info": site_info,
+                        "created_at": row[6].isoformat() if row[6] else None,
+                        "expires_at": expires_at.isoformat() if expires_at else None
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Failed to get Wix connection status: {e}")
+            return ConnectionStatus(
+                connected=False,
+                provider_id=self.key,
+                display_name=self.display_name,
+                error=str(e)
+            )
+
+    def disconnect(self, user_id: str) -> bool:
+        try:
+            with self._service._db_session() as db:
+                result = db.execute(text("""
+                    DELETE FROM wix_oauth_tokens 
+                    WHERE user_id = :user_id
+                """), {"user_id": user_id})
+                return result.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to disconnect Wix: {e}")
+            return False
+
+    def refresh_token(self, user_id: str, refresh_token: str) -> RefreshResult:
+        try:
+            # Use Wix service to refresh token
+            new_tokens = self._service.refresh_access_token(refresh_token)
+            
+            if not new_tokens:
+                return RefreshResult(
+                    success=False,
+                    provider_id=self.key,
+                    error="Failed to refresh token"
+                )
+            
+            return RefreshResult(
+                success=True,
+                provider_id=self.key,
+                access_token=new_tokens.get('access_token'),
+                refresh_token=new_tokens.get('refresh_token'),
+                expires_in=new_tokens.get('expires_in'),
+                expires_at=None  # Wix uses expires_in
+            )
+        except Exception as e:
+            logger.error(f"Failed to refresh Wix token: {e}")
+            return RefreshResult(
+                success=False,
+                provider_id=self.key,
+                error=str(e)
+            )
 
 
 class GSCIntegrationProvider:
@@ -351,65 +507,6 @@ class WordPressIntegrationProvider:
                 account_id=str(token.get("id", user_id)),
                 provider_id=self.key,
                 display_name=str(token.get("blog_url") or token.get("site_url") or "WordPress account"),
-                connected_at=token.get("created_at"),
-                expires_at=token.get("expires_at"),
-                is_active=bool(token.get("is_active", True)),
-            )
-            for token in tokens
-        ]
-
-
-class WixIntegrationProvider:
-    key = "wix"
-    display_name = "Wix"
-
-    def __init__(self, service: Optional[WixService] = None, oauth: Optional[WixOAuthService] = None) -> None:
-        self._service = service or WixService()
-        self._oauth = oauth or WixOAuthService()
-
-    def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload:
-        auth_url = self._service.get_authorization_url(state=user_id)
-        return AuthUrlPayload(auth_url=auth_url, state=user_id, provider_id=self.key)
-
-    def handle_callback(self, code: str, state: str) -> ConnectionResult:
-        return ConnectionResult(
-            success=False,
-            user_id=state,
-            provider_id=self.key,
-            error="Wix callback handling is managed by platform-specific routes",
-        )
-
-    def get_connection_status(self, user_id: str) -> ConnectionStatus:
-        status = self._oauth.get_user_token_status(user_id)
-        connected = bool(status.get("has_active_tokens"))
-        return ConnectionStatus(
-            connected=connected,
-            provider_id=self.key,
-            user_id=user_id,
-            details=status,
-            error=status.get("error"),
-        )
-
-    def refresh_token(self, user_id: str) -> Optional[RefreshResult]:
-        return None
-
-    def disconnect(self, user_id: str) -> bool:
-        tokens = self._oauth.get_user_tokens(user_id)
-        disconnected = False
-        for token in tokens:
-            token_id = token.get("id")
-            if token_id is None:
-                continue
-            disconnected = self._oauth.revoke_token(user_id, token_id) or disconnected
-        return disconnected
-
-    def list_connected_accounts(self, user_id: str) -> list[Account]:
-        tokens = self._oauth.get_user_tokens(user_id)
-        return [
-            Account(
-                account_id=str(token.get("id", user_id)),
-                provider_id=self.key,
-                display_name=str(token.get("site_name") or token.get("account_name") or "Wix account"),
                 connected_at=token.get("created_at"),
                 expires_at=token.get("expires_at"),
                 is_active=bool(token.get("is_active", True)),

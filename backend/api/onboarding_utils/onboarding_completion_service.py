@@ -15,6 +15,7 @@ from services.persona_analysis_service import PersonaAnalysisService
 from services.research.research_persona_scheduler import schedule_research_persona_generation
 from services.persona.facebook.facebook_persona_scheduler import schedule_facebook_persona_generation
 from services.oauth_token_monitoring_service import create_oauth_monitoring_tasks
+from services.onboarding.unified_oauth_validator import UnifiedOAuthValidator
 
 class OnboardingCompletionService:
     """Service for handling onboarding completion logic."""
@@ -22,6 +23,8 @@ class OnboardingCompletionService:
     def __init__(self):
         # Pre-requisite steps; step 6 is the finalization itself
         self.required_steps = [1, 2, 3, 4, 5]
+        # Initialize unified OAuth validator for Step 5 validation
+        self.oauth_validator = UnifiedOAuthValidator()
     
     async def complete_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Complete the onboarding process with full validation."""
@@ -153,8 +156,9 @@ class OnboardingCompletionService:
                     step_completed = bool(persona and (persona.get('corePersona') or persona.get('platformPersonas')))
                     logger.info(f"Step 4 completed: {step_completed}")
                 elif step_num == 5:  # Integrations
-                    # For now, consider this always completed if we reach this point
-                    step_completed = True
+                    # Use unified OAuth validator for comprehensive Step 5 validation
+                    logger.info(f"Step 5 - Validating OAuth connections using unified token service")
+                    step_completed = self.oauth_validator.validate_step_5_completion(user_id)
                     logger.info(f"Step 5 completed: {step_completed}")
                 
                 if not step_completed:
@@ -195,7 +199,8 @@ class OnboardingCompletionService:
                 logger.info(f"OnboardingCompletionService: Step {step_num} already completed/skipped")
                 continue
 
-            # DB-aware fallbacks for migration period
+            # DB-aware validation using unified service
+            # No fallbacks needed - unified service provides comprehensive validation
             try:
                 if db_service:
                     if step_num == 1:
@@ -203,7 +208,7 @@ class OnboardingCompletionService:
                         keys = db_service.get_api_keys(user_id, db)
                         if keys and any(v for v in keys.values()):
                             try:
-                                progress.mark_step_completed(1, {'source': 'db-fallback'})
+                                progress.mark_step_completed(1, {'source': 'db-validation'})
                             except Exception:
                                 pass
                             continue
@@ -213,7 +218,7 @@ class OnboardingCompletionService:
                         if website and (website.get('website_url') or website.get('writing_style')):
                             # Optionally mark as completed in progress to keep state consistent
                             try:
-                                progress.mark_step_completed(2, {'source': 'db-fallback'})
+                                progress.mark_step_completed(2, {'source': 'db-validation'})
                             except Exception:
                                 pass
                             continue
@@ -221,7 +226,7 @@ class OnboardingCompletionService:
                         prefs = db_service.get_research_preferences(user_id, db)
                         if prefs and (prefs.get('writing_style') or prefs.get('content_characteristics')):
                             try:
-                                progress.mark_step_completed(2, {'source': 'research-prefs-fallback'})
+                                progress.mark_step_completed(2, {'source': 'research-prefs-validation'})
                             except Exception:
                                 pass
                             continue
@@ -233,7 +238,7 @@ class OnboardingCompletionService:
                             persona = None
                         if persona and persona.get('corePersona'):
                             try:
-                                progress.mark_step_completed(2, {'source': 'persona-fallback'})
+                                progress.mark_step_completed(2, {'source': 'persona-validation'})
                             except Exception:
                                 pass
                             continue
@@ -242,7 +247,7 @@ class OnboardingCompletionService:
                         prefs = db_service.get_research_preferences(user_id, db)
                         if prefs and prefs.get('research_depth'):
                             try:
-                                progress.mark_step_completed(3, {'source': 'db-fallback'})
+                                progress.mark_step_completed(3, {'source': 'db-validation'})
                             except Exception:
                                 pass
                             continue
@@ -255,21 +260,10 @@ class OnboardingCompletionService:
                             persona = None
                         if persona and persona.get('corePersona'):
                             try:
-                                progress.mark_step_completed(4, {'source': 'db-fallback'})
+                                progress.mark_step_completed(4, {'source': 'db-validation'})
                             except Exception:
                                 pass
                             continue
-                    if step_num == 5:
-                        # Treat as completed if integrations data exists in DB
-                        # For now, we'll consider step 5 completed if the user has reached the final step
-                        # This is a simplified approach - in the future, we could check for specific integration data
-                        try:
-                            # Check if user has completed previous steps and is on final step
-                            if progress.current_step >= 6:  # FinalStep is step 6
-                                progress.mark_step_completed(5, {'source': 'final-step-fallback'})
-                                continue
-                        except Exception:
-                            pass
             except Exception:
                 # If DB check fails, fall back to progress status only
                 pass

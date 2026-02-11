@@ -338,3 +338,17 @@ export interface RenewalHistoryResponse {
 }
 
 export interface RenewalHistoryAPIResponse extends BillingAPIResponse<RenewalHistoryResponse> {}
+
+// Subscription Request Types for Security Validation
+export type BillingCycle = 'MONTHLY' | 'YEARLY';
+
+export interface SubscriptionRequest {
+  plan_id: number; // Must be positive integer
+  billing_cycle: BillingCycle; // Must be valid enum value
+}
+
+// Zod validation schema for subscription requests
+export const SubscriptionRequestSchema = z.object({
+  plan_id: z.number().positive("Plan ID must be a positive number"),
+  billing_cycle: z.enum(['MONTHLY', 'YEARLY']).default('MONTHLY'),
+});
