@@ -50,7 +50,7 @@ const GSCAuthCallback: React.FC = () => {
         
         // Notify parent window
         if (window.opener) {
-          window.opener.postMessage({ type: 'GSC_AUTH_SUCCESS' }, '*');
+          window.opener.postMessage({ type: 'GSC_AUTH_SUCCESS' }, window.location.origin);
         }
         
         // Close popup after a short delay
@@ -71,7 +71,7 @@ const GSCAuthCallback: React.FC = () => {
         window.opener.postMessage({ 
           type: 'GSC_AUTH_ERROR', 
           error: message 
-        }, '*');
+        }, window.location.origin);
       }
     }
   }, [message]);

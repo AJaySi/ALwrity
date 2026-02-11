@@ -11,7 +11,6 @@ interface UseBingOAuthReturn {
   connected: boolean;
   sites: Array<{
     id: number;
-    access_token: string;
     scope: string;
     created_at: string;
     sites: Array<{
@@ -115,32 +114,31 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
       let messageHandled = false;
 
       // Listen for popup completion and messages
+      const allowedOrigins = new Set<string>([window.location.origin]);
+      const apiUrl = process.env.REACT_APP_API_URL || process.env.VITE_API_BASE_URL;
+      if (apiUrl) {
+        try {
+          allowedOrigins.add(new URL(apiUrl).origin);
+        } catch {
+          // Ignore invalid env value.
+        }
+      }
+
       const messageHandler = (event: MessageEvent) => {
         console.log('Bing OAuth: Message received from any source:', {
           origin: event.origin,
-          data: event.data,
           dataType: event.data?.type,
           source: event.source === popup ? 'our-popup' : 'other',
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
+          allowedOrigins: Array.from(allowedOrigins),
           timestamp: new Date().toISOString()
         });
-        
-        // Log the full message data for debugging
-        console.log('Bing OAuth: Full message data:', JSON.stringify(event.data, null, 2));
-        
-        // Check if message is from our expected origin (more reliable than checking source)
-        console.log('Bing OAuth: Checking origin match...', {
-          receivedOrigin: event.origin,
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
-          originMatch: event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'
-        });
-        
-        if (event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev') {
-          console.log('Bing OAuth: Message from expected origin, processing...');
-          console.log('Bing OAuth: Message data:', event.data);
-          console.log('Bing OAuth: Message data type:', event.data?.type);
-          
-          if (event.data?.type === 'BING_OAUTH_SUCCESS') {
+
+        if (!allowedOrigins.has(event.origin) || event.source !== popup) {
+          console.log('Bing OAuth: Message from unexpected origin/source, ignoring:', event.origin);
+          return;
+        }
+
+        if (event.data?.type === 'BING_OAUTH_SUCCESS') {
             console.log('Bing OAuth: Success message received:', event.data);
             messageHandled = true;
             popup.close();
@@ -150,18 +148,14 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
             setTimeout(() => {
               checkStatus();
             }, 1000);
-          } else if (event.data?.type === 'BING_OAUTH_ERROR') {
-            console.error('Bing OAuth: Error message received:', event.data);
-            messageHandled = true;
-            popup.close();
-            window.removeEventListener('message', messageHandler);
-            setError(event.data.error || 'Bing OAuth connection failed');
-          } else {
-            console.log('Bing OAuth: Unknown message type:', event.data?.type);
-            console.log('Bing OAuth: Full message data:', event.data);
-          }
+        } else if (event.data?.type === 'BING_OAUTH_ERROR') {
+          console.error('Bing OAuth: Error message received:', event.data);
+          messageHandled = true;
+          popup.close();
+          window.removeEventListener('message', messageHandler);
+          setError(event.data.error || 'Bing OAuth connection failed');
         } else {
-          console.log('Bing OAuth: Message from unexpected origin, ignoring:', event.origin);
+          console.log('Bing OAuth: Unknown message type:', event.data?.type);
         }
       };
 
