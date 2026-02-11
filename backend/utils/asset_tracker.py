@@ -3,7 +3,7 @@ Asset Tracker Utility
 Helper utility for modules to easily save generated content to the unified asset library.
 """
 
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from services.content_asset_service import ContentAssetService
 from models.content_asset_models import AssetType, AssetSource
@@ -53,25 +53,6 @@ def normalize_source_module(source_module: str) -> AssetSource:
     return AssetSource(canonical_source)
 
 
-def _log_invalid_enum_value(
-    field_name: str,
-    invalid_value: Any,
-    user_id: str,
-    filename: str,
-) -> None:
-    """Log structured details for invalid enum inputs."""
-    logger.error(
-        "Invalid enum value for asset tracking",
-        extra={
-            "event": "asset_tracking_invalid_enum",
-            "field": field_name,
-            "invalid_value": invalid_value,
-            "user_id": user_id,
-            "asset_filename": filename,
-        },
-    )
-
-
 def validate_file_url(file_url: str) -> bool:
     """Validate file URL format."""
     if not file_url or not isinstance(file_url, str):
@@ -92,8 +73,8 @@ def validate_file_url(file_url: str) -> bool:
 def save_asset_to_library(
     db: Session,
     user_id: str,
-    asset_type: Union[str, AssetType],
-    source_module: Union[str, AssetSource],
+    asset_type: str,
+    source_module: str,
     filename: str,
     file_url: str,
     file_path: Optional[str] = None,
@@ -156,28 +137,18 @@ def save_asset_to_library(
             logger.warning(f"File size {file_size} exceeds maximum {MAX_FILE_SIZE}")
             # Don't fail, just log warning
         
-        # Convert string enums to enum types and fail explicitly for invalid values
+        # Convert string enums to enum types
         try:
-            if isinstance(asset_type, AssetType):
-                asset_type_enum = asset_type
-            elif isinstance(asset_type, str):
-                asset_type_enum = AssetType(asset_type.lower())
-            else:
-                raise ValueError(f"Unsupported asset type value: {asset_type}")
+            asset_type_enum = AssetType(asset_type.lower())
         except ValueError:
-            _log_invalid_enum_value("asset_type", asset_type, user_id, filename)
-            return None
-
+            logger.warning(f"Invalid asset type: {asset_type}, defaulting to 'text'")
+            asset_type_enum = AssetType.TEXT
+        
         try:
-            if isinstance(source_module, AssetSource):
-                source_module_enum = source_module
-            elif isinstance(source_module, str):
-                source_module_enum = normalize_source_module(source_module)
-            else:
-                raise ValueError(f"Unsupported source module value: {source_module}")
+            source_module_enum = normalize_source_module(source_module)
         except ValueError:
-            _log_invalid_enum_value("source_module", source_module, user_id, filename)
-            return None
+            logger.warning(f"Invalid source module: {source_module}, defaulting to 'story_writer'")
+            source_module_enum = AssetSource.STORY_WRITER
         
         # Sanitize filename (remove path traversal attempts)
         filename = re.sub(r'[^\w\s\-_\.]', '', filename.split('/')[-1])
@@ -212,10 +183,7 @@ def save_asset_to_library(
             generation_time=generation_time,
         )
         
-        logger.info(
-            f"✅ Asset saved to library: {asset.id} "
-            f"({asset_type_enum.value} from {source_module_enum.value})"
-        )
+        logger.info(f"✅ Asset saved to library: {asset.id} ({asset_type} from {source_module})")
         return asset.id
         
     except Exception as e:
