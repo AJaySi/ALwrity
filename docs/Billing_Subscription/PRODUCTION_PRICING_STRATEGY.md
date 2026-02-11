@@ -2,6 +2,8 @@
 
 ## Executive Summary
 
+> Security governance reference: `docs/Billing_Subscription/SUBSCRIPTION_SYSTEM_SECURITY_SSOT.md`.
+
 This document provides a comprehensive pricing strategy for ALwrity's production launch with **Basic Tier only**. All features and tools will be accessible to Basic tier users, requiring careful cost calculation and limit setting to ensure sustainability while providing value.
 
 **Critical Goals**:
