@@ -12,6 +12,8 @@ interface UseBingOAuthReturn {
   connected: boolean;
   sites: Array<{
     id: number;
+    connection_id: number;
+    connected: boolean;
     scope: string;
     created_at: string;
     sites: Array<{
@@ -65,7 +67,6 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
       console.log('Bing OAuth: Checking status...');
       const status: BingOAuthStatus = await bingOAuthAPI.getStatus();
       
-      console.log('Bing OAuth: Status response:', status);
       setConnected(status.connected);
       setSites(status.sites || []);
       setTotalSites(status.total_sites);
@@ -98,7 +99,7 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
       // Get authorization URL
       console.log('Bing OAuth: Calling bingOAuthAPI.getAuthUrl()...');
       const authData: BingOAuthResponse = await bingOAuthAPI.getAuthUrl();
-      console.log('Bing OAuth: Got auth URL:', authData.auth_url);
+      console.log('Bing OAuth: Auth URL received. Opening popup.');
       
       // Set OAuth target origin for popup messaging
       setOAuthTargetOrigin('bing', window.location.origin);
@@ -119,20 +120,23 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
 
       // Listen for popup completion and messages
       const messageHandler = (event: MessageEvent) => {
-        console.log('Bing OAuth: Message received from any source:', {
+        const expectedOrigin = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+        console.log('Bing OAuth: Message received', {
           origin: event.origin,
-          dataType: event.data?.type,
-          source: event.source === popup ? 'our-popup' : 'other',
-          timestamp: new Date().toISOString()
+          type: event.data?.type,
+          source: event.source === popup ? 'our-popup' : 'other'
         });
-        
-        if (isTrustedOAuthMessageEvent(event, popup, getOAuthPostMessageTargetOrigin('bing'))) {
+
+        if (isTrustedOAuthMessageEvent(event, popup, getOAuthPostMessageTargetOrigin('bing', []))) {
           console.log('Bing OAuth: Message from expected origin, processing...');
           console.log('Bing OAuth: Message data:', event.data);
           console.log('Bing OAuth: Message data type:', event.data?.type);
-          
           if (event.data?.type === 'BING_OAUTH_SUCCESS') {
-            console.log('Bing OAuth: Success message received:', event.data);
+            console.log('Bing OAuth: Success message received', {
+              connectionId: event.data?.connectionId,
+              connected: event.data?.connected,
+              siteCount: event.data?.siteCount
+            });
             messageHandled = true;
             popup.close();
             window.removeEventListener('message', messageHandler);
@@ -142,20 +146,16 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
               checkStatus();
             }, 1000);
           } else if (event.data?.type === 'BING_OAUTH_ERROR') {
-            console.error('Bing OAuth: Error message received:', event.data);
+            console.error('Bing OAuth: Error message received');
             messageHandled = true;
             popup.close();
             window.removeEventListener('message', messageHandler);
             setError(event.data.error || 'Bing OAuth connection failed');
           } else {
             console.log('Bing OAuth: Unknown message type:', event.data?.type);
-            console.log('Bing OAuth: Full message data:', event.data);
           }
         } else {
-          console.log('Bing OAuth: Message rejected due to untrusted origin/source, ignoring:', {
-            origin: event.origin,
-            sourceMatches: event.source === popup
-          });
+          console.log('Bing OAuth: Message from unexpected origin, ignoring');
         }
       };
 

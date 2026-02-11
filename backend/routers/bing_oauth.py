@@ -4,8 +4,9 @@ Handles Bing Webmaster Tools OAuth2 authentication flow.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from typing import Dict, Any, Optional
+import json
 from pydantic import BaseModel
 from loguru import logger
 
@@ -31,11 +32,35 @@ class BingOAuthResponse(BaseModel):
 class BingCallbackResponse(BaseModel):
     success: bool
     message: str
+    connection_id: Optional[int] = None
+    connected: Optional[bool] = None
+    site_count: Optional[int] = None
 
 class BingStatusResponse(BaseModel):
     connected: bool
     sites: list
     total_sites: int
+
+
+def _sanitize_site_payload(site: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip sensitive token fields from site/status payloads."""
+    sanitized = {k: v for k, v in site.items() if k not in {"access_token", "refresh_token", "accessToken", "refreshToken"}}
+
+    nested_sites = sanitized.get("sites", [])
+    if isinstance(nested_sites, list):
+        cleaned_nested_sites = []
+        for nested_site in nested_sites:
+            if isinstance(nested_site, dict):
+                cleaned_nested_sites.append({
+                    "name": nested_site.get("name") or nested_site.get("Name") or "",
+                    "url": nested_site.get("url") or nested_site.get("Url") or ""
+                })
+        sanitized["sites"] = cleaned_nested_sites
+
+    sanitized["connection_id"] = sanitized.get("connection_id", sanitized.get("id"))
+    sanitized["connected"] = bool(sanitized.get("connected", True))
+    sanitized["site_count"] = sanitized.get("site_count", len(sanitized.get("sites", [])))
+    return sanitized
 
 @router.get("/auth/url", response_model=BingOAuthResponse)
 async def get_bing_auth_url(
@@ -208,8 +233,12 @@ async def handle_bing_callback(
                 window.onload = function() {{
                     (window.opener || window.parent).postMessage({{
                         type: 'BING_OAUTH_SUCCESS',
-                        success: true
-                    }}, window.location.origin);
+                        success: true,
+                        connectionId: {json.dumps(result.get('connection_id'))},
+                        connected: {json.dumps(result.get('connected', True))},
+                        siteCount: {json.dumps(result.get('site_count', 0))},
+                        sites: {json.dumps(result.get('sites', []))}
+                    }}, '*');
                     window.close();
                 }};
             </script>
@@ -269,7 +298,18 @@ async def get_bing_oauth_status(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID not found.")
         
         status_data = oauth_service.get_connection_status(user_id)
-        return BingStatusResponse(**status_data)
+
+        sanitized_sites = []
+        for site in status_data.get("sites", []):
+            if isinstance(site, dict):
+                sanitized_sites.append(_sanitize_site_payload(site))
+
+        sanitized_status = {
+            "connected": bool(status_data.get("connected", False)),
+            "sites": sanitized_sites,
+            "total_sites": status_data.get("total_sites", len(sanitized_sites))
+        }
+        return BingStatusResponse(**sanitized_status)
         
     except Exception as e:
         logger.error(f"Error getting Bing Webmaster OAuth status: {e}")

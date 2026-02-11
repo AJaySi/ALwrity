@@ -5,19 +5,24 @@
 
 import { apiClient } from './client';
 
+export interface BingOAuthSite {
+  id: number;
+  connection_id: number;
+  connected: boolean;
+  scope: string;
+  created_at: string;
+  site_count: number;
+  sites: Array<{
+    id: string;
+    name: string;
+    url: string;
+    status: string;
+  }>;
+}
+
 export interface BingOAuthStatus {
   connected: boolean;
-  sites: Array<{
-    id: number;
-    scope: string;
-    created_at: string;
-    sites: Array<{
-      id: string;
-      name: string;
-      url: string;
-      status: string;
-    }>;
-  }>;
+  sites: BingOAuthSite[];
   total_sites: number;
 }
 
@@ -30,6 +35,9 @@ export interface BingOAuthResponse {
 export interface BingCallbackResponse {
   success: boolean;
   message: string;
+  connection_id?: number;
+  connected?: boolean;
+  site_count?: number;
 }
 
 class BingOAuthAPI {
@@ -38,9 +46,8 @@ class BingOAuthAPI {
    */
   async getAuthUrl(): Promise<BingOAuthResponse> {
     try {
-      console.log('BingOAuthAPI: Making GET request to /bing/auth/url');
+      console.log('BingOAuthAPI: Requesting /bing/auth/url');
       const response = await apiClient.get('/bing/auth/url');
-      console.log('BingOAuthAPI: Response received:', response.data);
       return response.data;
     } catch (error) {
       console.error('BingOAuthAPI: Error getting Bing OAuth URL:', error);
