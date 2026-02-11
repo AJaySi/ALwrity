@@ -80,10 +80,6 @@ class GSCService:
                     )
                 '''))
 
-<<<<<<< HEAD
-                # Ensure existing databases from earlier versions include state expiry.
-=======
->>>>>>> pr-346-branch
                 db.execute(text('''
                     ALTER TABLE gsc_oauth_states
                     ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '20 minutes')
