@@ -75,8 +75,14 @@ class GSCService:
                     CREATE TABLE IF NOT EXISTS gsc_oauth_states (
                         state TEXT PRIMARY KEY,
                         user_id TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '20 minutes')
                     )
+                '''))
+
+                db.execute(text('''
+                    ALTER TABLE gsc_oauth_states
+                    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '20 minutes')
                 '''))
                 logger.info("GSC database tables initialized successfully")
                 
@@ -194,11 +200,12 @@ class GSCService:
             with self._db_session() as db:
                 db.execute(
                     text('''
-                        INSERT INTO gsc_oauth_states (state, user_id)
-                        VALUES (:state, :user_id)
+                        INSERT INTO gsc_oauth_states (state, user_id, expires_at)
+                        VALUES (:state, :user_id, CURRENT_TIMESTAMP + INTERVAL '20 minutes')
                         ON CONFLICT (state)
                         DO UPDATE SET user_id = EXCLUDED.user_id,
-                                      created_at = CURRENT_TIMESTAMP
+                                      created_at = CURRENT_TIMESTAMP,
+                                      expires_at = EXCLUDED.expires_at
                     '''),
                     {"state": state, "user_id": user_id}
                 )
@@ -216,52 +223,42 @@ class GSCService:
         """Handle OAuth callback and save credentials."""
         try:
             logger.info(f"Handling OAuth callback with state: {state}")
+
+            if not state:
+                raise ValueError("Invalid OAuth state: missing state parameter")
             
             # Verify state
             with self._db_session() as db:
                 result = db.execute(
-                    text('SELECT user_id FROM gsc_oauth_states WHERE state = :state'),
+                    text('''
+                        DELETE FROM gsc_oauth_states
+                        WHERE state = :state
+                          AND expires_at > CURRENT_TIMESTAMP
+                        RETURNING user_id
+                    '''),
                     {"state": state}
                 ).fetchone()
 
                 if not result:
-                    recent_credentials = db.execute(
-                        text('''
-                            SELECT user_id, credentials_json
-                            FROM gsc_credentials
-                            ORDER BY updated_at DESC
-                            LIMIT 1
-                        ''')
+                    state_row = db.execute(
+                        text('SELECT expires_at FROM gsc_oauth_states WHERE state = :state'),
+                        {"state": state}
                     ).fetchone()
 
-                    if recent_credentials:
-                        logger.info("Duplicate callback detected - returning success")
-                        return {"success": True, "user_id": recent_credentials[0]}
+                    if state_row and state_row[0] is not None:
+                        expires_at = state_row[0]
+                        if isinstance(expires_at, str):
+                            try:
+                                expires_at = datetime.fromisoformat(expires_at)
+                            except ValueError:
+                                expires_at = None
 
-                    recent_state = db.execute(
-                        text('''
-                            SELECT state, user_id
-                            FROM gsc_oauth_states
-                            ORDER BY created_at DESC
-                            LIMIT 1
-                        ''')
-                    ).fetchone()
+                        if expires_at is not None and expires_at <= datetime.utcnow():
+                            raise ValueError("Invalid OAuth state: state expired")
 
-                    if recent_state:
-                        user_id = recent_state[1]
-                        db.execute(
-                            text('DELETE FROM gsc_oauth_states WHERE state = :state'),
-                            {"state": recent_state[0]}
-                        )
-                    else:
-                        raise ValueError("Invalid OAuth state")
-                else:
-                    user_id = result[0]
+                    raise ValueError("Invalid OAuth state: state not found")
 
-                db.execute(
-                    text('DELETE FROM gsc_oauth_states WHERE state = :state'),
-                    {"state": state}
-                )
+                user_id = result[0]
             
             # Exchange code for credentials
             flow = Flow.from_client_secrets_file(
