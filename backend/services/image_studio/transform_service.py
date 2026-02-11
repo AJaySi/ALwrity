@@ -163,7 +163,7 @@ class TransformStudioService:
             
             db = next(get_db())
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="video",
@@ -189,6 +189,11 @@ class TransformStudioService:
                     }
                 )
                 logger.info(f"[Transform Studio] Video saved to asset library")
+                if asset_id is None:
+                    logger.warning(
+                        "[Transform Studio] Video generation succeeded but asset tracking failed",
+                        extra={"user_id": user_id, "filename": save_result["filename"]},
+                    )
             finally:
                 db.close()
         except Exception as e:
@@ -271,7 +276,7 @@ class TransformStudioService:
             
             db = next(get_db())
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="video",
@@ -297,6 +302,11 @@ class TransformStudioService:
                     }
                 )
                 logger.info(f"[Transform Studio] Video saved to asset library")
+                if asset_id is None:
+                    logger.warning(
+                        "[Transform Studio] Video generation succeeded but asset tracking failed",
+                        extra={"user_id": user_id, "filename": save_result["filename"]},
+                    )
             finally:
                 db.close()
         except Exception as e:
