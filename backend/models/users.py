@@ -4,13 +4,13 @@ Central user accounts and authentication for ALwrity SaaS platform.
 """
 
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text
-from sqlalchemy.ext.declarative import declarative_base
+from models.ssot_bases import PlatformBase
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from typing import Optional
 import uuid
 
-Base = declarative_base()
+Base = PlatformBase
 
 class User(Base):
     """
