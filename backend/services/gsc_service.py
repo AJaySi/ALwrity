@@ -80,7 +80,10 @@ class GSCService:
                     )
                 '''))
 
+<<<<<<< HEAD
                 # Ensure existing databases from earlier versions include state expiry.
+=======
+>>>>>>> pr-346-branch
                 db.execute(text('''
                     ALTER TABLE gsc_oauth_states
                     ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '20 minutes')
@@ -205,8 +208,8 @@ class GSCService:
                         VALUES (:state, :user_id, CURRENT_TIMESTAMP + INTERVAL '20 minutes')
                         ON CONFLICT (state)
                         DO UPDATE SET user_id = EXCLUDED.user_id,
-                                      expires_at = EXCLUDED.expires_at,
-                                      created_at = CURRENT_TIMESTAMP
+                                      created_at = CURRENT_TIMESTAMP,
+                                      expires_at = EXCLUDED.expires_at
                     '''),
                     {"state": state, "user_id": user_id}
                 )
@@ -224,30 +227,42 @@ class GSCService:
         """Handle OAuth callback and save credentials."""
         try:
             logger.info(f"Handling OAuth callback with state: {state}")
+
+            if not state:
+                raise ValueError("Invalid OAuth state: missing state parameter")
             
             # Verify state
             with self._db_session() as db:
                 result = db.execute(
-                    text('SELECT user_id, expires_at FROM gsc_oauth_states WHERE state = :state'),
+                    text('''
+                        DELETE FROM gsc_oauth_states
+                        WHERE state = :state
+                          AND expires_at > CURRENT_TIMESTAMP
+                        RETURNING user_id
+                    '''),
                     {"state": state}
                 ).fetchone()
 
                 if not result:
-                    raise ValueError("Invalid OAuth state")
+                    state_row = db.execute(
+                        text('SELECT expires_at FROM gsc_oauth_states WHERE state = :state'),
+                        {"state": state}
+                    ).fetchone()
+
+                    if state_row and state_row[0] is not None:
+                        expires_at = state_row[0]
+                        if isinstance(expires_at, str):
+                            try:
+                                expires_at = datetime.fromisoformat(expires_at)
+                            except ValueError:
+                                expires_at = None
+
+                        if expires_at is not None and expires_at <= datetime.utcnow():
+                            raise ValueError("Invalid OAuth state: state expired")
+
+                    raise ValueError("Invalid OAuth state: state not found")
 
                 user_id = result[0]
-                expires_at = result[1]
-                if expires_at and expires_at <= datetime.utcnow():
-                    db.execute(
-                        text('DELETE FROM gsc_oauth_states WHERE state = :state'),
-                        {"state": state}
-                    )
-                    raise ValueError("Expired OAuth state")
-
-                db.execute(
-                    text('DELETE FROM gsc_oauth_states WHERE state = :state'),
-                    {"state": state}
-                )
             
             # Exchange code for credentials
             flow = Flow.from_client_secrets_file(
