@@ -17,9 +17,10 @@ from sqlalchemy import (
     func
 )
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import json
+from loguru import logger
 
 Base = declarative_base()
 
@@ -66,8 +67,8 @@ class UnifiedOAuthToken(Base):
         super().__init__(**kwargs)
     
     @property
-    def metadata(self) -> Dict[str, Any]:
-        """Get metadata as dictionary."""
+    def token_metadata(self) -> Dict[str, Any]:
+        """Get token metadata as dictionary."""
         if self.metadata_json:
             try:
                 return json.loads(self.metadata_json)
@@ -75,9 +76,9 @@ class UnifiedOAuthToken(Base):
                 return {}
         return {}
     
-    @metadata.setter
-    def metadata(self, value: Dict[str, Any]):
-        """Set metadata from dictionary."""
+    @token_metadata.setter
+    def token_metadata(self, value: Dict[str, Any]):
+        """Set token metadata from dictionary."""
         if value:
             self.metadata_json = json.dumps(value)
         else:
@@ -115,7 +116,7 @@ class UnifiedOAuthToken(Base):
                 'account_name': self.account_name,
                 'token_type': self.token_type,
                 'scope': self.scope,
-                'metadata': self.metadata
+                'metadata': self.token_metadata
             }
         )
     
@@ -149,8 +150,6 @@ def migrate_provider_tokens_to_unified(session, provider_id: str, provider_model
         provider_model_class: SQLAlchemy model class for provider tokens
         token_mapping_func: Function to convert provider token to unified format
     """
-    from loguru import logger
-    
     try:
         # Get existing provider tokens
         provider_tokens = session.query(provider_model_class).all()
