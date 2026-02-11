@@ -56,3 +56,33 @@ class TransformCostEstimateResponse(BaseModel):
     currency: str
     provider: str
     model: str
+
+class TransformJobResponse(BaseModel):
+    """Response model for async transform job submission."""
+    success: bool
+    job_id: str
+    status: Literal["queued", "processing", "completed", "failed", "cancelled"]
+    operation: Literal["image-to-video", "talking-avatar"]
+    message: str
+
+
+class TransformJobStatusResponse(BaseModel):
+    """Response model for async transform job status."""
+    success: bool
+    job_id: str
+    status: Literal["queued", "processing", "completed", "failed", "cancelled"]
+    operation: Literal["image-to-video", "talking-avatar"]
+    progress: float = 0.0
+    message: Optional[str] = None
+    result: Optional[TransformVideoResponse] = None
+    error: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class TransformCancelResponse(BaseModel):
+    """Response model for transform job cancellation."""
+    success: bool
+    job_id: str
+    status: Literal["cancelled"]
+    message: str

@@ -15,7 +15,7 @@ import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
 import { BacklinkingFeature } from './components/Backlinking/BacklinkingFeature';
 import YouTubeCreator from './components/YouTubeCreator/YouTubeCreator';
-import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard, FaceSwapStudio, CompressionStudio, ImageProcessingStudio } from './components/ImageStudio';
+import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard, FaceSwapStudio, CompressionStudio, ImageProcessingStudio, TransformStudio } from './components/ImageStudio';
 import {
   VideoStudioDashboard,
   CreateVideo,
@@ -519,6 +519,7 @@ const App: React.FC = () => {
                 <Route path="/image-studio/compress" element={<ProtectedRoute><CompressionStudio /></ProtectedRoute>} />
                 <Route path="/image-studio/processing" element={<ProtectedRoute><ImageProcessingStudio /></ProtectedRoute>} />
                 <Route path="/image-studio/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
+                <Route path="/image-transform" element={<ProtectedRoute><TransformStudio /></ProtectedRoute>} />
                 <Route path="/asset-library" element={<ProtectedRoute><AssetLibrary /></ProtectedRoute>} />
                 <Route path="/campaign-creator" element={<ProtectedRoute><ProductMarketingDashboard /></ProtectedRoute>} />
                 <Route path="/campaign-creator/photoshoot" element={<ProtectedRoute><ProductPhotoshootStudio /></ProtectedRoute>} />

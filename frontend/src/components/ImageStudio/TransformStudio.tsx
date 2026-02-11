@@ -33,6 +33,7 @@ import {
   AttachMoney,
   Info,
   Close,
+  Cancel,
 } from '@mui/icons-material';
 import { motion, type Variants, type Easing } from 'framer-motion';
 import { useTransformStudio } from '../../hooks/useTransformStudio';
@@ -94,8 +95,10 @@ export const TransformStudio: React.FC = () => {
     transformImageToVideo,
     createTalkingAvatar,
     estimateCost,
+    cancelJob,
     clearError,
     clearResult,
+    job,
   } = useTransformStudio();
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -308,6 +311,29 @@ export const TransformStudio: React.FC = () => {
           {error && (
             <Alert severity="error" onClose={clearError}>
               {error}
+            </Alert>
+          )}
+
+          {job && job.status !== 'completed' && (
+            <Alert
+              severity={job.status === 'failed' ? 'error' : job.status === 'cancelled' ? 'warning' : 'info'}
+              action={
+                (job.status === 'queued' || job.status === 'processing') && (
+                  <Button
+                    color="inherit"
+                    size="small"
+                    startIcon={<Cancel />}
+                    onClick={() => cancelJob(job.job_id)}
+                  >
+                    Cancel
+                  </Button>
+                )
+              }
+            >
+              {job.message || `Job ${job.status}`} ({Math.round(job.progress || 0)}%)
+              {(job.status === 'queued' || job.status === 'processing') && (
+                <LinearProgress sx={{ mt: 1 }} variant="determinate" value={job.progress || 0} />
+              )}
             </Alert>
           )}
 

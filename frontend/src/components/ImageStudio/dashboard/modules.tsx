@@ -200,8 +200,8 @@ export const studioModules: ModuleConfig[] = [
     title: 'Image Processing Studio',
     subtitle: 'All-in-one toolkit',
     description:
-      'Unified studio for compression, format conversion, resizing, and watermarking. Complete image processing toolkit in one place.',
-    highlights: ['Compression', 'Format Converter', 'Resizer (coming)', 'Watermark (coming)'],
+      'Unified studio for compression and format conversion today, with resizing and watermarking on the roadmap.',
+    highlights: ['Compression', 'Format Converter', 'Resizer (roadmap)', 'Watermark (roadmap)'],
     status: 'live',
     route: '/image-studio/processing',
     icon: <BuildIcon />,
@@ -215,8 +215,7 @@ export const studioModules: ModuleConfig[] = [
       steps: [
         'Upload image → Compress to reduce size',
         'Convert format (PNG → WebP)',
-        'Resize for platform (coming soon)',
-        'Add watermark (coming soon)',
+        'Resizer and watermark tools are roadmap items',
       ],
       eta: '<2s per operation',
     },

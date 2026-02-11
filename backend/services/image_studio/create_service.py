@@ -349,9 +349,20 @@ class CreateStudioService:
                     "variation": i + 1,
                 })
         
+        total_generated = sum(1 for r in results if "image_bytes" in r)
+        total_failed = sum(1 for r in results if "error" in r)
+        is_success = total_generated > 0
+        if total_generated > 0 and total_failed > 0:
+            completion_status = "partial_success"
+        elif total_generated > 0:
+            completion_status = "success"
+        else:
+            completion_status = "failed"
+
         # Return results
         return {
-            "success": True,
+            "success": is_success,
+            "status": completion_status,
             "request": {
                 "prompt": request.prompt,
                 "enhanced_prompt": prompt if request.enhance_prompt else None,
@@ -364,8 +375,8 @@ class CreateStudioService:
                 "num_variations": request.num_variations,
             },
             "results": results,
-            "total_generated": sum(1 for r in results if "image_bytes" in r),
-            "total_failed": sum(1 for r in results if "error" in r),
+            "total_generated": total_generated,
+            "total_failed": total_failed,
         }
     
     def get_templates(
@@ -415,4 +426,3 @@ class CreateStudioService:
             List of recommended templates
         """
         return self.template_manager.recommend_for_use_case(use_case, platform)
-

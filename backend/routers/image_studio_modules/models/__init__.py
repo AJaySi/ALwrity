@@ -41,6 +41,9 @@ from .transform import (
     TransformVideoResponse,
     TransformCostEstimateRequest,
     TransformCostEstimateResponse,
+    TransformJobResponse,
+    TransformJobStatusResponse,
+    TransformCancelResponse,
 )
 
 # Compression models
@@ -104,6 +107,9 @@ __all__ = [
     "TransformVideoResponse",
     "TransformCostEstimateRequest",
     "TransformCostEstimateResponse",
+    "TransformJobResponse",
+    "TransformJobStatusResponse",
+    "TransformCancelResponse",
 
     # Compression
     "CompressImageRequest",

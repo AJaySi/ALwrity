@@ -55,11 +55,67 @@ export interface CostEstimateResponse {
   model: string;
 }
 
+export interface TransformJobResponse {
+  success: boolean;
+  job_id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  operation: 'image-to-video' | 'talking-avatar';
+  message: string;
+}
+
+export interface TransformJobStatusResponse {
+  success: boolean;
+  job_id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  operation: 'image-to-video' | 'talking-avatar';
+  progress: number;
+  message?: string;
+  result?: TransformVideoResponse;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const mapTransformError = (err: any): string => {
+  const detail = err?.response?.data?.detail || err?.message || 'Operation failed';
+  const raw = String(detail).toLowerCase();
+
+  if (raw.includes('timeout') || raw.includes('timed out')) {
+    return 'The generation timed out. Try a shorter duration or lower resolution and retry.';
+  }
+  if (raw.includes('insufficient') || raw.includes('credit') || raw.includes('limit')) {
+    return 'You may have reached a plan limit. Check credits/usage and try with a lower-cost option.';
+  }
+  if (raw.includes('audio')) {
+    return 'Audio validation failed. Upload a valid WAV/MP3 file and retry.';
+  }
+  if (raw.includes('image')) {
+    return 'Image validation failed. Try a clearer source image under the size limit.';
+  }
+
+  return detail;
+};
+
 export const useTransformStudio = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TransformVideoResponse | null>(null);
   const [costEstimate, setCostEstimate] = useState<CostEstimateResponse | null>(null);
+  const [job, setJob] = useState<TransformJobStatusResponse | null>(null);
+
+  const pollTransformJob = useCallback(async (jobId: string): Promise<TransformJobStatusResponse> => {
+    while (true) {
+      const response = await aiApiClient.get<TransformJobStatusResponse>(`/api/image-studio/transform/jobs/${jobId}`);
+      const status = response.data;
+      setJob(status);
+
+      if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled') {
+        return status;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }, []);
 
   const transformImageToVideo = useCallback(
     async (request: TransformImageToVideoRequest): Promise<TransformVideoResponse> => {
@@ -68,22 +124,24 @@ export const useTransformStudio = () => {
       setResult(null);
 
       try {
-        const response = await aiApiClient.post<TransformVideoResponse>(
-          '/api/image-studio/transform/image-to-video',
-          request
-        );
-        setResult(response.data);
-        return response.data;
+        const queued = await aiApiClient.post<TransformJobResponse>('/api/image-studio/transform/image-to-video/async', request);
+        const status = await pollTransformJob(queued.data.job_id);
+
+        if (status.status !== 'completed' || !status.result) {
+          throw new Error(status.error || status.message || 'Failed to generate video');
+        }
+
+        setResult(status.result);
+        return status.result;
       } catch (err: any) {
-        const errorMessage =
-          err.response?.data?.detail || err.message || 'Failed to generate video';
+        const errorMessage = mapTransformError(err);
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
         setIsGenerating(false);
       }
     },
-    []
+    [pollTransformJob]
   );
 
   const createTalkingAvatar = useCallback(
@@ -93,22 +151,24 @@ export const useTransformStudio = () => {
       setResult(null);
 
       try {
-        const response = await aiApiClient.post<TransformVideoResponse>(
-          '/api/image-studio/transform/talking-avatar',
-          request
-        );
-        setResult(response.data);
-        return response.data;
+        const queued = await aiApiClient.post<TransformJobResponse>('/api/image-studio/transform/talking-avatar/async', request);
+        const status = await pollTransformJob(queued.data.job_id);
+
+        if (status.status !== 'completed' || !status.result) {
+          throw new Error(status.error || status.message || 'Failed to create talking avatar');
+        }
+
+        setResult(status.result);
+        return status.result;
       } catch (err: any) {
-        const errorMessage =
-          err.response?.data?.detail || err.message || 'Failed to create talking avatar';
+        const errorMessage = mapTransformError(err);
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
         setIsGenerating(false);
       }
     },
-    []
+    [pollTransformJob]
   );
 
   const estimateCost = useCallback(
@@ -121,8 +181,7 @@ export const useTransformStudio = () => {
         setCostEstimate(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage =
-          err.response?.data?.detail || err.message || 'Failed to estimate cost';
+        const errorMessage = mapTransformError(err);
         setError(errorMessage);
         throw new Error(errorMessage);
       }
@@ -130,12 +189,17 @@ export const useTransformStudio = () => {
     []
   );
 
+  const cancelJob = useCallback(async (jobId: string): Promise<void> => {
+    await aiApiClient.post(`/api/image-studio/transform/jobs/${jobId}/cancel`);
+  }, []);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
   const clearResult = useCallback(() => {
     setResult(null);
+    setJob(null);
   }, []);
 
   return {
@@ -143,11 +207,12 @@ export const useTransformStudio = () => {
     error,
     result,
     costEstimate,
+    job,
     transformImageToVideo,
     createTalkingAvatar,
     estimateCost,
+    cancelJob,
     clearError,
     clearResult,
   };
 };
-

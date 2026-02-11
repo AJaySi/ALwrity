@@ -68,7 +68,7 @@ export const ImageProcessingStudio: React.FC = () => {
             Image Processing Studio
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            All-in-one toolkit for compression, format conversion, resizing, and watermarking.
+            All-in-one toolkit for compression and format conversion, with resizing and watermarking on the roadmap.
           </Typography>
         </Stack>
 
@@ -135,7 +135,7 @@ export const ImageProcessingStudio: React.FC = () => {
         <TabPanel value={activeTab} index={2}>
           <Box sx={{ p: 4, textAlign: 'center' }}>
             <Typography variant="h6" color="text.secondary">
-              Resizer & Cropper - Coming Soon
+              Resizer & Cropper - Roadmap
             </Typography>
           </Box>
         </TabPanel>
@@ -143,7 +143,7 @@ export const ImageProcessingStudio: React.FC = () => {
         <TabPanel value={activeTab} index={3}>
           <Box sx={{ p: 4, textAlign: 'center' }}>
             <Typography variant="h6" color="text.secondary">
-              Watermark Studio - Coming Soon
+              Watermark Studio - Roadmap
             </Typography>
           </Box>
         </TabPanel>

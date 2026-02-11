@@ -175,3 +175,18 @@ async def recommend_templates(
     except Exception as e:
         logger.error(f"[Recommend Templates] ❌ Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Template recommendation failed")
+
+@router.get("/cost-catalog", summary="Get Dashboard Cost Catalog")
+async def get_cost_catalog(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    studio_manager: ImageStudioManager = Depends(get_studio_manager),
+):
+    """Get backend-driven cost catalog with confidence and update hints."""
+    try:
+        _require_user_id(current_user, "cost catalog")
+        return studio_manager.get_cost_catalog()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Cost Catalog] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load cost catalog")

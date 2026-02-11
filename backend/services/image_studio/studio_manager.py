@@ -262,6 +262,25 @@ class ImageStudioManager:
             }
         }
     
+
+    def get_cost_catalog(self) -> Dict[str, Any]:
+        """Return backend-driven cost hints for dashboard modules."""
+        return {
+            "updated_at": "backend-static-v1",
+            "confidence": "estimated",
+            "modules": {
+                "create": {"estimate": "$0.03 - $0.08 / image", "notes": "Depends on provider/model and variation count."},
+                "edit": {"estimate": "$0.08 - $0.30 / edit", "notes": "Depends on selected edit operation and model."},
+                "upscale": {"estimate": "$0.10 - $0.32 / image", "notes": "Creative 4K costs more than fast mode."},
+                "transform": {"estimate": "$0.50+ / video", "notes": "Resolution and duration drive cost."},
+                "optimizer": {"estimate": "$0.02 - $0.06 / rendition", "notes": "Per-platform rendition estimate."},
+                "control": {"estimate": "$0.20 / render", "notes": "Control/styling features can increase compute cost."},
+                "compress": {"estimate": "Free", "notes": "No credits required."},
+                "processing": {"estimate": "Free for current tools", "notes": "Compression and format conversion only (roadmap features excluded)."},
+                "library": {"estimate": "Included in plan", "notes": "Storage overages may apply by tier."},
+            }
+        }
+
     # ====================
     # COST ESTIMATION
     # ====================
