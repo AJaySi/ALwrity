@@ -19,7 +19,7 @@ from services.database import get_db
 from middleware.auth_middleware import get_current_user
 from models.monitoring_models import TaskExecutionLog
 from models.scheduler_models import SchedulerEventLog
-from models.platform_insights_monitoring_models import PlatformInsightsExecutionLog
+from models.platform_insights_monitoring_models import PlatformInsightsExecutionLog, PlatformInsightsTask
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler-monitoring"])
 
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/scheduler", tags=["scheduler-monitoring"])
 async def get_execution_logs(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    status: Optional[str] = Query(None, regex="^(success|failed|running|skipped)$"),
+    status: Optional[str] = Query(None, pattern="^(success|failed|running|skipped)$"),
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -71,6 +71,8 @@ async def get_execution_logs(
 async def get_event_history(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    event_type: Optional[str] = Query(None, pattern="^(check_cycle|interval_adjustment|start|stop|job_scheduled|job_cancelled|job_completed|job_failed)$"),
+    days: Optional[int] = Query(None, ge=1, le=90),
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -97,7 +99,9 @@ async def get_event_history(
             db=db,
             limit=limit,
             offset=offset,
-            user_id=user_id
+            user_id=user_id,
+            event_type=event_type,
+            days=days
         )
 
         return EventHistoryResponse(**result)
@@ -137,7 +141,8 @@ async def get_event_logs_stats(
 
 @router.post("/cleanup-event-logs", response_model=EventLogCleanupResponse)
 async def cleanup_event_logs(
-    older_than_days: int = Query(..., ge=1, le=365),
+    older_than_days: Optional[int] = Query(None, ge=1, le=365),
+    days_to_keep: Optional[int] = Query(None, ge=1, le=365),
     dry_run: bool = Query(True, description="Perform dry run without actual deletion"),
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -154,15 +159,20 @@ async def cleanup_event_logs(
         - Oldest event timestamp kept
     """
     try:
+        # Backward-compatible parameter handling
+        effective_days = older_than_days if older_than_days is not None else days_to_keep
+        if effective_days is None:
+            raise HTTPException(status_code=422, detail="Either older_than_days or days_to_keep is required")
+
         # Validate cleanup parameters
-        validate_event_log_cleanup_params(older_than_days)
+        validate_event_log_cleanup_params(effective_days)
 
         # Extract user ID for potential future user isolation
         user_id = extract_user_id_from_current_user(current_user)
 
         # Calculate cutoff date
         from .utils import calculate_event_log_cleanup_cutoff
-        cutoff_date = calculate_event_log_cleanup_cutoff(older_than_days)
+        cutoff_date = calculate_event_log_cleanup_cutoff(effective_days)
 
         # Count events that would be deleted
         delete_query = db.query(SchedulerEventLog).filter(
@@ -193,7 +203,7 @@ async def cleanup_event_logs(
             if oldest_event:
                 oldest_kept_event = oldest_event[0]
 
-            logger.info(f"[Monitoring] Cleaned up {deleted_count} event logs older than {older_than_days} days")
+            logger.info(f"[Monitoring] Cleaned up {deleted_count} event logs older than {effective_days} days")
 
         return EventLogCleanupResponse(
             deleted_count=deleted_count,
@@ -213,6 +223,7 @@ async def get_platform_insights_logs(
     user_id: str,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    task_id: Optional[int] = Query(None, ge=1),
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -237,45 +248,40 @@ async def get_platform_insights_logs(
         # Validate pagination parameters
         validate_pagination_params(limit, offset, max_limit=100)
 
-        # Query platform insights logs
-        query = db.query(PlatformInsightsExecutionLog).filter(
-            PlatformInsightsExecutionLog.user_id == user_id
-        )
+        # Query platform insights logs by joining through tasks (execution logs table has no user_id)
+        query = db.query(PlatformInsightsExecutionLog).join(
+            PlatformInsightsTask,
+            PlatformInsightsExecutionLog.task_id == PlatformInsightsTask.id
+        ).filter(PlatformInsightsTask.user_id == user_id)
+
+        if task_id:
+            query = query.filter(PlatformInsightsExecutionLog.task_id == task_id)
 
         # Get total count for pagination
         total = query.count()
 
         # Apply pagination and ordering
-        logs = query.order_by(desc(PlatformInsightsExecutionLog.executed_at)).offset(offset).limit(limit).all()
+        logs = query.order_by(desc(PlatformInsightsExecutionLog.execution_date)).offset(offset).limit(limit).all()
 
-        # Format logs for response
+        # Format logs for response (frontend-compatible)
         formatted_logs = []
         for log in logs:
             formatted_logs.append({
                 'id': log.id,
                 'task_id': log.task_id,
-                'user_id': log.user_id,
-                'platform': log.platform,
-                'executed_at': log.executed_at.isoformat() if log.executed_at else None,
+                'execution_date': log.execution_date.isoformat() if log.execution_date else None,
                 'status': log.status,
-                'data_retrieved': log.data_retrieved,
-                'records_found': log.records_found,
-                'records_processed': log.records_processed,
-                'duration_seconds': log.duration_seconds,
+                'result_data': log.result_data,
                 'error_message': log.error_message,
-                'metadata': log.metadata or {}
+                'execution_time_ms': log.execution_time_ms,
+                'data_source': log.data_source,
+                'created_at': log.created_at.isoformat() if log.created_at else None
             })
 
         return {
+            'success': True,
             'logs': formatted_logs,
-            'pagination': {
-                'limit': limit,
-                'offset': offset,
-                'total': total,
-                'has_more': offset + limit < total
-            },
-            'user_id': user_id,
-            'last_updated': datetime.utcnow().isoformat()
+            'total_count': total,
         }
 
     except HTTPException:

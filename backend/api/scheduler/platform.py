@@ -35,7 +35,7 @@ async def get_platform_insights_status(
         - GSC insights tasks (Google Search Console)
         - Bing insights tasks
         - Task details including execution status, schedules, and history
-        - Auto-creates missing tasks for connected platforms
+        - Read-only task status (no implicit task creation)
     """
     try:
         # Verify user access - users can only see their own platform insights
@@ -48,50 +48,8 @@ async def get_platform_insights_status(
             PlatformInsightsTask.user_id == validated_user_id
         ).order_by(PlatformInsightsTask.platform, PlatformInsightsTask.created_at).all()
 
-        # Check if user has connected platforms but missing insights tasks
-        # Auto-create missing tasks for connected platforms
-        try:
-            from services.oauth_token_monitoring_service import get_connected_platforms
-            from services.platform_insights_monitoring_service import create_platform_insights_task
-
-            connected_platforms = get_connected_platforms(validated_user_id)
-            insights_platforms = ['gsc', 'bing']
-            connected_insights = [p for p in connected_platforms if p in insights_platforms]
-
-            existing_platforms = {task.platform for task in tasks}
-            missing_platforms = [p for p in connected_insights if p not in existing_platforms]
-
-            if missing_platforms:
-                logger.info(
-                    f"[Platform Insights Status] User {validated_user_id} has connected platforms {missing_platforms} "
-                    f"but missing insights tasks. Creating tasks..."
-                )
-
-                for platform in missing_platforms:
-                    try:
-                        # Create task without site_url to avoid API calls during status checks
-                        # The executor will fetch it when the task runs
-                        result = create_platform_insights_task(
-                            user_id=validated_user_id,
-                            platform=platform,
-                            site_url=None,  # Will be fetched by executor when task runs
-                            db=db
-                        )
-
-                        if result.get('success'):
-                            logger.info(f"[Platform Insights Status] Created {platform.upper()} insights task for user {validated_user_id}")
-                        else:
-                            logger.warning(f"[Platform Insights Status] Failed to create {platform} task: {result.get('error')}")
-                    except Exception as e:
-                        logger.warning(f"[Platform Insights Status] Error creating {platform} task: {e}", exc_info=True)
-
-                # Re-query tasks after creation
-                tasks = db.query(PlatformInsightsTask).filter(
-                    PlatformInsightsTask.user_id == validated_user_id
-                ).order_by(PlatformInsightsTask.platform, PlatformInsightsTask.created_at).all()
-
-        except Exception as e:
-            logger.warning(f"[Platform Insights Status] Error checking for missing tasks: {e}", exc_info=True)
+        # P2.B operational semantics: this GET endpoint is strictly read-only.
+        # Missing connected-platform tasks are handled via explicit POST reconcile endpoint.
 
         # Group tasks by platform
         gsc_tasks = [t for t in tasks if t.platform == 'gsc']
@@ -142,6 +100,82 @@ async def get_platform_insights_status(
     except Exception as e:
         logger.error(f"[Platform Insights Status] Error getting status for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get platform insights status: {str(e)}")
+
+
+@router.post("/platform-insights/reconcile/{user_id}")
+async def reconcile_platform_insights_status(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Explicitly reconcile missing platform insights tasks for connected platforms."""
+    try:
+        validated_user_id = validate_user_access(user_id, current_user, require_ownership=True)
+
+        from services.oauth_token_monitoring_service import get_connected_platforms
+        from services.platform_insights_monitoring_service import create_platform_insights_task
+
+        connected_platforms = get_connected_platforms(validated_user_id)
+        insights_platforms = {'gsc', 'bing'}
+        connected_insights = [p for p in connected_platforms if p in insights_platforms]
+
+        existing_tasks = db.query(PlatformInsightsTask).filter(
+            PlatformInsightsTask.user_id == validated_user_id,
+            PlatformInsightsTask.platform.in_(connected_insights)
+        ).all()
+        existing_platforms = {task.platform for task in existing_tasks}
+        missing_platforms = [p for p in connected_insights if p not in existing_platforms]
+
+        created_platforms: List[str] = []
+        skipped_platforms: List[str] = []
+        failures: List[Dict[str, str]] = []
+
+        for platform in missing_platforms:
+            # Re-check inside the loop for best-effort race safety before calling creator
+            exists_now = db.query(PlatformInsightsTask).filter(
+                PlatformInsightsTask.user_id == validated_user_id,
+                PlatformInsightsTask.platform == platform
+            ).first()
+            if exists_now:
+                skipped_platforms.append(platform)
+                continue
+
+            result = create_platform_insights_task(
+                user_id=validated_user_id,
+                platform=platform,
+                site_url=None,
+                db=db,
+            )
+
+            if result.get('success'):
+                if result.get('existing'):
+                    skipped_platforms.append(platform)
+                else:
+                    created_platforms.append(platform)
+            else:
+                failures.append({'platform': platform, 'error': result.get('error', 'unknown_error')})
+
+        logger.info(
+            f"[Platform Insights Reconcile] user={validated_user_id} "
+            f"created={created_platforms} skipped={skipped_platforms} failures={len(failures)}"
+        )
+
+        return {
+            'success': len(failures) == 0,
+            'user_id': validated_user_id,
+            'connected_insights_platforms': connected_insights,
+            'created_platforms': created_platforms,
+            'skipped_platforms': skipped_platforms,
+            'failures': failures,
+            'auditable': True,
+            'reconciled_at': datetime.utcnow().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Platform Insights Reconcile] Error reconciling user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to reconcile platform insights tasks: {str(e)}")
 
 
 @router.get("/website-analysis/status/{user_id}", response_model=WebsiteAnalysisStatusResponse)

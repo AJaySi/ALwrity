@@ -1,15 +1,15 @@
-"""Data aggregation utilities for Scheduler API"""
+"""Data aggregation utilities for Scheduler API."""
 
-from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from typing import Dict, Any, Optional
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import desc, or_, cast, String
 from loguru import logger
+from datetime import datetime, timedelta
 
-from models.monitoring_models import TaskExecutionLog, MonitoringTask
+from models.monitoring_models import TaskExecutionLog
 from models.scheduler_models import SchedulerEventLog
-from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
-from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
-from models.website_analysis_monitoring_models import WebsiteAnalysisTask, WebsiteAnalysisExecutionLog
+from models.platform_insights_monitoring_models import PlatformInsightsTask
+from models.website_analysis_monitoring_models import WebsiteAnalysisTask
 
 
 def aggregate_execution_logs(
@@ -17,72 +17,65 @@ def aggregate_execution_logs(
     limit: int = 50,
     offset: int = 0,
     status_filter: Optional[str] = None,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Aggregate execution logs with pagination and filtering.
-
-    Args:
-        db: Database session
-        limit: Maximum number of logs to return
-        offset: Pagination offset
-        status_filter: Optional status filter
-        user_id: Optional user ID filter
-
-    Returns:
-        Dictionary with logs and pagination info
-    """
+    """Aggregate task execution logs for dashboard-compatible responses."""
     try:
-        query = db.query(TaskExecutionLog)
+        query = db.query(TaskExecutionLog).options(joinedload(TaskExecutionLog.task))
 
-        # Apply filters
         if status_filter:
             query = query.filter(TaskExecutionLog.status == status_filter)
         if user_id:
-            query = query.filter(TaskExecutionLog.user_id == user_id)
+            query = query.filter(
+                or_(
+                    TaskExecutionLog.user_id_str == user_id,
+                    cast(TaskExecutionLog.user_id, String) == user_id,
+                )
+            )
 
-        # Get total count for pagination
         total = query.count()
+        logs = query.order_by(desc(TaskExecutionLog.execution_date)).offset(offset).limit(limit).all()
 
-        # Apply pagination and ordering
-        logs = query.order_by(desc(TaskExecutionLog.started_at)).offset(offset).limit(limit).all()
-
-        # Convert to response format
         log_entries = []
         for log in logs:
+            task = getattr(log, 'task', None)
             log_entries.append({
                 'id': log.id,
                 'task_id': log.task_id,
-                'task_type': log.task_type,
+                'user_id': log.user_id_str or (str(log.user_id) if log.user_id is not None else None),
+                'execution_date': log.execution_date.isoformat() if log.execution_date else None,
                 'status': log.status,
-                'started_at': log.started_at.isoformat() if log.started_at else None,
-                'completed_at': log.completed_at.isoformat() if log.completed_at else None,
-                'duration_seconds': log.duration_seconds,
                 'error_message': log.error_message,
-                'user_id': log.user_id,
-                'metadata': log.metadata or {}
+                'execution_time_ms': log.execution_time_ms,
+                'result_data': log.result_data,
+                'created_at': log.created_at.isoformat() if log.created_at else None,
+                'task': {
+                    'id': task.id if task else log.task_id,
+                    'task_title': task.task_title if task else f'Task {log.task_id}',
+                    'component_name': task.component_name if task else 'Unknown',
+                    'metric': task.metric if task else 'unknown',
+                    'frequency': task.frequency if task else 'Unknown',
+                }
             })
 
         return {
             'logs': log_entries,
-            'pagination': {
-                'limit': limit,
-                'offset': offset,
-                'total': total,
-                'has_more': offset + limit < total
-            }
+            'total_count': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': offset + limit < total,
+            'is_scheduler_logs': False,
         }
 
     except Exception as e:
         logger.error(f"[Aggregation] Error aggregating execution logs: {e}", exc_info=True)
         return {
             'logs': [],
-            'pagination': {
-                'limit': limit,
-                'offset': offset,
-                'total': 0,
-                'has_more': False
-            }
+            'total_count': 0,
+            'limit': limit,
+            'offset': offset,
+            'has_more': False,
+            'is_scheduler_logs': False,
         }
 
 
@@ -90,82 +83,86 @@ def aggregate_event_history(
     db: Session,
     limit: int = 50,
     offset: int = 0,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    event_type: Optional[str] = None,
+    days: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """
-    Aggregate scheduler event history.
-
-    Args:
-        db: Database session
-        limit: Maximum number of events to return
-        offset: Pagination offset
-        user_id: Optional user ID filter
-
-    Returns:
-        Dictionary with events and pagination info
-    """
+    """Aggregate scheduler event history in frontend-compatible shape."""
     try:
         query = db.query(SchedulerEventLog)
 
         if user_id:
             query = query.filter(SchedulerEventLog.user_id == user_id)
 
+        if event_type:
+            query = query.filter(SchedulerEventLog.event_type == event_type)
+
+        date_filter = None
+        if days:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            query = query.filter(SchedulerEventLog.event_date >= cutoff_date)
+            date_filter = {
+                'days': days,
+                'cutoff_date': cutoff_date.isoformat(),
+                'showing_events_since': cutoff_date.isoformat()
+            }
+
         total = query.count()
-        events = query.order_by(desc(SchedulerEventLog.timestamp)).offset(offset).limit(limit).all()
+        events = query.order_by(desc(SchedulerEventLog.event_date)).offset(offset).limit(limit).all()
 
         event_entries = []
         for event in events:
             event_entries.append({
                 'id': event.id,
                 'event_type': event.event_type,
-                'timestamp': event.timestamp.isoformat(),
-                'user_id': event.user_id,
-                'details': event.details or {},
+                'event_date': event.event_date.isoformat() if event.event_date else None,
+                'check_cycle_number': event.check_cycle_number,
+                'check_interval_minutes': event.check_interval_minutes,
+                'previous_interval_minutes': event.previous_interval_minutes,
+                'new_interval_minutes': event.new_interval_minutes,
                 'tasks_found': event.tasks_found,
                 'tasks_executed': event.tasks_executed,
                 'tasks_failed': event.tasks_failed,
-                'tasks_skipped': getattr(event, 'tasks_skipped', None),  # May not exist in older versions
-                'duration_seconds': event.duration_seconds
+                'tasks_by_type': event.tasks_by_type,
+                'check_duration_seconds': event.check_duration_seconds,
+                'active_strategies_count': event.active_strategies_count,
+                'active_executions': event.active_executions,
+                'job_id': event.job_id,
+                'job_type': event.job_type,
+                'user_id': event.user_id,
+                'event_data': event.event_data,
+                'error_message': event.error_message,
+                'created_at': event.created_at.isoformat() if event.created_at else None,
             })
 
-        return {
+        response = {
             'events': event_entries,
-            'pagination': {
-                'limit': limit,
-                'offset': offset,
-                'total': total,
-                'has_more': offset + limit < total
-            }
+            'total_count': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': offset + limit < total,
         }
+
+        if date_filter:
+            response['date_filter'] = date_filter
+
+        return response
 
     except Exception as e:
         logger.error(f"[Aggregation] Error aggregating event history: {e}", exc_info=True)
         return {
             'events': [],
-            'pagination': {
-                'limit': limit,
-                'offset': offset,
-                'total': 0,
-                'has_more': False
-            }
+            'total_count': 0,
+            'limit': limit,
+            'offset': offset,
+            'has_more': False,
         }
 
 
 def aggregate_platform_insights_status(db: Session, user_id: str) -> Dict[str, Any]:
-    """
-    Aggregate platform insights monitoring status for a user.
-
-    Args:
-        db: Database session
-        user_id: User ID
-
-    Returns:
-        Dictionary with platform insights status
-    """
+    """Aggregate platform insights monitoring status for a user."""
     try:
-        tasks = db.query(PlatformInsightsTask).filter(
-            PlatformInsightsTask.user_id == user_id
-        ).all()
+        tasks = db.query(PlatformInsightsTask).filter(PlatformInsightsTask.user_id == user_id).all()
 
         task_list = []
         active_count = 0
@@ -174,22 +171,19 @@ def aggregate_platform_insights_status(db: Session, user_id: str) -> Dict[str, A
 
         for task in tasks:
             task_dict = {
-                'task_id': task.task_id,
+                'id': task.id,
                 'user_id': task.user_id,
                 'platform': task.platform,
-                'property_url': task.property_url,
+                'site_url': task.site_url,
                 'status': task.status,
-                'created_at': task.created_at.isoformat(),
-                'last_run_at': task.last_run_at.isoformat() if task.last_run_at else None,
-                'next_run_at': task.next_run_at.isoformat() if task.next_run_at else None,
-                'frequency_hours': task.frequency_hours,
-                'error_count': task.error_count,
-                'last_error': task.last_error,
-                'metadata': task.metadata or {}
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'last_check': task.last_check.isoformat() if task.last_check else None,
+                'next_check': task.next_check.isoformat() if task.next_check else None,
+                'failure_reason': task.failure_reason,
+                'metadata': getattr(task, 'metadata', None) or {}
             }
             task_list.append(task_dict)
 
-            # Count by status
             if task.status == 'active':
                 active_count += 1
             elif task.status == 'paused':
@@ -203,7 +197,7 @@ def aggregate_platform_insights_status(db: Session, user_id: str) -> Dict[str, A
             'active_tasks': active_count,
             'paused_tasks': paused_count,
             'failed_tasks': failed_count,
-            'last_updated': None  # Will be set by calling function
+            'last_updated': None,
         }
 
     except Exception as e:
@@ -214,25 +208,14 @@ def aggregate_platform_insights_status(db: Session, user_id: str) -> Dict[str, A
             'active_tasks': 0,
             'paused_tasks': 0,
             'failed_tasks': 0,
-            'last_updated': None
+            'last_updated': None,
         }
 
 
 def aggregate_website_analysis_status(db: Session, user_id: str) -> Dict[str, Any]:
-    """
-    Aggregate website analysis monitoring status for a user.
-
-    Args:
-        db: Database session
-        user_id: User ID
-
-    Returns:
-        Dictionary with website analysis status
-    """
+    """Aggregate website analysis monitoring status for a user."""
     try:
-        tasks = db.query(WebsiteAnalysisTask).filter(
-            WebsiteAnalysisTask.user_id == user_id
-        ).all()
+        tasks = db.query(WebsiteAnalysisTask).filter(WebsiteAnalysisTask.user_id == user_id).all()
 
         task_list = []
         active_count = 0
@@ -241,22 +224,19 @@ def aggregate_website_analysis_status(db: Session, user_id: str) -> Dict[str, An
 
         for task in tasks:
             task_dict = {
-                'task_id': task.task_id,
+                'id': task.id,
                 'user_id': task.user_id,
                 'website_url': task.website_url,
-                'analysis_type': task.analysis_type,
+                'task_type': task.task_type,
                 'status': task.status,
-                'created_at': task.created_at.isoformat(),
-                'last_run_at': task.last_run_at.isoformat() if task.last_run_at else None,
-                'next_run_at': task.next_run_at.isoformat() if task.next_run_at else None,
-                'frequency_hours': task.frequency_hours,
-                'error_count': task.error_count,
-                'last_error': task.last_error,
-                'metadata': task.metadata or {}
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'last_check': task.last_check.isoformat() if task.last_check else None,
+                'next_check': task.next_check.isoformat() if task.next_check else None,
+                'failure_reason': task.failure_reason,
+                'metadata': getattr(task, 'metadata', None) or {}
             }
             task_list.append(task_dict)
 
-            # Count by status
             if task.status == 'active':
                 active_count += 1
             elif task.status == 'paused':
@@ -270,7 +250,7 @@ def aggregate_website_analysis_status(db: Session, user_id: str) -> Dict[str, An
             'active_tasks': active_count,
             'paused_tasks': paused_count,
             'failed_tasks': failed_count,
-            'last_updated': None  # Will be set by calling function
+            'last_updated': None,
         }
 
     except Exception as e:
@@ -281,5 +261,5 @@ def aggregate_website_analysis_status(db: Session, user_id: str) -> Dict[str, An
             'active_tasks': 0,
             'paused_tasks': 0,
             'failed_tasks': 0,
-            'last_updated': None
+            'last_updated': None,
         }
