@@ -74,7 +74,7 @@ class GSCAPI {
   /**
    * Get Google Search Console OAuth authorization URL
    */
-  async getAuthUrl(): Promise<{ auth_url: string }> {
+  async getAuthUrl(): Promise<{ auth_url: string; trusted_origins?: string[] }> {
     try {
       const client = await this.getAuthenticatedClient();
       const response = await client.get(`${this.baseUrl}/auth/url`);

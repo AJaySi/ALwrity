@@ -9,12 +9,17 @@ import os
 
 from services.gsc_service import GSCService
 from middleware.auth_middleware import get_current_user
+from services.oauth_redirects import get_trusted_origins_for_redirect
 
 # Initialize router
 router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
 
 # Initialize GSC service
 gsc_service = GSCService()
+
+
+def _get_gsc_postmessage_origin() -> str:
+    return get_trusted_origins_for_redirect("GSC", "GSC_REDIRECT_URI")[0]
 
 # Pydantic models
 class GSCAnalyticsRequest(BaseModel):
@@ -41,7 +46,10 @@ async def get_gsc_auth_url(user: dict = Depends(get_current_user)):
         
         logger.info(f"GSC OAuth URL generated successfully for user: {user_id}")
         logger.info(f"OAuth URL: {auth_url[:100]}...")
-        return {"auth_url": auth_url}
+        return {
+            "auth_url": auth_url,
+            "trusted_origins": get_trusted_origins_for_redirect("GSC", "GSC_REDIRECT_URI"),
+        }
         
     except Exception as e:
         logger.error(f"Error generating GSC OAuth URL: {e}")

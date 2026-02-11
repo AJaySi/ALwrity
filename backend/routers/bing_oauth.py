@@ -11,16 +11,22 @@ from loguru import logger
 
 from services.integrations.bing_oauth import BingOAuthService
 from middleware.auth_middleware import get_current_user
+from services.oauth_redirects import get_trusted_origins_for_redirect
 
 router = APIRouter(prefix="/bing", tags=["Bing Webmaster OAuth"])
 
 # Initialize OAuth service
 oauth_service = BingOAuthService()
 
+
+def _get_bing_postmessage_origin() -> str:
+    return get_trusted_origins_for_redirect("Bing", "BING_REDIRECT_URI")[0]
+
 # Pydantic Models
 class BingOAuthResponse(BaseModel):
     auth_url: str
     state: str
+    trusted_origins: list[str]
 
 class BingCallbackResponse(BaseModel):
     success: bool
@@ -48,7 +54,10 @@ async def get_bing_auth_url(
                 detail="Bing Webmaster OAuth is not properly configured. Please check that BING_CLIENT_ID and BING_CLIENT_SECRET environment variables are set with valid Bing Webmaster application credentials."
             )
         
-        return BingOAuthResponse(**auth_data)
+        return BingOAuthResponse(
+            **auth_data,
+            trusted_origins=get_trusted_origins_for_redirect("Bing", "BING_REDIRECT_URI"),
+        )
         
     except Exception as e:
         logger.error(f"Error generating Bing Webmaster OAuth URL: {e}")
