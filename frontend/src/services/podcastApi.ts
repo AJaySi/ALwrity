@@ -1,7 +1,7 @@
-import { ResearchProvider, ResearchConfig } from "./blogWriterApi";
+import { ResearchConfig } from "./blogWriterApi";
+import type { ResearchProvider } from './researchApi';
 import {
   storyWriterApi,
-  StoryScene,
   StorySetupGenerationResponse,
 } from "./storyWriterApi";
 import { getResearchConfig, ResearchPersona } from "../api/researchConfig";
@@ -11,7 +11,6 @@ import {
   CreateProjectResult,
   Fact,
   Knobs,
-  Line,
   PodcastAnalysis,
   PodcastEstimate,
   Query,
@@ -169,25 +168,6 @@ const mapExaResearchResponse = (response: ExaResearchResult): Research => {
     cost: response.cost?.total,
     sourceCount: response.sources?.length || 0,
   };
-};
-
-const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StoryScene[] | string | undefined): StoryScene[] => {
-  if (!outline) return [];
-  if (typeof outline === "string") {
-    return [
-      {
-        scene_number: 1,
-        title: outline.slice(0, 60),
-        description: outline,
-        image_prompt: outline,
-        audio_narration: outline,
-      } as StoryScene,
-    ];
-  }
-  if (Array.isArray(outline)) {
-    return outline as StoryScene[];
-  }
-  return [];
 };
 
 const ensurePreflight = async (operation: PreflightOperation) => {

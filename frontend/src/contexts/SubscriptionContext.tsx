@@ -56,11 +56,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalErrorData, setModalErrorData] = useState<any>(null);
-  const [lastModalShowTime, setLastModalShowTime] = useState<number>(0);
   const [deferredError, setDeferredError] = useState<any>(null);
   const [lastCheckTime, setLastCheckTime] = useState<number>(0);
   // New: Grace window after plan changes to avoid noisy UX
-  const [graceUntil, setGraceUntil] = useState<number>(0);
   const [planSignature, setPlanSignature] = useState<string>("");
   // Flag to track if current modal is a usage limit modal (should never be auto-closed)
   const [isUsageLimitModal, setIsUsageLimitModal] = useState<boolean>(false);
@@ -160,7 +158,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
             message: 'To continue using Alwrity and access all features, you need to renew your subscription.'
           });
           setShowModal(true);
-          setLastModalShowTime(Date.now());
           // Also show toast notification with message similar to modal
           showSubscriptionExpiredToast();
         }
@@ -172,7 +169,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         if (newSignature && newSignature !== planSignature) {
           console.log('SubscriptionContext: Plan change detected, starting grace window');
           setPlanSignature(newSignature);
-          setGraceUntil(Date.now() + 5 * 60 * 1000);
           // Close any existing modal as plan just changed
           // BUT: Don't close usage limit modals - they're important even after plan changes
           if (showModal && !isUsageLimitModal) {
@@ -209,7 +205,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
           setShowModal(false);
           setModalErrorData(null);
           setIsUsageLimitModal(false);
-          setLastModalShowTime(0); // Reset the cooldown timer
         }
       }
 
@@ -222,8 +217,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         // Re-run the error handling logic now that we have subscription data
         const status = error.response?.status;
         if (status === 429 || status === 402) {
-          const now = Date.now();
-
           // If active, suppress modal for usage limits
           if (subscriptionData.active) {
             console.log('SubscriptionContext: Active subscription (deferred); suppressing usage-limit modal');
@@ -253,7 +246,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
             message: modalMessage
           });
           setShowModal(true);
-          setLastModalShowTime(now);
           // Also show toast notification
           showSubscriptionExpiredToast();
         }
@@ -285,7 +277,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     } finally {
       setLoading(false);
     }
-  }, [lastCheckTime, planSignature, showModal, modalErrorData, lastModalShowTime, graceUntil, isUsageLimitModal, deferredError, subscription]);
+  }, [lastCheckTime, planSignature, showModal, modalErrorData, isUsageLimitModal, deferredError, subscription]);
 
   const refreshSubscription = useCallback(async () => {
     await checkSubscription();
@@ -441,7 +433,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
           setIsUsageLimitModal(true);
           setModalErrorData(modalData);
           setShowModal(true);
-          setLastModalShowTime(now);
           
           // Show toast notification with usage limit message
           const toastMessage = modalData.message || 
@@ -492,7 +483,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
             message: modalMessage
           });
           setShowModal(true);
-          setLastModalShowTime(now);
           // Also show toast notification
           showSubscriptionExpiredToast();
           return true;

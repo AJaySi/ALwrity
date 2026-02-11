@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Badge, IconButton, Menu, MenuItem, Typography, Box, Divider, Chip, Tooltip, List, ListItem, ListItemText, ListItemIcon, Button } from '@mui/material';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Badge, IconButton, Menu, Typography, Box, Divider, Chip, Tooltip, List, ListItem, ListItemText, ListItemIcon, Button } from '@mui/material';
 import { Notifications as NotificationsIcon, NotificationsActive as NotificationsActiveIcon } from '@mui/icons-material';
 import { Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { billingService } from '../../services/billingService';
@@ -51,9 +51,9 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
   const isPollingRef = useRef(false);
   const schedulerDismissedRef = useRef<Set<string>>(new Set());
 
-  const getSchedulerStorageKey = (uid: string) => `scheduler_alerts_dismissed_${uid}`;
+  const getSchedulerStorageKey = (uid: string) => `scheduler_dismissed_${uid}`;
 
-  const loadSchedulerDismissed = (uid: string) => {
+  const loadSchedulerDismissed = useCallback((uid: string) => {
     if (!uid) return new Set<string>();
     try {
       const stored = localStorage.getItem(getSchedulerStorageKey(uid));
@@ -66,16 +66,16 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
     } catch {
       return new Set<string>();
     }
-  };
+  }, []);
 
-  const persistSchedulerDismissed = (uid: string, dismissed: Set<string>) => {
+  const persistSchedulerDismissed = useCallback((uid: string, dismissed: Set<string>) => {
     if (!uid) return;
     try {
       localStorage.setItem(getSchedulerStorageKey(uid), JSON.stringify(Array.from(dismissed)));
     } catch {
       // ignore storage errors
     }
-  };
+  }, []);
 
   const dismissSchedulerAlert = (alertId: string) => {
     if (!userId) return;
@@ -88,7 +88,7 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
   useEffect(() => {
     if (!userId) return;
     schedulerDismissedRef.current = loadSchedulerDismissed(userId);
-  }, [userId]);
+  }, [userId, loadSchedulerDismissed]);
 
   // Fetch all alerts
   const rebuildGroups = (alertList: Alert[]) => {

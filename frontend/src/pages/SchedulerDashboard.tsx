@@ -246,7 +246,6 @@ const SchedulerDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
-  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
 
   // Shared event history data for consistency across sections
   const [eventHistoryData, setEventHistoryData] = useState<{
@@ -320,7 +319,6 @@ const SchedulerDashboard: React.FC = () => {
       setDashboardData(data);
       
       setLastUpdated(new Date());
-      setLastUpdateTimestamp(data.stats.last_update || null);
     } catch (err: any) {
       // Provide more specific error messages based on error type
       let errorMessage = 'Unable to load scheduler dashboard';
@@ -348,7 +346,7 @@ const SchedulerDashboard: React.FC = () => {
     if (isLoaded && isSignedIn && !dashboardData) {
       fetchDashboardData();
     }
-  }, [isLoaded, isSignedIn, fetchDashboardData]);
+  }, [isLoaded, isSignedIn, dashboardData, fetchDashboardData]);
 
   // Smart auto-refresh: Poll based on scheduler's check interval or next job execution
   useEffect(() => {

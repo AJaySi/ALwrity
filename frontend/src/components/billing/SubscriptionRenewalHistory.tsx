@@ -140,7 +140,6 @@ const SubscriptionRenewalHistory: React.FC<SubscriptionRenewalHistoryProps> = ({
   };
 
   const getRenewalTypeChip = (type: string) => {
-    const ChipComponent = terminalTheme ? TerminalChip : Chip;
     const chipStyles = {
       upgrade: { backgroundColor: 'rgba(34, 197, 94, 0.2)', color: '#22c55e' },
       downgrade: { backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b' },

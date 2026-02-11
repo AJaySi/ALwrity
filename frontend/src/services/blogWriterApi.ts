@@ -1,9 +1,9 @@
 import { apiClient, aiApiClient, pollingApiClient } from "../api/client";
 // Import research types for use in this file
-import type { ResearchMode, ResearchProvider, SourceType, DateRange, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
+import type { ResearchMode, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
 // Re-export research types for backward compatibility
 // TODO: Update all blog writer code to import from researchApi.ts directly
-export type { ResearchMode, ResearchProvider, SourceType, DateRange, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
+export type { ResearchMode, ResearchSource, ResearchConfig, ResearchResponse } from './researchApi';
 
 export interface PersonaInfo {
   persona_id?: string;

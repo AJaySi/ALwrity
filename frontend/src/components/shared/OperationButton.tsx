@@ -189,7 +189,7 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
     }
 
     return content.length > 0 ? <Box sx={{ p: 0.5 }}>{content}</Box> : null;
-  }, [canProceed, estimatedCost, formattedCost, limitInfo, preflightError, preflightLoading]);
+  }, [canProceed, formattedCost, limitInfo, preflightError, preflightLoading]);
 
   // Debounce hover checks to prevent excessive API calls
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);

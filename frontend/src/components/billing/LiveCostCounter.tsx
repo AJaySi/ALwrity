@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Typography } from '@mui/material';
-import { motion, useSpring, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
 import { AnimatedNumber } from '../shared/AnimatedNumber';
 import { formatCurrency } from '../../services/billingService';

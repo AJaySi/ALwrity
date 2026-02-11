@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { Box, Container } from '@mui/material';
+import { Container } from '@mui/material';
 import { CampaignPerformanceDashboard } from '../components/Backlinking/CampaignPerformanceDashboard';
 import { useParams } from 'react-router-dom';
 

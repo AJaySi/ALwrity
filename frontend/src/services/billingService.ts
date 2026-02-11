@@ -20,7 +20,6 @@ import {
   ProviderBreakdown,
   UsagePercentages,
   ProviderUsage,
-  ProviderBreakdownSchema,
   // SubscriptionRenewal,
   RenewalHistoryResponse,
   RenewalHistoryAPIResponse,
@@ -119,8 +118,6 @@ billingAPI.interceptors.response.use(
 // ------------------------------------------------------------
 // Response coercion helpers to ensure required fields exist
 // ------------------------------------------------------------
-
-const defaultProviderUsage = { calls: 0, tokens: 0, cost: 0 };
 
 // const defaultProviderBreakdown = {
 //   gemini: { ...defaultProviderUsage },

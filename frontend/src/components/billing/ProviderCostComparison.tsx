@@ -2,7 +2,6 @@ import React, { Suspense } from 'react';
 import {
   Box,
   Typography,
-  Tooltip as MuiTooltip,
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { 

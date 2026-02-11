@@ -62,25 +62,27 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
 
   // Memoize filters to create stable reference - only changes when actual values change
   const apiParams = useMemo(() => {
-    return {
-      asset_type: filters.asset_type,
-      source_module: filters.source_module,
-      search: filters.search,
-      tags: filters.tags?.join(','),
-      favorites_only: filters.favorites_only,
-      collection_id: filters.collection_id,
-      date_from: filters.date_from,
-      date_to: filters.date_to,
-      sort_by: filters.sort_by,
-      sort_order: filters.sort_order,
-      limit: filters.limit,
-      offset: filters.offset,
-    };
+  const tagsString = filters.tags?.join(',');
+  
+  return {
+    asset_type: filters.asset_type,
+    source_module: filters.source_module,
+    search: filters.search,
+    tags: tagsString,
+    favorites_only: filters.favorites_only,
+    collection_id: filters.collection_id,
+    date_from: filters.date_from,
+    date_to: filters.date_to,
+    sort_by: filters.sort_by,
+    sort_order: filters.sort_order,
+    limit: filters.limit,
+    offset: filters.offset,
+  };
   }, [
     filters.asset_type,
     filters.source_module,
     filters.search,
-    filters.tags?.join(','),
+    filters.tags,
     filters.favorites_only,
     filters.collection_id,
     filters.date_from,

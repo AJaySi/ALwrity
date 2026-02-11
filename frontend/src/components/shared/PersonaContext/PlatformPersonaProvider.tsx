@@ -207,7 +207,6 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
       if (platformPersonaResponse) {
         // Extract platform-specific data from API response
         const platformPersona = platformPersonaResponse.platform_persona || {};
-        const corePersonaFromPlatform = platformPersonaResponse.core_persona || {};
         
         // Convert API response to PlatformAdaptation format
         const convertedPlatformPersona: PlatformAdaptation = {
@@ -311,7 +310,7 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
       dataCacheTime.current = Date.now();
       requestInProgress.current = false;
     }
-  }, [userId, platform, corePersona, platformPersona]);
+  }, [platform, corePersona, numericUserId, platformPersona]);
 
   // Initial data fetch
   useEffect(() => {

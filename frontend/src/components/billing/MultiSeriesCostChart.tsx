@@ -5,7 +5,6 @@ import {
   Typography,
   Box,
   Chip,
-  Tooltip as MuiTooltip,
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { 
