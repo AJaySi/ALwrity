@@ -5,13 +5,15 @@ Pluggable task scheduler that can work with any task model.
 
 import asyncio
 import logging
+import os
 from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from .executor_interface import TaskExecutor, TaskExecutionResult
 from .task_registry import TaskRegistry
@@ -117,6 +119,21 @@ class TaskScheduler:
         }
         
         self._running = False
+
+        # HA leader-election state (PostgreSQL advisory lock based)
+        self._leader_lock_key = int(os.getenv("SCHEDULER_LEADER_LOCK_KEY", "84321017"))
+        self._leadership_check_interval_seconds = int(os.getenv("SCHEDULER_LEADERSHIP_CHECK_INTERVAL", "15"))
+        self._leader_session = None
+        self._is_leader = False
+        self._execution_enabled = False
+        self._leader_since = None
+        self._last_leadership_check = None
+        self._last_leadership_error = None
+
+
+        # Execution lease registry (prevents duplicate redispatch across check cycles)
+        self._task_leases: Dict[str, str] = {}
+        self._task_lease_ttl_seconds = int(os.getenv("SCHEDULER_TASK_LEASE_TTL_SECONDS", "900"))
     
     def _get_trigger_for_interval(self, interval_minutes: int):
         """
@@ -213,6 +230,129 @@ class TaskScheduler:
         
         logger.info("APScheduler logging configured to use unified logging system")
     
+
+    def _scheduler_identity(self) -> str:
+        return f"{os.getenv('HOSTNAME', 'local')}-{os.getpid()}"
+
+    def _acquire_leadership(self) -> bool:
+        """Try to acquire PostgreSQL advisory lock for scheduler leadership."""
+        try:
+            if self._leader_session is None:
+                self._leader_session = get_db_session()
+
+            if self._leader_session is None:
+                self._last_leadership_error = "no_db_session"
+                return False
+
+            acquired = self._leader_session.execute(
+                text("SELECT pg_try_advisory_lock(:lock_key)"),
+                {"lock_key": self._leader_lock_key},
+            ).scalar()
+            self._leader_session.commit()
+
+            self._last_leadership_check = datetime.utcnow().isoformat()
+            self._is_leader = bool(acquired)
+            self._execution_enabled = bool(acquired)
+            if acquired and not self._leader_since:
+                self._leader_since = datetime.utcnow().isoformat()
+            return bool(acquired)
+        except Exception as e:
+            self._last_leadership_error = str(e)
+            self._last_leadership_check = datetime.utcnow().isoformat()
+            self._is_leader = False
+            self._execution_enabled = False
+            return False
+
+    def _release_leadership(self):
+        """Release PostgreSQL advisory lock and close leadership session."""
+        try:
+            if self._leader_session is not None:
+                try:
+                    self._leader_session.execute(
+                        text("SELECT pg_advisory_unlock(:lock_key)"),
+                        {"lock_key": self._leader_lock_key},
+                    )
+                    self._leader_session.commit()
+                except Exception:
+                    self._leader_session.rollback()
+                finally:
+                    self._leader_session.close()
+        finally:
+            self._leader_session = None
+            self._is_leader = False
+            self._execution_enabled = False
+            self._leader_since = None
+
+    def _sync_check_due_tasks_job(self):
+        """Ensure check_due_tasks job exists only for leader."""
+        job = self.scheduler.get_job('check_due_tasks')
+        if self._is_leader and self._execution_enabled:
+            if job is None:
+                self.scheduler.add_job(
+                    self._check_and_execute_due_tasks,
+                    trigger=self._get_trigger_for_interval(self.current_check_interval_minutes),
+                    id='check_due_tasks',
+                    replace_existing=True
+                )
+        else:
+            if job is not None:
+                self.scheduler.remove_job('check_due_tasks')
+
+    async def _leadership_tick(self):
+        """Periodic leadership check/renewal and failover handling."""
+        if not self._running:
+            return
+
+        was_leader = self._is_leader
+        acquired = self._acquire_leadership()
+
+        if acquired and not was_leader:
+            logger.warning(f"[Scheduler] 👑 Leadership acquired by {self._scheduler_identity()}")
+        elif not acquired and was_leader:
+            logger.error(f"[Scheduler] ⚠️ Leadership lost by {self._scheduler_identity()}; execution paused")
+
+        self._sync_check_due_tasks_job()
+
+    def _acquire_task_lease(self, task_key: str) -> bool:
+        """Acquire in-memory lease for a task key if available/expired."""
+        now = datetime.utcnow()
+        expiry_str = self._task_leases.get(task_key)
+
+        if expiry_str:
+            try:
+                expiry = datetime.fromisoformat(expiry_str)
+                if expiry > now:
+                    return False
+            except Exception:
+                # Corrupted lease value: overwrite safely
+                pass
+
+        expiry = now + timedelta(seconds=self._task_lease_ttl_seconds)
+        self._task_leases[task_key] = expiry.isoformat()
+        return True
+
+    def _release_task_lease(self, task_key: str):
+        """Release lease for task key."""
+        if task_key in self._task_leases:
+            del self._task_leases[task_key]
+
+    def _is_task_leased(self, task_key: str) -> bool:
+        """Check whether task key is currently leased and not expired."""
+        expiry_str = self._task_leases.get(task_key)
+        if not expiry_str:
+            return False
+
+        try:
+            expiry = datetime.fromisoformat(expiry_str)
+            if expiry > datetime.utcnow():
+                return True
+        except Exception:
+            pass
+
+        # Expired/corrupt lease gets cleaned up lazily
+        self._release_task_lease(task_key)
+        return False
+
     async def start(self):
         """Start the scheduler with intelligent interval adjustment."""
         if self._running:
@@ -228,17 +368,28 @@ class TaskScheduler:
             )
             self.current_check_interval_minutes = initial_interval
             
-            # Add periodic job to check for due tasks
-            self.scheduler.add_job(
-                self._check_and_execute_due_tasks,
-                trigger=self._get_trigger_for_interval(initial_interval),
-                id='check_due_tasks',
-                replace_existing=True
-            )
-            
             self.scheduler.start()
             self._running = True
-            
+
+            # Leadership monitor runs on all replicas; only leader executes due-task loop.
+            self.scheduler.add_job(
+                self._leadership_tick,
+                trigger=IntervalTrigger(seconds=self._leadership_check_interval_seconds),
+                id='leadership_monitor',
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+
+            # Initial leader election
+            await self._leadership_tick()
+            if not self._is_leader:
+                logger.warning(
+                    f"[Scheduler] 💤 Standby replica ({self._scheduler_identity()}) started. "
+                    "Leadership lock not acquired; due-task execution disabled."
+                )
+                return
+
             # Check for and execute any missed jobs that are still within grace period
             await self._execute_missed_jobs()
             
@@ -333,25 +484,29 @@ class TaskScheduler:
                     f"tasks haven't been created. Error type: {type(e).__name__}"
                 )
             
-            # Get website analysis tasks count
+            # Get website analysis and platform insights tasks count
+            # Use a separate session to avoid querying on a previously-closed startup session.
             website_analysis_tasks_count = 0
-            try:
-                from models.website_analysis_monitoring_models import WebsiteAnalysisTask
-                website_analysis_tasks_count = db.query(WebsiteAnalysisTask).filter(
-                    WebsiteAnalysisTask.status == 'active'
-                ).count()
-            except Exception as e:
-                logger.debug(f"Could not get website analysis tasks count: {e}")
-            
-            # Get platform insights tasks count
             platform_insights_tasks_count = 0
+            db_counts = None
             try:
-                from models.platform_insights_monitoring_models import PlatformInsightsTask
-                platform_insights_tasks_count = db.query(PlatformInsightsTask).filter(
-                    PlatformInsightsTask.status == 'active'
-                ).count()
+                db_counts = get_db_session()
+                if db_counts:
+                    from models.website_analysis_monitoring_models import WebsiteAnalysisTask
+                    from models.platform_insights_monitoring_models import PlatformInsightsTask
+
+                    website_analysis_tasks_count = db_counts.query(WebsiteAnalysisTask).filter(
+                        WebsiteAnalysisTask.status == 'active'
+                    ).count()
+
+                    platform_insights_tasks_count = db_counts.query(PlatformInsightsTask).filter(
+                        PlatformInsightsTask.status == 'active'
+                    ).count()
             except Exception as e:
-                logger.debug(f"Could not get platform insights tasks count: {e}")
+                logger.debug(f"Could not get website/platform insights tasks count: {e}")
+            finally:
+                if db_counts:
+                    db_counts.close()
             
             # Calculate job counts
             apscheduler_recurring = 1  # check_due_tasks
@@ -586,7 +741,15 @@ class TaskScheduler:
             
             # Get final job count before shutdown
             all_jobs_before = self.scheduler.get_jobs()
-            
+
+            # Release leadership lock and stop leadership monitor
+            try:
+                if self.scheduler.get_job('leadership_monitor') is not None:
+                    self.scheduler.remove_job('leadership_monitor')
+            except Exception:
+                pass
+            self._release_leadership()
+
             # Shutdown scheduler
             self.scheduler.shutdown(wait=True)
             self._running = False
@@ -636,6 +799,10 @@ class TaskScheduler:
         Main scheduler loop: check for due tasks and execute them.
         This runs periodically with intelligent interval adjustment based on active strategies.
         """
+        if not self._execution_enabled or not self._is_leader:
+            logger.debug("[Scheduler] Skipping due-task loop on standby replica")
+            return
+
         await check_and_execute_due_tasks(self)
     
     async def _adjust_check_interval_if_needed(self, db: Session):
@@ -866,6 +1033,7 @@ class TaskScheduler:
             
             # Execute tasks (with concurrency limit)
             execution_tasks = []
+            task_keys = []
             skipped_count = 0
             for task in due_tasks:
                 if len(self.active_executions) >= self.max_concurrent_executions:
@@ -875,22 +1043,49 @@ class TaskScheduler:
                         f"skipping {skipped_count} tasks for {task_type}"
                     )
                     break
-                
+
+                task_key = f"{task_type}_{getattr(task, 'id', id(task))}"
+
+                # Skip dispatch if another cycle already leased this task (duplicate prevention)
+                if self._is_task_leased(task_key):
+                    logger.debug(f"[Scheduler] 🔒 Skipping leased task {task_key} (already in-flight)")
+                    continue
+
+                # Acquire lease before dispatch; if lease cannot be acquired, skip this cycle
+                if not self._acquire_task_lease(task_key):
+                    logger.debug(f"[Scheduler] 🔒 Could not acquire lease for task {task_key}")
+                    continue
+
                 # Execute task asynchronously
                 # Note: Each task gets its own database session to prevent concurrent access issues
                 execution_task = asyncio.create_task(
                     execute_task_async(self, task_type, task, summary)
                 )
-                
-                task_id = f"{task_type}_{getattr(task, 'id', id(task))}"
-                self.active_executions[task_id] = execution_task
-                
+
+                self.active_executions[task_key] = execution_task
+
                 execution_tasks.append(execution_task)
-            
+                task_keys.append(task_key)
+
             # Wait for executions to complete (with timeout per task)
             if execution_tasks:
-                await asyncio.wait(execution_tasks, timeout=300)
-            
+                done, pending = await asyncio.wait(execution_tasks, timeout=300)
+
+                # Deterministic timeout cleanup: cancel pending tasks and ensure lease cleanup
+                if pending:
+                    logger.warning(
+                        f"[Scheduler] ⏱️ Timeout reached for {len(pending)} {task_type} task(s); "
+                        "cancelling pending executions"
+                    )
+                    for pending_task in pending:
+                        pending_task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+
+                    # Release any stale leases tied to tasks no longer actively tracked
+                    for task_key in list(task_keys):
+                        if task_key not in self.active_executions:
+                            self._release_task_lease(task_key)
+
             return summary
             
         except Exception as e:
@@ -956,7 +1151,18 @@ class TaskScheduler:
             'check_interval_minutes': self.current_check_interval_minutes,
             'min_check_interval_minutes': self.min_check_interval_minutes,
             'max_check_interval_minutes': self.max_check_interval_minutes,
-            'intelligent_scheduling': True
+            'intelligent_scheduling': True,
+            'leased_tasks': len(self._task_leases),
+            'leadership': {
+                'mode': 'postgres_advisory_lock',
+                'identity': self._scheduler_identity(),
+                'is_leader': self._is_leader,
+                'execution_enabled': self._execution_enabled,
+                'leader_since': self._leader_since,
+                'lock_key': self._leader_lock_key,
+                'last_check': self._last_leadership_check,
+                'last_error': self._last_leadership_error
+            }
         }
         
         # Include per-user stats (all users or filtered)

@@ -55,7 +55,7 @@ class PlatformInsightsTask(Base):
     
     # Indexes for efficient queries
     __table_args__ = (
-        Index('idx_platform_insights_user_platform', 'user_id', 'platform'),
+        Index('idx_platform_insights_user_platform', 'user_id', 'platform', unique=True),
         Index('idx_platform_insights_next_check', 'next_check'),
         Index('idx_platform_insights_status', 'status'),
     )

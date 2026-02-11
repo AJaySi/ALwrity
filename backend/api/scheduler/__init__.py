@@ -73,6 +73,18 @@ if config.enable_platform:
 @router.get("/status", summary="Get Scheduler API Status")
 async def get_scheduler_status():
     """Get the operational status of the Scheduler API."""
+    scheduler_runtime = {}
+    try:
+        from services.scheduler import get_scheduler
+        scheduler_runtime = get_scheduler().get_stats().get('leadership', {})
+    except Exception as e:
+        scheduler_runtime = {
+            "mode": "postgres_advisory_lock",
+            "is_leader": False,
+            "execution_enabled": False,
+            "error": str(e)
+        }
+
     return {
         "service": "scheduler_api",
         "version": config.version,
@@ -104,13 +116,16 @@ async def get_scheduler_status():
         "total_endpoints": config.total_enabled_endpoints,
         "enabled_features": config.enabled_features,
         "disabled_features": config.disabled_features,
+        "scheduler_runtime": {
+            "leadership": scheduler_runtime
+        },
         "architecture": "modular_routers",
         "refactoring_complete": True
     }
 
 
 @router.get("/health", summary="Comprehensive Health Check")
-async def comprehensive_health_check():
+async def comprehensive_health_check(db: Session = Depends(get_db)):
     """Comprehensive health check for the Scheduler API and all its components."""
     try:
         health_start_time = time.time()
@@ -138,6 +153,25 @@ async def comprehensive_health_check():
             health_data["checks"]["database"] = {
                 "status": "unhealthy",
                 "message": f"Database connection failed: {str(e)}"
+            }
+            health_data["status"] = "degraded"
+
+        # Scheduler leadership/runtime check
+        try:
+            from services.scheduler import get_scheduler
+            leadership = get_scheduler().get_stats().get('leadership', {})
+            health_data["checks"]["scheduler_leadership"] = {
+                "status": "healthy" if leadership.get("execution_enabled") else "standby",
+                "message": (
+                    "Replica is active leader" if leadership.get("is_leader")
+                    else "Replica is standby follower"
+                ),
+                "details": leadership
+            }
+        except Exception as e:
+            health_data["checks"]["scheduler_leadership"] = {
+                "status": "degraded",
+                "message": f"Leadership status unavailable: {str(e)}"
             }
             health_data["status"] = "degraded"
 

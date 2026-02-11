@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import and_, desc, or_, cast, String
 
 from models.monitoring_models import (
     StrategyMonitoringPlan, MonitoringTask, TaskExecutionLog,
@@ -368,7 +368,7 @@ class MonitoringDataService:
     
     def get_user_execution_logs(
         self,
-        user_id: int,
+        user_id: str,
         limit: Optional[int] = 50,
         offset: Optional[int] = 0,
         status_filter: Optional[str] = None
@@ -388,9 +388,12 @@ class MonitoringDataService:
         try:
             logger.info(f"Getting execution logs for user {user_id}")
             
-            # Build query for execution logs filtered by user_id
+            # Build query for execution logs filtered by canonical string id, with legacy int fallback
             query = self.db.query(TaskExecutionLog).filter(
-                TaskExecutionLog.user_id == user_id
+                or_(
+                    TaskExecutionLog.user_id_str == user_id,
+                    cast(TaskExecutionLog.user_id, String) == str(user_id),
+                )
             )
             
             # Apply status filter if provided
@@ -419,7 +422,7 @@ class MonitoringDataService:
                 log_data = {
                     "id": log.id,
                     "task_id": log.task_id,
-                    "user_id": log.user_id,
+                    "user_id": log.user_id_str or (str(log.user_id) if log.user_id is not None else None),
                     "execution_date": log.execution_date.isoformat() if log.execution_date else None,
                     "status": log.status,
                     "result_data": log.result_data,

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, JSON, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -45,10 +45,15 @@ class MonitoringTask(Base):
 class TaskExecutionLog(Base):
     """Model for storing task execution logs"""
     __tablename__ = "task_execution_logs"
+    __table_args__ = (
+        Index("idx_task_execution_logs_user_id_str", "user_id_str"),
+        Index("idx_task_execution_logs_user_id_str_status_date", "user_id_str", "status", "execution_date"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(Integer, ForeignKey("monitoring_tasks.id"), nullable=False)
-    user_id = Column(Integer, nullable=True)  # User ID for user isolation (nullable for backward compatibility)
+    user_id = Column(Integer, nullable=True)  # Legacy integer user ID for backward compatibility
+    user_id_str = Column(String(255), nullable=True)  # Canonical string user ID for SaaS multi-tenant filtering
     execution_date = Column(DateTime, default=datetime.utcnow)
     status = Column(String(50), nullable=False)  # 'success', 'failed', 'skipped', 'running'
     result_data = Column(JSON, nullable=True)
