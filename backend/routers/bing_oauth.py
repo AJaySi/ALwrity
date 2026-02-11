@@ -11,16 +11,22 @@ from loguru import logger
 
 from services.integrations.bing_oauth import BingOAuthService
 from middleware.auth_middleware import get_current_user
+from services.oauth_redirects import get_trusted_origins_for_redirect
 
 router = APIRouter(prefix="/bing", tags=["Bing Webmaster OAuth"])
 
 # Initialize OAuth service
 oauth_service = BingOAuthService()
 
+
+def _get_bing_postmessage_origin() -> str:
+    return get_trusted_origins_for_redirect("Bing", "BING_REDIRECT_URI")[0]
+
 # Pydantic Models
 class BingOAuthResponse(BaseModel):
     auth_url: str
     state: str
+    trusted_origins: list[str]
 
 class BingCallbackResponse(BaseModel):
     success: bool
@@ -50,7 +56,10 @@ async def get_bing_auth_url(
                 detail="Bing Webmaster OAuth is not properly configured. Please check that BING_CLIENT_ID and BING_CLIENT_SECRET environment variables are set with valid Bing Webmaster application credentials."
             )
         
-        return BingOAuthResponse(**auth_data)
+        return BingOAuthResponse(
+            **auth_data,
+            trusted_origins=get_trusted_origins_for_redirect("Bing", "BING_REDIRECT_URI"),
+        )
         
     except Exception as e:
         logger.error(f"Error generating Bing Webmaster OAuth URL: {e}")
@@ -66,7 +75,9 @@ async def handle_bing_callback(
     error: Optional[str] = Query(None, description="Error from Bing OAuth")
 ):
     """Handle Bing Webmaster OAuth2 callback."""
+    target_origin = "http://localhost:3000"
     try:
+        target_origin = _get_bing_postmessage_origin()
         if error:
             logger.error(f"Bing Webmaster OAuth error: {error}")
             html_content = f"""
@@ -81,7 +92,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: '{error}'
-                        }}, '*');
+                        }}, '{target_origin}');
                         window.close();
                     }};
                 </script>
@@ -100,7 +111,7 @@ async def handle_bing_callback(
         
         if not code or not state:
             logger.error("Missing code or state parameter in Bing Webmaster OAuth callback")
-            html_content = """
+            html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -112,7 +123,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: 'Missing parameters'
-                    }}, '*');
+                    }}, '{target_origin}');
                         window.close();
                     }};
                 </script>
@@ -134,7 +145,7 @@ async def handle_bing_callback(
         
         if not result or not result.get('success'):
             logger.error("Failed to exchange Bing Webmaster OAuth code for token")
-            html_content = """
+            html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -146,7 +157,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: 'Token exchange failed'
-                    }}, '*');
+                    }}, '{target_origin}');
                         window.close();
                     }};
                 </script>
@@ -204,7 +215,7 @@ async def handle_bing_callback(
                         success: true,
                         accessToken: '{result.get('access_token', '')}',
                         expiresIn: {result.get('expires_in', 0)}
-                    }}, '*');
+                    }}, '{target_origin}');
                     window.close();
                 }};
             </script>
@@ -224,7 +235,7 @@ async def handle_bing_callback(
         
     except Exception as e:
         logger.error(f"Error handling Bing Webmaster OAuth callback: {e}")
-        html_content = """
+        html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -236,7 +247,7 @@ async def handle_bing_callback(
                         type: 'BING_OAUTH_ERROR',
                         success: false,
                         error: 'Callback error'
-                    }}, '*');
+                    }}, '{target_origin}');
                     window.close();
                 }};
             </script>

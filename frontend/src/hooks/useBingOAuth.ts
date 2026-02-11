@@ -5,6 +5,11 @@
 
 import { useState, useCallback } from 'react';
 import { bingOAuthAPI, BingOAuthStatus, BingOAuthResponse } from '../api/bingOAuth';
+import {
+  getTrustedOAuthOrigins,
+  isTrustedOAuthMessageEvent,
+  setOAuthTargetOrigin,
+} from '../utils/oauthOrigins';
 
 interface UseBingOAuthReturn {
   // Connection state
@@ -99,6 +104,8 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
       console.log('Bing OAuth: Calling bingOAuthAPI.getAuthUrl()...');
       const authData: BingOAuthResponse = await bingOAuthAPI.getAuthUrl();
       console.log('Bing OAuth: Got auth URL:', authData.auth_url);
+      setOAuthTargetOrigin('bing', window.location.origin);
+      const trustedOrigins = getTrustedOAuthOrigins('bing', authData.trusted_origins || []);
       
       // Open OAuth popup window
       const popup = window.open(
@@ -121,21 +128,14 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
           data: event.data,
           dataType: event.data?.type,
           source: event.source === popup ? 'our-popup' : 'other',
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
+          expectedOrigins: trustedOrigins,
           timestamp: new Date().toISOString()
         });
         
         // Log the full message data for debugging
         console.log('Bing OAuth: Full message data:', JSON.stringify(event.data, null, 2));
         
-        // Check if message is from our expected origin (more reliable than checking source)
-        console.log('Bing OAuth: Checking origin match...', {
-          receivedOrigin: event.origin,
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
-          originMatch: event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'
-        });
-        
-        if (event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev') {
+        if (isTrustedOAuthMessageEvent(event, popup, trustedOrigins)) {
           console.log('Bing OAuth: Message from expected origin, processing...');
           console.log('Bing OAuth: Message data:', event.data);
           console.log('Bing OAuth: Message data type:', event.data?.type);
@@ -161,7 +161,10 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
             console.log('Bing OAuth: Full message data:', event.data);
           }
         } else {
-          console.log('Bing OAuth: Message from unexpected origin, ignoring:', event.origin);
+          console.log('Bing OAuth: Message rejected due to untrusted origin/source, ignoring:', {
+            origin: event.origin,
+            sourceMatches: event.source === popup
+          });
         }
       };
 

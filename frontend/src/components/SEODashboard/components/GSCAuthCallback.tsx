@@ -14,6 +14,7 @@ import {
 } from '@mui/icons-material';
 import { gscAPI } from '../../../api/gsc';
 import { useAuth } from '@clerk/clerk-react';
+import { getOAuthPostMessageTargetOrigin } from '../../../utils/oauthOrigins';
 
 const GSCAuthCallback: React.FC = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -50,7 +51,7 @@ const GSCAuthCallback: React.FC = () => {
         
         // Notify parent window
         if (window.opener) {
-          window.opener.postMessage({ type: 'GSC_AUTH_SUCCESS' }, '*');
+          window.opener.postMessage({ type: 'GSC_AUTH_SUCCESS' }, getOAuthPostMessageTargetOrigin('gsc'));
         }
         
         // Close popup after a short delay
@@ -71,7 +72,7 @@ const GSCAuthCallback: React.FC = () => {
         window.opener.postMessage({ 
           type: 'GSC_AUTH_ERROR', 
           error: message 
-        }, '*');
+        }, getOAuthPostMessageTargetOrigin('gsc'));
       }
     }
   }, [message]);

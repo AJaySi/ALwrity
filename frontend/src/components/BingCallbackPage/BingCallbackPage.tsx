@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { getOAuthPostMessageTargetOrigin } from '../../utils/oauthOrigins';
 
 const BingCallbackPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,8 @@ const BingCallbackPage: React.FC = () => {
 
         // Notify opener and close if this is a popup window
         try {
-          (window.opener || window.parent)?.postMessage({ type: 'BING_OAUTH_SUCCESS', success: true }, '*');
+          const targetOrigin = getOAuthPostMessageTargetOrigin('bing');
+          (window.opener || window.parent)?.postMessage({ type: 'BING_OAUTH_SUCCESS', success: true }, targetOrigin);
           if (window.opener) {
             window.close();
             return;
@@ -44,7 +46,8 @@ const BingCallbackPage: React.FC = () => {
       } catch (e: any) {
         setError(e?.message || 'OAuth callback failed');
         try {
-          (window.opener || window.parent)?.postMessage({ type: 'BING_OAUTH_ERROR', success: false, error: e?.message || 'OAuth callback failed' }, '*');
+          const targetOrigin = getOAuthPostMessageTargetOrigin('bing');
+          (window.opener || window.parent)?.postMessage({ type: 'BING_OAUTH_ERROR', success: false, error: e?.message || 'OAuth callback failed' }, targetOrigin);
           if (window.opener) window.close();
         } catch {}
       }

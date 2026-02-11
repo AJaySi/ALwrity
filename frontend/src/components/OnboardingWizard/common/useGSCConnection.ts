@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { gscAPI, type GSCSite } from '../../../api/gsc';
+import {
+  getTrustedOAuthOrigins,
+  isTrustedOAuthMessageEvent,
+  setOAuthTargetOrigin,
+} from '../../../utils/oauthOrigins';
 
 export const useGSCConnection = () => {
   const { getToken } = useAuth();
@@ -63,7 +68,9 @@ export const useGSCConnection = () => {
       setConnectedPlatforms(prev => prev.filter(p => p !== 'gsc'));
       setGscSites(null);
       
-      const { auth_url } = await gscAPI.getAuthUrl();
+      const { auth_url, trusted_origins: apiTrustedOrigins = [] } = await gscAPI.getAuthUrl();
+      setOAuthTargetOrigin('gsc', window.location.origin);
+      const trustedOrigins = getTrustedOAuthOrigins('gsc', apiTrustedOrigins);
       
 
       const popup = window.open(
@@ -95,7 +102,7 @@ export const useGSCConnection = () => {
       let messageHandled = false;
       const messageHandler = (event: MessageEvent) => {
         if (messageHandled) return; // Prevent duplicate handling
-        if (!event?.data || typeof event.data !== 'object') return;
+        if (!isTrustedOAuthMessageEvent(event, popup, trustedOrigins)) return;
         const { type } = event.data as { type?: string };
         if (type === 'GSC_AUTH_SUCCESS' || type === 'GSC_AUTH_ERROR') {
           messageHandled = true;

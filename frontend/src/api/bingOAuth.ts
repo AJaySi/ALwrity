@@ -25,6 +25,7 @@ export interface BingOAuthStatus {
 export interface BingOAuthResponse {
   auth_url: string;
   state: string;
+  trusted_origins: string[];
 }
 
 export interface BingCallbackResponse {

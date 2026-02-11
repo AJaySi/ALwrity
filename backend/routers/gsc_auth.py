@@ -9,12 +9,17 @@ import os
 
 from services.gsc_service import GSCService
 from middleware.auth_middleware import get_current_user
+from services.oauth_redirects import get_trusted_origins_for_redirect
 
 # Initialize router
 router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
 
 # Initialize GSC service
 gsc_service = GSCService()
+
+
+def _get_gsc_postmessage_origin() -> str:
+    return get_trusted_origins_for_redirect("GSC", "GSC_REDIRECT_URI")[0]
 
 # Pydantic models
 class GSCAnalyticsRequest(BaseModel):
@@ -41,7 +46,10 @@ async def get_gsc_auth_url(user: dict = Depends(get_current_user)):
         
         logger.info(f"GSC OAuth URL generated successfully for user: {user_id}")
         logger.info(f"OAuth URL: {auth_url[:100]}...")
-        return {"auth_url": auth_url}
+        return {
+            "auth_url": auth_url,
+            "trusted_origins": get_trusted_origins_for_redirect("GSC", "GSC_REDIRECT_URI"),
+        }
         
     except Exception as e:
         logger.error(f"Error generating GSC OAuth URL: {e}")
@@ -96,14 +104,15 @@ async def handle_gsc_callback(
                 # Non-critical: log but don't fail OAuth callback
                 logger.warning(f"Failed to create GSC insights task after OAuth: {e}", exc_info=True)
             
-            html = """
+            target_origin = _get_gsc_postmessage_origin()
+            html = f"""
 <!doctype html>
 <html>
   <head><meta charset=\"utf-8\"><title>GSC Connected</title></head>
   <body style=\"font-family: sans-serif; padding: 24px;\">
     <p>Connection Successful. You can close this window.</p>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_SUCCESS' }}, '*'); }} catch (e) {{}}
+      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_SUCCESS' }}, '{target_origin}'); }} catch (e) {{}}
       try {{ window.close(); }} catch (e) {{}}
     </script>
   </body>
@@ -112,14 +121,15 @@ async def handle_gsc_callback(
             return HTMLResponse(content=html)
         else:
             logger.error("Failed to handle GSC OAuth callback")
-            html = """
+            target_origin = _get_gsc_postmessage_origin()
+            html = f"""
 <!doctype html>
 <html>
   <head><meta charset=\"utf-8\"><title>GSC Connection Failed</title></head>
   <body style=\"font-family: sans-serif; padding: 24px;\">
     <p>Connection Failed. Please close this window and try again.</p>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, '*'); }} catch (e) {{}}
+      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, '{target_origin}'); }} catch (e) {{}}
     </script>
   </body>
   </html>
@@ -128,6 +138,7 @@ async def handle_gsc_callback(
             
     except Exception as e:
         logger.error(f"Error handling GSC OAuth callback: {e}")
+        target_origin = _get_gsc_postmessage_origin()
         html = f"""
 <!doctype html>
 <html>
@@ -136,7 +147,7 @@ async def handle_gsc_callback(
     <p>Connection Error. Please close this window and try again.</p>
     <pre style=\"white-space: pre-wrap;\">{str(e)}</pre>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, '*'); }} catch (e) {{}}
+      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, '{target_origin}'); }} catch (e) {{}}
     </script>
   </body>
   </html>
