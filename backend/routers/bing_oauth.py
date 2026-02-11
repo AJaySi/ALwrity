@@ -25,8 +25,6 @@ class BingOAuthResponse(BaseModel):
 class BingCallbackResponse(BaseModel):
     success: bool
     message: str
-    access_token: Optional[str] = None
-    expires_in: Optional[int] = None
 
 class BingStatusResponse(BaseModel):
     connected: bool
@@ -81,7 +79,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: '{error}'
-                        }}, '*');
+                        }}, window.location.origin);
                         window.close();
                     }};
                 </script>
@@ -112,7 +110,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: 'Missing parameters'
-                    }}, '*');
+                    }}, window.location.origin);
                         window.close();
                     }};
                 </script>
@@ -146,7 +144,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: 'Token exchange failed'
-                    }}, '*');
+                    }}, window.location.origin);
                         window.close();
                     }};
                 </script>
@@ -201,10 +199,8 @@ async def handle_bing_callback(
                 window.onload = function() {{
                     (window.opener || window.parent).postMessage({{
                         type: 'BING_OAUTH_SUCCESS',
-                        success: true,
-                        accessToken: '{result.get('access_token', '')}',
-                        expiresIn: {result.get('expires_in', 0)}
-                    }}, '*');
+                        success: true
+                    }}, window.location.origin);
                     window.close();
                 }};
             </script>
@@ -236,7 +232,7 @@ async def handle_bing_callback(
                         type: 'BING_OAUTH_ERROR',
                         success: false,
                         error: 'Callback error'
-                    }}, '*');
+                    }}, window.location.origin);
                     window.close();
                 }};
             </script>

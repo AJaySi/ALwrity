@@ -550,7 +550,6 @@ class BingOAuthService:
                 # Don't make external API calls for connection status
                 active_sites.append({
                     "id": token["id"],
-                    "access_token": token["access_token"],
                     "scope": token["scope"],
                     "created_at": token["created_at"],
                     "sites": []  # Sites will be fetched when needed for analytics

@@ -9,7 +9,6 @@ export interface BingOAuthStatus {
   connected: boolean;
   sites: Array<{
     id: number;
-    access_token: string;
     scope: string;
     created_at: string;
     sites: Array<{
@@ -30,8 +29,6 @@ export interface BingOAuthResponse {
 export interface BingCallbackResponse {
   success: boolean;
   message: string;
-  access_token?: string;
-  expires_in?: number;
 }
 
 class BingOAuthAPI {

@@ -103,7 +103,7 @@ async def handle_gsc_callback(
   <body style=\"font-family: sans-serif; padding: 24px;\">
     <p>Connection Successful. You can close this window.</p>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_SUCCESS' }}, '*'); }} catch (e) {{}}
+      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_SUCCESS' }}, window.location.origin); }} catch (e) {{}}
       try {{ window.close(); }} catch (e) {{}}
     </script>
   </body>
@@ -119,7 +119,7 @@ async def handle_gsc_callback(
   <body style=\"font-family: sans-serif; padding: 24px;\">
     <p>Connection Failed. Please close this window and try again.</p>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, '*'); }} catch (e) {{}}
+      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, window.location.origin); }} catch (e) {{}}
     </script>
   </body>
   </html>
@@ -136,7 +136,7 @@ async def handle_gsc_callback(
     <p>Connection Error. Please close this window and try again.</p>
     <pre style=\"white-space: pre-wrap;\">{str(e)}</pre>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, '*'); }} catch (e) {{}}
+      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, window.location.origin); }} catch (e) {{}}
     </script>
   </body>
   </html>
