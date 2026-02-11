@@ -8,7 +8,7 @@ deployment environment (dev/stage/prod).
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Optional, List
 from urllib.parse import urlparse
 
 
@@ -86,3 +86,11 @@ def get_redirect_uri(provider: str, env_var: str) -> str:
         raise ValueError(f"{env_var} must be set for {provider} OAuth.")
     validate_redirect_uri(provider, redirect_uri)
     return redirect_uri
+
+
+def get_trusted_origins_for_redirect(provider: str, env_var: str) -> List[str]:
+    """
+    Return trusted postMessage origins for a provider based on validated redirect configuration.
+    """
+    redirect_uri = get_redirect_uri(provider, env_var)
+    return [validate_redirect_uri(provider, redirect_uri)]
