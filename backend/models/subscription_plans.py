@@ -4,12 +4,13 @@ Available subscription tiers and pricing for ALwrity SaaS platform.
 """
 
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text, Float, Numeric
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from models.ssot_bases import PlatformBase
 from datetime import datetime
 from typing import Optional
 import uuid
 
-Base = declarative_base()
+Base = PlatformBase
 
 class SubscriptionPlan(Base):
     """
@@ -51,6 +52,9 @@ class SubscriptionPlan(Base):
     # Additional plan data
     extra_data = Column(JSON, default={})  # Additional plan data
     
+    # Relationships
+    subscriptions = relationship("UserSubscription", back_populates="plan")
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

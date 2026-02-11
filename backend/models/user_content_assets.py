@@ -4,12 +4,12 @@ All user-generated content with multi-tenant isolation and RLS.
 """
 
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text, Float
-from sqlalchemy.ext.declarative import declarative_base
+from models.ssot_bases import UserDataBase
 from datetime import datetime
 from typing import Optional
 import uuid
 
-Base = declarative_base()
+Base = UserDataBase
 
 class UserContentAsset(Base):
     """

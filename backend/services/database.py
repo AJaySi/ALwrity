@@ -238,7 +238,14 @@ This is intentional - we no longer support SQLite or single database setups.
             # Legacy platform tables
             OnboardingBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             SEOAnalysisBase.metadata.create_all(bind=platform_engine, checkfirst=True)
-            SubscriptionBase.metadata.create_all(bind=platform_engine, checkfirst=True)
+            # Create legacy subscription tables except SSOT-duplicated tables
+            legacy_subscription_tables = [
+                table
+                for table_name, table in SubscriptionBase.metadata.tables.items()
+                if table_name not in {"subscription_plans", "user_subscriptions"}
+            ]
+            for table in legacy_subscription_tables:
+                table.create(bind=platform_engine, checkfirst=True)
             UserBusinessInfoBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             UserWebsiteBase.metadata.create_all(bind=platform_engine, checkfirst=True)
             ContentAssetBase.metadata.create_all(bind=platform_engine, checkfirst=True)
@@ -384,6 +391,22 @@ def get_user_data_db() -> Session:
     """
     return get_user_data_db_session()
 
+def get_user_data_db_with_context(user_id: str):
+    """
+    FastAPI-friendly generator that opens a user-data session and applies RLS context.
+
+    This helper reduces the risk of routes forgetting to call `set_user_context()`.
+    """
+    db = get_user_data_db_session()
+    if db is None:
+        raise ValueError("Unable to create user data database session")
+
+    try:
+        set_user_context(user_id, db)
+        yield db
+    finally:
+        db.close()
+
 def set_user_context(user_id: str, db_session: Session):
     """
     Set PostgreSQL RLS user context for tenant isolation.
@@ -394,8 +417,12 @@ def set_user_context(user_id: str, db_session: Session):
         db_session: Database session to set context on
     """
     try:
-        # Set PostgreSQL session variable for RLS policies
-        db_session.execute(text("SET app.current_user_id = :user_id"), {"user_id": user_id})
+        # Set PostgreSQL session variable for RLS policies in a parameterized way.
+        # `is_local=false` keeps this value for the whole session until reset.
+        db_session.execute(
+            text("SELECT set_config('app.current_user_id', :user_id, false)"),
+            {"user_id": str(user_id)},
+        )
         logger.info(f"✅ RLS user context set for user_id: {user_id}")
     except Exception as e:
         logger.error(f"❌ Failed to set RLS user context: {e}")
@@ -496,11 +523,22 @@ def setup_row_level_security():
                     # Enable RLS on table
                     conn.execute(text(f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY"))
                     
-                    # Create RLS policy for public role (simpler approach)
+                    policy_name = f"{table_name}_user_isolation"
+
+                    # Create policy only when it does not already exist.
                     policy_sql = f"""
-                    CREATE POLICY {table_name}_user_isolation ON {table_name}
-                        FOR ALL
-                        USING (user_id::text = current_setting('app.current_user_id'));
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1
+                            FROM pg_policies
+                            WHERE schemaname = current_schema()
+                              AND tablename = '{table_name}'
+                              AND policyname = '{policy_name}'
+                        ) THEN
+                            EXECUTE 'CREATE POLICY {policy_name} ON {table_name} FOR ALL USING (user_id::text = current_setting(''app.current_user_id'', true))';
+                        END IF;
+                    END $$;
                     """
                     conn.execute(text(policy_sql))
                     conn.commit()

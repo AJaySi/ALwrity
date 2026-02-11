@@ -4,13 +4,13 @@ Platform-level analytics and monitoring for ALwrity SaaS platform.
 """
 
 from sqlalchemy import Column, Integer, String, DateTime, Float, JSON, ForeignKey, Text
-from sqlalchemy.ext.declarative import declarative_base
+from models.ssot_bases import PlatformBase
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from typing import Optional
 import uuid
 
-Base = declarative_base()
+Base = PlatformBase
 
 class PlatformUsageLog(Base):
     """

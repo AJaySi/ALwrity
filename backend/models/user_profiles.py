@@ -4,12 +4,12 @@ User preferences and business information with multi-tenant isolation.
 """
 
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Text, Float
-from sqlalchemy.ext.declarative import declarative_base
+from models.ssot_bases import UserDataBase
 from datetime import datetime
 from typing import Optional
 import uuid
 
-Base = declarative_base()
+Base = UserDataBase
 
 class UserProfile(Base):
     """
