@@ -202,8 +202,16 @@ export const getExecutionLogs = async (
     // Handle both old (flat) and new (nested) pagination formats
     if ('pagination' in data) {
       // New format: { logs: [], pagination: { limit, offset, total, has_more } }
+      const mappedLogs = data.logs.map((log: any) => ({
+        ...log,
+        // Map backend field names to frontend expectations
+        execution_date: log.started_at,
+        execution_time_ms: log.duration_seconds ? log.duration_seconds * 1000 : null,
+        completed_at: log.completed_at
+      }));
+      
       return {
-        logs: data.logs,
+        logs: mappedLogs,
         total_count: data.pagination.total,
         limit: data.pagination.limit,
         offset: data.pagination.offset,
@@ -269,8 +277,14 @@ export const getSchedulerEventHistory = async (
     // Handle both old (flat) and new (nested) pagination formats
     if ('pagination' in data) {
       // New format: { events: [], pagination: { limit, offset, total, has_more } }
+      const mappedEvents = data.events.map((event: any) => ({
+        ...event,
+        // Map backend field names to frontend expectations
+        event_date: event.timestamp
+      }));
+      
       return {
-        events: data.events,
+        events: mappedEvents,
         total_count: data.pagination.total,
         limit: data.pagination.limit,
         offset: data.pagination.offset,
