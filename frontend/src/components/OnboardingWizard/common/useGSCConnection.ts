@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { gscAPI, type GSCSite } from '../../../api/gsc';
+import { unifiedOAuthClient } from '../../../api/unifiedOAuthClient';
+
+const DEPRECATED_GSC_ROUTES_REMOVAL_DATE = '2026-06-30';
 
 export const useGSCConnection = () => {
   const { getToken } = useAuth();
@@ -8,7 +11,7 @@ export const useGSCConnection = () => {
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
 
   useEffect(() => {
-    // Ensure GSC API uses authenticated client
+    // Ensure GSC API uses authenticated client for GSC analytics/sitemaps endpoints.
     try {
       gscAPI.setAuthTokenGetter(async () => {
         try {
@@ -17,114 +20,101 @@ export const useGSCConnection = () => {
           return null;
         }
       });
-    } catch {}
+    } catch {
+      // no-op
+    }
   }, [getToken]);
 
+  const refreshGSCStatus = useCallback(async () => {
+    const status = await unifiedOAuthClient.getConnectionStatus('gsc');
+    if (!status.connected) {
+      setConnectedPlatforms(prev => prev.filter(p => p !== 'gsc'));
+      setGscSites(null);
+      return;
+    }
+
+    setConnectedPlatforms(prev => Array.from(new Set([...prev, 'gsc'])));
+
+    try {
+      const sitesResponse = await gscAPI.getSites();
+      setGscSites(sitesResponse.sites ?? []);
+    } catch {
+      setGscSites([]);
+    }
+  }, []);
+
   useEffect(() => {
-    // Check current GSC connection status on load
     (async () => {
       try {
-        const status = await gscAPI.getStatus();
-        if (status.connected) {
-          setConnectedPlatforms(prev => Array.from(new Set([...prev, 'gsc'])));
-          if (status.sites && status.sites.length) setGscSites(status.sites);
-        } else {
-          setConnectedPlatforms(prev => prev.filter(p => p !== 'gsc'));
-          setGscSites(null);
-        }
-      } catch (error) {
-        console.log('GSC status check failed');
-        try {
-          await gscAPI.clearIncomplete();
-        } catch {}
+        await refreshGSCStatus();
+      } catch {
         setConnectedPlatforms(prev => prev.filter(p => p !== 'gsc'));
         setGscSites(null);
       }
     })();
-  }, []);
+  }, [refreshGSCStatus]);
 
   const handleGSCConnect = async () => {
     try {
-      // Clear any incomplete credentials and connection state before starting OAuth
-      try {
-        await gscAPI.clearIncomplete();
-      } catch (e) {
-        console.log('Clear incomplete failed:', e);
-      }
-      
-      // Also try to disconnect completely
-      try {
-        await gscAPI.disconnect();
-      } catch (e) {
-        console.log('Disconnect failed:', e);
-      }
-      
-      // Clear local connection state
-      setConnectedPlatforms(prev => prev.filter(p => p !== 'gsc'));
-      setGscSites(null);
-      
-      const { auth_url } = await gscAPI.getAuthUrl();
-      
+      // Keep /gsc/* callback endpoint for backward compatibility only.
+      console.warn(`GSC legacy callback endpoint is deprecated and scheduled for removal after ${DEPRECATED_GSC_ROUTES_REMOVAL_DATE}`);
 
+      const authResponse = await unifiedOAuthClient.getAuthUrl('gsc');
+      const { auth_url, trusted_origins = [] } = authResponse;
+
+      const oauthNonce = crypto.randomUUID();
       const popup = window.open(
         auth_url,
-        'gsc-auth',
+        `gsc-auth-${oauthNonce}`,
         'width=600,height=700,scrollbars=yes,resizable=yes'
       );
 
-
       if (!popup) {
-        // Fallback: navigate directly to OAuth URL if popup is blocked
-        console.log('Popup blocked, navigating directly to OAuth URL');
         window.location.href = auth_url;
         return;
       }
 
-      // Check if popup was redirected immediately (OAuth consent screen issue)
-      setTimeout(() => {
-        try {
-          if (popup.closed) {
-            console.log('GSC popup closed immediately - possible OAuth consent screen issue');
-          }
-        } catch (e) {
-          // Ignore cross-origin errors
-        }
-      }, 2000);
-
-      // Prefer message-based completion from callback window to avoid COOP issues
       let messageHandled = false;
       const messageHandler = (event: MessageEvent) => {
-        if (messageHandled) return; // Prevent duplicate handling
-        if (!event?.data || typeof event.data !== 'object') return;
-        const { type } = event.data as { type?: string };
+        if (messageHandled || !event?.data || typeof event.data !== 'object') return;
+
+        const allowedOrigins = new Set<string>([
+          ...trusted_origins,
+          window.location.origin
+        ]);
+
+        if (!allowedOrigins.has(event.origin)) return;
+
+        const { type, nonce } = event.data as { type?: string; nonce?: string };
+        if (nonce !== oauthNonce) return;
+
         if (type === 'GSC_AUTH_SUCCESS' || type === 'GSC_AUTH_ERROR') {
           messageHandled = true;
-          try { popup.close(); } catch {}
-          window.removeEventListener('message', messageHandler);
-          if (type === 'GSC_AUTH_SUCCESS') {
-            // Optimistically mark as connected; a later status refresh will confirm
-            setConnectedPlatforms(prev => Array.from(new Set([...prev, 'gsc'])));
-            // Refresh sites
-            (async () => {
-              try {
-                const status = await gscAPI.getStatus();
-                if (status.connected && status.sites) setGscSites(status.sites);
-              } catch {}
-            })();
+          try { popup.close(); } catch {
+            // no-op
           }
+          window.removeEventListener('message', messageHandler);
+
+          if (type === 'GSC_AUTH_SUCCESS') {
+            void refreshGSCStatus();
+          }
+
           setTimeout(() => {
             window.location.href = '/onboarding?step=5';
           }, 250);
         }
       };
+
       window.addEventListener('message', messageHandler);
 
-      // Fallback: safety timeout in case message doesn't arrive
       setTimeout(() => {
-        try { if (!popup.closed) popup.close(); } catch {}
+        try {
+          if (!popup.closed) popup.close();
+        } catch {
+          // no-op
+        }
         window.removeEventListener('message', messageHandler);
       }, 3 * 60 * 1000);
-
     } catch (error) {
       console.error('GSC OAuth error:', error);
       throw error;
@@ -136,6 +126,7 @@ export const useGSCConnection = () => {
     connectedPlatforms,
     setConnectedPlatforms,
     setGscSites,
-    handleGSCConnect
+    handleGSCConnect,
+    refreshGSCStatus
   };
 };

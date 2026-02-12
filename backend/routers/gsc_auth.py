@@ -4,12 +4,12 @@ MIGRATION STATUS: This router now uses unified OAuth patterns for consistency.
 All legacy endpoints are preserved with deprecation warnings for backward compatibility.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi.responses import HTMLResponse
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
-import os
+from urllib.parse import parse_qs, urlparse
 
 # Import unified OAuth client for migration
 from services.integrations.registry import get_provider
@@ -22,6 +22,9 @@ router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
 # Initialize GSC service (for backward compatibility)
 from services.gsc_service import GSCService
 gsc_service = GSCService()
+
+
+DEPRECATED_GSC_LEGACY_ROUTES_REMOVAL_DATE = "2026-06-30"
 
 def _get_gsc_postmessage_origin() -> str:
     return get_trusted_origins_for_redirect("GSC", "GSC_REDIRECT_URI")[0]
@@ -49,15 +52,31 @@ class GSCCallbackResponse(BaseModel):
     connected: Optional[bool] = None
     site_count: Optional[int] = None
 
+
+class GSCDataQualityResponse(BaseModel):
+    site_url: str
+    permission_level: Optional[str] = None
+    has_sufficient_permission: bool
+    data_days_available: int
+    data_window_start: Optional[str] = None
+    data_window_end: Optional[str] = None
+    indexing_health: Dict[str, Any]
+
+
+class GSCCachedOpportunitiesResponse(BaseModel):
+    site_url: str
+    opportunities: List[Dict[str, Any]]
+    generated_from_cache: bool
+
 @router.get("/auth/url")
-async def get_gsc_auth_url(user: dict = Depends(get_current_user)):
+async def get_gsc_auth_url(request: Request, user: dict = Depends(get_current_user)):
     """
     Get Google Search Console OAuth authorization URL.
     
     @deprecated Use unified OAuth client: unifiedOAuthClient.getAuthUrl('gsc')
     This method is preserved for backward compatibility but will be removed in future versions.
     """
-    console.warn('GSC Router: get_gsc_auth_url() is deprecated. Use unifiedOAuthClient.getAuthUrl("gsc") instead')
+    logger.warning(f'GSC Router: /gsc/auth/url is deprecated; use /oauth/gsc/auth. Planned removal after {DEPRECATED_GSC_LEGACY_ROUTES_REMOVAL_DATE}')
     
     try:
         user_id = user.get('id')
@@ -66,32 +85,29 @@ async def get_gsc_auth_url(user: dict = Depends(get_current_user)):
         
         logger.info(f"Generating GSC OAuth URL for user: {user_id}")
         
-        # Use unified OAuth client for consistent patterns
-        from frontend.src.api.unifiedOAuth import unifiedOAuthClient
-        unified_client = unifiedOAuthClient()
-        
-        try:
-            auth_response = await unified_client.getAuthUrl('gsc')
-            
-            return {
-                "auth_url": auth_response.auth_url,
-                "state": auth_response.state,
-                "trusted_origins": auth_response.trusted_origins
-            }
-        except Exception as unified_error:
-            # Fall back to legacy service if unified client fails
-            logger.warning(f"Unified client failed, falling back to legacy GSC service: {unified_error}")
-            
-            auth_url = gsc_service.get_oauth_url(user_id)
-            
-            return {
-                "auth_url": auth_url,
-                "state": gsc_service.get_oauth_state(user_id),
-                "trusted_origins": get_trusted_origins_for_redirect("GSC", "GSC_REDIRECT_URI")
-            }
+        provider = get_provider("gsc")
+        if not provider:
+            raise HTTPException(status_code=500, detail="GSC provider not registered")
+
+        auth_payload = provider.get_auth_url(user_id)
+        if not auth_payload.auth_url:
+            raise HTTPException(status_code=500, detail="Failed to generate GSC OAuth URL")
+
+        parsed_query = parse_qs(urlparse(auth_payload.auth_url).query)
+        state = parsed_query.get("state", [auth_payload.state or ""])[0]
+
+        trusted_origins = get_trusted_origins_for_redirect("GSC", "GSC_REDIRECT_URI")
+        backend_origin = str(request.base_url).rstrip("/")
+        if backend_origin not in trusted_origins:
+            trusted_origins.append(backend_origin)
+
+        return {
+            "auth_url": auth_payload.auth_url,
+            "state": state,
+            "trusted_origins": trusted_origins
+        }
         
         logger.info(f"GSC OAuth URL generated successfully for user: {user_id}")
-        logger.info(f"OAuth URL: {auth_url[:100]}...")
         
     except Exception as e:
         logger.error(f"Error generating GSC OAuth URL: {e}")
@@ -153,7 +169,10 @@ async def handle_gsc_callback(
   <body style=\"font-family: sans-serif; padding: 24px;\">
     <p>Connection Successful. You can close this window.</p>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_SUCCESS' }}, window.location.origin); }} catch (e) {{}}
+      try {{
+        const popupNonce = (window.name || '').replace('gsc-auth-', '');
+        window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_SUCCESS', nonce: popupNonce }}, window.location.origin);
+      }} catch (e) {{}}
       try {{ window.close(); }} catch (e) {{}}
     </script>
   </body>
@@ -169,7 +188,10 @@ async def handle_gsc_callback(
   <body style=\"font-family: sans-serif; padding: 24px;\">
     <p>Connection Failed. Please close this window and try again.</p>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, window.location.origin); }} catch (e) {{}}
+      try {{
+        const popupNonce = (window.name || '').replace('gsc-auth-', '');
+        window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR', nonce: popupNonce }}, window.location.origin);
+      }} catch (e) {{}}
     </script>
   </body>
   </html>
@@ -186,7 +208,10 @@ async def handle_gsc_callback(
     <p>Connection Error. Please close this window and try again.</p>
     <pre style=\"white-space: pre-wrap;\">{str(e)}</pre>
     <script>
-      try {{ window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR' }}, window.location.origin); }} catch (e) {{}}
+      try {{
+        const popupNonce = (window.name || '').replace('gsc-auth-', '');
+        window.opener && window.opener.postMessage({{ type: 'GSC_AUTH_ERROR', nonce: popupNonce }}, window.location.origin);
+      }} catch (e) {{}}
     </script>
   </body>
   </html>
@@ -211,6 +236,111 @@ async def get_gsc_sites(user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Error getting GSC sites: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting sites: {str(e)}")
+
+
+@router.get("/data-quality", response_model=GSCDataQualityResponse)
+async def get_gsc_data_quality(
+    site_url: str = Query(..., description="GSC site URL"),
+    user: dict = Depends(get_current_user)
+):
+    """Get immediate data quality checks for onboarding UX."""
+    try:
+        user_id = user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        sites = gsc_service.get_site_list(user_id)
+        selected_site = next((s for s in sites if s.get("siteUrl") == site_url), None)
+        permission_level = selected_site.get("permissionLevel") if selected_site else None
+        has_sufficient_permission = permission_level in {"siteOwner", "siteFullUser", "siteRestrictedUser"}
+
+        analytics = gsc_service.get_search_analytics(user_id=user_id, site_url=site_url)
+        verification_rows = analytics.get("verification_data", {}).get("rows", [])
+        date_keys = [row.get("keys", [None])[0] for row in verification_rows if row.get("keys")]
+        date_keys = [d for d in date_keys if isinstance(d, str)]
+
+        data_window_start = min(date_keys) if date_keys else None
+        data_window_end = max(date_keys) if date_keys else None
+
+        sitemaps = gsc_service.get_sitemaps(user_id, site_url)
+        submitted = 0
+        indexed = 0
+        for sitemap in sitemaps:
+            for content in sitemap.get("contents", []) or []:
+                try:
+                    submitted += int(content.get("submitted", 0) or 0)
+                    indexed += int(content.get("indexed", 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+
+        indexing_ratio = round((indexed / submitted) * 100, 2) if submitted > 0 else None
+
+        return GSCDataQualityResponse(
+            site_url=site_url,
+            permission_level=permission_level,
+            has_sufficient_permission=has_sufficient_permission,
+            data_days_available=len(date_keys),
+            data_window_start=data_window_start,
+            data_window_end=data_window_end,
+            indexing_health={
+                "submitted_urls": submitted,
+                "indexed_urls": indexed,
+                "indexing_ratio": indexing_ratio,
+                "sitemaps_count": len(sitemaps)
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error getting GSC data quality: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting GSC data quality: {str(e)}")
+
+
+@router.get("/opportunities", response_model=GSCCachedOpportunitiesResponse)
+async def get_gsc_cached_opportunities(
+    site_url: str = Query(..., description="GSC site URL"),
+    user: dict = Depends(get_current_user)
+):
+    """Get guided opportunities from cached query analytics."""
+    try:
+        user_id = user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        cached = gsc_service.get_latest_cached_analytics(user_id=user_id, site_url=site_url)
+        if not cached:
+            return GSCCachedOpportunitiesResponse(site_url=site_url, opportunities=[], generated_from_cache=False)
+
+        payload = cached.get("data", {})
+        query_rows = payload.get("query_data", {}).get("rows", [])
+
+        opportunities = []
+        for row in query_rows:
+            keys = row.get("keys", [])
+            query = keys[0] if keys else None
+            impressions = float(row.get("impressions", 0) or 0)
+            ctr = float(row.get("ctr", 0) or 0)
+            position = float(row.get("position", 0) or 0)
+            clicks = float(row.get("clicks", 0) or 0)
+
+            if query and impressions >= 100 and ctr < 0.03:
+                opportunities.append({
+                    "query": query,
+                    "clicks": int(clicks),
+                    "impressions": int(impressions),
+                    "ctr": round(ctr * 100, 2),
+                    "position": round(position, 2),
+                    "recommended_action": "Improve title/meta and align intro to search intent"
+                })
+
+        opportunities = sorted(opportunities, key=lambda x: x["impressions"], reverse=True)[:10]
+
+        return GSCCachedOpportunitiesResponse(
+            site_url=site_url,
+            opportunities=opportunities,
+            generated_from_cache=True
+        )
+    except Exception as e:
+        logger.error(f"Error getting GSC opportunities: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting GSC opportunities: {str(e)}")
 
 @router.post("/analytics")
 async def get_gsc_analytics(
@@ -269,7 +399,7 @@ async def get_gsc_status(user: dict = Depends(get_current_user)):
     @deprecated Use unified OAuth client: unifiedOAuthClient.getConnectionStatus('gsc')
     This method is preserved for backward compatibility but will be removed in future versions.
     """
-    console.warn('GSC Router: get_gsc_status() is deprecated. Use unifiedOAuthClient.getConnectionStatus("gsc") instead')
+    logger.warning(f'GSC Router: /gsc/status is deprecated; use /oauth/gsc/status. Planned removal after {DEPRECATED_GSC_LEGACY_ROUTES_REMOVAL_DATE}')
     
     try:
         user_id = user.get('id')
@@ -278,56 +408,25 @@ async def get_gsc_status(user: dict = Depends(get_current_user)):
         
         logger.info(f"Checking GSC status for user: {user_id}")
         
-        # Use unified OAuth client for consistent patterns
-        from frontend.src.api.unifiedOAuth import unifiedOAuthClient
-        unified_client = unifiedOAuthClient()
-        
-        try:
-            status_response = await unified_client.getConnectionStatus('gsc')
-            
-            # Transform unified response to GSC-specific format
-            details = status_response.details as any
-            sites = details?.sites || []
-            
-            return {
-                "connected": status_response.connected,
-                "sites": sites,
-                "total_sites": len(sites),
-                "last_sync": details?.last_sync
-            }
-        except Exception as unified_error:
-            # Fall back to legacy service if unified client fails
-            logger.warning(f"Unified client failed, falling back to legacy GSC service: {unified_error}")
-            
-            # Use legacy GSC service for status check
-            credentials = gsc_service.load_user_credentials(user_id)
-            connected = credentials is not None
-            
-            sites = []
-            if connected:
-                try:
-                    sites = gsc_service.get_site_list(user_id)
-                except Exception as e:
-                    logger.warning(f"Could not get sites for user {user_id}: {e}")
-                    sites = []
-                
-                last_sync = None  # Could be enhanced to track last sync time
-                status_response = GSCStatusResponse(
-                    connected=connected,
-                    sites=sites,
-                    total_sites=len(sites),
-                    last_sync=last_sync
-                )
-            else:
-                status_response = GSCStatusResponse(
-                    connected=False,
-                    sites=[],
-                    total_sites=0,
-                    last_sync=None
-                )
-        
-        logger.info(f"GSC status checked for user: {user_id}, connected: {connected}")
-        return status_response
+        provider = get_provider("gsc")
+        if not provider:
+            raise HTTPException(status_code=500, detail="GSC provider not registered")
+
+        status_response = provider.get_connection_status(user_id)
+        sites = []
+        if status_response.connected:
+            try:
+                sites = gsc_service.get_site_list(user_id)
+            except Exception as e:
+                logger.warning(f"Could not get sites for user {user_id}: {e}")
+
+        logger.info(f"GSC status checked for user: {user_id}, connected: {status_response.connected}")
+        return {
+            "connected": status_response.connected,
+            "sites": sites,
+            "total_sites": len(sites),
+            "last_sync": None
+        }
         
     except Exception as e:
         logger.error(f"Error checking GSC status: {e}")
@@ -341,7 +440,7 @@ async def disconnect_gsc(user: dict = Depends(get_current_user)):
     @deprecated Use unified OAuth client: unifiedOAuthClient.disconnect('gsc')
     This method is preserved for backward compatibility but will be removed in future versions.
     """
-    console.warn('GSC Router: disconnect_gsc() is deprecated. Use unifiedOAuthClient.disconnect("gsc") instead')
+    logger.warning(f'GSC Router: /gsc/disconnect is deprecated; use /oauth/gsc/disconnect. Planned removal after {DEPRECATED_GSC_LEGACY_ROUTES_REMOVAL_DATE}')
     
     try:
         user_id = user.get('id')
@@ -350,36 +449,24 @@ async def disconnect_gsc(user: dict = Depends(get_current_user)):
         
         logger.info(f"Disconnecting GSC for user: {user_id}")
         
-        # Use unified OAuth client for consistent patterns
-        from frontend.src.api.unifiedOAuth import unifiedOAuthClient
-        unified_client = unifiedOAuthClient()
-        
-        try:
-            disconnect_response = await unified_client.disconnect('gsc')
-            
+        provider = get_provider("gsc")
+        if not provider:
+            raise HTTPException(status_code=500, detail="GSC provider not registered")
+
+        success = provider.disconnect(user_id)
+
+        if success:
+            logger.info(f"Successfully disconnected GSC for user {user_id}")
             return {
-                "success": disconnect_response.success,
-                "message": disconnect_response.message
+                "success": True,
+                "message": "Successfully disconnected from Google Search Console"
             }
-        except Exception as unified_error:
-            # Fall back to legacy service if unified client fails
-            logger.warning(f"Unified client failed, falling back to legacy GSC service: {unified_error}")
-            
-            # Use legacy GSC service for disconnection
-            success = gsc_service.revoke_access_token(user_id)
-            
-            if success:
-                logger.info(f"Successfully disconnected GSC for user {user_id}")
-                return {
-                    "success": True,
-                    "message": "Successfully disconnected from Google Search Console"
-                }
-            else:
-                logger.error(f"Failed to disconnect GSC for user {user_id}")
-                return {
-                    "success": False,
-                    "message": "Failed to disconnect from Google Search Console"
-                }
+
+        logger.warning(f"No active GSC connection found for user {user_id}")
+        return {
+            "success": False,
+            "message": "No active Google Search Console connection found"
+        }
         
     except Exception as e:
         logger.error(f"Error disconnecting GSC: {e}")

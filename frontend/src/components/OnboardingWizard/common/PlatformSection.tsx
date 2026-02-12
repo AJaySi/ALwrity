@@ -21,6 +21,7 @@ import GSCPlatformCard from './GSCPlatformCard';
 import WordPressOAuthPlatformCard from './WordPressOAuthPlatformCard';
 import WixPlatformCard from './WixPlatformCard';
 import { type GSCSite } from '../../../api/gsc';
+import type { GSCDataQualityResponse, GSCCachedOpportunitiesResponse } from '../../../api/gsc';
 
 interface Platform {
   id: string;
@@ -46,6 +47,10 @@ interface PlatformSectionProps {
   onDisconnect?: (platformId: string) => void;
   setConnectedPlatforms?: (platforms: string[]) => void;
   fadeTimeout?: number;
+  primarySite: string;
+  onPrimarySiteChange: (siteUrl: string) => void;
+  dataQuality: GSCDataQualityResponse | null;
+  opportunities: GSCCachedOpportunitiesResponse | null;
 }
 
 const PlatformSection: React.FC<PlatformSectionProps> = ({
@@ -58,7 +63,11 @@ const PlatformSection: React.FC<PlatformSectionProps> = ({
   onConnect,
   onDisconnect,
   setConnectedPlatforms,
-  fadeTimeout = 800
+  fadeTimeout = 800,
+  primarySite,
+  onPrimarySiteChange,
+  dataQuality,
+  opportunities
 }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -116,6 +125,10 @@ const PlatformSection: React.FC<PlatformSectionProps> = ({
                 getStatusIcon={getStatusIcon}
                 getStatusText={getStatusText}
                 getStatusColor={getStatusColor}
+                primarySite={primarySite}
+                onPrimarySiteChange={onPrimarySiteChange}
+                dataQuality={dataQuality}
+                opportunities={opportunities}
                 onRefresh={() => {
                   // Trigger a refresh of GSC status
                   console.log('Refreshing GSC status...');

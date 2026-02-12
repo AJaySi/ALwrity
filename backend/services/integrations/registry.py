@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Callable, Dict, Optional
 from datetime import datetime
+from urllib.parse import parse_qs, urlparse
+from loguru import logger
+from sqlalchemy import text
 
 from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
@@ -179,38 +182,43 @@ class GSCIntegrationProvider:
 
     def get_auth_url(self, user_id: str, redirect_uri: Optional[str] = None) -> AuthUrlPayload:
         auth_url = self._service.get_oauth_url(user_id)
+        parsed_query = parse_qs(urlparse(auth_url).query)
+        oauth_state = parsed_query.get("state", [""])[0]
         return AuthUrlPayload(
             auth_url=auth_url,
-            state=user_id,
+            state=oauth_state,
             provider_id=self.key
         )
 
     def handle_callback(self, code: str, state: str) -> ConnectionResult:
         try:
-            # GSC handles callback internally through the service
-            credentials = self._service.exchange_code_for_tokens(code)
-            if not credentials:
+            callback_result = self._service.handle_oauth_callback(code, state)
+            if not callback_result.get("success"):
                 return ConnectionResult(
                     success=False,
-                    user_id=state,
+                    user_id=callback_result.get("user_id", state),
                     provider_id=self.key,
-                    error="Failed to exchange code for tokens"
+                    error=callback_result.get("error") or "Failed to handle OAuth callback"
                 )
+
+            user_id = callback_result.get("user_id", state)
+            credentials = self._service.load_user_credentials(user_id)
             
             return ConnectionResult(
                 success=True,
-                user_id=state,
+                user_id=user_id,
                 provider_id=self.key,
-                access_token=getattr(credentials, 'token', None),
-                refresh_token=getattr(credentials, 'refresh_token', None),
-                expires_at=getattr(credentials, 'expiry', None),
-                scope=getattr(credentials, 'scopes', None),
+                access_token=getattr(credentials, 'token', None) if credentials else None,
+                refresh_token=getattr(credentials, 'refresh_token', None) if credentials else None,
+                expires_at=getattr(credentials, 'expiry', None) if credentials else None,
+                scope=getattr(credentials, 'scopes', None) if credentials else None,
                 account_info={
-                    'email': getattr(credentials, 'email', None),
-                    'verified': getattr(credentials, 'verified', False)
+                    'email': getattr(credentials, 'email', None) if credentials else None,
+                    'verified': getattr(credentials, 'verified', False) if credentials else False
                 }
             )
         except Exception as e:
+            logger.error(f"GSC callback failed: {e}")
             return ConnectionResult(
                 success=False,
                 user_id=state,
@@ -290,9 +298,8 @@ class GSCIntegrationProvider:
     def disconnect(self, user_id: str) -> bool:
         try:
             # GSC doesn't have explicit disconnect, remove credentials from storage
-            return self._service.revoke_user_credentials(user_id)
+            return self._service.revoke_user_access(user_id)
         except Exception as e:
-            from loguru import logger
             logger.error(f"GSC disconnect failed for user {user_id}: {e}")
             return False
 
