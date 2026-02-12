@@ -8,9 +8,9 @@
 import { z } from 'zod';
 
 // Import existing API client for base functionality
-import { apiClient } from './apiClient';
+import { apiClient } from './client';
 
-// Import types
+// Import types and error classes
 import type {
   OAuthTokenInfo,
   OAuthConnectionStatus,
@@ -20,10 +20,19 @@ import type {
   OAuthRefreshResponse,
   OAuthDisconnectResponse,
   OAuthProviderConfig,
+} from './unifiedOAuth';
+
+import {
   OAuthError,
   OAuthValidationError,
   OAuthNetworkError,
   OAuthAuthenticationError,
+  OAuthProvidersResponseSchema,
+  OAuthAuthUrlResponseSchema,
+  OAuthCallbackResponseSchema,
+  OAuthConnectionStatusSchema,
+  OAuthRefreshResponseSchema,
+  OAuthDisconnectResponseSchema,
 } from './unifiedOAuth';
 
 /**
@@ -319,7 +328,6 @@ export const unifiedOAuthClient = new UnifiedOAuthClient();
 
 // Export types and schemas for use in other components
 export {
-  UnifiedOAuthClient,
   OAuthProviderConfig,
   OAuthTokenInfo,
   OAuthConnectionStatus,

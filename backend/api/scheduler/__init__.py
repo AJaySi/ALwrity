@@ -7,7 +7,7 @@ health monitoring, and zero-downtime deployment capabilities.
 
 import time
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 

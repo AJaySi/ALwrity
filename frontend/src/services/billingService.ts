@@ -11,6 +11,7 @@ import { billingService as modularBillingService } from './billing/billingServic
 
 // Re-export all functionality for backward compatibility
 export default modularBillingService;
+export const billingService = modularBillingService; // Add named export for compatibility
 export const billingAPI = modularBillingService.billingAPI;
 export const setBillingAuthTokenGetter = modularBillingService.setBillingAuthTokenGetter;
 

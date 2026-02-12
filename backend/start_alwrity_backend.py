@@ -101,25 +101,43 @@ from alwrity_utils import (
     DatabaseSetup,
     ProductionOptimizer
 )
+from utils.port_manager import find_free_port, cleanup_port_if_needed
 
 
-def start_backend(enable_reload=False, production_mode=False):
+def start_backend(enable_reload=False, production_mode=False, port_override=None, find_port=False):
     """Start the backend server."""
     print("Starting ALwrity Backend...")
     
-    # Set host based on environment and mode
-    # Use 127.0.0.1 for local production testing on Windows
-    # Use 0.0.0.0 for actual cloud deployments (Render, Railway, etc.)
-    default_host = os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("DEPLOY_ENV")
-    if default_host:
-        # Cloud deployment detected - use 0.0.0.0
-        os.environ.setdefault("HOST", "0.0.0.0")
-        # Use Render's port dynamically
-        os.environ.setdefault("PORT", os.getenv("PORT", "10000"))
+    # Enhanced port resolution priority:
+    # 1. CLI argument override (highest priority)
+    # 2. Auto-find free port (if requested)
+    # 3. Environment variable PORT
+    # 4. Default based on environment
+    
+    if port_override:
+        os.environ["PORT"] = str(port_override)
+        print(f"   CLI port override: {port_override}")
+    elif find_port:
+        try:
+            free_port = find_free_port()
+            os.environ["PORT"] = str(free_port)
+            print(f"   Auto-allocated port: {free_port}")
+        except RuntimeError as e:
+            print(f"   Error: {e}")
+            print("   Falling back to default port...")
+            os.environ.setdefault("PORT", "8000")
     else:
-        # Local deployment - use 127.0.0.1 for better Windows compatibility
-        os.environ.setdefault("HOST", "127.0.0.1")
-        os.environ.setdefault("PORT", "8000")
+        # Existing environment-based logic
+        default_host = os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("DEPLOY_ENV")
+        if default_host:
+            # Cloud deployment detected - use 0.0.0.0
+            os.environ.setdefault("HOST", "0.0.0.0")
+            # Use Render's port dynamically
+            os.environ.setdefault("PORT", os.getenv("PORT", "10000"))
+        else:
+            # Local deployment - use 127.0.0.1 for better Windows compatibility
+            os.environ.setdefault("HOST", "127.0.0.1")
+            os.environ.setdefault("PORT", "8000")
     
     # Set reload based on argument or environment variable
     if enable_reload and not production_mode:
@@ -146,14 +164,14 @@ def start_backend(enable_reload=False, production_mode=False):
         
         print("\n🌐 ALwrity Backend Server")
         print("=" * 50)
-        print("   📖 API Documentation: http://localhost:8000/api/docs")
-        print("   🔍 Health Check: http://localhost:8000/health")
-        print("   📊 ReDoc: http://localhost:8000/api/redoc")
+        print(f"   📖 API Documentation: http://localhost:{port}/api/docs")
+        print(f"   🔍 Health Check: http://localhost:{port}/health")
+        print(f"   📊 ReDoc: http://localhost:{port}/api/redoc")
         
         if not production_mode:
-            print("   📈 API Monitoring: http://localhost:8000/api/content-planning/monitoring/health")
-            print("   💳 Billing Dashboard: http://localhost:8000/api/subscription/plans")
-            print("   📊 Usage Tracking: http://localhost:8000/api/subscription/usage/demo")
+            print(f"   📈 API Monitoring: http://localhost:{port}/api/content-planning/monitoring/health")
+            print(f"   💳 Billing Dashboard: http://localhost:{port}/api/subscription/plans")
+            print(f"   📊 Usage Tracking: http://localhost:{port}/api/subscription/usage/demo")
         
         print("\n[STOP]  Press Ctrl+C to stop the server")
         print("=" * 50)
@@ -241,12 +259,35 @@ def main():
     parser.add_argument("--dev", action="store_true", help="Enable development mode (auto-reload)")
     parser.add_argument("--production", action="store_true", help="Enable production mode (optimized for deployment)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging for debugging")
+    parser.add_argument("--port", type=int, help="Override port (overrides .env PORT)")
+    parser.add_argument("--find-port", action="store_true", help="Auto-find free port for development")
+    parser.add_argument("--cleanup-port", action="store_true", help="Clean up port if in use by ALwrity process")
+    parser.add_argument("--force-cleanup", action="store_true", help="Force clean up port without confirmation")
     args = parser.parse_args()
+    
+    # Handle port cleanup mode
+    if args.cleanup_port:
+        target_port = args.port or int(os.getenv("PORT", "8000"))
+        print(f"🧹 Port cleanup mode for port {target_port}")
+        
+        if cleanup_port_if_needed(target_port, force=args.force_cleanup):
+            print(f"✅ Port {target_port} is ready for use")
+        else:
+            print(f"❌ Port {target_port} cleanup failed")
+            return False
+        
+        # If only cleaning up, exit here
+        if not (args.reload or args.dev or args.production):
+            return True
     
     # Determine mode
     production_mode = args.production
     enable_reload = (args.reload or args.dev) and not production_mode
     verbose_mode = args.verbose
+    
+    # Handle port configuration
+    port_override = args.port
+    find_port = args.find_port and not production_mode  # Only allow in development
     
     # Set global verbose flag for utilities
     os.environ["ALWRITY_VERBOSE"] = "true" if verbose_mode else "false"
@@ -338,7 +379,7 @@ def main():
     
     # Step 4: Start backend
     print(f"   🚀 {setup_steps[3]}...")
-    return start_backend(enable_reload=enable_reload, production_mode=production_mode)
+    return start_backend(enable_reload=enable_reload, production_mode=production_mode, port_override=port_override, find_port=find_port)
 
 
 if __name__ == "__main__":
