@@ -21,6 +21,7 @@ router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
 
 # Initialize GSC service (for backward compatibility)
 from services.gsc_service import GSCService
+from services.gsc_task_report_service import GSCTaskReportService
 gsc_service = GSCService()
 
 
@@ -67,6 +68,19 @@ class GSCCachedOpportunitiesResponse(BaseModel):
     site_url: str
     opportunities: List[Dict[str, Any]]
     generated_from_cache: bool
+
+
+class GSCTaskReportResponse(BaseModel):
+    connected: bool
+    site_url: Optional[str] = None
+    generated_at: Optional[str] = None
+    sections: List[Dict[str, Any]]
+    google_query_templates: List[str]
+
+
+class GSCRunTaskRequest(BaseModel):
+    task_key: str
+    site_url: Optional[str] = None
 
 @router.get("/auth/url")
 async def get_gsc_auth_url(request: Request, user: dict = Depends(get_current_user)):
@@ -508,3 +522,43 @@ async def gsc_health_check():
     except Exception as e:
         logger.error(f"GSC health check failed: {e}")
         raise HTTPException(status_code=500, detail="GSC service unhealthy")
+
+
+@router.get("/task-reports", response_model=GSCTaskReportResponse)
+async def get_gsc_task_reports(
+    site_url: Optional[str] = Query(None, description="Optional GSC site URL"),
+    user: dict = Depends(get_current_user)
+):
+    """Get issue 1-4 task sections for onboarding and SEO dashboard widgets."""
+    try:
+        user_id = user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        service = GSCTaskReportService()
+        return service.build_task_report(user_id=str(user_id), site_url=site_url)
+    except Exception as e:
+        logger.error(f"Error getting GSC task reports: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting task reports: {str(e)}")
+
+
+@router.post("/task-reports/run")
+async def run_gsc_task_report(
+    request: GSCRunTaskRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Run one issue task once (onboarding learn mode)."""
+    try:
+        user_id = user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        service = GSCTaskReportService()
+        return service.run_single_task(
+            user_id=str(user_id),
+            task_key=request.task_key,
+            site_url=request.site_url
+        )
+    except Exception as e:
+        logger.error(f"Error running GSC task report: {e}")
+        raise HTTPException(status_code=500, detail=f"Error running task report: {str(e)}")

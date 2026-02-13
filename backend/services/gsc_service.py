@@ -15,6 +15,8 @@ from services.database import get_user_data_db_session
 
 class GSCService:
     """Service for Google Search Console integration."""
+    DEFAULT_SEARCH_TYPE = 'web'
+    MAX_ROW_LIMIT = 25000
     
     def __init__(self):
         """Initialize GSC service with database connection."""
@@ -342,11 +344,12 @@ class GSCService:
                 return {'error': 'Authentication failed', 'rows': [], 'rowCount': 0}
             
             # Step 1: Verify data presence first (as per GSC API documentation)
-            verification_request = {
-                'startDate': start_date,
-                'endDate': end_date,
-                'dimensions': ['date']  # Only date dimension for verification
-            }
+            verification_request = self._build_search_analytics_request(
+                start_date=start_date,
+                end_date=end_date,
+                dimensions=['date'],
+                row_limit=self.MAX_ROW_LIMIT,
+            )
             
             logger.info(f"GSC Data verification request for user {user_id}: {verification_request}")
             
@@ -371,12 +374,12 @@ class GSCService:
                 return {'error': f'Data verification failed: {str(verification_error)}', 'rows': [], 'rowCount': 0}
             
             # Step 2: Get overall metrics (no dimensions)
-            request = {
-                'startDate': start_date,
-                'endDate': end_date,
-                'dimensions': [],  # No dimensions for overall metrics
-                'rowLimit': 1000
-            }
+            request = self._build_search_analytics_request(
+                start_date=start_date,
+                end_date=end_date,
+                dimensions=None,  # Aggregated totals (no dimensions)
+                row_limit=1,
+            )
             
             logger.info(f"GSC API request for user {user_id}: {request}")
             
@@ -392,12 +395,12 @@ class GSCService:
                 return {'error': str(api_error), 'rows': [], 'rowCount': 0}
             
             # Step 3: Get query-level data for insights (as per documentation)
-            query_request = {
-                'startDate': start_date,
-                'endDate': end_date,
-                'dimensions': ['query'],  # Get query-level data
-                'rowLimit': 1000
-            }
+            query_request = self._build_search_analytics_request(
+                start_date=start_date,
+                end_date=end_date,
+                dimensions=['query'],
+                row_limit=self.MAX_ROW_LIMIT,
+            )
             
             logger.info(f"GSC Query-level request for user {user_id}: {query_request}")
             
@@ -458,6 +461,38 @@ class GSCService:
         except Exception as e:
             logger.error(f"Error getting search analytics for user {user_id}: {e}")
             raise
+
+    def _build_search_analytics_request(
+        self,
+        start_date: str,
+        end_date: str,
+        dimensions: Optional[List[str]] = None,
+        row_limit: Optional[int] = None,
+        start_row: int = 0,
+        search_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Build a GSC Search Analytics request body aligned with API documentation.
+
+        Notes:
+        - `dimensions` is optional; omit it entirely for aggregated totals.
+        - `rowLimit` max is 25,000 per API call.
+        - `type` defaults to `web` when not specified.
+        """
+        request: Dict[str, Any] = {
+            'startDate': start_date,
+            'endDate': end_date,
+            'type': search_type or self.DEFAULT_SEARCH_TYPE,
+            'startRow': max(start_row, 0),
+        }
+
+        if dimensions:
+            request['dimensions'] = dimensions
+
+        if row_limit is not None:
+            bounded_row_limit = max(1, min(int(row_limit), self.MAX_ROW_LIMIT))
+            request['rowLimit'] = bounded_row_limit
+
+        return request
     
     def get_sitemaps(self, user_id: str, site_url: str) -> List[Dict[str, Any]]:
         """Get sitemaps from GSC."""

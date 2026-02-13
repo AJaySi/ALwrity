@@ -16,6 +16,7 @@ from services.research.research_persona_scheduler import schedule_research_perso
 from services.persona.facebook.facebook_persona_scheduler import schedule_facebook_persona_generation
 from services.oauth_token_monitoring_service import create_oauth_monitoring_tasks
 from services.onboarding.unified_oauth_validator import UnifiedOAuthValidator
+from services.platform_insights_monitoring_service import create_platform_insights_task
 
 class OnboardingCompletionService:
     """Service for handling onboarding completion logic."""
@@ -84,6 +85,31 @@ class OnboardingCompletionService:
                 # Non-critical: log but don't fail onboarding completion
                 logger.warning(f"Failed to create OAuth token monitoring tasks for user {user_id}: {e}")
             
+
+            # Create platform insights tasks (GSC/Bing) after onboarding completion
+            try:
+                from services.database import SessionLocal
+                db = SessionLocal()
+                try:
+                    connection_summary = self.oauth_validator.get_connection_summary(user_id)
+                    platform_ids = [p.get('provider') for p in connection_summary.get('platforms', []) if p.get('status') == 'active']
+                    created_platform_tasks = []
+                    for platform in platform_ids:
+                        if platform in {'gsc', 'bing'}:
+                            task_res = create_platform_insights_task(
+                                user_id=user_id,
+                                platform=platform,
+                                site_url=None,
+                                db=db
+                            )
+                            if task_res.get('success'):
+                                created_platform_tasks.append(task_res.get('task_id'))
+                    logger.info(f"Created/verified platform insights tasks for user {user_id}: {created_platform_tasks}")
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.warning(f"Failed to create platform insights tasks for user {user_id}: {e}")
+
             # Create website analysis tasks for user's website and competitors
             try:
                 from services.database import SessionLocal

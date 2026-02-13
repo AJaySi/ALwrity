@@ -32,6 +32,7 @@ import { useBingOAuth } from '../../hooks/useBingOAuth';
 import { useGSCConnection } from './common/useGSCConnection';
 import { usePlatformConnections } from './common/usePlatformConnections';
 import PlatformAnalytics from '../shared/PlatformAnalytics';
+import GSCTaskReportsPanel from '../shared/GSCTaskReportsPanel';
 import { cachedAnalyticsAPI } from '../../api/cachedAnalytics';
 import { gscAPI, type GSCDataQualityResponse, type GSCCachedOpportunitiesResponse } from '../../api/gsc';
 
@@ -498,6 +499,20 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
                 }}
               />
             </Paper>
+          </div>
+        </Fade>
+      )}
+
+
+
+      {/* Optional Step-5 task testing UI (shared with SEO dashboard) */}
+      {connectedPlatforms.includes('gsc') && (
+        <Fade in timeout={1250}>
+          <div>
+            <GSCTaskReportsPanel
+              siteUrl={primaryGscSite || undefined}
+              title="Step 5 Optional Task Testing (GSC)"
+            />
           </div>
         </Fade>
       )}

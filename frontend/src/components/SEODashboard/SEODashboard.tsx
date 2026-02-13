@@ -39,6 +39,7 @@ import useSEOCopilotStore from '../../stores/seoCopilotStore';
 
 // GSC Components
 import GSCLoginButton from './components/GSCLoginButton';
+import GSCTaskReportsPanel from '../shared/GSCTaskReportsPanel';
 
 // Zustand store
 import { useSEODashboardStore } from '../../stores/seoDashboardStore';
@@ -693,6 +694,10 @@ const SEODashboard: React.FC = () => {
                   }}
                   showBackgroundJobs={showBackgroundJobs}
                 />
+
+                {platformStatus.gsc.connected && (
+                  <GSCTaskReportsPanel title="GSC Monitoring Tasks & Insights" compact />
+                )}
                 
                 {/* Enhanced Metrics with Tooltips */}
                 <Box sx={{ mt: 3 }}>

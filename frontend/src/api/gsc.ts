@@ -58,6 +58,22 @@ export interface GSCDataQualityResponse {
   };
 }
 
+
+
+export interface GSCTaskReportResponse {
+  connected: boolean;
+  site_url?: string;
+  generated_at?: string;
+  sections: Array<{
+    issue_key: string;
+    title: string;
+    description: string;
+    metrics: Record<string, any>;
+    items: any[];
+  }>;
+  google_query_templates: string[];
+}
+
 export interface GSCCachedOpportunitiesResponse {
   site_url: string;
   opportunities: Array<{
@@ -225,6 +241,25 @@ class GSCAPI {
     const client = await this.getAuthenticatedClient();
     const response = await client.get(`${this.baseUrl}/opportunities`, {
       params: { site_url: siteUrl }
+    });
+    return response.data;
+  }
+
+
+
+  async getTaskReports(siteUrl?: string): Promise<GSCTaskReportResponse> {
+    const client = await this.getAuthenticatedClient();
+    const response = await client.get(`${this.baseUrl}/task-reports`, {
+      params: siteUrl ? { site_url: siteUrl } : undefined
+    });
+    return response.data;
+  }
+
+  async runTaskReport(taskKey: string, siteUrl?: string): Promise<{ success: boolean; result?: any }> {
+    const client = await this.getAuthenticatedClient();
+    const response = await client.post(`${this.baseUrl}/task-reports/run`, {
+      task_key: taskKey,
+      site_url: siteUrl
     });
     return response.data;
   }
