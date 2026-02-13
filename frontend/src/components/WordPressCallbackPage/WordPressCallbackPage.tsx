@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { getOAuthPostMessageTargetOrigin } from '../../utils/oauthOrigins';
 
 const WordPressCallbackPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,8 @@ const WordPressCallbackPage: React.FC = () => {
 
         // Notify opener and close if this is a popup window
         try {
-          (window.opener || window.parent)?.postMessage({ type: 'WPCOM_OAUTH_SUCCESS', success: true }, '*');
+          const targetOrigin = getOAuthPostMessageTargetOrigin('wordpress');
+          (window.opener || window.parent)?.postMessage({ type: 'WPCOM_OAUTH_SUCCESS', success: true }, targetOrigin);
           if (window.opener) {
             window.close();
             return;
@@ -38,7 +40,8 @@ const WordPressCallbackPage: React.FC = () => {
       } catch (e: any) {
         setError(e?.message || 'OAuth callback failed');
         try {
-          (window.opener || window.parent)?.postMessage({ type: 'WPCOM_OAUTH_ERROR', success: false, error: e?.message || 'OAuth callback failed' }, '*');
+          const targetOrigin = getOAuthPostMessageTargetOrigin('wordpress');
+          (window.opener || window.parent)?.postMessage({ type: 'WPCOM_OAUTH_ERROR', success: false, error: e?.message || 'OAuth callback failed' }, targetOrigin);
           if (window.opener) window.close();
         } catch {}
       }
@@ -61,5 +64,4 @@ const WordPressCallbackPage: React.FC = () => {
 };
 
 export default WordPressCallbackPage;
-
 

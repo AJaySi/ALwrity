@@ -191,6 +191,27 @@ router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
 
 ---
 
+
+## Validation of Reported Findings (Implementation Check)
+
+The comments in this review were validated against the current codebase and are largely accurate:
+
+- **Security posture**: **Correct**. Bing and GSC callbacks already enforce origin-aware `postMessage` behavior and token redaction in status payloads.
+- **Dual storage approaches**: **Correct**. Provider-specific tables still exist and are used by provider services, while a unified token model also exists.
+- **Provider implementation inconsistency**: **Correct**. Both protocol/registry adapters and direct provider services are present in parallel.
+- **Frontend interface variation**: **Correct**. OAuth auth-url payload contracts differed by provider.
+
+### Targeted hardening applied
+
+To reduce one of the confirmed inconsistencies and align security behavior:
+
+1. **WordPress OAuth auth-url response now includes `trusted_origins`** (matching Bing/GSC style payloads).
+2. **WordPress OAuth callback `postMessage` no longer uses wildcard (`*`)** and now targets validated origin derived from redirect configuration.
+3. **Frontend WordPress OAuth API typing updated** to include `trusted_origins`.
+
+These changes preserve existing flow behavior while closing a gap in callback origin targeting and making provider payloads more consistent.
+
+---
 ## 🚀 **Strategic Recommendations**
 
 ### **Phase 1: Architectural Consolidation (Immediate)**

@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { wordpressOAuthAPI, WordPressOAuthStatus, WordPressOAuthSite } from '../api/wordpressOAuth';
 import { useAuth } from '@clerk/clerk-react';
+import { getTrustedOrigins, isTrustedOAuthMessageEvent, setOAuthTargetOrigin } from '../utils/oauthOrigins';
 
 export interface UseWordPressOAuthReturn {
   // Connection state
@@ -95,6 +96,9 @@ export const useWordPressOAuth = (): UseWordPressOAuthReturn => {
       const authData = await wordpressOAuthAPI.getAuthUrl();
       
       if (authData && authData.auth_url) {
+        const trustedOrigins = getTrustedOrigins('wordpress', authData.trusted_origins || []);
+        setOAuthTargetOrigin('wordpress', window.location.origin);
+
         // Open OAuth popup window
         const popup = window.open(
           authData.auth_url,
@@ -114,10 +118,8 @@ export const useWordPressOAuth = (): UseWordPressOAuthReturn => {
             source: event.source === popup ? 'our-popup' : 'other'
           });
           
-          // Accept messages only from the popup we opened and from trusted origins
-          const trustedOrigins = [window.location.origin, 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'];
-          if (event.source !== popup) return;
-          if (!trustedOrigins.includes(event.origin)) return;
+          // Accept messages only from popup we opened and trusted origins
+          if (!isTrustedOAuthMessageEvent(event, popup, trustedOrigins)) return;
 
           console.log('WordPress OAuth: Valid message from popup:', event.data);
 

@@ -11,6 +11,7 @@ from loguru import logger
 
 from services.integrations.wordpress_oauth import WordPressOAuthService
 from middleware.auth_middleware import get_current_user
+from services.oauth_redirects import get_trusted_origins_for_redirect
 
 router = APIRouter(prefix="/wp", tags=["WordPress OAuth"])
 
@@ -21,6 +22,7 @@ oauth_service = WordPressOAuthService()
 class WordPressOAuthResponse(BaseModel):
     auth_url: str
     state: str
+    trusted_origins: list[str]
 
 class WordPressCallbackResponse(BaseModel):
     success: bool
@@ -50,7 +52,10 @@ async def get_wordpress_auth_url(
                 detail="WordPress OAuth is not properly configured. Please check that WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET environment variables are set with valid WordPress.com application credentials."
             )
         
-        return WordPressOAuthResponse(**auth_data)
+        return WordPressOAuthResponse(
+            **auth_data,
+            trusted_origins=get_trusted_origins_for_redirect("WordPress", "WORDPRESS_REDIRECT_URI"),
+        )
         
     except Exception as e:
         logger.error(f"Error generating WordPress OAuth URL: {e}")
@@ -66,7 +71,10 @@ async def handle_wordpress_callback(
     error: Optional[str] = Query(None, description="Error from WordPress OAuth")
 ):
     """Handle WordPress OAuth2 callback."""
+    postmessage_origin = ""
     try:
+        postmessage_origin = get_trusted_origins_for_redirect("WordPress", "WORDPRESS_REDIRECT_URI")[0]
+
         if error:
             logger.error(f"WordPress OAuth error: {error}")
             html_content = f"""
@@ -77,11 +85,11 @@ async def handle_wordpress_callback(
                 <script>
                     // Send error message to parent window
                     window.onload = function() {{
-                        window.parent.postMessage({{
+                        (window.opener || window.parent).postMessage({{
                             type: 'WPCOM_OAUTH_ERROR',
                             success: false,
                             error: '{error}'
-                        }}, '*');
+                        }}, '{postmessage_origin}');
                         window.close();
                     }};
                 </script>
@@ -100,7 +108,7 @@ async def handle_wordpress_callback(
         
         if not code or not state:
             logger.error("Missing code or state parameter in WordPress OAuth callback")
-            html_content = """
+            html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -112,7 +120,7 @@ async def handle_wordpress_callback(
                             type: 'WPCOM_OAUTH_ERROR',
                             success: false,
                             error: 'Missing parameters'
-                    }}, '*');
+                    }}, '{postmessage_origin}');
                         window.close();
                     }};
                 </script>
@@ -134,7 +142,7 @@ async def handle_wordpress_callback(
         
         if not result or not result.get('success'):
             logger.error("Failed to exchange WordPress OAuth code for token")
-            html_content = """
+            html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -146,7 +154,7 @@ async def handle_wordpress_callback(
                             type: 'WPCOM_OAUTH_ERROR',
                             success: false,
                             error: 'Token exchange failed'
-                    }}, '*');
+                    }}, '{postmessage_origin}');
                         window.close();
                     }};
                 </script>
@@ -175,7 +183,7 @@ async def handle_wordpress_callback(
                         success: true,
                         blogUrl: '{blog_url}',
                         blogId: '{result.get('blog_id', '')}'
-                    }}, '*');
+                    }}, '{postmessage_origin}');
                     window.close();
                 }};
             </script>
@@ -195,7 +203,7 @@ async def handle_wordpress_callback(
         
     except Exception as e:
         logger.error(f"Error handling WordPress OAuth callback: {e}")
-        html_content = """
+        html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -207,7 +215,7 @@ async def handle_wordpress_callback(
                         type: 'WPCOM_OAUTH_ERROR',
                         success: false,
                         error: 'Callback error'
-                    }}, '*');
+                    }}, '{postmessage_origin}');
                     window.close();
                 }};
             </script>

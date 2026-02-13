@@ -8,6 +8,7 @@ import { apiClient } from './client';
 export interface WordPressOAuthResponse {
   auth_url: string;
   state: string;
+  trusted_origins: string[];
 }
 
 export interface WordPressOAuthStatus {
