@@ -20,7 +20,7 @@ import {
   CircularProgress
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-react';
+import { useAuth, useUser, SignInButton, SignOutButton, useClerk } from '@clerk/clerk-react';
 import { apiClient } from '../../api/client';
 import {
   Refresh as RefreshIcon,
@@ -69,6 +69,7 @@ const SEODashboard: React.FC = () => {
   // Clerk authentication hooks
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
+  const { openSignIn } = useClerk();
   
   // Zustand store hooks
   const {
@@ -491,8 +492,8 @@ const SEODashboard: React.FC = () => {
             <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
               Sign in to access your SEO analytics and Google Search Console data
             </Typography>
-            <SignInButton mode="modal">
-              <Button 
+            <Button 
+                onClick={() => openSignIn({ forceRedirectUrl: '/seo-dashboard' })}
                 variant="contained" 
                 size="large"
                 sx={{ 
@@ -506,7 +507,6 @@ const SEODashboard: React.FC = () => {
               >
                 Sign In to Continue
               </Button>
-            </SignInButton>
           </Box>
         </Container>
       </DashboardContainer>

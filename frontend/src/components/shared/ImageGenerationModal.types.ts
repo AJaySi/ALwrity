@@ -35,6 +35,8 @@ export interface ImagePreset {
   style: ImageStyle;
   renderingSpeed: RenderingSpeed;
   aspectRatio: AspectRatio;
+  model?: ImageModel;
+  image?: string; // Path to example image
 }
 
 // Model option for the model selector

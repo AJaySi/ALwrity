@@ -42,7 +42,7 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
         db_url = f'sqlite:///{db_path}'
         return BingInsightsService(db_url)
 
-    async def get_analytics(self, user_id: str) -> AnalyticsData:
+    async def get_analytics(self, user_id: str, target_url: str = None, **kwargs) -> AnalyticsData:
         """
         Get Bing Webmaster analytics data using Bing Webmaster API
         """
@@ -83,9 +83,32 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
             if not access_token:
                 return self.create_error_response('Bing Webmaster access token not available')
             
+            # Select site: Prefer target_url match, otherwise first site
+            selected_site = sites[0] if sites else None
+            
+            if not selected_site:
+                 return self.create_error_response('No Bing sites found')
+
+            if target_url and sites:
+                logger.info(f"Attempting to match target URL: {target_url}")
+                # Normalize target URL (remove protocol, trailing slash)
+                normalized_target = target_url.replace('https://', '').replace('http://', '').rstrip('/')
+                
+                for site in sites:
+                    # Bing uses 'Url' key
+                    site_url = site.get('Url', '')
+                    normalized_site = site_url.replace('https://', '').replace('http://', '').rstrip('/')
+                    
+                    if normalized_target in normalized_site or normalized_site in normalized_target:
+                        selected_site = site
+                        logger.info(f"Found matching Bing site: {site_url}")
+                        break
+            
+            site_url_for_storage = selected_site.get('Url', '') if selected_site else ''
+            logger.info(f"Using Bing site URL: {site_url_for_storage}")
+            
             query_stats = {}
             try:
-                site_url_for_storage = sites[0].get('Url', '') if (sites and isinstance(sites[0], dict)) else None
                 stored = storage_service.get_analytics_summary(user_id, site_url_for_storage, days=30)
                 if stored and isinstance(stored, dict):
                     query_stats = {
@@ -99,7 +122,7 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
                 logger.warning(f"Bing analytics: Failed to read stored analytics summary: {e}")
             
             # Get enhanced insights
-            insights = self._get_enhanced_insights_with_service(insights_service, user_id, sites[0].get('Url', '') if sites else '')
+            insights = self._get_enhanced_insights_with_service(insights_service, user_id, site_url_for_storage)
             
             metrics = {
                 'connection_status': 'connected',

@@ -297,7 +297,7 @@ def _dict_to_types_schema(schema: Dict[str, Any]) -> types.Schema:
     return _convert(schema)
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
-def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, top_k=40, max_tokens=8192, system_prompt=None):
+def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, top_k=40, max_tokens=8192, system_prompt=None, user_id: str = None):
     """
     Generate structured JSON response using Google's Gemini Pro model.
     
@@ -312,6 +312,7 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
         top_k (int): Top-k sampling parameter
         max_tokens (int): Maximum tokens in response. Use 8192 for complex outputs
         system_prompt (str, optional): System instruction for the model
+        user_id (str, optional): User ID for usage tracking.
     
     Returns:
         dict: Parsed JSON response matching the provided schema
@@ -468,6 +469,25 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
             logger.info(f"Response has parsed attribute: {response.parsed is not None}")
             if response.parsed is not None:
                 logger.info("Using response.parsed for structured output")
+                
+                # Track usage if user_id is provided
+                if user_id:
+                    try:
+                        from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
+                        import json
+                        
+                        response_str = json.dumps(response.parsed)
+                        
+                        track_agent_usage_sync(
+                            user_id=user_id,
+                            model_name="gemini-2.5-flash",
+                            prompt=prompt,
+                            response_text=response_str,
+                            duration=0.5
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to track usage: {e}")
+                        
                 return response.parsed
             else:
                 logger.warning("Response.parsed is None, falling back to text parsing")
@@ -500,6 +520,22 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
                 
                 parsed_text = json.loads(cleaned_text)
                 logger.info("Successfully parsed text as JSON")
+                
+                # Track usage if user_id is provided
+                if user_id:
+                    try:
+                        from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
+                        
+                        track_agent_usage_sync(
+                            user_id=user_id,
+                            model_name="gemini-2.5-flash",
+                            prompt=prompt,
+                            response_text=cleaned_text,
+                            duration=0.5
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to track usage: {e}")
+                        
                 return parsed_text
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse text as JSON: {e}")
@@ -521,6 +557,26 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
                         fixed_json = re.sub(r',\s*]', ']', fixed_json)
                         
                         parsed_text = json.loads(fixed_json)
+                        
+                        # Track usage if user_id is provided
+                        if user_id:
+                            try:
+                                from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
+                                import json
+                                
+                                response_str = json.dumps(parsed_text) if parsed_text else ""
+                                
+                                track_agent_usage_sync(
+                                    user_id=user_id,
+                                    model_name="gemini-2.5-flash",
+                                    prompt=prompt,
+                                    response_text=response_str,
+                                    duration=0.5  # Approximation
+                                )
+                                logger.info(f"✅ Tracked structured JSON usage for user {user_id}")
+                            except Exception as e:
+                                logger.error(f"Failed to track usage: {e}")
+
                         logger.info("Successfully parsed cleaned JSON")
                         return parsed_text
                 except Exception as fix_error:
@@ -537,6 +593,22 @@ def gemini_structured_json_response(prompt, schema, temperature=0.7, top_p=0.9, 
                                 import json
                                 parsed_text = json.loads(part.text)
                                 logger.info("Successfully parsed candidate text as JSON")
+                                
+                                # Track usage if user_id is provided
+                                if user_id:
+                                    try:
+                                        from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
+                                        
+                                        track_agent_usage_sync(
+                                            user_id=user_id,
+                                            model_name="gemini-2.5-flash",
+                                            prompt=prompt,
+                                            response_text=part.text,
+                                            duration=0.5
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"Failed to track usage: {e}")
+                                        
                                 return parsed_text
                             except json.JSONDecodeError as e:
                                 logger.error(f"Failed to parse candidate text as JSON: {e}")

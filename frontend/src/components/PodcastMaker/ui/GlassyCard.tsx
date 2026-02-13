@@ -2,7 +2,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Paper, alpha } from "@mui/material";
 
-export const GlassyCard = motion(Paper);
+export const GlassyCard = motion.create(Paper);
 
 export const glassyCardSx = {
   borderRadius: 3,

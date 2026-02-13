@@ -55,6 +55,15 @@ class AssetSource(enum.Enum):
     # YouTube Creator
     YOUTUBE_CREATOR = "youtube_creator"
 
+    # Brand Avatar Generator
+    BRAND_AVATAR_GENERATOR = "brand_avatar_generator"
+
+    # Video Studio
+    VIDEO_STUDIO = "video_studio"
+
+    # Voice Cloner
+    VOICE_CLONER = "voice_cloner"
+
 
 class ContentAsset(Base):
     """

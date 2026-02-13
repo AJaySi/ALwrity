@@ -29,9 +29,10 @@ def load_due_sif_indexing_tasks(db: Session, user_id: str = None) -> List[SIFInd
         query = db.query(SIFIndexingTask).filter(
             or_(
                 SIFIndexingTask.status == "pending",
+                SIFIndexingTask.status == "active",
                 SIFIndexingTask.status == "failed"  # Retry failed tasks
             ),
-            SIFIndexingTask.next_run_at <= datetime.utcnow()
+            SIFIndexingTask.next_execution <= datetime.utcnow()
         )
         
         if user_id:

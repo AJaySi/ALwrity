@@ -40,8 +40,8 @@ import { ImageStudioLayout } from './ImageStudioLayout';
 import { OperationButton } from '../shared/OperationButton';
 import { PreflightOperation } from '../../services/billingService';
 
-const MotionPaper = motion(Paper);
-const MotionCard = motion(Card);
+const MotionPaper = motion.create(Paper);
+const MotionCard = motion.create(Card);
 const fadeEase: Easing = [0.4, 0, 0.2, 1];
 
 const cardVariants: Variants = {

@@ -88,6 +88,14 @@ def save_file_safely(
         Tuple of (file_path, error_message). file_path is None on error.
     """
     try:
+        # Handle max_file_size if it comes as string (e.g. from env vars)
+        if isinstance(max_file_size, str):
+            try:
+                max_file_size = int(max_file_size)
+            except ValueError:
+                # Fallback to default if conversion fails
+                max_file_size = 100 * 1024 * 1024
+                
         # Validate file size
         if len(content) > max_file_size:
             return None, f"File size {len(content)} exceeds maximum {max_file_size}"

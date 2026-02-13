@@ -35,25 +35,34 @@ export const useWixConnection = () => {
   const checkStatus = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Check sessionStorage for Wix tokens (like WixTestPage does)
+      // Check sessionStorage for Wix tokens and site info
       const connectedFlag = sessionStorage.getItem('wix_connected') === 'true';
       const tokensRaw = sessionStorage.getItem('wix_tokens');
+      const siteInfoRaw = sessionStorage.getItem('wix_site_info');
       
       if (connectedFlag && tokensRaw) {
-        // Set connected status with site information from tokens
+        let siteInfo: any = {};
+        try {
+          if (siteInfoRaw) {
+            siteInfo = JSON.parse(siteInfoRaw);
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+
+        // Set connected status with site information
         setStatus({
           connected: true,
           sites: [{ 
-            id: 'wix-site-1', 
-            blog_url: 'Connected Wix Site', 
+            id: siteInfo.siteId || siteInfo.site_id || 'wix-site-1', 
+            blog_url: siteInfo.url || siteInfo.viewUrl || 'Connected Wix Site', 
             blog_id: 'wix-blog', 
-            created_at: new Date().toISOString(), 
+            created_at: siteInfo.createdAt || new Date().toISOString(), 
             scope: 'BLOG.CREATE-DRAFT,BLOG.PUBLISH,MEDIA.MANAGE' 
           }],
           total_sites: 1
         });
         
-        console.log('Wix status checked: connected via sessionStorage');
       } else {
         setStatus({
           connected: false,
@@ -61,10 +70,8 @@ export const useWixConnection = () => {
           total_sites: 0,
           error: 'No Wix connection found'
         });
-        console.log('Wix status checked: not connected');
       }
     } catch (error) {
-      console.error('Error checking Wix status:', error);
       setStatus({
         connected: false,
         sites: [],

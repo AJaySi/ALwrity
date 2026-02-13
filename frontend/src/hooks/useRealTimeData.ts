@@ -61,12 +61,18 @@ export const useRealTimeData = (options: RealTimeDataOptions) => {
         wsUrl = `ws://${window.location.host}/ws/strategy/${strategyId}/live`;
       } else {
         // Production: derive from API URL
-        const wsProtocol = apiUrl.startsWith('https://') ? 'wss://' : 'ws://';
-        const wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        wsUrl = `${wsProtocol}${wsHost}/ws/strategy/${strategyId}/live`;
+      const wsProtocol = apiUrl.startsWith('https://') ? 'wss://' : 'ws://';
+      let wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      
+      // Fix for ngrok URLs having port 3000 appended incorrectly
+      if (wsHost.includes('ngrok-free.dev')) {
+        wsHost = wsHost.replace(/:3000$/, '');
       }
+      
+      wsUrl = `${wsProtocol}${wsHost}/ws/strategy/${strategyId}/live`;
+    }
 
-      const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {

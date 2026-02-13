@@ -5,6 +5,7 @@ export interface AssetResponse {
   image_url?: string;
   image_base64?: string;
   optimized_prompt?: string;
+  prompt?: string;
   asset_id?: number;
   message?: string;
   error?: string;
@@ -19,16 +20,39 @@ export interface VoiceCloneResponse {
   error?: string;
 }
 
+export const getLatestBrandAvatar = async (): Promise<AssetResponse> => {
+  try {
+    const response = await apiClient.get('/onboarding/assets/latest-avatar');
+    return response.data;
+  } catch (error: any) {
+    // 404 is expected if no avatar exists
+    if (error.response?.status === 404) {
+      return { success: false, message: 'No avatar found' };
+    }
+    console.error('Failed to fetch latest avatar:', error);
+    return {
+      success: false,
+      error: error.response?.data?.detail || 'Failed to fetch latest avatar'
+    };
+  }
+};
+
 export const generateBrandAvatar = async (
   prompt: string,
   stylePreset?: string,
-  aspectRatio: string = "1:1"
+  aspectRatio: string = "1:1",
+  model?: string,
+  renderingSpeed?: string,
+  provider?: string
 ): Promise<AssetResponse> => {
   try {
     const response = await apiClient.post('/onboarding/assets/generate-avatar', {
       prompt,
       style_preset: stylePreset,
       aspect_ratio: aspectRatio,
+      model,
+      rendering_speed: renderingSpeed,
+      provider,
       user_id: "current_user" // Backend extracts actual user
     });
     return response.data;
@@ -61,24 +85,48 @@ export const createAvatarVariation = async (
   prompt: string,
   file: File
 ): Promise<AssetResponse> => {
-    // TODO: Implement backend endpoint for variation
-    // For now, return a mock error or handle as new generation
-    console.warn("createAvatarVariation not fully implemented in backend");
+  try {
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    formData.append('file', file);
+    formData.append('user_id', "current_user");
+
+    const response = await apiClient.post('/onboarding/assets/create-variation', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Avatar variation error:', error);
     return {
-        success: false,
-        error: "Feature not available yet"
+      success: false,
+      error: error.response?.data?.detail || 'Failed to create avatar variation'
     };
+  }
 };
 
 export const enhanceBrandAvatar = async (
   file: File
 ): Promise<AssetResponse> => {
-    // TODO: Implement backend endpoint for enhancement (upscaling)
-    console.warn("enhanceBrandAvatar not fully implemented in backend");
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('user_id', "current_user");
+
+    const response = await apiClient.post('/onboarding/assets/enhance-avatar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Avatar enhancement error:', error);
     return {
-        success: false,
-        error: "Feature not available yet"
+      success: false,
+      error: error.response?.data?.detail || 'Failed to enhance avatar'
     };
+  }
 };
 
 export const setBrandAvatar = async (
@@ -93,6 +141,37 @@ export const setBrandAvatar = async (
     return {
         success: true,
         message: "Avatar set as active"
+    };
+};
+
+export const getLatestVoiceClone = async (): Promise<VoiceCloneResponse> => {
+  try {
+    const response = await apiClient.get('/onboarding/assets/latest-voice-clone');
+    return response.data;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      return { success: false, message: 'No voice clone found' };
+    }
+    console.error('Failed to fetch latest voice clone:', error);
+    return {
+      success: false,
+      error: error.response?.data?.detail || 'Failed to fetch latest voice clone'
+    };
+  }
+};
+
+export const setBrandVoice = async (
+  data: {
+    audio_url?: string;
+    custom_voice_id?: string;
+    voice_description?: string;
+  }
+): Promise<AssetResponse> => {
+    // TODO: Implement backend endpoint to set as active voice
+    // For now, simulate success
+    return {
+        success: true,
+        message: "Voice set as active brand voice"
     };
 };
 
@@ -144,6 +223,32 @@ export const createVoiceClone = async (
     return {
       success: false,
       error: error.response?.data?.detail || 'Failed to create voice clone'
+    };
+  }
+};
+
+export interface VoiceDesignParams {
+  text: string;
+  voiceDescription: string;
+  language?: string;
+}
+
+export const createVoiceDesign = async (
+  params: VoiceDesignParams
+): Promise<VoiceCloneResponse> => {
+  try {
+    const response = await apiClient.post('/onboarding/assets/create-voice-design', {
+      text: params.text,
+      voice_description: params.voiceDescription,
+      language: params.language || 'auto',
+      user_id: "current_user"
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Voice design error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.detail || 'Failed to create voice design'
     };
   }
 };

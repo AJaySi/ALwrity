@@ -545,7 +545,7 @@ class TaskWorkflowOrchestrator {
   private loadPersistedWorkflows(): void {
     if (this.config.persistProgress) {
       try {
-        const keys = Object.keys(localStorage).filter(key => key.startsWith('workflow-'));
+        const keys = Object.keys(localStorage).filter(key => key.startsWith('workflow-') && key !== 'workflow-store');
         keys.forEach(key => {
           const workflowData = localStorage.getItem(key);
           if (workflowData) {
@@ -554,7 +554,8 @@ class TaskWorkflowOrchestrator {
               
               // Ensure workflow has required properties
               if (!workflow.id || !workflow.date || !workflow.userId) {
-                console.warn(`Invalid workflow data for key ${key}, skipping`);
+                console.warn(`Invalid workflow data for key ${key}, skipping and cleaning up`);
+                localStorage.removeItem(key);
                 return;
               }
               

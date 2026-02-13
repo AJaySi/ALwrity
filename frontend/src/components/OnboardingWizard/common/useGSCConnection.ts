@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { gscAPI, type GSCSite } from '../../../api/gsc';
+import { gscAPI, GSCSite } from '../../../api/gsc';
+import { cachedAnalyticsAPI } from '../../../api/cachedAnalytics';
 
 export const useGSCConnection = () => {
   const { getToken } = useAuth();
@@ -109,6 +110,9 @@ export const useGSCConnection = () => {
               try {
                 const status = await gscAPI.getStatus();
                 if (status.connected && status.sites) setGscSites(status.sites);
+
+                // Force refresh analytics to ensure we have data for the newly connected account
+                cachedAnalyticsAPI.forceRefreshAnalyticsData(['gsc']).catch(console.error);
               } catch {}
             })();
           }

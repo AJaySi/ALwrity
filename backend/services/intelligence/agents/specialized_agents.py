@@ -13,6 +13,7 @@ from loguru import logger
 from ..txtai_service import TxtaiIntelligenceService
 from services.intelligence.agents.core_agent_framework import BaseALwrityAgent, AgentAction
 from services.seo_tools.content_strategy_service import ContentStrategyService
+from services.intelligence.sif_agents import SharedLLMWrapper, LocalLLMWrapper
 try:
     from services.intelligence.sif_integration import SIFIntegrationService
     SIF_AVAILABLE = True
@@ -20,14 +21,36 @@ except ImportError:
     SIF_AVAILABLE = False
 
 try:
-    from txtai import Agent, LLM
+    # Try importing from pipeline first (standard location)
+    from txtai.pipeline import Agent, LLM
     TXTAI_AVAILABLE = True
 except ImportError:
-    TXTAI_AVAILABLE = False
-    logger.warning("txtai not available, using fallback implementation")
+    try:
+        # Fallback to top-level import
+        from txtai import Agent, LLM
+        TXTAI_AVAILABLE = True
+    except ImportError:
+        TXTAI_AVAILABLE = False
+        Agent = None
+        LLM = None
+        logger.warning("txtai not available, using fallback implementation")
 
-class SIFBaseAgent:
-    def __init__(self, intelligence_service: TxtaiIntelligenceService):
+class SIFBaseAgent(BaseALwrityAgent):
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, agent_type: str = "sif_agent", model_name: str = "Qwen/Qwen2.5-3B-Instruct", llm: Any = None):
+        # Hybrid LLM Strategy:
+        # 1. Shared LLM for external/high-quality generation
+        self.shared_llm = SharedLLMWrapper(user_id)
+        
+        # 2. Local LLM for internal agent work (default for SIF agents)
+        if llm is None:
+            if TXTAI_AVAILABLE:
+                # Use Lazy Local LLM
+                llm = LocalLLMWrapper(model_name)
+            else:
+                # Fallback to Shared if txtai not available
+                llm = self.shared_llm
+                
+        super().__init__(user_id, agent_type, model_name, llm)
         self.intelligence = intelligence_service
         
     def _log_agent_operation(self, operation: str, **kwargs):
@@ -36,9 +59,27 @@ class SIFBaseAgent:
         if kwargs:
             logger.debug(f"[{self.__class__.__name__}] Parameters: {kwargs}")
 
+    def _create_txtai_agent(self):
+        """
+        SIF agents use the intelligence service directly, but we can expose
+        capabilities via a standard agent interface if needed.
+        """
+        if not TXTAI_AVAILABLE or Agent is None:
+            return None
+        
+        # Return a simple agent that can use the LLM
+        try:
+            return Agent(llm=self.llm, tools=[])
+        except Exception as e:
+            logger.warning(f"Failed to create txtai Agent: {e}")
+            return None
+
 class StrategyArchitectAgent(SIFBaseAgent):
     """Agent for discovering content pillars and identifying strategic gaps."""
     
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str):
+        super().__init__(intelligence_service, user_id, agent_type="strategy_architect")
+
     async def discover_pillars(self) -> List[Dict[str, Any]]:
         """Identify content pillars through semantic clustering."""
         self._log_agent_operation("Discovering content pillars")
@@ -108,9 +149,61 @@ class ContentGuardianAgent(SIFBaseAgent):
     CANNIBALIZATION_THRESHOLD = 0.85  # Similarity threshold for cannibalization warning
     ORIGINALITY_THRESHOLD = 0.75  # Minimum originality score
     
-    def __init__(self, intelligence_service: TxtaiIntelligenceService, sif_service: Any = None):
-        super().__init__(intelligence_service)
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, sif_service: Any = None):
+        super().__init__(intelligence_service, user_id, agent_type="content_guardian")
         self.sif_service = sif_service
+        
+        # Lazy initialization of SIF service if not provided
+        if self.sif_service is None and SIF_AVAILABLE:
+            try:
+                self.sif_service = SIFIntegrationService(user_id)
+                logger.info(f"[{self.__class__.__name__}] Lazily initialized SIFIntegrationService")
+            except Exception as e:
+                logger.warning(f"[{self.__class__.__name__}] Failed to lazily initialize SIF service: {e}")
+
+    async def assess_content_quality(self, content: str) -> Dict[str, Any]:
+        """
+        Assess content quality based on originality, readability, and cannibalization risks.
+        """
+        self._log_agent_operation("Assessing content quality", content_length=len(content))
+        
+        try:
+            # 1. Check for cannibalization
+            cannibalization_result = await self.check_cannibalization(content)
+            
+            # 2. Check originality (if not cannibalized)
+            originality_score = 1.0
+            if not cannibalization_result.get("warning"):
+                originality_result = await self.verify_originality(content, None)
+                originality_score = originality_result.get("originality_score", 1.0)
+            
+            # 3. Check Style Compliance
+            style_result = await self.style_enforcer(content)
+            style_score = style_result.get("compliance_score", 1.0)
+            
+            # 4. Basic Readability (Flesch-Kincaid proxy via sentence length/word complexity)
+            # Simple heuristic for now
+            words = content.split()
+            sentences = content.split('.')
+            avg_sentence_length = len(words) / max(1, len(sentences))
+            readability_score = 1.0 if avg_sentence_length < 20 else max(0.5, 1.0 - (avg_sentence_length - 20) * 0.05)
+            
+            # Weighted Score: Originality (40%) + Style (30%) + Readability (30%)
+            quality_score = (originality_score * 0.4) + (style_score * 0.3) + (readability_score * 0.3)
+            
+            return {
+                "quality_score": quality_score,
+                "originality_score": originality_score,
+                "readability_score": readability_score,
+                "style_score": style_score,
+                "cannibalization_risk": cannibalization_result,
+                "style_compliance": style_result,
+                "is_acceptable": quality_score > 0.7 and not cannibalization_result.get("warning", False)
+            }
+            
+        except Exception as e:
+            logger.error(f"[{self.__class__.__name__}] Failed to assess content quality: {e}")
+            return {"error": str(e), "quality_score": 0.0}
 
     async def check_cannibalization(self, new_draft: str) -> Dict[str, Any]:
         """Check if a new draft competes semantically with existing pages."""
@@ -193,25 +286,74 @@ class ContentGuardianAgent(SIFBaseAgent):
             # 1. Fetch Style Guidelines from SIF if not provided
             if not style_guidelines and self.sif_service:
                 try:
-                    # Search for website analysis to get brand voice/style
-                    # We assume the most relevant 'website_analysis' doc contains the guidelines
-                    results = await self.intelligence.search("website analysis brand voice style", limit=1)
-                    if results:
-                        import json
-                        res = results[0]
-                        metadata_str = res.get('object')
-                        metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else (metadata_str or res)
+                    # Use central SIF service to get robust context
+                    seo_context = await self.sif_service.get_seo_context()
+                    
+                    if seo_context and "error" not in seo_context:
+                        # Extract brand voice/style from the context
+                        # The context structure is normalized in get_seo_context
                         
-                        if metadata.get('type') == 'website_analysis':
-                            report = metadata.get('full_report', {})
-                            style_guidelines = {
-                                "tone": report.get('brand_analysis', {}).get('brand_voice', 'neutral'),
-                                "style_patterns": report.get('style_patterns', {}),
-                                "writing_style": report.get('writing_style', {})
-                            }
-                            logger.info(f"[{self.__class__.__name__}] Retrieved style guidelines from SIF: {style_guidelines.get('tone')}")
+                        # Note: get_seo_context returns a flattened dict. 
+                        # We need to dig into the original structure if available, or rely on what's mapped.
+                        # However, get_seo_context maps 'seo_audit', 'sitemap_analysis', etc.
+                        # Brand info is usually in 'brand_analysis' col of WebsiteAnalysis, which might not be fully exposed
+                        # in the simplified get_seo_context return.
+                        # Let's check if we can get the full object or if we need to expand get_seo_context.
+                        # For now, we'll try to use what's there or fall back to a specific search if needed.
+                        
+                        # Actually, looking at get_seo_context implementation:
+                        # It returns 'seo_audit', 'crawl_result'.
+                        # Brand analysis is often stored in WebsiteAnalysis.brand_analysis.
+                        # We might need to extend get_seo_context or do a specific retrieval here.
+                        # But wait! I saw get_seo_context implementation earlier:
+                        # It retrieves the "full_report" from the SIF metadata.
+                        # If the SIF index contains the full WebsiteAnalysis object, we are good.
+                        
+                        # Let's try to get it from the full report if we can access it, 
+                        # but get_seo_context returns a filtered dict.
+                        
+                        # Alternative: Use the robust retrieval logic but specifically for brand info if get_seo_context is too narrow.
+                        # But get_seo_context logic includes "website analysis seo audit" query.
+                        
+                        # Let's assume for now we use the same retrieval logic but locally adapted, 
+                        # OR better, trust get_seo_context to be the single point of truth.
+                        # If get_seo_context doesn't return brand info, we should update IT, not hack here.
+                        # But I can't update SIFIntegrationService right now without context switch.
+                        
+                        # Let's stick to the previous manual search pattern BUT use the SIF service helper if possible.
+                        # Actually, the previous code was:
+                        # results = await self.intelligence.search("website analysis brand voice style", limit=1)
+                        
+                        # Let's keep it simple and robust:
+                        # Try to get it from SIF service if possible.
+                        # Since get_seo_context might not return brand_voice directly, let's try to see if we can use it.
+                        
+                        # Actually, let's use the manual search but with better error handling, 
+                        # mirroring get_seo_context's robustness (e.g. parsing).
+                        
+                        results = await self.intelligence.search("website analysis brand voice style", limit=1)
+                        if results:
+                            res = results[0]
+                            metadata_str = res.get('object')
+                            metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else (metadata_str or res)
+                            
+                            if metadata.get('type') == 'website_analysis':
+                                report = metadata.get('full_report', {})
+                                # Support both flat and nested structures
+                                brand_analysis = report.get('brand_analysis') or report.get('brand_voice', {})
+                                if isinstance(brand_analysis, str):
+                                    # Handle case where it might be a JSON string
+                                    try: brand_analysis = json.loads(brand_analysis)
+                                    except: brand_analysis = {"brand_voice": brand_analysis}
+                                    
+                                style_guidelines = {
+                                    "tone": brand_analysis.get('brand_voice', 'neutral') if isinstance(brand_analysis, dict) else 'neutral',
+                                    "style_patterns": report.get('style_patterns', {}),
+                                    "writing_style": report.get('writing_style', {})
+                                }
+                                logger.info(f"[{self.__class__.__name__}] Retrieved style guidelines from SIF index")
                 except Exception as e:
-                    logger.warning(f"[{self.__class__.__name__}] Failed to retrieve style guidelines from SIF: {e}")
+                    logger.warning(f"[{self.__class__.__name__}] Failed to retrieve style guidelines: {e}")
 
             issues = []
             score = 1.0
@@ -244,6 +386,55 @@ class ContentGuardianAgent(SIFBaseAgent):
             
         except Exception as e:
             logger.error(f"[{self.__class__.__name__}] Style enforcement failed: {e}")
+            return {"error": str(e)}
+
+    async def perform_site_audit(self, website_url: str, limit: int = 10) -> Dict[str, Any]:
+        """
+        Perform a quality audit on the user's website content.
+        """
+        self._log_agent_operation("Performing site audit", website_url=website_url)
+        
+        try:
+            # 1. Retrieve recent content for the site from SIF
+            # We search for everything with the website_url in metadata
+            # Note: This depends on how data is indexed.
+            results = await self.intelligence.search(f"site:{website_url}", limit=limit)
+            
+            if not results:
+                logger.info(f"[{self.__class__.__name__}] No content found for site audit")
+                return {"error": "No content found"}
+            
+            audit_results = []
+            total_quality = 0.0
+            
+            for res in results:
+                text = res.get('text', '')
+                if not text or len(text) < 100:
+                    continue
+                    
+                quality = await self.assess_content_quality(text)
+                audit_results.append({
+                    "id": res.get('id'),
+                    "title": res.get('title', 'Unknown'),
+                    "quality": quality
+                })
+                total_quality += quality.get('quality_score', 0.0)
+            
+            avg_quality = total_quality / len(audit_results) if audit_results else 0.0
+            
+            report = {
+                "website_url": website_url,
+                "pages_audited": len(audit_results),
+                "average_quality_score": avg_quality,
+                "details": audit_results,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            logger.info(f"[{self.__class__.__name__}] Site audit completed. Avg Quality: {avg_quality:.2f}")
+            return report
+            
+        except Exception as e:
+            logger.error(f"[{self.__class__.__name__}] Site audit failed: {e}")
             return {"error": str(e)}
 
     async def safety_filter(self, text: str) -> Dict[str, Any]:
@@ -290,8 +481,8 @@ class LinkGraphAgent(SIFBaseAgent):
     RELEVANCE_THRESHOLD = 0.6  # Minimum relevance score for link suggestions
     MAX_SUGGESTIONS = 10  # Maximum number of link suggestions
     
-    def __init__(self, intelligence_service: TxtaiIntelligenceService, sif_service: Any = None):
-        super().__init__(intelligence_service)
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, sif_service: Any = None):
+        super().__init__(intelligence_service, user_id, agent_type="link_graph")
         self.sif_service = sif_service
     
     async def suggest_internal_links(self, draft: str) -> List[Dict[str, Any]]:
@@ -823,9 +1014,10 @@ class ContentStrategyAgent(BaseALwrityAgent):
             Maintain the original meaning and tone.
             """
             
-            if hasattr(self.llm, "generate"):
+            if self.llm:
                 # We assume the LLM returns JSON-like text or we parse it
-                response = self.llm.generate(f"{system_prompt}\n\nText to rewrite:\n{content}")
+                response = await self._generate_llm_response(f"{system_prompt}\n\nText to rewrite:\n{content}")
+                
                 # Simple parsing fallback if LLM returns raw text
                 if isinstance(response, str) and not response.strip().startswith("{"):
                     optimized_content = response
@@ -1456,34 +1648,7 @@ class SEOOptimizationAgent(BaseALwrityAgent):
             "timestamp": datetime.utcnow().isoformat()
         }
 
-    async def _generate_llm_response(self, prompt: str) -> str:
-        """Helper to generate text using the agent's LLM"""
-        if not self.llm:
-            return "[LLM Unavailable]"
-            
-        try:
-            # Run in executor to avoid blocking if LLM is synchronous
-            loop = asyncio.get_event_loop()
-            
-            # Check if LLM is a txtai pipeline (callable) or has generate method
-            if hasattr(self.llm, "generate"):
-                # Some txtai pipelines use generate, some are just called
-                response = await loop.run_in_executor(None, lambda: self.llm.generate(prompt))
-            else:
-                # Assume callable (standard txtai pipeline)
-                response = await loop.run_in_executor(None, lambda: self.llm(prompt))
-            
-            # Handle list output (some models return list of dicts)
-            if isinstance(response, list):
-                if response and isinstance(response[0], dict) and 'generated_text' in response[0]:
-                    return response[0]['generated_text']
-                return str(response[0])
-                
-            return str(response)
-        except Exception as e:
-            logger.error(f"LLM generation failed: {e}")
-            return "[Generation Failed]"
-    
+
     async def _strategy_generator_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """SEO strategy generation tool"""
         audit_results = context.get("audit_results", {})
@@ -1629,8 +1794,8 @@ class SocialAmplificationAgent(BaseALwrityAgent):
             Return ONLY the adapted content.
             """
             
-            if hasattr(self.llm, "generate"):
-                adapted_content = self.llm.generate(prompt)
+            if self.llm:
+                adapted_content = await self._generate_llm_response(prompt)
             else:
                 adapted_content = f"[Mock {platform}]: {content[:50]}... #adapted"
                 

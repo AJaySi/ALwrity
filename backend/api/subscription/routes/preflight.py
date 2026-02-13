@@ -56,6 +56,8 @@ async def preflight_check(
                     provider_enum = APIProvider.MISTRAL  # Maps to HuggingFace
                 elif provider_str == "video":
                     provider_enum = APIProvider.VIDEO
+                elif provider_str == "fal-ai" or provider_str == "fal":
+                    provider_enum = APIProvider.VIDEO # Map fal-ai to VIDEO as it's primarily used for media gen
                 elif provider_str == "image_edit":
                     provider_enum = APIProvider.IMAGE_EDIT
                 elif provider_str == "stability":

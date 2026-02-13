@@ -16,7 +16,7 @@ import { aiApiClient } from '../../../api/client';
 import { fetchMediaBlobUrl } from '../../../utils/fetchMediaBlobUrl';
 import { MultimediaSection } from '../components/MultimediaSection';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 // Define cubic bezier easing arrays as const to preserve tuple types
 const easeInOut = [0.22, 0.61, 0.36, 1] as const;
@@ -192,13 +192,18 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
     };
     
     loadImage();
-  }, [currentSceneNumber, currentSceneImageUrl, hasImageLoadError]);
+  }, [currentSceneNumber, currentSceneImageUrl, hasImageLoadError, imageBlobUrls]);
 
   // Cleanup blob URLs when component unmounts
+  const imageBlobUrlsRef = React.useRef(imageBlobUrls);
+  useEffect(() => {
+    imageBlobUrlsRef.current = imageBlobUrls;
+  }, [imageBlobUrls]);
+
   useEffect(() => {
     return () => {
-      // Revoke all blob URLs on unmount
-      imageBlobUrls.forEach((blobUrl) => {
+      // Revoke all blob URLs on unmount using the ref
+      imageBlobUrlsRef.current.forEach((blobUrl) => {
         URL.revokeObjectURL(blobUrl);
       });
     };
@@ -265,13 +270,19 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
     };
   }, [currentSceneNumber, currentSceneAnimatedVideoUrl, currentSceneAnimatedVideoBlobUrl, hasVideoLoadError]);
 
+  // Cleanup video blob URLs when component unmounts
+  const videoBlobUrlsRef = React.useRef(videoBlobUrls);
+  useEffect(() => {
+    videoBlobUrlsRef.current = videoBlobUrls;
+  }, [videoBlobUrls]);
+
   useEffect(() => {
     return () => {
-      videoBlobUrls.forEach((blob) => {
+      videoBlobUrlsRef.current.forEach((blob) => {
         URL.revokeObjectURL(blob);
       });
     };
-  }, [videoBlobUrls]);
+  }, []);
 
   useEffect(() => {
     if (storySections.length > 0) {

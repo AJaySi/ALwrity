@@ -109,9 +109,14 @@ export const OperationButton: React.FC<OperationButtonProps> = ({
 
   // Format cost as currency
   const formattedCost = useMemo(() => {
-    if (!showCost || estimatedCost === 0) {
+    // Show cost even if 0 if explicitly requested, but usually 0 means "free" or "included"
+    // The issue reported is showing "0" when it should show real cost
+    // If estimatedCost is undefined, don't show
+    if (!showCost || estimatedCost === undefined) {
       return null;
     }
+    
+    // Always format, even if 0
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',

@@ -19,6 +19,7 @@ interface WizardNavigationProps {
   isLastStep: boolean;
   isCurrentStepValid?: boolean;
   nextLabel?: string;
+  validationMessage?: string;
 }
 
 export const WizardNavigation: React.FC<WizardNavigationProps> = ({
@@ -28,12 +29,13 @@ export const WizardNavigation: React.FC<WizardNavigationProps> = ({
   onNext,
   isLastStep,
   isCurrentStepValid = true,
-  nextLabel = 'Continue'
+  nextLabel = 'Continue',
+  validationMessage
 }) => {
   const isInitStep = activeStep === 0;
   const tooltipText = isInitStep
     ? 'Review the intro steps, then click to start Step 2: Website.'
-    : (!isCurrentStepValid ? 'Complete the current step requirements to continue' : '');
+    : (!isCurrentStepValid ? (validationMessage || 'Complete the current step requirements to continue') : '');
 
   return (
     <Box

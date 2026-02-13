@@ -32,7 +32,7 @@ import {
 } from '@mui/icons-material';
 import { motion, AnimatePresence, type Variants, type Easing } from 'framer-motion';
 
-const MotionCard = motion(Card);
+const MotionCard = motion.create(Card);
 const templateCardEase: Easing = [0.4, 0, 1, 1];
 
 interface Template {

@@ -17,6 +17,7 @@ from services.subscription.preflight_validator import validate_image_generation_
 from services.llm_providers.main_image_generation import generate_image, generate_character_image
 from utils.asset_tracker import save_asset_to_library
 from utils.logger_utils import get_service_logger
+from utils.media_utils import load_media_bytes
 from ..task_manager import task_manager
 
 router = APIRouter(tags=["youtube-image"])
@@ -59,36 +60,15 @@ def require_authenticated_user(current_user: Dict[str, Any]) -> str:
 
 def _load_base_avatar_bytes(avatar_url: str) -> Optional[bytes]:
     """Load base avatar bytes for character consistency."""
-    try:
-        # Handle different avatar URL formats
-        if avatar_url.startswith("/api/youtube/avatars/"):
-            # YouTube avatar
-            filename = avatar_url.split("/")[-1].split("?")[0]
-            avatar_path = YOUTUBE_AVATARS_DIR / filename
-        elif avatar_url.startswith("/api/podcast/avatars/"):
-            # Podcast avatar (cross-module usage)
-            filename = avatar_url.split("/")[-1].split("?")[0]
-            from pathlib import Path
-            podcast_avatars_dir = Path(__file__).parent.parent.parent.parent / "podcast_avatars"
-            avatar_path = podcast_avatars_dir / filename
-        else:
-            # Try to extract filename and check YouTube avatars first
-            filename = avatar_url.split("/")[-1].split("?")[0]
-            avatar_path = YOUTUBE_AVATARS_DIR / filename
-            if not avatar_path.exists():
-                # Fallback to podcast avatars
-                podcast_avatars_dir = Path(__file__).parent.parent.parent.parent / "podcast_avatars"
-                avatar_path = podcast_avatars_dir / filename
-
-        if not avatar_path.exists() or not avatar_path.is_file():
-            logger.warning(f"[YouTube] Avatar file not found: {avatar_path}")
-            return None
-
-        logger.info(f"[YouTube] Successfully loaded avatar: {avatar_path}")
-        return avatar_path.read_bytes()
-    except Exception as e:
-        logger.error(f"[YouTube] Error loading avatar from {avatar_url}: {e}")
-        return None
+    # REUSE: Use centralized media loader
+    avatar_bytes = load_media_bytes(avatar_url)
+    
+    if avatar_bytes:
+        logger.info(f"[YouTube] Successfully loaded avatar from: {avatar_url}")
+        return avatar_bytes
+    
+    logger.warning(f"[YouTube] Avatar file not found for URL: {avatar_url}")
+    return None
 
 
 def _save_scene_image(image_bytes: bytes, scene_id: str) -> Dict[str, str]:

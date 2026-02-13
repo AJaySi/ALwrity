@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { apiClient } from '../../api/client';
 
 const WordPressCallbackPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
@@ -16,29 +17,53 @@ const WordPressCallbackPage: React.FC = () => {
 
         try {
           // Call backend to complete token exchange
-          await fetch(`/wp/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`, {
-            method: 'GET',
-            credentials: 'include'
+          // Use apiClient to ensure base URL is correct (handles proxy/cors)
+          // Request JSON response to verify success
+          const response = await apiClient.get('/wp/callback', {
+            params: { code, state, format: 'json' },
+            headers: {
+              'Accept': 'application/json'
+            }
           });
-        } catch (e) {
-          // Continue; backend HTML callback may already be handled in popup
-        }
 
-        // Notify opener and close if this is a popup window
-        try {
-          (window.opener || window.parent)?.postMessage({ type: 'WPCOM_OAUTH_SUCCESS', success: true }, '*');
-          if (window.opener) {
-            window.close();
-            return;
+          if (response.data && response.data.success) {
+            const { blog_url, blog_id, sites } = response.data;
+            
+            // Notify opener and close
+            try {
+              const payload = { 
+                type: 'WPCOM_OAUTH_SUCCESS', 
+                success: true,
+                blogUrl: blog_url,
+                blogId: blog_id,
+                sites: sites 
+              } as any;
+              
+              (window.opener || window.parent)?.postMessage(payload, '*');
+              if (window.opener) {
+                window.close();
+                return;
+              }
+            } catch {}
+
+            // Fallback: redirect back to onboarding
+            window.location.replace('/onboarding?step=5&wp_connected=true');
+          } else {
+            throw new Error(response.data?.error || 'Connection failed');
           }
-        } catch {}
-
-        // Fallback: redirect back to onboarding
-        window.location.replace('/onboarding?step=5');
+        } catch (backendError: any) {
+          console.error('WordPress OAuth Callback Error:', backendError);
+          const msg = backendError.response?.data?.error || backendError.message || 'OAuth callback failed';
+          throw new Error(msg);
+        }
       } catch (e: any) {
         setError(e?.message || 'OAuth callback failed');
         try {
-          (window.opener || window.parent)?.postMessage({ type: 'WPCOM_OAUTH_ERROR', success: false, error: e?.message || 'OAuth callback failed' }, '*');
+          (window.opener || window.parent)?.postMessage({ 
+            type: 'WPCOM_OAUTH_ERROR', 
+            success: false, 
+            error: e?.message || 'OAuth callback failed' 
+          }, '*');
           if (window.opener) window.close();
         } catch {}
       }

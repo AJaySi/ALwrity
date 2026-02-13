@@ -24,7 +24,16 @@ class WordPressOAuthService:
         # WordPress.com OAuth2 credentials
         self.client_id = os.getenv('WORDPRESS_CLIENT_ID', '')
         self.client_secret = os.getenv('WORDPRESS_CLIENT_SECRET', '')
-        self.redirect_uri = os.getenv('WORDPRESS_REDIRECT_URI', 'https://alwrity-ai.vercel.app/wp/callback')
+        
+        # Determine redirect URI dynamically
+        default_redirect = 'https://alwrity-ai.vercel.app/wp/callback'
+        frontend_url = os.getenv('FRONTEND_URL')
+        
+        if frontend_url:
+            self.redirect_uri = f"{frontend_url.rstrip('/')}/wp/callback"
+        else:
+            self.redirect_uri = os.getenv('WORDPRESS_REDIRECT_URI', default_redirect)
+            
         self.base_url = "https://public-api.wordpress.com"
 
         # Validate configuration

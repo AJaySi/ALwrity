@@ -54,13 +54,17 @@ class LinkedInPersonaService:
             # Get LinkedIn-specific schema
             schema = self.schemas.get_enhanced_linkedin_schema()
             
+            # Extract user_id for tracking
+            user_id = onboarding_data.get("session_info", {}).get("user_id")
+            
             # Generate structured response using Gemini with optimized prompts
             response = gemini_structured_json_response(
                 prompt=prompt,
                 schema=schema,
                 temperature=0.2,
                 max_tokens=4096,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                user_id=user_id
             )
             
             if "error" in response:

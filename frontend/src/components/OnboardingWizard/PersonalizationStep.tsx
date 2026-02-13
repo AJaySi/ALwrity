@@ -16,11 +16,13 @@ import {
   InfoOutlined,
   Psychology as PsychologyIcon,
   AutoAwesome as AutoAwesomeIcon,
-  Assessment as AssessmentIcon
+  Assessment as AssessmentIcon,
+  Lightbulb
 } from '@mui/icons-material';
 import { 
   getPersonalizationConfigurationOptions,
 } from '../../api/componentLogic';
+import { getLatestBrandAvatar, getLatestVoiceClone } from '../../api/brandAssets';
 import { usePersonaPolling } from '../../hooks/usePersonaPolling';
 import { apiClient } from '../../api/client';
 import { type GenerationStep } from './PersonaStep/PersonaGenerationProgress';
@@ -31,11 +33,13 @@ import { PersonaLoadingState } from './PersonaStep/PersonaLoadingState';
 import { ComingSoonSection } from './PersonaStep/ComingSoonSection';
 import { BrandAvatarStudio } from './PersonalizationStep/components/BrandAvatarStudio';
 import { VoiceAvatarPlaceholder } from './PersonalizationStep/components/VoiceAvatarPlaceholder';
+import { TestPersonaModal } from './PersonalizationStep/components/TestPersonaModal';
 
 interface PersonalizationStepProps {
   onContinue: (data?: any) => void;
   updateHeaderContent: (content: { title: string; description: string }) => void;
   onValidationChange?: (isValid: boolean) => void;
+  onDataChange?: (data: any) => void;
   onboardingData?: {
     websiteAnalysis?: any;
     competitorResearch?: any;
@@ -66,6 +70,7 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
   onContinue, 
   updateHeaderContent, 
   onValidationChange,
+  onDataChange,
   onboardingData = {},
   stepData
 }) => {
@@ -91,6 +96,123 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
   const [expandedAccordion, setExpandedAccordion] = useState<string | false>('core');
   const [hasCheckedCache, setHasCheckedCache] = useState(false);
   const [configurationOptions, setConfigurationOptions] = useState<any>(null);
+
+  // Asset Status State
+  const [brandAvatarSet, setBrandAvatarSet] = useState(false);
+  const [voiceCloneSet, setVoiceCloneSet] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string>('');
+  const [voiceUrl, setVoiceUrl] = useState<string>('');
+  const [introVideoUrl, setIntroVideoUrl] = useState<string>('');
+  
+  // Modal State
+  const [showTestPersonaModal, setShowTestPersonaModal] = useState(false);
+  const [hasTriggeredModal, setHasTriggeredModal] = useState(false);
+
+  const checkAssetStatus = useCallback(async () => {
+    try {
+      const avatarResp = await getLatestBrandAvatar();
+      let isAvatarSet = avatarResp.success;
+      let avatarDisplayUrl = '';
+
+      if (avatarResp.success) {
+         // Prefer base64 if available (immediate), else URL
+         avatarDisplayUrl = avatarResp.image_base64 
+            ? (avatarResp.image_base64.startsWith('data:') ? avatarResp.image_base64 : `data:image/png;base64,${avatarResp.image_base64}`)
+            : avatarResp.image_url || '';
+      } else {
+        // Fallback to local storage
+        try {
+          const localAvatar = localStorage.getItem('brand_avatar_selection');
+          if (localAvatar) {
+            const parsed = JSON.parse(localAvatar);
+            if (parsed.set) {
+              isAvatarSet = true;
+              // Try to recover image from Studio storage
+              const studioImage = localStorage.getItem('brand_avatar_result');
+              if (studioImage) {
+                 avatarDisplayUrl = studioImage.startsWith('http') ? studioImage : 
+                    (studioImage.startsWith('data:') ? studioImage : `data:image/png;base64,${studioImage}`);
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      setBrandAvatarSet(isAvatarSet);
+      if (avatarDisplayUrl) setAvatarUrl(avatarDisplayUrl);
+      
+      const voiceResp = await getLatestVoiceClone();
+      let isVoiceSet = voiceResp.success;
+      let voiceDisplayUrl = '';
+
+      if (voiceResp.success && voiceResp.preview_audio_url) {
+         voiceDisplayUrl = voiceResp.preview_audio_url;
+      } else {
+         // Fallback to local storage
+         try {
+           const localVoice = localStorage.getItem('brand_voice_selection');
+           if (localVoice) {
+             const parsed = JSON.parse(localVoice);
+             if (parsed.set) {
+               isVoiceSet = true;
+               // Try to recover audio from Studio storage
+               const studioVoice = localStorage.getItem('voice_clone_result_url');
+               if (studioVoice) {
+                  voiceDisplayUrl = studioVoice;
+               }
+             }
+           }
+         } catch (e) {}
+      }
+
+      setVoiceCloneSet(isVoiceSet);
+      if (voiceDisplayUrl) setVoiceUrl(voiceDisplayUrl);
+    } catch (e) {
+      console.error("Failed to check asset status", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAssetStatus();
+  }, [checkAssetStatus]);
+
+  // Sync data to parent Wizard
+  useEffect(() => {
+    if (onDataChange) {
+      const personaData = {
+        corePersona,
+        platformPersonas,
+        qualityMetrics,
+        selectedPlatforms,
+        brandAvatar: {
+          set: brandAvatarSet,
+          url: avatarUrl
+        },
+        voiceClone: {
+          set: voiceCloneSet,
+          url: voiceUrl
+        },
+        introVideo: {
+          set: !!introVideoUrl,
+          url: introVideoUrl
+        },
+        stepType: 'personalization',
+        completedAt: new Date().toISOString()
+      };
+      onDataChange(personaData);
+    }
+  }, [
+    corePersona, 
+    platformPersonas, 
+    qualityMetrics, 
+    selectedPlatforms, 
+    brandAvatarSet, 
+    avatarUrl, 
+    voiceCloneSet, 
+    voiceUrl, 
+    introVideoUrl,
+    onDataChange
+  ]);
 
   // Generation steps (Ported from PersonaStep)
   const generationSteps: GenerationStep[] = [
@@ -264,22 +386,27 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    initialize();
     
-    async function loadConfigurationOptions() {
+    const initSequence = async () => {
+      // Set initial header
+      updateHeaderContent({
+        title: 'Define Your Brand Persona',
+        description: 'Go beyond text. Define how your brand sounds, looks, and speaks. Configure your brand voice, generate an AI avatar, and prepare for voice cloning.'
+      });
+
+      // Load configuration options first (lightweight)
       try {
         const options = await getPersonalizationConfigurationOptions();
         setConfigurationOptions(options.options);
       } catch (e) {
         console.error('Failed to load configuration options:', e);
       }
-    }
-    loadConfigurationOptions();
-    
-    updateHeaderContent({
-      title: 'Define Your Brand Persona',
-      description: 'Go beyond text. Define how your brand sounds, looks, and speaks. Configure your brand voice, generate an AI avatar, and prepare for voice cloning.'
-    });
+
+      // Then initialize persona generation (potentially heavy)
+      await initialize();
+    };
+
+    initSequence();
   }, [updateHeaderContent, initialize]);
 
   const handleRegenerate = () => {
@@ -292,6 +419,10 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
 
   const handleContinue = useCallback(() => {
     if (corePersona && platformPersonas && qualityMetrics) {
+      if (!brandAvatarSet || !voiceCloneSet) {
+          setError('Please generate and set your Brand Avatar and Voice Clone before continuing.');
+          return;
+      }
       const personaData = {
         corePersona,
         platformPersonas,
@@ -304,15 +435,22 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
     } else {
       setError('Missing persona data. Please generate your brand voice first.');
     }
-  }, [corePersona, platformPersonas, qualityMetrics, selectedPlatforms, onContinue]);
+  }, [corePersona, platformPersonas, qualityMetrics, selectedPlatforms, onContinue, brandAvatarSet, voiceCloneSet]);
 
   useEffect(() => {
     const hasValidData = !!(corePersona && platformPersonas && Object.keys(platformPersonas).length > 0 && qualityMetrics);
-    const isComplete = !isGenerating && hasValidData && generationStep === 'preview';
+    const isComplete = !isGenerating && hasValidData && generationStep === 'preview' && brandAvatarSet && voiceCloneSet;
+    
     if (onValidationChange) {
       onValidationChange(isComplete);
     }
-  }, [corePersona, platformPersonas, qualityMetrics, isGenerating, generationStep, onValidationChange]);
+
+    // Trigger Test Persona Modal when all requirements are met
+    if (isComplete && !hasTriggeredModal && !showTestPersonaModal) {
+        setHasTriggeredModal(true);
+        setShowTestPersonaModal(true);
+    }
+  }, [corePersona, platformPersonas, qualityMetrics, isGenerating, generationStep, onValidationChange, brandAvatarSet, voiceCloneSet, hasTriggeredModal, showTestPersonaModal]);
 
   if (!configurationOptions) {
     return (
@@ -394,7 +532,23 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
                 }
               }}
             >
-              {tab.label}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {tab.label}
+                <Lightbulb 
+                  sx={{ 
+                    fontSize: 18,
+                    color: (
+                      (tab.id === 'text' && corePersona) || 
+                      (tab.id === 'image' && brandAvatarSet) || 
+                      (tab.id === 'audio' && voiceCloneSet)
+                    ) 
+                      ? (activeTab === tab.id ? '#A7F3D0' : '#10B981') // Light green on active, Green on inactive
+                      : (activeTab === tab.id ? '#FCA5A5' : '#EF4444'), // Light red on active, Red on inactive
+                    filter: 'drop-shadow(0 0 2px currentColor)',
+                    transition: 'color 0.3s ease'
+                  }} 
+                />
+              </Box>
             </Button>
           </Tooltip>
         ))}
@@ -433,16 +587,28 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
               handleRegenerate={handleRegenerate}
             />
 
-            <ComingSoonSection />
+            <ComingSoonSection onTestPersona={() => setShowTestPersonaModal(true)} />
           </Box>
         )}
 
         {activeTab === 'image' && (
-          <BrandAvatarStudio domainName={domainName} />
+          <BrandAvatarStudio 
+            domainName={domainName} 
+            onAvatarSet={() => {
+              setBrandAvatarSet(true);
+              checkAssetStatus();
+            }} 
+          />
         )}
 
         {activeTab === 'audio' && (
-          <VoiceAvatarPlaceholder domainName={domainName} />
+          <VoiceAvatarPlaceholder 
+            domainName={domainName} 
+            onVoiceSet={() => {
+              setVoiceCloneSet(true);
+              checkAssetStatus();
+            }} 
+          />
         )}
       </Box>
 
@@ -453,7 +619,7 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <InfoOutlined color="action" fontSize="small" />
             <Typography variant="caption" color="text.secondary">
-              Changes to Brand Identity are required to continue. Avatar and Voice are optional.
+              All steps (Identity, Avatar, and Voice) are required to complete your brand personalization.
             </Typography>
           </Box>
 
@@ -461,24 +627,20 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
             {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
             
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleContinue}
-              disabled={loading}
-              sx={{ 
-                px: 6, 
-                py: 1.5, 
-                borderRadius: 2, 
-                fontWeight: 'bold',
-                boxShadow: '0 4px 14px 0 rgba(0,118,255,0.39)'
-              }}
-            >
-              {loading ? 'Saving Settings...' : 'Save & Continue'}
-            </Button>
+            {/* 'Save & Continue' button removed as per requirements. 
+                Navigation is now handled by the main Wizard button (2). */}
           </Box>
         </Box>
       )}
+
+      {/* Test Persona Modal */}
+      <TestPersonaModal 
+        open={showTestPersonaModal} 
+        onClose={() => setShowTestPersonaModal(false)}
+        avatarUrl={avatarUrl}
+        voiceUrl={voiceUrl}
+        onVideoGenerated={(url) => setIntroVideoUrl(url || '')}
+      />
     </Box>
   );
 };

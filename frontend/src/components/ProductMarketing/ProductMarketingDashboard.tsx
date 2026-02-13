@@ -38,7 +38,7 @@ import { useNavigate } from 'react-router-dom';
 import { productMarketingSteps } from '../../utils/walkthroughs/productMarketingSteps';
 import { campaignCreatorSteps } from '../../utils/walkthroughs/campaignCreatorSteps';
 
-const MotionCard = motion(Card);
+const MotionCard = motion.create(Card);
 
 interface CampaignSummary {
   campaign_id: string;

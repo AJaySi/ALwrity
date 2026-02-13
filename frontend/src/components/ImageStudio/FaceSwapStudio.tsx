@@ -21,7 +21,7 @@ import { ImageStudioLayout } from './ImageStudioLayout';
 import { OperationButton } from '../shared/OperationButton';
 import { ModelSelector } from './ModelSelector';
 
-const MotionPaper = motion(Paper);
+const MotionPaper = motion.create(Paper);
 const fadeEase: Easing = [0.4, 0, 0.2, 1];
 
 const cardVariants: Variants = {

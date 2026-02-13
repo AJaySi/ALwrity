@@ -3,7 +3,7 @@
  * Manages Bing Webmaster Tools OAuth2 authentication state and operations
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { bingOAuthAPI, BingOAuthStatus, BingOAuthResponse } from '../api/bingOAuth';
 
 interface UseBingOAuthReturn {
@@ -95,99 +95,11 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
       setError(null);
       console.log('Bing OAuth: Initiating connection...');
       
-      // Get authorization URL
-      console.log('Bing OAuth: Calling bingOAuthAPI.getAuthUrl()...');
+      // 1. Get the auth URL from backend
       const authData: BingOAuthResponse = await bingOAuthAPI.getAuthUrl();
-      console.log('Bing OAuth: Got auth URL:', authData.auth_url);
       
-      // Open OAuth popup window
-      const popup = window.open(
-        authData.auth_url,
-        'bing-oauth',
-        'width=600,height=700,scrollbars=yes,resizable=yes'
-      );
-      
-      if (!popup) {
-        throw new Error('Failed to open Bing OAuth popup. Please allow popups for this site.');
-      }
-
-      // Track if we've already handled success/error to avoid duplicate processing
-      let messageHandled = false;
-
-      // Listen for popup completion and messages
-      const messageHandler = (event: MessageEvent) => {
-        console.log('Bing OAuth: Message received from any source:', {
-          origin: event.origin,
-          data: event.data,
-          dataType: event.data?.type,
-          source: event.source === popup ? 'our-popup' : 'other',
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
-          timestamp: new Date().toISOString()
-        });
-        
-        // Log the full message data for debugging
-        console.log('Bing OAuth: Full message data:', JSON.stringify(event.data, null, 2));
-        
-        // Check if message is from our expected origin (more reliable than checking source)
-        console.log('Bing OAuth: Checking origin match...', {
-          receivedOrigin: event.origin,
-          expectedOrigin: 'https://littery-sonny-unscrutinisingly.ngrok-free.dev',
-          originMatch: event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'
-        });
-        
-        if (event.origin === 'https://littery-sonny-unscrutinisingly.ngrok-free.dev') {
-          console.log('Bing OAuth: Message from expected origin, processing...');
-          console.log('Bing OAuth: Message data:', event.data);
-          console.log('Bing OAuth: Message data type:', event.data?.type);
-          
-          if (event.data?.type === 'BING_OAUTH_SUCCESS') {
-            console.log('Bing OAuth: Success message received:', event.data);
-            messageHandled = true;
-            popup.close();
-            window.removeEventListener('message', messageHandler);
-            
-            // Refresh status after successful connection
-            setTimeout(() => {
-              checkStatus();
-            }, 1000);
-          } else if (event.data?.type === 'BING_OAUTH_ERROR') {
-            console.error('Bing OAuth: Error message received:', event.data);
-            messageHandled = true;
-            popup.close();
-            window.removeEventListener('message', messageHandler);
-            setError(event.data.error || 'Bing OAuth connection failed');
-          } else {
-            console.log('Bing OAuth: Unknown message type:', event.data?.type);
-            console.log('Bing OAuth: Full message data:', event.data);
-          }
-        } else {
-          console.log('Bing OAuth: Message from unexpected origin, ignoring:', event.origin);
-        }
-      };
-
-      window.addEventListener('message', messageHandler);
-      
-      // Test if popup is working
-      console.log('Bing OAuth: Popup opened, waiting for messages...');
-      
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', messageHandler);
-          console.log('Bing OAuth: Popup closed, refreshing status...');
-          
-          if (!messageHandled) {
-            console.log('Bing OAuth: Popup closed without receiving success/error message');
-          } else {
-            console.log('Bing OAuth: Popup closed after successful message handling');
-          }
-          
-          // Refresh status after OAuth completion
-          setTimeout(() => {
-            checkStatus();
-          }, 1000);
-        }
-      }, 1000);
+      // 2. Redirect the user
+      window.location.href = authData.auth_url;
       
     } catch (error) {
       console.error('Error connecting to Bing Webmaster:', error);
@@ -195,7 +107,7 @@ export const useBingOAuth = (): UseBingOAuthReturn => {
     } finally {
       setIsConnecting(false);
     }
-  }, [checkStatus]);
+  }, []);
 
   /**
    * Disconnect a Bing Webmaster site

@@ -490,6 +490,32 @@ class UsageTrackingService:
             'cost': image_edit_cost
         }
         
+        # WaveSpeed (aggregated across Video, Audio, Image, Image Edit)
+        # Query APIUsageLog directly to get accurate WaveSpeed-specific usage
+        wavespeed_logs = self.db.query(APIUsageLog).filter(
+            APIUsageLog.user_id == user_id,
+            APIUsageLog.billing_period == billing_period,
+            APIUsageLog.actual_provider_name == "wavespeed"
+        ).all()
+        
+        if wavespeed_logs:
+            wavespeed_calls = len(wavespeed_logs)
+            wavespeed_tokens = sum((log.tokens_total or 0) for log in wavespeed_logs)
+            wavespeed_cost = sum(float(log.cost_total or 0.0) for log in wavespeed_logs)
+            
+            provider_breakdown['wavespeed'] = {
+                'calls': wavespeed_calls,
+                'tokens': wavespeed_tokens,
+                'cost': wavespeed_cost
+            }
+            logger.info(f"[UsageStats] Calculated WaveSpeed usage: {wavespeed_calls} calls, ${wavespeed_cost:.6f}")
+        else:
+            provider_breakdown['wavespeed'] = {
+                'calls': 0,
+                'tokens': 0,
+                'cost': 0.0
+            }
+        
         # Search APIs
         tavily_calls = getattr(summary, "tavily_calls", 0) or 0
         tavily_cost = getattr(summary, "tavily_cost", 0.0) or 0.0

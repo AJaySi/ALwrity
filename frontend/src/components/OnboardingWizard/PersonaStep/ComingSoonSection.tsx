@@ -26,10 +26,12 @@ import {
 
 interface ComingSoonSectionProps {
   contentCalendar?: any[];
+  onTestPersona?: () => void;
 }
 
 export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
-  contentCalendar = []
+  contentCalendar = [],
+  onTestPersona
 }) => {
   const [openModal, setOpenModal] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
@@ -40,8 +42,8 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
       title: 'Test Your Persona',
       description: 'Generate content with different personas to see the difference',
       icon: <PsychologyIcon />,
-      status: 'Coming Soon',
-      color: '#3b82f6',
+      status: 'Available',
+      color: '#10b981', // Green for available
       details: [
         'Compare content generated with and without your persona',
         'Test Brand, Blog, and LinkedIn brand voices side-by-side',
@@ -90,15 +92,23 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
 
   return (
     <>
-      <Box sx={{ mt: 4, mb: 2 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b', mb: 1.5 }}>
-          🚀 Coming Soon
+      <Box sx={{ mt: 6, mb: 4 }}>
+        <Typography 
+          variant="h6" 
+          sx={{ 
+            mb: 3, 
+            fontWeight: 700,
+            background: 'linear-gradient(45deg, #1e293b 30%, #334155 90%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}
+        >
+          🚀 Advanced Features & Roadmap
         </Typography>
-        <Typography variant="body1" sx={{ color: '#64748b', mb: 4, fontSize: '1.1rem' }}>
-          Exciting features in development to make your AI writing even more powerful
-        </Typography>
-
-        <Grid container spacing={2}>
+        <Grid container spacing={3}>
           {features.map((feature) => (
             <Grid item xs={12} md={4} key={feature.id}>
               <Card
@@ -118,7 +128,13 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
                     }
                   }
                 }}
-                onClick={() => handleFeatureClick(feature.id)}
+                onClick={() => {
+                  if (feature.id === 'test-persona' && onTestPersona) {
+                    onTestPersona();
+                  } else {
+                    handleFeatureClick(feature.id);
+                  }
+                }}
               >
                 <CardContent sx={{ p: 3 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -164,24 +180,25 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
                   </Typography>
 
                   <Button
-                    variant="outlined"
+                    variant={feature.id === 'test-persona' ? 'contained' : 'outlined'}
                     size="medium"
                     sx={{
                       borderColor: feature.color,
-                      color: feature.color,
+                      color: feature.id === 'test-persona' ? '#ffffff' : feature.color,
+                      backgroundColor: feature.id === 'test-persona' ? feature.color : 'transparent',
                       fontWeight: 600,
                       px: 3,
                       py: 1,
                       borderRadius: 2,
                       textTransform: 'none',
                       '&:hover': {
-                        backgroundColor: `${feature.color}15`,
+                        backgroundColor: feature.id === 'test-persona' ? `${feature.color}cc` : `${feature.color}15`,
                         borderColor: feature.color,
                         transform: 'translateY(-1px)'
                       }
                     }}
                   >
-                    Learn More
+                    {feature.id === 'test-persona' ? 'Try Now' : 'Learn More'}
                   </Button>
                 </CardContent>
               </Card>
@@ -318,7 +335,14 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
             Close
           </Button>
           <Button 
-            onClick={() => setOpenModal(false)}
+            onClick={() => {
+              if (selectedFeatureData?.id === 'test-persona' && onTestPersona) {
+                onTestPersona();
+                setOpenModal(false);
+              } else {
+                setOpenModal(false);
+              }
+            }}
             variant="contained"
             sx={{
               backgroundColor: selectedFeatureData?.color || '#3b82f6',
@@ -328,7 +352,7 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
               }
             }}
           >
-            Notify Me When Ready
+            {selectedFeatureData?.id === 'test-persona' ? 'Try Now' : 'Notify Me When Ready'}
           </Button>
         </DialogActions>
       </Dialog>

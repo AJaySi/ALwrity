@@ -38,6 +38,7 @@ class ClerkAuthMiddleware:
         )
         self.clerk_publishable_key = publishable_key.strip() if publishable_key else None
         self.disable_auth = os.getenv('DISABLE_AUTH', 'false').lower() == 'true'
+        self.allow_unverified_dev = os.getenv('ALLOW_UNVERIFIED_JWT_DEV', 'false').lower() == 'true'
         
         # Cache for PyJWKClient to avoid repeated JWKS fetches
         self._jwks_client_cache = {}
@@ -67,6 +68,7 @@ class ClerkAuthMiddleware:
                         # Create ClerkHTTPBearer instance for dependency injection
                         self.clerk_bearer = ClerkHTTPBearer(clerk_config)
                         logger.info(f"fastapi-clerk-auth initialized successfully with JWKS URL: {jwks_url}")
+                        self._jwks_url_cache = jwks_url
                     else:
                         logger.warning("Could not extract instance from publishable key")
                         self.clerk_bearer = None
@@ -113,7 +115,9 @@ class ClerkAuthMiddleware:
                     issuer = unverified_claims.get('iss', '')
                     
                     # Construct JWKS URL from issuer
-                    jwks_url = f"{issuer}/.well-known/jwks.json"
+                    jwks_url = f"{issuer}/.well-known/jwks.json" if issuer else self._jwks_url_cache or ""
+                    if not jwks_url:
+                        raise Exception("Unable to resolve JWKS URL for Clerk verification")
                     
                     # Use cached PyJWKClient to avoid repeated JWKS fetches
                     if jwks_url not in self._jwks_client_cache:
@@ -162,11 +166,37 @@ class ClerkAuthMiddleware:
                     if 'expired' in error_msg or 'signature has expired' in error_msg:
                         logger.debug(f"Token expired (expected): {e}")
                     else:
-                        logger.warning(f"fastapi-clerk-auth verification error: {e}")
+                        logger.warning(f"fastapi-clerk-auth verification error: {e}. Attempting fallback decoding.")
+
+                    # Fallback to unverified decoding on verification failure (DEV MODE ONLY)
+                    try:
+                        import jwt
+                        # Decode the JWT without verification to get claims
+                        decoded_token = jwt.decode(token, options={"verify_signature": False}, leeway=300)
+                        user_id = decoded_token.get('sub')
+                        email = decoded_token.get('email')
+                        first_name = decoded_token.get('first_name') or decoded_token.get('given_name')
+                        last_name = decoded_token.get('last_name') or decoded_token.get('family_name')
+                        
+                        if user_id and self.allow_unverified_dev:
+                            logger.debug(f"Unverified token accepted (dev) for user: {email or 'unknown'} (ID: {user_id})")
+                            return {
+                                'id': user_id,
+                                'email': email,
+                                'first_name': first_name,
+                                'last_name': last_name,
+                                'clerk_user_id': user_id
+                            }
+                        elif user_id and not self.allow_unverified_dev:
+                            logger.error("Unverified token rejected (production).")
+                            return None
+                    except Exception as fallback_e:
+                        logger.warning(f"Fallback decoding failed: {fallback_e}")
+
                     return None
             else:
                 # Fallback to custom implementation (not secure for production)
-                logger.warning("Using fallback JWT decoding without signature verification")
+                logger.debug("Using fallback JWT decoding without signature verification")
                 try:
                     import jwt
                     # Decode the JWT without verification to get claims
@@ -188,14 +218,17 @@ class ClerkAuthMiddleware:
                         logger.warning("No user ID found in token")
                         return None
                     
-                    logger.info(f"Token decoded successfully (fallback) for user: {email} (ID: {user_id})")
-                    return {
-                        'id': user_id,
-                        'email': email,
-                        'first_name': first_name,
-                        'last_name': last_name,
-                        'clerk_user_id': user_id
-                    }
+                    if self.allow_unverified_dev:
+                        logger.debug(f"Token decoded successfully (fallback dev) for user: {email} (ID: {user_id})")
+                        return {
+                            'id': user_id,
+                            'email': email,
+                            'first_name': first_name,
+                            'last_name': last_name,
+                            'clerk_user_id': user_id
+                        }
+                    logger.error("Fallback decoding is disabled in production.")
+                    return None
                     
                 except Exception as e:
                     logger.warning(f"Fallback JWT decode error: {e}")

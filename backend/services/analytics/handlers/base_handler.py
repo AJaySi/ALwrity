@@ -20,12 +20,13 @@ class BaseAnalyticsHandler(ABC):
         self.platform_name = platform_type.value
     
     @abstractmethod
-    async def get_analytics(self, user_id: str) -> AnalyticsData:
+    async def get_analytics(self, user_id: str, **kwargs) -> AnalyticsData:
         """
         Get analytics data for the platform
         
         Args:
             user_id: User ID to get analytics for
+            **kwargs: Additional arguments for specific handlers
             
         Returns:
             AnalyticsData object with platform metrics

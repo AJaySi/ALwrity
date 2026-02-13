@@ -4,10 +4,10 @@ Podcast Audio Handlers
 Audio generation, combining, and serving endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pathlib import Path
 from urllib.parse import urlparse
 import tempfile
@@ -29,6 +29,83 @@ from ..models import (
 )
 
 router = APIRouter()
+
+
+@router.post("/audio/upload")
+async def upload_podcast_audio(
+    file: UploadFile = File(...),
+    project_id: Optional[str] = Form(None),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload an audio file (voice sample) for a podcast project.
+    Returns the audio URL for use in video generation.
+    """
+    user_id = require_authenticated_user(current_user)
+    
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith('audio/'):
+        # Allow octet-stream if extension is audio
+        allowed_exts = ['.mp3', '.wav', '.m4a', '.aac']
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in allowed_exts and file.content_type != 'application/octet-stream':
+             raise HTTPException(status_code=400, detail="File must be an audio file")
+    
+    # Validate file size (max 20MB)
+    file_content = await file.read()
+    if len(file_content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Audio file size must be less than 20MB")
+    
+    try:
+        # Generate filename
+        file_ext = Path(file.filename).suffix or '.mp3'
+        unique_id = str(uuid.uuid4())[:8]
+        audio_filename = f"audio_{project_id or 'temp'}_{unique_id}{file_ext}"
+        audio_path = PODCAST_AUDIO_DIR / audio_filename
+        
+        # Save file
+        with open(audio_path, "wb") as f:
+            f.write(file_content)
+        
+        logger.info(f"[Podcast] Audio uploaded: {audio_path}")
+        
+        # Create audio URL
+        audio_url = f"/api/podcast/audio/{audio_filename}"
+        
+        # Save to asset library if project_id provided
+        if project_id:
+            try:
+                save_asset_to_library(
+                    db=db,
+                    user_id=user_id,
+                    asset_type="audio",
+                    source_module="podcast_maker",
+                    filename=audio_filename,
+                    file_url=audio_url,
+                    file_path=str(audio_path),
+                    file_size=len(file_content),
+                    mime_type=file.content_type,
+                    title=f"Uploaded Audio - {project_id}",
+                    description="Uploaded podcast audio/voice sample",
+                    tags=["podcast", "audio", "upload", project_id],
+                    asset_metadata={
+                        "project_id": project_id,
+                        "type": "uploaded_audio",
+                        "status": "completed",
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"[Podcast] Failed to save audio asset: {e}")
+        
+        return {
+            "audio_url": audio_url,
+            "audio_filename": audio_filename,
+            "message": "Audio uploaded successfully"
+        }
+    except Exception as exc:
+        logger.error(f"[Podcast] Audio upload failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Audio upload failed: {str(exc)}")
 
 
 @router.post("/audio", response_model=PodcastAudioResponse)

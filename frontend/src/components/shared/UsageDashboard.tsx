@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Chip,
@@ -9,18 +9,17 @@ import {
   IconButton,
   Menu,
   MenuItem,
-  Divider,
   LinearProgress
 } from '@mui/material';
 import {
   TrendingUp,
-  TrendingDown,
   Warning,
   CheckCircle,
   Refresh,
   MoreVert,
   Dashboard
 } from '@mui/icons-material';
+import { useUser } from '@clerk/clerk-react';
 import { apiClient } from '../../api/client';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { usePriority2Alerts } from '../../hooks/usePriority2Alerts';
@@ -84,7 +83,8 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const userId = localStorage.getItem('user_id');
+  const { user } = useUser();
+  const userId = localStorage.getItem('user_id') || user?.id;
 
   // Priority 2 Alerts - automatically appears in all tool headers
   const { alerts: priority2Alerts, dismissAlert: dismissPriority2Alert } = usePriority2Alerts({
@@ -93,7 +93,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     checkInterval: 120000, // Check every 2 minutes
   });
 
-  const fetchUsageData = async () => {
+  const fetchUsageData = useCallback(async () => {
     if (!userId) return;
     
     setLoading(true);
@@ -109,11 +109,23 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     fetchUsageData();
-  }, [userId]);
+
+    // Listen for custom event to refresh usage data
+    const handleUsageRefresh = () => {
+      console.log('UsageDashboard: Refreshing usage data due to event');
+      fetchUsageData();
+    };
+
+    window.addEventListener('alwrity:refresh-usage', handleUsageRefresh);
+
+    return () => {
+      window.removeEventListener('alwrity:refresh-usage', handleUsageRefresh);
+    };
+  }, [fetchUsageData, userId]);
 
   const handleRefresh = () => {
     fetchUsageData();
@@ -159,12 +171,13 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
       'serper': 'Serper',
       'metaphor': 'Metaphor',
       'firecrawl': 'Firecrawl',
-      'stability': 'Stability'
+      'stability': 'Stability',
+      'wavespeed': 'WaveSpeed'
     };
     return names[provider] || provider;
   };
 
-  if (!subscription || !dashboardData) {
+  if (!dashboardData) {
     if (loading) {
       return (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -184,7 +197,13 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
       );
     }
     
-    return <Box />; // Return empty box instead of null
+    // If no data and not loading/error, try to fetch again or show placeholder
+    if (userId && !dashboardData) {
+       // Optional: could auto-trigger another fetch here if needed, but useEffect handles it
+       return <Box />;
+    }
+    
+    return <Box />;
   }
 
   if (compact) {

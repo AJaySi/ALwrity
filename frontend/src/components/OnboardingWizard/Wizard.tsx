@@ -55,6 +55,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     description: steps[0].description
   });
   const [introCompleted, setIntroCompleted] = useState<boolean>(false);
+  const [validationMessage, setValidationMessage] = useState<string>('');
 
   // Step validation function
   const isStepDataValid = useCallback((step: number, data: any): boolean => {
@@ -88,15 +89,23 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
                                   data.platformPersonas && 
                                   Object.keys(data.platformPersonas).length > 0 &&
                                   data.qualityMetrics;
+        
+        // Extended validation for Brand Avatar and Voice Clone
+        const hasBrandAvatar = data?.brandAvatar?.set;
+        const hasVoiceClone = data?.voiceClone?.set;
+        
         console.log(`Wizard: Step 3 (Persona Generation) validation:`, {
           hasValidPersonaData: !!hasValidPersonaData,
           hasCorePersona: !!(data && data.corePersona),
           hasPlatformPersonas: !!(data && data.platformPersonas),
           platformPersonasCount: data && data.platformPersonas ? Object.keys(data.platformPersonas).length : 0,
           hasQualityMetrics: !!(data && data.qualityMetrics),
+          hasBrandAvatar: !!hasBrandAvatar,
+          hasVoiceClone: !!hasVoiceClone,
           dataKeys: data ? Object.keys(data) : 'no data'
         });
-        return !!hasValidPersonaData;
+        
+        return !!hasValidPersonaData && !!hasBrandAvatar && !!hasVoiceClone;
       
       case 4: // Integrations
         console.log(`Wizard: Step 4 (Integrations) validation: always true (optional)`);
@@ -169,6 +178,21 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     console.log(`Wizard: Validation result for step ${activeStep}:`, isValid);
     console.log(`Wizard: Setting isCurrentStepValid to:`, isValid);
     setIsCurrentStepValid(isValid);
+
+    // Set validation message
+    if (activeStep === 3) {
+      if (!isValid) {
+        const pData = dataToValidate || {};
+        if (!pData.corePersona) setValidationMessage('Please generate your Brand Identity (Text) first.');
+        else if (!pData.brandAvatar?.set) setValidationMessage('Please generate your Brand Avatar.');
+        else if (!pData.voiceClone?.set) setValidationMessage('Please generate your Voice Clone.');
+        else setValidationMessage('Complete all personalization steps to continue.');
+      } else {
+        setValidationMessage('');
+      }
+    } else {
+      setValidationMessage('');
+    }
   }, [activeStep, stepData, isStepDataValid, competitorDataCollector, stepValidationStates]);
   
   // Debug: log all state changes
@@ -819,6 +843,14 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     selectedPlatforms: stepData?.selectedPlatforms
   }), [stepData?.corePersona, stepData?.platformPersonas, stepData?.qualityMetrics, stepData?.selectedPlatforms]);
 
+  const handleStepDataChange = useCallback((data: any) => {
+    console.log('Wizard: handleStepDataChange called with:', data);
+    setStepData((prev: any) => ({
+      ...prev,
+      ...data
+    }));
+  }, []);
+
   const renderStepContent = (step: number) => {
     const stepComponents = [
       <IntroStep
@@ -840,10 +872,16 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
         onContinue={handleNext} 
         updateHeaderContent={updateHeaderContent}
         onValidationChange={(isValid: boolean) => handleStepValidationChange(3, isValid)}
+        onDataChange={handleStepDataChange}
         onboardingData={personaOnboardingData}
         stepData={personaStepData}
       />,
-      <IntegrationsStep key="integrations" onContinue={handleNext} updateHeaderContent={updateHeaderContent} />,
+      <IntegrationsStep 
+        key="integrations" 
+        onContinue={handleNext} 
+        updateHeaderContent={updateHeaderContent} 
+        onValidationChange={(isValid: boolean) => handleStepValidationChange(4, isValid)}
+      />,
       <FinalStep key="final" onContinue={handleComplete} updateHeaderContent={updateHeaderContent} />
     ];
 
@@ -929,6 +967,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
             onNext={handleNext}
             isLastStep={activeStep === steps.length - 1}
             isCurrentStepValid={isCurrentStepValid}
+            validationMessage={validationMessage}
             nextLabel={activeStep === 0 ? 'ALwrity Your Growth' : 'Continue'}
           />
         )}

@@ -12,7 +12,7 @@ import {
   alpha,
   Skeleton
 } from '@mui/material';
-import { SignInButton } from '@clerk/clerk-react';
+import { SignInButton, useClerk } from '@clerk/clerk-react';
 import {
   RocketLaunch,
   Business,
@@ -56,6 +56,7 @@ const ScramblingText: React.FC<{ phrases: string[]; interval?: number; duration?
 const IntroducingAlwrity: React.FC = () => {
   const theme = useTheme();
   const [imageLoaded, setImageLoaded] = useState(false);
+  const { openSignIn } = useClerk();
 
   // Preload the background image
   useEffect(() => {
@@ -179,8 +180,8 @@ const IntroducingAlwrity: React.FC = () => {
             
             <motion.div variants={fadeInUp}>
               <Box sx={{ mt: 4 }}>
-                <SignInButton mode="redirect" forceRedirectUrl="/">
                   <Button 
+                    onClick={() => openSignIn({ forceRedirectUrl: '/' })}
                     variant="contained" 
                     size="large"
                     startIcon={<RocketLaunch />}
@@ -206,7 +207,6 @@ const IntroducingAlwrity: React.FC = () => {
                       interval={3500}
                     />
                   </Button>
-                </SignInButton>
               </Box>
             </motion.div>
           </Stack>

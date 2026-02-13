@@ -10,7 +10,7 @@ import {
   useTheme,
   alpha
 } from '@mui/material';
-import { SignInButton } from '@clerk/clerk-react';
+import { SignInButton, useClerk } from '@clerk/clerk-react';
 import {
   RocketLaunch,
   Lightbulb,
@@ -61,6 +61,8 @@ const ScramblingText: React.FC<{ phrases: string[]; interval?: number; duration?
 
 const HeroSection: React.FC = () => {
   const theme = useTheme();
+
+  const { openSignIn } = useClerk();
 
   const fadeInUp = {
     hidden: { opacity: 0, y: 24 },
@@ -272,46 +274,43 @@ const HeroSection: React.FC = () => {
             <motion.div variants={fadeInUp}>
               <Box sx={{ ...glassPanelSx, px: { xs: 3, md: 5 }, py: { xs: 4, md: 6 }, maxWidth: 1000, width: '100%' }}>
                 <Stack spacing={4} alignItems="center">
-                  <SignInButton mode="redirect" forceRedirectUrl="/">
-                    <Button 
-                      variant="contained" 
-                      size="large"
-                      startIcon={<Lightbulb />}
-                      sx={{
-                        py: 2.5,
-                        px: 5,
-                        fontSize: '1.2rem',
-                        fontWeight: 700,
-                        borderRadius: 3,
-                        background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-                        backgroundImage: `
-                          linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%),
-                          linear-gradient(45deg, #667eea 30%, #764ba2 90%)
-                        `,
-                        backgroundSize: '200% 100%, 100% 100%',
-                        backgroundPosition: '200% 0, 0 0',
-                        boxShadow: '0 10px 40px rgba(102, 126, 234, 0.4)',
-                        '&:hover': {
-                          boxShadow: '0 15px 50px rgba(102, 126, 234, 0.5)',
-                          transform: 'translateY(-3px)',
-                          backgroundPosition: '0 0, 0 0'
-                        },
-                        transition: 'all 0.3s ease',
-                        animation: 'shimmer 2.5s ease-in-out infinite',
-                        '@keyframes shimmer': {
-                          '0%': { backgroundPosition: '200% 0, 0 0' },
-                          '100%': { backgroundPosition: '-200% 0, 0 0' },
-                        },
-                      }}
-                    >
-                      <ScramblingText
-                        phrases={['ALwrity For Free - BYOK', 'Start Free Today', 'Try ALwrity Free', 'Get Started Free']}
-                        duration={600}
-                        delay={500}
-                        interval={4000}
-                      />
-                    </Button>
-                  </SignInButton>
+                  <Button 
+                    onClick={() => openSignIn({ forceRedirectUrl: '/' })}
+                    variant="contained" 
+                    size="large"
+                    startIcon={<Lightbulb />}
+                    sx={{
+                      py: 2.5,
+                      px: 5,
+                      fontSize: '1.2rem',
+                      fontWeight: 700,
+                      borderRadius: 3,
+                      background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                      backgroundImage: `
+                        linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%),
+                        linear-gradient(45deg, #667eea 30%, #764ba2 90%)
+                      `,
+                      backgroundSize: '200% 100%, 100% 100%',
+                      backgroundPosition: '200% 0, 0 0',
+                      boxShadow: '0 10px 40px rgba(102, 126, 234, 0.4)',
+                      '&:hover': {
+                        boxShadow: '0 15px 50px rgba(102, 126, 234, 0.5)',
+                        transform: 'translateY(-3px)',
+                        backgroundPosition: '0 0, 0 0'
+                      },
+                      transition: 'all 0.3s ease',
+                      animation: 'shimmer 2.5s ease-in-out infinite',
+                      '@keyframes shimmer': {
+                        '0%': { backgroundPosition: '200% 0, 0 0' },
+                        '100%': { backgroundPosition: '-200% 0, 0 0' }
+                      }
+                    }}
+                  >
+                    <ScramblingText 
+                      phrases={['Start Free Trial', 'Get Started Now', 'Try AI Copilot', 'Boost ROI Now']}
+                      interval={3000}
+                    />
+                  </Button>
                   
                   <Typography 
                     variant="body1" 

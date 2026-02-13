@@ -87,8 +87,6 @@ export const useWordPressConnection = (): UseWordPressConnectionReturn => {
       setConnected(status.connected);
       setSites(status.sites || []);
       setTotalSites(status.total_sites);
-      
-      console.log('WordPress status checked:', status);
     } catch (error) {
       console.error('Error checking WordPress status:', error);
       setConnected(false);
@@ -175,7 +173,6 @@ export const useWordPressConnection = (): UseWordPressConnectionReturn => {
         site_url: formattedUrl
       });
       
-      console.log('WordPress connection test result:', success);
       return success;
     } catch (error) {
       console.error('Error testing WordPress connection:', error);

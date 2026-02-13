@@ -59,6 +59,32 @@ class PlatformAnalyticsService:
         logger.info(f"Getting comprehensive analytics for user {user_id}, platforms: {platforms}")
         analytics_data = {}
         
+        # Determine target URL from Wix/WP for GSC site selection
+        target_url = None
+        try:
+            status = await self.get_platform_connection_status(user_id)
+            
+            # Check Wix
+            if status.get('wix', {}).get('connected'):
+                sites = status['wix'].get('sites', [])
+                if sites:
+                     # Assuming site object has 'blog_url' or 'url'
+                     site = sites[0]
+                     target_url = site.get('blog_url') or site.get('url')
+            
+            # Check WordPress if no Wix
+            if not target_url and status.get('wordpress', {}).get('connected'):
+                sites = status['wordpress'].get('sites', [])
+                if sites:
+                     site = sites[0]
+                     target_url = site.get('blog_url') or site.get('url')
+                     
+            if target_url:
+                logger.info(f"Identified primary site URL for GSC matching: {target_url}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to determine target URL for GSC: {e}")
+        
         for platform_name in platforms:
             try:
                 # Convert string to PlatformType enum
@@ -66,7 +92,10 @@ class PlatformAnalyticsService:
                 handler = self.handlers.get(platform_type)
                 
                 if handler:
-                    analytics_data[platform_name] = await handler.get_analytics(user_id)
+                    if platform_type == PlatformType.GSC or platform_type == PlatformType.BING:
+                        analytics_data[platform_name] = await handler.get_analytics(user_id, target_url=target_url)
+                    else:
+                        analytics_data[platform_name] = await handler.get_analytics(user_id)
                 else:
                     logger.warning(f"Unknown platform: {platform_name}")
                     analytics_data[platform_name] = self._create_error_response(platform_name, f"Unknown platform: {platform_name}")

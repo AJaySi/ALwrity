@@ -34,7 +34,7 @@ import { useImageStudio, PlatformFormat } from '../../hooks/useImageStudio';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { OperationButton } from '../shared/OperationButton';
 
-const MotionPaper = motion(Paper);
+const MotionPaper = motion.create(Paper);
 const fadeEase: Easing = [0.4, 0, 0.2, 1];
 
 const cardVariants: Variants = {

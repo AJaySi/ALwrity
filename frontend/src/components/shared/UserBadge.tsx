@@ -34,14 +34,14 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
           setSystemStatus(result.data.status || 'unknown');
         }
       } catch (err) {
-        console.error('Error fetching system status:', err);
+        // Silently fail for system status to avoid console noise
         setSystemStatus('unknown');
       }
     };
 
     fetchSystemStatus();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchSystemStatus, 30000);
+    // Refresh every 120 seconds (2 minutes) to reduce load and avoid timeouts
+    const interval = setInterval(fetchSystemStatus, 120000);
     return () => clearInterval(interval);
   }, []);
 

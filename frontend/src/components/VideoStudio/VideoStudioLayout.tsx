@@ -5,7 +5,7 @@ import type { Variants } from 'framer-motion';
 import DashboardHeader from '../shared/DashboardHeader';
 import type { DashboardHeaderProps } from '../shared/types';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 const sparkleVariants: Variants = {
   initial: { scale: 0, rotate: 0 },

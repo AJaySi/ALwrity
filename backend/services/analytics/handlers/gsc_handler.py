@@ -22,16 +22,22 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
         super().__init__(PlatformType.GSC)
         self.gsc_service = GSCService()
     
-    async def get_analytics(self, user_id: str) -> AnalyticsData:
+    async def get_analytics(self, user_id: str, target_url: str = None, **kwargs) -> AnalyticsData:
         """
         Get Google Search Console analytics data with caching
         
+        Args:
+            user_id: User ID to get analytics for
+            target_url: Optional URL to prefer when selecting GSC site
+            
         Returns comprehensive SEO metrics including clicks, impressions, CTR, and position data.
         """
         self.log_analytics_request(user_id, "get_analytics")
         
         # Check cache first - GSC API calls can be expensive
-        cached_data = analytics_cache.get('gsc_analytics', user_id)
+        # Include target_url in cache key if provided
+        cache_key = f"{user_id}_{target_url}" if target_url else user_id
+        cached_data = analytics_cache.get('gsc_analytics', cache_key)
         if cached_data:
             logger.info("Using cached GSC analytics for user {user_id}", user_id=user_id)
             return AnalyticsData(**cached_data)
@@ -45,8 +51,23 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 logger.warning(f"No GSC sites found for user {user_id}")
                 return self.create_error_response('No GSC sites found')
             
-            # Get analytics for the first site (or combine all sites)
-            site_url = sites[0]['siteUrl']
+            # Select site: Prefer target_url match, otherwise first site
+            selected_site = sites[0]
+            if target_url:
+                logger.info(f"Attempting to match target URL: {target_url}")
+                # Normalize target URL (remove protocol, trailing slash)
+                normalized_target = target_url.replace('https://', '').replace('http://', '').rstrip('/')
+                
+                for site in sites:
+                    site_url = site['siteUrl']
+                    normalized_site = site_url.replace('https://', '').replace('http://', '').rstrip('/')
+                    
+                    if normalized_target in normalized_site or normalized_site in normalized_target:
+                        selected_site = site
+                        logger.info(f"Found matching GSC site: {site_url}")
+                        break
+            
+            site_url = selected_site['siteUrl']
             logger.info(f"Using GSC site URL: {site_url}")
             
             # Get search analytics for last 30 days
@@ -71,7 +92,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             )
             
             # Cache the result to avoid expensive API calls
-            analytics_cache.set('gsc_analytics', user_id, result.__dict__)
+            analytics_cache.set('gsc_analytics', cache_key, result.__dict__)
             logger.info("Cached GSC analytics data for user {user_id}", user_id=user_id)
             
             return result
@@ -81,7 +102,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             error_result = self.create_error_response(str(e))
             
             # Cache error result for shorter time to retry sooner
-            analytics_cache.set('gsc_analytics', user_id, error_result.__dict__, ttl_override=300)  # 5 minutes
+            analytics_cache.set('gsc_analytics', cache_key, error_result.__dict__, ttl_override=300)  # 5 minutes
             return error_result
     
     def get_connection_status(self, user_id: str) -> Dict[str, Any]:
@@ -117,111 +138,93 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 # New structure from updated GSC service
                 overall_rows = search_analytics.get('overall_metrics', {}).get('rows', [])
                 query_rows = search_analytics.get('query_data', {}).get('rows', [])
-                verification_rows = search_analytics.get('verification_data', {}).get('rows', [])
                 
-                logger.info(f"GSC Overall metrics rows: {len(overall_rows)}")
-                logger.info(f"GSC Query data rows: {len(query_rows)}")
-                logger.info(f"GSC Verification rows: {len(verification_rows)}")
+                # Calculate totals from overall_rows (most accurate as it includes anonymized queries)
+                total_clicks = 0
+                total_impressions = 0
+                total_position = 0
+                valid_position_rows = 0
                 
-                if overall_rows:
-                    logger.info(f"GSC Overall first row: {overall_rows[0]}")
-                if query_rows:
-                    logger.info(f"GSC Query first row: {query_rows[0]}")
+                # Use overall_rows for totals if available, otherwise fallback to query_rows
+                calc_rows = overall_rows if overall_rows else query_rows
                 
-                # Use query_rows for detailed insights, overall_rows for summary
-                rows = query_rows if query_rows else overall_rows
+                for row in calc_rows:
+                    clicks = row.get('clicks', 0)
+                    impressions = row.get('impressions', 0)
+                    position = row.get('position', 0)
+                    
+                    total_clicks += clicks
+                    total_impressions += impressions
+                    
+                    if position and position > 0:
+                        total_position += position * impressions  # Weighted average
+                
+                # Calculate weighted average position
+                avg_position = total_position / total_impressions if total_impressions > 0 else 0
+                avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+                
+                # Use query_rows for top queries list
+                top_queries_source = query_rows
+                
             else:
                 # Legacy structure
                 rows = search_analytics.get('rows', [])
-                logger.info(f"GSC Legacy rows count: {len(rows)}")
-                if rows:
-                    logger.info(f"GSC Legacy first row structure: {rows[0]}")
-                    logger.info(f"GSC Legacy first row keys: {list(rows[0].keys()) if rows[0] else 'No rows'}")
-            
-            # Calculate summary metrics - handle different response formats
-            total_clicks = 0
-            total_impressions = 0
-            total_position = 0
-            valid_rows = 0
-            
-            for row in rows:
-                # Handle different possible response formats
-                clicks = row.get('clicks', 0)
-                impressions = row.get('impressions', 0)
-                position = row.get('position', 0)
+                # ... existing legacy logic ...
+                calc_rows = rows
+                top_queries_source = rows
                 
-                # If position is 0 or None, skip it from average calculation
-                if position and position > 0:
-                    total_position += position
-                    valid_rows += 1
+                total_clicks = 0
+                total_impressions = 0
+                total_position = 0
+                valid_position_rows = 0
                 
-                total_clicks += clicks
-                total_impressions += impressions
-            
-            avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
-            avg_position = total_position / valid_rows if valid_rows > 0 else 0
-            
-            logger.info(f"GSC Calculated metrics - clicks: {total_clicks}, impressions: {total_impressions}, ctr: {avg_ctr}, position: {avg_position}, valid_rows: {valid_rows}")
-            
-            # Get top performing queries - handle different data structures
-            if rows and 'keys' in rows[0]:
-                # New GSC API format with keys array
-                top_queries = sorted(rows, key=lambda x: x.get('clicks', 0), reverse=True)[:10]
-                
-                # Get top performing pages (if we have page data)
-                page_data = {}
-                for row in rows:
-                    # Handle different key structures
-                    keys = row.get('keys', [])
-                    if len(keys) > 1 and keys[1]:  # Page data available
-                        page = keys[1].get('keys', ['Unknown'])[0] if isinstance(keys[1], dict) else str(keys[1])
-                    else:
-                        page = 'Unknown'
+                for row in calc_rows:
+                    clicks = row.get('clicks', 0)
+                    impressions = row.get('impressions', 0)
+                    position = row.get('position', 0)
                     
-                    if page not in page_data:
-                        page_data[page] = {'clicks': 0, 'impressions': 0, 'ctr': 0, 'position': 0}
-                    page_data[page]['clicks'] += row.get('clicks', 0)
-                    page_data[page]['impressions'] += row.get('impressions', 0)
-            else:
-                # Legacy format or no keys structure
-                top_queries = sorted(rows, key=lambda x: x.get('clicks', 0), reverse=True)[:10]
-                page_data = {}
+                    total_clicks += clicks
+                    total_impressions += impressions
+                    
+                    if position and position > 0:
+                         # Simple average for legacy/unknown structure if we can't do weighted
+                        total_position += position
+                        valid_position_rows += 1
+                
+                avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+                avg_position = total_position / valid_position_rows if valid_position_rows > 0 else 0
+
             
-            # Calculate page metrics
-            for page in page_data:
-                if page_data[page]['impressions'] > 0:
-                    page_data[page]['ctr'] = page_data[page]['clicks'] / page_data[page]['impressions'] * 100
-            
-            top_pages = sorted(page_data.items(), key=lambda x: x[1]['clicks'], reverse=True)[:10]
-            
-            return {
-                'connection_status': 'connected',
-                'connected_sites': 1,  # GSC typically has one site per user
-                'total_clicks': total_clicks,
-                'total_impressions': total_impressions,
-                'avg_ctr': round(avg_ctr, 2),
-                'avg_position': round(avg_position, 2),
-                'total_queries': len(rows),
-                'top_queries': [
-                    {
+            # Get top performing queries
+            top_queries = []
+            if top_queries_source:
+                # Sort by clicks
+                sorted_queries = sorted(top_queries_source, key=lambda x: x.get('clicks', 0), reverse=True)[:10]
+                
+                for row in sorted_queries:
+                    top_queries.append({
                         'query': self._extract_query_from_row(row),
                         'clicks': row.get('clicks', 0),
                         'impressions': row.get('impressions', 0),
                         'ctr': round(row.get('ctr', 0) * 100, 2),
                         'position': round(row.get('position', 0), 2)
-                    }
-                    for row in top_queries
-                ],
-                'top_pages': [
-                    {
-                        'page': page,
-                        'clicks': data['clicks'],
-                        'impressions': data['impressions'],
-                        'ctr': round(data['ctr'], 2)
-                    }
-                    for page, data in top_pages
-                ],
-                'note': 'Google Search Console provides search performance data, keyword rankings, and SEO insights'
+                    })
+
+            # Prepare Top Pages (requires page dimension, but we only requested query dimension in gsc_service step 3)
+            # To get top pages, we would need another API call with dimension=['page']
+            # For now, we'll return empty top_pages or infer from what we have if possible (we can't from query data)
+            top_pages = [] 
+            
+            return {
+                'connection_status': 'connected',
+                'connected_sites': 1,
+                'total_clicks': total_clicks,
+                'total_impressions': total_impressions,
+                'avg_ctr': round(avg_ctr, 2),
+                'avg_position': round(avg_position, 2),
+                'total_queries': len(top_queries_source) if top_queries_source else 0,
+                'top_queries': top_queries,
+                'top_pages': top_pages
             }
             
         except Exception as e:

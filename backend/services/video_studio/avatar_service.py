@@ -12,6 +12,7 @@ from loguru import logger
 from services.image_studio.infinitetalk_adapter import InfiniteTalkService
 from services.video_studio.hunyuan_avatar_adapter import HunyuanAvatarService
 from utils.logger_utils import get_service_logger
+from services.llm_providers.main_video_generation import _track_video_operation_usage
 
 logger = get_service_logger("video_studio.avatar")
 
@@ -58,6 +59,30 @@ class AvatarStudioService:
             f"[AvatarStudio] Creating talking avatar: user={user_id}, resolution={resolution}, model={model}"
         )
         
+        # PRE-FLIGHT VALIDATION: Validate video generation before API call
+        # MUST happen BEFORE any API calls - return immediately if validation fails
+        from services.database import get_db
+        from services.subscription import PricingService
+        from services.subscription.preflight_validator import validate_video_generation_operations
+        
+        db = next(get_db())
+        try:
+            pricing_service = PricingService(db)
+            # Raises HTTPException immediately if validation fails - frontend gets immediate response
+            validate_video_generation_operations(
+                pricing_service=pricing_service,
+                user_id=user_id
+            )
+        except HTTPException:
+            # Re-raise immediately - don't proceed with API call
+            logger.error(f"[AvatarStudio] ❌ Pre-flight validation failed - blocking API call")
+            raise
+        finally:
+            db.close()
+        
+        import time
+        start_time = time.time()
+        
         try:
             if model == "hunyuan-avatar":
                 # Use Hunyuan Avatar (doesn't support mask_image)
@@ -82,11 +107,31 @@ class AvatarStudioService:
                     user_id=user_id,
                 )
             
+            response_time = time.time() - start_time
+            
             logger.info(
                 f"[AvatarStudio] ✅ Talking avatar created: "
                 f"model={model}, resolution={resolution}, duration={result.get('duration', 0)}s, "
                 f"cost=${result.get('cost', 0):.2f}"
             )
+            
+            # TRACK USAGE after successful API call
+            # Use video_bytes if available, otherwise check if result itself is bytes (unlikely, dict expected)
+            video_bytes = result.get("video_bytes")
+            if user_id and video_bytes:
+                _track_video_operation_usage(
+                    user_id=user_id,
+                    provider=model, # Use model name as provider/actual_provider for now
+                    model=model,
+                    operation_type="talking-avatar",
+                    result_bytes=video_bytes,
+                    cost=result.get("cost", 0.0),
+                    prompt=prompt,
+                    endpoint="/avatar-generation",
+                    metadata=result,
+                    log_prefix="[Avatar Generation]",
+                    response_time=response_time
+                )
             
             return result
             

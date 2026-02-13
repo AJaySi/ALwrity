@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { CopilotKit } from "@copilotkit/react-core";
 import { ClerkProvider, useAuth } from '@clerk/clerk-react';
@@ -78,6 +78,92 @@ import ConnectionErrorPage from './components/shared/ConnectionErrorPage';
 const ConditionalCopilotKit: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Do not render CopilotSidebar here. Let specific pages/components control it.
   return <>{children}</>;
+};
+
+// Wrapper to only enable CopilotKit checks/provider when user is authenticated
+// This prevents CopilotKit from running on the Landing page
+const AuthenticatedCopilotWrapper: React.FC<{ 
+  children: React.ReactNode;
+  apiKey: string; 
+}> = ({ children, apiKey }) => {
+  const { isSignedIn } = useAuth();
+  const location = useLocation();
+  
+  // Exclude CopilotKit from running on:
+  // 1. Landing page (handled by !isSignedIn)
+  // 2. Onboarding pages (to prevent health check timeouts)
+  const shouldExcludeCopilot = !isSignedIn || location.pathname.startsWith('/onboarding');
+  
+  if (shouldExcludeCopilot) {
+    return <>{children}</>;
+  }
+
+  const hasKey = apiKey && apiKey.trim();
+
+  if (hasKey) {
+      // Enhanced error handler that updates health context
+      const handleCopilotKitError = (e: any) => {
+        console.error("CopilotKit Error:", e);
+        
+        // Try to get health context if available
+        // We'll use a custom event to notify health context since we can't access it directly here
+        const errorMessage = e?.error?.message || e?.message || 'CopilotKit error occurred';
+        const errorType = errorMessage.toLowerCase();
+        
+        // Differentiate between fatal and transient errors
+        const isFatalError = 
+          errorType.includes('cors') ||
+          errorType.includes('ssl') ||
+          errorType.includes('certificate') ||
+          errorType.includes('403') ||
+          errorType.includes('forbidden') ||
+          errorType.includes('ERR_CERT_COMMON_NAME_INVALID');
+        
+        // Dispatch event for health context to listen to
+        window.dispatchEvent(new CustomEvent('copilotkit-error', {
+          detail: {
+            error: e,
+            errorMessage,
+            isFatal: isFatalError,
+          }
+        }));
+      };
+
+      return (
+        <CopilotKitHealthProvider initialHealthStatus={true}>
+          <CopilotKitDegradedBanner />
+          <ErrorBoundary 
+            context="CopilotKit" 
+            showDetails={process.env.NODE_ENV === 'development'}
+            fallback={
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="h6" color="warning" gutterBottom>
+                  Chat Unavailable
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  CopilotKit encountered an error. The app continues to work with manual controls.
+                </Typography>
+              </Box>
+            }
+          >
+            <CopilotKit 
+              publicApiKey={apiKey}
+              showDevConsole={false}
+              onError={handleCopilotKitError}
+            >
+              {children}
+            </CopilotKit>
+          </ErrorBoundary>
+        </CopilotKitHealthProvider>
+      );
+  }
+
+  return (
+    <CopilotKitHealthProvider initialHealthStatus={false}>
+      <CopilotKitDegradedBanner />
+      {children}
+    </CopilotKitHealthProvider>
+  );
 };
 
 // Component to handle initial routing based on subscription and onboarding status
@@ -473,146 +559,86 @@ const App: React.FC = () => {
 
   // Render app with or without CopilotKit based on whether we have a key
   const renderApp = () => {
-    const appContent = (
+    return (
       <Router>
-        <ConditionalCopilotKit>
-          <TokenInstaller />
-          <Routes>
-                <Route path="/" element={<RootRoute />} />
-                <Route 
-                  path="/onboarding" 
-                  element={
-                    <ErrorBoundary context="Onboarding Wizard" showDetails>
-                      <Wizard />
-                    </ErrorBoundary>
-                  } 
-                />
-                {/* Error Boundary Testing - Development Only */}
-                {process.env.NODE_ENV === 'development' && (
-                  <Route path="/error-test" element={<ErrorBoundaryTest />} />
-                )}
-                <Route path="/dashboard" element={<ProtectedRoute><MainDashboard /></ProtectedRoute>} />
-                <Route path="/seo" element={<ProtectedRoute><SEODashboard /></ProtectedRoute>} />
-                <Route path="/seo-dashboard" element={<ProtectedRoute><SEODashboard /></ProtectedRoute>} />
-                <Route path="/content-planning" element={<ProtectedRoute><ContentPlanningDashboard /></ProtectedRoute>} />
-                <Route path="/facebook-writer" element={<ProtectedRoute><FacebookWriter /></ProtectedRoute>} />
-                <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
-                <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
-                <Route path="/story-writer" element={<ProtectedRoute><StoryWriter /></ProtectedRoute>} />
-                <Route path="/youtube-creator" element={<ProtectedRoute><YouTubeCreator /></ProtectedRoute>} />
-                <Route path="/podcast-maker" element={<ProtectedRoute><PodcastDashboard /></ProtectedRoute>} />
-                <Route path="/image-studio" element={<ProtectedRoute><ImageStudioDashboard /></ProtectedRoute>} />
-                <Route path="/video-studio" element={<ProtectedRoute><VideoStudioDashboard /></ProtectedRoute>} />
-                <Route path="/video-studio/create" element={<ProtectedRoute><CreateVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/avatar" element={<ProtectedRoute><AvatarVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/enhance" element={<ProtectedRoute><EnhanceVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/extend" element={<ProtectedRoute><ExtendVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/edit" element={<ProtectedRoute><EditVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/transform" element={<ProtectedRoute><TransformVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/social" element={<ProtectedRoute><SocialVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/face-swap" element={<ProtectedRoute><FaceSwap /></ProtectedRoute>} />
-                <Route path="/video-studio/video-translate" element={<ProtectedRoute><VideoTranslate /></ProtectedRoute>} />
-                <Route path="/video-studio/video-background-remover" element={<ProtectedRoute><VideoBackgroundRemover /></ProtectedRoute>} />
-                <Route path="/video-studio/add-audio-to-video" element={<ProtectedRoute><AddAudioToVideo /></ProtectedRoute>} />
-                <Route path="/video-studio/library" element={<ProtectedRoute><LibraryVideo /></ProtectedRoute>} />
-                <Route path="/image-generator" element={<ProtectedRoute><CreateStudio /></ProtectedRoute>} />
-                <Route path="/image-editor" element={<ProtectedRoute><EditStudio /></ProtectedRoute>} />
-                <Route path="/image-upscale" element={<ProtectedRoute><UpscaleStudio /></ProtectedRoute>} />
-                <Route path="/image-control" element={<ProtectedRoute><ControlStudio /></ProtectedRoute>} />
-                <Route path="/image-studio/face-swap" element={<ProtectedRoute><FaceSwapStudio /></ProtectedRoute>} />
-                <Route path="/image-studio/compress" element={<ProtectedRoute><CompressionStudio /></ProtectedRoute>} />
-                <Route path="/image-studio/processing" element={<ProtectedRoute><ImageProcessingStudio /></ProtectedRoute>} />
-                <Route path="/image-studio/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
-                <Route path="/asset-library" element={<ProtectedRoute><AssetLibrary /></ProtectedRoute>} />
-                <Route path="/campaign-creator" element={<ProtectedRoute><ProductMarketingDashboard /></ProtectedRoute>} />
-                <Route path="/campaign-creator/photoshoot" element={<ProtectedRoute><ProductPhotoshootStudio /></ProtectedRoute>} />
-                <Route path="/campaign-creator/animation" element={<ProtectedRoute><ProductAnimationStudio /></ProtectedRoute>} />
-                <Route path="/campaign-creator/video" element={<ProtectedRoute><ProductVideoStudio /></ProtectedRoute>} />
-                <Route path="/campaign-creator/avatar" element={<ProtectedRoute><ProductAvatarStudio /></ProtectedRoute>} />
-                <Route path="/product-marketing" element={<Navigate to="/campaign-creator" replace />} />
-                <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
-                <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
-                <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
-                <Route path="/pricing" element={<PricingPage />} />
-                <Route path="/research-test" element={<ResearchDashboard />} />
-                <Route path="/research-dashboard" element={<ResearchDashboard />} />
-                <Route path="/alwrity-researcher" element={<ResearchDashboard />} />
-                <Route path="/intent-research" element={<IntentResearchTest />} />
-                <Route path="/wix-test" element={<WixTestPage />} />
-                <Route path="/wix-test-direct" element={<WixTestPage />} />
-                <Route path="/wix/callback" element={<WixCallbackPage />} />
-                <Route path="/wp/callback" element={<WordPressCallbackPage />} />
-                <Route path="/gsc/callback" element={<GSCAuthCallback />} />
-                <Route path="/bing/callback" element={<BingCallbackPage />} />
-                <Route path="/bing-analytics-storage" element={<ProtectedRoute><BingAnalyticsStorage /></ProtectedRoute>} />
-          </Routes>
-        </ConditionalCopilotKit>
+        <AuthenticatedCopilotWrapper apiKey={copilotApiKey}>
+          <ConditionalCopilotKit>
+            <TokenInstaller />
+            <Routes>
+                  <Route path="/" element={<RootRoute />} />
+                  <Route 
+                    path="/onboarding" 
+                    element={
+                      <ErrorBoundary context="Onboarding Wizard" showDetails>
+                        <Wizard />
+                      </ErrorBoundary>
+                    } 
+                  />
+                  {/* Error Boundary Testing - Development Only */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <Route path="/error-test" element={<ErrorBoundaryTest />} />
+                  )}
+                  <Route path="/dashboard" element={<ProtectedRoute><MainDashboard /></ProtectedRoute>} />
+                  <Route path="/seo" element={<ProtectedRoute><SEODashboard /></ProtectedRoute>} />
+                  <Route path="/seo-dashboard" element={<ProtectedRoute><SEODashboard /></ProtectedRoute>} />
+                  <Route path="/content-planning" element={<ProtectedRoute><ContentPlanningDashboard /></ProtectedRoute>} />
+                  <Route path="/facebook-writer" element={<ProtectedRoute><FacebookWriter /></ProtectedRoute>} />
+                  <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
+                  <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
+                  <Route path="/story-writer" element={<ProtectedRoute><StoryWriter /></ProtectedRoute>} />
+                  <Route path="/youtube-creator" element={<ProtectedRoute><YouTubeCreator /></ProtectedRoute>} />
+                  <Route path="/podcast-maker" element={<ProtectedRoute><PodcastDashboard /></ProtectedRoute>} />
+                  <Route path="/image-studio" element={<ProtectedRoute><ImageStudioDashboard /></ProtectedRoute>} />
+                  <Route path="/video-studio" element={<ProtectedRoute><VideoStudioDashboard /></ProtectedRoute>} />
+                  <Route path="/video-studio/create" element={<ProtectedRoute><CreateVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/avatar" element={<ProtectedRoute><AvatarVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/enhance" element={<ProtectedRoute><EnhanceVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/extend" element={<ProtectedRoute><ExtendVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/edit" element={<ProtectedRoute><EditVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/transform" element={<ProtectedRoute><TransformVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/social" element={<ProtectedRoute><SocialVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/face-swap" element={<ProtectedRoute><FaceSwap /></ProtectedRoute>} />
+                  <Route path="/video-studio/video-translate" element={<ProtectedRoute><VideoTranslate /></ProtectedRoute>} />
+                  <Route path="/video-studio/video-background-remover" element={<ProtectedRoute><VideoBackgroundRemover /></ProtectedRoute>} />
+                  <Route path="/video-studio/add-audio-to-video" element={<ProtectedRoute><AddAudioToVideo /></ProtectedRoute>} />
+                  <Route path="/video-studio/library" element={<ProtectedRoute><LibraryVideo /></ProtectedRoute>} />
+                  <Route path="/image-generator" element={<ProtectedRoute><CreateStudio /></ProtectedRoute>} />
+                  <Route path="/image-editor" element={<ProtectedRoute><EditStudio /></ProtectedRoute>} />
+                  <Route path="/image-upscale" element={<ProtectedRoute><UpscaleStudio /></ProtectedRoute>} />
+                  <Route path="/image-control" element={<ProtectedRoute><ControlStudio /></ProtectedRoute>} />
+                  <Route path="/image-studio/face-swap" element={<ProtectedRoute><FaceSwapStudio /></ProtectedRoute>} />
+                  <Route path="/image-studio/compress" element={<ProtectedRoute><CompressionStudio /></ProtectedRoute>} />
+                  <Route path="/image-studio/processing" element={<ProtectedRoute><ImageProcessingStudio /></ProtectedRoute>} />
+                  <Route path="/image-studio/social-optimizer" element={<ProtectedRoute><SocialOptimizer /></ProtectedRoute>} />
+                  <Route path="/asset-library" element={<ProtectedRoute><AssetLibrary /></ProtectedRoute>} />
+                  <Route path="/campaign-creator" element={<ProtectedRoute><ProductMarketingDashboard /></ProtectedRoute>} />
+                  <Route path="/campaign-creator/photoshoot" element={<ProtectedRoute><ProductPhotoshootStudio /></ProtectedRoute>} />
+                  <Route path="/campaign-creator/animation" element={<ProtectedRoute><ProductAnimationStudio /></ProtectedRoute>} />
+                  <Route path="/campaign-creator/video" element={<ProtectedRoute><ProductVideoStudio /></ProtectedRoute>} />
+                  <Route path="/campaign-creator/avatar" element={<ProtectedRoute><ProductAvatarStudio /></ProtectedRoute>} />
+                  <Route path="/product-marketing" element={<Navigate to="/campaign-creator" replace />} />
+                  <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
+                  <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
+                  <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
+                  <Route path="/pricing" element={<PricingPage />} />
+                  <Route path="/research-test" element={<ResearchDashboard />} />
+                  <Route path="/research-dashboard" element={<ResearchDashboard />} />
+                  <Route path="/alwrity-researcher" element={<ResearchDashboard />} />
+                  <Route path="/intent-research" element={<IntentResearchTest />} />
+                  <Route path="/wix-test" element={<WixTestPage />} />
+                  <Route path="/wix-test-direct" element={<WixTestPage />} />
+                  <Route path="/wix/callback" element={<WixCallbackPage />} />
+                  <Route path="/wp/callback" element={<WordPressCallbackPage />} />
+                  <Route path="/gsc/callback" element={<GSCAuthCallback />} />
+                  <Route path="/bing/callback" element={<BingCallbackPage />} />
+                  <Route path="/bing-analytics-storage" element={<ProtectedRoute><BingAnalyticsStorage /></ProtectedRoute>} />
+            </Routes>
+          </ConditionalCopilotKit>
+        </AuthenticatedCopilotWrapper>
       </Router>
     );
-
-    // Only wrap with CopilotKit if we have a valid key
-    if (copilotApiKey && copilotApiKey.trim()) {
-      // Enhanced error handler that updates health context
-      const handleCopilotKitError = (e: any) => {
-        console.error("CopilotKit Error:", e);
-        
-        // Try to get health context if available
-        // We'll use a custom event to notify health context since we can't access it directly here
-        const errorMessage = e?.error?.message || e?.message || 'CopilotKit error occurred';
-        const errorType = errorMessage.toLowerCase();
-        
-        // Differentiate between fatal and transient errors
-        const isFatalError = 
-          errorType.includes('cors') ||
-          errorType.includes('ssl') ||
-          errorType.includes('certificate') ||
-          errorType.includes('403') ||
-          errorType.includes('forbidden') ||
-          errorType.includes('ERR_CERT_COMMON_NAME_INVALID');
-        
-        // Dispatch event for health context to listen to
-        window.dispatchEvent(new CustomEvent('copilotkit-error', {
-          detail: {
-            error: e,
-            errorMessage,
-            isFatal: isFatalError,
-          }
-        }));
-      };
-
-      return (
-        <ErrorBoundary 
-          context="CopilotKit" 
-          showDetails={process.env.NODE_ENV === 'development'}
-          fallback={
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="h6" color="warning" gutterBottom>
-                Chat Unavailable
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                CopilotKit encountered an error. The app continues to work with manual controls.
-              </Typography>
-            </Box>
-          }
-        >
-          <CopilotKit 
-            publicApiKey={copilotApiKey}
-            showDevConsole={false}
-            onError={handleCopilotKitError}
-          >
-            {appContent}
-          </CopilotKit>
-        </ErrorBoundary>
-      );
-    }
-
-    // Return app without CopilotKit if no key available
-    return appContent;
   };
 
-  // Determine initial health status based on whether CopilotKit key is available
-  const hasCopilotKitKey = copilotApiKey && copilotApiKey.trim();
-  
   return (
     <ErrorBoundary 
       context="Application Root"
@@ -626,10 +652,7 @@ const App: React.FC = () => {
       <ClerkProvider publishableKey={clerkPublishableKey}>
         <SubscriptionProvider>
           <OnboardingProvider>
-            <CopilotKitHealthProvider initialHealthStatus={!!hasCopilotKitKey}>
-              <CopilotKitDegradedBanner />
-              {renderApp()}
-            </CopilotKitHealthProvider>
+            {renderApp()}
           </OnboardingProvider>
         </SubscriptionProvider>
       </ClerkProvider>

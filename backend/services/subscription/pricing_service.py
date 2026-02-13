@@ -199,6 +199,24 @@ class PricingService:
                 "cost_per_input_token": 0.0,          # No additional token cost for grounding
                 "cost_per_output_token": 0.0,         # No additional token cost for grounding
                 "description": "Grounding with Google Search - 1,500 RPD free, then $35/1K requests"
+            },
+            # Alwrity Voice Cloning - Qwen3
+            {
+                "provider": APIProvider.AUDIO,
+                "model_name": "alwrity-ai/qwen3-tts/voice-clone",
+                "cost_per_request": 0.10,
+                "cost_per_input_token": 0.00001,
+                "cost_per_output_token": 0.0,
+                "description": "Alwrity Qwen3 Voice Clone (Efficient)"
+            },
+            # Alwrity Voice Cloning - CosyVoice
+            {
+                "provider": APIProvider.AUDIO,
+                "model_name": "alwrity-ai/cosyvoice/voice-clone",
+                "cost_per_request": 0.15,
+                "cost_per_input_token": 0.00001,
+                "cost_per_output_token": 0.0,
+                "description": "Alwrity CosyVoice Clone (High Fidelity)"
             }
         ]
         
@@ -402,10 +420,18 @@ class PricingService:
             {
                 "provider": APIProvider.AUDIO,
                 "model_name": "wavespeed-ai/qwen3-tts/voice-clone",
-                "cost_per_request": 0.0,
-                "cost_per_input_token": 0.0,
+                "cost_per_request": 0.005,
+                "cost_per_input_token": 0.00005,
                 "cost_per_output_token": 0.0,
                 "description": "Qwen3-TTS Voice Clone via WaveSpeed (cost depends on text length)"
+            },
+            {
+                "provider": APIProvider.AUDIO,
+                "model_name": "wavespeed-ai/cosyvoice-tts/voice-clone",
+                "cost_per_request": 0.005,
+                "cost_per_input_token": 0.00005,
+                "cost_per_output_token": 0.0,
+                "description": "CosyVoice-TTS Voice Clone via WaveSpeed (cost depends on text length)"
             },
             {
                 "provider": APIProvider.AUDIO,
@@ -429,8 +455,9 @@ class PricingService:
             
             if existing:
                 # Update existing pricing (especially for HuggingFace if env vars changed)
-                if pricing_data["provider"] == APIProvider.MISTRAL:
-                    # Update HuggingFace pricing from env vars
+                if pricing_data["provider"] in [APIProvider.MISTRAL, APIProvider.AUDIO]:
+                    # Update pricing
+                    existing.cost_per_request = pricing_data.get("cost_per_request", 0.0)
                     existing.cost_per_input_token = pricing_data["cost_per_input_token"]
                     existing.cost_per_output_token = pricing_data["cost_per_output_token"]
                     existing.description = pricing_data["description"]

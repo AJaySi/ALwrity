@@ -22,7 +22,7 @@ import {
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 
-const MotionCard = motion(Card);
+const MotionCard = motion.create(Card);
 
 interface GeneratedProductImage {
   image_url?: string;

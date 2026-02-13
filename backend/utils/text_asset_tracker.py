@@ -150,6 +150,29 @@ def save_and_track_text_content(
         
         if asset_id:
             logger.info(f"✅ Text asset saved to library: ID={asset_id}, filename={filename}")
+            
+            # Trigger SIF Content Guardian Indexing
+            try:
+                from models.website_analysis_monitoring_models import SIFIndexingTask
+                from datetime import datetime
+                
+                # Use the existing DB session
+                # Check if a SIF Indexing task exists for this user
+                existing_task = db.query(SIFIndexingTask).filter(SIFIndexingTask.user_id == user_id).first()
+                if existing_task:
+                    logger.info(f"Triggering SIF Indexing task for user {user_id} due to new content")
+                    existing_task.next_execution = datetime.utcnow() # Run immediately
+                    existing_task.status = "pending" # Ensure it gets picked up
+                    db.add(existing_task)
+                    # We don't force commit here as the session might be managed by the caller
+                    # But if the caller commits, this change will be included.
+                    # If the caller uses autocommit=False and commits later, this is fine.
+                    # Most API endpoints commit at the end.
+                else:
+                     logger.debug(f"No SIF Indexing task found for user {user_id} - skipping trigger")
+            except Exception as e:
+                logger.warning(f"Failed to trigger SIF Indexing task: {e}")
+                
         else:
             logger.warning(f"Asset tracking returned None for {filename}")
         

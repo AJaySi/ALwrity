@@ -4,6 +4,7 @@ import io
 import os
 from typing import Optional
 from PIL import Image
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from .base import ImageGenerationProvider, ImageGenerationOptions, ImageGenerationResult
 from services.wavespeed.client import WaveSpeedClient
@@ -14,7 +15,10 @@ logger = get_service_logger("wavespeed.image_provider")
 
 
 class WaveSpeedImageProvider(ImageGenerationProvider):
-    """WaveSpeed AI image generation provider supporting Ideogram V3 and Qwen."""
+    """WaveSpeed AI image generation provider supporting Ideogram V3 and Qwen.
+    
+    Implements robust error handling and retries for production stability.
+    """
     
     SUPPORTED_MODELS = {
         "ideogram-v3-turbo": {
@@ -54,6 +58,28 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
         logger.info("[WaveSpeed Image Provider] Initialized with available models: %s", 
                    list(self.SUPPORTED_MODELS.keys()))
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((RuntimeError, IOError)),
+        reraise=True
+    )
+    def _call_api_with_retry(self, method, **kwargs):
+        """Execute API call with retry logic.
+        
+        Args:
+            method: Callable API method
+            **kwargs: Arguments for the method
+            
+        Returns:
+            API response
+        """
+        try:
+            return method(**kwargs)
+        except Exception as e:
+            logger.warning(f"WaveSpeed API call failed (retrying): {str(e)}")
+            raise
+
     def _validate_options(self, options: ImageGenerationOptions) -> None:
         """Validate generation options.
         
@@ -117,7 +143,7 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
             
             # Call WaveSpeed API (using generic image generation method)
             # This will need to be adjusted based on actual WaveSpeed client implementation
-            result = self.client.generate_image(**params)
+            result = self._call_api_with_retry(self.client.generate_image, **params)
             
             # Extract image bytes from result
             # Adjust based on actual WaveSpeed API response format
@@ -167,7 +193,7 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
                 params["seed"] = options.seed
             
             # Call WaveSpeed API
-            result = self.client.generate_image(**params)
+            result = self._call_api_with_retry(self.client.generate_image, **params)
             
             # Extract image bytes from result
             if isinstance(result, bytes):
@@ -216,7 +242,7 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
                 params["seed"] = options.seed
             
             # Call WaveSpeed API
-            result = self.client.generate_image(**params)
+            result = self._call_api_with_retry(self.client.generate_image, **params)
             
             # Extract image bytes from result
             if isinstance(result, bytes):

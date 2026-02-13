@@ -35,7 +35,7 @@ const BILLING_BASE_URL = API_BASE_URL
 // Create axios instance with default config
 const billingAPI = axios.create({
   baseURL: BILLING_BASE_URL,
-  timeout: 10000,
+  timeout: 60000, // Increased to 60s to prevent timeouts in dev/slow networks
   headers: {
     'Content-Type': 'application/json',
   },
@@ -202,6 +202,7 @@ function coerceUsageStats(raw: any): UsageStats {
   const geminiData = providerBreakdown.gemini;
   const mistralData = providerBreakdown.mistral; // Backend sends 'mistral' for HuggingFace
   const huggingfaceData = providerBreakdown.huggingface;
+  const wavespeedData = providerBreakdown.wavespeed;
   
   // Create properly typed ProviderUsage objects
   const geminiUsage: ProviderUsage = geminiData && typeof geminiData === 'object' && 'calls' in geminiData
@@ -214,11 +215,16 @@ function coerceUsageStats(raw: any): UsageStats {
     : (mistralData && typeof mistralData === 'object' && 'calls' in mistralData)
       ? { calls: Number(mistralData.calls) || 0, tokens: Number(mistralData.tokens) || 0, cost: Number(mistralData.cost) || 0 }
       : { calls: 0, tokens: 0, cost: 0 };
+
+  const wavespeedUsage: ProviderUsage = wavespeedData && typeof wavespeedData === 'object' && 'calls' in wavespeedData
+    ? { calls: Number(wavespeedData.calls) || 0, tokens: Number(wavespeedData.tokens) || 0, cost: Number(wavespeedData.cost) || 0 }
+    : { calls: 0, tokens: 0, cost: 0 };
   
   // Create ProviderBreakdown with only gemini and huggingface
   const providerBreakdownCoerced: ProviderBreakdown = {
     gemini: geminiUsage,
     huggingface: huggingfaceUsage,
+    wavespeed: wavespeedUsage,
   };
 
   // Extract usage percentages - only include gemini and huggingface
@@ -234,7 +240,7 @@ function coerceUsageStats(raw: any): UsageStats {
   // Calculate total_cost from provider breakdown
   // Always calculate from provider breakdown to ensure accuracy, but prefer backend total if it's more accurate
   const backendTotalCost = typeof raw?.total_cost === 'number' ? raw.total_cost : 0;
-  const calculatedTotalCost = geminiUsage.cost + huggingfaceUsage.cost;
+  const calculatedTotalCost = geminiUsage.cost + huggingfaceUsage.cost + wavespeedUsage.cost;
   
   // Use the maximum of backend cost and calculated cost to ensure we show the actual cost
   // If backend cost is 0 but we have provider costs, use calculated cost
@@ -249,18 +255,20 @@ function coerceUsageStats(raw: any): UsageStats {
       finalTotalCost: totalCost,
       geminiCost: geminiUsage.cost,
       huggingfaceCost: huggingfaceUsage.cost,
+      wavespeedCost: wavespeedUsage.cost,
       geminiCalls: geminiUsage.calls,
       huggingfaceCalls: huggingfaceUsage.calls,
+      wavespeedCalls: wavespeedUsage.calls,
     });
   }
 
   // Calculate total_calls and total_tokens from provider breakdown if needed
   const backendTotalCalls = typeof raw?.total_calls === 'number' ? raw.total_calls : 0;
-  const calculatedTotalCalls = geminiUsage.calls + huggingfaceUsage.calls;
+  const calculatedTotalCalls = geminiUsage.calls + huggingfaceUsage.calls + wavespeedUsage.calls;
   const totalCalls = backendTotalCalls > 0 ? backendTotalCalls : calculatedTotalCalls;
 
   const backendTotalTokens = typeof raw?.total_tokens === 'number' ? raw.total_tokens : 0;
-  const calculatedTotalTokens = geminiUsage.tokens + huggingfaceUsage.tokens;
+  const calculatedTotalTokens = geminiUsage.tokens + huggingfaceUsage.tokens + wavespeedUsage.tokens;
   const totalTokens = backendTotalTokens > 0 ? backendTotalTokens : calculatedTotalTokens;
 
   const coerced: UsageStats = {

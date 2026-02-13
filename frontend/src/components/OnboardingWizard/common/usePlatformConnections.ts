@@ -10,15 +10,14 @@ export const usePlatformConnections = () => {
   // Handle Wix OAuth popup messages
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      const trusted = [window.location.origin, 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'];
+      const ngrokOrigin = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+      const trusted = [window.location.origin, ngrokOrigin];
       if (!trusted.includes(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
 
       if (event.data.type === 'WIX_OAUTH_SUCCESS') {
-        console.log('Wix OAuth success message received');
         setConnectedPlatforms(prev => {
           const updated = [...prev.filter(id => id !== 'wix'), 'wix'];
-          console.log('Updated connected platforms via message:', updated);
           return updated;
         });
         setToastMessage('Wix account connected successfully!');
@@ -37,10 +36,8 @@ export const usePlatformConnections = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('wix_connected') === 'true') {
-      console.log('Wix connected via URL param, updating state');
       setConnectedPlatforms(prev => {
         const updated = [...prev.filter(id => id !== 'wix'), 'wix'];
-        console.log('Updated connected platforms:', updated);
         return updated;
       });
       setToastMessage('Wix account connected successfully!');
@@ -61,12 +58,9 @@ export const usePlatformConnections = () => {
       try {
         if (!sessionStorage.getItem('wix_oauth_redirect')) {
           sessionStorage.setItem('wix_oauth_redirect', currentUrl);
-          console.log('[Wix OAuth] Stored redirect URL:', currentUrl);
-        } else {
-          console.log('[Wix OAuth] Redirect URL already set, keeping existing:', sessionStorage.getItem('wix_oauth_redirect'));
         }
       } catch (e) {
-        console.warn('[Wix OAuth] Failed to store redirect URL:', e);
+        // Ignore storage errors
       }
 
       // Use the working Wix OAuth flow from WixTestPage
@@ -74,7 +68,7 @@ export const usePlatformConnections = () => {
         auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' })
       });
 
-      const NGROK_ORIGIN = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+      const NGROK_ORIGIN = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
       const redirectOrigin = window.location.origin.includes('localhost') ? NGROK_ORIGIN : window.location.origin;
       const redirectUri = `${redirectOrigin}/wix/callback`;
       const oauthData = await wixClient.auth.generateOAuthData(redirectUri);
@@ -103,8 +97,6 @@ export const usePlatformConnections = () => {
       }
       
       // For other platforms, you can add their connection logic here
-      console.log(`🔧 USE_PLATFORM_CONNECTIONS: Connecting to ${platformId}...`);
-      console.log(`🔧 USE_PLATFORM_CONNECTIONS: Stack trace:`, new Error().stack);
       
     } catch (error) {
       console.error('Connection error:', error);

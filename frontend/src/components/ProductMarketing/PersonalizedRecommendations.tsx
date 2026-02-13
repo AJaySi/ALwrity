@@ -29,7 +29,7 @@ import { useProductMarketing } from '../../hooks/useProductMarketing';
 import { useCampaignCreator } from '../../hooks/useCampaignCreator';
 import { useNavigate } from 'react-router-dom';
 
-const MotionCard = motion(Card);
+const MotionCard = motion.create(Card);
 
 interface PersonalizedRecommendationsProps {
   variant?: 'product_marketing' | 'campaign_creator';

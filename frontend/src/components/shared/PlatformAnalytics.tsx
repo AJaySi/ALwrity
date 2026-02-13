@@ -96,7 +96,6 @@ const PlatformAnalytics: React.FC<PlatformAnalyticsComponentProps> = ({
 
   // Method to force refresh (bypass cache)
   const forceRefresh = useCallback(async () => {
-    console.log('🔄 PlatformAnalytics: Force refresh requested');
     setLoading(true);
     setError(null);
     
@@ -107,9 +106,8 @@ const PlatformAnalytics: React.FC<PlatformAnalyticsComponentProps> = ({
       // Reload data
       await loadData();
       
-      console.log('✅ PlatformAnalytics: Force refresh completed');
     } catch (err) {
-      console.error('❌ PlatformAnalytics: Force refresh failed:', err);
+      console.error('PlatformAnalytics: Force refresh failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to refresh data');
     } finally {
       setLoading(false);

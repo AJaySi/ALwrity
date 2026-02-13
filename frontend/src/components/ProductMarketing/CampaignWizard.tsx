@@ -41,7 +41,7 @@ import { useCampaignCreator } from '../../hooks/useCampaignCreator';
 import { getSimpleTerm, getTooltipText, getTermExamples, getTermDescription } from '../../utils/terminology';
 import { Info as InfoIcon } from '@mui/icons-material';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 interface CampaignWizardProps {
   onComplete: (blueprint: any) => void;

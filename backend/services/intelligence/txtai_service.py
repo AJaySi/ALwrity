@@ -33,7 +33,13 @@ class TxtaiIntelligenceService:
         self._initialized = False
         self.enable_caching = enable_caching
         self.cache_manager = semantic_cache_manager if enable_caching else None
-        self._initialize_embeddings()
+        # Lazy initialization - do not initialize embeddings on startup
+        # self._initialize_embeddings()
+
+    def _ensure_initialized(self):
+        """Lazy initialization helper."""
+        if not self._initialized:
+            self._initialize_embeddings()
 
     def _initialize_embeddings(self):
         """Initialize txtai embeddings with local storage support and comprehensive error handling."""
@@ -106,6 +112,7 @@ class TxtaiIntelligenceService:
         Args:
             items: List of (id, text, metadata) tuples.
         """
+        self._ensure_initialized()
         if not self._initialized or not self.embeddings:
             logger.error(f"Cannot index content - service not initialized for user {self.user_id}")
             return
@@ -145,6 +152,7 @@ class TxtaiIntelligenceService:
 
     async def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Perform semantic search with intelligent caching."""
+        self._ensure_initialized()
         if not self._initialized or not self.embeddings:
             logger.error(f"Cannot perform search - service not initialized for user {self.user_id}")
             return []
@@ -186,6 +194,7 @@ class TxtaiIntelligenceService:
 
     async def get_similarity(self, text1: str, text2: str) -> float:
         """Get semantic similarity between two texts with caching."""
+        self._ensure_initialized()
         if not self._initialized or not self.embeddings:
             logger.error(f"Cannot calculate similarity - service not initialized for user {self.user_id}")
             return 0.0
@@ -234,6 +243,7 @@ class TxtaiIntelligenceService:
 
     async def cluster(self, min_score: float = 0.5) -> List[List[int]]:
         """Cluster indexed content to find semantic pillars using graph-based clustering with caching."""
+        self._ensure_initialized()
         if not self._initialized or not self.embeddings:
             logger.error(f"Cannot cluster content - service not initialized for user {self.user_id}")
             return []
@@ -358,6 +368,7 @@ class TxtaiIntelligenceService:
 
     async def classify(self, text: str, labels: List[str]) -> List[Tuple[str, float]]:
         """Classify text using zero-shot classification."""
+        self._ensure_initialized()
         if not self._initialized or not Labels:
             logger.error(f"Cannot classify text - service not initialized or Labels not available for user {self.user_id}")
             return []

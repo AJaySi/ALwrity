@@ -17,8 +17,7 @@ from .core_agent_framework import (
 # Market signal detection
 from .market_signal_detector import (
     MarketSignal,
-    MarketSignalDetector,
-    MarketTrendAnalyzer
+    MarketSignalDetector
 )
 
 # Performance monitoring

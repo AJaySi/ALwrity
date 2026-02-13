@@ -26,7 +26,7 @@ const MONITORING_BASE_URL = API_BASE_URL
 // Use shorter timeout for health checks to prevent blocking dashboard
 const monitoringAPI = axios.create({
   baseURL: MONITORING_BASE_URL,
-  timeout: 5000, // Reduced from 10000 to 5000ms for faster failure
+  timeout: 30000, // Increased from 5000 to 30000ms to prevent false positives in dev
   headers: {
     'Content-Type': 'application/json',
   },

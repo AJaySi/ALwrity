@@ -1,30 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { blogWriterApi, TaskStatusResponse } from '../services/blogWriterApi';
 import { researchEngineApi } from '../services/researchEngineApi';
+import { pollVideoTaskStatus } from '../api/videoStudioApi';
 import { triggerSubscriptionError } from '../api/client';
 
-export interface UsePollingOptions {
+export interface UsePollingOptions<T = any> {
   interval?: number; // Polling interval in milliseconds
   maxAttempts?: number; // Maximum number of polling attempts
   onProgress?: (message: string) => void; // Callback for progress updates
-  onComplete?: (result: any) => void; // Callback when task completes
+  onComplete?: (result: T) => void; // Callback when task completes
   onError?: (error: string) => void; // Callback when task fails
 }
 
-export interface UsePollingReturn {
+export interface UsePollingReturn<T = any> {
   isPolling: boolean;
   currentStatus: string;
   progressMessages: Array<{ timestamp: string; message: string }>;
-  result: any;
+  result: T | null;
   error: string | null;
   startPolling: (taskId: string) => void;
   stopPolling: () => void;
 }
 
-export function usePolling(
-  pollFunction: (taskId: string) => Promise<TaskStatusResponse>,
-  options: UsePollingOptions = {}
-): UsePollingReturn {
+export function usePolling<T = any>(
+  pollFunction: (taskId: string) => Promise<TaskStatusResponse<T>>,
+  options: UsePollingOptions<T> = {}
+): UsePollingReturn<T> {
   const {
     interval = 5000, // 5 seconds default - increased to reduce load
     onProgress,
@@ -35,7 +36,7 @@ export function usePolling(
   const [isPolling, setIsPolling] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<string>('idle');
   const [progressMessages, setProgressMessages] = useState<Array<{ timestamp: string; message: string }>>([]);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Debug state changes only in development and when state actually changes meaningfully
@@ -116,8 +117,10 @@ export function usePolling(
 
         if (status.status === 'completed') {
           console.info('[usePolling] ✅ Task completed', { taskId: currentTaskIdRef.current });
-          setResult(status.result);
-          onComplete?.(status.result);
+          setResult(status.result ?? null);
+          if (status.result !== undefined) {
+            onComplete?.(status.result);
+          }
           stopPolling();
           return; // Exit early to prevent further processing
         } else if (status.status === 'failed') {
@@ -215,18 +218,24 @@ export function usePolling(
     // Start polling immediately, then at intervals
     poll();
     intervalRef.current = setInterval(poll, interval);
-  }, [isPolling, interval, onProgress, onComplete, onError, pollFunction, stopPolling, progressMessages.length]);
+  }, [isPolling, interval, onProgress, onComplete, onError, pollFunction, stopPolling]);
 
   // Cleanup on unmount - only if actually polling
+  // Use a ref to access the latest stopPolling function without triggering re-runs
+  const stopPollingRef = useRef(stopPolling);
+  useEffect(() => {
+    stopPollingRef.current = stopPolling;
+  }, [stopPolling]);
+
   useEffect(() => {
     return () => {
       // Only call stopPolling if we have an active interval (actually polling)
       // This prevents unnecessary cleanup calls when component unmounts while idle
       if (intervalRef.current) {
-        stopPolling();
+        stopPollingRef.current();
       }
     };
-  }, [stopPolling]);
+  }, []); // Empty dependency array ensures this only runs on unmount
 
   return {
     isPolling,
@@ -286,4 +295,8 @@ export function useRewritePolling(options: UsePollingOptions = {}) {
   const wrapped = (taskId: string) => pollFn(taskId) as unknown as Promise<TaskStatusResponse>;
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return usePolling(wrapped, options);
+}
+
+export function useVideoGenerationPolling(options: UsePollingOptions = {}) {
+  return usePolling(pollVideoTaskStatus, options);
 }

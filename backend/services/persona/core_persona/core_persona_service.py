@@ -46,6 +46,9 @@ class CorePersonaService:
         # Get schema for structured response
         persona_schema = self.prompt_builder.get_persona_schema()
         
+        # Extract user_id for tracking
+        user_id = onboarding_data.get("session_info", {}).get("user_id")
+        
         try:
             # Generate structured response using Gemini
             response = gemini_structured_json_response(
@@ -53,7 +56,8 @@ class CorePersonaService:
                 schema=persona_schema,
                 temperature=0.2,  # Low temperature for consistent analysis
                 max_tokens=8192,
-                system_prompt="You are an expert writing style analyst and persona developer. Analyze the provided data to create a precise, actionable writing persona."
+                system_prompt="You are an expert writing style analyst and persona developer. Analyze the provided data to create a precise, actionable writing persona.",
+                user_id=user_id
             )
             
             if "error" in response:
@@ -103,13 +107,17 @@ class CorePersonaService:
         # Get platform-specific schema
         platform_schema = self.prompt_builder.get_platform_schema()
         
+        # Extract user_id for tracking
+        user_id = onboarding_data.get("session_info", {}).get("user_id")
+        
         try:
             response = gemini_structured_json_response(
                 prompt=prompt,
                 schema=platform_schema,
                 temperature=0.2,
                 max_tokens=4096,
-                system_prompt=f"You are an expert in {platform} content strategy and platform-specific writing optimization."
+                system_prompt=f"You are an expert in {platform} content strategy and platform-specific writing optimization.",
+                user_id=user_id
             )
             
             return response

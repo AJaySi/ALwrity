@@ -54,9 +54,9 @@ import { CostEstimator } from './CostEstimator';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { OperationButton } from '../shared/OperationButton';
 
-const MotionBox = motion(Box);
-const MotionPaper = motion(Paper);
-const MotionCard = motion(Card);
+const MotionBox = motion.create(Box);
+const MotionPaper = motion.create(Paper);
+const MotionCard = motion.create(Card);
 
 // Cubic bezier easing
 const easeInOut: Easing = [0.22, 0.61, 0.36, 1];

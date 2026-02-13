@@ -1,8 +1,8 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Box, Typography, Paper, Stack, Button, Alert, TextField, CircularProgress, Slider, FormControlLabel, Checkbox, MenuItem, Tooltip, Chip, Divider, Grid, IconButton, Modal, Fade, Backdrop } from '@mui/material';
 import { keyframes } from '@mui/system';
-import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone } from '@mui/icons-material';
-import { createVoiceClone } from '../../../../api/brandAssets';
+import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo } from '@mui/icons-material';
+import { createVoiceClone, createVoiceDesign, getLatestVoiceClone, setBrandVoice } from '../../../../api/brandAssets';
 import { OperationButton } from '../../../shared/OperationButton';
 
 const pulse = keyframes`
@@ -11,7 +11,7 @@ const pulse = keyframes`
   100% { transform: scale(1); }
 `;
 
-export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ domainName }) => {
+export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?: () => void }> = ({ domainName, onVoiceSet }) => {
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -28,19 +28,190 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
   const [qualityPreset, setQualityPreset] = useState<'clean' | 'noisy' | 'accent'>('clean');
   const [qwenLanguage, setQwenLanguage] = useState('auto');
   const [referenceText, setReferenceText] = useState('');
+  const [voiceDescription, setVoiceDescription] = useState('');
+
+  // Debounce text inputs for token calculation to prevent button flickering
+  const [debouncedPreviewText, setDebouncedPreviewText] = useState(previewText);
+  const [debouncedVoiceDescription, setDebouncedVoiceDescription] = useState(voiceDescription);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedPreviewText(previewText);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [previewText]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedVoiceDescription(voiceDescription);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [voiceDescription]);
 
   const [cloning, setCloning] = useState(false);
-  const [resultAudioUrl, setResultAudioUrl] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const STORAGE_KEY = 'voice_clone_result_url';
+  const STORAGE_BACKUP_KEY = 'voice_clone_result_url_backup';
+
+  const [resultAudioUrl, setResultAudioUrl] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved && saved.length > 0 ? saved : null;
+    } catch { return null; }
+  });
+
+  const [archivedResultAudioUrl, setArchivedResultAudioUrl] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_BACKUP_KEY);
+      return saved && saved.length > 0 ? saved : null;
+    } catch { return null; }
+  });
+
+  // Auto-save to localStorage
+  useEffect(() => {
+    try {
+      if (resultAudioUrl) {
+        localStorage.setItem(STORAGE_KEY, resultAudioUrl);
+      }
+    } catch (e) {
+      console.warn('Failed to save voice clone url to localStorage', e);
+    }
+  }, [resultAudioUrl]);
+
+  // Auto-save backup to localStorage
+  useEffect(() => {
+    try {
+      if (archivedResultAudioUrl) {
+        localStorage.setItem(STORAGE_BACKUP_KEY, archivedResultAudioUrl);
+      } else {
+        localStorage.removeItem(STORAGE_BACKUP_KEY);
+      }
+    } catch (e) {
+      console.warn('Failed to save archived voice url to localStorage', e);
+    }
+  }, [archivedResultAudioUrl]);
+
+  const handleReDo = () => {
+    if (resultAudioUrl) {
+      setArchivedResultAudioUrl(resultAudioUrl);
+    }
+    setResultAudioUrl(null);
+    setSuccess(null);
+    localStorage.removeItem(STORAGE_KEY);
+  };
+
+  const handleRestore = () => {
+    if (archivedResultAudioUrl) {
+      setResultAudioUrl(archivedResultAudioUrl);
+      setArchivedResultAudioUrl(null);
+      setSuccess('Restored previous voice');
+    }
+  };
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const [inputType, setInputType] = useState<'mic' | 'upload' | 'text'>('mic');
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [activeCard, setActiveCard] = useState(0);
 
-  const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-  const timerRef = useRef<number | null>(null);
+  // Helper for enterprise styling
+  const TextFieldProps = {
+    variant: "outlined" as const,
+    size: "small" as const,
+    fullWidth: true,
+    InputLabelProps: { 
+      shrink: true, 
+      sx: { fontWeight: 700, color: '#374151', fontSize: '0.875rem' } 
+    },
+    InputProps: {
+      sx: { 
+        borderRadius: '8px', 
+        bgcolor: '#FFFFFF',
+        fontSize: '0.875rem',
+        color: '#111827',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+        transition: 'all 0.2s ease-in-out',
+        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#7C3AED' },
+        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#7C3AED', borderWidth: '2px', boxShadow: '0 0 0 3px rgba(124, 58, 237, 0.1)' },
+        '& .MuiInputBase-input': { color: '#111827' }
+      }
+    },
+    FormHelperTextProps: {
+      sx: { fontSize: '0.75rem', color: '#6B7280', mx: 1, mt: 0.5, lineHeight: 1.4 }
+    }
+  };
+
+  const operation = useMemo(() => ({
+    provider: 'audio',
+    operation_type: inputType === 'text' ? 'voice_design' : 'voice_clone',
+    actual_provider_name: 'alwrity',
+    model: engine === 'minimax' ? 'minimax/voice-clone' : 'alwrity-ai/qwen3-tts/voice-clone',
+    tokens_requested: (debouncedPreviewText?.trim()?.length || 0) + (inputType === 'text' ? (debouncedVoiceDescription?.trim()?.length || 0) : 0),
+  }), [inputType, engine, debouncedPreviewText, debouncedVoiceDescription]);
+
+  // Load latest voice on mount
+  useEffect(() => {
+    const loadLatestVoice = async () => {
+      try {
+        const response = await getLatestVoiceClone();
+        if (response.success) {
+           // Prioritize local draft
+           if (response.preview_audio_url && !localStorage.getItem(STORAGE_KEY)) {
+              setResultAudioUrl(response.preview_audio_url);
+           }
+           if (response.custom_voice_id) setCustomVoiceId(response.custom_voice_id);
+        }
+      } catch (err) {
+         console.error(err);
+      }
+    };
+    loadLatestVoice();
+  }, []);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+      if (success || error) {
+          const timer = setTimeout(() => {
+            setSuccess(null);
+            setError(null);
+          }, 5000);
+          return () => clearTimeout(timer);
+      }
+  }, [success, error]);
+
+  const handleSetAsBrandVoice = async () => {
+      if (!resultAudioUrl) return;
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+      try {
+          const resp = await setBrandVoice({
+              audio_url: resultAudioUrl,
+              custom_voice_id: customVoiceId,
+              voice_description: voiceDescription
+          });
+          if (resp.success) {
+              setSuccess('Voice generated successfully. Use this for generating your Brand Voice.');
+              // Persist selection state locally
+              try {
+                localStorage.setItem('brand_voice_selection', JSON.stringify({
+                  set: true,
+                  timestamp: new Date().toISOString(),
+                  url: resultAudioUrl
+                }));
+              } catch (e) {
+                console.warn('Failed to save voice selection to storage', e);
+              }
+              if (onVoiceSet) onVoiceSet();
+          } else {
+              setError(resp.error || 'Failed to set brand voice');
+          }
+      } catch (e: any) {
+          setError(e.message || 'Failed to set brand voice');
+      } finally {
+          setSaving(false);
+      }
+  };
 
   const defaultVoiceId = useMemo(() => {
     const base = (domainName || 'Alwrity').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) || 'Alwrity';
@@ -51,6 +222,24 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
     const rand = Math.floor(10 + Math.random() * 90);
     return `V${base}${y}${m}${d}${rand}`;
   }, [domainName]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveCard((prev) => (prev + 1) % 3);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!customVoiceId && defaultVoiceId) {
+        setCustomVoiceId(defaultVoiceId);
+    }
+  }, [defaultVoiceId, customVoiceId]);
+
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const timerRef = useRef<number | null>(null);
 
   const browserLocaleLanguage = useMemo(() => {
     const locale = (navigator.language || '').toLowerCase();
@@ -192,6 +381,45 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
   };
 
   const handleClone = async () => {
+    // Voice Design (Text to Voice)
+    if (inputType === 'text') {
+        if (!voiceDescription.trim()) {
+            setError('Please provide a voice description.');
+            return;
+        }
+        if (!previewText.trim()) {
+            setError('Please provide text to speak.');
+            return;
+        }
+
+        setCloning(true);
+        setError(null);
+        setSuccess(null);
+        setResultAudioUrl(null);
+        setArchivedResultAudioUrl(null);
+
+        try {
+            const resp = await createVoiceDesign({
+                text: previewText,
+                voiceDescription: voiceDescription,
+                language: qwenLanguage
+            });
+
+            if (resp.success) {
+                setSuccess(resp.message || 'Voice generated successfully');
+                setResultAudioUrl(resp.preview_audio_url || null);
+            } else {
+                setError(resp.error || 'Voice generation failed');
+            }
+        } catch (e: any) {
+            setError(e?.message || 'Voice generation failed');
+        } finally {
+            setCloning(false);
+        }
+        return;
+    }
+
+    // Voice Cloning (Audio to Voice)
     if (!audioFile) {
       setError('Please record or upload a short audio clip first.');
       return;
@@ -204,10 +432,12 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
       setError('Text is required for Qwen3 voice clone.');
       return;
     }
+
     setCloning(true);
     setError(null);
     setSuccess(null);
     setResultAudioUrl(null);
+    setArchivedResultAudioUrl(null);
     try {
       const resp = await createVoiceClone({
         audioFile,
@@ -223,7 +453,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
         languageBoost,
       });
       if (resp.success) {
-        setSuccess(resp.message || 'Voice clone created');
+        setSuccess('Voice generated successfully. Use this for generating your Brand Voice.');
         setResultAudioUrl(resp.preview_audio_url || null);
       } else {
         setError(resp.error || 'Voice clone failed');
@@ -255,59 +485,33 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
     setLanguageBoost(browserLocaleLanguage);
   };
 
-  const inputSx = {
-    '& .MuiInputLabel-root': { 
-      color: '#374151', 
-      fontSize: '12px', 
-      fontWeight: 600,
-      mb: 0.5,
-    },
-    '& .MuiOutlinedInput-root': { 
-      height: '34px', 
-      bgcolor: '#FFFFFF',
-      borderRadius: '8px',
-      fontSize: '13px',
-      color: '#111827',
-      '& fieldset': { borderColor: '#D1D5DB', borderWidth: '1px' },
-      '&:hover fieldset': { borderColor: '#7C3AED' },
-      '&.Mui-focused fieldset': { borderColor: '#7C3AED', borderWidth: '2px' },
-    },
-    '& .MuiInputBase-input': { 
-      height: '34px', 
-      color: '#111827', 
-      fontWeight: 400,
-      padding: '0 10px',
-      '&::placeholder': { color: '#6B7280', opacity: 1 }
-    },
-  };
-
   const cardSx = {
     p: 1.5,
     borderRadius: '12px',
     bgcolor: '#FFFFFF',
     border: '1px solid #E5E7EB',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
   };
 
   const gradientAccent = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)';
 
   return (
-    <Box sx={{ py: 1.5, px: 0, minHeight: '100%' }}>
-      <Stack spacing={2}>
+    <Box sx={{ py: 1, px: 0, minHeight: '100%' }}>
+      <Stack spacing={1.5}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6" sx={{ color: '#111827', fontWeight: 800, letterSpacing: '-0.02em', fontSize: '1.1rem' }}>
+          <Typography variant="h6" sx={{ color: '#111827', fontWeight: 800, letterSpacing: '-0.02em', fontSize: '1rem' }}>
             Voice Clone {domainName ? domainName : ''}
           </Typography>
           <Stack direction="row" spacing={1}>
             <Button
-              startIcon={<HelpOutline sx={{ fontSize: 16 }} />}
+              startIcon={<HelpOutline sx={{ fontSize: 14 }} />}
               onClick={() => setShowInfoModal(true)}
               size="small"
               sx={{ 
                 color: '#7C3AED', 
                 fontWeight: 700, 
                 textTransform: 'none',
-                fontSize: '0.75rem',
+                fontSize: '0.7rem',
                 '&:hover': { bgcolor: 'rgba(124, 58, 237, 0.05)' }
               }}
             >
@@ -329,7 +533,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
               placement="left"
             >
               <Chip
-                icon={<InfoOutlined sx={{ color: '#FFFFFF !important', fontSize: '14px' }} />}
+                icon={<InfoOutlined sx={{ color: '#FFFFFF !important', fontSize: '12px' }} />}
                 label="Quality Tips"
                 size="small"
                 sx={{
@@ -337,9 +541,9 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                   color: '#FFFFFF',
                   fontWeight: 'bold',
                   borderRadius: '6px',
-                  height: '24px',
-                  fontSize: '0.7rem',
-                  boxShadow: '0 4px 10px rgba(124, 58, 237, 0.2)',
+                  height: '22px',
+                  fontSize: '0.65rem',
+                  boxShadow: '0 2px 6px rgba(124, 58, 237, 0.2)',
                   cursor: 'help'
                 }}
               />
@@ -349,12 +553,36 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
 
         <Paper sx={cardSx} elevation={0}>
           <Stack spacing={1.5}>
+            {/* Restore Option */}
+            {!resultAudioUrl && archivedResultAudioUrl && (
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Undo />}
+                onClick={handleRestore}
+                sx={{ 
+                  textTransform: 'none', 
+                  fontWeight: 600,
+                  borderStyle: 'dashed',
+                  borderColor: '#7C3AED',
+                  color: '#7C3AED',
+                  bgcolor: 'rgba(124, 58, 237, 0.05)',
+                  '&:hover': { 
+                    borderStyle: 'solid',
+                    bgcolor: 'rgba(124, 58, 237, 0.1)'
+                  }
+                }}
+              >
+                Restore Last Generated Voice
+              </Button>
+            )}
+            {!resultAudioUrl && (
             <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
               <Box sx={{ 
                 width: '100%', 
                 display: 'flex', 
                 justifyContent: 'center', 
-                gap: 2,
+                gap: 1.5,
                 p: 1,
                 borderRadius: '12px',
                 bgcolor: '#F9FAFB',
@@ -372,7 +600,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                   <Box
                     onClick={() => setInputType('mic')}
                     sx={{
-                      p: 1.5,
+                      p: 1,
                       borderRadius: '12px',
                       background: inputType === 'mic' ? gradientAccent : 'transparent',
                       color: inputType === 'mic' ? '#FFFFFF' : '#9CA3AF',
@@ -380,8 +608,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      width: 80,
-                      height: 80,
+                      width: 70,
+                      height: 70,
                       cursor: 'pointer',
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxShadow: inputType === 'mic' ? '0 4px 12px rgba(124, 58, 237, 0.2)' : 'none',
@@ -393,8 +621,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                       },
                     }}
                   >
-                    <Mic sx={{ fontSize: 32 }} />
-                    <Typography variant="caption" sx={{ mt: 0.25, fontWeight: 700, fontSize: '0.65rem' }}>RECORD</Typography>
+                    <Mic sx={{ fontSize: 28 }} />
+                    <Typography variant="caption" sx={{ mt: 0.25, fontWeight: 700, fontSize: '0.6rem' }}>RECORD</Typography>
                   </Box>
                 </Tooltip>
 
@@ -410,7 +638,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                   <Box
                     onClick={() => setInputType('upload')}
                     sx={{
-                      p: 1.5,
+                      p: 1,
                       borderRadius: '12px',
                       background: inputType === 'upload' ? gradientAccent : 'transparent',
                       color: inputType === 'upload' ? '#FFFFFF' : '#9CA3AF',
@@ -418,8 +646,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      width: 80,
-                      height: 80,
+                      width: 70,
+                      height: 70,
                       cursor: 'pointer',
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxShadow: inputType === 'upload' ? '0 4px 12px rgba(124, 58, 237, 0.2)' : 'none',
@@ -431,8 +659,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                       },
                     }}
                   >
-                    <CloudUpload sx={{ fontSize: 32 }} />
-                    <Typography variant="caption" sx={{ mt: 0.25, fontWeight: 700, fontSize: '0.65rem' }}>UPLOAD</Typography>
+                    <CloudUpload sx={{ fontSize: 28 }} />
+                    <Typography variant="caption" sx={{ mt: 0.25, fontWeight: 700, fontSize: '0.6rem' }}>UPLOAD</Typography>
                   </Box>
                 </Tooltip>
 
@@ -448,7 +676,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                   <Box
                     onClick={() => setInputType('text')}
                     sx={{
-                      p: 1.5,
+                      p: 1,
                       borderRadius: '12px',
                       background: inputType === 'text' ? gradientAccent : 'transparent',
                       color: inputType === 'text' ? '#FFFFFF' : '#9CA3AF',
@@ -456,8 +684,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      width: 80,
-                      height: 80,
+                      width: 70,
+                      height: 70,
                       cursor: 'pointer',
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxShadow: inputType === 'text' ? '0 4px 12px rgba(124, 58, 237, 0.2)' : 'none',
@@ -469,20 +697,21 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                       },
                     }}
                   >
-                    <TextFields sx={{ fontSize: 32 }} />
-                    <Typography variant="caption" sx={{ mt: 0.25, fontWeight: 700, fontSize: '0.65rem' }}>DESCRIBE</Typography>
+                    <TextFields sx={{ fontSize: 28 }} />
+                    <Typography variant="caption" sx={{ mt: 0.25, fontWeight: 700, fontSize: '0.6rem' }}>DESCRIBE</Typography>
                   </Box>
                 </Tooltip>
               </Box>
 
-              <Box sx={{ width: '100%', minHeight: 80, display: 'flex', justifyContent: 'center' }}>
+              <Box sx={{ width: '100%', minHeight: 70, display: 'flex', justifyContent: 'center' }}>
                 {inputType === 'mic' && (
-                  <Stack direction="row" spacing={2} alignItems="center" sx={{ bgcolor: '#F3F4F6', p: 1.5, borderRadius: '12px', width: '100%' }}>
+                  <Stack spacing={2} sx={{ width: '100%' }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ bgcolor: '#F3F4F6', p: 1, borderRadius: '12px', width: '100%', position: 'relative' }}>
                     <Box
                       onClick={() => (recording ? stopRecording() : startRecording())}
                       sx={{
-                        width: 48,
-                        height: 48,
+                        width: 40,
+                        height: 40,
                         borderRadius: '50%',
                         bgcolor: recording ? '#EF4444' : '#7C3AED',
                         color: '#FFFFFF',
@@ -494,16 +723,50 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                         boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
                       }}
                     >
-                      {recording ? <Stop sx={{ fontSize: 20 }} /> : <Mic sx={{ fontSize: 20 }} />}
+                      {recording ? <Stop sx={{ fontSize: 18 }} /> : <Mic sx={{ fontSize: 18 }} />}
                     </Box>
                     <Box>
-                      <Typography variant="subtitle2" fontWeight="800" color="#111827" sx={{ fontSize: '0.85rem' }}>
-                        {recording ? 'Recording in Progress...' : 'Ready to Record'}
+                      <Typography variant="subtitle2" fontWeight="800" color="#111827" sx={{ fontSize: '0.8rem' }}>
+                        {recording ? 'Recording...' : 'Ready to Record'}
                       </Typography>
-                      <Typography variant="caption" color="#4B5563" sx={{ fontSize: '0.75rem' }}>
-                        {recording ? `Speak clearly. Elapsed time: ${recordSeconds}s` : 'Click the button to start recording your 5-20s sample.'}
+                      <Typography variant="caption" color="#4B5563" sx={{ fontSize: '0.7rem' }}>
+                        {recording ? `${recordSeconds}s elapsed` : 'Click to start (5-20s)'}
                       </Typography>
                     </Box>
+                    
+                    {/* Area 1: Source Recording Display */}
+                    <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', px: 2 }}>
+                        {recording ? (
+                           <Typography variant="caption" sx={{ fontWeight: 700, color: '#EF4444', animation: `${pulse} 1.5s infinite` }}>
+                             ● Recording Sample...
+                           </Typography>
+                        ) : audioPreviewUrl ? (
+                           <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%', maxWidth: 300 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>
+                                 Source Sample:
+                              </Typography>
+                              <audio controls src={audioPreviewUrl} style={{ height: '30px', width: '100%' }} />
+                           </Stack>
+                        ) : null}
+                    </Box>
+                  </Stack>
+
+                  <Box sx={{ width: '100%' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#4B5563', mb: 1, display: 'block', fontSize: '0.7rem' }}>
+                      Read one of these scripts to capture your voice:
+                    </Typography>
+                    <Stack spacing={1}>
+                      {[
+                        "Hi, I'm excited to use AI to scale my content creation. This voice clone will help me stay consistent across all my channels.",
+                        "At our company, we value transparency and innovation. We strive to deliver the best solutions for our clients every single day.",
+                        "Imagine a world where creativity knows no bounds. Where your ideas can take flight and reach millions of people instantly."
+                      ].map((text, i) => (
+                        <Paper key={i} elevation={0} sx={{ p: 1, bgcolor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', '&:hover': { borderColor: '#7C3AED', bgcolor: '#F9FAFB', transform: 'translateY(-1px)' } }}>
+                           <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#374151', lineHeight: 1.4, fontStyle: 'italic' }}>"{text}"</Typography>
+                        </Paper>
+                      ))}
+                    </Stack>
+                  </Box>
                   </Stack>
                 )}
 
@@ -535,115 +798,88 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
 
                 {inputType === 'text' && (
                   <Box sx={{ width: '100%' }}>
-                    <Tooltip title="Describe the specific vocal qualities you want for your brand" arrow>
-                      <Typography sx={inputSx['& .MuiInputLabel-root']}>Describe Vocal Characteristics</Typography>
-                    </Tooltip>
                     <TextField
-                      fullWidth
+                      {...TextFieldProps}
+                      label="Voice Description"
                       multiline
                       rows={2}
                       placeholder="e.g., A calm, middle-aged male voice with a slight British accent and deep resonance..."
-                      sx={{...inputSx, '& .MuiOutlinedInput-root': { ...inputSx['& .MuiOutlinedInput-root'], height: 'auto', fontSize: '0.8rem' }}}
+                      value={voiceDescription}
+                      onChange={(e) => setVoiceDescription(e.target.value)}
+                      helperText="Describe the specific vocal qualities you want for your brand"
                     />
-                    <Typography variant="caption" sx={{ color: '#6B7280', mt: 0.5, display: 'block', fontSize: '0.7rem' }}>
-                      Note: Text-to-Voice description is coming soon. Currently, audio samples provide the best accuracy.
-                    </Typography>
                   </Box>
                 )}
               </Box>
             </Box>
+            )}
 
             {error && <Alert severity="error" sx={{ borderRadius: '8px', py: 0, fontSize: '0.8rem' }}>{error}</Alert>}
             {success && <Alert severity="success" sx={{ borderRadius: '8px', py: 0, fontSize: '0.8rem' }}>{success}</Alert>}
 
-            {/* Configuration Section - Only shown after sample provided */}
-            {(audioPreviewUrl || audioFile) && (
-              <Fade in={!!(audioPreviewUrl || audioFile)}>
-                <Stack spacing={1.5}>
-                  <Divider sx={{ borderColor: '#F3F4F6' }} />
-                  
+            {/* Configuration Section */}
+            <Fade in={!!(resultAudioUrl || audioPreviewUrl || audioFile || (inputType === 'text' && voiceDescription?.trim().length > 0))}>
+              <Stack spacing={1.5}>
+                {!resultAudioUrl && (
+                  <>
+                {(audioPreviewUrl || audioFile || (inputType === 'text' && voiceDescription?.trim().length > 0)) && <Divider sx={{ borderColor: '#F3F4F6' }} />}
+                
+                {/* Inputs for Voice Cloning (Mic/Upload) - Shown only after sample available */}
+                {inputType !== 'text' && (audioPreviewUrl || audioFile) && (
                   <Grid container spacing={1.5}>
                     <Grid item xs={12} md={4}>
-                      <Tooltip title="Select the AI engine for your voice clone" arrow>
-                        <Typography sx={inputSx['& .MuiInputLabel-root']}>Clone Engine</Typography>
-                      </Tooltip>
                       <TextField
                         select
-                        fullWidth
+                        {...TextFieldProps}
+                        label="Clone Engine"
                         value={engine}
                         onChange={(e) => {
                           const next = e.target.value as 'minimax' | 'qwen3';
                           setEngine(next);
                           if (next === 'minimax') ensureCustomVoiceId();
                         }}
-                        sx={inputSx}
+                        helperText="Select the AI engine for your voice clone"
                       >
                         <MenuItem value="qwen3" sx={{ fontSize: '0.8rem' }}>Qwen3-TTS (High Efficiency)</MenuItem>
                         <MenuItem value="minimax" sx={{ fontSize: '0.8rem' }}>MiniMax (Premium Reusable ID)</MenuItem>
                       </TextField>
                     </Grid>
                     <Grid item xs={12} md={4}>
-                      <Tooltip title="A unique identifier for your custom voice model" arrow>
-                        <Typography sx={inputSx['& .MuiInputLabel-root']}>Custom Voice ID</Typography>
-                      </Tooltip>
                       <TextField
-                  fullWidth
-                  placeholder="e.g., upbeat_female_25"
-                  value={customVoiceId}
-                  onChange={(e) => setCustomVoiceId(e.target.value)}
-                  disabled={engine !== 'minimax'}
-                  sx={inputSx}
-                  variant="outlined"
-                  inputProps={{ 'aria-label': 'Custom Voice ID' }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Tooltip title="Choose the processing quality of the voice model. HD is higher quality, Turbo is faster." arrow>
-                  <Typography sx={inputSx['& .MuiInputLabel-root']}>Model Quality</Typography>
-                </Tooltip>
-                <TextField
-                  select
-                  fullWidth
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  disabled={engine !== 'minimax'}
-                  sx={inputSx}
-                  variant="outlined"
-                >
+                        {...TextFieldProps}
+                        label="Custom Voice ID"
+                        placeholder="e.g., upbeat_female_25"
+                        value={customVoiceId}
+                        onChange={(e) => setCustomVoiceId(e.target.value)}
+                        helperText="A unique identifier for your custom voice model"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <TextField
+                        select
+                        {...TextFieldProps}
+                        label="Model Quality"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        disabled={engine !== 'minimax'}
+                        helperText="HD is higher quality, Turbo is faster"
+                      >
                         {['speech-02-hd', 'speech-02-turbo', 'speech-2.6-hd', 'speech-2.6-turbo'].map((m) => (
                           <MenuItem key={m} value={m} sx={{ fontSize: '0.8rem' }}>{m}</MenuItem>
                         ))}
                       </TextField>
                     </Grid>
 
-                    <Grid item xs={12}>
-                      <Tooltip title="The text used to preview your cloned voice" arrow>
-                        <Typography sx={inputSx['& .MuiInputLabel-root']}>Preview Script</Typography>
-                      </Tooltip>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={2}
-                        placeholder="e.g., Hello! Welcome to our brand. How can I help you today?"
-                        value={previewText}
-                        onChange={(e) => setPreviewText(e.target.value)}
-                        sx={{...inputSx, '& .MuiOutlinedInput-root': { ...inputSx['& .MuiOutlinedInput-root'], height: 'auto', fontSize: '0.8rem' }}}
-                        inputProps={{ 'aria-label': 'Preview Text' }}
-                      />
-                    </Grid>
-
                     {engine === 'qwen3' && (
                       <>
                         <Grid item xs={12} md={6}>
-                          <Tooltip title="The primary language of the source speaker" arrow>
-                            <Typography sx={inputSx['& .MuiInputLabel-root']}>Native Language</Typography>
-                          </Tooltip>
                           <TextField
                             select
-                            fullWidth
+                            {...TextFieldProps}
+                            label="Native Language"
                             value={qwenLanguage}
                             onChange={(e) => setQwenLanguage(e.target.value)}
-                            sx={inputSx}
+                            helperText="The primary language of the source speaker"
                           >
                             {['auto', 'English', 'Chinese', 'Spanish', 'French', 'German'].map(l => (
                               <MenuItem key={l} value={l} sx={{ fontSize: '0.8rem' }}>{l}</MenuItem>
@@ -651,32 +887,67 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                           </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <Tooltip title="A written transcript of your audio sample for better alignment" arrow>
-                            <Typography sx={inputSx['& .MuiInputLabel-root']}>Reference Transcript</Typography>
-                          </Tooltip>
                           <TextField
-                            fullWidth
+                            {...TextFieldProps}
+                            label="Reference Transcript"
                             placeholder="e.g., The quick brown fox jumps over the lazy dog."
                             value={referenceText}
                             onChange={(e) => setReferenceText(e.target.value)}
-                            sx={inputSx}
+                            helperText="A written transcript of your audio sample for better alignment"
                           />
                         </Grid>
                       </>
                     )}
                   </Grid>
+                )}
 
+                {/* Inputs for Voice Design (Text) - Shown only after description provided */}
+                {inputType === 'text' && voiceDescription?.trim().length > 0 && (
+                   <Grid container spacing={1.5}>
+                     <Grid item xs={12} md={6}>
+                          <TextField
+                            select
+                            {...TextFieldProps}
+                            label="Native Language"
+                            value={qwenLanguage}
+                            onChange={(e) => setQwenLanguage(e.target.value)}
+                            helperText="The language to generate the voice in"
+                          >
+                            {['auto', 'English', 'Chinese', 'Spanish', 'French', 'German'].map(l => (
+                              <MenuItem key={l} value={l} sx={{ fontSize: '0.8rem' }}>{l}</MenuItem>
+                            ))}
+                          </TextField>
+                     </Grid>
+                   </Grid>
+                )}
+
+                {/* Common Inputs - Preview Text (Text to Speak) */}
+                {/* Show this for Design Mode (after desc) OR Clone Mode (after sample) */}
+                {((inputType === 'text' && voiceDescription?.trim().length > 0) || (inputType !== 'text' && (audioPreviewUrl || audioFile))) && (
+                   <Grid container spacing={1.5} sx={{ mt: 0 }}>
+                      <Grid item xs={12}>
+                        <TextField
+                          {...TextFieldProps}
+                          label="Text to Speak (Preview)"
+                          multiline
+                          rows={2}
+                          value={previewText}
+                          onChange={(e) => setPreviewText(e.target.value)}
+                          placeholder="Enter text for the AI to speak..."
+                          helperText="This text will be spoken by your generated voice clone."
+                        />
+                      </Grid>
+                   </Grid>
+                )}
+
+                {/* Generate Button - Show for Design Mode (after desc) OR Clone Mode (after sample) */}
+                {((inputType === 'text' && voiceDescription?.trim().length > 0) || (inputType !== 'text' && (audioPreviewUrl || audioFile))) && (
                   <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mt: 0.5 }}>
                     <OperationButton
-                      operation={{
-                        provider: 'audio',
-                        operation_type: 'voice_clone',
-                        actual_provider_name: 'alwrity',
-                        model: engine === 'minimax' ? 'minimax/voice-clone' : 'alwrity-ai/qwen3-tts/voice-clone',
-                        tokens_requested: engine === 'qwen3' ? (previewText?.trim()?.length || 0) : 0,
-                      }}
-                      label={engine === 'minimax' ? 'Initialize Premium Clone' : 'Generate AI Voice'}
+                      operation={operation}
+                      label={engine === 'minimax' ? 'Initialize Premium Clone' : 'Generate your brand Voice'}
                       onClick={handleClone}
+                      checkOnMount={true}
                       disabled={cloning}
                       loading={cloning}
                       sx={{
@@ -693,32 +964,107 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string }> = ({ doma
                       }}
                     />
                   </Stack>
+                )}
+                  </>
+                )}
 
-                  {(audioPreviewUrl || resultAudioUrl) && (
-                    <Stack spacing={1} sx={{ mt: 0.5, p: 1, bgcolor: '#F9FAFB', borderRadius: '8px', border: '1px solid #F3F4F6' }}>
-                      {audioPreviewUrl && (
-                        <Box>
-                          <Typography variant="caption" fontWeight="800" sx={{ color: '#7C3AED', textTransform: 'uppercase', mb: 0.25, display: 'block', fontSize: '0.65rem' }}>
-                            Source Recording
-                          </Typography>
-                          <audio controls src={audioPreviewUrl} style={{ width: '100%', height: '28px' }} />
-                        </Box>
-                      )}
-                      {resultAudioUrl && (
-                        <Box>
-                          <Typography variant="caption" fontWeight="800" sx={{ color: '#EC4899', textTransform: 'uppercase', mb: 0.25, display: 'block', fontSize: '0.65rem' }}>
-                            Generated AI Voice Preview
-                          </Typography>
-                          <audio controls src={resultAudioUrl} style={{ width: '100%', height: '28px' }} />
-                        </Box>
-                      )}
-                    </Stack>
-                  )}
-                </Stack>
-              </Fade>
-            )}
+                {resultAudioUrl && (
+                  <Stack spacing={1} sx={{ mt: 0.5, p: 1, bgcolor: '#F9FAFB', borderRadius: '8px', border: '1px solid #F3F4F6' }}>
+                    {audioPreviewUrl && (
+                      <Box>
+                        <Typography variant="caption" fontWeight="800" sx={{ color: '#7C3AED', textTransform: 'uppercase', mb: 0.25, display: 'block', fontSize: '0.65rem' }}>
+                          Source Recording
+                        </Typography>
+                        <audio controls src={audioPreviewUrl} style={{ width: '100%', height: '28px' }} />
+                      </Box>
+                    )}
+                    {resultAudioUrl && (
+                      <Box>
+                        <Typography variant="caption" fontWeight="800" sx={{ color: '#EC4899', textTransform: 'uppercase', mb: 0.25, display: 'block', fontSize: '0.65rem' }}>
+                          Generated AI Voice Preview
+                        </Typography>
+                        <audio controls src={resultAudioUrl} style={{ width: '100%', height: '28px' }} />
+                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                          <Button
+                            variant="outlined"
+                            onClick={handleReDo}
+                            size="small"
+                            startIcon={<RestartAlt />}
+                            sx={{
+                              flex: 1,
+                              textTransform: 'none',
+                              fontWeight: 600,
+                              borderColor: '#E5E7EB',
+                              color: '#6B7280',
+                              '&:hover': { borderColor: '#9CA3AF', bgcolor: '#F9FAFB' }
+                            }}
+                          >
+                            Redo
+                          </Button>
+                          <Button 
+                            variant="contained" 
+                            size="small"
+                            onClick={handleSetAsBrandVoice}
+                            disabled={saving}
+                            sx={{ 
+                              flex: 2, 
+                              background: gradientAccent, 
+                              fontWeight: 'bold',
+                              textTransform: 'none',
+                              fontSize: '0.8rem'
+                            }}
+                          >
+                            {saving ? 'Setting...' : 'Set as Brand Voice'}
+                          </Button>
+                        </Stack>
+                      </Box>
+                    )}
+                  </Stack>
+                )}
+              </Stack>
+            </Fade>
           </Stack>
         </Paper>
+
+        <Grid container spacing={1.5} sx={{ mt: 1 }}>
+          {[
+            { icon: <Mic fontSize="small" />, text: "1. Record/Upload Sample" },
+            { icon: <GraphicEq fontSize="small" />, text: "2. AI Clones Voice" },
+            { icon: <Campaign fontSize="small" />, text: "3. Generate Content" }
+          ].map((item, index) => (
+            <Grid item xs={4} key={index}>
+               <Paper
+                 elevation={0}
+                 sx={{
+                   p: 1,
+                   height: '100%',
+                   background: activeCard === index 
+                     ? 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)' 
+                     : '#FFFFFF',
+                   border: activeCard === index ? '1px solid #3B82F6' : '1px solid #E5E7EB',
+                   borderRadius: '8px',
+                   display: 'flex',
+                   flexDirection: 'row',
+                   alignItems: 'center',
+                   justifyContent: 'center',
+                   gap: 0.5,
+                   textAlign: 'left',
+                   transition: 'all 0.5s ease',
+                   transform: activeCard === index ? 'scale(1.02)' : 'scale(1)',
+                   opacity: activeCard === index ? 1 : 0.7,
+                   boxShadow: activeCard === index ? '0 4px 12px rgba(59, 130, 246, 0.15)' : 'none'
+                 }}
+               >
+                 <Box sx={{ color: activeCard === index ? '#2563EB' : '#9CA3AF', display: 'flex', transition: 'color 0.3s' }}>
+                   {item.icon}
+                 </Box>
+                 <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.65rem', color: activeCard === index ? '#1E3A8A' : '#6B7280', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                   {item.text}
+                 </Typography>
+               </Paper>
+            </Grid>
+          ))}
+        </Grid>
       </Stack>
       <Modal
         open={showInfoModal}

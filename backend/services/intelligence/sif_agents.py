@@ -5,13 +5,76 @@ Each agent leverages TxtaiIntelligenceService for semantic operations.
 """
 
 import traceback
+import json
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from loguru import logger
-from .txtai_service import TxtaiIntelligenceService
+from .txtai_service import TxtaiIntelligenceService, TXTAI_AVAILABLE
+from services.intelligence.agents.core_agent_framework import BaseALwrityAgent
+from services.llm_providers.main_text_generation import llm_text_gen
 
-class SIFBaseAgent:
-    def __init__(self, intelligence_service: TxtaiIntelligenceService):
+# Optional txtai imports
+try:
+    from txtai.pipeline import Agent, LLM
+except ImportError:
+    Agent = None
+    LLM = None
+
+class SharedLLMWrapper:
+    """Wraps the shared ALwrity LLM service to look like a txtai LLM."""
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+    
+    def generate(self, prompt: str, **kwargs) -> str:
+        """Generate text using the shared LLM provider."""
+        # We ignore kwargs like 'max_tokens' as llm_text_gen handles defaults,
+        # but we could map them if needed.
+        return llm_text_gen(prompt, user_id=self.user_id)
+        
+    def __call__(self, prompt: str, **kwargs) -> str:
+        return self.generate(prompt, **kwargs)
+
+class LocalLLMWrapper:
+    """
+    Lazily loads a local LLM via txtai.
+    This prevents blocking server startup with heavy model loads.
+    """
+    def __init__(self, model_path: str):
+        self.model_path = model_path
+        self._llm = None
+        
+    @property
+    def llm(self):
+        if self._llm is None:
+            if LLM is None:
+                raise ImportError("txtai.pipeline.LLM is not available")
+            logger.info(f"Loading local LLM: {self.model_path}")
+            self._llm = LLM(path=self.model_path)
+        return self._llm
+        
+    def __call__(self, prompt: str, **kwargs) -> str:
+        return self.llm(prompt, **kwargs)
+        
+    def generate(self, prompt: str, **kwargs) -> str:
+        return self.llm(prompt, **kwargs)
+
+class SIFBaseAgent(BaseALwrityAgent):
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, agent_type: str = "sif_agent", model_name: str = "Qwen/Qwen2.5-3B-Instruct", llm: Any = None):
+        # Hybrid LLM Strategy:
+        # 1. Shared LLM for external/high-quality generation (available to all agents)
+        self.shared_llm = SharedLLMWrapper(user_id)
+        
+        # 2. Local LLM for internal agent work (default for SIF agents)
+        if llm is None:
+            if TXTAI_AVAILABLE:
+                # Use Lazy Local LLM
+                llm = LocalLLMWrapper(model_name)
+            else:
+                # Fallback to Shared if txtai not available
+                llm = self.shared_llm
+            
+        super().__init__(user_id, agent_type, model_name, llm)
         self.intelligence = intelligence_service
         
     def _log_agent_operation(self, operation: str, **kwargs):
@@ -20,8 +83,22 @@ class SIFBaseAgent:
         if kwargs:
             logger.debug(f"[{self.__class__.__name__}] Parameters: {kwargs}")
 
+    def _create_txtai_agent(self):
+        """
+        SIF agents use the intelligence service directly, but we can expose
+        capabilities via a standard agent interface if needed.
+        """
+        if not TXTAI_AVAILABLE:
+            return None
+        
+        # Return a simple agent that can use the LLM
+        return Agent(llm=self.llm, tools=[])
+
 class StrategyArchitectAgent(SIFBaseAgent):
     """Agent for discovering content pillars and identifying strategic gaps."""
+    
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str):
+        super().__init__(intelligence_service, user_id, agent_type="strategy_architect")
     
     async def discover_pillars(self) -> List[Dict[str, Any]]:
         """Identify content pillars through semantic clustering."""
@@ -58,6 +135,61 @@ class StrategyArchitectAgent(SIFBaseAgent):
             logger.error(f"[{self.__class__.__name__}] Failed to discover pillars: {e}")
             logger.error(f"[{self.__class__.__name__}] Full traceback: {traceback.format_exc()}")
             return []
+
+    async def analyze_content_strategy(self, website_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Analyze content strategy based on website data and semantic insights.
+        
+        Args:
+            website_data: Dictionary containing website analysis data
+            
+        Returns:
+            List of strategic recommendations
+        """
+        self._log_agent_operation("Analyzing content strategy")
+        
+        try:
+            recommendations = []
+            
+            # 1. Discover existing pillars
+            pillars = await self.discover_pillars()
+            
+            # 2. Analyze gaps based on pillars (simplified logic for now)
+            if not pillars:
+                recommendations.append({
+                    "type": "strategy_gap",
+                    "priority": "high",
+                    "title": "Establish Core Content Pillars",
+                    "description": "No clear content clusters found. Focus on defining 3-5 core topics to build authority."
+                })
+            else:
+                # Suggest strengthening weak pillars
+                for pillar in pillars:
+                    if pillar['size'] < 3:
+                        recommendations.append({
+                            "type": "content_depth",
+                            "priority": "medium",
+                            "title": f"Strengthen Pillar {pillar['pillar_id']}",
+                            "description": "This topic cluster has few articles. Create more content to establish authority.",
+                            "pillar_id": pillar['pillar_id']
+                        })
+            
+            # 3. Add generic recommendations based on website data if available
+            if website_data:
+                if not website_data.get('description'):
+                     recommendations.append({
+                        "type": "metadata",
+                        "priority": "high",
+                        "title": "Missing Meta Description",
+                        "description": "Website is missing a meta description. Add one to improve SEO CTR."
+                    })
+            
+            logger.info(f"[{self.__class__.__name__}] Generated {len(recommendations)} strategic recommendations")
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"[{self.__class__.__name__}] Failed to analyze content strategy: {e}")
+            return []
     
     def _calculate_cluster_confidence(self, cluster_indices: List[int]) -> float:
         """Calculate confidence score for a cluster based on its size and coherence."""
@@ -92,9 +224,39 @@ class ContentGuardianAgent(SIFBaseAgent):
     CANNIBALIZATION_THRESHOLD = 0.85  # Similarity threshold for cannibalization warning
     ORIGINALITY_THRESHOLD = 0.75  # Minimum originality score
     
-    def __init__(self, intelligence_service: TxtaiIntelligenceService, sif_service: Any = None):
-        super().__init__(intelligence_service)
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, sif_service: Any = None):
+        super().__init__(intelligence_service, user_id, agent_type="content_guardian")
         self.sif_service = sif_service
+
+    async def assess_content_quality(self, website_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Assess overall content quality based on website data."""
+        self._log_agent_operation("Assessing content quality")
+        try:
+             # Extract sample text or description from website_data
+             text_to_analyze = website_data.get('description', '') or website_data.get('title', '')
+             if not text_to_analyze:
+                 return {"score": 0.5, "reason": "No content to analyze"}
+                 
+             # Run style check
+             style_result = await self.style_enforcer(text_to_analyze)
+             
+             # Run safety check
+             safety_result = await self.safety_filter(text_to_analyze)
+             
+             # Calculate aggregate score
+             base_score = style_result.get('compliance_score', 0.8)
+             if safety_result.get('action') == 'flag_for_review':
+                 base_score *= 0.5
+                 
+             return {
+                 "score": base_score,
+                 "style_analysis": style_result,
+                 "safety_analysis": safety_result,
+                 "analyzed_text_length": len(text_to_analyze)
+             }
+        except Exception as e:
+            logger.error(f"[{self.__class__.__name__}] Quality assessment failed: {e}")
+            return {"score": 0.0, "error": str(e)}
 
     async def check_cannibalization(self, new_draft: str) -> Dict[str, Any]:
         """Check if a new draft competes semantically with existing pages."""
@@ -274,8 +436,8 @@ class LinkGraphAgent(SIFBaseAgent):
     RELEVANCE_THRESHOLD = 0.6  # Minimum relevance score for link suggestions
     MAX_SUGGESTIONS = 10  # Maximum number of link suggestions
     
-    def __init__(self, intelligence_service: TxtaiIntelligenceService, sif_service: Any = None):
-        super().__init__(intelligence_service)
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, sif_service: Any = None):
+        super().__init__(intelligence_service, user_id, agent_type="link_graph")
         self.sif_service = sif_service
     
     async def suggest_internal_links(self, draft: str) -> List[Dict[str, Any]]:
@@ -479,6 +641,9 @@ class CitationExpert(SIFBaseAgent):
     EVIDENCE_THRESHOLD = 0.7  # Minimum relevance score for evidence
     MAX_EVIDENCE = 5  # Maximum number of evidence pieces to return
     
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str):
+        super().__init__(intelligence_service, user_id, agent_type="citation_expert")
+        
     async def fact_checker(self, claim: str) -> List[Dict[str, Any]]:
         """
         Tool: Verifies facts against trusted research data.
@@ -542,60 +707,25 @@ class CitationExpert(SIFBaseAgent):
                 "claim": claim,
                 "status": status,
                 "evidence_count": len(evidence),
-                "top_evidence": evidence[0]['source'] if evidence else None
+                "top_evidence": evidence[0] if evidence else None
             })
             
         return {
-            "status": "verification_complete",
-            "total_claims": len(claims),
+            "status": "completed",
             "verified_claims": verified_results,
-            "unsupported_count": len([c for c in verified_results if c['status'] == 'unsupported']),
-            "timestamp": datetime.utcnow().isoformat()
+            "verification_score": len([c for c in verified_results if c['status'] == 'supported']) / len(verified_results)
         }
 
     async def verify_facts(self, claim: str) -> List[Dict[str, Any]]:
-        """Find supporting or contradicting evidence in the indexed research."""
-        self._log_agent_operation("Verifying facts", claim_length=len(claim))
+        """Verify a single claim against intelligence data."""
+        results = await self.intelligence.search(claim, limit=3)
         
-        try:
-            if not self.intelligence.is_initialized():
-                logger.error(f"[{self.__class__.__name__}] Intelligence service not initialized")
-                return []
-            
-            if not claim or len(claim.strip()) < 20:
-                logger.warning(f"[{self.__class__.__name__}] Claim too short for meaningful verification")
-                return []
-            
-            results = await self.intelligence.search(claim, limit=self.MAX_EVIDENCE)
-            
-            if not results:
-                logger.info(f"[{self.__class__.__name__}] No evidence found for claim")
-                return []
-            
-            evidence = []
-            for result in results:
-                relevance_score = result.get('score', 0.0)
-                
-                if relevance_score >= self.EVIDENCE_THRESHOLD:
-                    evidence_piece = {
-                        "source": result.get('id', 'unknown'),
-                        "relevance": relevance_score,
-                        "confidence": self._calculate_evidence_confidence(relevance_score),
-                        "type": "supporting" if relevance_score > 0.8 else "related",
-                        "excerpt": result.get('text', '')[:200] + "..." if len(result.get('text', '')) > 200 else result.get('text', '')
-                    }
-                    evidence.append(evidence_piece)
-                    logger.debug(f"[{self.__class__.__name__}] Found evidence: {evidence_piece['source']} (score: {relevance_score:.3f})")
-            
-            logger.info(f"[{self.__class__.__name__}] Found {len(evidence)} pieces of evidence for claim")
-            return evidence
-            
-        except Exception as e:
-            logger.error(f"[{self.__class__.__name__}] Failed to verify facts: {e}")
-            logger.error(f"[{self.__class__.__name__}] Full traceback: {traceback.format_exc()}")
-            return []
-    
-    def _calculate_evidence_confidence(self, relevance_score: float) -> float:
-        """Calculate confidence score for evidence."""
-        # Simple confidence based on relevance score
-        return min(1.0, relevance_score * 1.2)
+        evidence = []
+        for result in results:
+            if result.get('score', 0) > self.EVIDENCE_THRESHOLD:
+                evidence.append({
+                    "text": result.get('text'),
+                    "source": result.get('id'),
+                    "confidence": result.get('score')
+                })
+        return evidence

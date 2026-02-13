@@ -165,9 +165,10 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
     // Prime cache performance occasionally even when dashboard is closed
     fetchDetailedStats();
 
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchStatus, 30000);
-    const cacheInterval = setInterval(fetchDetailedStats, 60000);
+    // Refresh every 120 seconds
+    const interval = setInterval(fetchStatus, 120000);
+    // Refresh detailed stats much less frequently in background (5 mins)
+    const cacheInterval = setInterval(fetchDetailedStats, 300000);
     return () => {
       clearInterval(interval);
       clearInterval(cacheInterval);

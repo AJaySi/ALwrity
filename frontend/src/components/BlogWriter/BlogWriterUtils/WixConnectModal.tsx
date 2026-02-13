@@ -32,7 +32,8 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
     if (!isOpen) return;
 
     const handler = (event: MessageEvent) => {
-      const trusted = [window.location.origin, 'https://littery-sonny-unscrutinisingly.ngrok-free.dev'];
+      const ngrokOrigin = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+      const trusted = [window.location.origin, ngrokOrigin];
       if (!trusted.includes(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
 
@@ -91,7 +92,7 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
       
       // Determine the correct origin - if using ngrok, use ngrok origin; otherwise use current origin
       // This ensures consistency between where OAuth starts and where callback happens
-      const NGROK_ORIGIN = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+      const NGROK_ORIGIN = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
       const isUsingNgrok = window.location.origin.includes('localhost') || 
                            window.location.origin.includes('127.0.0.1') ||
                            window.location.origin === NGROK_ORIGIN;

@@ -1,15 +1,13 @@
 /**
  * WordPress OAuth Platform Card Component
- * Simplified WordPress connection using OAuth2 flow.
+ * Simplified WordPress connection using OAuth2 flow with compact premium design.
  */
 
 import React, { useState } from 'react';
 import {
   Box,
   Card,
-  CardContent,
   Typography,
-  Button,
   Chip,
   Dialog,
   DialogTitle,
@@ -18,18 +16,15 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider
+  Button
 } from '@mui/material';
 import {
   Web as WordPressIcon,
   Delete as DeleteIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-  Refresh as RefreshIcon
+  Link as LinkIcon,
+  OpenInNew as OpenInNewIcon
 } from '@mui/icons-material';
 import { useWordPressOAuth } from '../../../hooks/useWordPressOAuth';
 
@@ -52,28 +47,25 @@ const WordPressOAuthPlatformCard: React.FC<WordPressOAuthPlatformCardProps> = ({
     totalSites,
     isLoading,
     startOAuthFlow,
-    disconnectSite,
-    refreshStatus
+    disconnectSite
   } = useWordPressOAuth();
 
   const [showSitesDialog, setShowSitesDialog] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
   const isConnected = connected && totalSites > 0;
+  const site = sites[0];
 
   const handleConnect = async () => {
     try {
       setIsConnecting(true);
       await startOAuthFlow();
-      // OAuth flow will handle the connection
     } catch (error: any) {
       console.error('Error connecting to WordPress:', error);
-
-      // Show user-friendly error message for configuration issues
       if (error.response?.status === 500 && error.response?.data?.detail?.includes('not configured')) {
-        alert('WordPress OAuth is not properly configured. Please contact support or check that WordPress.com application credentials are set up correctly.');
+        alert('WordPress OAuth is not properly configured.');
       } else {
-        alert('Failed to connect to WordPress. Please try again or contact support if the problem persists.');
+        alert('Failed to connect to WordPress.');
       }
     } finally {
       setIsConnecting(false);
@@ -84,7 +76,6 @@ const WordPressOAuthPlatformCard: React.FC<WordPressOAuthPlatformCardProps> = ({
     try {
       const success = await disconnectSite(tokenId);
       if (success) {
-        // Check if we still have connected sites
         const remainingSites = sites.filter(site => site.id !== tokenId);
         if (remainingSites.length === 0) {
           setConnectedPlatforms(connectedPlatforms.filter(p => p !== 'wordpress'));
@@ -97,229 +88,98 @@ const WordPressOAuthPlatformCard: React.FC<WordPressOAuthPlatformCardProps> = ({
     }
   };
 
-  const getStatusIcon = () => {
-    if (isLoading || isConnecting) return <CircularProgress size={20} />;
-    if (isConnected) return <CheckCircleIcon color="success" />;
-    return <ErrorIcon color="error" />;
-  };
-
-  const getStatusColor = () => {
-    if (isConnected) return 'success';
-    return 'default';
-  };
-
-  const getStatusText = () => {
-    if (isLoading || isConnecting) return 'Connecting...';
-    if (isConnected) return `Connected (${totalSites} site${totalSites > 1 ? 's' : ''})`;
-    return 'Not Connected';
-  };
-
   return (
     <>
       <Card 
+        variant="outlined"
         sx={{
           height: '100%',
-          border: '1px solid #e2e8f0',
-          backgroundColor: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          p: 2,
+          borderColor: isConnected ? '#4ade80' : '#e2e8f0',
+          backgroundColor: isConnected ? '#f0fdf4' : '#ffffff',
           transition: 'all 0.2s ease',
           '&:hover': {
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-            transform: 'translateY(-2px)'
+            borderColor: isConnected ? '#22c55e' : '#cbd5e1',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
           }
         }}
       >
-        <CardContent sx={{ p: 2.5 }}>
-          {/* Header */}
-          <Box display="flex" alignItems="center" mb={2}>
-            <Box sx={{ color: '#21759b', mr: 1 }}>
-              <WordPressIcon />
+        <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Box 
+              sx={{ 
+                color: '#21759b', // WordPress blue
+                bgcolor: '#ffffff',
+                p: 0.5,
+                borderRadius: 1,
+                border: '1px solid #e2e8f0',
+                display: 'flex'
+              }}
+            >
+              <WordPressIcon fontSize="small" />
             </Box>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1e293b' }}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1e293b', lineHeight: 1.2 }}>
                 WordPress
               </Typography>
-              <Typography variant="body2" sx={{ color: '#64748b', fontSize: '0.875rem' }}>
-                Connect your WordPress.com sites with secure OAuth authentication
+              <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
+                WP.com / Jetpack
               </Typography>
             </Box>
-            <Chip
-              icon={getStatusIcon()}
-              label={getStatusText()}
-              color={getStatusColor() as any}
-              size="small"
-            />
           </Box>
-
-          {/* Connected Sites Display */}
-          {isConnected && totalSites > 0 && (
-            <Box mb={2}>
-              <Typography variant="body2" sx={{ fontWeight: 500, color: '#1e293b', mb: 1 }}>
-                Connected Sites:
-              </Typography>
-              <Box
-                sx={{
-                  p: 1.5,
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 1,
-                  backgroundColor: '#f8fafc',
-                  fontSize: '0.875rem',
-                  color: '#475569',
-                  fontFamily: 'monospace'
-                }}
-              >
-                {sites.length > 0 ? sites[0].blog_url : 'Connected WordPress Site'}
-              </Box>
-            </Box>
+          {isLoading || isConnecting ? (
+            <CircularProgress size={16} sx={{ color: '#64748b' }} />
+          ) : isConnected ? (
+            <Tooltip title="Connected">
+              <CheckCircleIcon sx={{ color: '#22c55e', fontSize: 20 }} onClick={() => setShowSitesDialog(true)} style={{ cursor: 'pointer' }} />
+            </Tooltip>
+          ) : (
+            <Chip label="Connect" size="small" onClick={handleConnect} clickable sx={{ height: 24, fontSize: '0.75rem', fontWeight: 600, bgcolor: '#21759b', color: 'white', '&:hover': { bgcolor: '#1a5c7a' } }} />
           )}
+        </Box>
 
-          {/* Features as Chips */}
-          <Box mb={2} sx={{ minHeight: '32px' }}>
-            <Box display="flex" flexWrap="wrap" gap={0.5}>
-              <Chip 
-                label="OAuth connection" 
-                size="small" 
-                variant="outlined" 
-                sx={{ 
-                  color: '#475569',
-                  borderColor: '#e2e8f0',
-                  '&:hover': {
-                    backgroundColor: '#f8fafc'
-                  }
-                }} 
-              />
-              <Chip 
-                label="Direct publishing" 
-                size="small" 
-                variant="outlined" 
-                sx={{ 
-                  color: '#475569',
-                  borderColor: '#e2e8f0',
-                  '&:hover': {
-                    backgroundColor: '#f8fafc'
-                  }
-                }} 
-              />
-              <Chip 
-                label="Media integration" 
-                size="small" 
-                variant="outlined" 
-                sx={{ 
-                  color: '#475569',
-                  borderColor: '#e2e8f0',
-                  '&:hover': {
-                    backgroundColor: '#f8fafc'
-                  }
-                }} 
-              />
-              <Chip 
-                label="Category & tags" 
-                size="small" 
-                variant="outlined" 
-                sx={{ 
-                  color: '#475569',
-                  borderColor: '#e2e8f0',
-                  '&:hover': {
-                    backgroundColor: '#f8fafc'
-                  }
-                }} 
-              />
+        {isConnected && site ? (
+          <Box mt={1} p={1} bgcolor="rgba(255,255,255,0.6)" borderRadius={1} border="1px solid rgba(0,0,0,0.05)">
+            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+              <LinkIcon sx={{ fontSize: 14, color: '#64748b' }} />
+              <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {(site.blog_url || '').replace(/^https?:\/\//, '') || 'WordPress Site'}
+              </Typography>
+              <IconButton size="small" href={site.blog_url} target="_blank" sx={{ p: 0.5, ml: 'auto' }}>
+                <OpenInNewIcon sx={{ fontSize: 12, color: '#94a3b8' }} />
+              </IconButton>
             </Box>
+            <Typography variant="caption" sx={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>
+              {totalSites > 1 ? `+${totalSites - 1} other sites` : 'OAuth Connected'}
+            </Typography>
           </Box>
-
-          {/* Actions */}
-          <Box display="flex" gap={1}>
-            {isConnected ? (
-              <>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => setShowSitesDialog(true)}
-                  sx={{
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    borderColor: '#e2e8f0',
-                    color: '#64748b',
-                    flex: 1
-                  }}
-                >
-                  Manage Sites ({totalSites})
-                </Button>
-                <Tooltip title="Refresh status">
-                  <IconButton 
-                    onClick={refreshStatus} 
-                    disabled={isLoading}
-                    size="small"
-                    sx={{ color: '#64748b' }}
-                  >
-                    <RefreshIcon />
-                  </IconButton>
-                </Tooltip>
-              </>
-            ) : (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleConnect}
-                disabled={isLoading || isConnecting}
-                sx={{
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  flex: 1
-                }}
-              >
-                {isConnecting ? 'Connecting...' : 'Connect WordPress'}
-              </Button>
-            )}
-          </Box>
-        </CardContent>
+        ) : (
+          <Typography variant="caption" sx={{ color: '#64748b', mt: 1, lineHeight: 1.4 }}>
+            Connect your WordPress sites securely via official OAuth integration.
+          </Typography>
+        )}
       </Card>
 
-      {/* Manage Sites Dialog */}
-      <Dialog open={showSitesDialog} onClose={() => setShowSitesDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Manage WordPress Sites</DialogTitle>
+      {/* Sites Dialog */}
+      <Dialog open={showSitesDialog} onClose={() => setShowSitesDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Connected WordPress Sites</DialogTitle>
         <DialogContent>
-          <List>
-            {sites.map((site, index) => (
-              <React.Fragment key={site.id}>
-                <ListItem>
-                  <ListItemText
-                    primary={site.blog_url}
-                    secondary={
-                      <Box>
-                        <Typography variant="body2" component="span" color="text.secondary" display="block">
-                          Blog ID: {site.blog_id}
-                        </Typography>
-                        <Typography variant="caption" component="span" color="text.secondary" display="block">
-                          Connected: {new Date(site.created_at).toLocaleDateString()}
-                        </Typography>
-                        <Typography variant="caption" component="span" color="text.secondary" display="block">
-                          Scope: {site.scope}
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <Tooltip title="Disconnect site">
-                      <IconButton 
-                        edge="end" 
-                        onClick={() => handleDisconnectSite(site.id)}
-                        color="error"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </ListItemSecondaryAction>
-                </ListItem>
-                {index < sites.length - 1 && <Divider />}
-              </React.Fragment>
-            ))}
-          </List>
+          {sites.map((site) => (
+            <Box key={site.id} display="flex" alignItems="center" justifyContent="space-between" p={2} borderBottom="1px solid #e2e8f0">
+              <Box>
+                <Typography variant="subtitle2">{site.blog_url}</Typography>
+                <Typography variant="caption" color="textSecondary">ID: {site.blog_id}</Typography>
+              </Box>
+              <IconButton onClick={() => handleDisconnectSite(site.id)} color="error" size="small">
+                <DeleteIcon />
+              </IconButton>
+            </Box>
+          ))}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowSitesDialog(false)}>Close</Button>
-          <Button onClick={() => { setShowSitesDialog(false); handleConnect(); }} variant="contained">
-            Add New Site
-          </Button>
         </DialogActions>
       </Dialog>
     </>

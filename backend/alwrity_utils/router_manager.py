@@ -206,6 +206,13 @@ class RouterManager:
             except Exception as e:
                 logger.warning(f"Persona router not mounted: {e}")
             
+            # Video Studio router
+            try:
+                from api.video_studio.router import router as video_studio_router
+                self.include_router_safely(video_studio_router, "video_studio")
+            except Exception as e:
+                logger.warning(f"Video Studio router not mounted: {e}")
+
             # Stability AI routers
             try:
                 from routers.stability import router as stability_router

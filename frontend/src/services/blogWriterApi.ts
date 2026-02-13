@@ -233,7 +233,7 @@ export interface BlogPublishResponse {
   post_id?: string;
 }
 
-export interface TaskStatusResponse {
+export interface TaskStatusResponse<T = BlogResearchResponse> {
   task_id: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   created_at: string;
@@ -241,7 +241,7 @@ export interface TaskStatusResponse {
     timestamp: string;
     message: string;
   }>;
-  result?: BlogResearchResponse;
+  result?: T;
   error?: string;
   // Subscription error details (set by backend when subscription limit is exceeded)
   error_status?: number; // HTTP status code (429 for usage limit, 402 for subscription expired)

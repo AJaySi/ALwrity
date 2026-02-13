@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Box,
   Typography,
-  LinearProgress,
   Stepper,
   Step,
   StepLabel,
@@ -16,7 +15,6 @@ import {
   Close
 } from '@mui/icons-material';
 import UserBadge from '../../shared/UserBadge';
-import UsageDashboard from '../../shared/UsageDashboard';
 
 interface WizardHeaderProps {
   activeStep: number;
@@ -99,8 +97,6 @@ export const WizardHeader: React.FC<WizardHeaderProps> = ({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, position: 'relative', zIndex: 1 }}>
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <UserBadge colorMode="dark" />
-          {/* Usage Dashboard - Show API usage statistics during onboarding */}
-          <UsageDashboard compact={true} />
         </Box>
         <Box sx={{ flex: 2, textAlign: 'center' }}>
           <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.025em' }}>

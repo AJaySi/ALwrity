@@ -67,6 +67,27 @@ class SIFIndexingExecutor(TaskExecutor):
             # 2. Sync User Website Content (Deep Crawl / Snapshot)
             content_synced = await sif_service.sync_user_website_content(website_url)
             
+            # 3. Trigger Content Guardian Audit (Background Analysis)
+            # This ensures the agent runs immediately after new data is indexed
+            guardian_report = None
+            if content_synced:
+                try:
+                    from services.intelligence.agents.specialized_agents import ContentGuardianAgent
+                    # Re-use the intelligence service from sif_service
+                    guardian_agent = ContentGuardianAgent(
+                        intelligence_service=sif_service.intelligence_service,
+                        user_id=user_id,
+                        sif_service=sif_service
+                    )
+                    
+                    logger.info("Triggering Content Guardian Site Audit...")
+                    guardian_report = await guardian_agent.perform_site_audit(website_url)
+                    
+                    # Persist the audit report (optional, or rely on logs/alerts)
+                    # For now, we just include it in the task result
+                except Exception as e:
+                    logger.error(f"Failed to run Content Guardian audit: {e}")
+            
             # Determine overall success
             # We consider it a success if at least one operation worked, or if both were attempted without error
             # But ideally, content sync is the heavy lifter.
@@ -91,6 +112,7 @@ class SIFIndexingExecutor(TaskExecutor):
             task_log.result_data = {
                 "metadata_synced": metadata_synced,
                 "content_synced": content_synced,
+                "guardian_report": guardian_report,
                 "website_url": website_url
             }
             task_log.execution_time_ms = int((time.time() - start_time) * 1000)

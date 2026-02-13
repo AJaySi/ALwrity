@@ -16,7 +16,7 @@ import {
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 
-const MotionPaper = motion(Paper);
+const MotionPaper = motion.create(Paper);
 
 interface CostEstimate {
   provider: string;

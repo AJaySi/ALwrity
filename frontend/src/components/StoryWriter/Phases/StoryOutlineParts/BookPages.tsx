@@ -3,7 +3,6 @@ import { Box, Typography, Tooltip, Chip, CircularProgress } from '@mui/material'
 import { motion, AnimatePresence } from 'framer-motion';
 import OutlineHoverActions from './OutlineHoverActions';
 import EditNoteIcon from '@mui/icons-material/EditNote';
-import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
@@ -13,15 +12,7 @@ import { leftPageVariants, rightPageVariants } from './pageVariants';
 import { StoryScene } from '../../../../services/storyWriterApi';
 import type { SceneAnimationResume } from '../../../../hooks/useStoryWriterState';
 
-const MotionBox = motion(Box);
-
-interface ImageSettings {
-  provider?: string | null;
-  width: number;
-  height: number;
-  model?: string | null;
-  enabled: boolean;
-}
+const MotionBox = motion.create(Box);
 
 interface BookPagesProps {
   currentScene: StoryScene | null;

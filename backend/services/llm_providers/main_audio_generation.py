@@ -107,11 +107,13 @@ def generate_audio(
         estimated_cost = (character_count / 1000.0) * cost_per_1000_chars
         
         try:
-            from services.database import get_db
+            from services.database import get_session_for_user
             from services.subscription import PricingService
             from models.subscription_models import UsageSummary, APIProvider
             
-            db = next(get_db())
+            db = get_session_for_user(user_id)
+            if not db:
+                raise RuntimeError("Failed to get database session")
             try:
                 pricing_service = PricingService(db)
                 
@@ -194,7 +196,11 @@ def generate_audio(
         if audio_bytes:
             logger.info(f"[audio_gen] ✅ API call successful, tracking usage for user {user_id}")
             try:
-                db_track = next(get_db())
+                db_track = get_session_for_user(user_id)
+                if not db_track:
+                    logger.error(f"[audio_gen] ❌ Failed to get database session for tracking")
+                    raise RuntimeError("Failed to get database session")
+                
                 try:
                     from models.subscription_models import UsageSummary, APIUsageLog, APIProvider
                     from services.subscription import PricingService
@@ -383,12 +389,14 @@ def clone_voice(
 
         voice_clone_cost = 0.5
 
-        from services.database import get_db
+        from services.database import get_session_for_user
         from services.subscription import PricingService
         from models.subscription_models import APIProvider
 
         try:
-            db = next(get_db())
+            db = get_session_for_user(user_id)
+            if not db:
+                raise RuntimeError("Failed to get database session")
             try:
                 pricing_service = PricingService(db)
                 can_proceed, message, usage_info = pricing_service.check_usage_limits(
@@ -432,7 +440,11 @@ def clone_voice(
 
         if preview_audio_bytes:
             try:
-                db_track = next(get_db())
+                db_track = get_session_for_user(user_id)
+                if not db_track:
+                    logger.error(f"[clone_voice] ❌ Failed to get database session for tracking")
+                    raise RuntimeError("Failed to get database session")
+                
                 try:
                     from models.subscription_models import UsageSummary, APIUsageLog, APIProvider
                     from services.subscription import PricingService
@@ -570,12 +582,14 @@ def qwen3_voice_clone(
         char_count = len(text)
         estimated_cost = max(0.005, 0.005 * (char_count / 100.0))
 
-        from services.database import get_db
+        from services.database import get_session_for_user
         from services.subscription import PricingService
         from models.subscription_models import APIProvider
 
         try:
-            db = next(get_db())
+            db = get_session_for_user(user_id)
+            if not db:
+                raise RuntimeError("Failed to get database session")
             try:
                 pricing_service = PricingService(db)
                 can_proceed, message, usage_info = pricing_service.check_usage_limits(
@@ -615,7 +629,11 @@ def qwen3_voice_clone(
 
         if preview_audio_bytes:
             try:
-                db_track = next(get_db())
+                db_track = get_session_for_user(user_id)
+                if not db_track:
+                    logger.error(f"[qwen3_voice_clone] ❌ Failed to get database session for tracking")
+                    raise RuntimeError("Failed to get database session")
+                
                 try:
                     from models.subscription_models import UsageSummary, APIUsageLog, APIProvider
                     from services.subscription import PricingService
@@ -691,6 +709,7 @@ def qwen3_voice_clone(
 ├─ Provider: wavespeed
 ├─ Model: wavespeed-ai/qwen3-tts/voice-clone
 ├─ Calls: {current_calls_before} → {new_calls}
+├─ Cost: ${current_cost_before:.4f} → ${new_cost:.4f}
 ├─ Text chars: {char_count}
 └─ Status: ✅ Allowed & Tracked
 """, flush=True)
@@ -720,6 +739,376 @@ def qwen3_voice_clone(
             status_code=500,
             detail={
                 "error": "Qwen3 voice cloning failed",
+                "message": str(e),
+            },
+        )
+
+
+def qwen3_voice_design(
+    text: str,
+    voice_description: str,
+    *,
+    language: str = "auto",
+    user_id: Optional[str] = None,
+) -> VoiceCloneResult:
+    try:
+        if not user_id:
+            raise RuntimeError("user_id is required for subscription checking. Please provide Clerk user ID.")
+
+        if not text or not isinstance(text, str) or len(text.strip()) == 0:
+            raise ValueError("Text is required and cannot be empty")
+        text = text.strip()
+        
+        if not voice_description or not isinstance(voice_description, str) or len(voice_description.strip()) == 0:
+            raise ValueError("Voice description is required")
+        voice_description = voice_description.strip()
+
+        char_count = len(text)
+        # Pricing logic similar to TTS/Clone
+        estimated_cost = max(0.005, 0.005 * (char_count / 100.0))
+
+        from services.database import get_session_for_user
+        from services.subscription import PricingService
+        from models.subscription_models import APIProvider
+
+        try:
+            db = get_session_for_user(user_id)
+            if not db:
+                raise RuntimeError("Failed to get database session")
+            try:
+                pricing_service = PricingService(db)
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=user_id,
+                    provider=APIProvider.AUDIO,
+                    tokens_requested=char_count,
+                    actual_provider_name="wavespeed",
+                )
+                if not can_proceed:
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            "error": message,
+                            "message": message,
+                            "provider": "wavespeed",
+                            "usage_info": usage_info if usage_info else {},
+                        },
+                    )
+            finally:
+                db.close()
+        except HTTPException:
+            raise
+        except Exception as sub_error:
+            raise RuntimeError(f"Subscription check failed: {str(sub_error)}")
+
+        import time
+        start_time = time.time()
+        client = WaveSpeedClient()
+        preview_audio_bytes = client.voice_design(
+            text=text,
+            voice_description=voice_description,
+            language=language
+        )
+        response_time = time.time() - start_time
+
+        # Track usage
+        try:
+            db_track = get_session_for_user(user_id)
+            if not db_track:
+                logger.error(f"[qwen3_voice_design] ❌ Failed to get database session for tracking")
+                raise RuntimeError("Failed to get database session")
+            
+            try:
+                from models.subscription_models import UsageSummary, APIUsageLog, APIProvider
+                from services.subscription import PricingService
+                from sqlalchemy import text as sql_text
+                from services.subscription.provider_detection import detect_actual_provider
+
+                pricing = PricingService(db_track)
+                current_period = pricing.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
+
+                summary = db_track.query(UsageSummary).filter(
+                    UsageSummary.user_id == user_id,
+                    UsageSummary.billing_period == current_period
+                ).first()
+
+                if not summary:
+                    summary = UsageSummary(user_id=user_id, billing_period=current_period)
+                    db_track.add(summary)
+                    db_track.flush()
+
+                current_calls_before = getattr(summary, "audio_calls", 0) or 0
+                current_cost_before = getattr(summary, "audio_cost", 0.0) or 0.0
+                new_calls = current_calls_before + 1
+                new_cost = current_cost_before + float(estimated_cost)
+
+                update_query = sql_text("""
+                    UPDATE usage_summaries 
+                    SET audio_calls = :new_calls,
+                        audio_cost = :new_cost
+                    WHERE user_id = :user_id AND billing_period = :period
+                """)
+                db_track.execute(update_query, {
+                    "new_calls": new_calls,
+                    "new_cost": new_cost,
+                    "user_id": user_id,
+                    "period": current_period
+                })
+
+                summary.total_cost = (summary.total_cost or 0.0) + float(estimated_cost)
+                summary.total_calls = (summary.total_calls or 0) + 1
+                summary.updated_at = datetime.utcnow()
+
+                actual_provider = detect_actual_provider(
+                    provider_enum=APIProvider.AUDIO,
+                    model_name="wavespeed-ai/qwen3-tts/voice-design",
+                    endpoint="/audio-generation/wavespeed/qwen3-tts/voice-design",
+                )
+
+                usage_log = APIUsageLog(
+                    user_id=user_id,
+                    provider=APIProvider.AUDIO,
+                    endpoint="/audio-generation/wavespeed/qwen3-tts/voice-design",
+                    method="POST",
+                    model_used="wavespeed-ai/qwen3-tts/voice-design",
+                    actual_provider_name=actual_provider,
+                    tokens_input=char_count,
+                    tokens_output=0,
+                    tokens_total=char_count,
+                    cost_input=0.0,
+                    cost_output=0.0,
+                    cost_total=float(estimated_cost),
+                    response_time=response_time,
+                    status_code=200,
+                    request_size=len(text) + len(voice_description),
+                    response_size=len(preview_audio_bytes),
+                    billing_period=current_period,
+                )
+                db_track.add(usage_log)
+                db_track.commit()
+
+                print(f"""
+[SUBSCRIPTION] Qwen3 Voice Design
+├─ User: {user_id}
+├─ Provider: wavespeed
+├─ Model: wavespeed-ai/qwen3-tts/voice-design
+├─ Calls: {current_calls_before} → {new_calls}
+├─ Cost: ${current_cost_before:.4f} → ${new_cost:.4f}
+├─ Text chars: {char_count}
+└─ Status: ✅ Allowed & Tracked
+""", flush=True)
+                sys.stdout.flush()
+            except Exception as track_error:
+                logger.error(f"[qwen3_voice_design] ❌ Error tracking usage (non-blocking): {track_error}", exc_info=True)
+                db_track.rollback()
+            finally:
+                db_track.close()
+        except Exception as usage_error:
+            logger.error(f"[qwen3_voice_design] ❌ Failed to track usage: {usage_error}", exc_info=True)
+
+        return VoiceCloneResult(
+            preview_audio_bytes=preview_audio_bytes,
+            provider="wavespeed",
+            model="wavespeed-ai/qwen3-tts/voice-design",
+            custom_voice_id="", # No persistent ID for design usually, unless we save it
+            file_size=len(preview_audio_bytes),
+        )
+    except HTTPException:
+        raise
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.error(f"[qwen3_voice_design] Error designing voice: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Qwen3 voice design failed",
+                "message": str(e),
+            },
+        )
+
+
+def cosyvoice_voice_clone(
+    audio_bytes: bytes,
+    text: str,
+    *,
+    reference_text: Optional[str] = None,
+    audio_mime_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> VoiceCloneResult:
+    try:
+        if not user_id:
+            raise RuntimeError("user_id is required for subscription checking. Please provide Clerk user ID.")
+
+        if not audio_bytes or not isinstance(audio_bytes, (bytes, bytearray)) or len(audio_bytes) == 0:
+            raise ValueError("Audio is required and cannot be empty")
+
+        if len(audio_bytes) > 15 * 1024 * 1024:
+            raise ValueError("Audio file too large. Maximum is 15MB.")
+
+        if not text or not isinstance(text, str) or len(text.strip()) == 0:
+            raise ValueError("Text is required and cannot be empty")
+        text = text.strip()
+        if len(text) > 4000:
+            raise ValueError("Text too long. Please keep it under 4000 characters.")
+
+        char_count = len(text)
+        estimated_cost = max(0.005, 0.005 * (char_count / 100.0))
+
+        from services.database import get_session_for_user
+        from services.subscription import PricingService
+        from models.subscription_models import APIProvider
+
+        try:
+            db = get_session_for_user(user_id)
+            if not db:
+                raise RuntimeError("Failed to get database session")
+            try:
+                pricing_service = PricingService(db)
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=user_id,
+                    provider=APIProvider.AUDIO,
+                    tokens_requested=char_count,
+                    actual_provider_name="wavespeed",
+                )
+                if not can_proceed:
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            "error": message,
+                            "message": message,
+                            "provider": "wavespeed",
+                            "usage_info": usage_info if usage_info else {},
+                        },
+                    )
+            finally:
+                db.close()
+        except HTTPException:
+            raise
+        except Exception as sub_error:
+            raise RuntimeError(f"Subscription check failed: {str(sub_error)}")
+
+        import time
+        start_time = time.time()
+        client = WaveSpeedClient()
+        preview_audio_bytes = client.cosyvoice_voice_clone(
+            audio_bytes=bytes(audio_bytes),
+            text=text,
+            audio_mime_type=audio_mime_type or "audio/wav",
+            reference_text=reference_text,
+        )
+        response_time = time.time() - start_time
+
+        if preview_audio_bytes:
+            try:
+                db_track = get_session_for_user(user_id)
+                if not db_track:
+                    logger.error(f"[cosyvoice_voice_clone] ❌ Failed to get database session for tracking")
+                    raise RuntimeError("Failed to get database session")
+                
+                try:
+                    from models.subscription_models import UsageSummary, APIUsageLog, APIProvider
+                    from services.subscription import PricingService
+                    from sqlalchemy import text as sql_text
+                    from services.subscription.provider_detection import detect_actual_provider
+
+                    pricing = PricingService(db_track)
+                    current_period = pricing.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
+
+                    summary = db_track.query(UsageSummary).filter(
+                        UsageSummary.user_id == user_id,
+                        UsageSummary.billing_period == current_period
+                    ).first()
+
+                    if not summary:
+                        summary = UsageSummary(user_id=user_id, billing_period=current_period)
+                        db_track.add(summary)
+                        db_track.flush()
+
+                    current_calls_before = getattr(summary, "audio_calls", 0) or 0
+                    current_cost_before = getattr(summary, "audio_cost", 0.0) or 0.0
+                    new_calls = current_calls_before + 1
+                    new_cost = current_cost_before + float(estimated_cost)
+
+                    update_query = sql_text("""
+                        UPDATE usage_summaries 
+                        SET audio_calls = :new_calls,
+                            audio_cost = :new_cost
+                        WHERE user_id = :user_id AND billing_period = :period
+                    """)
+                    db_track.execute(update_query, {
+                        "new_calls": new_calls,
+                        "new_cost": new_cost,
+                        "user_id": user_id,
+                        "period": current_period
+                    })
+
+                    summary.total_cost = (summary.total_cost or 0.0) + float(estimated_cost)
+                    summary.total_calls = (summary.total_calls or 0) + 1
+                    summary.updated_at = datetime.utcnow()
+
+                    actual_provider = detect_actual_provider(
+                        provider_enum=APIProvider.AUDIO,
+                        model_name="wavespeed-ai/cosyvoice-tts/voice-clone",
+                        endpoint="/audio-generation/wavespeed/cosyvoice-tts/voice-clone",
+                    )
+
+                    usage_log = APIUsageLog(
+                        user_id=user_id,
+                        provider=APIProvider.AUDIO,
+                        endpoint="/audio-generation/wavespeed/cosyvoice-tts/voice-clone",
+                        method="POST",
+                        model_used="wavespeed-ai/cosyvoice-tts/voice-clone",
+                        actual_provider_name=actual_provider,
+                        tokens_input=char_count,
+                        tokens_output=0,
+                        tokens_total=char_count,
+                        cost_input=0.0,
+                        cost_output=0.0,
+                        cost_total=float(estimated_cost),
+                        response_time=response_time,
+                        status_code=200,
+                        request_size=len(audio_bytes) + len(text.encode("utf-8")),
+                        response_size=len(preview_audio_bytes),
+                        billing_period=current_period,
+                    )
+                    db_track.add(usage_log)
+                    db_track.commit()
+
+                    print(f"""
+[SUBSCRIPTION] CosyVoice Voice Clone
+├─ User: {user_id}
+├─ Provider: wavespeed
+├─ Model: wavespeed-ai/cosyvoice-tts/voice-clone
+├─ Calls: {current_calls_before} → {new_calls}
+├─ Text chars: {char_count}
+└─ Status: ✅ Allowed & Tracked
+""", flush=True)
+                    sys.stdout.flush()
+                except Exception as track_error:
+                    logger.error(f"[cosyvoice_voice_clone] ❌ Error tracking usage (non-blocking): {track_error}", exc_info=True)
+                    db_track.rollback()
+                finally:
+                    db_track.close()
+            except Exception as usage_error:
+                logger.error(f"[cosyvoice_voice_clone] ❌ Failed to track usage: {usage_error}", exc_info=True)
+
+        return VoiceCloneResult(
+            preview_audio_bytes=preview_audio_bytes,
+            provider="wavespeed",
+            model="wavespeed-ai/cosyvoice-tts/voice-clone",
+            custom_voice_id="",
+            file_size=len(preview_audio_bytes),
+        )
+    except HTTPException:
+        raise
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.error(f"[cosyvoice_voice_clone] Error cloning voice: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "CosyVoice voice cloning failed",
                 "message": str(e),
             },
         )

@@ -100,6 +100,60 @@ export const PODCAST_THEME: ImageModalTheme = {
 };
 
 // ============================================
+// Brand Avatar Presets
+// ============================================
+
+export const BRAND_AVATAR_PRESETS: ImagePreset[] = [
+  {
+    key: 'professionalHeadshot',
+    title: 'Professional Headshot',
+    subtitle: 'Clean, corporate-ready professional portrait',
+    prompt: 'Professional business headshot, confident expression, soft studio lighting, neutral background, sharp focus, high resolution, corporate attire, trustworthy demeanor',
+    style: 'Realistic',
+    renderingSpeed: 'Quality',
+    aspectRatio: '1:1',
+    image: '/assets/examples/professional_headshot.png',
+  },
+  {
+    key: 'creativeMascot',
+    title: 'Creative Mascot',
+    subtitle: 'Stylized 3D character for brand identity',
+    prompt: '3D character mascot, friendly and approachable, vibrant brand colors, soft rendering, pixar-style, expressive features, clean background, memorable design',
+    style: 'Fiction',
+    renderingSpeed: 'Quality',
+    aspectRatio: '1:1',
+    image: '/assets/examples/creative_mascot.png',
+  },
+  {
+    key: 'techVisionary',
+    title: 'Tech Visionary',
+    subtitle: 'Modern, forward-looking tech aesthetic',
+    prompt: 'Modern tech entrepreneur, futuristic lighting, smart casual attire, innovative atmosphere, clean tech background, confident gaze, professional but approachable',
+    style: 'Realistic',
+    renderingSpeed: 'Quality',
+    aspectRatio: '1:1',
+    image: '/assets/examples/tech_visionary.png',
+  },
+  {
+    key: 'artisticPortrait',
+    title: 'Artistic Portrait',
+    subtitle: 'Unique, hand-drawn or painted style avatar',
+    prompt: 'Digital art portrait, expressive brushstrokes, unique artistic style, vibrant color palette, creative composition, abstract background elements, distinct personality',
+    style: 'Fiction',
+    renderingSpeed: 'Quality',
+    aspectRatio: '1:1',
+    image: '/assets/examples/artistic_portrait.png',
+  },
+];
+
+export const BRAND_AVATAR_THEME: ImageModalTheme = {
+  dialogBackground: 'rgba(20, 20, 30, 0.98)',
+  primaryAccent: '#7C3AED', // Violet
+  secondaryAccent: '#EC4899', // Pink
+  warningAccent: '#F59E0B',
+};
+
+// ============================================
 // YouTube-specific Recommendations
 // ============================================
 
@@ -145,3 +199,24 @@ export const PODCAST_RECOMMENDATIONS: CustomRecommendations = {
   </>,
 };
 
+// ============================================
+// Brand Avatar-specific Recommendations
+// ============================================
+
+export const BRAND_AVATAR_RECOMMENDATIONS: CustomRecommendations = {
+  style: <>
+    <strong>Realistic:</strong> Best for professional personal brands and executive headshots.<br />
+    <strong>Fiction:</strong> Ideal for creative agencies, gaming brands, or friendly mascots.
+  </>,
+  speed: <>
+    <strong>Quality:</strong> Recommended for avatars as they are long-term brand assets.<br />
+    <strong>Turbo:</strong> Good for exploring concepts quickly.
+  </>,
+  aspectRatio: <>
+    <strong>1:1 (Square)</strong> is the standard for profile pictures across all social platforms (LinkedIn, Twitter, Instagram).
+  </>,
+  model: <>
+    <strong>Ideogram V3 Turbo:</strong> Superior text rendering and photorealism (Recommended).<br />
+    <strong>Qwen Image:</strong> Fast and cost-effective for iterations.
+  </>,
+};

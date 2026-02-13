@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import {
   Box,
   Fade,
   Snackbar,
   Typography,
-  Paper
+  Paper,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormControl,
+  FormLabel,
+  Card,
+  CardContent,
+  Alert,
+  Chip
 } from '@mui/material';
 import {
   // Social Media Icons
@@ -19,7 +29,11 @@ import {
   Web as WordPressIcon,
   Web as WixIcon,
   Google as GoogleIcon,
-  Analytics as AnalyticsIcon
+  Analytics as AnalyticsIcon,
+  // UI Icons
+  Lightbulb as LightbulbIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 
 // Import refactored components
@@ -28,6 +42,7 @@ import PlatformSection from './common/PlatformSection';
 import BenefitsSummary from './common/BenefitsSummary';
 import ComingSoonSection from './common/ComingSoonSection';
 import { useWordPressOAuth } from '../../hooks/useWordPressOAuth';
+import { useWixConnection } from '../../hooks/useWixConnection';
 import { useBingOAuth } from '../../hooks/useBingOAuth';
 import { useGSCConnection } from './common/useGSCConnection';
 import { usePlatformConnections } from './common/usePlatformConnections';
@@ -37,6 +52,7 @@ import { cachedAnalyticsAPI } from '../../api/cachedAnalytics';
 interface IntegrationsStepProps {
   onContinue: () => void;
   updateHeaderContent: (content: { title: string; description: string }) => void;
+  onValidationChange?: (isValid: boolean) => void;
 }
 
 interface IntegrationPlatform {
@@ -52,7 +68,8 @@ interface IntegrationPlatform {
   isEnabled: boolean;
 }
 
-const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateHeaderContent }) => {
+const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateHeaderContent, onValidationChange }) => {
+  const { user } = useUser();
   const [email, setEmail] = useState<string>('');
   
   // Use custom hooks
@@ -60,13 +77,11 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
 
   // Invalidate analytics cache when platform connections change
   const invalidateAnalyticsCache = useCallback(() => {
-    console.log('🔄 IntegrationsStep: Invalidating analytics cache due to connection change');
     cachedAnalyticsAPI.invalidateAll();
   }, []);
 
   // Force refresh analytics data (bypass cache)
   const forceRefreshAnalytics = useCallback(async () => {
-    console.log('🔄 IntegrationsStep: Force refreshing analytics data (bypassing cache)');
     try {
       // Clear all cache first
       cachedAnalyticsAPI.clearCache();
@@ -77,9 +92,8 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
       // Force refresh analytics data
       await cachedAnalyticsAPI.forceRefreshAnalyticsData(['bing', 'gsc']);
       
-      console.log('✅ IntegrationsStep: Analytics data force refreshed successfully');
     } catch (error) {
-      console.error('❌ IntegrationsStep: Error force refreshing analytics:', error);
+      console.error('IntegrationsStep: Error force refreshing analytics:', error);
     }
   }, []);
   const { isLoading, showToast, setShowToast, toastMessage, handleConnect } = usePlatformConnections();
@@ -89,7 +103,6 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
   
   // Bing OAuth hook
   const { connected: bingConnected, sites: bingSites, connect: connectBing } = useBingOAuth();
-  console.log('Bing OAuth hook initialized:', { bingConnected, connectBing: typeof connectBing });
 
   // Initialize integrations data
   const [integrations] = useState<IntegrationPlatform[]>([
@@ -231,59 +244,30 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
 
   // Handle WordPress connection status changes
   useEffect(() => {
-    console.log('IntegrationsStep: WordPress status changed:', {
-      wordpressConnected,
-      wordpressSitesCount: wordpressSites.length,
-      connectedPlatforms,
-      currentPlatforms: connectedPlatforms
-    });
     
     if (wordpressConnected && wordpressSites.length > 0) {
-      // WordPress is connected, add to connected platforms
       if (!connectedPlatforms.includes('wordpress')) {
-        console.log('IntegrationsStep: Adding WordPress to connected platforms');
         setConnectedPlatforms([...connectedPlatforms, 'wordpress']);
-        console.log('WordPress connection detected:', wordpressSites);
         invalidateAnalyticsCache();
-      } else {
-        console.log('IntegrationsStep: WordPress already in connected platforms');
       }
     } else if (!wordpressConnected && connectedPlatforms.includes('wordpress')) {
       // WordPress is disconnected, remove from connected platforms
-      console.log('IntegrationsStep: Removing WordPress from connected platforms');
       setConnectedPlatforms(connectedPlatforms.filter(platform => platform !== 'wordpress'));
-      console.log('WordPress disconnection detected');
       invalidateAnalyticsCache();
-    } else {
-      console.log('IntegrationsStep: No WordPress status change needed');
     }
   }, [wordpressConnected, wordpressSites, connectedPlatforms, setConnectedPlatforms, invalidateAnalyticsCache]);
 
   // Handle Bing connection status changes
   useEffect(() => {
-    console.log('IntegrationsStep: Bing status changed:', {
-      bingConnected,
-      bingSitesCount: bingSites.length,
-      connectedPlatforms,
-      currentPlatforms: connectedPlatforms
-    });
     
     if (bingConnected && bingSites.length > 0) {
       if (!connectedPlatforms.includes('bing')) {
-        console.log('IntegrationsStep: Adding Bing to connected platforms');
         setConnectedPlatforms([...connectedPlatforms, 'bing']);
-        console.log('Bing connection detected:', bingSites);
         invalidateAnalyticsCache();
-      } else {
-        console.log('IntegrationsStep: Bing already in connected platforms');
       }
     } else if (!bingConnected && connectedPlatforms.includes('bing')) {
-      console.log('IntegrationsStep: Removing Bing from connected platforms');
       setConnectedPlatforms(connectedPlatforms.filter(platform => platform !== 'bing'));
-      console.log('Bing disconnection detected');
       invalidateAnalyticsCache();
-    } else {
-      console.log('IntegrationsStep: No Bing status change needed');
     }
   }, [bingConnected, bingSites, connectedPlatforms, setConnectedPlatforms, invalidateAnalyticsCache]);
 
@@ -299,7 +283,6 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
       setConnectedPlatforms([...connectedPlatforms, 'wordpress']);
       // Remove query parameters from URL
       window.history.replaceState({}, document.title, window.location.pathname);
-      console.log('WordPress OAuth connection successful:', blogUrl);
     } else if (error) {
       // WordPress OAuth failed
       console.error('WordPress OAuth error:', error);
@@ -311,75 +294,28 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
 
   // Get user email from Clerk
   useEffect(() => {
-    const getUserEmail = () => {
-      if (typeof window !== 'undefined') {
-        const clerkUser = (window as any).__clerk_user;
-        if (clerkUser?.emailAddresses?.[0]?.emailAddress) {
-          return clerkUser.emailAddresses[0].emailAddress;
-        }
-        
-        const clerkSession = localStorage.getItem('__clerk_session');
-        if (clerkSession) {
-          try {
-            const sessionData = JSON.parse(clerkSession);
-            if (sessionData?.user?.emailAddresses?.[0]?.emailAddress) {
-              return sessionData.user.emailAddresses[0].emailAddress;
-            }
-          } catch (e) {
-            // Ignore parsing errors
-          }
-        }
-        
-        const userData = localStorage.getItem('user_data');
-        if (userData) {
-          try {
-            const data = JSON.parse(userData);
-            if (data.email) return data.email;
-          } catch (e) {
-            // Ignore parsing errors
-          }
-        }
-        
-        const currentUserEmail = 'ajay.calsoft@gmail.com';
-        if (currentUserEmail && currentUserEmail.includes('@')) {
-          return currentUserEmail;
-        }
-      }
+    if (user) {
+      const primaryEmail = user.primaryEmailAddress?.emailAddress;
+      const firstEmail = user.emailAddresses?.[0]?.emailAddress;
+      const resolvedEmail = primaryEmail || firstEmail || '';
       
-      return 'user@example.com';
-    };
-    
-    const userEmail = getUserEmail();
-    setEmail(userEmail);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      if (resolvedEmail) {
+        setEmail(resolvedEmail);
+      }
+    }
+  }, [user]);
 
   const handlePlatformConnect = async (platformId: string) => {
-    console.log('🚀 INTEGRATIONS_STEP: handlePlatformConnect called with platformId:', platformId);
-    console.log('🚀 INTEGRATIONS_STEP: platformId type:', typeof platformId);
-    console.log('🚀 INTEGRATIONS_STEP: platformId length:', platformId.length);
-    console.log('🚀 INTEGRATIONS_STEP: platformId === "bing":', platformId === 'bing');
-    console.log('🚀 INTEGRATIONS_STEP: platformId === "gsc":', platformId === 'gsc');
-    console.log('🚀 INTEGRATIONS_STEP: connectBing function type:', typeof connectBing);
-    console.log('🚀 INTEGRATIONS_STEP: connectBing function:', connectBing);
-    console.log('🚀 INTEGRATIONS_STEP: Stack trace:', new Error().stack);
-    
     if (platformId === 'gsc') {
-      console.log('🚀 INTEGRATIONS_STEP: Handling GSC connection');
       await handleGSCConnect();
     } else if (platformId === 'bing') {
-      console.log('🚀 INTEGRATIONS_STEP: Handling Bing connection - about to call connectBing');
       // Use the Bing OAuth hook for connection
       try {
-        console.log('🚀 INTEGRATIONS_STEP: Calling connectBing()...');
         await connectBing();
-        console.log('🚀 INTEGRATIONS_STEP: Bing connection initiated successfully');
       } catch (error) {
-        console.error('🚀 INTEGRATIONS_STEP: Bing connection failed:', error);
+        console.error('Bing connection failed:', error);
       }
     } else {
-      console.log('🚀 INTEGRATIONS_STEP: Handling other platform connection:', platformId);
-      console.log('🚀 INTEGRATIONS_STEP: This should NOT happen for Bing!');
       await handleConnect(platformId);
     }
   };
@@ -389,6 +325,59 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
   const analyticsPlatforms = integrations.filter(p => p.category === 'analytics');
   const socialPlatforms = integrations.filter(p => p.category === 'social');
 
+
+  // Primary Site Selection State
+  const [primarySite, setPrimarySite] = useState<string>('');
+  
+  // Get sites from hooks for the memo
+  const { sites: wixSites, connected: wixConnected } = useWixConnection();
+  
+  const availableSites = React.useMemo(() => {
+    const sites: { url: string; source: string; name: string }[] = [];
+    
+    if (wixConnected && wixSites.length > 0) {
+      sites.push(...wixSites.map(s => ({ 
+        url: s.blog_url, 
+        source: 'Wix',
+        name: 'Wix Site'
+      })));
+    }
+    
+    if (wordpressConnected && wordpressSites.length > 0) {
+      sites.push(...wordpressSites.map(s => ({ 
+        url: s.blog_url, 
+        source: 'WordPress',
+        name: 'WordPress Site'
+      })));
+    }
+    
+    return sites;
+  }, [wixConnected, wixSites, wordpressConnected, wordpressSites]);
+
+  // Default to first site
+  useEffect(() => {
+    if (availableSites.length > 0 && !primarySite) {
+      setPrimarySite(availableSites[0].url);
+    }
+  }, [availableSites, primarySite]);
+
+  // Save primary site when selected
+  useEffect(() => {
+    if (primarySite) {
+      localStorage.setItem('primary_website', primarySite);
+    }
+  }, [primarySite]);
+
+  // Validation Effect
+  useEffect(() => {
+    if (onValidationChange) {
+      // Valid if:
+      // 1. No sites available (user can proceed without site)
+      // 2. Sites available AND primarySite selected
+      const isValid = availableSites.length === 0 || !!primarySite;
+      onValidationChange(isValid);
+    }
+  }, [availableSites.length, primarySite, onValidationChange]);
 
   return (
     <Box sx={{ width: '100%', maxWidth: '100%', p: { xs: 1, sm: 2, md: 3 } }}>
@@ -404,7 +393,7 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
             platforms={websitePlatforms}
             connectedPlatforms={connectedPlatforms}
             gscSites={null}
-                  isLoading={isLoading}
+            isLoading={isLoading}
             onConnect={handlePlatformConnect}
             onDisconnect={(platformId) => {
               setConnectedPlatforms(connectedPlatforms.filter(p => p !== platformId));
@@ -412,6 +401,118 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
             setConnectedPlatforms={setConnectedPlatforms}
           />
         </div>
+      </Fade>
+
+      {/* Primary Site Selection */}
+      <Fade in timeout={900}>
+        <Box sx={{ mt: 3 }}>
+          <Paper 
+            elevation={2} 
+            sx={{ 
+              p: 3, 
+              borderRadius: 2,
+              background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)',
+              border: '1px solid',
+              borderColor: primarySite ? '#86efac' : '#e2e8f0'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Box 
+                  sx={{ 
+                    width: 40, 
+                    height: 40, 
+                    borderRadius: '50%', 
+                    bgcolor: primarySite ? '#dcfce7' : '#f1f5f9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    mr: 2
+                  }}
+                >
+                  <LightbulbIcon sx={{ color: primarySite ? '#22c55e' : '#94a3b8' }} />
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600, color: '#1e293b' }}>
+                    Primary Website Selection
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#64748b' }}>
+                    Select your primary website for content publishing
+                  </Typography>
+                </Box>
+              </Box>
+              
+              {/* Green/Red Indicator */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    bgcolor: primarySite ? '#22c55e' : '#ef4444',
+                    boxShadow: primarySite ? '0 0 0 4px #dcfce7' : '0 0 0 4px #fee2e2'
+                  }}
+                />
+                <Typography variant="caption" sx={{ fontWeight: 600, color: primarySite ? '#15803d' : '#b91c1c' }}>
+                  {primarySite ? 'Primary Set' : 'Selection Required'}
+                </Typography>
+              </Box>
+            </Box>
+
+            {availableSites.length > 0 ? (
+              <FormControl component="fieldset" sx={{ width: '100%', mt: 1 }}>
+                <RadioGroup
+                  value={primarySite}
+                  onChange={(e) => setPrimarySite(e.target.value)}
+                >
+                  {availableSites.map((site, index) => (
+                    <Card 
+                      key={index} 
+                      variant="outlined" 
+                      sx={{ 
+                        mb: 1.5, 
+                        borderColor: primarySite === site.url ? '#22c55e' : '#e2e8f0',
+                        bgcolor: primarySite === site.url ? '#f0fdf4' : '#ffffff',
+                        transition: 'all 0.2s',
+                        '&:hover': { borderColor: '#22c55e' }
+                      }}
+                    >
+                      <CardContent sx={{ p: '12px !important', '&:last-child': { pb: '12px !important' } }}>
+                        <FormControlLabel
+                          value={site.url}
+                          control={<Radio size="small" sx={{ color: primarySite === site.url ? '#22c55e' : undefined, '&.Mui-checked': { color: '#22c55e' } }} />}
+                          label={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
+                                {site.url ? site.url.replace(/^https?:\/\//, '') : 'No URL'}
+                              </Typography>
+                              <Chip 
+                                label={site.source} 
+                                size="small" 
+                                sx={{ 
+                                  height: 20, 
+                                  fontSize: '0.65rem', 
+                                  fontWeight: 600,
+                                  bgcolor: site.source === 'Wix' ? '#000000' : '#21759b',
+                                  color: '#ffffff'
+                                }} 
+                              />
+                            </Box>
+                          }
+                          sx={{ width: '100%', m: 0 }}
+                        />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </RadioGroup>
+              </FormControl>
+            ) : (
+              <Alert severity="warning" sx={{ mt: 1, borderRadius: 2 }}>
+                No connected websites found. Please connect Wix or WordPress to continue.
+              </Alert>
+            )}
+          </Paper>
+        </Box>
       </Fade>
 
       {/* Analytics Platforms */}
@@ -453,16 +554,14 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
               </Typography>
               
               <PlatformAnalytics 
-                platforms={connectedPlatforms}
+                platforms={connectedPlatforms.filter(p => ['gsc', 'bing'].includes(p))}
                 showSummary={true}
-                refreshInterval={0}
-                onDataLoaded={(data: any) => {
-                  console.log('Analytics data loaded:', data);
+                refreshInterval={connectedPlatforms.some(p => ['gsc', 'bing'].includes(p)) ? 300000 : 0} // 5 minutes, only if connected
+                onDataLoaded={(data) => {
+                  // Data loaded silently
                 }}
                 onRefreshReady={(refreshFn) => {
-                  console.log('🔄 PlatformAnalytics refresh function ready');
-                  // Store the refresh function for potential use
-                  (window as any).refreshAnalytics = refreshFn;
+                  // Store refresh function if needed
                 }}
               />
             </Paper>

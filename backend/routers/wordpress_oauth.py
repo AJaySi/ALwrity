@@ -3,8 +3,8 @@ WordPress OAuth2 Routes
 Handles WordPress.com OAuth2 authentication flow.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
@@ -61,14 +61,23 @@ async def get_wordpress_auth_url(
 
 @router.get("/callback")
 async def handle_wordpress_callback(
+    request: Request,
     code: str = Query(..., description="Authorization code from WordPress"),
     state: str = Query(..., description="State parameter for security"),
     error: Optional[str] = Query(None, description="Error from WordPress OAuth")
 ):
     """Handle WordPress OAuth2 callback."""
     try:
+        # Check if JSON response is requested
+        wants_json = request.headers.get("accept") == "application/json" or request.query_params.get("format") == "json"
+
         if error:
             logger.error(f"WordPress OAuth error: {error}")
+            if wants_json:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"success": False, "error": error}
+                )
             html_content = f"""
             <!DOCTYPE html>
             <html>
@@ -77,7 +86,7 @@ async def handle_wordpress_callback(
                 <script>
                     // Send error message to parent window
                     window.onload = function() {{
-                        window.parent.postMessage({{
+                        (window.opener || window.parent).postMessage({{
                             type: 'WPCOM_OAUTH_ERROR',
                             success: false,
                             error: '{error}'
@@ -100,6 +109,11 @@ async def handle_wordpress_callback(
         
         if not code or not state:
             logger.error("Missing code or state parameter in WordPress OAuth callback")
+            if wants_json:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"success": False, "error": "Missing parameters"}
+                )
             html_content = """
             <!DOCTYPE html>
             <html>
@@ -134,6 +148,11 @@ async def handle_wordpress_callback(
         
         if not result or not result.get('success'):
             logger.error("Failed to exchange WordPress OAuth code for token")
+            if wants_json:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"success": False, "error": "Token exchange failed"}
+                )
             html_content = """
             <!DOCTYPE html>
             <html>
@@ -162,6 +181,18 @@ async def handle_wordpress_callback(
         
         # Return success page with postMessage script
         blog_url = result.get('blog_url', '')
+        blog_id = result.get('blog_id', '')
+        
+        if wants_json:
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "blog_url": blog_url,
+                    "blog_id": blog_id,
+                    "sites": [{"blog_url": blog_url, "blog_id": blog_id}] # Simplified for now
+                }
+            )
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -174,7 +205,7 @@ async def handle_wordpress_callback(
                         type: 'WPCOM_OAUTH_SUCCESS',
                         success: true,
                         blogUrl: '{blog_url}',
-                        blogId: '{result.get('blog_id', '')}'
+                        blogId: '{blog_id}'
                     }}, '*');
                     window.close();
                 }};

@@ -25,7 +25,7 @@ import { motion } from 'framer-motion';
 import { useContentAssets, ContentAsset } from '../../../hooks/useContentAssets';
 import { useNavigate } from 'react-router-dom';
 
-const MotionCard = motion(Card);
+const MotionCard = motion.create(Card);
 
 interface ProductAssetsGalleryProps {
   limit?: number;

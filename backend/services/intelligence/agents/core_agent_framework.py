@@ -32,8 +32,63 @@ from services.database import get_session_for_user
 from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor
 from services.intelligence.agents.safety_framework import get_safety_framework
 from services.agent_activity_service import AgentActivityService
+from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
+import time
 
 logger = get_service_logger(__name__)
+
+class TrackingLLMWrapper:
+    """
+    Wrapper for LLM instances to transparently track usage.
+    Intercepts calls to __call__ and generate() to log metrics.
+    """
+    def __init__(self, llm: Any, user_id: str, model_name: str):
+        self.llm = llm
+        self.user_id = user_id
+        self.model_name = model_name
+
+    def __call__(self, prompt: str, *args, **kwargs) -> Any:
+        return self.generate(prompt, *args, **kwargs)
+
+    def generate(self, prompt: str, *args, **kwargs) -> str:
+        start_time = time.time()
+        try:
+            # Delegate to the underlying LLM
+            if hasattr(self.llm, "generate"):
+                response = self.llm.generate(prompt, *args, **kwargs)
+            else:
+                response = self.llm(prompt, *args, **kwargs)
+            
+            # Handle response format (some might return list of dicts)
+            response_text = str(response)
+            if isinstance(response, list):
+                if response and isinstance(response[0], dict) and 'generated_text' in response[0]:
+                    response_text = response[0]['generated_text']
+                else:
+                    response_text = str(response[0])
+
+            # Track usage
+            duration = time.time() - start_time
+            try:
+                track_agent_usage_sync(
+                    user_id=self.user_id,
+                    model_name=self.model_name,
+                    prompt=prompt,
+                    response_text=response_text,
+                    duration=duration
+                )
+            except Exception as e:
+                logger.warning(f"Failed to track agent usage in wrapper: {e}")
+
+            return response
+            
+        except Exception as e:
+            logger.error(f"LLM generation failed in tracking wrapper: {e}")
+            raise e
+
+    def __getattr__(self, name):
+        # Delegate other attribute access to the underlying LLM
+        return getattr(self.llm, name)
 
 @dataclass
 class AgentAction:
@@ -114,6 +169,10 @@ class BaseALwrityAgent(ABC):
         self.txtai_agent = None
         self.llm = llm  # Ensure llm is set if provided, regardless of txtai availability
 
+        # Wrap LLM with tracking if it exists
+        if self.llm:
+            self.llm = TrackingLLMWrapper(self.llm, self.user_id, self.model_name)
+
         self.agent_key = self._resolve_agent_key(agent_type)
         self._agent_profile = self._load_agent_profile_overrides()
         self._prompt_context = self._load_prompt_context()
@@ -121,10 +180,17 @@ class BaseALwrityAgent(ABC):
         if TXTAI_AVAILABLE:
             try:
                 if not self.llm:
-                    self.llm = LLM(model_name)
-                    
-                self.txtai_agent = self._create_txtai_agent()
-                logger.info(f"Initialized txtai agent for {agent_type} - {self.agent_id}")
+                    # Create new LLM if not provided
+                    raw_llm = LLM(model_name)
+                    # Wrap it
+                    self.llm = TrackingLLMWrapper(raw_llm, self.user_id, self.model_name)
+                
+                try:
+                    self.txtai_agent = self._create_txtai_agent()
+                    logger.info(f"Initialized txtai agent for {agent_type} - {self.agent_id}")
+                except Exception as inner_e:
+                    logger.warning(f"Could not initialize specific txtai agent for {agent_type}: {inner_e}")
+                    self.txtai_agent = self._create_fallback_agent()
             except Exception as e:
                 logger.error(f"Failed to initialize txtai agent for {agent_type}: {e}")
                 self.txtai_agent = self._create_fallback_agent()
@@ -133,6 +199,38 @@ class BaseALwrityAgent(ABC):
 
         # Initialize safety framework
         self.safety_framework = get_safety_framework(user_id)
+
+    async def _generate_llm_response(self, prompt: str) -> str:
+        """
+        Helper to generate text using the agent's LLM with usage tracking.
+        Centralized method for all agents inheriting from BaseALwrityAgent.
+        """
+        if not self.llm:
+            return "[LLM Unavailable]"
+            
+        try:
+            # Run in executor to avoid blocking if LLM is synchronous
+            loop = asyncio.get_event_loop()
+            
+            # Use the wrapped LLM's generate method (which handles tracking)
+            if hasattr(self.llm, "generate"):
+                response = await loop.run_in_executor(None, lambda: self.llm.generate(prompt))
+            else:
+                response = await loop.run_in_executor(None, lambda: self.llm(prompt))
+            
+            # Handle list output (some models return list of dicts)
+            response_text = str(response)
+            if isinstance(response, list):
+                if response and isinstance(response[0], dict) and 'generated_text' in response[0]:
+                    response_text = response[0]['generated_text']
+                else:
+                    response_text = str(response[0])
+            
+            return response_text
+            
+        except Exception as e:
+            logger.error(f"LLM generation failed in agent {self.agent_type}: {e}")
+            return "[Generation Failed]"
 
     def _resolve_agent_key(self, agent_type: str) -> str:
         value = str(agent_type or "").strip()

@@ -28,6 +28,7 @@ export interface UsageStats {
 export interface ProviderBreakdown {
   gemini?: ProviderUsage;
   huggingface?: ProviderUsage;
+  wavespeed?: ProviderUsage;
   video?: ProviderUsage;
   audio?: ProviderUsage;
   image?: ProviderUsage;
@@ -203,6 +204,7 @@ export const ProviderUsageSchema = z.object({
 export const ProviderBreakdownSchema = z.object({
   gemini: ProviderUsageSchema,
   huggingface: ProviderUsageSchema,
+  wavespeed: ProviderUsageSchema.optional(),
 });
 
 export const SubscriptionLimitsSchema = z.object({

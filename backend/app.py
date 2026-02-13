@@ -74,6 +74,7 @@ from routers.linkedin import router as linkedin_router
 from api.linkedin_image_generation import router as linkedin_image_router
 from api.brainstorm import router as brainstorm_router
 from api.images import router as images_router
+from api.assets_serving import router as assets_serving_router
 from routers.image_studio import router as image_studio_router
 from routers.product_marketing import router as product_marketing_router
 from routers.campaign_creator import router as campaign_creator_router
@@ -131,6 +132,7 @@ from api.seo_dashboard import (
     get_analyzed_pages,
     get_semantic_health  # Phase 2B: Semantic health monitoring
 )
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -243,6 +245,9 @@ async def onboarding_status():
 # Include routers using modular utilities
 router_manager.include_core_routers()
 router_manager.include_optional_routers()
+
+# Include assets serving router (must be mounted to serve generated images)
+app.include_router(assets_serving_router)
 
 # SEO Dashboard endpoints
 @app.get("/api/seo-dashboard/data")

@@ -324,6 +324,39 @@ class WaveSpeedClient:
             timeout=timeout,
         )
 
+    def voice_design(
+        self,
+        text: str,
+        voice_description: str,
+        language: str = "auto",
+        timeout: int = 180,
+    ) -> bytes:
+        return self.speech.voice_design(
+            text=text,
+            voice_description=voice_description,
+            language=language,
+            timeout=timeout,
+        )
+
+    def cosyvoice_voice_clone(
+        self,
+        audio_bytes: bytes,
+        text: str,
+        *,
+        model: str = "wavespeed-ai/cosyvoice-tts/voice-clone",
+        audio_mime_type: str = "audio/wav",
+        reference_text: Optional[str] = None,
+        timeout: int = 180,
+    ) -> bytes:
+        return self.speech.cosyvoice_voice_clone(
+            audio_bytes=audio_bytes,
+            text=text,
+            model=model,
+            audio_mime_type=audio_mime_type,
+            reference_text=reference_text,
+            timeout=timeout,
+        )
+
     def generate_text_video(
         self,
         prompt: str,

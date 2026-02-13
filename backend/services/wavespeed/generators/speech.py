@@ -181,6 +181,102 @@ class SpeechGenerator:
         audio_url = self._extract_audio_url(outputs)
         return self._download_audio(audio_url, timeout)
 
+    def voice_design(
+        self,
+        text: str,
+        voice_description: str,
+        language: str = "auto",
+        timeout: int = 180,
+    ) -> bytes:
+        """
+        Generate speech using Qwen3 Voice Design (text + voice description).
+        """
+        url = f"{self.base_url}/wavespeed-ai/qwen3-tts/voice-design"
+        
+        payload = {
+            "text": text,
+            "voice_description": voice_description,
+            "language": language
+        }
+
+        logger.info(f"[WaveSpeed] Voice design via {url}")
+
+        try:
+            response = requests.post(
+                url,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=(30, 90),
+            )
+        except requests_exceptions.Timeout as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed Voice Design timed out", "message": str(e)})
+        except (requests_exceptions.ConnectionError, requests_exceptions.ConnectTimeout) as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed Voice Design connection failed", "message": str(e)})
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail={"error": "WaveSpeed Voice Design failed", "message": response.text}
+            )
+
+        try:
+            data = response.json()
+            # The API is async and returns a task ID or direct output depending on implementation.
+            # Based on user input, it returns a "data" object with "id" and we poll.
+            # BUT wait, the Python example provided by user shows:
+            # response = requests.post(url, ...)
+            # if response.status_code == 200: result = response.json()["data"] ...
+            # Then it polls /api/v3/predictions/{request_id}/result
+            
+            # Let's handle the async polling logic here or in the caller.
+            # The user's Python example is very clear. It's an async task.
+            
+            if "data" in data and "id" in data["data"]:
+                request_id = data["data"]["id"]
+                return self._poll_prediction_result(request_id, timeout=timeout)
+            
+            # Fallback if it returns direct output (unlikely based on docs)
+            if "data" in data and "outputs" in data["data"] and data["data"]["outputs"]:
+                return self._download_audio(data["data"]["outputs"][0]["url"], timeout) # Assuming structure
+            
+            raise ValueError(f"Unexpected response format: {data}")
+
+        except Exception as e:
+            logger.error(f"[WaveSpeed] Error parsing Voice Design response: {e}")
+            raise HTTPException(status_code=500, detail={"error": "Failed to parse Voice Design response", "message": str(e)})
+
+    def _poll_prediction_result(self, request_id: str, timeout: int = 180) -> bytes:
+        import time
+        url = f"https://api.wavespeed.ai/api/v3/predictions/{request_id}/result"
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                response = requests.get(url, headers=self._get_headers(), timeout=10)
+                if response.status_code == 200:
+                    result = response.json().get("data", {})
+                    status = result.get("status")
+                    
+                    if status == "completed":
+                        if result.get("outputs") and len(result["outputs"]) > 0:
+                            audio_url = result["outputs"][0] # It's a URL string in the array
+                            return self._download_audio(audio_url, timeout)
+                        else:
+                            raise ValueError("Completed task has no output URLs")
+                    elif status == "failed":
+                        raise ValueError(f"Task failed: {result.get('error')}")
+                    
+                    # If processing/created, continue polling
+                    time.sleep(1)
+                else:
+                    logger.warning(f"Polling error {response.status_code}: {response.text}")
+                    time.sleep(1)
+            except Exception as e:
+                logger.error(f"Polling exception: {e}")
+                time.sleep(1)
+                
+        raise HTTPException(status_code=504, detail="Voice Design generation timed out")
+
     def voice_clone(
         self,
         audio_bytes: bytes,
@@ -320,6 +416,70 @@ class SpeechGenerator:
         audio_url = self._extract_audio_url(outputs)
         return self._download_audio(audio_url, timeout)
     
+    def cosyvoice_voice_clone(
+        self,
+        audio_bytes: bytes,
+        text: str,
+        *,
+        model: str = "wavespeed-ai/cosyvoice-tts/voice-clone",
+        audio_mime_type: str = "audio/wav",
+        reference_text: Optional[str] = None,
+        timeout: int = 180,
+    ) -> bytes:
+        url = f"{self.base_url}/{model}"
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        mime = audio_mime_type or "audio/wav"
+        audio_data_url = f"data:{mime};base64,{audio_b64}"
+
+        payload = {
+            "audio": audio_data_url,
+            "text": text,
+        }
+        if reference_text:
+            payload["reference_text"] = reference_text
+
+        logger.info(f"[WaveSpeed] CosyVoice voice clone via {url}")
+
+        try:
+            response = requests.post(
+                url,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=(30, 90),
+            )
+        except requests_exceptions.Timeout as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed CosyVoice voice clone timed out", "message": str(e)})
+        except (requests_exceptions.ConnectionError, requests_exceptions.ConnectTimeout) as e:
+            raise HTTPException(status_code=504, detail={"error": "WaveSpeed CosyVoice voice clone connection failed", "message": str(e)})
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "WaveSpeed CosyVoice voice clone failed",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                },
+            )
+
+        response_json = response.json()
+        data = response_json.get("data") or response_json
+
+        outputs = data.get("outputs") or []
+        status = data.get("status")
+        prediction_id = data.get("id")
+
+        if not outputs and prediction_id and status in {"created", "processing"}:
+            result = self.polling.poll_until_complete(prediction_id, timeout_seconds=timeout, interval_seconds=0.8)
+            outputs = result.get("outputs") or []
+
+        if not outputs:
+            raise HTTPException(status_code=502, detail="WaveSpeed CosyVoice voice clone returned no outputs")
+
+        audio_url = self._extract_audio_url(outputs)
+        return self._download_audio(audio_url, timeout)
+
     def _extract_audio_url(self, outputs: list) -> str:
         """Extract audio URL from outputs."""
         if not isinstance(outputs, list) or len(outputs) == 0:

@@ -111,7 +111,7 @@ This integration opens up new possibilities for content creators who want to lev
         auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' })
       });
 
-      const NGROK_ORIGIN = 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+      const NGROK_ORIGIN = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
       const redirectOrigin = window.location.origin.includes('localhost') ? NGROK_ORIGIN : window.location.origin;
       const redirectUri = `${redirectOrigin}/wix/callback`;
       const oauthData = await wixClient.auth.generateOAuthData(redirectUri);

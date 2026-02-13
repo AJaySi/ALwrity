@@ -10,7 +10,7 @@ import {
   alpha
 } from '@mui/material';
 import OptimizedImage from './OptimizedImage';
-import { SignInButton } from '@clerk/clerk-react';
+import { SignInButton, useClerk } from '@clerk/clerk-react';
 import { RocketLaunch } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { ScrambleText } from '../ScrambleText';
@@ -44,6 +44,7 @@ const ScramblingText: React.FC<{ phrases: string[]; interval?: number; duration?
 
 const EnterpriseCTA: React.FC = () => {
   const theme = useTheme();
+  const { openSignIn } = useClerk();
 
   // Framer Motion variants
   const fadeInUp = {
@@ -119,8 +120,8 @@ const EnterpriseCTA: React.FC = () => {
                   </Typography>
                   
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
-                    <SignInButton mode="redirect" forceRedirectUrl="/">
                       <Button 
+                        onClick={() => openSignIn({ forceRedirectUrl: '/' })}
                         variant="contained" 
                         size="large"
                         startIcon={<RocketLaunch />}
@@ -146,7 +147,6 @@ const EnterpriseCTA: React.FC = () => {
                           interval={3500}
                         />
                       </Button>
-                    </SignInButton>
                     
                     <Stack alignItems={{ xs: 'center', sm: 'flex-start' }} spacing={1}>
                       <Typography variant="body2" color="text.secondary">

@@ -146,14 +146,44 @@ class PromptGenerator:
         if isinstance(first_output, str):
             if first_output.startswith("http://") or first_output.startswith("https://"):
                 logger.info(f"[WaveSpeed] Fetching optimized prompt from URL: {first_output}")
-                url_response = requests.get(first_output, timeout=timeout)
-                if url_response.status_code == 200:
-                    return url_response.text.strip()
-                else:
-                    logger.error(f"[WaveSpeed] Failed to fetch prompt from URL: {url_response.status_code}")
+                
+                # Use stream=True to avoid downloading large files into memory
+                try:
+                    with requests.get(first_output, timeout=timeout, stream=True) as url_response:
+                        if url_response.status_code == 200:
+                            # Check Content-Length if available
+                            content_length = url_response.headers.get("Content-Length")
+                            if content_length and int(content_length) > 1024 * 1024:  # 1MB limit for prompts
+                                logger.error(f"[WaveSpeed] Optimized prompt URL content too large: {content_length} bytes")
+                                raise HTTPException(
+                                    status_code=502,
+                                    detail="WaveSpeed prompt optimizer returned a file that is too large",
+                                )
+                            
+                            # Read content with limit
+                            content = ""
+                            for chunk in url_response.iter_content(chunk_size=8192, decode_unicode=True):
+                                if chunk:
+                                    content += chunk
+                                    if len(content) > 1024 * 1024:  # Hard limit 1MB
+                                        logger.error("[WaveSpeed] Optimized prompt URL content exceeded 1MB limit during download")
+                                        raise HTTPException(
+                                            status_code=502,
+                                            detail="WaveSpeed prompt optimizer returned a file that is too large",
+                                        )
+                            
+                            return content.strip()
+                        else:
+                            logger.error(f"[WaveSpeed] Failed to fetch prompt from URL: {url_response.status_code}")
+                            raise HTTPException(
+                                status_code=502,
+                                detail="Failed to fetch optimized prompt from WaveSpeed URL",
+                            )
+                except requests.RequestException as e:
+                    logger.error(f"[WaveSpeed] Error fetching prompt from URL: {str(e)}")
                     raise HTTPException(
                         status_code=502,
-                        detail="Failed to fetch optimized prompt from WaveSpeed URL",
+                        detail=f"Error fetching optimized prompt: {str(e)}",
                     )
             else:
                 # It's already the text

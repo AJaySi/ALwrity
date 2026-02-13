@@ -43,6 +43,12 @@ async def get_gsc_auth_url(user: dict = Depends(get_current_user)):
         logger.info(f"OAuth URL: {auth_url[:100]}...")
         return {"auth_url": auth_url}
         
+    except FileNotFoundError as e:
+        logger.error(f"GSC credentials not found: {e}")
+        raise HTTPException(
+            status_code=503, 
+            detail="Google Search Console integration is not configured. Please add gsc_credentials.json to the backend directory or set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables."
+        )
     except Exception as e:
         logger.error(f"Error generating GSC OAuth URL: {e}")
         logger.error(f"Error details: {str(e)}")
@@ -73,34 +79,29 @@ async def handle_gsc_callback(
                 from services.platform_insights_monitoring_service import create_platform_insights_task
                 
                 # Get user_id from state (stored during OAuth flow)
-                # Note: handle_oauth_callback already deleted state, so we need to get user_id from recent credentials
-                db = SessionLocal()
-                try:
-                    # Get user_id from most recent GSC credentials (since state was deleted)
-                    import sqlite3
-                    with sqlite3.connect(gsc_service.db_path) as conn:
-                        cursor = conn.cursor()
-                        cursor.execute('SELECT user_id FROM gsc_credentials ORDER BY updated_at DESC LIMIT 1')
-                        result = cursor.fetchone()
-                        if result:
-                            user_id = result[0]
-                            
-                            # Don't fetch site_url here - it requires API calls
-                            # The executor will fetch it when the task runs (weekly)
-                            # Create insights task without site_url to avoid API calls
-                            task_result = create_platform_insights_task(
-                                user_id=user_id,
-                                platform='gsc',
-                                site_url=None,  # Will be fetched by executor when task runs
-                                db=db
-                            )
-                            
-                            if task_result.get('success'):
-                                logger.info(f"Created GSC insights task for user {user_id}")
-                            else:
-                                logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
-                finally:
-                    db.close()
+                # Format is "user_id:random_string"
+                user_id = state.split(':')[0] if ':' in state else None
+                
+                if user_id:
+                    db = SessionLocal()
+                    try:
+                        # Create insights task without site_url to avoid API calls
+                        # The executor will fetch it when the task runs (weekly)
+                        task_result = create_platform_insights_task(
+                            user_id=user_id,
+                            platform='gsc',
+                            site_url=None,  # Will be fetched by executor when task runs
+                            db=db
+                        )
+                        
+                        if task_result.get('success'):
+                            logger.info(f"Created GSC insights task for user {user_id}")
+                        else:
+                            logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
+                    finally:
+                        db.close()
+                else:
+                    logger.warning(f"Could not extract user_id from state: {state}")
             except Exception as e:
                 # Non-critical: log but don't fail OAuth callback
                 logger.warning(f"Failed to create GSC insights task after OAuth: {e}", exc_info=True)

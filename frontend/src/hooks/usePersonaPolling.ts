@@ -173,6 +173,8 @@ export function usePersonaPolling(options: UsePersonaPollingOptions = {}): UsePe
         if (status.status === 'completed') {
           setResult(status.result);
           onComplete?.(status.result);
+          // Trigger global usage stats refresh
+          window.dispatchEvent(new Event('alwrity:refresh-usage'));
           stopPolling();
         } else if (status.status === 'failed') {
           setError(status.error || 'Persona generation failed');

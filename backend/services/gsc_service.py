@@ -14,6 +14,8 @@ from loguru import logger
 
 from services.database import get_user_db_path
 
+from dotenv import load_dotenv
+
 class GSCService:
     """Service for Google Search Console integration."""
     
@@ -31,10 +33,62 @@ class GSCService:
             services_dir = os.path.dirname(__file__)
             backend_dir = os.path.abspath(os.path.join(services_dir, os.pardir))
             self.credentials_file = os.path.join(backend_dir, "gsc_credentials.json")
-        logger.info(f"GSC credentials file path set to: {self.credentials_file}")
+            
+        # Load client config from file or environment variables
+        self.client_config = self._load_client_config()
+        
+        if self.client_config:
+            logger.info("GSC client configuration loaded successfully")
+        else:
+            logger.warning(f"GSC credentials not found in {self.credentials_file} or environment variables")
+            
         self.scopes = ['https://www.googleapis.com/auth/webmasters.readonly']
         # Note: Tables are initialized lazily per user
         logger.info("GSC Service initialized successfully")
+
+    def _load_client_config(self) -> Optional[Dict[str, Any]]:
+        """Load Google client configuration from environment variables or file."""
+        # Reload environment variables to catch any runtime changes (e.g. .env updates)
+        load_dotenv(override=True)
+
+        # 1. Check Environment Variables (Priority)
+        client_id = os.getenv("GOOGLE_CLIENT_ID")
+        client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+        
+        if client_id and client_secret:
+            redirect_uri = os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
+            logger.info("Loading GSC credentials from environment variables")
+            # Construct the config dictionary expected by google_auth_oauthlib
+            return {
+                "web": {
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "project_id": os.getenv("GOOGLE_PROJECT_ID", "alwrity"),
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "redirect_uris": [
+                        "http://localhost:5173/onboarding",
+                        redirect_uri
+                    ],
+                    "javascript_origins": [
+                        "http://localhost:5173",
+                        "http://localhost:8000"
+                    ]
+                }
+            }
+
+        # 2. Fallback to File
+        if os.path.exists(self.credentials_file):
+            try:
+                with open(self.credentials_file, 'r') as f:
+                    config = json.load(f)
+                    logger.info(f"Loading GSC credentials from file: {self.credentials_file}")
+                    return config
+            except Exception as e:
+                logger.warning(f"Failed to load GSC credentials from file: {e}")
+        
+        return None
     
     def _get_db_path(self, user_id: str) -> str:
         return get_user_db_path(user_id)
@@ -94,11 +148,11 @@ class GSCService:
             self._init_gsc_tables(user_id)
             db_path = self._get_db_path(user_id)
             
-            # Read client credentials from file to ensure we have all required fields
-            with open(self.credentials_file, 'r') as f:
-                client_config = json.load(f)
+            if not self.client_config:
+                logger.error("Cannot save credentials: Client configuration not loaded")
+                return False
             
-            web_config = client_config.get('web', {})
+            web_config = self.client_config.get('web', {})
             
             credentials_json = json.dumps({
                 'token': credentials.token,
@@ -184,12 +238,17 @@ class GSCService:
         try:
             logger.info(f"Generating OAuth URL for user: {user_id}")
             
-            if not os.path.exists(self.credentials_file):
-                raise FileNotFoundError(f"GSC credentials file not found: {self.credentials_file}")
+            # Retry loading config if missing (in case .env was added later)
+            if not self.client_config:
+                self.client_config = self._load_client_config()
+
+            if not self.client_config:
+                raise FileNotFoundError("GSC credentials not found in file or environment variables.")
             
             redirect_uri = os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
-            flow = Flow.from_client_secrets_file(
-                self.credentials_file,
+            
+            flow = Flow.from_client_config(
+                self.client_config,
                 scopes=self.scopes,
                 redirect_uri=redirect_uri
             )
@@ -256,8 +315,12 @@ class GSCService:
                 conn.commit()
             
             # Exchange code for credentials
-            flow = Flow.from_client_secrets_file(
-                self.credentials_file,
+            if not self.client_config:
+                logger.error("Cannot handle callback: Client configuration not loaded")
+                return False
+
+            flow = Flow.from_client_config(
+                self.client_config,
                 scopes=self.scopes,
                 redirect_uri=os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
             )
@@ -283,7 +346,11 @@ class GSCService:
             service = build('searchconsole', 'v1', credentials=credentials)
             logger.info(f"Authenticated GSC service created for user: {user_id}")
             return service
-            
+        
+        except ValueError as e:
+            # Log as warning only, as this is expected for unconnected users
+            # logger.warning(f"Cannot create GSC service for user {user_id}: {e}")
+            raise e
         except Exception as e:
             logger.error(f"Error creating authenticated GSC service for user {user_id}: {e}")
             raise
@@ -291,7 +358,13 @@ class GSCService:
     def get_site_list(self, user_id: str) -> List[Dict[str, Any]]:
         """Get list of sites from GSC."""
         try:
-            service = self.get_authenticated_service(user_id)
+            try:
+                service = self.get_authenticated_service(user_id)
+            except ValueError:
+                # User not connected or credentials invalid
+                logger.warning(f"User {user_id} not connected to GSC. Returning empty site list.")
+                return []
+
             sites = service.sites().list().execute()
             
             site_list = []
@@ -306,7 +379,8 @@ class GSCService:
             
         except Exception as e:
             logger.error(f"Error getting site list for user {user_id}: {e}")
-            raise
+            # Return empty list instead of raising to prevent frontend 500s
+            return []
     
     def get_search_analytics(self, user_id: str, site_url: str, 
                            start_date: str = None, end_date: str = None) -> Dict[str, Any]:
@@ -325,7 +399,12 @@ class GSCService:
                 logger.info(f"Returning cached analytics data for user: {user_id}")
                 return cached_data
             
-            service = self.get_authenticated_service(user_id)
+            try:
+                service = self.get_authenticated_service(user_id)
+            except ValueError:
+                logger.warning(f"User {user_id} not connected to GSC. Returning empty analytics.")
+                return {'error': 'User not connected to GSC', 'rows': [], 'rowCount': 0}
+
             if not service:
                 logger.error(f"Failed to get authenticated GSC service for user: {user_id}")
                 return {'error': 'Authentication failed', 'rows': [], 'rowCount': 0}
@@ -359,11 +438,11 @@ class GSCService:
                 logger.error(f"GSC Data verification failed for user {user_id}: {verification_error}")
                 return {'error': f'Data verification failed: {str(verification_error)}', 'rows': [], 'rowCount': 0}
             
-            # Step 2: Get overall metrics (no dimensions)
+            # Step 2: Get daily metrics for charting (ensure we have rows)
             request = {
                 'startDate': start_date,
                 'endDate': end_date,
-                'dimensions': [],  # No dimensions for overall metrics
+                'dimensions': ['date'],  # Use date dimension to get time-series data
                 'rowLimit': 1000
             }
             
@@ -472,7 +551,11 @@ class GSCService:
     def revoke_user_access(self, user_id: str) -> bool:
         """Revoke user's GSC access."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            if not os.path.exists(db_path):
+                return True
+                
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 
                 # Delete credentials
@@ -496,7 +579,11 @@ class GSCService:
     def clear_incomplete_credentials(self, user_id: str) -> bool:
         """Clear incomplete GSC credentials that are missing required fields."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            if not os.path.exists(db_path):
+                return True
+                
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM gsc_credentials WHERE user_id = ?', (user_id,))
                 conn.commit()
@@ -511,7 +598,11 @@ class GSCService:
     def _get_cached_data(self, user_id: str, site_url: str, data_type: str, cache_key: str) -> Optional[Dict]:
         """Get cached data if not expired."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = self._get_db_path(user_id)
+            if not os.path.exists(db_path):
+                return None
+                
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT data_json FROM gsc_data_cache 
@@ -531,9 +622,12 @@ class GSCService:
     def _cache_data(self, user_id: str, site_url: str, data_type: str, data: Dict, cache_key: str):
         """Cache data with expiration."""
         try:
+            self._init_gsc_tables(user_id)
+            db_path = self._get_db_path(user_id)
+            
             expires_at = datetime.now() + timedelta(hours=1)  # Cache for 1 hour
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT OR REPLACE INTO gsc_data_cache 

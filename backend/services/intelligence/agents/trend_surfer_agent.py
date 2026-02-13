@@ -19,7 +19,7 @@ class TrendSurferAgent(SIFBaseAgent):
     """
     
     def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str):
-        super().__init__(intelligence_service)
+        super().__init__(intelligence_service, user_id, agent_type="trend_surfer")
         self.user_id = user_id
         self.signal_detector = MarketSignalDetector(user_id)
         self.trends_service = GoogleTrendsService()
@@ -148,15 +148,41 @@ class TrendSurferAgent(SIFBaseAgent):
             else:
                 recommendation = "Create new content"
                 
+            # Use LLM to generate creative angle
+            headline = f"Trend: {trend.description}"
+            angle = f"Leverage {trend.source} trend on {trend.related_topics[0] if trend.related_topics else 'topic'}"
+            
+            try:
+                prompt = f"""
+                Analyze this market trend signal and propose a content angle:
+                Trend: {trend.description}
+                Related Topics: {', '.join(trend.related_topics)}
+                Impact Score: {trend.impact_score}
+                Recommendation: {recommendation}
+                
+                Provide a catchy headline and a 1-sentence strategic angle.
+                Format: Headline | Angle
+                """
+                response = await self._generate_llm_response(prompt)
+                if response and "|" in response:
+                    parts = response.split('|')
+                    headline = parts[0].strip()
+                    angle = parts[1].strip()
+                elif response:
+                    angle = response.strip()
+            except Exception as e:
+                logger.warning(f"[{self.__class__.__name__}] LLM generation failed for opportunity: {e}")
+
             return {
                 "trend_id": trend.signal_id,
                 "topic": trend.description,
+                "headline": headline,
                 "source": trend.source,
                 "urgency": trend.urgency_level.value,
                 "impact_score": trend.impact_score,
                 "current_coverage": coverage_score,
                 "recommendation": recommendation,
-                "suggested_angle": f"Leverage {trend.source} trend on {trend.related_topics[0] if trend.related_topics else 'topic'}",
+                "suggested_angle": angle,
                 "detected_at": trend.detected_at
             }
             

@@ -938,14 +938,14 @@ class SIFIntegrationService:
             # Strategic recommendations (lazy initialization to avoid circular imports)
             if not self.strategy_agent:
                 from .sif_agents import StrategyArchitectAgent
-                self.strategy_agent = StrategyArchitectAgent(self.intelligence_service)
+                self.strategy_agent = StrategyArchitectAgent(self.intelligence_service, user_id=self.user_id)
             recommendations = await self.strategy_agent.analyze_content_strategy(website_data)
             insights["strategic_recommendations"] = recommendations
             
             # Content quality assessment (lazy initialization to avoid circular imports)
             if not self.guardian_agent:
                 from .sif_agents import ContentGuardianAgent
-                self.guardian_agent = ContentGuardianAgent(self.intelligence_service, sif_service=self)
+                self.guardian_agent = ContentGuardianAgent(self.intelligence_service, user_id=self.user_id, sif_service=self)
             quality_score = await self.guardian_agent.assess_content_quality(website_data)
             insights["content_quality"] = quality_score
             

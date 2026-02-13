@@ -114,8 +114,19 @@ def save_asset_to_library(
         try:
             source_module_enum = AssetSource(source_module.lower())
         except ValueError:
-            logger.warning(f"Invalid source module: {source_module}, defaulting to 'story_writer'")
-            source_module_enum = AssetSource.STORY_WRITER
+            logger.warning(f"Invalid source module: {source_module}, attempting fallback based on asset type")
+            
+            # Smart fallback based on asset type
+            if asset_type_enum == AssetType.IMAGE:
+                source_module_enum = AssetSource.MAIN_IMAGE_GENERATION
+            elif asset_type_enum == AssetType.AUDIO:
+                source_module_enum = AssetSource.MAIN_AUDIO_GENERATION
+            elif asset_type_enum == AssetType.VIDEO:
+                source_module_enum = AssetSource.MAIN_VIDEO_GENERATION
+            else:
+                source_module_enum = AssetSource.MAIN_TEXT_GENERATION
+            
+            logger.info(f"Fallback source module: {source_module_enum.value}")
         
         # Sanitize filename (remove path traversal attempts)
         filename = re.sub(r'[^\w\s\-_\.]', '', filename.split('/')[-1])
@@ -151,6 +162,25 @@ def save_asset_to_library(
         )
         
         logger.info(f"✅ Asset saved to library: {asset.id} ({asset_type} from {source_module})")
+        
+        # Trigger SIF Indexing for all new assets (Text, Image, etc.)
+        try:
+            from models.website_analysis_monitoring_models import SIFIndexingTask
+            from datetime import datetime
+            
+            # Check if a SIF Indexing task exists for this user
+            existing_task = db.query(SIFIndexingTask).filter(SIFIndexingTask.user_id == user_id).first()
+            if existing_task:
+                logger.info(f"Triggering SIF Indexing task for user {user_id} due to new {asset_type} asset")
+                existing_task.next_execution = datetime.utcnow()  # Run immediately
+                existing_task.status = "pending"  # Ensure it gets picked up
+                db.add(existing_task)
+                # Note: Commit depends on the caller's transaction management
+            else:
+                logger.debug(f"No SIF Indexing task found for user {user_id} - skipping trigger")
+        except Exception as e:
+            logger.warning(f"Failed to trigger SIF Indexing task in asset_tracker: {e}")
+            
         return asset.id
         
     except Exception as e:

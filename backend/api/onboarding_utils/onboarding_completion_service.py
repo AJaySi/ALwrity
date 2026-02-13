@@ -100,6 +100,8 @@ class OnboardingCompletionService:
             except Exception as e:
                 logger.warning(f"Failed to schedule website analysis task creation for user {user_id}: {e}")
 
+
+
             # Schedule onboarding full-site SEO audit (non-blocking) ~10 minutes after completion
             try:
                 from services.database import SessionLocal

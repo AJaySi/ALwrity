@@ -31,8 +31,8 @@ import {
 } from '@mui/icons-material';
 import { motion, AnimatePresence, type Variants, type Easing } from 'framer-motion';
 
-const MotionCard = motion(Card);
-const MotionBox = motion(Box);
+const MotionCard = motion.create(Card);
+const MotionBox = motion.create(Box);
 const galleryEase: Easing = [0.4, 0, 0.2, 1];
 
 interface ImageResult {

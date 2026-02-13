@@ -30,6 +30,8 @@ from models.product_asset_models import ProductAsset, ProductStyleTemplate, Ecom
 from models.podcast_models import PodcastProject
 # Research models use SubscriptionBase
 from models.research_models import ResearchProject
+# Video Studio models
+from models.video_models import VideoGenerationTask
 # Bing Analytics models
 from models.bing_analytics_models import Base as BingAnalyticsBase
 
@@ -54,7 +56,22 @@ def get_user_db_path(user_id: str) -> str:
     # Sanitize user_id to be safe for filesystem
     safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
     user_workspace = os.path.join(WORKSPACE_DIR, f"workspace_{safe_user_id}")
-    return os.path.join(user_workspace, 'db', f'alwrity_{safe_user_id}.db')
+    
+    # Check for legacy naming convention first (to support existing data)
+    # Some older workspaces might have 'alwrity.db' instead of 'alwrity_{user_id}.db'
+    legacy_db_path = os.path.join(user_workspace, 'db', 'alwrity.db')
+    specific_db_path = os.path.join(user_workspace, 'db', f'alwrity_{safe_user_id}.db')
+    
+    # If the specific one exists, use it (preferred)
+    if os.path.exists(specific_db_path):
+        return specific_db_path
+        
+    # If legacy exists and specific doesn't, use legacy
+    if os.path.exists(legacy_db_path):
+        return legacy_db_path
+        
+    # Default to specific for new databases
+    return specific_db_path
 
 def get_all_user_ids() -> List[str]:
     """

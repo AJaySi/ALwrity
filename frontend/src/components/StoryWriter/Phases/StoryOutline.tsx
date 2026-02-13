@@ -29,7 +29,7 @@ import CharactersModal from './StoryOutlineParts/CharactersModal';
 import KeyEventsModal from './StoryOutlineParts/KeyEventsModal';
 import TitleEditModal from './StoryOutlineParts/TitleEditModal';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 // styles imported
 

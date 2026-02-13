@@ -56,6 +56,17 @@ async def check_and_execute_due_tasks(scheduler: 'TaskScheduler'):
             continue
             
         try:
+            # Check onboarding status first
+            # Skip users who haven't completed onboarding to prevent premature agent initialization
+            from services.onboarding.progress_service import OnboardingProgressService
+            onboarding_service = OnboardingProgressService()
+            status = onboarding_service.get_onboarding_status(user_id)
+            
+            if not status.get("is_completed", False):
+                # Skip logging for inactive users to reduce noise, unless debugging
+                # logger.debug(f"[Scheduler Check] Skipping user {user_id} - Onboarding incomplete")
+                continue
+
             # Check active strategies for this user (for interval adjustment)
             try:
                 from services.active_strategy_service import ActiveStrategyService

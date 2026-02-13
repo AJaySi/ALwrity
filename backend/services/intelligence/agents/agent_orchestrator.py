@@ -105,6 +105,18 @@ class ALwrityAgentOrchestrator:
     def _create_specialized_agents(self):
         """Create specialized marketing agents"""
         try:
+            # Check if onboarding is complete before initializing heavy agents
+            try:
+                from services.onboarding.progress_service import OnboardingProgressService
+                onboarding_service = OnboardingProgressService()
+                status = onboarding_service.get_onboarding_status(self.user_id)
+                if not status.get("is_completed", False):
+                    logger.info(f"Skipping agent initialization for user {self.user_id} - Onboarding incomplete")
+                    return
+            except Exception as e:
+                logger.warning(f"Could not check onboarding status for {self.user_id}: {e}")
+                # Fallthrough to attempt initialization if check fails
+
             enabled_by_key = {}
             db = None
             try:
@@ -159,6 +171,26 @@ class ALwrityAgentOrchestrator:
                 self.trend_surfer_agent = TrendSurferAgent(intel_service, self.user_id)
                 self.agents['trend'] = self.trend_surfer_agent
             
+            # Content Guardian Agent
+            if enabled_by_key.get("content_guardian", True):
+                try:
+                    from services.intelligence.sif_agents import ContentGuardianAgent
+                    from services.intelligence.txtai_service import TxtaiIntelligenceService
+                    
+                    # Initialize intelligence service if not already available
+                    intel_service = TxtaiIntelligenceService(self.user_id)
+                    
+                    # Initialize Content Guardian Agent
+                    self.content_guardian_agent = ContentGuardianAgent(
+                        intelligence_service=intel_service,
+                        user_id=self.user_id,
+                        sif_service=None # SIF service is optional/circular dependency handling
+                    )
+                    self.agents['guardian'] = self.content_guardian_agent
+                    logger.info(f"Initialized ContentGuardianAgent for user {self.user_id}")
+                except Exception as e:
+                    logger.error(f"Failed to initialize ContentGuardianAgent: {e}")
+
             logger.info(f"Created {len(self.agents)} specialized agents for user {self.user_id}")
             
         except Exception as e:

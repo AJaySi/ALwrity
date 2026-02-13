@@ -758,6 +758,11 @@ async def get_agent_performance_summary(user_id: str, agent_id: str) -> Dict[str
     """Get comprehensive performance summary for an agent"""
     return await performance_service.get_agent_performance_summary(user_id, agent_id)
 
-async def get_all_agents_performance_summary(user_id: str) -> List[Dict[str, Any]]:
+async def get_all_agents_performance_summary(user_id: str) -> List[Dict[str, Any]]:       
     """Get performance summary for all agents for a user"""
     return await performance_service.get_all_agents_performance_summary(user_id)
+
+# Alias for backward compatibility
+PerformanceMonitor = AgentPerformanceMonitor
+performance_monitor = performance_service
+AgentPerformanceMetrics = AgentPerformanceSnapshot
