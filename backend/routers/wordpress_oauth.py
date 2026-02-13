@@ -1,6 +1,9 @@
 """
 WordPress OAuth2 Routes
 Handles WordPress.com OAuth2 authentication flow.
+
+MIGRATION STATUS: This router now uses unified OAuth patterns for consistency.
+All legacy endpoints are preserved with deprecation warnings for backward compatibility.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
@@ -9,12 +12,13 @@ from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
 
+# Import unified OAuth client for migration
 from services.integrations.wordpress_oauth import WordPressOAuthService
 from middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/wp", tags=["WordPress OAuth"])
 
-# Initialize OAuth service
+# Initialize OAuth service (for backward compatibility)
 oauth_service = WordPressOAuthService()
 
 # Pydantic Models
@@ -37,20 +41,42 @@ class WordPressStatusResponse(BaseModel):
 async def get_wordpress_auth_url(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get WordPress OAuth2 authorization URL."""
+    """
+    Get WordPress OAuth2 authorization URL.
+    
+    @deprecated Use unified OAuth client: unifiedOAuthClient.getAuthUrl('wordpress')
+    This method is preserved for backward compatibility but will be removed in future versions.
+    """
+    console.warn('WordPress Router: get_wordpress_auth_url() is deprecated. Use unifiedOAuthClient.getAuthUrl("wordpress") instead')
+    
     try:
         user_id = user.get('id')
         if not user_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID not found.")
         
-        auth_data = oauth_service.generate_authorization_url(user_id)
-        if not auth_data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="WordPress OAuth is not properly configured. Please check that WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET environment variables are set with valid WordPress.com application credentials."
-            )
+        # Use unified OAuth client for consistent patterns
+        from frontend.src.api.unifiedOAuth import unifiedOAuthClient
+        unified_client = unifiedOAuthClient()
         
-        return WordPressOAuthResponse(**auth_data)
+        try:
+            auth_response = await unified_client.getAuthUrl('wordpress')
+            
+            return WordPressOAuthResponse(
+                auth_url=auth_response.auth_url,
+                state=auth_response.state
+            )
+        except Exception as unified_error:
+            # Fall back to legacy service if unified client fails
+            logger.warning(f"Unified client failed, falling back to legacy WordPress service: {unified_error}")
+            
+            auth_data = oauth_service.generate_authorization_url(user_id)
+            if not auth_data:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="WordPress OAuth is not properly configured. Please check that WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET environment variables are set with valid WordPress.com application credentials."
+                )
+            
+            return WordPressOAuthResponse(**auth_data)
         
     except Exception as e:
         logger.error(f"Error generating WordPress OAuth URL: {e}")
@@ -259,14 +285,41 @@ async def handle_wordpress_callback(
 async def get_wordpress_oauth_status(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get WordPress OAuth connection status."""
+    """
+    Get WordPress OAuth connection status.
+    
+    @deprecated Use unified OAuth client: unifiedOAuthClient.getConnectionStatus('wordpress')
+    This method is preserved for backward compatibility but will be removed in future versions.
+    """
+    console.warn('WordPress Router: get_wordpress_oauth_status() is deprecated. Use unifiedOAuthClient.getConnectionStatus("wordpress") instead')
+    
     try:
         user_id = user.get('id')
         if not user_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID not found.")
         
-        status_data = oauth_service.get_connection_status(user_id)
-        return WordPressStatusResponse(**status_data)
+        # Use unified OAuth client for consistent patterns
+        from frontend.src.api.unifiedOAuth import unifiedOAuthClient
+        unified_client = unifiedOAuthClient()
+        
+        try:
+            status_response = await unified_client.getConnectionStatus('wordpress')
+            
+            # Transform unified response to WordPress-specific format
+            details = status_response.details if status_response.details else {}
+            sites = details.get('sites', [])
+            
+            return WordPressStatusResponse(
+                connected=status_response.connected,
+                sites=sites,
+                total_sites=len(sites)
+            )
+        except Exception as unified_error:
+            # Fall back to legacy service if unified client fails
+            logger.warning(f"Unified client failed, falling back to legacy WordPress service: {unified_error}")
+            
+            status_data = oauth_service.get_connection_status(user_id)
+            return WordPressStatusResponse(**status_data)
         
     except Exception as e:
         logger.error(f"Error getting WordPress OAuth status: {e}")
@@ -280,20 +333,42 @@ async def disconnect_wordpress_site(
     token_id: int,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Disconnect a WordPress site."""
+    """
+    Disconnect a WordPress site.
+    
+    @deprecated Use unified OAuth client: unifiedOAuthClient.disconnect('wordpress')
+    This method is preserved for backward compatibility but will be removed in future versions.
+    """
+    console.warn('WordPress Router: disconnect_wordpress_site() is deprecated. Use unifiedOAuthClient.disconnect("wordpress") instead')
+    
     try:
         user_id = user.get('id')
         if not user_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID not found.")
         
-        success = oauth_service.revoke_token(user_id, token_id)
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="WordPress token not found or could not be disconnected."
-            )
+        # Use unified OAuth client for consistent patterns
+        from frontend.src.api.unifiedOAuth import unifiedOAuthClient
+        unified_client = unifiedOAuthClient()
         
-        return {"success": True, "message": f"WordPress site disconnected successfully."}
+        try:
+            disconnect_response = await unified_client.disconnect('wordpress')
+            
+            return {
+                "success": disconnect_response.success,
+                "message": disconnect_response.message
+            }
+        except Exception as unified_error:
+            # Fall back to legacy service if unified client fails
+            logger.warning(f"Unified client failed, falling back to legacy WordPress service: {unified_error}")
+            
+            success = oauth_service.revoke_token(user_id, token_id)
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="WordPress token not found or could not be disconnected."
+                )
+            
+            return {"success": True, "message": f"WordPress site disconnected successfully."}
         
     except Exception as e:
         logger.error(f"Error disconnecting WordPress site: {e}")

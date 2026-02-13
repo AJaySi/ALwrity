@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from loguru import logger
-import sqlite3
+from sqlalchemy.exc import SQLAlchemyError
+from pydantic import BaseModel, Field, validator
 
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
@@ -18,10 +19,24 @@ from models.subscription_models import (
     SubscriptionPlan, UserSubscription, UsageSummary,
     SubscriptionTier, BillingCycle, UsageStatus, SubscriptionRenewalHistory
 )
-from ..dependencies import verify_user_access
+from ..dependencies import verify_user_access, get_rate_limit_dependency
 from ..utils import format_plan_limits, handle_schema_error
 
 router = APIRouter()
+
+
+class SubscriptionRequest(BaseModel):
+    """Validated subscription payload."""
+
+    plan_id: int = Field(..., gt=0)
+    billing_cycle: BillingCycle = BillingCycle.MONTHLY
+
+    @validator("billing_cycle", pre=True)
+    @classmethod
+    def normalize_billing_cycle(cls, value):
+        if isinstance(value, str):
+            return value.lower().strip()
+        return value
 
 
 @router.get("/user/{user_id}/subscription")
@@ -199,7 +214,7 @@ async def get_subscription_status(
             }
         }
 
-    except (sqlite3.OperationalError, Exception) as e:
+    except (SQLAlchemyError, Exception) as e:
         error_str = str(e).lower()
         if 'no such column' in error_str and ('exa_calls_limit' in error_str or 'video_calls_limit' in error_str or 'image_edit_calls_limit' in error_str or 'audio_calls_limit' in error_str):
             # Try to fix schema and retry once
@@ -300,9 +315,10 @@ async def get_subscription_status(
 @router.post("/subscribe/{user_id}")
 async def subscribe_to_plan(
     user_id: str,
-    subscription_data: dict,
+    subscription_data: SubscriptionRequest,
     db: Session = Depends(get_db),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    _: None = Depends(get_rate_limit_dependency("subscription_change", max_requests=5, window_seconds=60))
 ) -> Dict[str, Any]:
     """Create or update a user's subscription (renewal)."""
     
@@ -310,11 +326,8 @@ async def subscribe_to_plan(
 
     try:
         ensure_subscription_plan_columns(db)
-        plan_id = subscription_data.get('plan_id')
-        billing_cycle = subscription_data.get('billing_cycle', 'monthly')
-
-        if not plan_id:
-            raise HTTPException(status_code=400, detail="plan_id is required")
+        plan_id = subscription_data.plan_id
+        billing_cycle = subscription_data.billing_cycle.value
 
         # Get the plan
         plan = db.query(SubscriptionPlan).filter(
@@ -473,16 +486,9 @@ async def subscribe_to_plan(
         logger.info(f"   └─ Period End: {subscription.current_period_end.strftime('%Y-%m-%d %H:%M:%S')}")
         
         if usage_before:
-            logger.info(f"   📊 Current Usage BEFORE Reset (Period: {current_period}):")
-            logger.info(f"      ├─ Gemini: {usage_before.gemini_tokens or 0} tokens / {usage_before.gemini_calls or 0} calls")
-            logger.info(f"      ├─ Mistral/HF: {usage_before.mistral_tokens or 0} tokens / {usage_before.mistral_calls or 0} calls")
-            logger.info(f"      ├─ OpenAI: {usage_before.openai_tokens or 0} tokens / {usage_before.openai_calls or 0} calls")
-            logger.info(f"      ├─ Stability (Images): {usage_before.stability_calls or 0} calls")
-            logger.info(f"      ├─ Total Tokens: {usage_before.total_tokens or 0}")
-            logger.info(f"      ├─ Total Calls: {usage_before.total_calls or 0}")
-            logger.info(f"      └─ Usage Status: {usage_before.usage_status.value}")
+            logger.info(f"   📊 Usage summary found for period {current_period}; reset will be applied")
         else:
-            logger.info(f"   📊 No usage summary found for period {current_period} (will be created on reset)")
+            logger.info(f"   📊 No usage summary found for period {current_period}; one may be created on first API call")
 
         # Clear subscription limits cache to force refresh on next check
         # IMPORTANT: Do this BEFORE resetting usage to ensure cache is cleared first
@@ -523,16 +529,9 @@ async def subscribe_to_plan(
             if reset_result.get('reset'):
                 logger.info(f"   ✅ Usage counters RESET successfully")
                 if usage_after:
-                    logger.info(f"   📊 New Usage AFTER Reset:")
-                    logger.info(f"      ├─ Gemini: {usage_after.gemini_tokens or 0} tokens / {usage_after.gemini_calls or 0} calls")
-                    logger.info(f"      ├─ Mistral/HF: {usage_after.mistral_tokens or 0} tokens / {usage_after.mistral_calls or 0} calls")
-                    logger.info(f"      ├─ OpenAI: {usage_after.openai_tokens or 0} tokens / {usage_after.openai_calls or 0} calls")
-                    logger.info(f"      ├─ Stability (Images): {usage_after.stability_calls or 0} calls")
-                    logger.info(f"      ├─ Total Tokens: {usage_after.total_tokens or 0}")
-                    logger.info(f"      ├─ Total Calls: {usage_after.total_calls or 0}")
-                    logger.info(f"      └─ Usage Status: {usage_after.usage_status.value}")
+                    logger.info("   📊 Usage counters reset and usage summary refreshed")
                 else:
-                    logger.warning(f"   ⚠️  Usage summary not found after reset - may need to be created on next API call")
+                    logger.warning("   ⚠️  Usage summary not found after reset; it may be created on next API call")
             else:
                 logger.warning(f"   ⚠️  Reset returned: {reset_result.get('reason', 'unknown')}")
         except Exception as reset_err:
@@ -569,7 +568,7 @@ async def subscribe_to_plan(
     except Exception as e:
         logger.error(f"Error subscribing to plan: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to process subscription request")
 
 
 @router.get("/renewal-history/{user_id}")
@@ -650,7 +649,7 @@ async def get_renewal_history(
         raise
     except Exception as e:
         logger.error(f"Error getting renewal history: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to process subscription request")
 
 
 @router.get("/renewal-history/{user_id}/retention-stats")
@@ -684,4 +683,4 @@ async def get_renewal_retention_stats(
         raise
     except Exception as e:
         logger.error(f"Error getting renewal retention stats: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to process subscription request")

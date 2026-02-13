@@ -23,7 +23,7 @@ from ..wavespeed.client import WaveSpeedClient
 from ..llm_providers.main_video_generation import ai_video_generate
 from ..subscription.pricing_service import PricingService
 from ..database import get_db
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from utils.file_storage import save_file_safely, sanitize_filename
 from .video_processors import (
     convert_format,
@@ -266,11 +266,11 @@ class VideoStudioService:
                 from utils.asset_tracker import save_asset_to_library
                 db = next(get_db())
                 try:
-                    save_asset_to_library(
+                    asset_id = save_asset_to_library(
                         db=db,
                         user_id=user_id,
                         asset_type="video",
-                        source_module="video_studio",
+                        source_module="main_video_generation",
                         filename=save_result["filename"],
                         file_url=save_result["file_url"],
                         file_path=save_result["file_path"],
@@ -292,6 +292,11 @@ class VideoStudioService:
                         }
                     )
                     logger.info(f"[VideoStudio] Video saved to asset library")
+                    if asset_id is None:
+                        logger.warning(
+                            "[VideoStudio] Video generation succeeded but asset tracking failed",
+                            extra={"user_id": user_id, "filename": save_result["filename"]},
+                        )
                 finally:
                     db.close()
             except Exception as e:

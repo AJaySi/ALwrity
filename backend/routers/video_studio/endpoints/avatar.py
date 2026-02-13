@@ -14,7 +14,7 @@ from ...services.video_studio import VideoStudioService
 from ...services.video_studio.avatar_service import AvatarStudioService
 from ...services.asset_service import ContentAssetService
 from ...utils.auth import get_current_user, require_authenticated_user
-from ...utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger
 from api.story_writer.task_manager import task_manager
 from ..tasks.avatar_generation import execute_avatar_generation_task
 

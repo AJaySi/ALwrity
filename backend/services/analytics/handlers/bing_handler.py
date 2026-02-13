@@ -9,6 +9,9 @@ from typing import Dict, Any
 from datetime import datetime, timedelta
 from loguru import logger
 
+
+
+
 from services.integrations.bing_oauth import BingOAuthService
 from ...analytics_cache_service import analytics_cache
 from ..models.analytics_data import AnalyticsData
@@ -27,7 +30,6 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
     def __init__(self):
         super().__init__(PlatformType.BING)
         self.bing_service = BingOAuthService()
-        
     def _get_storage_service(self, user_id: str) -> BingAnalyticsStorageService:
         """Get user-specific storage service."""
         db_path = get_user_db_path(user_id)

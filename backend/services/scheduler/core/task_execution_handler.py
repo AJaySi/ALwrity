@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from sqlalchemy.orm import object_session
 
 from services.database import get_db_session
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from .exception_handler import (
     SchedulerException, TaskExecutionError, DatabaseError, SchedulerConfigError
 )
@@ -221,4 +221,8 @@ async def execute_task_async(
         # Remove from active executions
         if task_id in scheduler.active_executions:
             del scheduler.active_executions[task_id]
+
+        # Release task lease to allow future dispatch
+        if hasattr(scheduler, '_release_task_lease'):
+            scheduler._release_task_lease(task_id)
 

@@ -28,7 +28,7 @@ except ImportError:
 from ..onboarding.api_key_manager import APIKeyManager
 from services.subscription import PricingService
 from services.subscription.provider_detection import detect_actual_provider
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("video_generation_service")
 

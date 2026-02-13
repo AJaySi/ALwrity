@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 import uuid
 
-from ...database import get_db
-from ...models.content_asset_models import AssetSource, AssetType
-from ...services.video_studio import VideoStudioService
-from ...services.asset_service import ContentAssetService
-from ...utils.auth import get_current_user, require_authenticated_user
-from ...utils.logger_utils import get_service_logger
+from services.database import get_db
+from models.content_asset_models import AssetSource, AssetType
+from services.video_studio import VideoStudioService
+from services.content_asset_service import ContentAssetService
+from middleware.auth_middleware import get_current_user
+from utils.auth_utils import require_authenticated_user
+from utils.logger_utils import get_service_logger
 from api.story_writer.task_manager import task_manager
 from ..tasks.video_generation import execute_video_generation_task
 

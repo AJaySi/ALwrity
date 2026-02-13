@@ -2,7 +2,11 @@
 Shared dependencies for subscription API routes.
 """
 
-from fastapi import Depends, HTTPException
+import time
+from collections import defaultdict
+from threading import Lock
+
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 
@@ -13,6 +17,10 @@ from services.subscription.schema_utils import (
     ensure_usage_summaries_columns,
     ensure_api_usage_logs_columns
 )
+
+
+_rate_limit_store = defaultdict(list)
+_rate_limit_lock = Lock()
 
 
 def verify_user_access(
@@ -82,3 +90,35 @@ def ensure_schema_columns(
         from loguru import logger
         logger.warning(f"Schema check failed, will retry on query: {schema_err}")
     return db
+
+
+def get_rate_limit_dependency(
+    action: str,
+    max_requests: int,
+    window_seconds: int
+):
+    """Create a simple per-user/per-IP rate-limiting dependency."""
+
+    async def _rate_limiter(
+        request: Request,
+        current_user: Dict[str, Any] = Depends(get_current_user)
+    ) -> None:
+        user_key = str(current_user.get("id", "anonymous")) if current_user else "anonymous"
+        client_ip = request.client.host if request.client else "unknown"
+        key = f"{action}:{user_key}:{client_ip}"
+
+        now = time.time()
+        cutoff = now - window_seconds
+
+        with _rate_limit_lock:
+            attempts = [attempt for attempt in _rate_limit_store[key] if attempt >= cutoff]
+            if len(attempts) >= max_requests:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Too many {action} requests. Please retry later."
+                )
+
+            attempts.append(now)
+            _rate_limit_store[key] = attempts
+
+    return _rate_limiter

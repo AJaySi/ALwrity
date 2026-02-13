@@ -108,16 +108,6 @@ journey
 - Optimize based on data insights
 - Report results to stakeholders
 
-## 🎯 Success Stories
-
-### Sarah - Marketing Director at Tech Startup
-*"ALwrity's SEO dashboard helped us increase organic traffic by 200% in 3 months. The Google Search Console integration gives us real-time insights that we never had before."*
-
-### Mike - Growth Hacker
-*"The ROI tracking features in ALwrity help me demonstrate clear business impact to our leadership team. We've reduced content creation costs by 60% while increasing output."*
-
-### Lisa - Digital Marketing Manager
-*"The analytics and performance tracking in ALwrity transformed our content strategy. We now make data-driven decisions that consistently improve our results."*
 
 ## 🚀 Ready to Start?
 

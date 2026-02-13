@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, forwardRef, useImperativeHandle } 
 import { 
   Box, Button, MenuItem, Select, TextField, Typography, FormControl, InputLabel, Grid, 
   Card, CardMedia, CircularProgress, LinearProgress, Tabs, Tab, 
-  Tooltip, Alert, Chip, IconButton
+  Tooltip, Alert, Chip
 } from '@mui/material';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import InfoIcon from '@mui/icons-material/Info';

@@ -5,8 +5,6 @@ import { useEnhanceVideo } from './hooks/useEnhanceVideo';
 import { VideoUpload, EnhancementSettings } from './components';
 import { aiApiClient } from '../../../../api/client';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
 
 const EnhanceVideo: React.FC = () => {
   const {

@@ -6,7 +6,7 @@ import requests
 from typing import Optional, Callable
 from fastapi import HTTPException
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from .base import VideoBase
 
 logger = get_service_logger("wavespeed.generators.video.extension")

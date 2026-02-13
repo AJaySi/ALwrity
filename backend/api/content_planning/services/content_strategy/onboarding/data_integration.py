@@ -9,6 +9,22 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 import traceback
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 # Import database models
 from models.enhanced_strategy_models import (
     OnboardingDataIntegration
@@ -1065,6 +1081,22 @@ class OnboardingDataIntegrationService:
             logger.error(f"Error getting GSC analytics for user {user_id}: {str(e)}")
             return {}
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
     async def _get_bing_analytics(self, user_id: str) -> Dict[str, Any]:
         """Get Bing Webmaster Tools analytics data for the user."""
         try:
@@ -1080,9 +1112,13 @@ class OnboardingDataIntegrationService:
                 db.close()
             
             # Also try to get from storage service for more detailed metrics
+<<<<<<< HEAD
             from services.database import get_user_db_path
             db_path = get_user_db_path(user_id)
             bing_storage = BingAnalyticsStorageService(f'sqlite:///{db_path}')
+=======
+            bing_storage = BingAnalyticsStorageService(os.getenv('DATABASE_URL') or _raise_postgresql_required())
+>>>>>>> pr-354
             
             # Get site URL from onboarding session if available
             site_url = None
@@ -1136,6 +1172,22 @@ class OnboardingDataIntegrationService:
         except Exception as e:
             logger.error(f"Error getting Bing analytics for user {user_id}: {str(e)}")
             return {}
+
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
 
     def _get_fallback_data(self) -> Dict[str, Any]:
         """Get fallback data when processing fails."""

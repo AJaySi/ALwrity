@@ -1,14 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
-  Typography,
-  Button,
   TextField,
   Alert,
-  CircularProgress,
   Snackbar,
-  FormControlLabel,
-  Checkbox,
 } from '@mui/material';
 import GlobalStyles from '@mui/material/GlobalStyles';
 import ImageIcon from '@mui/icons-material/Image';

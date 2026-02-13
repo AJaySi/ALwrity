@@ -1,32 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Button, 
-  TextField, 
-  Typography, 
-  Card, 
-  CardContent, 
-  CircularProgress, 
-  Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
-  CardActionArea,
-  Tooltip,
-  InputAdornment,
-  IconButton,
-  Chip
-} from '@mui/material';
-import { 
-  ArrowBack as ArrowBackIcon, 
-  Save as SaveIcon, 
-  CheckCircle as CheckCircleIcon,
-  HelpOutline as HelpIcon,
-  Lightbulb as LightbulbIcon,
-  AutoAwesome as AutoAwesomeIcon
-} from '@mui/icons-material';
+import { Box, Button, TextField, Typography, Card, CardContent, CircularProgress, Alert, MenuItem, Divider } from '@mui/material';
+import { ArrowBack as ArrowBackIcon, Save as SaveIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { businessInfoApi, BusinessInfo } from '../../api/businessInfo';
 import { onboardingCache } from '../../services/onboardingCache';
 
@@ -35,36 +9,72 @@ interface BusinessDescriptionStepProps {
   onContinue: (businessData?: BusinessInfo) => void;
 }
 
-const BUSINESS_EXAMPLES = [
-  {
-    title: "SaaS Tech Startup",
-    description: "We provide AI-powered project management tools for remote teams to boost productivity and collaboration. Our platform integrates with popular tools like Slack and Jira.",
-    industry: "Technology / Software",
-    target_audience: "Remote-first companies, Project Managers, Product Owners, Startups",
-    business_goals: "Increase user acquisition by 20% in Q3, improve user retention, and launch a new mobile app."
-  },
-  {
-    title: "Artisanal Coffee Shop",
-    description: "A cozy local coffee shop specializing in single-origin beans and homemade pastries, serving the downtown community with a focus on sustainability.",
-    industry: "Food & Beverage / Hospitality",
-    target_audience: "Local residents, office workers, coffee enthusiasts, students",
-    business_goals: "Build a loyal customer base, increase foot traffic during weekdays, and expand catering services for local offices."
-  },
-  {
-    title: "Digital Marketing Agency",
-    description: "A full-service digital marketing agency helping small businesses grow their online presence through SEO, PPC, and content marketing strategies.",
-    industry: "Marketing & Advertising",
-    target_audience: "Small to medium-sized business owners, e-commerce stores, local service providers",
-    business_goals: "Acquire 10 new monthly retainer clients, expand service offerings to include video marketing, and become a thought leader."
-  }
+interface WebsiteIntakeForm {
+  business_name: string;
+  business_summary: string;
+  template_type: 'blog' | 'profile' | 'shop' | 'dont_know';
+  geo_scope: 'global' | 'local' | 'hyper_local' | 'dont_know';
+  primary_offerings: string;
+  target_audience: string;
+  audience_type: 'B2B' | 'B2C' | 'Both' | 'dont_know';
+  brand_tone: string;
+  brand_adjectives: string;
+  avoid_terms: string;
+  competitor_urls: string;
+  contact_email: string;
+  contact_phone: string;
+  contact_location: string;
+  product_asset_mode: 'upload' | 'generate' | 'dont_know';
+  product_asset_urls: string;
+  product_asset_ids: string;
+}
+
+const templateOptions = [
+  { value: 'dont_know', label: "Don't know yet" },
+  { value: 'blog', label: 'Blog / Creator site' },
+  { value: 'profile', label: 'Profile / Services' },
+  { value: 'shop', label: 'Shop / Products' }
+];
+
+const geoScopeOptions = [
+  { value: 'dont_know', label: "Don't know yet" },
+  { value: 'global', label: 'Global' },
+  { value: 'local', label: 'Local' },
+  { value: 'hyper_local', label: 'Hyper-local' }
+];
+
+const audienceTypeOptions = [
+  { value: 'dont_know', label: "Don't know yet" },
+  { value: 'B2B', label: 'B2B' },
+  { value: 'B2C', label: 'B2C' },
+  { value: 'Both', label: 'Both' }
+];
+
+const productAssetOptions = [
+  { value: 'dont_know', label: "Don't know yet" },
+  { value: 'upload', label: 'Upload product images' },
+  { value: 'generate', label: 'Generate with AI (Product Marketing Studio)' }
 ];
 
 const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBack, onContinue }) => {
-  const [formData, setFormData] = useState<BusinessInfo>({
-    business_description: '',
-    industry: '',
+  const [intakeForm, setIntakeForm] = useState<WebsiteIntakeForm>({
+    business_name: '',
+    business_summary: '',
+    template_type: 'dont_know',
+    geo_scope: 'dont_know',
+    primary_offerings: '',
     target_audience: '',
-    business_goals: '',
+    audience_type: 'dont_know',
+    brand_tone: 'Don\'t know yet',
+    brand_adjectives: '',
+    avoid_terms: '',
+    competitor_urls: '',
+    contact_email: '',
+    contact_phone: '',
+    contact_location: '',
+    product_asset_mode: 'dont_know',
+    product_asset_urls: '',
+    product_asset_ids: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,48 +84,46 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
   useEffect(() => {
     console.log('🔄 BusinessDescriptionStep mounted. Loading cached data...');
     const cachedData = onboardingCache.getStepData(2)?.businessInfo;
+    const cachedIntake = onboardingCache.getStepData(2)?.websiteIntake;
     if (cachedData) {
-      setFormData(cachedData);
       console.log('✅ Loaded cached business info:', cachedData);
     } else {
       console.log('ℹ️ No cached business info found.');
     }
+    if (cachedIntake) {
+      setIntakeForm(cachedIntake);
+      console.log('✅ Loaded cached website intake:', cachedIntake);
+    }
   }, []);
 
-  const handleExampleSelect = (example: typeof BUSINESS_EXAMPLES[0]) => {
-    setFormData({
-      business_description: example.description,
-      industry: example.industry,
-      target_audience: example.target_audience,
-      business_goals: example.business_goals,
-    });
-    setShowExamples(false);
-    setSuccess('Example data populated! You can now edit it to fit your needs.');
-    setTimeout(() => setSuccess(null), 3000);
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleIntakeChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setIntakeForm(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSaveAndContinue = async () => {
     setError(null);
     setSuccess(null);
     setLoading(true);
-    console.log('🚀 Attempting to save business info:', formData);
+    const derivedBusinessInfo: BusinessInfo = {
+      business_description: intakeForm.business_summary || 'No description provided',
+      industry: intakeForm.template_type === 'dont_know' ? '' : intakeForm.template_type,
+      target_audience: intakeForm.target_audience,
+      business_goals: intakeForm.primary_offerings,
+    };
+    console.log('🚀 Attempting to save business info:', derivedBusinessInfo);
 
     try {
       // Simulate user_id for now, replace with actual user_id from auth context later
       const userId = 1; 
-      const dataToSave = { ...formData, user_id: userId };
+      const dataToSave = { ...derivedBusinessInfo, user_id: userId };
 
       const response = await businessInfoApi.saveBusinessInfo(dataToSave);
       console.log('✅ Business info saved to DB:', response);
       setSuccess('Business information saved successfully!');
 
       // Also save to cache for consistency with other steps
-      onboardingCache.saveStepData(2, { businessInfo: response, hasWebsite: false });
+      onboardingCache.saveStepData(2, { businessInfo: response, websiteIntake: intakeForm, hasWebsite: false });
       console.log('✅ Business info saved to cache.');
 
       setTimeout(() => {
@@ -131,6 +139,7 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
 
   return (
     <Box sx={{ mt: 4 }}>
+<<<<<<< HEAD
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
         <Box>
           <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: '#111827' }}>
@@ -150,6 +159,14 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
           See Examples
         </Button>
       </Box>
+=======
+      <Typography variant="h5" gutterBottom>
+        Create your AI-generated website
+      </Typography>
+      <Typography variant="body1" color="textSecondary" sx={{ mb: 3 }}>
+        Share a few details (even 3-4 lines is enough). If you are unsure, choose “Don't know yet” and we’ll fill the gaps with AI.
+      </Typography>
+>>>>>>> pr-354
 
       <Card sx={{ 
         p: 3, 
@@ -164,156 +181,233 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {success && <Alert severity="success" sx={{ mb: 2 }} icon={<CheckCircleIcon fontSize="inherit" />}>{success}</Alert>}
 
-          <Tooltip title="Describe what your business does, your unique value proposition, and your key products or services." arrow placement="top">
-            <TextField
-              label="Business Description"
-              name="business_description"
-              value={formData.business_description}
-              onChange={handleChange}
-              fullWidth
-              multiline
-              rows={4}
-              margin="normal"
-              required
-              placeholder="e.g., We provide AI-powered project management tools for remote teams..."
-              helperText={`${formData.business_description.length}/1000 characters`}
-              inputProps={{ maxLength: 1000 }}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start" sx={{ mt: -3 }}>
-                    <HelpIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: '#F9FAFB',
-                  color: '#111827',
-                  borderRadius: '12px',
-                  transition: 'all 0.2s',
-                  '& fieldset': { borderColor: '#E5E7EB' },
-                  '&:hover fieldset': { borderColor: '#6C5CE7' },
-                  '&.Mui-focused fieldset': { borderColor: '#6C5CE7', borderWidth: '2px' },
-                  '&.Mui-focused': { bgcolor: '#FFFFFF', boxShadow: '0 0 0 4px rgba(108, 92, 231, 0.1)' }
-                },
-                '& .MuiInputLabel-root': { color: '#6B7280' },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#6C5CE7' },
-              }}
-            />
-          </Tooltip>
-
-          <Tooltip title="What industry or sector does your business operate in?" arrow placement="top">
-            <TextField
-              label="Industry"
-              name="industry"
-              value={formData.industry}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              placeholder="e.g., Technology, Retail, Healthcare..."
-              helperText={`${(formData.industry || '').length}/100 characters`}
-              inputProps={{ maxLength: 100 }}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <HelpIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: '#F9FAFB',
-                  color: '#111827',
-                  borderRadius: '12px',
-                  transition: 'all 0.2s',
-                  '& fieldset': { borderColor: '#E5E7EB' },
-                  '&:hover fieldset': { borderColor: '#6C5CE7' },
-                  '&.Mui-focused fieldset': { borderColor: '#6C5CE7', borderWidth: '2px' },
-                  '&.Mui-focused': { bgcolor: '#FFFFFF', boxShadow: '0 0 0 4px rgba(108, 92, 231, 0.1)' }
-                },
-                '& .MuiInputLabel-root': { color: '#6B7280' },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#6C5CE7' },
-              }}
-            />
-          </Tooltip>
-
-          <Tooltip title="Who are your ideal customers? Be specific about demographics, interests, or roles." arrow placement="top">
-            <TextField
-              label="Target Audience"
-              name="target_audience"
-              value={formData.target_audience}
-              onChange={handleChange}
-              fullWidth
-              multiline
-              rows={2}
-              margin="normal"
-              placeholder="e.g., Small business owners, marketing managers, eco-conscious consumers..."
-              helperText={`${(formData.target_audience || '').length}/500 characters`}
-              inputProps={{ maxLength: 500 }}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start" sx={{ mt: -1 }}>
-                    <HelpIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: '#F9FAFB',
-                  color: '#111827',
-                  borderRadius: '12px',
-                  transition: 'all 0.2s',
-                  '& fieldset': { borderColor: '#E5E7EB' },
-                  '&:hover fieldset': { borderColor: '#6C5CE7' },
-                  '&.Mui-focused fieldset': { borderColor: '#6C5CE7', borderWidth: '2px' },
-                  '&.Mui-focused': { bgcolor: '#FFFFFF', boxShadow: '0 0 0 4px rgba(108, 92, 231, 0.1)' }
-                },
-                '& .MuiInputLabel-root': { color: '#6B7280' },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#6C5CE7' },
-              }}
-            />
-          </Tooltip>
-
-          <Tooltip title="What are your main objectives for the next 6-12 months?" arrow placement="top">
-            <TextField
-              label="Business Goals"
-              name="business_goals"
-              value={formData.business_goals}
-              onChange={handleChange}
-              fullWidth
-              multiline
-              rows={3}
-              margin="normal"
-              placeholder="e.g., Increase brand awareness, generate more leads, launch a new product..."
-              helperText={`${(formData.business_goals || '').length}/1000 characters`}
-              inputProps={{ maxLength: 1000 }}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start" sx={{ mt: -2 }}>
-                    <HelpIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: '#F9FAFB',
-                  color: '#111827',
-                  borderRadius: '12px',
-                  transition: 'all 0.2s',
-                  '& fieldset': { borderColor: '#E5E7EB' },
-                  '&:hover fieldset': { borderColor: '#6C5CE7' },
-                  '&.Mui-focused fieldset': { borderColor: '#6C5CE7', borderWidth: '2px' },
-                  '&.Mui-focused': { bgcolor: '#FFFFFF', boxShadow: '0 0 0 4px rgba(108, 92, 231, 0.1)' }
-                },
-                '& .MuiInputLabel-root': { color: '#6B7280' },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#6C5CE7' },
-              }}
-            />
-          </Tooltip>
+          <TextField
+            label="Business Name"
+            name="business_name"
+            value={intakeForm.business_name}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="e.g., Maple Street Homestays"
+            disabled={loading}
+          />
+          <TextField
+            label="Describe what you do (3-4 lines)"
+            name="business_summary"
+            value={intakeForm.business_summary}
+            onChange={handleIntakeChange}
+            fullWidth
+            multiline
+            rows={4}
+            margin="normal"
+            required
+            helperText={`${intakeForm.business_summary.length}/1000 characters`}
+            inputProps={{ maxLength: 1000 }}
+            disabled={loading}
+          />
+          <TextField
+            label="Website template"
+            name="template_type"
+            value={intakeForm.template_type}
+            onChange={handleIntakeChange}
+            select
+            fullWidth
+            margin="normal"
+            disabled={loading}
+          >
+            {templateOptions.map(option => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Audience scope"
+            name="geo_scope"
+            value={intakeForm.geo_scope}
+            onChange={handleIntakeChange}
+            select
+            fullWidth
+            margin="normal"
+            disabled={loading}
+          >
+            {geoScopeOptions.map(option => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Primary offerings (comma separated)"
+            name="primary_offerings"
+            value={intakeForm.primary_offerings}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="e.g., Short stays, airport pickup, local tours"
+            disabled={loading}
+          />
+          <TextField
+            label="Target audience"
+            name="target_audience"
+            value={intakeForm.target_audience}
+            onChange={handleIntakeChange}
+            fullWidth
+            multiline
+            rows={2}
+            margin="normal"
+            placeholder="e.g., Families visiting Pune for weddings"
+            disabled={loading}
+          />
+          <TextField
+            label="Audience type"
+            name="audience_type"
+            value={intakeForm.audience_type}
+            onChange={handleIntakeChange}
+            select
+            fullWidth
+            margin="normal"
+            disabled={loading}
+          >
+            {audienceTypeOptions.map(option => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Brand tone"
+            name="brand_tone"
+            value={intakeForm.brand_tone}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="Friendly, premium, minimal"
+            disabled={loading}
+          />
+          <TextField
+            label="Brand adjectives (comma separated)"
+            name="brand_adjectives"
+            value={intakeForm.brand_adjectives}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="e.g., cozy, reliable, modern"
+            disabled={loading}
+          />
+          <TextField
+            label="Avoid words or styles"
+            name="avoid_terms"
+            value={intakeForm.avoid_terms}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="e.g., pushy sales language"
+            disabled={loading}
+          />
+          <Divider sx={{ my: 3 }} />
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>
+            Contact details (we’ll use your account email if left blank)
+          </Typography>
+          <TextField
+            label="Contact email"
+            name="contact_email"
+            value={intakeForm.contact_email}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="name@business.com"
+            disabled={loading}
+          />
+          <TextField
+            label="Contact phone"
+            name="contact_phone"
+            value={intakeForm.contact_phone}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="+91 90000 00000"
+            disabled={loading}
+          />
+          <TextField
+            label="Location"
+            name="contact_location"
+            value={intakeForm.contact_location}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="City, Region"
+            disabled={loading}
+          />
+          <Divider sx={{ my: 3 }} />
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>
+            Optional: competitor URLs (1-3)
+          </Typography>
+          <TextField
+            label="Competitor URLs (comma separated)"
+            name="competitor_urls"
+            value={intakeForm.competitor_urls}
+            onChange={handleIntakeChange}
+            fullWidth
+            margin="normal"
+            placeholder="https://competitor1.com, https://competitor2.com"
+            disabled={loading}
+          />
+          {intakeForm.template_type === 'shop' && (
+            <>
+              <Divider sx={{ my: 3 }} />
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Product images
+              </Typography>
+              <TextField
+                label="Product images"
+                name="product_asset_mode"
+                value={intakeForm.product_asset_mode}
+                onChange={handleIntakeChange}
+                select
+                fullWidth
+                margin="normal"
+                disabled={loading}
+              >
+                {productAssetOptions.map(option => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Button
+                variant="outlined"
+                color="secondary"
+                href="/campaign-creator"
+                sx={{ mt: 1 }}
+                disabled={loading}
+              >
+                Open Product Marketing Studio
+              </Button>
+              <TextField
+                label="Product image URLs (comma separated)"
+                name="product_asset_urls"
+                value={intakeForm.product_asset_urls}
+                onChange={handleIntakeChange}
+                fullWidth
+                multiline
+                rows={2}
+                margin="normal"
+                placeholder="https://cdn.example.com/product-1.jpg, https://cdn.example.com/product-2.jpg"
+                disabled={loading}
+              />
+              <TextField
+                label="Product asset IDs (comma separated)"
+                name="product_asset_ids"
+                value={intakeForm.product_asset_ids}
+                onChange={handleIntakeChange}
+                fullWidth
+                margin="normal"
+                placeholder="asset_123, asset_456"
+                disabled={loading}
+              />
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -333,95 +427,12 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
           color="primary"
           onClick={handleSaveAndContinue}
           endIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-          disabled={loading || !formData.business_description}
-          sx={{ 
-            boxShadow: '0 4px 6px -1px rgba(108, 92, 231, 0.4), 0 2px 4px -1px rgba(108, 92, 231, 0.2)',
-            '&:hover': { boxShadow: '0 10px 15px -3px rgba(108, 92, 231, 0.4), 0 4px 6px -2px rgba(108, 92, 231, 0.2)' }
-          }}
+          disabled={loading || !intakeForm.business_summary}
         >
           {loading ? 'Saving...' : 'Save & Continue'}
         </Button>
       </Box>
 
-      {/* Examples Modal */}
-      <Dialog 
-        open={showExamples} 
-        onClose={() => setShowExamples(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: { borderRadius: '16px' }
-        }}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid #F3F4F6' }}>
-          <AutoAwesomeIcon color="primary" />
-          <Typography variant="h6" component="span" sx={{ fontWeight: 600 }}>
-            Select an Example
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
-            Click a card to populate the form
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ bgcolor: '#F9FAFB', p: 3 }}>
-          <Grid container spacing={2}>
-            {BUSINESS_EXAMPLES.map((example, index) => (
-              <Grid item xs={12} md={4} key={index}>
-                <Card 
-                  sx={{ 
-                    height: '100%', 
-                    border: '1px solid #E5E7EB',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      borderColor: '#6C5CE7',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                      transform: 'translateY(-2px)'
-                    }
-                  }}
-                >
-                  <CardActionArea 
-                    onClick={() => handleExampleSelect(example)}
-                    sx={{ height: '100%', p: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start' }}
-                  >
-                    <Chip 
-                      label={example.title} 
-                      color="primary" 
-                      size="small" 
-                      variant="filled" 
-                      sx={{ mb: 2, fontWeight: 600, bgcolor: '#EEF2FF', color: '#6C5CE7' }} 
-                    />
-                    
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, color: '#374151' }}>
-                      Description:
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" paragraph sx={{ 
-                      display: '-webkit-box',
-                      WebkitLineClamp: 4,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      mb: 2,
-                      fontSize: '0.875rem'
-                    }}>
-                      {example.description}
-                    </Typography>
-                    
-                    <Box sx={{ mt: 'auto', width: '100%' }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, color: '#374151' }}>
-                        Industry:
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {example.industry}
-                      </Typography>
-                    </Box>
-                  </CardActionArea>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid #F3F4F6', p: 2 }}>
-          <Button onClick={() => setShowExamples(false)} color="inherit">Close</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

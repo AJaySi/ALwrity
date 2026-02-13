@@ -47,7 +47,9 @@ import { useBingOAuth } from '../../hooks/useBingOAuth';
 import { useGSCConnection } from './common/useGSCConnection';
 import { usePlatformConnections } from './common/usePlatformConnections';
 import PlatformAnalytics from '../shared/PlatformAnalytics';
+import GSCTaskReportsPanel from '../shared/GSCTaskReportsPanel';
 import { cachedAnalyticsAPI } from '../../api/cachedAnalytics';
+import { gscAPI, type GSCDataQualityResponse, type GSCCachedOpportunitiesResponse } from '../../api/gsc';
 
 interface IntegrationsStepProps {
   onContinue: () => void;
@@ -71,9 +73,12 @@ interface IntegrationPlatform {
 const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateHeaderContent, onValidationChange }) => {
   const { user } = useUser();
   const [email, setEmail] = useState<string>('');
-  
+
   // Use custom hooks
-  const { gscSites, connectedPlatforms, setConnectedPlatforms, handleGSCConnect } = useGSCConnection();
+  const { gscSites, connectedPlatforms, setConnectedPlatforms, handleGSCConnect, refreshGSCStatus } = useGSCConnection();
+  const [primaryGscSite, setPrimaryGscSite] = useState<string>(() => localStorage.getItem('onboarding_primary_gsc_site') || '');
+  const [gscDataQuality, setGscDataQuality] = useState<GSCDataQualityResponse | null>(null);
+  const [gscOpportunities, setGscOpportunities] = useState<GSCCachedOpportunitiesResponse | null>(null);
 
   // Invalidate analytics cache when platform connections change
   const invalidateAnalyticsCache = useCallback(() => {
@@ -97,7 +102,7 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
     }
   }, []);
   const { isLoading, showToast, setShowToast, toastMessage, handleConnect } = usePlatformConnections();
-  
+
   // WordPress OAuth hook
   const { connected: wordpressConnected, sites: wordpressSites } = useWordPressOAuth();
   
@@ -241,6 +246,44 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
       description: 'Connect your websites and social media accounts to enable AI-powered content publishing and analytics'
     });
   }, [updateHeaderContent]);
+
+
+  useEffect(() => {
+    if (!gscSites || gscSites.length === 0) return;
+    if (primaryGscSite && gscSites.some((s) => s.siteUrl === primaryGscSite)) return;
+
+    const defaultSite = gscSites[0].siteUrl;
+    setPrimaryGscSite(defaultSite);
+    localStorage.setItem('onboarding_primary_gsc_site', defaultSite);
+  }, [gscSites, primaryGscSite]);
+
+  useEffect(() => {
+    if (!connectedPlatforms.includes('gsc') || !primaryGscSite) {
+      setGscDataQuality(null);
+      setGscOpportunities(null);
+      return;
+    }
+
+    (async () => {
+      try {
+        const [quality, opportunities] = await Promise.all([
+          gscAPI.getDataQuality(primaryGscSite),
+          gscAPI.getOpportunities(primaryGscSite)
+        ]);
+        setGscDataQuality(quality);
+        setGscOpportunities(opportunities);
+      } catch (error) {
+        console.warn('Failed to load GSC onboarding insights', error);
+        setGscDataQuality(null);
+        setGscOpportunities(null);
+      }
+    })();
+  }, [connectedPlatforms, primaryGscSite]);
+
+  const handlePrimaryGscSiteChange = useCallback((siteUrl: string) => {
+    setPrimaryGscSite(siteUrl);
+    localStorage.setItem('onboarding_primary_gsc_site', siteUrl);
+  }, []);
 
   // Handle WordPress connection status changes
   useEffect(() => {
@@ -399,6 +442,10 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
               setConnectedPlatforms(connectedPlatforms.filter(p => p !== platformId));
             }}
             setConnectedPlatforms={setConnectedPlatforms}
+            primarySite={primaryGscSite}
+            onPrimarySiteChange={handlePrimaryGscSiteChange}
+            dataQuality={gscDataQuality}
+            opportunities={gscOpportunities}
           />
         </div>
       </Fade>
@@ -524,9 +571,13 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
             platforms={analyticsPlatforms}
             connectedPlatforms={connectedPlatforms}
             gscSites={gscSites}
-                  isLoading={isLoading}
+            isLoading={isLoading}
             onConnect={handlePlatformConnect}
-                />
+            primarySite={primaryGscSite}
+            onPrimarySiteChange={handlePrimaryGscSiteChange}
+            dataQuality={gscDataQuality}
+            opportunities={gscOpportunities}
+          />
         </div>
       </Fade>
 
@@ -569,6 +620,20 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
         </Fade>
       )}
 
+
+
+      {/* Optional Step-5 task testing UI (shared with SEO dashboard) */}
+      {connectedPlatforms.includes('gsc') && (
+        <Fade in timeout={1250}>
+          <div>
+            <GSCTaskReportsPanel
+              siteUrl={primaryGscSite || undefined}
+              title="Step 5 Optional Task Testing (GSC)"
+            />
+          </div>
+        </Fade>
+      )}
+
       {/* Social Media Platforms */}
       <Fade in timeout={1200}>
         <div>
@@ -580,6 +645,10 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
             gscSites={null}
             isLoading={isLoading}
             onConnect={handlePlatformConnect}
+            primarySite={primaryGscSite}
+            onPrimarySiteChange={handlePrimaryGscSiteChange}
+            dataQuality={gscDataQuality}
+            opportunities={gscOpportunities}
           />
         </div>
       </Fade>

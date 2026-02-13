@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, Stepper, Step, StepLabel, StepButton, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, Stepper, Step, StepLabel, StepButton, Typography, IconButton, Tooltip } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { StoryPhase } from '../../hooks/useStoryWriterPhaseNavigation';
 

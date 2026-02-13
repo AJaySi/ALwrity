@@ -77,7 +77,7 @@ else:
     print(f"No .env found at {env_path}, using current directory")
 
 from loguru import logger
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 # Use service-specific logger to avoid conflicts
 logger = get_service_logger("gemini_provider")

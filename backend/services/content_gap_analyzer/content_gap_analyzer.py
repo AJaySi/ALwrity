@@ -5,7 +5,8 @@ Converted from enhanced_analyzer.py for FastAPI integration.
 
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("content_gap_analyzer", migration_mode=True)
 from datetime import datetime
 import asyncio
 import json
@@ -19,8 +20,8 @@ from collections import Counter, defaultdict
 # Import existing modules (will be updated to use FastAPI services)
 from services.database import get_db_session
 from .ai_engine_service import AIEngineService
-from .competitor_analyzer import CompetitorAnalyzer
-from .keyword_researcher import KeywordResearcher
+from .competitor_analyzer.competitor_analyzer import CompetitorAnalyzer
+from .keyword_researcher.keyword_researcher import KeywordResearcher
 
 class ContentGapAnalyzer:
     """Enhanced content gap analyzer with advertools integration and AI insights."""

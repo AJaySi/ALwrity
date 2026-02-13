@@ -1,23 +1,23 @@
-# Transform Studio Guide (Planned)
+# Transform Studio Guide
 
-Transform Studio will enable conversion of images into videos, creation of talking avatars, and generation of 3D models. This guide covers the planned features and capabilities.
+Transform Studio enables conversion of images into videos, creation of talking avatars, and generation of 3D models using advanced AI technology. This guide covers the available features and capabilities.
 
 ## Status
 
-**Current Status**: 🚧 Planned for future release  
-**Priority**: High - Major differentiator feature  
-**Estimated Release**: Coming soon
+**Current Status**: ✅ **Available Now**
+**Integration**: WaveSpeed AI & Hunyuan Video
+**Access**: Available in Video Studio → Transform
 
 ## Overview
 
-Transform Studio extends Image Studio's capabilities beyond static images, enabling you to create dynamic video content and 3D models from your images. This module will provide unique capabilities not available in most image generation platforms.
+Transform Studio extends Image Studio's capabilities beyond static images, enabling you to create dynamic video content and 3D models from your images. Powered by WaveSpeed AI and Hunyuan Video, this module provides unique capabilities for content transformation.
 
-### Key Planned Features
-- **Image-to-Video**: Animate static images into dynamic videos
-- **Make Avatar**: Create talking avatars from photos
-- **Image-to-3D**: Generate 3D models from 2D images
-- **Audio Integration**: Add voiceovers and sound effects
-- **Social Optimization**: Optimize videos for social platforms
+### Key Features
+- **Image-to-Video**: Animate static images into dynamic videos with motion
+- **Talking Avatars**: Create professional talking head videos from photos
+- **Video Extension**: Extend short video clips with temporal consistency
+- **Style Transfer**: Apply artistic styles to videos and images
+- **Format Conversion**: Convert between video formats and aspect ratios
 
 ---
 

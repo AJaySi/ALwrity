@@ -10,6 +10,8 @@ from loguru import logger
 
 from services.database import get_db
 from models.subscription_models import UsageAlert
+from middleware.auth_middleware import get_current_user
+from ..dependencies import verify_user_access
 
 router = APIRouter()
 
@@ -19,9 +21,12 @@ async def get_usage_alerts(
     user_id: str,
     unread_only: bool = Query(False, description="Only return unread alerts"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of alerts"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Get usage alerts for a user."""
+
+    verify_user_access(user_id, current_user)
     
     try:
         query = db.query(UsageAlert).filter(
@@ -79,7 +84,8 @@ async def get_usage_alerts(
 @router.post("/alerts/{alert_id}/mark-read")
 async def mark_alert_read(
     alert_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Mark an alert as read."""
     
@@ -88,6 +94,8 @@ async def mark_alert_read(
         
         if not alert:
             raise HTTPException(status_code=404, detail="Alert not found")
+
+        verify_user_access(str(alert.user_id), current_user)
         
         alert.is_read = True
         alert.read_at = datetime.utcnow()

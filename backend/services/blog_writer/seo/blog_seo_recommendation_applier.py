@@ -6,7 +6,7 @@ provider-agnostic `llm_text_gen` dispatcher. Ensures GPT_PROVIDER parity.
 
 import asyncio
 from typing import Dict, Any, List
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 from services.llm_providers.main_text_generation import llm_text_gen
 

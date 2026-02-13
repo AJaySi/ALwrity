@@ -21,7 +21,7 @@ from .image_generation import (
 from .image_generation.base import FaceSwapOptions, FaceSwapProvider
 from .image_generation.wavespeed_edit_provider import WaveSpeedEditProvider
 from .image_generation.wavespeed_face_swap_provider import WaveSpeedFaceSwapProvider
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 
 logger = get_service_logger("image_generation.facade")

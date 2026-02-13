@@ -21,7 +21,8 @@ sys.path.insert(0, str(backend_dir))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("basic_plan_limits_update", migration_mode=True)
 
 from models.subscription_models import SubscriptionPlan, SubscriptionTier, UserSubscription, UsageStatus
 from services.database import DATABASE_URL

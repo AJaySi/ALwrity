@@ -38,6 +38,7 @@ from api.onboarding import (
     get_business_info,
     get_business_info_by_user,
     update_business_info,
+    generate_website_preview,
     generate_writing_personas,
     generate_writing_personas_async,
     get_persona_task_status,
@@ -380,6 +381,23 @@ class OnboardingManager:
                 return await update_business_info(business_info_id, request)
             except Exception as e:
                 logger.error(f"Error in business_info_update: {e}")
+
+        @self.app.post("/api/onboarding/website-preview")
+        async def onboarding_website_preview(request: dict, current_user: dict = Depends(get_current_user)):
+            """Generate preview HTML/CSS for AI-generated website."""
+            try:
+                return await generate_website_preview(request, current_user)
+            except Exception as e:
+                logger.error(f"Error in onboarding_website_preview: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/onboarding/website-deploy")
+        async def onboarding_website_deploy(request: dict, current_user: dict = Depends(get_current_user)):
+            """Deploy AI-generated website to GitHub + Netlify."""
+            try:
+                return await deploy_website(request, current_user)
+            except Exception as e:
+                logger.error(f"Error in onboarding_website_deploy: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
         # Persona generation endpoints

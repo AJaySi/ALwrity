@@ -13,7 +13,7 @@ from PIL import Image
 from services.llm_providers.main_image_editing import edit_image as huggingface_edit_image
 from services.llm_providers.main_image_generation import generate_image_edit
 from services.stability_service import StabilityAIService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 
 logger = get_service_logger("image_studio.edit")

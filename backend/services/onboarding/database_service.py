@@ -8,10 +8,13 @@ from typing import Dict, Any, Optional, List
 import os
 import json
 from datetime import datetime
-from loguru import logger
+from utils.logging import get_service_logger
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
+
+# Use service logger for consistent logging
+logger = get_service_logger("onboarding_database_service")
 
 from models.onboarding import OnboardingSession, APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData
 from services.database import get_db

@@ -65,7 +65,7 @@ export const ScenePreviewModal: React.FC<ScenePreviewModalProps> = ({
         URL.revokeObjectURL(imageBlobUrl);
       }
     };
-  }, [imageUrl, open]);
+  }, [imageUrl, open, imageBlobUrl]);
 
   // Load audio blob
   useEffect(() => {
@@ -85,7 +85,7 @@ export const ScenePreviewModal: React.FC<ScenePreviewModalProps> = ({
         URL.revokeObjectURL(audioBlobUrl);
       }
     };
-  }, [audioUrl, open]);
+  }, [audioUrl, open, audioBlobUrl]);
 
   // Create audio element
   useEffect(() => {

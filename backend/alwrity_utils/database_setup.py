@@ -6,7 +6,10 @@ Handles database initialization and table creation.
 from typing import List, Tuple
 import sys
 from pathlib import Path
-from loguru import logger
+from utils.logging import get_service_logger
+
+# Use service logger for consistent logging
+logger = get_service_logger("database_setup")
 
 
 class DatabaseSetup:
@@ -140,9 +143,9 @@ class DatabaseSetup:
             tables = inspector.get_table_names()
             
             essential_tables = [
-                'api_monitoring_logs',
+                'task_execution_logs',  # monitoring logs
                 'subscription_plans',
-                'user_subscriptions',
+                'user_subscriptions', 
                 'onboarding_sessions',
                 'persona_data'
             ]
@@ -195,7 +198,7 @@ class DatabaseSetup:
         try:
             sys.path.append(str(Path(__file__).parent.parent))
             from scripts.create_billing_tables import create_billing_tables, check_existing_tables
-            from services.database import engine
+            from services.database import get_user_data_engine
             
             # Check if engine is available (it might be None in multi-tenant mode)
             if engine is None:
@@ -204,7 +207,7 @@ class DatabaseSetup:
                 return True
 
             # Check if tables already exist
-            if check_existing_tables(engine):
+            if check_existing_tables(get_user_data_engine()):
                 logger.debug("✅ Billing tables already exist")
                 return True
             

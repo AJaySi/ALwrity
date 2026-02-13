@@ -7,6 +7,12 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Load environment variables
+from dotenv import load_dotenv
+from pathlib import Path
+backend_dir = Path(__file__).parent.parent
+load_dotenv(backend_dir / '.env')
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from loguru import logger
@@ -37,8 +43,8 @@ def create_monitoring_tables(user_id=None):
         create_tables_sql = [
             """
             CREATE TABLE IF NOT EXISTS api_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 path VARCHAR(500) NOT NULL,
                 method VARCHAR(10) NOT NULL,
                 status_code INTEGER NOT NULL,
@@ -53,7 +59,7 @@ def create_monitoring_tables(user_id=None):
             """,
             """
             CREATE TABLE IF NOT EXISTS api_endpoint_stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 endpoint VARCHAR(500) NOT NULL UNIQUE,
                 total_requests INTEGER DEFAULT 0,
                 total_errors INTEGER DEFAULT 0,
@@ -61,17 +67,17 @@ def create_monitoring_tables(user_id=None):
                 avg_duration FLOAT DEFAULT 0.0,
                 min_duration FLOAT,
                 max_duration FLOAT,
-                last_called DATETIME,
+                last_called TIMESTAMP,
                 cache_hits INTEGER DEFAULT 0,
                 cache_misses INTEGER DEFAULT 0,
                 cache_hit_rate FLOAT DEFAULT 0.0,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """,
             """
             CREATE TABLE IF NOT EXISTS system_health (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 status VARCHAR(20) NOT NULL,
                 total_requests INTEGER DEFAULT 0,
                 total_errors INTEGER DEFAULT 0,
@@ -84,8 +90,8 @@ def create_monitoring_tables(user_id=None):
             """,
             """
             CREATE TABLE IF NOT EXISTS cache_performance (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 cache_type VARCHAR(50) NOT NULL,
                 hits INTEGER DEFAULT 0,
                 misses INTEGER DEFAULT 0,
@@ -124,10 +130,10 @@ def create_monitoring_tables(user_id=None):
         # Commit changes
         db.commit()
         
-        # Verify table creation
+        # Verify table creation (PostgreSQL compatible)
         tables_to_check = ['api_requests', 'api_endpoint_stats', 'system_health', 'cache_performance']
         for table_name in tables_to_check:
-            result = db.execute(text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';"))
+            result = db.execute(text(f"SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='{table_name}';"))
             table_exists = result.fetchone()
             
             if table_exists:
@@ -149,6 +155,7 @@ def create_monitoring_tables(user_id=None):
 def drop_monitoring_tables(user_id=None):
     """Drop the API monitoring tables (for testing)."""
     try:
+<<<<<<< HEAD
         # Get database URL
         if user_id:
             db_path = get_user_db_path(user_id)
@@ -157,6 +164,10 @@ def drop_monitoring_tables(user_id=None):
         else:
             logger.error("❌ Error: user_id is required to drop monitoring tables.")
             return False
+=======
+        # Get database URL from environment or use default
+        database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
+>>>>>>> pr-354
         
         # Create engine
         engine = create_engine(database_url)

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
 from ...utils.auth import get_current_user, require_authenticated_user
-from ...utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger
 from services.wavespeed.client import WaveSpeedClient
 
 logger = get_service_logger("video_studio.endpoints.prompt")

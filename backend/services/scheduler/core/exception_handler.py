@@ -11,7 +11,7 @@ from enum import Enum
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, OperationalError, IntegrityError
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("scheduler_exception_handler")
 
@@ -43,7 +43,7 @@ class SchedulerException(Exception):
         message: str,
         error_type: SchedulerErrorType,
         severity: SchedulerErrorSeverity = SchedulerErrorSeverity.MEDIUM,
-        user_id: Optional[int] = None,
+        user_id: Optional[Union[int, str]] = None,
         task_id: Optional[int] = None,
         task_type: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
@@ -104,7 +104,7 @@ class DatabaseError(SchedulerException):
     def __init__(
         self,
         message: str,
-        user_id: Optional[int] = None,
+        user_id: Optional[Union[int, str]] = None,
         task_id: Optional[int] = None,
         task_type: Optional[str] = None,
         context: Dict[str, Any] = None,
@@ -128,7 +128,7 @@ class TaskExecutionError(SchedulerException):
     def __init__(
         self,
         message: str,
-        user_id: Optional[int] = None,
+        user_id: Optional[Union[int, str]] = None,
         task_id: Optional[int] = None,
         task_type: Optional[str] = None,
         retry_count: int = 0,
@@ -161,7 +161,7 @@ class TaskLoaderError(SchedulerException):
         self,
         message: str,
         task_type: Optional[str] = None,
-        user_id: Optional[int] = None,
+        user_id: Optional[Union[int, str]] = None,
         context: Dict[str, Any] = None,
         original_error: Exception = None
     ):
@@ -328,7 +328,8 @@ class SchedulerExceptionHandler:
                 try:
                     execution_log = TaskExecutionLog(
                         task_id=error.task_id,
-                        user_id=error.user_id,  # Can be None for system-level errors
+                        user_id=error.user_id if isinstance(error.user_id, int) else None,  # Legacy numeric compatibility
+                        user_id_str=str(error.user_id) if error.user_id is not None else None,
                         execution_date=error.timestamp,
                         status='failed',
                         error_message=error.message,

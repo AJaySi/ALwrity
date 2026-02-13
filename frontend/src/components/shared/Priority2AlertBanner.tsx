@@ -13,9 +13,7 @@ import {
   Button,
   IconButton,
   Collapse,
-  Stack,
   Chip,
-  Typography,
 } from '@mui/material';
 import {
   AlertTriangle,
@@ -40,7 +38,7 @@ const Priority2AlertBanner: React.FC<Priority2AlertBannerProps> = ({
   onDismiss,
   maxAlerts = 3
 }) => {
-  const [expanded, setExpanded] = React.useState(true);
+  const [expanded] = React.useState(true);
   const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(new Set());
 
   // Filter out dismissed alerts

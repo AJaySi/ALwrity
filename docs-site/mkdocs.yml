@@ -216,6 +216,12 @@ nav:
       - Research Integration: features/blog-writer/research.md
       - SEO Analysis: features/blog-writer/seo-analysis.md
       - Implementation Spec: features/blog-writer/implementation-spec.md
+    - Story Writer:
+      - Overview: features/story-writer/overview.md
+      - Setup Guide: features/story-writer/setup-guide.md
+      - Phase Navigation: features/story-writer/phase-navigation.md
+      - Multimedia Integration: features/story-writer/multimedia-integration.md
+      - Writing Process: features/story-writer/writing-process.md
     - SEO Dashboard:
       - Overview: features/seo-dashboard/overview.md
       - GSC Integration: features/seo-dashboard/gsc-integration.md
@@ -231,11 +237,43 @@ nav:
       - Technical Architecture: features/persona/technical-architecture.md
       - Implementation Examples: features/persona/implementation-examples.md
       - Roadmap & Future: features/persona/roadmap.md
-    - AI Features:
-      - Assistive Writing: features/ai/assistive-writing.md
-      - Grounding UI: features/ai/grounding-ui.md
+  - AI Features:
+    - Assistive Writing: features/ai/assistive-writing.md
+    - Grounding UI: features/ai/grounding-ui.md
+    - Alwrity Copilot:
+      - Overview: features/copilot/overview.md
+      - Getting Started: features/copilot/getting-started.md
+      - Blog Writer Integration: features/copilot/blog-writer.md
     - LinkedIn Writer:
       - Overview: features/linkedin-writer/overview.md
+      - Migration Guide: features/linkedin-writer/migration-guide.md
+      - Multimedia Enhancements: features/linkedin-writer/multimedia-enhancements.md
+    - Facebook Writer:
+      - Overview: features/facebook-writer/overview.md
+      - Migration Guide: features/facebook-writer/migration-guide.md
+      - Content Types: features/facebook-writer/content-types.md
+    - Instagram Editor:
+      - Overview: features/instagram-editor/overview.md
+      - Getting Started: features/instagram-editor/getting-started.md
+      - Advanced Copilot Workflows: features/instagram-editor/copilot-workflows.md
+      - API Reference: features/instagram-editor/api-reference.md
+    - Podcast Maker:
+      - Overview: features/podcast-maker/overview.md
+      - Advanced Integrations: features/podcast-maker/advanced-integrations.md
+    - WaveSpeed AI:
+      - Overview: features/wavespeed/overview.md
+    - YouTube Studio:
+      - Overview: features/youtube-studio/overview.md
+      - Scene Building Guide: features/youtube-studio/scene-building.md
+      - Advanced Features: features/youtube-studio/advanced-features.md
+    - Content Calendar:
+      - Overview: features/content-calendar/overview.md
+      - API Reference: features/content-calendar/api-reference.md
+      - Advanced Scheduling Algorithms: features/content-calendar/scheduling-algorithms.md
+    - ALwrity Researcher:
+      - Overview: features/researcher/overview.md
+      - Research Templates Library: features/researcher/templates-library.md
+      - Export APIs: features/researcher/export-apis.md
     - Integrations:
       - Wix:
         - Overview: features/integrations/wix/overview.md
@@ -260,14 +298,21 @@ nav:
       - Upscale Studio: features/image-studio/upscale-studio.md
       - Social Optimizer: features/image-studio/social-optimizer.md
       - Asset Library: features/image-studio/asset-library.md
+      - Asset Library API: features/image-studio/asset-library-api.md
       - Transform Studio: features/image-studio/transform-studio.md
       - Control Studio: features/image-studio/control-studio.md
       - Workflow Guide: features/image-studio/workflow-guide.md
       - Providers: features/image-studio/providers.md
       - Templates: features/image-studio/templates.md
       - Cost Guide: features/image-studio/cost-guide.md
-      - API Reference: features/image-studio/api-reference.md
-      - Implementation: features/image-studio/implementation-overview.md
+    - API Reference: features/image-studio/api-reference.md
+    - Implementation: features/image-studio/implementation-overview.md
+    - Video Studio:
+      - Overview: features/video-studio/overview.md
+      - Model Selection: features/video-studio/model-selection.md
+      - Cost Transparency: features/video-studio/cost-transparency.md
+      - Create Studio Guide: features/video-studio/create-studio.md
+      - Technical Specifications: features/video-studio/technical-specs.md
   - API Reference:
     - Overview: api/overview.md
     - Authentication: api/authentication.md

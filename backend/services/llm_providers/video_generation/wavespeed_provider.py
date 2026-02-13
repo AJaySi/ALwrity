@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from loguru import logger
 
 from services.wavespeed.client import WaveSpeedClient
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from .base import VideoGenerationOptions, VideoGenerationResult
 
 logger = get_service_logger("wavespeed.text_to_video")

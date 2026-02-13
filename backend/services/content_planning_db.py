@@ -114,6 +114,14 @@ class ContentPlanningDBService:
         except SQLAlchemyError as e:
             self.logger.error(f"Error getting strategy calendar events: {str(e)}")
             return []
+
+    async def get_all_calendar_events(self) -> List[CalendarEvent]:
+        """Get all calendar events across strategies."""
+        try:
+            return self.db.query(CalendarEvent).all()
+        except SQLAlchemyError as e:
+            self.logger.error(f"Error getting all calendar events: {str(e)}")
+            return []
     
     async def update_calendar_event(self, event_id: int, update_data: Dict[str, Any]) -> Optional[CalendarEvent]:
         """Update calendar event."""

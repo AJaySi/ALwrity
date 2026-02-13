@@ -227,3 +227,13 @@ export async function getResearchPreferencesData() {
   const res: AxiosResponse<any> = await apiClient.get('/api/onboarding/research-preferences');
   return res.data;
 } 
+
+export async function generateWebsitePreview(intake: any) {
+  const res: AxiosResponse<any> = await apiClient.post('/api/onboarding/website-preview', intake);
+  return res.data;
+}
+
+export async function deployWebsite(intake: any) {
+  const res: AxiosResponse<any> = await apiClient.post('/api/onboarding/website-deploy', intake);
+  return res.data;
+}

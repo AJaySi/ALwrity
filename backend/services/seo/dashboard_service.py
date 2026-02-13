@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from loguru import logger
 
-from utils.logger_utils import get_service_logger
+
+from utils.logging import get_service_logger
 from services.gsc_service import GSCService
 from services.integrations.bing_oauth import BingOAuthService
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
@@ -23,6 +24,7 @@ from .competitive_analyzer import CompetitiveAnalyzer
 from models.onboarding import SEOPageAudit, WebsiteAnalysis, OnboardingSession
 from models.website_analysis_monitoring_models import OnboardingFullWebsiteAnalysisTask
 from models.advertools_monitoring_models import AdvertoolsTask
+
 
 logger = get_service_logger("seo_dashboard")
 

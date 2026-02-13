@@ -1,0 +1,228 @@
+/**
+ * AI Animations for Backlinking Feature
+ *
+ * Contains keyframe animations inspired by the futuristic AI design system.
+ * These animations are scoped to the backlinking feature.
+ */
+
+/* Enterprise AI Animation System */
+@keyframes neural-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+    box-shadow: 0 0 30px rgba(96, 165, 250, 0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(6, 182, 212, 0.8);
+  }
+}
+
+@keyframes quantum-pulse {
+  0%, 100% {
+    box-shadow: 0 0 30px rgba(6, 182, 212, 0.6);
+    transform: scale(1);
+  }
+  33% {
+    box-shadow: 0 0 30px rgba(96, 165, 250, 0.6);
+    transform: scale(1.02);
+  }
+  66% {
+    box-shadow: 0 0 30px rgba(168, 85, 247, 0.6);
+    transform: scale(1.02);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 8px 32px rgba(96, 165, 250, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 60px rgba(6, 182, 212, 0.4);
+  }
+}
+
+@keyframes ai-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-10px) rotate(1deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-15px) rotate(-1deg);
+  }
+}
+
+@keyframes enterprise-glow {
+  0%, 100% {
+    box-shadow:
+      0 8px 32px rgba(96, 165, 250, 0.3),
+      inset 0 0 20px rgba(96, 165, 250, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 25px 50px rgba(96, 165, 250, 0.15),
+      inset 0 0 30px rgba(6, 182, 212, 0.2);
+  }
+}
+
+@keyframes data-flow {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes matrix-rain {
+  0% {
+    transform: translateY(-100vh);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
+}
+
+/* Animation Classes */
+.neural-pulse {
+  animation: neural-pulse 2s ease-in-out infinite;
+}
+
+.quantum-pulse {
+  animation: quantum-pulse 3s ease-in-out infinite;
+}
+
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.ai-float {
+  animation: ai-float 4s ease-in-out infinite;
+}
+
+.enterprise-glow {
+  animation: enterprise-glow 3s ease-in-out infinite;
+}
+
+.data-flow {
+  animation: data-flow 3s ease-in-out infinite;
+}
+
+/* Background Effects */
+.ai-background {
+  background:
+    radial-gradient(ellipse at top, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  position: relative;
+}
+
+.ai-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 0;
+}
+
+/* Glass Morphism Effects */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(96, 165, 250, 0.15);
+}
+
+.enterprise-card {
+  background: linear-gradient(135deg,
+    rgba(96, 165, 250, 0.05),
+    rgba(168, 85, 247, 0.05),
+    rgba(6, 182, 212, 0.05)
+  );
+  backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(96, 165, 250, 0.15);
+}
+
+.neural-glow {
+  box-shadow: 0 8px 32px rgba(96, 165, 250, 0.3);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(51, 65, 85, 0.5));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.neural-glow:hover {
+  box-shadow: 0 0 60px rgba(6, 182, 212, 0.4);
+  border-color: rgba(6, 182, 212, 0.5);
+  transform: translateY(-2px);
+}
+
+/* AI Brain Icon Background */
+.ai-brain-bg {
+  /* background-image: url('/images/ai-brain-icon.png'); */
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.1;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: 200px;
+  z-index: 0;
+}
+
+/* Neural Network Patterns */
+.neural-pattern {
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 70%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Fade in animation for components */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fade-in-up 0.5s ease-out forwards;
+}

@@ -56,9 +56,13 @@ class OnboardingSummaryService:
             # Determine capabilities
             capabilities = self._determine_capabilities(api_keys, website_analysis, research_preferences, personalization_settings, persona_readiness)
             
+            user_website = user_website_service.get_user_website_by_user(self.user_id) if self.user_id else None
+
             return {
                 "api_keys": api_keys,
                 "website_url": website_analysis.get('website_url') if website_analysis else None,
+                "preview_url": user_website.preview_url if user_website else None,
+                "live_url": user_website.netlify_site_url if user_website else None,
                 "style_analysis": website_analysis.get('style_analysis') if website_analysis else None,
                 "research_preferences": research_preferences,
                 "personalization_settings": personalization_settings,

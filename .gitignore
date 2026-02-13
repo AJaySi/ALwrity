@@ -36,6 +36,9 @@ youtube_videos/
 backend/podcast_images/
 backend/podcast_videos/
 
+backend\alwrity.db
+
+
 backend/researchtools_text/projects/
 youtube_avatars/
 youtube_avatars/*
@@ -257,3 +260,18 @@ docs/__pycache__/
 backend/.onboarding_progress*.json
 backend/researchtools_text/projects/Draft__AI_advanc_c2f90698.json
 backend/researchtools_text/projects/Draft__AI_adv_388d4491.json
+# Generated Media Content (MAJOR SIZE CONTRIBUTORS)
+youtube_videos/
+podcast_images/
+podcast_audio/
+podcast_videos/
+story_audio/
+story_images/
+story_videos/
+transform_videos/
+researchtools_text/
+
+# Backend Generated Images
+backend/image_studio_images/
+backend/linkedin_images/
+backend/linkedin_images/**

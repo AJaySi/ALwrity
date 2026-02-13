@@ -7,7 +7,8 @@ import asyncio
 from typing import Dict, Any, List, Optional, Union
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("persona_step4_routes", migration_mode=True)
 import os
 
 # Rate limiting configuration

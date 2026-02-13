@@ -10,6 +10,21 @@ from datetime import datetime, timedelta
 from loguru import logger
 import os
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 from services.analytics.insights.bing_insights_service import BingInsightsService
 from middleware.auth_middleware import get_current_user
 
@@ -112,6 +127,7 @@ async def get_competitive_insights(
         
         logger.info(f"Getting competitive insights for user {user_id}, site: {site_url}")
         
+        insights_service = get_insights_service(user_id)
         insights = insights_service.get_competitive_insights(user_id, site_url, days)
         
         if 'error' in insights:
@@ -148,6 +164,7 @@ async def get_actionable_recommendations(
         
         logger.info(f"Getting actionable recommendations for user {user_id}, site: {site_url}")
         
+        insights_service = get_insights_service(user_id)
         recommendations = insights_service.get_actionable_recommendations(user_id, site_url, days)
         
         if 'error' in recommendations:

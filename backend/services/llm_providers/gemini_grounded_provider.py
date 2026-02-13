@@ -13,7 +13,8 @@ import time
 import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("gemini_grounded_provider", migration_mode=True)
 
 try:
     from google import genai

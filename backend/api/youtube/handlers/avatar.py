@@ -214,7 +214,7 @@ async def _generate_avatar_from_context(
 
     if project_id and db:
         try:
-            save_asset_to_library(
+            asset_id = save_asset_to_library(
                 db=db,
                 user_id=user_id,
                 asset_type="image",
@@ -236,6 +236,11 @@ async def _generate_avatar_from_context(
                     "status": "completed",
                 },
             )
+            if asset_id is None:
+                logger.warning(
+                    "[YouTube] Generated avatar saved but asset tracking failed",
+                    extra={"user_id": user_id, "filename": avatar_filename},
+                )
         except Exception as e:
             logger.warning(f"[YouTube] Failed to save generated avatar asset: {e}")
 
@@ -280,7 +285,7 @@ async def upload_youtube_avatar(
 
         if project_id:
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="image",
@@ -298,6 +303,11 @@ async def upload_youtube_avatar(
                         "type": "creator_avatar",
                         "status": "completed",
                     },
+                )
+                if asset_id is None:
+                    logger.warning(
+                    "[YouTube] Uploaded avatar saved but asset tracking failed",
+                    extra={"user_id": user_id, "filename": avatar_filename},
                 )
             except Exception as e:
                 logger.warning(f"[YouTube] Failed to save avatar asset: {e}")
@@ -435,7 +445,7 @@ async def make_avatar_presentable(
 
         if project_id:
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="image",
@@ -457,6 +467,11 @@ async def make_avatar_presentable(
                         "original_avatar_url": avatar_url,
                         "status": "completed",
                     },
+                )
+                if asset_id is None:
+                    logger.warning(
+                    "[YouTube] Transformed avatar saved but asset tracking failed",
+                    extra={"user_id": user_id, "filename": transformed_filename},
                 )
             except Exception as e:
                 logger.warning(f"[YouTube] Failed to save transformed avatar asset: {e}")

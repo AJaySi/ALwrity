@@ -13,7 +13,7 @@ import base64
 
 from services.image_studio.infinitetalk_adapter import InfiniteTalkService
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 from utils.asset_tracker import save_asset_to_library
 from services.database import SessionLocal
 

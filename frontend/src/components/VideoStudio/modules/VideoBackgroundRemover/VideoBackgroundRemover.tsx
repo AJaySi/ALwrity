@@ -3,14 +3,12 @@ import { Grid, Box, Button, Typography, Stack, CircularProgress, LinearProgress,
 import { VideoStudioLayout } from '../../VideoStudioLayout';
 import { useVideoBackgroundRemover } from './hooks/useVideoBackgroundRemover';
 import { VideoUpload, BackgroundImageUpload } from './components';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import WallpaperIcon from '@mui/icons-material/Wallpaper';
 
 const VideoBackgroundRemover: React.FC = () => {
   const {
-    videoFile,
     videoPreview,
     backgroundImageFile,
     backgroundImagePreview,

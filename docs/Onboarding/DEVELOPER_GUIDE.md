@@ -128,6 +128,28 @@ async def endpoint_function(current_user: Dict[str, Any] = Depends(get_current_u
     # Service logic here
 ```
 
+### Integration Framework (PostgreSQL-first)
+
+All external integrations (GSC, Bing, WordPress, Wix) use a shared PostgreSQL-backed framework:
+
+- **Token storage** lives in the **user data** database. Services create tables on startup and use `services.database.get_user_data_db_session()` for access. This keeps user-scoped credentials isolated and auditable.
+- **Integration services** (examples):
+  - `services.gsc_service.GSCService`
+  - `services.integrations.bing_oauth.BingOAuthService`
+  - `services.integrations.wordpress_oauth.WordPressOAuthService`
+  - `services.integrations.wix_oauth.WixOAuthService`
+  - `services.integrations.wordpress_service.WordPressService`
+  - `services.integrations.wordpress_publisher.WordPressPublisher`
+- **Monitoring** is handled by scheduled tasks (e.g., `OAuthTokenMonitoringExecutor`) which read tokens from PostgreSQL and emit alerts when tokens are expired or expiring soon.
+
+### Onboarding Requirement for Integrations
+
+Integrations must be configured **after onboarding** steps are complete:
+
+- The onboarding flow captures required API keys and creates the user environment.
+- OAuth connections store tokens in PostgreSQL and **automatically create monitoring tasks** on completion.
+- If a user skips onboarding or lacks required setup, integration connections should be blocked or flagged to prevent missing tokens and failed monitoring.
+
 ## 📊 Data Flow
 
 ### 1. Onboarding Initialization

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography } from '@mui/material';
-import { storyWriterApi } from '../../../services/storyWriterApi';
 import { aiApiClient } from '../../../api/client';
 
 interface AudioPlayerListProps {

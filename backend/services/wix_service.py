@@ -23,13 +23,20 @@ from services.integrations.wix.auth import WixAuthService
 from services.integrations.wix.seo import build_seo_data
 from services.integrations.wix.ricos_converter import markdown_to_html, convert_via_wix_api
 from services.integrations.wix.blog_publisher import create_blog_post as publish_blog_post
+from services.oauth_redirects import get_redirect_uri
 
 class WixService:
     """Service for interacting with Wix APIs"""
     
     def __init__(self):
         self.client_id = os.getenv('WIX_CLIENT_ID')
-        self.redirect_uri = os.getenv('WIX_REDIRECT_URI', 'https://alwrity-ai.vercel.app/wix/callback')
+        # Redirect URI must come from env and pass validation to avoid mixing
+        # prod/stage/dev callback origins.
+        try:
+            self.redirect_uri = get_redirect_uri("Wix", "WIX_REDIRECT_URI")
+        except ValueError as exc:
+            logger.error(f"Wix OAuth redirect URI configuration error: {exc}")
+            self.redirect_uri = None
         self.base_url = 'https://www.wixapis.com'
         self.oauth_url = 'https://www.wix.com/oauth/authorize'
         # Modular services
@@ -53,9 +60,20 @@ class WixService:
         Returns:
             Authorization URL for user to visit
         """
-        url, code_verifier = self.auth_service.generate_authorization_url(state)
-        self._code_verifier = code_verifier
-        return url
+        oauth_config = self.get_oauth_config(state)
+        return oauth_config["auth_url"]
+
+    def get_oauth_config(self, state: str = None) -> Dict[str, Any]:
+        """
+        Generate Wix OAuth configuration (auth URL + PKCE metadata).
+        """
+        # Preserve existing flow by reusing WixAuthService but return the full
+        # PKCE payload so the frontend can persist it for callback validation.
+        if not self.redirect_uri:
+            raise ValueError("Wix redirect URI is not configured.")
+        oauth_config = self.auth_service.generate_authorization_url(state)
+        self._code_verifier = oauth_config["code_verifier"]
+        return oauth_config
     
     def _create_redirect_session_for_auth(self, redirect_uri: str, client_id: str, code_challenge: str, state: str) -> str:
         """

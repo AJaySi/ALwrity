@@ -61,26 +61,28 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Memoize filters to create stable reference - only changes when actual values change
-  const stableFilters = useMemo(() => {
-    return {
-      asset_type: filters.asset_type,
-      source_module: filters.source_module,
-      search: filters.search,
-      tags: filters.tags,
-      favorites_only: filters.favorites_only,
-      collection_id: filters.collection_id,
-      date_from: filters.date_from,
-      date_to: filters.date_to,
-      sort_by: filters.sort_by,
-      sort_order: filters.sort_order,
-      limit: filters.limit,
-      offset: filters.offset,
-    };
+  const apiParams = useMemo(() => {
+  const tagsString = filters.tags?.join(',');
+  
+  return {
+    asset_type: filters.asset_type,
+    source_module: filters.source_module,
+    search: filters.search,
+    tags: tagsString,
+    favorites_only: filters.favorites_only,
+    collection_id: filters.collection_id,
+    date_from: filters.date_from,
+    date_to: filters.date_to,
+    sort_by: filters.sort_by,
+    sort_order: filters.sort_order,
+    limit: filters.limit,
+    offset: filters.offset,
+  };
   }, [
     filters.asset_type,
     filters.source_module,
     filters.search,
-    filters.tags?.join(','),
+    filters.tags,
     filters.favorites_only,
     filters.collection_id,
     filters.date_from,
@@ -93,14 +95,14 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
 
   // Create stable filter key for comparison
   const filterKey = useMemo(() => {
-    return JSON.stringify(stableFilters);
-  }, [stableFilters]);
+    return JSON.stringify(apiParams);
+  }, [apiParams]);
 
   // Store latest filters in ref for use in fetch function
-  const filtersRef = useRef(stableFilters);
+  const filtersRef = useRef(apiParams);
   useEffect(() => {
-    filtersRef.current = stableFilters;
-  }, [stableFilters]);
+    filtersRef.current = apiParams;
+  }, [apiParams]);
 
   // Fetch function - exposed for manual retry, not called automatically on errors
   const fetchAssets = useCallback(async () => {
@@ -144,7 +146,7 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
         }
       }
       if (currentFilters.search) params.append('search', currentFilters.search);
-      if (currentFilters.tags && currentFilters.tags.length > 0) params.append('tags', currentFilters.tags.join(','));
+      if (currentFilters.tags && Array.isArray(currentFilters.tags) && currentFilters.tags.length > 0) params.append('tags', currentFilters.tags.join(','));
       if (currentFilters.favorites_only) params.append('favorites_only', 'true');
       if (currentFilters.collection_id) params.append('collection_id', String(currentFilters.collection_id));
       if (currentFilters.date_from) params.append('date_from', currentFilters.date_from);

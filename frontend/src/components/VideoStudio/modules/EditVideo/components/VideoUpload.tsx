@@ -76,7 +76,7 @@ export const VideoUpload: React.FC<VideoUploadProps> = ({
         handleFileSelect(file);
       }
     },
-    []
+    [handleFileSelect]
   );
 
   return (

@@ -68,11 +68,11 @@ def execute_video_generation_task(
             from services.database import get_db
             db = next(get_db())
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="video",
-                    source_module="video_studio",
+                    source_module="main_video_generation",
                     filename=save_result["filename"],
                     file_url=save_result["file_url"],
                     file_path=save_result["file_path"],
@@ -94,6 +94,11 @@ def execute_video_generation_task(
                     }
                 )
                 logger.info(f"[VideoStudio] Video saved to asset library")
+                if asset_id is None:
+                    logger.warning(
+                        "[VideoStudio] Video generation succeeded but asset tracking failed",
+                        extra={"user_id": user_id, "filename": save_result["filename"]},
+                    )
             finally:
                 db.close()
         except Exception as e:

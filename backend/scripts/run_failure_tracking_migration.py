@@ -9,6 +9,7 @@ import sys
 import argparse
 from pathlib import Path
 
+
 # Add parent directory to path to import migration
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.database import get_user_db_path
@@ -81,6 +82,22 @@ def run_migration(user_id=None):
         import traceback
         traceback.print_exc()
         return False
+
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run failure tracking migration")

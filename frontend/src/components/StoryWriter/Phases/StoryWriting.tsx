@@ -207,7 +207,7 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
         URL.revokeObjectURL(blobUrl);
       });
     };
-  }, []);
+  }, [imageBlobUrls]);
 
   const currentSceneImageFullUrl = imageBlobUrls.get(currentSceneNumber) || null;
   const currentSceneAnimatedVideoUrl = sceneAnimatedVideos.get(currentSceneNumber) || null;

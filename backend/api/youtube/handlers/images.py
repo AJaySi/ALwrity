@@ -324,7 +324,7 @@ def _execute_image_generation_task(task_id: str, request_data: dict, user_id: st
 
         # Save to asset library
         try:
-            save_asset_to_library(
+            asset_id = save_asset_to_library(
                 db=db,
                 user_id=user_id,
                 asset_type="image",
@@ -348,6 +348,11 @@ def _execute_image_generation_task(task_id: str, request_data: dict, user_id: st
                     "height": request.height or 576,
                 },
             )
+            if asset_id is None:
+                logger.warning(
+                    "[YouTubeImageGen] Image generated but asset tracking failed",
+                    extra={"user_id": user_id, "filename": image_metadata["image_filename"]},
+                )
         except Exception as e:
             logger.warning(f"[YouTubeImageGen] Failed to save image asset to library: {e}")
 

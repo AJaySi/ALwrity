@@ -7,7 +7,7 @@ from loguru import logger
 
 from services.wavespeed.hunyuan_avatar import create_hunyuan_avatar, calculate_hunyuan_avatar_cost
 from services.wavespeed.client import WaveSpeedClient
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("video_studio.hunyuan_avatar")
 

@@ -5,7 +5,7 @@ Handles Bing Webmaster Tools OAuth2 authentication flow for SEO analytics access
 
 import os
 import secrets
-import sqlite3
+from contextlib import contextmanager
 import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
@@ -13,6 +13,7 @@ from loguru import logger
 import json
 from urllib.parse import quote
 from ..analytics_cache_service import analytics_cache
+import sqlite3
 
 from services.database import get_user_db_path
 
@@ -67,7 +68,6 @@ class BingOAuthService:
                 )
             ''')
             conn.commit()
-
     
     def generate_authorization_url(self, user_id: str, scope: str = "webmaster.manage") -> Dict[str, Any]:
         """Generate Bing Webmaster OAuth2 authorization URL."""
@@ -173,7 +173,7 @@ class BingOAuthService:
 
                 # Valid, not expired
                 logger.info(f"Bing OAuth: State validated for user {user_id}")
-                
+
                 # Clean up used state
                 cursor.execute('DELETE FROM bing_oauth_states WHERE state = ?', (state,))
                 conn.commit()
@@ -219,6 +219,7 @@ class BingOAuthService:
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (user_id, access_token, refresh_token, token_type, expires_at, 'webmaster.manage'))
                 conn.commit()
+                token_id = cursor.lastrowid
                 logger.info(f"Bing OAuth: Token inserted into database for user {user_id}")
             
             # Proactively fetch and cache user sites using the fresh token
@@ -259,13 +260,22 @@ class BingOAuthService:
             logger.info(f"Bing OAuth: Invalidated platform status and sites cache for user {user_id} due to new connection")
             
             logger.info(f"Bing Webmaster OAuth token stored successfully for user {user_id}")
+            sanitized_sites = []
+            for site in sites:
+                if isinstance(site, dict):
+                    sanitized_sites.append({
+                        "name": site.get("Name") or site.get("name") or "",
+                        "url": site.get("Url") or site.get("url") or ""
+                    })
+
             return {
                 "success": True,
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "token_type": token_type,
-                "expires_in": expires_in,
-                "expires_at": expires_at.isoformat()
+                "user_id": user_id,
+                "connection_id": token_id,
+                "connected": True,
+                "site_count": len(sanitized_sites),
+                "sites": sanitized_sites,
+                "connected_at": datetime.utcnow().isoformat()
             }
             
         except Exception as e:
@@ -317,8 +327,9 @@ class BingOAuthService:
                     ORDER BY created_at DESC
                 ''', (user_id,))
                 
+                rows = cursor.fetchall()
                 tokens = []
-                for row in cursor.fetchall():
+                for row in rows:
                     tokens.append({
                         "id": row[0],
                         "access_token": row[1],
@@ -351,15 +362,16 @@ class BingOAuthService:
                     ORDER BY created_at DESC
                 ''', (user_id,))
                 
+                rows = cursor.fetchall()
+
                 all_tokens = []
                 active_tokens = []
                 expired_tokens = []
-                
-                for row in cursor.fetchall():
+
+                for row in rows:
                     token_data = {
                         "id": row[0],
-                        "access_token": row[1],
-                        "refresh_token": row[2],
+                        "connection_id": row[0],
                         "token_type": row[3],
                         "expires_at": row[4],
                         "scope": row[5],
@@ -374,14 +386,8 @@ class BingOAuthService:
                     try:
                         expires_at_val = row[4]
                         if expires_at_val:
-                            # First try Python parsing
-                            try:
-                                dt = datetime.fromisoformat(expires_at_val) if isinstance(expires_at_val, str) else expires_at_val
-                                not_expired = dt > datetime.now()
-                            except Exception:
-                                # Fallback to SQLite comparison
-                                cursor.execute("SELECT datetime('now') < ?", (expires_at_val,))
-                                not_expired = cursor.fetchone()[0] == 1
+                            dt = datetime.fromisoformat(expires_at_val) if isinstance(expires_at_val, str) else expires_at_val
+                            not_expired = dt > datetime.utcnow()
                         else:
                             # No expiry stored => consider not expired
                             not_expired = True
@@ -560,9 +566,11 @@ class BingOAuthService:
                 # Don't make external API calls for connection status
                 active_sites.append({
                     "id": token["id"],
-                    "access_token": token["access_token"],
+                    "connection_id": token["id"],
+                    "connected": True,
                     "scope": token["scope"],
                     "created_at": token["created_at"],
+                    "site_count": 0,
                     "sites": []  # Sites will be fetched when needed for analytics
                 })
             
@@ -693,18 +701,15 @@ class BingOAuthService:
                 expires_at_value = refreshed_token.get("expires_at")
                 if not expires_at_value and refreshed_token.get("expires_in"):
                     try:
-                        expires_at_value = datetime.now() + timedelta(seconds=int(refreshed_token["expires_in"]))
+                        expires_at_value = datetime.utcnow() + timedelta(seconds=int(refreshed_token["expires_in"]))
                     except Exception:
                         expires_at_value = None
+                
                 cursor.execute('''
                     UPDATE bing_oauth_tokens 
                     SET access_token = ?, expires_at = ?, is_active = TRUE, updated_at = datetime('now')
                     WHERE id = ?
-                ''', (
-                    refreshed_token["access_token"],
-                    expires_at_value,
-                    token_id
-                ))
+                ''', (refreshed_token["access_token"], expires_at_value, token_id))
                 conn.commit()
                 logger.info(f"Bing token {token_id} updated in database")
                 return True
@@ -729,243 +734,3 @@ class BingOAuthService:
         except Exception as e:
             logger.error(f"Error marking Bing token as inactive: {e}")
             return False
-    
-    def get_rank_and_traffic_stats(self, user_id: str, site_url: str, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
-        """Get rank and traffic statistics for a site."""
-        try:
-            tokens = self.get_user_tokens(user_id)
-            if not tokens:
-                return {"error": "No valid tokens found"}
-            
-            # Use the first valid token
-            valid_token = None
-            for token in tokens:
-                if self.test_token(token["access_token"]):
-                    valid_token = token
-                    break
-            
-            if not valid_token:
-                return {"error": "No valid access token"}
-            
-            # Set default date range (last 30 days)
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-            if not end_date:
-                end_date = datetime.now().strftime('%Y-%m-%d')
-            
-            headers = {'Authorization': f'Bearer {valid_token["access_token"]}'}
-            params = {
-                'siteUrl': site_url,
-                'startDate': start_date,
-                'endDate': end_date
-            }
-            
-            response = requests.get(
-                f"{self.api_base_url}/GetRankAndTrafficStats",
-                headers=headers,
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Bing API error: {response.status_code} - {response.text}")
-                return {"error": f"API error: {response.status_code}"}
-                
-        except Exception as e:
-            logger.error(f"Error getting Bing rank and traffic stats: {e}")
-            return {"error": str(e)}
-    
-    def get_query_stats(self, user_id: str, site_url: str, start_date: str = None, end_date: str = None, page: int = 0) -> Dict[str, Any]:
-        """Get search query statistics for a site."""
-        try:
-            tokens = self.get_user_tokens(user_id)
-            if not tokens:
-                return {"error": "No valid tokens found"}
-            
-            valid_token = None
-            for token in tokens:
-                if self.test_token(token["access_token"]):
-                    valid_token = token
-                    break
-            
-            if not valid_token:
-                return {"error": "No valid access token"}
-            
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-            if not end_date:
-                end_date = datetime.now().strftime('%Y-%m-%d')
-            
-            headers = {'Authorization': f'Bearer {valid_token["access_token"]}'}
-            params = {
-                'siteUrl': site_url,
-                'startDate': start_date,
-                'endDate': end_date,
-                'page': page
-            }
-            
-            response = requests.get(
-                f"{self.api_base_url}/GetQueryStats",
-                headers=headers,
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Bing API error: {response.status_code} - {response.text}")
-                return {"error": f"API error: {response.status_code}"}
-                
-        except Exception as e:
-            logger.error(f"Error getting Bing query stats: {e}")
-            return {"error": str(e)}
-    
-    def get_page_stats(self, user_id: str, site_url: str, start_date: str = None, end_date: str = None, page: int = 0) -> Dict[str, Any]:
-        """Get page-level statistics for a site."""
-        try:
-            tokens = self.get_user_tokens(user_id)
-            if not tokens:
-                return {"error": "No valid tokens found"}
-            
-            valid_token = None
-            for token in tokens:
-                if self.test_token(token["access_token"]):
-                    valid_token = token
-                    break
-            
-            if not valid_token:
-                return {"error": "No valid access token"}
-            
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-            if not end_date:
-                end_date = datetime.now().strftime('%Y-%m-%d')
-            
-            headers = {'Authorization': f'Bearer {valid_token["access_token"]}'}
-            params = {
-                'siteUrl': site_url,
-                'startDate': start_date,
-                'endDate': end_date,
-                'page': page
-            }
-            
-            response = requests.get(
-                f"{self.api_base_url}/GetPageStats",
-                headers=headers,
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Bing API error: {response.status_code} - {response.text}")
-                return {"error": f"API error: {response.status_code}"}
-                
-        except Exception as e:
-            logger.error(f"Error getting Bing page stats: {e}")
-            return {"error": str(e)}
-    
-    def get_keyword_stats(self, user_id: str, keyword: str, country: str = "us", language: str = "en-US") -> Dict[str, Any]:
-        """Get keyword statistics for research purposes."""
-        try:
-            tokens = self.get_user_tokens(user_id)
-            if not tokens:
-                return {"error": "No valid tokens found"}
-            
-            valid_token = None
-            for token in tokens:
-                if self.test_token(token["access_token"]):
-                    valid_token = token
-                    break
-            
-            if not valid_token:
-                return {"error": "No valid access token"}
-            
-            headers = {'Authorization': f'Bearer {valid_token["access_token"]}'}
-            params = {
-                'q': keyword,
-                'country': country,
-                'language': language
-            }
-            
-            response = requests.get(
-                f"{self.api_base_url}/GetKeywordStats",
-                headers=headers,
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Bing API error: {response.status_code} - {response.text}")
-                return {"error": f"API error: {response.status_code}"}
-                
-        except Exception as e:
-            logger.error(f"Error getting Bing keyword stats: {e}")
-            return {"error": str(e)}
-    
-    def get_comprehensive_analytics(self, user_id: str, site_url: str = None) -> Dict[str, Any]:
-        """Get comprehensive analytics data for all connected sites or a specific site."""
-        try:
-            # Get user's sites
-            sites = self.get_user_sites(user_id)
-            if not sites:
-                return {"error": "No sites found"}
-            
-            # If no specific site URL provided, get data for all sites
-            target_sites = [site_url] if site_url else [site.get('url', '') for site in sites if site.get('url')]
-            
-            analytics_data = {
-                "sites": [],
-                "summary": {
-                    "total_sites": len(target_sites),
-                    "total_clicks": 0,
-                    "total_impressions": 0,
-                    "total_ctr": 0.0
-                }
-            }
-            
-            for site in target_sites:
-                if not site:
-                    continue
-                    
-                site_data = {
-                    "url": site,
-                    "traffic_stats": {},
-                    "query_stats": {},
-                    "page_stats": {},
-                    "error": None
-                }
-                
-                try:
-                    # Get traffic stats
-                    traffic_stats = self.get_rank_and_traffic_stats(user_id, site)
-                    if "error" not in traffic_stats:
-                        site_data["traffic_stats"] = traffic_stats
-                    
-                    # Get query stats (first page)
-                    query_stats = self.get_query_stats(user_id, site)
-                    if "error" not in query_stats:
-                        site_data["query_stats"] = query_stats
-                    
-                    # Get page stats (first page)
-                    page_stats = self.get_page_stats(user_id, site)
-                    if "error" not in page_stats:
-                        site_data["page_stats"] = page_stats
-                        
-                except Exception as e:
-                    site_data["error"] = str(e)
-                    logger.error(f"Error getting analytics for site {site}: {e}")
-                
-                analytics_data["sites"].append(site_data)
-            
-            return analytics_data
-            
-        except Exception as e:
-            logger.error(f"Error getting comprehensive Bing analytics: {e}")
-            return {"error": str(e)}

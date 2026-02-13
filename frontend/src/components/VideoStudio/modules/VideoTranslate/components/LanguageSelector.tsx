@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, Stack, Typography, FormControl, InputLabel, Select, MenuItem, Autocomplete, TextField } from '@mui/material';
+import { Paper, Stack, Typography, Autocomplete, TextField } from '@mui/material';
 import TranslateIcon from '@mui/icons-material/Translate';
 
 interface LanguageSelectorProps {

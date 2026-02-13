@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -11,7 +11,6 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
   FormControlLabel,
   Checkbox,
   Tooltip,
@@ -105,29 +104,24 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
 }) => {
   const [settings, setSettings] = useState<AudioGenerationSettings>(initialSettings);
 
-  // Fallback English voices (used when language-aware mapping is not available)
-  const ENGLISH_VOICES_FALLBACK = [
-    { id: "Wise_Woman", name: "Wise Woman", personality: "Authoritative, trustworthy female voice - perfect for educational content and expert narration" },
-    { id: "Friendly_Person", name: "Friendly Person", personality: "Warm, approachable voice - great for welcoming introductions and customer-facing content" },
-    { id: "Inspirational_girl", name: "Inspirational Girl", personality: "Motivational, uplifting female voice - ideal for inspirational and motivational content" },
-    { id: "Deep_Voice_Man", name: "Deep Voice Man", personality: "Powerful, commanding male voice - excellent for serious topics and authoritative delivery" },
-    { id: "Calm_Woman", name: "Calm Woman", personality: "Soothing, composed female voice - perfect for meditation, relaxation, or sensitive topics" },
-    { id: "Casual_Guy", name: "Casual Guy", personality: "Relaxed, conversational male voice - great for vlogs, tutorials, and informal content" },
-    { id: "Lively_Girl", name: "Lively Girl", personality: "Energetic, enthusiastic female voice - ideal for exciting announcements and upbeat content" },
-    { id: "Patient_Man", name: "Patient Man", personality: "Gentle, understanding male voice - perfect for explanations and patient guidance" },
-    { id: "Young_Knight", name: "Young Knight", personality: "Brave, confident male voice - great for adventure, gaming, and heroic narratives" },
-    { id: "Determined_Man", name: "Determined Man", personality: "Strong, resolute male voice - excellent for motivational speeches and determined delivery" },
-    { id: "Lovely_Girl", name: "Lovely Girl", personality: "Sweet, charming female voice - ideal for storytelling and gentle narratives" },
-    { id: "Decent_Boy", name: "Decent Boy", personality: "Honest, sincere male voice - perfect for testimonials and personal stories" },
-    { id: "Imposing_Manner", name: "Imposing Manner", personality: "Formal, dignified male voice - great for corporate content and official announcements" },
-    { id: "Elegant_Man", name: "Elegant Man", personality: "Refined, sophisticated male voice - ideal for luxury, premium content" },
-    { id: "Abbess", name: "Abbess", personality: "Spiritual, serene female voice - perfect for meditation, philosophy, or contemplative content" },
-    { id: "Sweet_Girl_2", name: "Sweet Girl 2", personality: "Gentle, melodic female voice - excellent for children's content and soft storytelling" },
-    { id: "Exuberant_Girl", name: "Exuberant Girl", personality: "Joyful, expressive female voice - ideal for celebrations and happy announcements" },
-  ];
-
   // Get language-specific voices (use language-aware mapping if available, fallback to English)
   const VOICE_OPTIONS = useMemo(() => {
+    const ENGLISH_VOICES_FALLBACK = [
+      { id: "Wise_Woman", name: "Wise Woman", personality: "Authoritative, trustworthy female voice - perfect for educational content and expert narration" },
+      { id: "Friendly_Person", name: "Friendly Person", personality: "Warm, approachable voice - great for welcoming introductions and customer-facing content" },
+      { id: "Inspirational_girl", name: "Inspirational Girl", personality: "Motivational, uplifting female voice - ideal for inspirational and motivational content" },
+      { id: "Deep_Voice_Man", name: "Deep Voice Man", personality: "Powerful, commanding male voice - excellent for serious topics and authoritative delivery" },
+      { id: "Calm_Woman", name: "Calm Woman", personality: "Soothing, composed female voice - perfect for meditation, relaxation, or sensitive topics" },
+      { id: "Casual_Guy", name: "Casual Guy", personality: "Relaxed, conversational male voice - great for vlogs, tutorials, and informal content" },
+      { id: "Lively_Girl", name: "Lively Girl", personality: "Energetic, enthusiastic female voice - ideal for exciting announcements and upbeat content" },
+      { id: "Patient_Man", name: "Patient Man", personality: "Gentle, understanding male voice - perfect for explanations and patient guidance" },
+      { id: "Young_Knight", name: "Young Knight", personality: "Brave, confident male voice - great for adventure, gaming, and heroic narratives" },
+      { id: "Determined_Man", name: "Determined Man", personality: "Strong, resolute male voice - excellent for motivational speeches and determined delivery" },
+      { id: "Lovely_Girl", name: "Lovely Girl", personality: "Sweet, charming female voice - ideal for storytelling and gentle narratives" },
+      { id: "Exuberant_Girl", name: "Exuberant Girl", personality: "Joyful, expressive female voice - ideal for celebrations and happy announcements" },
+      { id: "Sweet_Girl_2", name: "Sweet Girl 2", personality: "Gentle, melodic female voice - excellent for children's content and soft storytelling" },
+    ];
+
     if (getVoicesForLanguage && language) {
       return getVoicesForLanguage(language);
     }

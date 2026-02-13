@@ -13,8 +13,24 @@ import os
 import json
 from sqlalchemy import and_
 
+
+def _raise_postgresql_required():
+    """Raise error if PostgreSQL not configured."""
+    raise ValueError(
+        """
+ POSTGRESQL REQUIRED - Clean Architecture
+        
+    ALwrity requires PostgreSQL environment variables to be set:
+    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
+    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
+
+    This is intentional - we no longer support SQLite or single database setups.
+    """
+    )
+
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
 from middleware.auth_middleware import get_current_user
+import os
 
 router = APIRouter(prefix="/bing-analytics", tags=["Bing Analytics Storage"])
 
@@ -23,7 +39,7 @@ from services.database import get_user_db_path
 
 def get_storage_service(user_id: str) -> BingAnalyticsStorageService:
     """Get storage service instance for a specific user."""
-    return BingAnalyticsStorageService()
+    return BingAnalyticsStorageService(user_id)
 
 
 @router.post("/collect-data")

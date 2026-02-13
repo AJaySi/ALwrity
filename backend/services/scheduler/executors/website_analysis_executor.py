@@ -3,7 +3,6 @@ Website Analysis Task Executor
 Handles execution of website analysis tasks for user and competitor websites.
 """
 
-import logging
 import os
 import time
 import asyncio
@@ -17,7 +16,7 @@ from ..core.executor_interface import TaskExecutor, TaskExecutionResult
 from ..core.exception_handler import TaskExecutionError, DatabaseError, SchedulerExceptionHandler
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask, WebsiteAnalysisExecutionLog
 from models.onboarding import CompetitorAnalysis, OnboardingSession
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 # Import website analysis services
 from services.component_logic.web_crawler_logic import WebCrawlerLogic

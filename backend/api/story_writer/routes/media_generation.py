@@ -86,7 +86,7 @@ async def generate_scene_images(
                     if scene_number > 0 and scene_number <= len(scenes_data):
                         prompt = scenes_data[scene_number - 1].get("image_prompt")
                     
-                    save_asset_to_library(
+                    asset_id = save_asset_to_library(
                         db=db,
                         user_id=user_id,
                         asset_type="image",
@@ -104,6 +104,11 @@ async def generate_scene_images(
                         model=result.get("model"),
                         asset_metadata={"scene_number": scene_number, "scene_title": result.get("scene_title"), "status": "completed"}
                     )
+                    if asset_id is None:
+                        logger.warning(
+                            "[StoryWriter] Image generation succeeded but asset tracking failed",
+                            extra={"user_id": user_id, "filename": result.get("image_filename", "")},
+                        )
                 except Exception as e:
                     logger.warning(f"[StoryWriter] Failed to save image asset to library: {e}")
 
@@ -247,7 +252,7 @@ async def generate_scene_audio(
                     if scene_number > 0 and scene_number <= len(scenes_data):
                         prompt = scenes_data[scene_number - 1].get("text")
                     
-                    save_asset_to_library(
+                    asset_id = save_asset_to_library(
                         db=db,
                         user_id=user_id,
                         asset_type="audio",
@@ -266,6 +271,11 @@ async def generate_scene_audio(
                         cost=result.get("cost"),
                         asset_metadata={"scene_number": scene_number, "scene_title": result.get("scene_title"), "status": "completed"}
                     )
+                    if asset_id is None:
+                        logger.warning(
+                            "[StoryWriter] Audio generation succeeded but asset tracking failed",
+                            extra={"user_id": user_id, "filename": audio_filename},
+                        )
                 except Exception as e:
                     logger.warning(f"[StoryWriter] Failed to save audio asset to library: {e}")
 

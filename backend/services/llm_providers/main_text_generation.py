@@ -8,7 +8,8 @@ import os
 import json
 from typing import Optional, Dict, Any
 from datetime import datetime
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("main_text_generation_provider", migration_mode=True)
 from fastapi import HTTPException
 from ..onboarding.api_key_manager import APIKeyManager
 

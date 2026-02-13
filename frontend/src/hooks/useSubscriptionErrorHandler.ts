@@ -10,7 +10,7 @@ interface ApiError {
 }
 
 export const useSubscriptionErrorHandler = () => {
-  const { subscription, showExpiredModal } = useSubscription();
+  const { showExpiredModal } = useSubscription();
 
   const handleApiError = useCallback((error: ApiError) => {
     // Check if it's a subscription-related error
@@ -25,7 +25,7 @@ export const useSubscriptionErrorHandler = () => {
     }
 
     return false; // Not a subscription error
-  }, [subscription]);
+  }, []);
 
   const handleSubscriptionExpired = useCallback(() => {
     console.log('Manually triggering subscription expired modal');

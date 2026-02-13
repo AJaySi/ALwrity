@@ -152,7 +152,7 @@ async def generate_podcast_audio(
     # Save to asset library (podcast module)
     try:
         if result.get("audio_url"):
-            save_asset_to_library(
+            asset_id = save_asset_to_library(
                 db=db,
                 user_id=user_id,
                 asset_type="audio",
@@ -174,6 +174,11 @@ async def generate_podcast_audio(
                     "status": "completed",
                 },
             )
+            if asset_id is None:
+                logger.warning(
+                    "[Podcast] Audio generated but asset tracking failed",
+                    extra={"user_id": user_id, "filename": result.get("audio_filename", "")},
+                )
     except Exception as e:
         logger.warning(f"[Podcast] Failed to save audio asset: {e}")
 
@@ -325,7 +330,7 @@ async def combine_podcast_audio(
             
             # Save to asset library
             try:
-                save_asset_to_library(
+                asset_id = save_asset_to_library(
                     db=db,
                     user_id=user_id,
                     asset_type="audio",
@@ -346,6 +351,11 @@ async def combine_podcast_audio(
                         "status": "completed",
                     },
                 )
+                if asset_id is None:
+                    logger.warning(
+                        "[Podcast] Combined audio generated but asset tracking failed",
+                        extra={"user_id": user_id, "filename": output_filename},
+                    )
             except Exception as e:
                 logger.warning(f"[Podcast] Failed to save combined audio asset: {e}")
             

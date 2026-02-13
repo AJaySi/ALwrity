@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.story_writer.prompt_enhancer_service import PromptEnhancerService
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("youtube.scene_builder")
 

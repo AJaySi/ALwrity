@@ -13,15 +13,17 @@
     "@emotion/styled": "^11.11.0",
     "@mui/icons-material": "^5.15.0",
     "@mui/material": "^5.15.0",
+    "@remix-run/router": "^1.23.2",
     "@tanstack/react-query": "^5.87.1",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/react-router-dom": "^5.3.3",
     "@types/recharts": "^1.8.29",
     "@wix/blog": "^1.0.488",
-    "@wix/sdk": "^1.17.1",
-    "axios": "^1.12.0",
+    "axios": "^1.13.5",
+    "diff": "^5.2.1",
     "framer-motion": "^12.23.12",
+    "glob": "^10.4.5",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.543.0",
     "react": "^18.2.0",
@@ -35,11 +37,20 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 react-scripts build",
+    "build:fast": "cross-env NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false react-scripts build",
+    "build:analyze": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npm run build && npx source-map-explorer 'build/static/js/*.js' --html bundle-report.html",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "analyze": "npm run build && npx source-map-explorer 'build/static/js/*.js' --html bundle-report.html",
-    "analyze:size": "npm run build && npx bundlesize"
+    "analyze:size": "npm run build && npx bundlesize",
+    "build:monitor": "cross-env NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false react-scripts build --profile && node scripts/build-monitor.js",
+    "perf:monitor": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npm run build:fast && node scripts/memory-check.js",
+    "memory:check": "node scripts/memory-check.js",
+    "build:check": "npm run perf:monitor && npm run memory:check && echo '✅ Build completed with full monitoring'",
+    "bundle:analyze": "npm run build:fast && npx webpack-bundle-analyzer build/static/js/*.js --port 8888",
+    "dev:optimized": "cross-env NODE_OPTIONS=--max-old-space-size=4096 REACT_APP_LAZY_LOADING=true npm start",
+    "build:optimized": "cross-env NODE_OPTIONS=--max-old-space-size=4096 REACT_APP_LAZY_LOADING=true npm run build:fast"
   },
   "eslintConfig": {
     "extends": [
@@ -65,9 +76,11 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.10",
+    "cross-env": "^10.1.0",
+    "http-proxy-middleware": "^3.0.5",
     "source-map-explorer": "^2.5.2",
-    "typescript": "^4.9.5"
+    "typescript": "^4.9.5",
+    "webpack-bundle-analyzer": "^4.9.0"
   },
-  "proxy": "http://localhost:8000",
   "homepage": "/"
 }

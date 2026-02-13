@@ -65,6 +65,8 @@ journey
 ### Multi-Platform Content
 - **LinkedIn Writer**: Professional content for business networking
 - **Facebook Writer**: Engaging content for broader audiences
+- **YouTube Studio**: Professional video content for visual storytelling
+- **Podcast Maker**: Audio content for in-depth discussions and expertise
 - **Blog Writer**: In-depth content for your website
 - **Cross-Platform Strategy**: Consistent messaging across all channels
 
@@ -108,14 +110,6 @@ journey
 
 ## 🎯 Success Stories
 
-### Sarah - Business Coach
-*"ALwrity helped me establish myself as a thought leader in business coaching. I went from 500 to 10,000 LinkedIn followers in 6 months, and my client inquiries increased by 300%."*
-
-### Mike - Marketing Consultant
-*"As a solopreneur, I needed to create content consistently without a team. ALwrity's automation features saved me 20 hours per week, and my content quality actually improved."*
-
-### Lisa - Course Creator
-*"The multi-platform content creation in ALwrity helped me reach different audiences across LinkedIn, Facebook, and my blog. My course sales increased by 150% in 3 months."*
 
 ## 🚀 Ready to Start?
 

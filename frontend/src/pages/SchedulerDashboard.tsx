@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getCachedApiCall } from '../utils/cacheUtils';
 import {
   Box,
   Container,
@@ -13,7 +14,11 @@ import {
   Tooltip,
   Alert,
   CircularProgress,
-  Chip
+  Chip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  // Divider
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -22,20 +27,25 @@ import {
   PlayArrow as PlayArrowIcon,
   Pause as PauseIcon,
   TrendingUp as TrendingUpIcon,
-  AccessTime as AccessTimeIcon
+  AccessTime as AccessTimeIcon,
+  ExpandMore as ExpandMoreIcon,
+  Assessment as AssessmentIcon,
+  History as HistoryIcon,
+  // Timeline as TimelineIcon,
+  ListAlt as ListAltIcon
 } from '@mui/icons-material';
 import { useAuth } from '@clerk/clerk-react';
 import { styled } from '@mui/material/styles';
 
-import { getSchedulerDashboard, SchedulerDashboardData } from '../api/schedulerDashboard';
+import { getSchedulerDashboard, SchedulerDashboardData, getSchedulerEventHistory } from '../api/schedulerDashboard';
 // Removed SchedulerStatsCards - metrics moved to header
 import SchedulerJobsTree from '../components/SchedulerDashboard/SchedulerJobsTree';
 import ExecutionLogsTable from '../components/SchedulerDashboard/ExecutionLogsTable';
 import FailuresInsights from '../components/SchedulerDashboard/FailuresInsights';
 import SchedulerEventHistory from '../components/SchedulerDashboard/SchedulerEventHistory';
-import SchedulerCharts from '../components/SchedulerDashboard/SchedulerCharts';
+import { SchedulerCharts, PerformanceSummary } from '../components/SchedulerDashboard/Charts';
 import TaskMonitoringTabs from '../components/SchedulerDashboard/TaskMonitoringTabs';
-import { TerminalTypography, terminalColors } from '../components/SchedulerDashboard/terminalTheme';
+import { TerminalTypography, TerminalPaper, terminalColors } from '../components/SchedulerDashboard/terminalTheme';
 import { useSchedulerTaskAlerts } from '../hooks/useSchedulerTaskAlerts';
 import TasksNeedingIntervention from '../components/SchedulerDashboard/TasksNeedingIntervention';
 import HeaderControls from '../components/shared/HeaderControls';
@@ -190,6 +200,44 @@ const TerminalLoading = styled(Box)({
   }
 });
 
+// Terminal-themed accordion components
+const TerminalAccordion = styled(Accordion)({
+  backgroundColor: 'rgba(10, 10, 10, 0.8)',
+  border: '1px solid #00ff00',
+  borderRadius: '8px !important',
+  marginBottom: '16px',
+  '&:before': {
+    display: 'none', // Remove default accordion line
+  },
+  '&.Mui-expanded': {
+    marginBottom: '16px',
+  }
+});
+
+const TerminalAccordionSummary = styled(AccordionSummary)({
+  backgroundColor: 'rgba(0, 255, 0, 0.05)',
+  borderBottom: '1px solid rgba(0, 255, 0, 0.3)',
+  minHeight: '48px',
+  '&.Mui-expanded': {
+    backgroundColor: 'rgba(0, 255, 0, 0.1)',
+  },
+  '& .MuiAccordionSummary-content': {
+    alignItems: 'center',
+    gap: '12px',
+  },
+  '& .MuiAccordionSummary-expandIconWrapper': {
+    color: '#00ff00',
+    '&.Mui-expanded': {
+      transform: 'rotate(180deg)',
+    }
+  }
+});
+
+const TerminalAccordionDetails = styled(AccordionDetails)({
+  backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  padding: '16px',
+});
+
 const SchedulerDashboard: React.FC = () => {
   const { isSignedIn, isLoaded, userId } = useAuth();
   const [dashboardData, setDashboardData] = useState<SchedulerDashboardData | null>(null);
@@ -198,7 +246,13 @@ const SchedulerDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
-  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
+
+  // Shared event history data for consistency across sections
+  const [eventHistoryData, setEventHistoryData] = useState<{
+    events: any[];
+    totalCount: number;
+    lastFetched: Date | null;
+  }>({ events: [], totalCount: 0, lastFetched: null });
   
   // Poll for tasks needing intervention and show toast notifications
   useSchedulerTaskAlerts({
@@ -209,6 +263,33 @@ const SchedulerDashboard: React.FC = () => {
   // Use refs to track loading state without causing re-renders
   const loadingRef = useRef(false);
   const refreshingRef = useRef(false);
+
+  // Fetch shared event history data for all sections
+  const fetchSharedEventHistory = useCallback(async (forceRefresh = false) => {
+    // Only fetch if we don't have data or it's a force refresh
+    if (!forceRefresh && eventHistoryData.events.length > 0 && eventHistoryData.lastFetched) {
+      const minutesSinceLastFetch = (Date.now() - eventHistoryData.lastFetched.getTime()) / (1000 * 60);
+      if (minutesSinceLastFetch < 5) { // Cache for 5 minutes
+        return;
+      }
+    }
+
+    try {
+      console.log('📊 Fetching shared event history data...');
+      const response = await getSchedulerEventHistory(1000, 0, undefined, 30); // Get last 30 days, more events
+      setEventHistoryData({
+        events: response.events || [],
+        totalCount: response.total_count || 0,
+        lastFetched: new Date()
+      });
+      console.log('📊 Shared event history data updated:', {
+        eventsCount: response.events?.length || 0,
+        totalCount: response.total_count || 0
+      });
+    } catch (error) {
+      console.error('❌ Failed to fetch shared event history:', error);
+    }
+  }, [eventHistoryData]);
 
   const fetchDashboardData = useCallback(async (isManualRefresh = false) => {
     // Prevent multiple simultaneous fetches using refs
@@ -227,16 +308,30 @@ const SchedulerDashboard: React.FC = () => {
       }
       setError(null);
       
-      const data = await getSchedulerDashboard();
+      const data = await getCachedApiCall(
+        'scheduler-dashboard',
+        () => getSchedulerDashboard(),
+        60 // Cache for 60 seconds
+      );
       
       // Always update state to ensure metrics are updated
       // The comparison was preventing updates when cumulative stats changed
       setDashboardData(data);
       
       setLastUpdated(new Date());
-      setLastUpdateTimestamp(data.stats.last_update || null);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch scheduler dashboard');
+      // Provide more specific error messages based on error type
+      let errorMessage = 'Unable to load scheduler dashboard';
+      if (err.response?.status === 403) {
+        errorMessage = 'Access denied. Please check your permissions.';
+      } else if (err.response?.status === 500) {
+        errorMessage = 'Server error. The scheduler service may be unavailable.';
+      } else if (err.code === 'NETWORK_ERROR' || !navigator.onLine) {
+        errorMessage = 'Network connection issue. Please check your internet connection.';
+      } else if (err.message) {
+        errorMessage = `Dashboard loading failed: ${err.message}`;
+      }
+      setError(errorMessage);
       console.error('Error fetching scheduler dashboard:', err);
     } finally {
       loadingRef.current = false;
@@ -251,7 +346,7 @@ const SchedulerDashboard: React.FC = () => {
     if (isLoaded && isSignedIn && !dashboardData) {
       fetchDashboardData();
     }
-  }, [isLoaded, isSignedIn]); // Removed fetchDashboardData to prevent re-renders
+  }, [isLoaded, isSignedIn, dashboardData, fetchDashboardData]);
 
   // Smart auto-refresh: Poll based on scheduler's check interval or next job execution
   useEffect(() => {
@@ -329,6 +424,13 @@ const SchedulerDashboard: React.FC = () => {
     };
   }, [isSignedIn, isLoaded, dashboardData, fetchDashboardData]); // Re-run when dashboard data changes
 
+  // Fetch shared event history data on mount and when user changes
+  useEffect(() => {
+    if (isSignedIn && isLoaded && userId) {
+      fetchSharedEventHistory(true);
+    }
+  }, [isSignedIn, isLoaded, userId, fetchSharedEventHistory]);
+
   // Format time ago
   const formatTimeAgo = (date: Date | null) => {
     if (!date) return 'Never';
@@ -386,6 +488,11 @@ const SchedulerDashboard: React.FC = () => {
                 <TerminalSubtitle>
                   Monitor task execution, jobs, and system status
                 </TerminalSubtitle>
+                {eventHistoryData.events.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <PerformanceSummary events={eventHistoryData.events} compact={true} />
+                  </Box>
+                )}
               </Box>
             </Box>
             <Box display="flex" alignItems="center" gap={2}>
@@ -643,8 +750,23 @@ const SchedulerDashboard: React.FC = () => {
       {loading && !dashboardData ? (
         <TerminalLoading>
           <CircularProgress />
+          <Typography variant="body2" sx={{ mt: 2, color: terminalColors.textSecondary }}>
+            Loading scheduler dashboard...
+          </Typography>
         </TerminalLoading>
       ) : dashboardData ? (
+        <>
+          {/* Success feedback when data loads */}
+          {dashboardData.stats?.running && (
+            <TerminalAlert severity="success" sx={{ mb: 3 }}>
+              ✅ Scheduler is running normally. All systems operational.
+            </TerminalAlert>
+          )}
+        </>
+      ) : null}
+
+      {/* Show dashboard content */}
+      {dashboardData ? (
         <>
           {/* Debug Info removed - status moved to refresh icon tooltip */}
           
@@ -660,12 +782,39 @@ const SchedulerDashboard: React.FC = () => {
                   oneTimeJobs={dashboardData.one_time_jobs || 0}
                 />
               ) : (
-                <TerminalAlert severity="info">No jobs scheduled</TerminalAlert>
+                <TerminalAlert severity="info" icon={<ScheduleIcon />}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      No Scheduled Jobs Found
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      The scheduler is running but no jobs are currently scheduled.
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                      Jobs will appear here once you complete onboarding and connect platforms.
+                    </Typography>
+                  </Box>
+                </TerminalAlert>
               )}
             </Box>
             <Box flex={1} sx={{ display: 'flex', flexDirection: 'column' }}>
               <FailuresInsights stats={dashboardData.stats} />
             </Box>
+          </Box>
+
+          {/* Analytics & Charts - Always visible, compact overview - MOVED TO TOP */}
+          <Box mb={4}>
+            <TerminalPaper sx={{ p: 3 }}>
+              <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                <TerminalTypography variant="h6" sx={{ color: terminalColors.primary, fontSize: '1.2rem' }}>
+                  📊 Analytics & Charts
+                </TerminalTypography>
+                <TerminalTypography variant="caption" sx={{ color: terminalColors.textSecondary }}>
+                  System performance at a glance
+                </TerminalTypography>
+              </Box>
+              <SchedulerCharts events={eventHistoryData.events} compactMode={false} />
+            </TerminalPaper>
           </Box>
 
           {/* Tasks Needing Intervention - Show prominently but only when needed */}
@@ -675,29 +824,101 @@ const SchedulerDashboard: React.FC = () => {
             </Box>
           )}
 
-          {/* Task Monitoring Tabs */}
-          <Box mb={4}>
-            <TaskMonitoringTabs />
-          </Box>
+          {/* Detailed Monitoring Sections - Collapsible for cleaner interface */}
+          <TerminalAccordion defaultExpanded={false}>
+            <TerminalAccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                '& .MuiAccordionSummary-content': {
+                  alignItems: 'center',
+                  gap: '12px',
+                }
+              }}
+            >
+              <ListAltIcon sx={{ color: terminalColors.primary, fontSize: '24px' }} />
+              <Box>
+                <TerminalTypography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: 0 }}>
+                  Task Monitoring
+                </TerminalTypography>
+                <TerminalTypography variant="body2" sx={{ opacity: 0.7, fontSize: '0.85rem' }}>
+                  Detailed task status and platform insights
+                </TerminalTypography>
+              </Box>
+            </TerminalAccordionSummary>
+            <TerminalAccordionDetails>
+              <TaskMonitoringTabs />
+            </TerminalAccordionDetails>
+          </TerminalAccordion>
 
-          {/* Execution Logs */}
-          <Box mb={4}>
-            <ExecutionLogsTable initialLimit={50} />
-          </Box>
+          <TerminalAccordion defaultExpanded={false}>
+            <TerminalAccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                '& .MuiAccordionSummary-content': {
+                  alignItems: 'center',
+                  gap: '12px',
+                }
+              }}
+            >
+              <AssessmentIcon sx={{ color: terminalColors.primary, fontSize: '24px' }} />
+              <Box>
+                <TerminalTypography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: 0 }}>
+                  Execution Logs
+                </TerminalTypography>
+                <TerminalTypography variant="body2" sx={{ opacity: 0.7, fontSize: '0.85rem' }}>
+                  Recent task executions and their outcomes
+                </TerminalTypography>
+              </Box>
+            </TerminalAccordionSummary>
+            <TerminalAccordionDetails>
+              <ExecutionLogsTable initialLimit={50} />
+            </TerminalAccordionDetails>
+          </TerminalAccordion>
 
-          {/* Scheduler Event History */}
-          <Box mb={4}>
-            <SchedulerEventHistory />
-          </Box>
+          <TerminalAccordion defaultExpanded={true}>
+            <TerminalAccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                '& .MuiAccordionSummary-content': {
+                  alignItems: 'center',
+                  gap: '12px',
+                }
+              }}
+            >
+              <HistoryIcon sx={{ color: terminalColors.primary, fontSize: '24px' }} />
+              <Box>
+                <TerminalTypography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: 0 }}>
+                  Event History
+                </TerminalTypography>
+                <TerminalTypography variant="body2" sx={{ opacity: 0.7, fontSize: '0.85rem' }}>
+                  Scheduler events and system activity timeline
+                </TerminalTypography>
+              </Box>
+            </TerminalAccordionSummary>
+            <TerminalAccordionDetails>
+              <SchedulerEventHistory sharedEvents={eventHistoryData.events} />
+            </TerminalAccordionDetails>
+          </TerminalAccordion>
 
-          {/* Scheduler Charts Visualization */}
-          <Box mb={4}>
-            <SchedulerCharts />
-          </Box>
         </>
       ) : (
-        <TerminalAlert severity="info">
-          No scheduler data available. The scheduler may not be running.
+        <TerminalAlert severity="warning" icon={<PauseIcon />}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+              Scheduler Unavailable
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              Unable to connect to the scheduler service. This could mean:
+            </Typography>
+            <Box component="ul" sx={{ pl: 2, mb: 1 }}>
+              <li>The scheduler service is stopped</li>
+              <li>Network connectivity issues</li>
+              <li>Server maintenance in progress</li>
+            </Box>
+            <Typography variant="caption" sx={{ opacity: 0.8 }}>
+              Please check your connection and try refreshing. Contact support if the issue persists.
+            </Typography>
+          </Box>
         </TerminalAlert>
       )}
 

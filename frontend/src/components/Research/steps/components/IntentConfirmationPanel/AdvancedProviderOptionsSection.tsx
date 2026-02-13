@@ -23,7 +23,6 @@ import { ProviderAvailability } from '../../../../../api/researchConfig';
 import { ExaOptions } from '../ExaOptions';
 import { TavilyOptions } from '../TavilyOptions';
 import { ProviderChips } from '../ProviderChips';
-import { ResearchProvider } from '../../../../../services/researchApi';
 
 interface AdvancedProviderOptionsSectionProps {
   intentAnalysis: AnalyzeIntentResponse;

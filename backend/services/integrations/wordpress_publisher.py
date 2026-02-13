@@ -4,15 +4,15 @@ High-level service for publishing content to WordPress sites.
 """
 
 import os
-import json
-import tempfile
-from typing import Optional, Dict, List, Any, Union
+from typing import Optional, Dict, List, Any
 from datetime import datetime
 from loguru import logger
 
 from .wordpress_service import WordPressService
 from .wordpress_content import WordPressContentManager
-import sqlite3
+from contextlib import contextmanager
+from sqlalchemy import text
+from services.database import get_user_data_db_session
 
 
 from services.database import get_user_db_path
@@ -195,15 +195,22 @@ class WordPressPublisher:
     def _store_post_reference(self, user_id: str, site_id: int, wp_post_id: int, title: str, status: str) -> None:
         """Store post reference in database."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO wordpress_posts 
-                    (user_id, site_id, wp_post_id, title, status, published_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (user_id, site_id, wp_post_id, title, status, 
-                      datetime.now().isoformat() if status == 'publish' else None))
-                conn.commit()
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        INSERT INTO wordpress_posts
+                        (user_id, site_id, wordpress_post_id, title, status, published_at, created_at)
+                        VALUES (:user_id, :site_id, :wordpress_post_id, :title, :status, :published_at, CURRENT_TIMESTAMP)
+                    '''),
+                    {
+                        "user_id": user_id,
+                        "site_id": site_id,
+                        "wordpress_post_id": wp_post_id,
+                        "title": title,
+                        "status": status,
+                        "published_at": datetime.utcnow().isoformat() if status == 'publish' else None
+                    }
+                )
                 
         except Exception as e:
             logger.error(f"Error storing post reference: {e}")
@@ -211,30 +218,34 @@ class WordPressPublisher:
     def get_user_posts(self, user_id: str, site_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get all posts published by user."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
+            with self._db_session() as db:
                 if site_id:
-                    cursor.execute('''
-                        SELECT wp.id, wp.wp_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
-                               ws.site_name, ws.site_url
-                        FROM wordpress_posts wp
-                        JOIN wordpress_sites ws ON wp.site_id = ws.id
-                        WHERE wp.user_id = ? AND wp.site_id = ?
-                        ORDER BY wp.created_at DESC
-                    ''', (user_id, site_id))
+                    rows = db.execute(
+                        text('''
+                            SELECT wp.id, wp.wordpress_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
+                                   ws.site_name, ws.site_url
+                            FROM wordpress_posts wp
+                            JOIN wordpress_sites ws ON wp.site_id = ws.id
+                            WHERE wp.user_id = :user_id AND wp.site_id = :site_id
+                            ORDER BY wp.created_at DESC
+                        '''),
+                        {"user_id": user_id, "site_id": site_id}
+                    ).fetchall()
                 else:
-                    cursor.execute('''
-                        SELECT wp.id, wp.wp_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
-                               ws.site_name, ws.site_url
-                        FROM wordpress_posts wp
-                        JOIN wordpress_sites ws ON wp.site_id = ws.id
-                        WHERE wp.user_id = ?
-                        ORDER BY wp.created_at DESC
-                    ''', (user_id,))
-                
+                    rows = db.execute(
+                        text('''
+                            SELECT wp.id, wp.wordpress_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
+                                   ws.site_name, ws.site_url
+                            FROM wordpress_posts wp
+                            JOIN wordpress_sites ws ON wp.site_id = ws.id
+                            WHERE wp.user_id = :user_id
+                            ORDER BY wp.created_at DESC
+                        '''),
+                        {"user_id": user_id}
+                    ).fetchall()
+
                 posts = []
-                for row in cursor.fetchall():
+                for row in rows:
                     posts.append({
                         'id': row[0],
                         'wp_post_id': row[1],
@@ -256,19 +267,20 @@ class WordPressPublisher:
         """Update post status (draft/publish)."""
         try:
             # Get post info
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT wp.site_id, wp.wp_post_id, ws.site_url, ws.username, ws.app_password
-                    FROM wordpress_posts wp
-                    JOIN wordpress_sites ws ON wp.site_id = ws.id
-                    WHERE wp.id = ? AND wp.user_id = ?
-                ''', (post_id, user_id))
-                
-                result = cursor.fetchone()
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT wp.site_id, wp.wordpress_post_id, ws.site_url, ws.username, ws.app_password
+                        FROM wordpress_posts wp
+                        JOIN wordpress_sites ws ON wp.site_id = ws.id
+                        WHERE wp.id = :post_id AND wp.user_id = :user_id
+                    '''),
+                    {"post_id": post_id, "user_id": user_id}
+                ).fetchone()
+
                 if not result:
                     return False
-                
+
                 site_id, wp_post_id, site_url, username, app_password = result
             
             # Update in WordPress
@@ -277,12 +289,19 @@ class WordPressPublisher:
             
             if wp_result:
                 # Update in database
-                cursor.execute('''
-                    UPDATE wordpress_posts 
-                    SET status = ?, published_at = ?
-                    WHERE id = ?
-                ''', (status, datetime.now().isoformat() if status == 'publish' else None, post_id))
-                conn.commit()
+                with self._db_session() as db:
+                    db.execute(
+                        text('''
+                            UPDATE wordpress_posts
+                            SET status = :status, published_at = :published_at
+                            WHERE id = :post_id
+                        '''),
+                        {
+                            "status": status,
+                            "published_at": datetime.utcnow().isoformat() if status == 'publish' else None,
+                            "post_id": post_id
+                        }
+                    )
                 
                 logger.info(f"Post {post_id} status updated to {status}")
                 return True
@@ -297,19 +316,20 @@ class WordPressPublisher:
         """Delete a WordPress post."""
         try:
             # Get post info
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT wp.site_id, wp.wp_post_id, ws.site_url, ws.username, ws.app_password
-                    FROM wordpress_posts wp
-                    JOIN wordpress_sites ws ON wp.site_id = ws.id
-                    WHERE wp.id = ? AND wp.user_id = ?
-                ''', (post_id, user_id))
-                
-                result = cursor.fetchone()
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT wp.site_id, wp.wordpress_post_id, ws.site_url, ws.username, ws.app_password
+                        FROM wordpress_posts wp
+                        JOIN wordpress_sites ws ON wp.site_id = ws.id
+                        WHERE wp.id = :post_id AND wp.user_id = :user_id
+                    '''),
+                    {"post_id": post_id, "user_id": user_id}
+                ).fetchone()
+
                 if not result:
                     return False
-                
+
                 site_id, wp_post_id, site_url, username, app_password = result
             
             # Delete from WordPress
@@ -318,8 +338,11 @@ class WordPressPublisher:
             
             if wp_result:
                 # Remove from database
-                cursor.execute('DELETE FROM wordpress_posts WHERE id = ?', (post_id,))
-                conn.commit()
+                with self._db_session() as db:
+                    db.execute(
+                        text('DELETE FROM wordpress_posts WHERE id = :post_id'),
+                        {"post_id": post_id}
+                    )
                 
                 logger.info(f"Post {post_id} deleted successfully")
                 return True

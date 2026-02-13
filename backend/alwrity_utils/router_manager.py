@@ -67,6 +67,10 @@ class RouterManager:
             # GSC router
             from routers.gsc_auth import router as gsc_auth_router
             self.include_router_safely(gsc_auth_router, "gsc_auth")
+
+            # Canonical OAuth router
+            from api.oauth_routes import router as oauth_routes_router
+            self.include_router_safely(oauth_routes_router, "oauth_routes")
             
             # WordPress router
             from routers.wordpress_oauth import router as wordpress_oauth_router

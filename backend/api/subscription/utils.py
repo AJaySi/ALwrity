@@ -5,7 +5,6 @@ Shared utility functions for subscription API routes.
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from loguru import logger
-import sqlite3
 
 from models.subscription_models import SubscriptionPlan
 

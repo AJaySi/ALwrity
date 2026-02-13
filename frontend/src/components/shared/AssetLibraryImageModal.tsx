@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -151,14 +151,7 @@ export const AssetLibraryImageModal: React.FC<AssetLibraryImageModalProps> = ({
         }
       });
     };
-  }, []);
-
-  const handleSelect = useCallback(() => {
-    if (selectedAsset) {
-      onSelect(selectedAsset);
-      handleClose();
-    }
-  }, [selectedAsset, onSelect]);
+  }, [imageBlobUrls]);
 
   const handleClose = useCallback(() => {
     onClose();
@@ -167,6 +160,13 @@ export const AssetLibraryImageModal: React.FC<AssetLibraryImageModalProps> = ({
     setPage(0);
     setFavoritesOnly(false);
   }, [onClose]);
+
+  const handleSelect = useCallback(() => {
+    if (selectedAsset) {
+      onSelect(selectedAsset);
+      handleClose();
+    }
+  }, [selectedAsset, onSelect, handleClose]);
 
   const handleAssetClick = useCallback((asset: ContentAsset) => {
     setSelectedAsset(asset);

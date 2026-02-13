@@ -22,7 +22,6 @@ class AssetType(enum.Enum):
 
 
 class AssetSource(enum.Enum):
-    # Add youtube_creator to the enum
     """Source module/tool that generated the asset."""
     # Core Content Generation
     STORY_WRITER = "story_writer"
@@ -48,6 +47,7 @@ class AssetSource(enum.Enum):
     
     # Product Marketing Suite
     PRODUCT_MARKETING = "product_marketing"
+    CAMPAIGN_CREATOR = "campaign_creator"
 
     # Podcast Maker
     PODCAST_MAKER = "podcast_maker"
@@ -63,7 +63,6 @@ class AssetSource(enum.Enum):
 
     # Voice Cloner
     VOICE_CLONER = "voice_cloner"
-
 
 class ContentAsset(Base):
     """
@@ -125,7 +124,8 @@ class ContentAsset(Base):
     __table_args__ = (
         Index('idx_user_type_source', 'user_id', 'asset_type', 'source_module'),
         Index('idx_user_favorite_created', 'user_id', 'is_favorite', 'created_at'),
-        Index('idx_user_tags', 'user_id', 'tags'),
+        # JSON columns need GIN indexes in PostgreSQL, not B-tree
+        # Index('idx_user_tags', 'user_id', 'tags'),  # Removed - JSON doesn't support B-tree index
     )
 
 
@@ -158,4 +158,3 @@ class AssetCollection(Base):
         foreign_keys=[cover_asset_id], 
         uselist=False
     )
-

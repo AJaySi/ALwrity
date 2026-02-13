@@ -34,6 +34,7 @@ export interface ImageResult {
 
 export interface GenerationResponse {
   success: boolean;
+  status?: "success" | "partial_success" | "failed";
   request: any;
   results: ImageResult[];
   total_generated: number;

@@ -9,13 +9,18 @@ const WixCallbackPage: React.FC = () => {
   useEffect(() => {
     const run = async () => {
       try {
-        const wixClient = createClient({ auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' }) });
+        // Prefer client ID stored during the OAuth kickoff so callbacks stay in sync
+        // with backend-provided configuration. Fall back to env var and legacy ID.
+        const storedClientId = sessionStorage.getItem('wix_oauth_client_id');
+        const fallbackClientId = process.env.REACT_APP_WIX_CLIENT_ID || '75d88e36-1c76-4009-b769-15f4654556df';
+        const wixClient = createClient({ auth: OAuthStrategy({ clientId: storedClientId || fallbackClientId }) });
         const { code, state, error, errorDescription } = wixClient.auth.parseFromUrl();
         if (error) {
           setError(`${error}: ${errorDescription || ''}`);
           return;
         }
-        // Recover oauthData via multiple fallbacks
+        // Recover oauthData via multiple fallbacks so we can support popup and
+        // full-page redirect flows across different browser storage behaviors.
         let oauthData: any | null = null;
         const saved = sessionStorage.getItem('wix_oauth_data') || localStorage.getItem('wix_oauth_data');
         if (saved) {
@@ -150,5 +155,3 @@ const WixCallbackPage: React.FC = () => {
 };
 
 export default WixCallbackPage;
-
-

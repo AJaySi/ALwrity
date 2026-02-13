@@ -398,7 +398,7 @@ async def generate_youtube_scene_audio(
     # Save to asset library (youtube_creator module)
     try:
         if result.get("audio_url"):
-            save_asset_to_library(
+            asset_id = save_asset_to_library(
                 db=db,
                 user_id=user_id,
                 asset_type="audio",
@@ -420,6 +420,11 @@ async def generate_youtube_scene_audio(
                     "status": "completed",
                 },
             )
+            if asset_id is None:
+                logger.warning(
+                    "[YouTube] Audio generated but asset tracking failed",
+                    extra={"user_id": user_id, "filename": result.get("audio_filename", "")},
+                )
     except Exception as e:
         logger.warning(f"[YouTube] Failed to save audio asset: {e}")
 

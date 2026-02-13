@@ -111,8 +111,13 @@ class CampaignProposal(Base):
     
     ## Composite indexes
     __table_args__ = (
+<<<<<<< HEAD
         Index('idx_pm_proposal_campaign_node', 'campaign_id', 'asset_node_id'),
         Index('idx_pm_proposal_user_status', 'user_id', 'status'),
+=======
+        # Index('idx_campaign_node', 'campaign_id', 'asset_node_id'),  # Already exists in database
+        # Index('idx_user_status', 'user_id', 'status'),  # Already exists in database
+>>>>>>> pr-354
     )
 
 
@@ -156,7 +161,12 @@ class CampaignAsset(Base):
     
     # Composite indexes
     __table_args__ = (
+<<<<<<< HEAD
         Index('idx_pm_asset_campaign_node', 'campaign_id', 'asset_node_id'),
         Index('idx_pm_asset_user_status', 'user_id', 'status'),
+=======
+        # Index('idx_campaign_node', 'campaign_id', 'asset_node_id'),  # Already exists in database
+        # Index('idx_user_status', 'user_id', 'status'),  # Already exists in database
+>>>>>>> pr-354
     )
 

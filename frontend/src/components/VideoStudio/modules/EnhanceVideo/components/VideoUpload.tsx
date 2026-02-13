@@ -1,6 +1,5 @@
 import React, { useRef } from 'react';
 import { Box, Button, Typography, Stack } from '@mui/material';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import VideocamIcon from '@mui/icons-material/Videocam';
 
 interface VideoUploadProps {

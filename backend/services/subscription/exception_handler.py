@@ -152,7 +152,7 @@ class SubscriptionExceptionHandler:
     
     def _setup_logging(self):
         """Setup structured logging for subscription errors."""
-        from utils.logger_utils import get_service_logger
+        from utils.logging import get_service_logger
         return get_service_logger("subscription_exception_handler")
     
     def handle_exception(

@@ -1,6 +1,11 @@
 """
 File Storage Utility
 Robust file storage helper for saving generated content assets.
+
+Logging policy:
+- Avoid logging absolute host paths.
+- Log either a workspace-relative path (preferred) or filename-only fallback.
+- Keep operation context and size metadata for debugging.
 """
 
 import os
@@ -16,6 +21,24 @@ MAX_FILENAME_LENGTH = 255
 
 # Allowed characters in filenames (alphanumeric, dash, underscore, dot)
 ALLOWED_FILENAME_CHARS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.')
+
+
+def _resolve_workspace_root() -> Path:
+    """Resolve configured workspace root used for safe path logging."""
+    configured_root = os.getenv("ALWRITY_WORKSPACE_ROOT") or os.getenv("WORKSPACE_ROOT")
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+    return Path.cwd().resolve()
+
+
+def _safe_log_path(path: Path) -> str:
+    """Return workspace-relative path when possible, otherwise filename only."""
+    workspace_root = _resolve_workspace_root()
+    resolved_path = path.expanduser().resolve()
+    try:
+        return str(resolved_path.relative_to(workspace_root))
+    except ValueError:
+        return resolved_path.name
 
 
 def sanitize_filename(filename: str, max_length: int = 100) -> str:
@@ -65,7 +88,11 @@ def ensure_directory_exists(directory: Path) -> bool:
         directory.mkdir(parents=True, exist_ok=True)
         return True
     except Exception as e:
-        logger.error(f"Failed to create directory {directory}: {e}")
+        logger.error(
+            "Failed to create directory (target=%s): %s",
+            _safe_log_path(directory),
+            e,
+        )
         return False
 
 
@@ -105,7 +132,7 @@ def save_file_safely(
         
         # Ensure directory exists
         if not ensure_directory_exists(directory):
-            return None, f"Failed to create directory: {directory}"
+            return None, f"Failed to create directory: {_safe_log_path(directory)}"
         
         # Sanitize filename
         safe_filename = sanitize_filename(filename)
@@ -129,7 +156,11 @@ def save_file_safely(
             # Atomic rename
             temp_path.replace(file_path)
             
-            logger.info(f"Successfully saved file: {file_path} ({len(content)} bytes)")
+            logger.info(
+                "Successfully saved file (target=%s, bytes=%d, operation=binary_save)",
+                _safe_log_path(file_path),
+                len(content),
+            )
             return file_path, None
             
         except Exception as write_error:
@@ -142,7 +173,13 @@ def save_file_safely(
             raise write_error
             
     except Exception as e:
-        logger.error(f"Error saving file: {e}", exc_info=True)
+        logger.error(
+            "Error saving file (target=%s, bytes=%d, operation=binary_save): %s",
+            _safe_log_path(directory / sanitize_filename(filename)),
+            len(content) if isinstance(content, (bytes, bytearray)) else -1,
+            e,
+            exc_info=True,
+        )
         return None, str(e)
 
 
@@ -208,7 +245,7 @@ def save_text_file_safely(
         
         # Ensure directory exists
         if not ensure_directory_exists(directory):
-            return None, f"Failed to create directory: {directory}"
+            return None, f"Failed to create directory: {_safe_log_path(directory)}"
         
         # Sanitize filename
         safe_filename = sanitize_filename(filename)
@@ -236,7 +273,12 @@ def save_text_file_safely(
             # Atomic rename
             temp_path.replace(file_path)
             
-            logger.info(f"Successfully saved text file: {file_path} ({len(content_bytes)} bytes, {len(content)} chars)")
+            logger.info(
+                "Successfully saved text file (target=%s, bytes=%d, chars=%d, operation=text_save)",
+                _safe_log_path(file_path),
+                len(content_bytes),
+                len(content),
+            )
             return file_path, None
             
         except Exception as write_error:
@@ -249,6 +291,11 @@ def save_text_file_safely(
             raise write_error
             
     except Exception as e:
-        logger.error(f"Error saving text file: {e}", exc_info=True)
+        logger.error(
+            "Error saving text file (target=%s, bytes=%d, operation=text_save): %s",
+            _safe_log_path(directory / sanitize_filename(filename)),
+            len(content.encode(encoding)) if isinstance(content, str) else -1,
+            e,
+            exc_info=True,
+        )
         return None, str(e)
-

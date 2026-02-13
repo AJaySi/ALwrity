@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from enum import Enum
 import json
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("failure_detection")
 
@@ -288,10 +288,10 @@ class FailureDetectionService:
         try:
             tasks_needing_intervention = []
             
-            # Check OAuth token monitoring tasks
+            # Check OAuth token monitoring tasks (both needs_intervention and failed status)
             from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
             oauth_tasks = self.db.query(OAuthTokenMonitoringTask).filter(
-                OAuthTokenMonitoringTask.status == "needs_intervention"
+                OAuthTokenMonitoringTask.status.in_(["needs_intervention", "failed"])
             )
             if user_id:
                 oauth_tasks = oauth_tasks.filter(OAuthTokenMonitoringTask.user_id == user_id)
@@ -318,7 +318,7 @@ class FailureDetectionService:
             # Check website analysis tasks
             from models.website_analysis_monitoring_models import WebsiteAnalysisTask
             website_tasks = self.db.query(WebsiteAnalysisTask).filter(
-                WebsiteAnalysisTask.status == "needs_intervention"
+                WebsiteAnalysisTask.status.in_(["needs_intervention", "failed"])
             )
             if user_id:
                 website_tasks = website_tasks.filter(WebsiteAnalysisTask.user_id == user_id)
@@ -345,7 +345,7 @@ class FailureDetectionService:
             # Check platform insights tasks
             from models.platform_insights_monitoring_models import PlatformInsightsTask
             insights_tasks = self.db.query(PlatformInsightsTask).filter(
-                PlatformInsightsTask.status == "needs_intervention"
+                PlatformInsightsTask.status.in_(["needs_intervention", "failed"])
             )
             if user_id:
                 insights_tasks = insights_tasks.filter(PlatformInsightsTask.user_id == user_id)

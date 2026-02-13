@@ -5,7 +5,8 @@ Provides a unified interface for caching analytics data with platform-specific c
 """
 
 from typing import Dict, Any, Optional
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("analytics_cache_manager", migration_mode=True)
 
 from ..analytics_cache_service import analytics_cache
 from .models.platform_types import PlatformType

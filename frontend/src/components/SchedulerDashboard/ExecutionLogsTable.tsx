@@ -66,39 +66,21 @@ const ExecutionLogsTable: React.FC<ExecutionLogsTableProps> = ({ initialLimit = 
         statusFilter === 'all' ? undefined : statusFilter
       );
       
-      console.log('📋 Execution Logs Response:', JSON.stringify({
-        logsCount: response.logs?.length || 0,
-        totalCount: response.total_count,
-        hasLogs: !!(response.logs && response.logs.length > 0),
-        isSchedulerLogs: response.is_scheduler_logs,
-        firstLog: response.logs?.[0] || null
-      }, null, 2));
-      
       // If we have actual execution logs, use them
       if (response.logs && response.logs.length > 0 && !response.is_scheduler_logs) {
-        console.log('✅ Using execution logs:', response.logs.length);
         setLogs(response.logs);
         setTotalCount(response.total_count || 0);
         setIsShowingSchedulerLogs(false);
       } else {
         // No execution logs available, fetch scheduler logs as fallback (latest 5 only)
-        console.log('📋 No execution logs found, fetching latest scheduler logs...');
         try {
           const schedulerLogsResponse = await getRecentSchedulerLogs();
-          console.log('📋 Scheduler Logs Response:', JSON.stringify({
-            logsCount: schedulerLogsResponse.logs?.length || 0,
-            totalCount: schedulerLogsResponse.total_count,
-            isSchedulerLogs: schedulerLogsResponse.is_scheduler_logs,
-            allLogs: schedulerLogsResponse.logs || []
-          }, null, 2));
-          
+
           if (schedulerLogsResponse.logs && schedulerLogsResponse.logs.length > 0) {
-            console.log('✅ Setting scheduler logs:', schedulerLogsResponse.logs.length, 'logs');
             setLogs(schedulerLogsResponse.logs);
             setTotalCount(schedulerLogsResponse.total_count || 0);
             setIsShowingSchedulerLogs(true);
           } else {
-            console.warn('⚠️ Scheduler logs response is empty');
             setLogs([]);
             setTotalCount(0);
             setIsShowingSchedulerLogs(false);
@@ -315,19 +297,6 @@ const ExecutionLogsTable: React.FC<ExecutionLogsTableProps> = ({ initialLimit = 
                 </TerminalTableRow>
               </TableHead>
               <TableBody>
-                {(() => {
-                  // Debug logging
-                  if (logs.length > 0) {
-                    console.log('🔍 Rendering logs table:', {
-                      logsCount: logs.length,
-                      loading,
-                      isShowingSchedulerLogs,
-                      firstLogId: logs[0]?.id,
-                      firstLogStatus: logs[0]?.status
-                    });
-                  }
-                  return null;
-                })()}
                 {logs.length === 0 && !loading ? (
                   <TerminalTableRow>
                     <TerminalTableCell colSpan={7} align="center">
@@ -363,10 +332,6 @@ const ExecutionLogsTable: React.FC<ExecutionLogsTableProps> = ({ initialLimit = 
                   </TerminalTableRow>
                 ) : (
                   logs.map((log) => {
-                    // Debug: log each row being rendered
-                    if (log.id === logs[0]?.id) {
-                      console.log('🎯 Rendering first log row:', log.id, log.status, log.task?.task_title);
-                    }
                     return (
                       <TerminalTableRow 
                         key={log.id}

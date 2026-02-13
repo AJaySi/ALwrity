@@ -9,7 +9,8 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("calendar_orchestrator", migration_mode=True)
 
 from .step_manager import StepManager
 from .context_manager import ContextManager

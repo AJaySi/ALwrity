@@ -15,7 +15,7 @@ sys.path.insert(0, str(backend_dir))
 
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
-from loguru import logger
+from utils.logging import get_logger
 import traceback
 
 # Import models
@@ -79,7 +79,7 @@ def create_billing_tables(user_id):
         logger.info(f"✅ Billing system setup completed successfully for {user_id}!")
         
         # Display summary
-        display_setup_summary(engine)
+        display_setup_summary(db_engine)
         
         return True
 
@@ -92,22 +92,27 @@ def display_setup_summary(engine):
     """Display a summary of the created tables and data."""
     
     try:
-        with engine.connect() as conn:
+        # Handle both engine function and engine object
+        if callable(engine):
+            db_engine = engine()
+        else:
+            db_engine = engine
+            
+        with db_engine.connect() as conn:
             logger.info("\n" + "="*60)
             logger.info("BILLING SYSTEM SETUP SUMMARY")
             logger.info("="*60)
             
-            # Check tables
+            # Check tables (PostgreSQL compatible)
             tables_query = text("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND (
-                    name LIKE '%subscription%' OR 
-                    name LIKE '%usage%' OR 
-                    name LIKE '%billing%' OR
-                    name LIKE '%pricing%' OR
-                    name LIKE '%alert%'
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'public' AND (
+                    table_name LIKE '%subscription%' OR 
+                    table_name LIKE '%usage%' OR
+                    table_name LIKE '%pricing%' OR
+                    table_name LIKE '%alert%'
                 )
-                ORDER BY name
+                ORDER BY table_name
             """)
             
             result = conn.execute(tables_query)
@@ -169,11 +174,53 @@ def display_setup_summary(engine):
     except Exception as e:
         logger.error(f"Error displaying summary: {e}")
 
+<<<<<<< HEAD
+=======
+def check_existing_tables(engine):
+    """Check if billing tables already exist."""
+    
+    try:
+        # Handle both engine function and engine object
+        if callable(engine):
+            db_engine = engine()
+        else:
+            db_engine = engine
+            
+        with db_engine.connect() as conn:
+            # Check for billing tables (PostgreSQL compatible)
+            check_query = text("""
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'public' AND (
+                    table_name = 'subscription_plans' OR 
+                    table_name = 'user_subscriptions' OR 
+                    table_name = 'api_usage_logs' OR
+                    table_name = 'usage_summaries' OR
+                    table_name = 'api_provider_pricing' OR
+                    table_name = 'usage_alerts'
+                )
+            """)
+            
+            result = conn.execute(check_query)
+            existing_tables = result.fetchall()
+            
+            if existing_tables:
+                logger.warning(f"Found existing billing tables: {[t[0] for t in existing_tables]}")
+                logger.debug("Tables already exist. Skipping creation to preserve data.")
+                return False
+            
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error checking existing tables: {e}")
+        return True  # Proceed anyway
+
+>>>>>>> pr-354
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create billing tables for a user.')
     parser.add_argument('--user_id', type=str, help='Specific user ID to setup billing for')
     parser.add_argument('--all', action='store_true', help='Setup billing for ALL users')
     
+<<<<<<< HEAD
     args = parser.parse_args()
     
     if args.user_id:
@@ -198,3 +245,26 @@ if __name__ == "__main__":
             logger.error(f"Multiple users found {user_ids}. Please specify --user_id or --all")
         else:
             logger.error("No users found.")
+=======
+    try:
+        # Create engine to check existing tables using dual database architecture
+        from services.database import engine
+        db_engine = engine()
+        
+        # Check existing tables
+        if not check_existing_tables(db_engine):
+            logger.debug("✅ Billing tables already exist, skipping creation")
+            sys.exit(0)
+        
+        # Create tables and initialize data
+        create_billing_tables()
+        
+        logger.info("✅ Billing system migration completed successfully!")
+        
+    except KeyboardInterrupt:
+        logger.warning("Migration cancelled by user")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"❌ Migration failed: {e}")
+        sys.exit(1)
+>>>>>>> pr-354

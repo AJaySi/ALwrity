@@ -133,8 +133,6 @@ const RegisterFacebookActionsEnhanced: React.FC = () => {
     ],
     handler: async (args: any) => {
       try {
-        const personaConstraints = platformPersona?.content_format_rules as any;
-        
         // Track progress with persona analysis steps
         const progressSteps = [
           'Analyzing persona for ad copy optimization...',

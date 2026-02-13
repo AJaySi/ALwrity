@@ -9,7 +9,8 @@ import uuid
 import requests
 import jwt
 from typing import Dict, Any, Optional, List
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("wix_blog_publisher", migration_mode=True)
 from services.integrations.wix.blog import WixBlogService
 from services.integrations.wix.content import convert_content_to_ricos
 from services.integrations.wix.ricos_converter import convert_via_wix_api

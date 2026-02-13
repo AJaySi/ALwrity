@@ -11,7 +11,7 @@ export function useSchedulerTaskAlerts(options: {
   interval?: number;
 } = {}) {
   const { enabled = true, interval = 60000 } = options;
-  const { userId, getToken } = useAuth();
+  const { userId, /* getToken */ } = useAuth();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastAlertTimeRef = useRef<number>(0);
   const isPollingRef = useRef(false);

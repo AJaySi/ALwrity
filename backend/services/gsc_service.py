@@ -6,11 +6,13 @@ import sqlite3
 import secrets
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from loguru import logger
+from services.database import get_user_data_db_session
 
 from services.database import get_user_db_path
 
@@ -18,6 +20,8 @@ from dotenv import load_dotenv
 
 class GSCService:
     """Service for Google Search Console integration."""
+    DEFAULT_SEARCH_TYPE = 'web'
+    MAX_ROW_LIMIT = 25000
     
     def __init__(self, db_path: str = None):
         """Initialize GSC service."""
@@ -111,8 +115,7 @@ class GSCService:
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
-                
-                # GSC data cache table
+
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS gsc_data_cache (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,8 +124,7 @@ class GSCService:
                         data_type TEXT NOT NULL,
                         data_json TEXT NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        expires_at TIMESTAMP NOT NULL,
-                        FOREIGN KEY (user_id) REFERENCES gsc_credentials (user_id)
+                        expires_at TIMESTAMP NOT NULL
                     )
                 ''')
                 
@@ -410,11 +412,12 @@ class GSCService:
                 return {'error': 'Authentication failed', 'rows': [], 'rowCount': 0}
             
             # Step 1: Verify data presence first (as per GSC API documentation)
-            verification_request = {
-                'startDate': start_date,
-                'endDate': end_date,
-                'dimensions': ['date']  # Only date dimension for verification
-            }
+            verification_request = self._build_search_analytics_request(
+                start_date=start_date,
+                end_date=end_date,
+                dimensions=['date'],
+                row_limit=self.MAX_ROW_LIMIT,
+            )
             
             logger.info(f"GSC Data verification request for user {user_id}: {verification_request}")
             
@@ -439,12 +442,12 @@ class GSCService:
                 return {'error': f'Data verification failed: {str(verification_error)}', 'rows': [], 'rowCount': 0}
             
             # Step 2: Get daily metrics for charting (ensure we have rows)
-            request = {
-                'startDate': start_date,
-                'endDate': end_date,
-                'dimensions': ['date'],  # Use date dimension to get time-series data
-                'rowLimit': 1000
-            }
+            request = self._build_search_analytics_request(
+                start_date=start_date,
+                end_date=end_date,
+                dimensions=['date'],  # Use date dimension to get time-series data
+                row_limit=1000,
+            )
             
             logger.info(f"GSC API request for user {user_id}: {request}")
             
@@ -460,12 +463,12 @@ class GSCService:
                 return {'error': str(api_error), 'rows': [], 'rowCount': 0}
             
             # Step 3: Get query-level data for insights (as per documentation)
-            query_request = {
-                'startDate': start_date,
-                'endDate': end_date,
-                'dimensions': ['query'],  # Get query-level data
-                'rowLimit': 1000
-            }
+            query_request = self._build_search_analytics_request(
+                start_date=start_date,
+                end_date=end_date,
+                dimensions=['query'],
+                row_limit=self.MAX_ROW_LIMIT,
+            )
             
             logger.info(f"GSC Query-level request for user {user_id}: {query_request}")
             
@@ -526,6 +529,38 @@ class GSCService:
         except Exception as e:
             logger.error(f"Error getting search analytics for user {user_id}: {e}")
             raise
+
+    def _build_search_analytics_request(
+        self,
+        start_date: str,
+        end_date: str,
+        dimensions: Optional[List[str]] = None,
+        row_limit: Optional[int] = None,
+        start_row: int = 0,
+        search_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Build a GSC Search Analytics request body aligned with API documentation.
+
+        Notes:
+        - `dimensions` is optional; omit it entirely for aggregated totals.
+        - `rowLimit` max is 25,000 per API call.
+        - `type` defaults to `web` when not specified.
+        """
+        request: Dict[str, Any] = {
+            'startDate': start_date,
+            'endDate': end_date,
+            'type': search_type or self.DEFAULT_SEARCH_TYPE,
+            'startRow': max(start_row, 0),
+        }
+
+        if dimensions:
+            request['dimensions'] = dimensions
+
+        if row_limit is not None:
+            bounded_row_limit = max(1, min(int(row_limit), self.MAX_ROW_LIMIT))
+            request['rowLimit'] = bounded_row_limit
+
+        return request
     
     def get_sitemaps(self, user_id: str, site_url: str) -> List[Dict[str, Any]]:
         """Get sitemaps from GSC."""
@@ -551,6 +586,7 @@ class GSCService:
     def revoke_user_access(self, user_id: str) -> bool:
         """Revoke user's GSC access."""
         try:
+<<<<<<< HEAD
             db_path = self._get_db_path(user_id)
             if not os.path.exists(db_path):
                 return True
@@ -568,6 +604,21 @@ class GSCService:
                 cursor.execute('DELETE FROM gsc_oauth_states WHERE user_id = ?', (user_id,))
                 
                 conn.commit()
+=======
+            with self._db_session() as db:
+                db.execute(
+                    text('DELETE FROM gsc_credentials WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
+                db.execute(
+                    text('DELETE FROM gsc_data_cache WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
+                db.execute(
+                    text('DELETE FROM gsc_oauth_states WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
+>>>>>>> pr-354
             
             logger.info(f"GSC access revoked for user: {user_id}")
             return True
@@ -579,6 +630,7 @@ class GSCService:
     def clear_incomplete_credentials(self, user_id: str) -> bool:
         """Clear incomplete GSC credentials that are missing required fields."""
         try:
+<<<<<<< HEAD
             db_path = self._get_db_path(user_id)
             if not os.path.exists(db_path):
                 return True
@@ -587,6 +639,13 @@ class GSCService:
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM gsc_credentials WHERE user_id = ?', (user_id,))
                 conn.commit()
+=======
+            with self._db_session() as db:
+                db.execute(
+                    text('DELETE FROM gsc_credentials WHERE user_id = :user_id'),
+                    {"user_id": user_id}
+                )
+>>>>>>> pr-354
             
             logger.info(f"Cleared incomplete GSC credentials for user: {user_id}")
             return True
@@ -598,6 +657,7 @@ class GSCService:
     def _get_cached_data(self, user_id: str, site_url: str, data_type: str, cache_key: str) -> Optional[Dict]:
         """Get cached data if not expired."""
         try:
+<<<<<<< HEAD
             db_path = self._get_db_path(user_id)
             if not os.path.exists(db_path):
                 return None
@@ -611,6 +671,20 @@ class GSCService:
                 ''', (user_id, site_url, data_type))
                 
                 result = cursor.fetchone()
+=======
+            with self._db_session() as db:
+                result = db.execute(
+                    text('''
+                        SELECT data_json FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND site_url = :site_url
+                          AND data_type = :data_type
+                          AND expires_at > CURRENT_TIMESTAMP
+                    '''),
+                    {"user_id": user_id, "site_url": site_url, "data_type": data_type}
+                ).fetchone()
+
+>>>>>>> pr-354
                 if result:
                     return json.loads(result[0])
                 return None
@@ -627,6 +701,7 @@ class GSCService:
             
             expires_at = datetime.now() + timedelta(hours=1)  # Cache for 1 hour
             
+<<<<<<< HEAD
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -635,8 +710,70 @@ class GSCService:
                     VALUES (?, ?, ?, ?, ?)
                 ''', (user_id, site_url, data_type, json.dumps(data), expires_at))
                 conn.commit()
+=======
+            with self._db_session() as db:
+                db.execute(
+                    text('''
+                        DELETE FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND site_url = :site_url
+                          AND data_type = :data_type
+                    '''),
+                    {"user_id": user_id, "site_url": site_url, "data_type": data_type}
+                )
+                db.execute(
+                    text('''
+                        INSERT INTO gsc_data_cache
+                        (user_id, site_url, data_type, data_json, expires_at)
+                        VALUES (:user_id, :site_url, :data_type, :data_json, :expires_at)
+                    '''),
+                    {
+                        "user_id": user_id,
+                        "site_url": site_url,
+                        "data_type": data_type,
+                        "data_json": json.dumps(data),
+                        "expires_at": expires_at
+                    }
+                )
+>>>>>>> pr-354
             
             logger.info(f"Data cached for user: {user_id}, type: {data_type}")
             
         except Exception as e:
             logger.error(f"Error caching data: {e}")
+
+    def get_latest_cached_analytics(self, user_id: str, site_url: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get the most recent cached analytics payload for a user/site."""
+        try:
+            with self._db_session() as db:
+                if site_url:
+                    query = text('''
+                        SELECT data_json, created_at
+                        FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND site_url = :site_url
+                          AND data_type = 'analytics'
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ''')
+                    params = {"user_id": user_id, "site_url": site_url}
+                else:
+                    query = text('''
+                        SELECT data_json, created_at
+                        FROM gsc_data_cache
+                        WHERE user_id = :user_id
+                          AND data_type = 'analytics'
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ''')
+                    params = {"user_id": user_id}
+
+                result = db.execute(query, params).fetchone()
+                if not result:
+                    return None
+                data_json, created_at = result
+                insights_data = json.loads(data_json) if isinstance(data_json, str) else data_json
+                return {"data": insights_data, "created_at": created_at}
+        except Exception as e:
+            logger.warning(f"Error loading cached GSC analytics: {e}")
+            return None

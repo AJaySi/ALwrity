@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 
 from ...utils.auth import get_current_user, require_authenticated_user
-from ...utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger
 from api.story_writer.task_manager import task_manager
 
 logger = get_service_logger("video_studio.endpoints.tasks")

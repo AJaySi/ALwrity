@@ -6,7 +6,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 import os
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("seo_dashboard_api", migration_mode=True)
 import time
 
 # Import existing services

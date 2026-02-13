@@ -29,7 +29,7 @@ class BlogWriterLogger:
     
     def _setup_logger(self):
         """Configure loguru with structured JSON output."""
-        from utils.logger_utils import get_service_logger
+        from utils.logging import get_service_logger
         return get_service_logger("blog_writer")
     
     def _json_formatter(self, record):

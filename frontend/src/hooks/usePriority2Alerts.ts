@@ -51,8 +51,6 @@ export const usePriority2Alerts = (
 
   const [alerts, setAlerts] = useState<Priority2Alert[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [lastCheck, setLastCheck] = useState<Date | null>(null);
 
   const generateAlerts = useCallback((data: DashboardData): Priority2Alert[] => {
     const generatedAlerts: Priority2Alert[] = [];
@@ -71,7 +69,6 @@ export const usePriority2Alerts = (
 
     // High spending velocity alert
     if (projectedPercentage > 120 && costUsagePercentage < 80) {
-      const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
       const currentDay = new Date().getDate();
       const avgDailyCost = currentCost / currentDay;
       const daysUntilExhaustion = costLimit > avgDailyCost 
@@ -153,11 +150,9 @@ export const usePriority2Alerts = (
     try {
       setIsLoading(true);
       const data = await billingService.getDashboardData(userId);
-      setDashboardData(data);
       
       const newAlerts = generateAlerts(data);
       setAlerts(newAlerts);
-      setLastCheck(new Date());
 
       // Show toast for critical alerts
       const criticalAlerts = newAlerts.filter(a => a.severity === 'error');

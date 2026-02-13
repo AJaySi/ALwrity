@@ -106,16 +106,6 @@ journey
 - Implement performance monitoring
 - Establish business impact measurement
 
-## 🎯 Success Stories
-
-### Sarah - CMO at Fortune 500 Company
-*"ALwrity's enterprise deployment helped us scale our content operations across 15 departments. We reduced content creation costs by 40% while increasing output by 300%."*
-
-### Mike - IT Director at Large Corporation
-*"The self-hosted architecture and security features in ALwrity gave us complete control over our data and infrastructure. We met all compliance requirements while improving content quality."*
-
-### Lisa - Marketing Operations Director
-*"The analytics and ROI tracking in ALwrity helped us demonstrate clear business impact to our executive team. We achieved 200% ROI within 6 months of implementation."*
 
 ## 🚀 Ready to Start?
 

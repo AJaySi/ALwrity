@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from utils.logger_utils import get_service_logger
-import os
 
 # Use service logger for consistent logging (WARNING level visible in production)
 logger = get_service_logger("oauth_token_monitoring")
@@ -69,11 +68,11 @@ def get_connected_platforms(user_id: str) -> List[str]:
         # Consider connected if user has active tokens OR expired tokens with refresh tokens
         if has_active_tokens or (has_expired_tokens and has_refreshable_tokens):
             connected.append('bing')
-            logger.debug(f"[OAuth Monitoring] ✅ Bing connected for user {user_id}")
+            logger.debug(f"[OAuth Monitoring] âœ… Bing connected for user {user_id}")
         else:
-            logger.debug(f"[OAuth Monitoring] ❌ Bing not connected for user {user_id}")
+            logger.debug(f"[OAuth Monitoring] âŒ Bing not connected for user {user_id}")
     except Exception as e:
-        logger.warning(f"[OAuth Monitoring] ⚠️ Bing check failed for user {user_id}: {e}", exc_info=True)
+        logger.warning(f"[OAuth Monitoring] âš ï¸ Bing check failed for user {user_id}: {e}", exc_info=True)
     
     try:
         # Check WordPress - use dynamic database path
@@ -87,16 +86,21 @@ def get_connected_platforms(user_id: str) -> List[str]:
         # If tokens exist, user was connected even if expired (may need re-auth)
         if has_tokens:
             connected.append('wordpress')
-            logger.debug(f"[OAuth Monitoring] ✅ WordPress connected for user {user_id}")
+            logger.debug(f"[OAuth Monitoring] âœ… WordPress connected for user {user_id}")
         else:
-            logger.debug(f"[OAuth Monitoring] ❌ WordPress not connected for user {user_id}")
+            logger.debug(f"[OAuth Monitoring] âŒ WordPress not connected for user {user_id}")
     except Exception as e:
-        logger.warning(f"[OAuth Monitoring] ⚠️ WordPress check failed for user {user_id}: {e}", exc_info=True)
+        logger.warning(f"[OAuth Monitoring] âš ï¸ WordPress check failed for user {user_id}: {e}", exc_info=True)
     
     try:
+<<<<<<< HEAD
         # Check Wix - use dynamic database path
         db_path = get_user_db_path(user_id)
         wix_service = WixOAuthService(db_path=db_path)
+=======
+        # Check Wix
+        wix_service = WixOAuthService()
+>>>>>>> pr-354
         token_status = wix_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)
         has_expired_tokens = token_status.get('has_expired_tokens', False)
@@ -108,11 +112,11 @@ def get_connected_platforms(user_id: str) -> List[str]:
         # Consider connected if user has active tokens OR expired tokens with refresh tokens
         if has_active_tokens or (has_expired_tokens and has_refreshable_tokens):
             connected.append('wix')
-            logger.debug(f"[OAuth Monitoring] ✅ Wix connected for user {user_id}")
+            logger.debug(f"[OAuth Monitoring] âœ… Wix connected for user {user_id}")
         else:
-            logger.debug(f"[OAuth Monitoring] ❌ Wix not connected for user {user_id}")
+            logger.debug(f"[OAuth Monitoring] âŒ Wix not connected for user {user_id}")
     except Exception as e:
-        logger.warning(f"[OAuth Monitoring] ⚠️ Wix check failed for user {user_id}: {e}", exc_info=True)
+        logger.warning(f"[OAuth Monitoring] âš ï¸ Wix check failed for user {user_id}: {e}", exc_info=True)
     
     # Don't log here - let the caller log a formatted summary if needed
     # This function is called frequently and should be silent
@@ -202,4 +206,3 @@ def create_oauth_monitoring_tasks(
         )
         db.rollback()
         return []
-

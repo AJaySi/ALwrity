@@ -7,7 +7,8 @@ Services can use this to validate entire workflows before making any external AP
 
 from typing import Dict, Any, List, Optional, Tuple
 from fastapi import HTTPException
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("subscription_preflight_validator", migration_mode=True)
 
 from services.subscription.pricing_service import PricingService
 from models.subscription_models import APIProvider

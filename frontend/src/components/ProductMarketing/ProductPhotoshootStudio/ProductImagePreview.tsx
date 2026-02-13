@@ -9,13 +9,9 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  IconButton,
-  Tooltip,
 } from '@mui/material';
 import {
   Download,
-  Share,
-  Favorite,
   FavoriteBorder,
   Refresh,
   Image as ImageIcon,

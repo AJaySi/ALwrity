@@ -43,6 +43,50 @@ export interface GSCStatusResponse {
   last_sync?: string;
 }
 
+export interface GSCDataQualityResponse {
+  site_url: string;
+  permission_level?: string;
+  has_sufficient_permission: boolean;
+  data_days_available: number;
+  data_window_start?: string;
+  data_window_end?: string;
+  indexing_health: {
+    submitted_urls: number;
+    indexed_urls: number;
+    indexing_ratio?: number;
+    sitemaps_count: number;
+  };
+}
+
+
+
+export interface GSCTaskReportResponse {
+  connected: boolean;
+  site_url?: string;
+  generated_at?: string;
+  sections: Array<{
+    issue_key: string;
+    title: string;
+    description: string;
+    metrics: Record<string, any>;
+    items: any[];
+  }>;
+  google_query_templates: string[];
+}
+
+export interface GSCCachedOpportunitiesResponse {
+  site_url: string;
+  opportunities: Array<{
+    query: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+    recommended_action: string;
+  }>;
+  generated_from_cache: boolean;
+}
+
 class GSCAPI {
   private baseUrl = '/gsc';
   private getAuthToken: (() => Promise<string | null>) | null = null;
@@ -74,7 +118,7 @@ class GSCAPI {
   /**
    * Get Google Search Console OAuth authorization URL
    */
-  async getAuthUrl(): Promise<{ auth_url: string }> {
+  async getAuthUrl(): Promise<{ auth_url: string; trusted_origins?: string[] }> {
     try {
       const client = await this.getAuthenticatedClient();
       const response = await client.get(`${this.baseUrl}/auth/url`);
@@ -183,6 +227,41 @@ class GSCAPI {
       console.error('GSC API: Error disconnecting account:', error);
       throw error;
     }
+  }
+
+  async getDataQuality(siteUrl: string): Promise<GSCDataQualityResponse> {
+    const client = await this.getAuthenticatedClient();
+    const response = await client.get(`${this.baseUrl}/data-quality`, {
+      params: { site_url: siteUrl }
+    });
+    return response.data;
+  }
+
+  async getOpportunities(siteUrl: string): Promise<GSCCachedOpportunitiesResponse> {
+    const client = await this.getAuthenticatedClient();
+    const response = await client.get(`${this.baseUrl}/opportunities`, {
+      params: { site_url: siteUrl }
+    });
+    return response.data;
+  }
+
+
+
+  async getTaskReports(siteUrl?: string): Promise<GSCTaskReportResponse> {
+    const client = await this.getAuthenticatedClient();
+    const response = await client.get(`${this.baseUrl}/task-reports`, {
+      params: siteUrl ? { site_url: siteUrl } : undefined
+    });
+    return response.data;
+  }
+
+  async runTaskReport(taskKey: string, siteUrl?: string): Promise<{ success: boolean; result?: any }> {
+    const client = await this.getAuthenticatedClient();
+    const response = await client.post(`${this.baseUrl}/task-reports/run`, {
+      task_key: taskKey,
+      site_url: siteUrl
+    });
+    return response.data;
   }
 
   /**

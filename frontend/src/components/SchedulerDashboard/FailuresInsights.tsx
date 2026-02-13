@@ -22,7 +22,13 @@ import {
   ExpandMore as ExpandMoreIcon,
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
-import { getExecutionLogs, getRecentSchedulerLogs, ExecutionLog } from '../../api/schedulerDashboard';
+import { useAuth } from '@clerk/clerk-react';
+import {
+  getExecutionLogs,
+  getRecentSchedulerLogs,
+  ExecutionLog,
+  getTasksNeedingIntervention
+} from '../../api/schedulerDashboard';
 import { SchedulerStats } from '../../api/schedulerDashboard';
 import { 
   TerminalPaper, 
@@ -37,6 +43,7 @@ interface FailuresInsightsProps {
 }
 
 const FailuresInsights: React.FC<FailuresInsightsProps> = ({ stats }) => {
+  const { userId } = useAuth();
   const [recentFailures, setRecentFailures] = useState<ExecutionLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,25 +52,53 @@ const FailuresInsights: React.FC<FailuresInsightsProps> = ({ stats }) => {
     const fetchFailures = async () => {
       try {
         setLoading(true);
-        // First try to get execution logs with failed status
+
+        // Get tasks needing intervention (includes failed OAuth, website analysis, platform insights tasks)
+        // Note: This API only returns tasks marked as "needs_intervention", not all failed tasks
+        const tasksNeedingIntervention = await getTasksNeedingIntervention(userId || '');
+
+        // Get execution logs with failed status (general monitoring tasks)
         const executionLogsResponse = await getExecutionLogs(10, 0, 'failed');
-        
-        // Also get scheduler logs (which include job_failed events)
+
+        // Get scheduler logs (which include job_failed events)
         const schedulerLogsResponse = await getRecentSchedulerLogs();
-        
-        // Combine both, filtering for failed status
-        const allFailures: ExecutionLog[] = [
-          ...executionLogsResponse.logs.filter(log => log.status === 'failed'),
-          ...(schedulerLogsResponse.logs || []).filter(log => log.status === 'failed')
+
+        // Convert tasks needing intervention to ExecutionLog-like format
+        const interventionFailures: ExecutionLog[] = tasksNeedingIntervention.map(task => ({
+          id: task.task_id,
+          task_id: task.task_id,
+          user_id: task.user_id,
+          execution_date: task.last_failure || new Date().toISOString(),
+          status: 'failed' as const,
+          error_message: task.failure_reason || `Task failed: ${task.failure_pattern.failure_reason}`,
+          execution_time_ms: null,
+          result_data: null,
+          created_at: task.last_failure || new Date().toISOString(),
+          task: {
+            id: task.task_id,
+            task_title: task.task_type,
+            component_name: task.platform || 'Monitoring',
+            metric: task.task_type,
+            frequency: 'recurring'
+          },
+          is_scheduler_log: false
+        }));
+
+        // Combine all failure sources with unique identifiers for React keys
+        const allFailures: (ExecutionLog & { reactKey: string })[] = [
+          // Add source prefix to avoid key conflicts
+          ...interventionFailures.map(log => ({ ...log, reactKey: `intervention_${log.id}` })),
+          ...executionLogsResponse.logs.filter(log => log.status === 'failed').map(log => ({ ...log, reactKey: `execution_${log.id}` })),
+          ...(schedulerLogsResponse.logs || []).filter(log => log.status === 'failed').map(log => ({ ...log, reactKey: `scheduler_${log.id}` }))
         ];
-        
+
         // Sort by execution_date descending (most recent first) and limit to 10
         allFailures.sort((a, b) => {
           const dateA = new Date(a.execution_date).getTime();
           const dateB = new Date(b.execution_date).getTime();
           return dateB - dateA;
         });
-        
+
         setRecentFailures(allFailures.slice(0, 10));
       } catch (err: any) {
         setError(err.message || 'Failed to fetch failures');
@@ -73,8 +108,10 @@ const FailuresInsights: React.FC<FailuresInsightsProps> = ({ stats }) => {
       }
     };
 
-    fetchFailures();
-  }, []);
+    if (userId) {
+      fetchFailures();
+    }
+  }, [userId]);
 
   const formatDate = (dateString: string) => {
     try {
@@ -197,7 +234,7 @@ const FailuresInsights: React.FC<FailuresInsightsProps> = ({ stats }) => {
         ) : (
           <List>
             {recentFailures.map((log, index) => (
-              <React.Fragment key={log.id}>
+              <React.Fragment key={(log as any).reactKey || log.id}>
                 <TerminalAccordion>
                   <AccordionSummary 
                     expandIcon={<ExpandMoreIcon sx={{ color: terminalColors.primary }} />}

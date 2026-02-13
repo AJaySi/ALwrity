@@ -111,7 +111,7 @@ export const usePhaseNavigation = (
         disabled: !seoCompleted // Can access if SEO done
       }
     ];
-  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, currentPhase]);
+  }, [research, outline, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, currentPhase]);
 
   // Persist current phase and user selection
   useEffect(() => {
@@ -216,7 +216,7 @@ export const usePhaseNavigation = (
     } else {
       // Quietly ignore blocked navigation
     }
-  }, [phases, currentPhase]);
+  }, [phases]);
 
   // Reset user selection when a new phase is completed (to allow auto-progression)
   const resetUserSelection = () => {

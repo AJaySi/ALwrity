@@ -4,34 +4,63 @@ Handles Bing Webmaster Tools OAuth2 authentication flow.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from typing import Dict, Any, Optional
+import json
 from pydantic import BaseModel
 from loguru import logger
 
 from services.integrations.bing_oauth import BingOAuthService
 from middleware.auth_middleware import get_current_user
+from services.oauth_redirects import get_trusted_origins_for_redirect
 
 router = APIRouter(prefix="/bing", tags=["Bing Webmaster OAuth"])
 
 # Initialize OAuth service
 oauth_service = BingOAuthService()
 
+
+def _get_bing_postmessage_origin() -> str:
+    return get_trusted_origins_for_redirect("Bing", "BING_REDIRECT_URI")[0]
+
 # Pydantic Models
 class BingOAuthResponse(BaseModel):
     auth_url: str
     state: str
+    trusted_origins: list[str]
 
 class BingCallbackResponse(BaseModel):
     success: bool
     message: str
-    access_token: Optional[str] = None
-    expires_in: Optional[int] = None
+    connection_id: Optional[int] = None
+    connected: Optional[bool] = None
+    site_count: Optional[int] = None
 
 class BingStatusResponse(BaseModel):
     connected: bool
     sites: list
     total_sites: int
+
+
+def _sanitize_site_payload(site: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip sensitive token fields from site/status payloads."""
+    sanitized = {k: v for k, v in site.items() if k not in {"access_token", "refresh_token", "accessToken", "refreshToken"}}
+
+    nested_sites = sanitized.get("sites", [])
+    if isinstance(nested_sites, list):
+        cleaned_nested_sites = []
+        for nested_site in nested_sites:
+            if isinstance(nested_site, dict):
+                cleaned_nested_sites.append({
+                    "name": nested_site.get("name") or nested_site.get("Name") or "",
+                    "url": nested_site.get("url") or nested_site.get("Url") or ""
+                })
+        sanitized["sites"] = cleaned_nested_sites
+
+    sanitized["connection_id"] = sanitized.get("connection_id", sanitized.get("id"))
+    sanitized["connected"] = bool(sanitized.get("connected", True))
+    sanitized["site_count"] = sanitized.get("site_count", len(sanitized.get("sites", [])))
+    return sanitized
 
 @router.get("/auth/url", response_model=BingOAuthResponse)
 async def get_bing_auth_url(
@@ -50,7 +79,10 @@ async def get_bing_auth_url(
                 detail="Bing Webmaster OAuth is not properly configured. Please check that BING_CLIENT_ID and BING_CLIENT_SECRET environment variables are set with valid Bing Webmaster application credentials."
             )
         
-        return BingOAuthResponse(**auth_data)
+        return BingOAuthResponse(
+            **auth_data,
+            trusted_origins=get_trusted_origins_for_redirect("Bing", "BING_REDIRECT_URI"),
+        )
         
     except Exception as e:
         logger.error(f"Error generating Bing Webmaster OAuth URL: {e}")
@@ -81,7 +113,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: '{error}'
-                        }}, '*');
+                        }}, window.location.origin);
                         window.close();
                     }};
                 </script>
@@ -112,7 +144,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: 'Missing parameters'
-                    }}, '*');
+                    }}, window.location.origin);
                         window.close();
                     }};
                 </script>
@@ -146,7 +178,7 @@ async def handle_bing_callback(
                             type: 'BING_OAUTH_ERROR',
                             success: false,
                             error: 'Token exchange failed'
-                    }}, '*');
+                    }}, window.location.origin);
                         window.close();
                     }};
                 </script>
@@ -165,34 +197,27 @@ async def handle_bing_callback(
             from services.database import SessionLocal
             from services.platform_insights_monitoring_service import create_platform_insights_task
             
-            # Get user_id from state (stored during OAuth flow)
-            db = SessionLocal()
-            try:
-                # Get user_id from Bing OAuth service state lookup
-                import sqlite3
-                with sqlite3.connect(oauth_service.db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT user_id FROM bing_oauth_states WHERE state = ?', (state,))
-                    result_db = cursor.fetchone()
-                    if result_db:
-                        user_id = result_db[0]
-                        
-                        # Don't fetch site_url here - it requires API calls
-                        # The executor will fetch it when the task runs (weekly)
-                        # Create insights task without site_url to avoid API calls
-                        task_result = create_platform_insights_task(
-                            user_id=user_id,
-                            platform='bing',
-                            site_url=None,  # Will be fetched by executor when task runs
-                            db=db
-                        )
-                        
-                        if task_result.get('success'):
-                            logger.info(f"Created Bing insights task for user {user_id}")
-                        else:
-                            logger.warning(f"Failed to create Bing insights task: {task_result.get('error')}")
-            finally:
-                db.close()
+            # Get user_id from OAuth result
+            user_id = result.get("user_id")
+            if user_id:
+                db = SessionLocal()
+                try:
+                    # Don't fetch site_url here - it requires API calls
+                    # The executor will fetch it when the task runs (weekly)
+                    # Create insights task without site_url to avoid API calls
+                    task_result = create_platform_insights_task(
+                        user_id=user_id,
+                        platform='bing',
+                        site_url=None,  # Will be fetched by executor when task runs
+                        db=db
+                    )
+                    
+                    if task_result.get('success'):
+                        logger.info(f"Created Bing insights task for user {user_id}")
+                    else:
+                        logger.warning(f"Failed to create Bing insights task: {task_result.get('error')}")
+                finally:
+                    db.close()
         except Exception as e:
             # Non-critical: log but don't fail OAuth callback
             logger.warning(f"Failed to create Bing insights task after OAuth: {e}")
@@ -209,8 +234,10 @@ async def handle_bing_callback(
                     (window.opener || window.parent).postMessage({{
                         type: 'BING_OAUTH_SUCCESS',
                         success: true,
-                        accessToken: '{result.get('access_token', '')}',
-                        expiresIn: {result.get('expires_in', 0)}
+                        connectionId: {json.dumps(result.get('connection_id'))},
+                        connected: {json.dumps(result.get('connected', True))},
+                        siteCount: {json.dumps(result.get('site_count', 0))},
+                        sites: {json.dumps(result.get('sites', []))}
                     }}, '*');
                     window.close();
                 }};
@@ -243,7 +270,7 @@ async def handle_bing_callback(
                         type: 'BING_OAUTH_ERROR',
                         success: false,
                         error: 'Callback error'
-                    }}, '*');
+                    }}, window.location.origin);
                     window.close();
                 }};
             </script>
@@ -271,7 +298,18 @@ async def get_bing_oauth_status(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID not found.")
         
         status_data = oauth_service.get_connection_status(user_id)
-        return BingStatusResponse(**status_data)
+
+        sanitized_sites = []
+        for site in status_data.get("sites", []):
+            if isinstance(site, dict):
+                sanitized_sites.append(_sanitize_site_payload(site))
+
+        sanitized_status = {
+            "connected": bool(status_data.get("connected", False)),
+            "sites": sanitized_sites,
+            "total_sites": status_data.get("total_sites", len(sanitized_sites))
+        }
+        return BingStatusResponse(**sanitized_status)
         
     except Exception as e:
         logger.error(f"Error getting Bing Webmaster OAuth status: {e}")

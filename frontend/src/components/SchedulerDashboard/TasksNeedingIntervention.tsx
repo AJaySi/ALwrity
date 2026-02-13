@@ -28,6 +28,7 @@ import { styled } from '@mui/material/styles';
 import { apiClient } from '../../api/client';
 import { TerminalTypography, terminalColors } from './terminalTheme';
 import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../../api/schedulerDashboard';
+import { getCachedApiCall } from '../../utils/cacheUtils';
 
 const InterventionContainer = styled(Box)({
   backgroundColor: 'rgba(26, 26, 26, 0.8)',
@@ -90,7 +91,11 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const fetchedTasks = await getTasksNeedingIntervention(userId);
+      const fetchedTasks = await getCachedApiCall(
+        `tasks-needing-intervention-${userId}`,
+        () => getTasksNeedingIntervention(userId || ''),
+        300 // Cache for 5 minutes
+      );
       setTasks(fetchedTasks || []);
     } catch (error) {
       console.error('Error fetching tasks needing intervention:', error);
@@ -101,8 +106,8 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
 
   useEffect(() => {
     fetchTasks();
-    // Refresh every 2 minutes
-    const interval = setInterval(fetchTasks, 120000);
+    // Refresh every 10 minutes (reduced frequency to reduce API calls)
+    const interval = setInterval(fetchTasks, 600000); // 10 minutes
     return () => clearInterval(interval);
   }, [userId]);
 
@@ -129,8 +134,8 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
       
       await apiClient.post(`/api/scheduler/tasks/${taskType}/${task.task_id}/manual-trigger`);
       
-      // Show success toast
-      showToast('Task triggered successfully. It will run shortly.', 'success');
+      // Show success toast with more encouraging message
+      showToast('✅ Task triggered! It will run within the next few minutes. Monitor the execution logs for results.', 'success');
       
       // Refresh the list after a short delay
       setTimeout(() => {
@@ -138,10 +143,20 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
       }, 2000);
     } catch (error: any) {
       console.error('Error triggering task:', error);
-      showToast(
-        error.response?.data?.detail || 'Failed to trigger task. Please try again.',
-        'error'
-      );
+      // Provide more specific error messages for task triggering
+      let errorMessage = 'Unable to trigger task';
+      if (error.response?.status === 403) {
+        errorMessage = 'Access denied. You can only manage your own tasks.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Task not found. It may have been completed or removed.';
+      } else if (error.response?.status === 429) {
+        errorMessage = 'Too many requests. Please wait a moment before trying again.';
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else {
+        errorMessage = 'Task trigger failed. Please check your connection and try again.';
+      }
+      showToast(errorMessage, 'error');
     } finally {
       setTriggeringTasks(prev => {
         const newSet = new Set(prev);
@@ -167,33 +182,33 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
     switch (reason) {
       case 'api_limit':
         return {
-          label: 'API Limit Exceeded',
+          label: 'API Quota Exceeded',
           severity: 'error',
-          action: 'Your API quota has been exceeded. Wait for quota reset or upgrade your plan, then manually trigger the task.'
+          action: '🚨 API limit reached. This task will keep failing until quota resets. Consider upgrading your plan or waiting for the next billing cycle. Click "Trigger Now" after quota reset.'
         };
       case 'auth_error':
         return {
-          label: 'Authentication Error',
+          label: 'Authentication Failed',
           severity: 'warning',
-          action: 'Your credentials may have expired. Please reconnect the platform in onboarding, then manually trigger the task.'
+          action: '🔐 Credentials expired or invalid. Go to platform onboarding and reconnect your account. The task will resume automatically after reconnection.'
         };
       case 'network_error':
         return {
-          label: 'Network Error',
+          label: 'Connection Problem',
           severity: 'warning',
-          action: 'Network connectivity issues detected. Check your connection and manually trigger the task when resolved.'
+          action: '🌐 Network issues detected. Check your internet connection and firewall settings. The task will retry automatically when connectivity is restored.'
         };
       case 'config_error':
         return {
-          label: 'Configuration Error',
+          label: 'Setup Incomplete',
           severity: 'warning',
-          action: 'Task configuration is invalid. Please check task settings and manually trigger after fixing.'
+          action: '⚙️ Task configuration is invalid. Check that all required settings are complete in your onboarding. Contact support if the issue persists.'
         };
       default:
         return {
-          label: 'Unknown Error',
+          label: 'System Error',
           severity: 'error',
-          action: 'An unexpected error occurred. Review the error details below and manually trigger after resolving the issue.'
+          action: '❌ Unexpected error occurred. Check the error details below for more information. If this persists, contact support with the error details.'
         };
     }
   };
@@ -212,9 +227,14 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
       <InterventionContainer>
         <Box display="flex" alignItems="center" gap={2}>
           <CircularProgress size={20} sx={{ color: '#ff9800' }} />
-          <TerminalTypography variant="body2" sx={{ color: '#ff9800' }}>
-            Loading tasks needing intervention...
-          </TerminalTypography>
+          <Box>
+            <TerminalTypography variant="body2" sx={{ color: '#ff9800', fontWeight: 'bold' }}>
+              Checking for tasks needing attention...
+            </TerminalTypography>
+            <TerminalTypography variant="caption" sx={{ color: '#ff9800', opacity: 0.8 }}>
+              Scanning for failed tasks that require manual intervention
+            </TerminalTypography>
+          </Box>
         </Box>
       </InterventionContainer>
     );
@@ -258,7 +278,7 @@ const TasksNeedingIntervention: React.FC<TasksNeedingInterventionProps> = ({ use
         const isTriggering = triggeringTasks.has(task.task_id);
 
         return (
-          <TaskCard key={task.task_id}>
+          <TaskCard key={`${task.task_type}_${task.task_id}_${task.user_id}`}>
             <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={2}>
               <Box flex={1}>
                 <Box display="flex" alignItems="center" gap={1} marginBottom={1}>

@@ -8,7 +8,7 @@ from typing import Dict, Any
 from pathlib import Path
 
 from ...utils.auth import get_current_user, require_authenticated_user
-from ...utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("video_studio.endpoints.serve")
 

@@ -19,7 +19,6 @@ import {
   MoreVert,
   Dashboard
 } from '@mui/icons-material';
-import { useUser } from '@clerk/clerk-react';
 import { apiClient } from '../../api/client';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { usePriority2Alerts } from '../../hooks/usePriority2Alerts';
@@ -83,8 +82,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const { user } = useUser();
-  const userId = localStorage.getItem('user_id') || user?.id;
+  const userId = localStorage.getItem('user_id');
 
   // Priority 2 Alerts - automatically appears in all tool headers
   const { alerts: priority2Alerts, dismissAlert: dismissPriority2Alert } = usePriority2Alerts({
@@ -113,19 +111,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
 
   useEffect(() => {
     fetchUsageData();
-
-    // Listen for custom event to refresh usage data
-    const handleUsageRefresh = () => {
-      console.log('UsageDashboard: Refreshing usage data due to event');
-      fetchUsageData();
-    };
-
-    window.addEventListener('alwrity:refresh-usage', handleUsageRefresh);
-
-    return () => {
-      window.removeEventListener('alwrity:refresh-usage', handleUsageRefresh);
-    };
-  }, [fetchUsageData, userId]);
+  }, [userId, fetchUsageData]);
 
   const handleRefresh = () => {
     fetchUsageData();
@@ -171,13 +157,12 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
       'serper': 'Serper',
       'metaphor': 'Metaphor',
       'firecrawl': 'Firecrawl',
-      'stability': 'Stability',
-      'wavespeed': 'WaveSpeed'
+      'stability': 'Stability'
     };
     return names[provider] || provider;
   };
 
-  if (!dashboardData) {
+  if (!subscription || !dashboardData) {
     if (loading) {
       return (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -197,13 +182,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
       );
     }
     
-    // If no data and not loading/error, try to fetch again or show placeholder
-    if (userId && !dashboardData) {
-       // Optional: could auto-trigger another fetch here if needed, but useEffect handles it
-       return <Box />;
-    }
-    
-    return <Box />;
+    return <Box />; // Return empty box instead of null
   }
 
   if (compact) {

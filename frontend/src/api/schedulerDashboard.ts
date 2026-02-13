@@ -193,10 +193,34 @@ export const getExecutionLogs = async (
       params.status = status;
     }
     
-    const response = await apiClient.get<ExecutionLogsResponse>('/api/scheduler/execution-logs', {
+    const response = await apiClient.get<ExecutionLogsResponse | { logs: any[], pagination: any }>('/api/scheduler/execution-logs', {
       params
     });
-    return response.data;
+    
+    const data = response.data;
+    
+    // Handle both old (flat) and new (nested) pagination formats
+    if ('pagination' in data) {
+      // New format: { logs: [], pagination: { limit, offset, total, has_more } }
+      const mappedLogs = data.logs.map((log: any) => ({
+        ...log,
+        // Map backend field names to frontend expectations
+        execution_date: log.started_at,
+        execution_time_ms: log.duration_seconds ? log.duration_seconds * 1000 : null,
+        completed_at: log.completed_at
+      }));
+      
+      return {
+        logs: mappedLogs,
+        total_count: data.pagination.total,
+        limit: data.pagination.limit,
+        offset: data.pagination.offset,
+        has_more: data.pagination.has_more
+      };
+    } else {
+      // Old format: { logs: [], total_count, limit, offset, has_more }
+      return data as ExecutionLogsResponse;
+    }
   } catch (error: any) {
     console.error('Error fetching execution logs:', error);
     throw new Error(
@@ -244,10 +268,32 @@ export const getSchedulerEventHistory = async (
       params.event_type = eventType;
     }
     
-    const response = await apiClient.get<SchedulerEventHistoryResponse>('/api/scheduler/event-history', {
+    const response = await apiClient.get<SchedulerEventHistoryResponse | { events: any[], pagination: any }>('/api/scheduler/event-history', {
       params
     });
-    return response.data;
+    
+    const data = response.data;
+    
+    // Handle both old (flat) and new (nested) pagination formats
+    if ('pagination' in data) {
+      // New format: { events: [], pagination: { limit, offset, total, has_more } }
+      const mappedEvents = data.events.map((event: any) => ({
+        ...event,
+        // Map backend field names to frontend expectations
+        event_date: event.timestamp
+      }));
+      
+      return {
+        events: mappedEvents,
+        total_count: data.pagination.total,
+        limit: data.pagination.limit,
+        offset: data.pagination.offset,
+        has_more: data.pagination.has_more
+      };
+    } else {
+      // Old format: { events: [], total_count, limit, offset, has_more }
+      return data as SchedulerEventHistoryResponse;
+    }
   } catch (error: any) {
     console.error('Error fetching scheduler event history:', error);
     throw new Error(
@@ -265,8 +311,24 @@ export const getSchedulerEventHistory = async (
  */
 export const getRecentSchedulerLogs = async (): Promise<ExecutionLogsResponse> => {
   try {
-    const response = await apiClient.get<ExecutionLogsResponse>('/api/scheduler/recent-scheduler-logs');
-    return response.data;
+    const response = await apiClient.get<ExecutionLogsResponse | { logs: any[], pagination: any }>('/api/scheduler/recent-scheduler-logs');
+    
+    const data = response.data;
+    
+    // Handle both old (flat) and new (nested) pagination formats
+    if ('pagination' in data) {
+      // New format: { logs: [], pagination: { limit, offset, total, has_more } }
+      return {
+        logs: data.logs,
+        total_count: data.pagination.total,
+        limit: data.pagination.limit,
+        offset: data.pagination.offset,
+        has_more: data.pagination.has_more
+      };
+    } else {
+      // Old format: { logs: [], total_count, limit, offset, has_more }
+      return data as ExecutionLogsResponse;
+    }
   } catch (error: any) {
     console.error('Error fetching recent scheduler logs:', error);
     throw new Error(
@@ -287,11 +349,11 @@ export const getTasksNeedingIntervention = async (userId: string): Promise<TaskN
       tasks: TaskNeedingIntervention[];
       count: number;
     }>(`/api/scheduler/tasks-needing-intervention/${userId}`);
-    
+
     if (!response.data.success) {
       throw new Error('Failed to fetch tasks needing intervention');
     }
-    
+
     return response.data.tasks || [];
   } catch (error: any) {
     console.error('Error fetching tasks needing intervention:', error);
@@ -303,3 +365,69 @@ export const getTasksNeedingIntervention = async (userId: string): Promise<TaskN
   }
 };
 
+// Event log management interfaces
+export interface EventLogCleanupResult {
+  success: boolean;
+  message: string;
+  statistics: {
+    total_before_cleanup: number;
+    deleted_count: number;
+    total_after_cleanup: number;
+    retention_days: number;
+    cutoff_date: string;
+  };
+}
+
+export interface EventLogStats {
+  total_records: number;
+  retention_policy: {
+    recommended_days: number;
+    minimum_days: number;
+    maximum_days: number;
+  };
+  age_distribution: {
+    last_24h: number;
+    last_7d: number;
+    last_30d: number;
+    last_90d: number;
+    older_than_90d: number;
+    older_than_180d: number;
+  };
+  event_type_distribution: Record<string, number>;
+}
+
+/**
+ * Clean up old scheduler event logs based on retention policy.
+ */
+export const cleanupSchedulerEventLogs = async (daysToKeep: number = 90): Promise<EventLogCleanupResult> => {
+  try {
+    const response = await apiClient.post<EventLogCleanupResult>('/api/scheduler/cleanup-event-logs', null, {
+      params: { days_to_keep: daysToKeep }
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error cleaning up scheduler event logs:', error);
+    throw new Error(
+      error.response?.data?.detail ||
+      error.message ||
+      'Failed to cleanup scheduler event logs'
+    );
+  }
+};
+
+/**
+ * Get statistics about scheduler event logs for monitoring retention.
+ */
+export const getSchedulerEventLogsStats = async (): Promise<EventLogStats> => {
+  try {
+    const response = await apiClient.get<EventLogStats>('/api/scheduler/event-logs/stats');
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching scheduler event log statistics:', error);
+    throw new Error(
+      error.response?.data?.detail ||
+      error.message ||
+      'Failed to fetch scheduler event log statistics'
+    );
+  }
+};

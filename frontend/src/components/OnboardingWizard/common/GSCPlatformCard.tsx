@@ -7,12 +7,22 @@ import {
   CardContent,
   Chip,
   IconButton,
-  Tooltip
+  Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  Divider
 } from '@mui/material';
 import {
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { type GSCSite } from '../../../api/gsc';
+import type { GSCDataQualityResponse, GSCCachedOpportunitiesResponse } from '../../../api/gsc';
 
 interface GSCPlatformCardProps {
   platform: {
@@ -29,6 +39,10 @@ interface GSCPlatformCardProps {
   getStatusText: (status: string) => string;
   getStatusColor: (status: string) => string;
   onRefresh?: () => void;
+  primarySite: string;
+  onPrimarySiteChange: (siteUrl: string) => void;
+  dataQuality: GSCDataQualityResponse | null;
+  opportunities: GSCCachedOpportunitiesResponse | null;
 }
 
 const GSCPlatformCard: React.FC<GSCPlatformCardProps> = ({
@@ -39,7 +53,11 @@ const GSCPlatformCard: React.FC<GSCPlatformCardProps> = ({
   getStatusIcon,
   getStatusText,
   getStatusColor,
-  onRefresh
+  onRefresh,
+  primarySite,
+  onPrimarySiteChange,
+  dataQuality,
+  opportunities
 }) => {
   const handleRefresh = () => {
     if (onRefresh) {
@@ -105,6 +123,58 @@ const GSCPlatformCard: React.FC<GSCPlatformCardProps> = ({
                 {site.siteUrl}
               </Box>
             ))}
+
+            <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+              <InputLabel id="gsc-primary-site-label">Primary Site</InputLabel>
+              <Select
+                labelId="gsc-primary-site-label"
+                value={primarySite || ''}
+                label="Primary Site"
+                onChange={(e) => onPrimarySiteChange(e.target.value)}
+              >
+                {gscSites.map((site) => (
+                  <MenuItem key={site.siteUrl} value={site.siteUrl}>
+                    {site.siteUrl}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        )}
+
+        {dataQuality && (
+          <Box mb={2}>
+            <Alert severity={dataQuality.has_sufficient_permission ? 'success' : 'warning'} sx={{ mb: 1 }}>
+              Permission: {dataQuality.permission_level || 'unknown'}
+            </Alert>
+            <Typography variant="caption" sx={{ color: '#475569', display: 'block' }}>
+              Data window: {dataQuality.data_window_start || 'n/a'} → {dataQuality.data_window_end || 'n/a'} ({dataQuality.data_days_available} days)
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#475569', display: 'block' }}>
+              Indexing health: {dataQuality.indexing_health.indexed_urls}/{dataQuality.indexing_health.submitted_urls} indexed
+              {typeof dataQuality.indexing_health.indexing_ratio === 'number' ? ` (${dataQuality.indexing_health.indexing_ratio}%)` : ''}
+            </Typography>
+          </Box>
+        )}
+
+        {opportunities && opportunities.opportunities.length > 0 && (
+          <Box mb={2}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1e293b', mb: 1 }}>
+              Guided opportunities
+            </Typography>
+            <List dense sx={{ p: 0, border: '1px solid #e2e8f0', borderRadius: 1 }}>
+              {opportunities.opportunities.slice(0, 3).map((op, idx) => (
+                <React.Fragment key={op.query}>
+                  <ListItem>
+                    <ListItemText
+                      primary={op.query}
+                      secondary={`${op.impressions} impressions • ${op.ctr}% CTR • ${op.recommended_action}`}
+                    />
+                  </ListItem>
+                  {idx < Math.min(opportunities.opportunities.length, 3) - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+            </List>
           </Box>
         )}
 

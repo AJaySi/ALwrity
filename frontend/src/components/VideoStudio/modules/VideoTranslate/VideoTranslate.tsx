@@ -3,9 +3,7 @@ import { Grid, Box, Button, Typography, Stack, CircularProgress, LinearProgress,
 import { VideoStudioLayout } from '../../VideoStudioLayout';
 import { useVideoTranslate } from './hooks/useVideoTranslate';
 import { VideoUpload, LanguageSelector } from './components';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
 import TranslateIcon from '@mui/icons-material/Translate';
 
 const VideoTranslate: React.FC = () => {

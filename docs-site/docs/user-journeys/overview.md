@@ -56,6 +56,51 @@ Welcome to ALwrity! This guide helps you find the perfect path based on your rol
 
 </div>
 
+## 🗺️ ALwrity Ecosystem Overview
+
+```mermaid
+graph TB
+    subgraph "🤖 AI-Powered Core"
+        COPILOT[ALwrity Copilot<br/>Conversational AI Assistant]
+        STORY[Story Writer<br/>AI Storytelling Platform]
+        VIDEO[Video Studio<br/>AI Video Creation Suite]
+    end
+
+    subgraph "📝 Content Creation"
+        BLOG[Blog Writer<br/>SEO-Optimized Blog Posts]
+        LINKEDIN[LinkedIn Writer<br/>Professional Social Content]
+        FACEBOOK[Facebook Writer<br/>Engaging Social Posts]
+    end
+
+    subgraph "🎨 Media & Visuals"
+        IMAGE[Image Studio<br/>AI Image Generation & Editing]
+        TRANSFORM[Transform Studio<br/>Video & Image Transformation]
+    end
+
+    subgraph "📊 Strategy & Analytics"
+        STRATEGY[Content Strategy<br/>AI-Driven Planning]
+        SEO[SEO Dashboard<br/>Performance Analytics]
+        CALENDAR[Content Calendar<br/>Automated Scheduling]
+    end
+
+    COPILOT --> BLOG
+    COPILOT --> STORY
+    COPILOT --> VIDEO
+    COPILOT --> SEO
+    COPILOT --> STRATEGY
+
+    BLOG --> CALENDAR
+    VIDEO --> IMAGE
+    STORY --> STRATEGY
+    IMAGE --> TRANSFORM
+
+    style COPILOT fill:#e3f2fd
+    style STORY fill:#f3e5f5
+    style VIDEO fill:#e8f5e8
+    style BLOG fill:#fff3e0
+    style IMAGE fill:#fce4ec
+```
+
 ## 🗺️ User Journey Map
 
 ```mermaid
@@ -64,106 +109,132 @@ graph TB
         A[Find ALwrity] --> B[Choose User Type]
         B --> C[Start Personalized Journey]
     end
-    
+
     subgraph "Onboarding Phase"
-        D[Quick Setup] --> E[First Content]
-        E --> F[See Results]
+        D[Quick Setup] --> E[Enable Copilot]
+        E --> F[Create First Content]
+        F --> G[See AI Magic ✨]
     end
-    
+
     subgraph "Growth Phase"
-        G[Explore Features] --> H[Optimize Workflow]
-        H --> I[Scale Operations]
+        H[Explore Features] --> I[Master Video Studio]
+        I --> J[Try Story Writer]
+        J --> K[Optimize Workflows]
+        K --> L[Scale Operations]
     end
-    
+
     subgraph "Mastery Phase"
-        J[Advanced Features] --> K[Custom Solutions]
-        K --> L[Community Contribution]
+        M[Advanced AI Features] --> N[Custom Copilot]
+        N --> O[Enterprise Solutions]
+        O --> P[Community Leadership]
     end
-    
+
     C --> D
-    F --> G
-    I --> J
-    
+    G --> H
+    L --> M
+
     style A fill:#e1f5fe
     style D fill:#e8f5e8
-    style G fill:#fff3e0
-    style J fill:#f3e5f5
+    style H fill:#fff3e0
+    style M fill:#f3e5f5
 ```
 
 ## 📊 User Type Comparison
 
 | User Type | Primary Goal | Key Features | Tech Comfort | Time Investment |
-|-----------|--------------|--------------|--------------|-----------------|
-| **Non-Tech Content Creators** | Create quality content easily | Simple UI, guided workflows | Low-Medium | 30 min setup |
-| **Developers** | Integrate and customize | APIs, webhooks, SDKs | High | 2-4 hours setup |
-| **Tech Marketers** | Optimize performance | Analytics, A/B testing, ROI tracking | Medium-High | 1-2 hours setup |
-| **Solopreneurs** | Build personal brand | Persona system, automation | Medium | 45 min setup |
-| **Content Teams** | Collaborate efficiently | Team features, approval workflows | Medium-High | 1-3 hours setup |
-| **Enterprise Users** | Scale securely | Enterprise features, compliance | Mixed | 1-2 weeks setup |
+|-----------|--------------|--------------|--------------|--------------|-----------------|
+| **Non-Tech Content Creators** | Create quality content easily | ALwrity Copilot, Instagram Editor, Story Writer, YouTube Studio, guided workflows | Low-Medium | 30 min setup |
+| **Developers** | Integrate and customize | APIs, webhooks, SDKs, Copilot integration, Video Studio APIs, Researcher APIs | High | 2-4 hours setup |
+| **Tech Marketers** | Optimize performance | Analytics, Video Studio, Podcast Maker, Content Calendar, YouTube Studio, ROI tracking | Medium-High | 1-2 hours setup |
+| **Solopreneurs** | Build personal brand | Persona system, automation, Instagram Editor, WaveSpeed features, YouTube Studio | Medium | 45 min setup |
+| **Content Teams** | Collaborate efficiently | Team features, Copilot collaboration, Facebook Writer, Content Calendar, approval workflows | Medium-High | 1-3 hours setup |
+| **Enterprise Users** | Scale securely | Enterprise features, compliance, custom Copilot, Podcast Maker, ALwrity Researcher | Mixed | 1-2 weeks setup |
 
 ## 🚀 Quick Start by User Type
 
 ### For Non-Tech Content Creators
 1. **[Simple Setup](non-tech-creators/getting-started.md)** - 5-minute guided setup
-2. **[Create First Content](non-tech-creators/first-content.md)** - Your first blog post
-3. **[Optimize Your Content](non-tech-creators/content-optimization.md)** - Improve quality and SEO
+2. **[Enable ALwrity Copilot](features/copilot/getting-started.md)** - Your AI content assistant
+3. **[Create First Content](non-tech-creators/first-content.md)** - Your first blog post or story
+4. **[Try Story Writer](features/story-writer/setup-guide.md)** - Create compelling narratives
+5. **[Optimize Your Content](non-tech-creators/content-optimization.md)** - Improve quality and SEO
 
 ### For Developers
 1. **[API Quickstart](developers/api-quickstart.md)** - Get started with APIs
-2. **[Integration Guide](developers/integration-guide.md)** - Build custom integrations
-3. **[Advanced Usage](developers/advanced-usage.md)** - Advanced API features
+2. **[Copilot Integration](features/copilot/overview.md)** - AI-powered development assistance
+3. **[Video Studio APIs](features/video-studio/technical-specs.md)** - Video generation endpoints
+4. **[Integration Guide](developers/integration-guide.md)** - Build custom integrations
+5. **[Advanced Usage](developers/advanced-usage.md)** - Advanced API features
 
 ### For Tech Marketers
 1. **[Strategy Setup](tech-marketers/strategy-setup.md)** - Plan your content strategy
-2. **[Team Onboarding](tech-marketers/team-onboarding.md)** - Onboard your team
-3. **[Analytics & ROI](tech-marketers/analytics.md)** - Track performance and ROI
+2. **[Video Studio Overview](features/video-studio/overview.md)** - Professional video creation
+3. **[Copilot for Marketing](features/copilot/overview.md)** - AI marketing assistance
+4. **[Team Onboarding](tech-marketers/team-onboarding.md)** - Onboard your team
+5. **[Analytics & ROI](tech-marketers/analytics.md)** - Track performance and ROI
 
 ### For Solopreneurs
 1. **[Brand Strategy](solopreneurs/brand-strategy.md)** - Define your brand voice
-2. **[Content Production](solopreneurs/content-production.md)** - Create content efficiently
-3. **[Audience Growth](solopreneurs/audience-growth.md)** - Grow your audience
+2. **[Story Writer](features/story-writer/setup-guide.md)** - Create compelling brand stories
+3. **[Video Studio](features/video-studio/create-studio.md)** - Professional video content
+4. **[ALwrity Copilot](features/copilot/getting-started.md)** - Your AI business assistant
+5. **[Content Production](solopreneurs/content-production.md)** - Create content efficiently
+6. **[Audience Growth](solopreneurs/audience-growth.md)** - Grow your audience
 
 ### For Content Teams
 1. **[Workflow Setup](content-teams/workflow-setup.md)** - Design your content workflow
-2. **[Team Management](content-teams/team-management.md)** - Manage your team
-3. **[Brand Consistency](content-teams/brand-consistency.md)** - Maintain brand standards
+2. **[ALwrity Copilot](features/copilot/overview.md)** - Team collaboration and AI assistance
+3. **[Video Studio](features/video-studio/overview.md)** - Professional video production
+4. **[Story Writer](features/story-writer/overview.md)** - Collaborative storytelling
+5. **[Team Management](content-teams/team-management.md)** - Manage your team
+6. **[Brand Consistency](content-teams/brand-consistency.md)** - Maintain brand standards
 
 ### For Enterprise Users
 1. **[Enterprise Setup](enterprise/implementation.md)** - Enterprise implementation
-2. **[Security & Compliance](enterprise/security-compliance.md)** - Security and compliance
-3. **[Analytics & Reporting](enterprise/analytics.md)** - Enterprise analytics
+2. **[Copilot Enterprise](features/copilot/overview.md)** - Custom AI assistants for teams
+3. **[Video Studio Enterprise](features/video-studio/overview.md)** - Scalable video production
+4. **[Security & Compliance](enterprise/security-compliance.md)** - Security and compliance
+5. **[Analytics & Reporting](enterprise/analytics.md)** - Enterprise analytics
+6. **[Custom Integrations](enterprise/custom-solutions.md)** - Tailored enterprise solutions
 
 ## 🎯 Success Metrics by User Type
 
 ### Non-Tech Content Creators
-- **Time to First Content**: < 30 minutes
-- **Content Quality Improvement**: 40%+ increase
-- **User Satisfaction**: 4.5+ stars
+- **Time to First Content**: Faster content creation with AI assistance
+- **Content Quality**: Enhanced quality through AI-powered optimization
+- **Multi-Platform Support**: Create content for various social platforms
+- **Guided Workflows**: Step-by-step assistance for all content types
 
 ### Developers
-- **API Integration Success**: 90%+ success rate
-- **Documentation Completeness**: 95%+ coverage
-- **Developer Satisfaction**: 4.7+ stars
+- **API Integration**: Comprehensive REST API access
+- **Copilot Integration**: AI-powered development assistance
+- **Video Studio APIs**: Video generation and processing endpoints
+- **Advanced AI Features**: Access to cutting-edge AI capabilities
+- **Documentation**: Complete technical documentation and guides
 
 ### Tech Marketers
-- **ROI Measurement**: 200%+ ROI
-- **Performance Improvement**: 50%+ increase
-- **Team Adoption**: 80%+ team usage
+- **Video Content Creation**: Professional video production tools
+- **Multi-Platform Publishing**: Distribute content across platforms
+- **Analytics Integration**: Performance tracking and optimization
+- **Team Collaboration**: Enhanced team workflows and productivity
 
 ### Solopreneurs
-- **Time Savings**: 70%+ reduction
-- **Content Production**: 3x increase
-- **Audience Growth**: 100%+ increase
+- **Content Variety**: Multiple content formats and types
+- **AI-Powered Creation**: Automated content generation and optimization
+- **Brand Consistency**: Maintain consistent branding across content
+- **Audience Engagement**: Tools to increase audience interaction
 
 ### Content Teams
-- **Workflow Efficiency**: 60%+ improvement
-- **Brand Consistency**: 95%+ consistency
-- **Team Collaboration**: 80%+ improvement
+- **Collaborative Workflows**: Team-based content creation and review
+- **Brand Consistency**: Unified brand standards across all content
+- **Workflow Efficiency**: Streamlined content production processes
+- **Quality Assurance**: Built-in quality checks and approvals
 
 ### Enterprise Users
-- **Security Compliance**: 100% compliance
-- **Scalability**: 10x user capacity
-- **Integration Success**: 95%+ success rate
+- **Scalable Solutions**: Enterprise-grade content production capacity
+- **Security & Compliance**: Enterprise security and governance features
+- **Custom Integrations**: Tailored solutions for large organizations
+- **Advanced Analytics**: Comprehensive reporting and insights
 
 ## 🔄 Journey Progression
 
@@ -176,16 +247,27 @@ journey
       Start Journey: 5: User
     section Onboarding
       Quick Setup: 5: User
-      First Content: 4: User
-      See Results: 5: User
+      Enable Copilot: 5: User
+      First AI Content: 4: User
+      See AI Magic: 5: User
     section Growth
-      Explore Features: 4: User
+      Master Copilot: 4: User
+      Try Video Studio: 4: User
+      Explore Story Writer: 4: User
+      Instagram Editor: 4: User
+      Podcast Maker: 4: User
+      YouTube Studio: 4: User
+      Content Calendar: 4: User
+      ALwrity Researcher: 4: User
       Optimize Workflow: 5: User
       Scale Operations: 5: User
     section Mastery
-      Advanced Features: 4: User
-      Custom Solutions: 5: User
-      Community: 5: User
+      WaveSpeed Features: 4: User
+      Facebook Writer: 4: User
+      Advanced AI Features: 4: User
+      Custom Copilot Solutions: 5: User
+      Enterprise Video Production: 5: User
+      Community Leadership: 5: User
 ```
 
 ## 🆘 Need Help Choosing?

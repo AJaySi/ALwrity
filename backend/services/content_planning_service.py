@@ -5,7 +5,8 @@ Handles content strategy development, calendar management, and gap analysis.
 
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("content_planning_service", migration_mode=True)
 from datetime import datetime
 
 from services.database import get_session_for_user
@@ -227,8 +228,7 @@ class ContentPlanningService:
                 if strategy_id:
                     events = await db_service.get_strategy_calendar_events(strategy_id)
                 else:
-                    # TODO: Implement get_all_calendar_events method
-                    events = []
+                    events = await db_service.get_all_calendar_events()
                 
                 logger.info(f"Retrieved {len(events)} calendar events")
                 return events

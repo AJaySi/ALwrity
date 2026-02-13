@@ -10,7 +10,7 @@ import re
 import textstat
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 # Service-specific logger
 logger = get_service_logger("blog_content_seo_analyzer")

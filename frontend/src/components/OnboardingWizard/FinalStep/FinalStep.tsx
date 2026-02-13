@@ -17,10 +17,11 @@ import {
   Warning
 } from '@mui/icons-material';
 import OnboardingButton from '../common/OnboardingButton';
-import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, setCurrentStep } from '../../../api/onboarding';
+import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, generateWebsitePreview, deployWebsite, setCurrentStep } from '../../../api/onboarding';
 import { SetupSummary, CapabilitiesOverview, AgentTeamSection } from './components';
 import { FinalStepProps, OnboardingData, Capability } from './types';
 import { getAgentTeam, type AgentTeamCatalogEntry } from '../../../api/agentsTeam';
+import { onboardingCache } from '../../../services/onboardingCache';
 
 const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }) => {
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,10 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({
     apiKeys: {}
   });
+  const [previewData, setPreviewData] = useState<{ previewHtml?: string; previewUrl?: string } | null>(null);
+  const [deploying, setDeploying] = useState(false);
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [deploySuccess, setDeploySuccess] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>('summary');
   const [validationStatus, setValidationStatus] = useState<{isValid: boolean, missingSteps: string[]} | null>(null);
   const [agentTeam, setAgentTeam] = useState<AgentTeamCatalogEntry[]>([]);
@@ -91,6 +96,17 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
       };
       
       setOnboardingData(newOnboardingData);
+
+      const cachedStep2 = onboardingCache.getStepData(2);
+      if (cachedStep2?.websiteIntake) {
+        const previewResponse = await generateWebsitePreview(cachedStep2.websiteIntake);
+        if (previewResponse?.preview_html) {
+          setPreviewData({
+            previewHtml: previewResponse.preview_html,
+            previewUrl: previewResponse.preview_url
+          });
+        }
+      }
       
       // Validate completion status after data is loaded
       console.log('FinalStep: Data loaded, running validation...');
@@ -432,6 +448,7 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
             {/* Capabilities Overview */}
             <CapabilitiesOverview capabilities={capabilities} />
 
+<<<<<<< HEAD
             {/* Agent Team */}
             {agentTeamError && (
               <Alert severity="warning" sx={{ mt: 3, borderRadius: 2 }}>
@@ -443,6 +460,68 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
             )}
             {!agentTeamError && agentTeam.length > 0 && (
               <AgentTeamSection websiteName={websiteName} agents={agentTeam} contextCard={agentContextCard} />
+=======
+            {previewData?.previewHtml && (
+              <Box sx={{ mt: 4, mb: 4 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Your AI website preview
+                </Typography>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  This is a generated preview based on your onboarding inputs. We’ll keep improving it as you continue.
+                </Alert>
+                <Box sx={{ border: '1px solid #E5E7EB', borderRadius: 2, overflow: 'hidden', mb: 2 }}>
+                  <iframe
+                    title="Website Preview"
+                    srcDoc={previewData.previewHtml}
+                    style={{ width: '100%', height: '480px', border: 'none' }}
+                  />
+                </Box>
+                {previewData.previewUrl && (
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    href={previewData.previewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open preview in new tab
+                  </Button>
+                )}
+                <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={async () => {
+                      setDeployError(null);
+                      setDeploySuccess(null);
+                      setDeploying(true);
+                      try {
+                        const cachedStep2 = onboardingCache.getStepData(2);
+                        const response = await deployWebsite(cachedStep2?.websiteIntake || {});
+                        setDeploySuccess(response?.live_url || 'Deployment started');
+                      } catch (err) {
+                        console.error('Deploy failed', err);
+                        setDeployError('Deployment failed. Please try again.');
+                      } finally {
+                        setDeploying(false);
+                      }
+                    }}
+                    disabled={deploying}
+                  >
+                    {deploying ? 'Deploying...' : 'Deploy website'}
+                  </Button>
+                  {deploySuccess && (
+                    <Typography variant="body2" color="success.main">
+                      Live URL: {deploySuccess}
+                    </Typography>
+                  )}
+                </Box>
+                {deployError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {deployError}
+                  </Alert>
+                )}
+              </Box>
             )}
 
             {/* Missing Requirements Warning */}

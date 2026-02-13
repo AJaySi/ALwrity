@@ -9,7 +9,7 @@ import requests
 from fastapi import HTTPException
 from requests import exceptions as requests_exceptions
 
-from utils.logger_utils import get_service_logger
+from utils.logging import get_service_logger
 
 logger = get_service_logger("wavespeed.polling")
 

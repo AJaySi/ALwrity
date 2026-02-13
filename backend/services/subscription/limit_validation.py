@@ -1,4 +1,4 @@
-"""
+﻿"""
 Limit Validation Module
 Handles subscription limit checking and validation logic.
 Extracted from pricing_service.py for better modularity.
@@ -7,7 +7,8 @@ Extracted from pricing_service.py for better modularity.
 from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta
 from sqlalchemy import text
-from loguru import logger
+from utils.logging import get_logger
+logger = get_logger("subscription_limit_validation", migration_mode=True)
 
 from models.subscription_models import (
     UserSubscription, UsageSummary, SubscriptionPlan, 
@@ -382,13 +383,13 @@ class LimitValidator:
             If can_proceed is False, error_message explains which limit would be exceeded
         """
         try:
-            logger.info(f"[Pre-flight Check] 🔍 Starting comprehensive validation for user {user_id}")
-            logger.info(f"[Pre-flight Check] 📋 Validating {len(operations)} operation(s) before making any API calls")
+            logger.info(f"[Pre-flight Check] ðŸ” Starting comprehensive validation for user {user_id}")
+            logger.info(f"[Pre-flight Check] ðŸ“‹ Validating {len(operations)} operation(s) before making any API calls")
             
             # Get current usage and limits once
             current_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
             
-            logger.info(f"[Pre-flight Check] 📅 Billing Period: {current_period} (for user {user_id})")
+            logger.info(f"[Pre-flight Check] ðŸ“… Billing Period: {current_period} (for user {user_id})")
             
             # Ensure schema columns exist before querying
             try:
@@ -413,7 +414,6 @@ class LimitValidator:
                 error_str = str(query_err).lower()
                 if 'no such column' in error_str and 'exa_calls' in error_str:
                     logger.warning("Missing column detected in usage query, fixing schema and retrying...")
-                    import sqlite3
                     import services.subscription.schema_utils as schema_utils
                     schema_utils._checked_usage_summaries_columns = False
                     from services.subscription.schema_utils import ensure_usage_summaries_columns
@@ -431,13 +431,13 @@ class LimitValidator:
             
             # Log what we actually read from database
             if usage:
-                logger.info(f"[Pre-flight Check] 📊 Usage Summary from DB (Period: {current_period}):")
-                logger.info(f"   ├─ Gemini: {usage.gemini_tokens or 0} tokens / {usage.gemini_calls or 0} calls")
-                logger.info(f"   ├─ Mistral/HF: {usage.mistral_tokens or 0} tokens / {usage.mistral_calls or 0} calls")
-                logger.info(f"   ├─ Total Tokens: {usage.total_tokens or 0}")
-                logger.info(f"   └─ Usage Status: {usage.usage_status.value if usage.usage_status else 'N/A'}")
+                logger.info(f"[Pre-flight Check] ðŸ“Š Usage Summary from DB (Period: {current_period}):")
+                logger.info(f"   â”œâ”€ Gemini: {usage.gemini_tokens or 0} tokens / {usage.gemini_calls or 0} calls")
+                logger.info(f"   â”œâ”€ Mistral/HF: {usage.mistral_tokens or 0} tokens / {usage.mistral_calls or 0} calls")
+                logger.info(f"   â”œâ”€ Total Tokens: {usage.total_tokens or 0}")
+                logger.info(f"   â””â”€ Usage Status: {usage.usage_status.value if usage.usage_status else 'N/A'}")
             else:
-                logger.info(f"[Pre-flight Check] 📊 No usage summary found for period {current_period} (will create new)")
+                logger.info(f"[Pre-flight Check] ðŸ“Š No usage summary found for period {current_period} (will create new)")
             
             if not usage:
                 # First usage this period, create summary
@@ -479,10 +479,10 @@ class LimitValidator:
             total_images = usage.stability_calls or 0
             
             # Log current usage summary
-            logger.info(f"[Pre-flight Check] 📊 Current Usage Summary:")
-            logger.info(f"   └─ Total LLM Calls: {total_llm_calls}")
-            logger.info(f"   └─ Gemini Tokens: {usage.gemini_tokens or 0}, Mistral/HF Tokens: {usage.mistral_tokens or 0}")
-            logger.info(f"   └─ Image Calls: {total_images}")
+            logger.info(f"[Pre-flight Check] ðŸ“Š Current Usage Summary:")
+            logger.info(f"   â””â”€ Total LLM Calls: {total_llm_calls}")
+            logger.info(f"   â””â”€ Gemini Tokens: {usage.gemini_tokens or 0}, Mistral/HF Tokens: {usage.mistral_tokens or 0}")
+            logger.info(f"   â””â”€ Image Calls: {total_images}")
             
             # Validate each operation
             for op_idx, operation in enumerate(operations):
@@ -538,12 +538,12 @@ class LimitValidator:
                         valid_token_columns = ['gemini_tokens', 'openai_tokens', 'anthropic_tokens', 'mistral_tokens']
                         
                         if provider_tokens_key not in valid_token_columns:
-                            logger.error(f"   └─ Invalid provider tokens key: {provider_tokens_key}")
+                            logger.error(f"   â””â”€ Invalid provider tokens key: {provider_tokens_key}")
                             query_succeeded = True  # Treat as success with 0 value
                         else:
                             # Method 1: Try raw SQL query to completely bypass ORM cache
                             try:
-                                logger.debug(f"   └─ Attempting raw SQL query for {provider_tokens_key}")
+                                logger.debug(f"   â””â”€ Attempting raw SQL query for {provider_tokens_key}")
                                 sql_query = text(f"""
                                     SELECT {provider_tokens_key} 
                                     FROM usage_summaries 
@@ -552,7 +552,7 @@ class LimitValidator:
                                     LIMIT 1
                                 """)
                                 
-                                logger.debug(f"   └─ SQL: SELECT {provider_tokens_key} FROM usage_summaries WHERE user_id={user_id} AND billing_period={current_period}")
+                                logger.debug(f"   â””â”€ SQL: SELECT {provider_tokens_key} FROM usage_summaries WHERE user_id={user_id} AND billing_period={current_period}")
                                 
                                 result = self.db.execute(sql_query, {
                                     'user_id': user_id,
@@ -568,7 +568,7 @@ class LimitValidator:
                                 logger.debug(f"[Pre-flight] Raw SQL query for {provider_tokens_key}: {base_current_tokens}")
                                 
                             except Exception as sql_error:
-                                logger.error(f"   └─ Raw SQL query failed for {provider_tokens_key}: {type(sql_error).__name__}: {sql_error}", exc_info=True)
+                                logger.error(f"   â””â”€ Raw SQL query failed for {provider_tokens_key}: {type(sql_error).__name__}: {sql_error}", exc_info=True)
                                 query_succeeded = False  # Will try ORM fallback
                             
                             # Method 2: Fallback to fresh ORM query if raw SQL fails
@@ -589,18 +589,18 @@ class LimitValidator:
                                         base_current_tokens = 0
                                     
                                     query_succeeded = True
-                                    logger.info(f"[Pre-flight Check] ✅ ORM fallback query succeeded for {provider_tokens_key}: {base_current_tokens}")
+                                    logger.info(f"[Pre-flight Check] âœ… ORM fallback query succeeded for {provider_tokens_key}: {base_current_tokens}")
                                     
                                 except Exception as orm_error:
-                                    logger.error(f"   └─ ORM query also failed: {orm_error}", exc_info=True)
+                                    logger.error(f"   â””â”€ ORM query also failed: {orm_error}", exc_info=True)
                                     query_succeeded = False
                     
                     except Exception as e:
-                        logger.error(f"   └─ Unexpected error getting tokens from DB for {provider_tokens_key}: {e}", exc_info=True)
+                        logger.error(f"   â””â”€ Unexpected error getting tokens from DB for {provider_tokens_key}: {e}", exc_info=True)
                         base_current_tokens = 0  # Fail safe - assume 0 if we can't query
                     
                     if not query_succeeded:
-                        logger.warning(f"   └─ Both query methods failed, using 0 as fallback")
+                        logger.warning(f"   â””â”€ Both query methods failed, using 0 as fallback")
                     
                     # Log DB query result at debug level (only when needed for troubleshooting)
                     logger.debug(f"[Pre-flight] DB query for {display_provider_name} ({provider_tokens_key}): {base_current_tokens} (period: {current_period})")
@@ -619,7 +619,7 @@ class LimitValidator:
                     
                     if token_limit > 0 and tokens_requested > 0:
                         projected_tokens = current_provider_tokens + tokens_requested
-                        logger.info(f"   └─ Token Check: {current_provider_tokens} (current) + {tokens_requested} (requested) = {projected_tokens} (total) / {token_limit} (limit)")
+                        logger.info(f"   â””â”€ Token Check: {current_provider_tokens} (current) + {tokens_requested} (requested) = {projected_tokens} (total) / {token_limit} (limit)")
                         
                         if projected_tokens > token_limit:
                             usage_percentage = (projected_tokens / token_limit) * 100 if token_limit > 0 else 0
@@ -652,13 +652,13 @@ class LimitValidator:
                                     f"Would exceed by: {projected_tokens - token_limit} tokens "
                                     f"({usage_percentage:.1f}% of limit)"
                                 )
-                            logger.error(f"[Pre-flight Check] ❌ BLOCKED: {error_msg}")
+                            logger.error(f"[Pre-flight Check] âŒ BLOCKED: {error_msg}")
                             return False, error_msg, {
                                 'error_type': 'token_limit',
                                 'usage_info': error_info
                             }
                         else:
-                            logger.info(f"   └─ ✅ Token limit check passed: {projected_tokens} <= {token_limit}")
+                            logger.info(f"   â””â”€ âœ… Token limit check passed: {projected_tokens} <= {token_limit}")
                     
                     # Update cumulative counts for next operation
                     total_llm_calls = projected_total_llm_calls
@@ -754,8 +754,8 @@ class LimitValidator:
                             }
             
             # All checks passed
-            logger.info(f"[Pre-flight Check] ✅ All {len(operations)} operation(s) validated successfully")
-            logger.info(f"[Pre-flight Check] ✅ User {user_id} is cleared to proceed with API calls")
+            logger.info(f"[Pre-flight Check] âœ… All {len(operations)} operation(s) validated successfully")
+            logger.info(f"[Pre-flight Check] âœ… User {user_id} is cleared to proceed with API calls")
             return True, None, None
             
         except Exception as e:
@@ -767,7 +767,6 @@ class LimitValidator:
                 if 'no such column' in error_message and 'exa_calls' in error_message:
                     logger.warning("Missing column detected in limit check, attempting schema fix...")
                     try:
-                        import sqlite3
                         import services.subscription.schema_utils as schema_utils
                         schema_utils._checked_usage_summaries_columns = False
                         from services.subscription.schema_utils import ensure_usage_summaries_columns
@@ -793,7 +792,6 @@ class LimitValidator:
                         logger.error(f"Schema fix and retry failed: {retry_err}")
                         return False, f"Failed to validate limits: {error_type}: {str(e)}", {}
             
-            logger.error(f"[Pre-flight Check] ❌ Error during comprehensive limit check: {error_type}: {str(e)}", exc_info=True)
-            logger.error(f"[Pre-flight Check] ❌ User: {user_id}, Operations count: {len(operations) if operations else 0}")
+            logger.error(f"[Pre-flight Check] âŒ Error during comprehensive limit check: {error_type}: {str(e)}", exc_info=True)
+            logger.error(f"[Pre-flight Check] âŒ User: {user_id}, Operations count: {len(operations) if operations else 0}")
             return False, f"Failed to validate limits: {error_type}: {str(e)}", {}
-
