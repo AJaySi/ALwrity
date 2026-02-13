@@ -8,6 +8,8 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from loguru import logger
 from sqlalchemy import text
+import sqlite3
+import os
 from services.database import get_user_data_db_session
 
 
@@ -34,7 +36,7 @@ class WixOAuthService:
             cursor = conn.cursor()
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS wix_oauth_tokens (
-                    id BIGSERIAL PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
                     access_token TEXT NOT NULL,
                     refresh_token TEXT,
@@ -87,7 +89,6 @@ class WixOAuthService:
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
             
-<<<<<<< HEAD
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -96,27 +97,6 @@ class WixOAuthService:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (user_id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id))
                 conn.commit()
-=======
-            with self._db_session() as db:
-                db.execute(
-                    text('''
-                        INSERT INTO wix_oauth_tokens
-                        (user_id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id)
-                        VALUES (:user_id, :access_token, :refresh_token, :token_type, :expires_at, :expires_in, :scope, :site_id, :member_id)
-                    '''),
-                    {
-                        "user_id": user_id,
-                        "access_token": access_token,
-                        "refresh_token": refresh_token,
-                        "token_type": token_type,
-                        "expires_at": expires_at,
-                        "expires_in": expires_in,
-                        "scope": scope,
-                        "site_id": site_id,
-                        "member_id": member_id
-                    }
-                )
->>>>>>> pr-354
                 logger.info(f"Wix OAuth: Token inserted into database for user {user_id}")
             
             return True
@@ -128,7 +108,6 @@ class WixOAuthService:
     def get_user_tokens(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active Wix tokens for a user."""
         try:
-<<<<<<< HEAD
             # Ensure database tables exist to prevent 'no such table' errors
             self._init_db(user_id)
             
@@ -145,22 +124,8 @@ class WixOAuthService:
                     ORDER BY created_at DESC
                 ''', (user_id,))
                 
-=======
-            with self._db_session() as db:
-                rows = db.execute(
-                    text('''
-                        SELECT id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id, created_at
-                        FROM wix_oauth_tokens
-                        WHERE user_id = :user_id AND is_active = TRUE
-                          AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
-                        ORDER BY created_at DESC
-                    '''),
-                    {"user_id": user_id}
-                ).fetchall()
-
->>>>>>> pr-354
                 tokens = []
-                for row in rows:
+                for row in cursor.fetchall():
                     tokens.append({
                         "id": row[0],
                         "access_token": row[1],
@@ -183,7 +148,6 @@ class WixOAuthService:
     def get_user_token_status(self, user_id: str) -> Dict[str, Any]:
         """Get detailed token status for a user including expired tokens."""
         try:
-<<<<<<< HEAD
             # Ensure database tables exist to prevent 'no such table' errors
             self._init_db(user_id)
 
@@ -210,19 +174,7 @@ class WixOAuthService:
                     ORDER BY created_at DESC
                 ''', (user_id,))
                 
-=======
-            with self._db_session() as db:
-                rows = db.execute(
-                    text('''
-                        SELECT id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id, created_at, is_active
-                        FROM wix_oauth_tokens
-                        WHERE user_id = :user_id
-                        ORDER BY created_at DESC
-                    '''),
-                    {"user_id": user_id}
-                ).fetchall()
-
->>>>>>> pr-354
+                rows = cursor.fetchall()
                 all_tokens = []
                 active_tokens = []
                 expired_tokens = []
@@ -302,55 +254,22 @@ class WixOAuthService:
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
             
-<<<<<<< HEAD
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
-=======
-            with self._db_session() as db:
->>>>>>> pr-354
                 if refresh_token:
-                    db.execute(
-                        text('''
-                            UPDATE wix_oauth_tokens
-                            SET access_token = :access_token,
-                                refresh_token = :refresh_token,
-                                expires_at = :expires_at,
-                                expires_in = :expires_in,
-                                is_active = TRUE,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE user_id = :user_id AND refresh_token = :refresh_token
-                        '''),
-                        {
-                            "access_token": access_token,
-                            "refresh_token": refresh_token,
-                            "expires_at": expires_at,
-                            "expires_in": expires_in,
-                            "user_id": user_id
-                        }
-                    )
+                    cursor.execute('''
+                        UPDATE wix_oauth_tokens 
+                        SET access_token = ?, refresh_token = ?, expires_at = ?, expires_in = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = ? AND refresh_token = ?
+                    ''', (access_token, refresh_token, expires_at, expires_in, user_id, refresh_token))
                 else:
-                    db.execute(
-                        text('''
-                            UPDATE wix_oauth_tokens
-                            SET access_token = :access_token,
-                                expires_at = :expires_at,
-                                expires_in = :expires_in,
-                                is_active = TRUE,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE id = (
-                                SELECT id FROM wix_oauth_tokens
-                                WHERE user_id = :user_id
-                                ORDER BY created_at DESC
-                                LIMIT 1
-                            )
-                        '''),
-                        {
-                            "access_token": access_token,
-                            "expires_at": expires_at,
-                            "expires_in": expires_in,
-                            "user_id": user_id
-                        }
-                    )
+                    # Update most recent token
+                    cursor.execute('''
+                        UPDATE wix_oauth_tokens 
+                        SET access_token = ?, expires_at = ?, expires_in = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = (SELECT id FROM wix_oauth_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT 1)
+                    ''', (access_token, expires_at, expires_in, user_id))
+                conn.commit()
                 logger.info(f"Wix OAuth: Tokens updated for user {user_id}")
             
             return True
@@ -362,7 +281,6 @@ class WixOAuthService:
     def revoke_token(self, user_id: str, token_id: int) -> bool:
         """Revoke a Wix OAuth token."""
         try:
-<<<<<<< HEAD
             db_path = self._get_db_path(user_id)
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
@@ -374,19 +292,6 @@ class WixOAuthService:
                 conn.commit()
                 
                 if cursor.rowcount > 0:
-=======
-            with self._db_session() as db:
-                result = db.execute(
-                    text('''
-                        UPDATE wix_oauth_tokens
-                        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
-                        WHERE user_id = :user_id AND id = :token_id
-                    '''),
-                    {"user_id": user_id, "token_id": token_id}
-                )
-
-                if result.rowcount > 0:
->>>>>>> pr-354
                     logger.info(f"Wix token {token_id} revoked for user {user_id}")
                     return True
                 return False

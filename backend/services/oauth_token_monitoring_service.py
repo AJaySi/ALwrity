@@ -93,14 +93,9 @@ def get_connected_platforms(user_id: str) -> List[str]:
         logger.warning(f"[OAuth Monitoring] âš ï¸ WordPress check failed for user {user_id}: {e}", exc_info=True)
     
     try:
-<<<<<<< HEAD
         # Check Wix - use dynamic database path
         db_path = get_user_db_path(user_id)
         wix_service = WixOAuthService(db_path=db_path)
-=======
-        # Check Wix
-        wix_service = WixOAuthService()
->>>>>>> pr-354
         token_status = wix_service.get_user_token_status(user_id)
         has_active_tokens = token_status.get('has_active_tokens', False)
         has_expired_tokens = token_status.get('has_expired_tokens', False)

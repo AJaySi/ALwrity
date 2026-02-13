@@ -1112,13 +1112,9 @@ def _raise_postgresql_required():
                 db.close()
             
             # Also try to get from storage service for more detailed metrics
-<<<<<<< HEAD
             from services.database import get_user_db_path
             db_path = get_user_db_path(user_id)
             bing_storage = BingAnalyticsStorageService(f'sqlite:///{db_path}')
-=======
-            bing_storage = BingAnalyticsStorageService(os.getenv('DATABASE_URL') or _raise_postgresql_required())
->>>>>>> pr-354
             
             # Get site URL from onboarding session if available
             site_url = None

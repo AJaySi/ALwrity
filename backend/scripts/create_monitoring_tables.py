@@ -43,7 +43,7 @@ def create_monitoring_tables(user_id=None):
         create_tables_sql = [
             """
             CREATE TABLE IF NOT EXISTS api_requests (
-                id SERIAL PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 path VARCHAR(500) NOT NULL,
                 method VARCHAR(10) NOT NULL,
@@ -76,7 +76,7 @@ def create_monitoring_tables(user_id=None):
             """,
             """
             CREATE TABLE IF NOT EXISTS system_health (
-                id SERIAL PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 status VARCHAR(20) NOT NULL,
                 total_requests INTEGER DEFAULT 0,
@@ -90,7 +90,7 @@ def create_monitoring_tables(user_id=None):
             """,
             """
             CREATE TABLE IF NOT EXISTS cache_performance (
-                id SERIAL PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 cache_type VARCHAR(50) NOT NULL,
                 hits INTEGER DEFAULT 0,
@@ -155,7 +155,6 @@ def create_monitoring_tables(user_id=None):
 def drop_monitoring_tables(user_id=None):
     """Drop the API monitoring tables (for testing)."""
     try:
-<<<<<<< HEAD
         # Get database URL
         if user_id:
             db_path = get_user_db_path(user_id)
@@ -164,10 +163,6 @@ def drop_monitoring_tables(user_id=None):
         else:
             logger.error("❌ Error: user_id is required to drop monitoring tables.")
             return False
-=======
-        # Get database URL from environment or use default
-        database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
->>>>>>> pr-354
         
         # Create engine
         engine = create_engine(database_url)

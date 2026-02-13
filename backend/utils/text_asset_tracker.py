@@ -91,7 +91,6 @@ def save_and_track_text_content(
 
         # Determine output directory
         if base_dir is None:
-<<<<<<< HEAD
             try:
                 # Try to get user workspace path
                 from services.user_workspace_manager import UserWorkspaceManager
@@ -116,12 +115,6 @@ def save_and_track_text_content(
                 base_dir = Path(__file__).resolve().parents[2]  # root
                 module_name = source_module.replace('_', '')
                 output_dir = base_dir / "data" / "media" / f"{module_name}_text"
-=======
-            # Default to backend/{module}_text
-            base_dir = Path(__file__).parent.parent
-            module_name = normalized_source_module.replace('_', '')
-            output_dir = base_dir / f"{module_name}_text"
->>>>>>> pr-354
         else:
             output_dir = base_dir
         

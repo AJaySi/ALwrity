@@ -13,12 +13,9 @@ from services.database import get_session_for_user
 from services.persona_analysis_service import PersonaAnalysisService
 from services.research.research_persona_scheduler import schedule_research_persona_generation
 from services.persona.facebook.facebook_persona_scheduler import schedule_facebook_persona_generation
-<<<<<<< HEAD
-=======
 from services.oauth_token_monitoring_service import create_oauth_monitoring_tasks
 from services.onboarding.unified_oauth_validator import UnifiedOAuthValidator
 from services.platform_insights_monitoring_service import create_platform_insights_task
->>>>>>> pr-354
 
 class OnboardingCompletionService:
     """Service for handling onboarding completion logic."""
@@ -393,7 +390,6 @@ class OnboardingCompletionService:
     async def _validate_api_keys(self, user_id: str):
         """Validate that API keys are configured for the current user (SSOT)."""
         try:
-<<<<<<< HEAD
             db = get_session_for_user(user_id)
             integration_service = OnboardingDataIntegrationService()
             integrated_data = await integration_service.process_onboarding_data(user_id, db)
@@ -408,106 +404,6 @@ class OnboardingCompletionService:
             )
             
             if not has_keys:
-=======
-            db = next(get_db())
-            db_service = OnboardingDatabaseService(db)
-        except Exception:
-            db = None
-            db_service = None
-
-        logger.info(f"OnboardingCompletionService: Validating steps for user {user_id}")
-        logger.info(f"OnboardingCompletionService: Current step: {progress.current_step}")
-        logger.info(f"OnboardingCompletionService: Required steps: {self.required_steps}")
-
-        for step_num in self.required_steps:
-            step = progress.get_step_data(step_num)
-            logger.info(f"OnboardingCompletionService: Step {step_num} - status: {step.status if step else 'None'}")
-            if step and step.status in [StepStatus.COMPLETED, StepStatus.SKIPPED]:
-                logger.info(f"OnboardingCompletionService: Step {step_num} already completed/skipped")
-                continue
-
-            # DB-aware validation using unified service
-            # No fallbacks needed - unified service provides comprehensive validation
-            try:
-                if db_service:
-                    if step_num == 1:
-                        # Treat as completed if user has any API key in DB
-                        keys = db_service.get_api_keys(user_id, db)
-                        if keys and any(v for v in keys.values()):
-                            try:
-                                progress.mark_step_completed(1, {'source': 'db-validation'})
-                            except Exception:
-                                pass
-                            continue
-                    if step_num == 2:
-                        # Treat as completed if website analysis exists in DB
-                        website = db_service.get_website_analysis(user_id, db)
-                        if website and (website.get('website_url') or website.get('writing_style')):
-                            # Optionally mark as completed in progress to keep state consistent
-                            try:
-                                progress.mark_step_completed(2, {'source': 'db-validation'})
-                            except Exception:
-                                pass
-                            continue
-                        # Secondary fallback: research preferences captured style data
-                        prefs = db_service.get_research_preferences(user_id, db)
-                        if prefs and (prefs.get('writing_style') or prefs.get('content_characteristics')):
-                            try:
-                                progress.mark_step_completed(2, {'source': 'research-prefs-validation'})
-                            except Exception:
-                                pass
-                            continue
-                        # Tertiary fallback: persona data created implies earlier steps done
-                        persona = None
-                        try:
-                            persona = db_service.get_persona_data(user_id, db)
-                        except Exception:
-                            persona = None
-                        if persona and persona.get('corePersona'):
-                            try:
-                                progress.mark_step_completed(2, {'source': 'persona-validation'})
-                            except Exception:
-                                pass
-                            continue
-                    if step_num == 3:
-                        # Treat as completed if research preferences exist in DB
-                        prefs = db_service.get_research_preferences(user_id, db)
-                        if prefs and prefs.get('research_depth'):
-                            try:
-                                progress.mark_step_completed(3, {'source': 'db-validation'})
-                            except Exception:
-                                pass
-                            continue
-                    if step_num == 4:
-                        # Treat as completed if persona data exists in DB
-                        persona = None
-                        try:
-                            persona = db_service.get_persona_data(user_id, db)
-                        except Exception:
-                            persona = None
-                        if persona and persona.get('corePersona'):
-                            try:
-                                progress.mark_step_completed(4, {'source': 'db-validation'})
-                            except Exception:
-                                pass
-                            continue
-            except Exception:
-                # If DB check fails, fall back to progress status only
-                pass
-
-            if step:
-                missing_steps.append(step.title)
-        
-        return missing_steps
-    
-    def _validate_api_keys(self, user_id: str):
-        """Validate that API keys are configured for the current user (DB-only)."""
-        try:
-            db = next(get_db())
-            db_service = OnboardingDatabaseService()
-            user_keys = db_service.get_api_keys(user_id, db)
-            if not user_keys or not any(v for v in user_keys.values()):
->>>>>>> pr-354
                 raise HTTPException(
                     status_code=400,
                     detail="Cannot complete onboarding. At least one AI provider API key must be configured in your account."

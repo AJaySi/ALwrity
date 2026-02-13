@@ -102,16 +102,11 @@ def check_environment():
         print("  ✅ GEMINI_API_KEY configured")
     
     # Check database
-<<<<<<< HEAD
-    db_url = os.getenv('DATABASE_URL')
-    if db_url:
-        print(f"  ✅ Database URL: {db_url}")
-    else:
-        print("  ✅ Database: Using Multi-tenant Workspace Architecture (dynamic paths)")
-=======
-    db_url = os.getenv('DATABASE_URL') or _raise_postgresql_required()
+db_url = os.getenv('DATABASE_URL')
+if db_url:
     print(f"  ✅ Database URL: {db_url}")
->>>>>>> pr-354
+else:
+    print("  ✅ Database: Using Multi-tenant Workspace Architecture (dynamic paths)")
     
     # Check log level
     log_level = os.getenv('LOG_LEVEL', 'INFO')

@@ -4,18 +4,12 @@ Automatically creates missing website analysis tasks for users who completed onb
 but don't have monitoring tasks created yet.
 """
 
-<<<<<<< HEAD
 from datetime import datetime, timedelta, timezone
+from typing import List
+from sqlalchemy.orm import Session
 from utils.logger_utils import get_service_logger
 
 from services.database import get_all_user_ids, get_session_for_user
-=======
-from typing import List
-from sqlalchemy.orm import Session
-from utils.logging import get_service_logger
-
-from services.database import get_platform_db_session
->>>>>>> pr-354
 from models.website_analysis_monitoring_models import WebsiteAnalysisTask
 from services.website_analysis_monitoring_service import generate_website_analysis_tasks_task
 from models.onboarding import OnboardingSession

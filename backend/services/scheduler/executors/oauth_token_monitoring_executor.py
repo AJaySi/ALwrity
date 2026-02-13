@@ -300,14 +300,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         GSC service auto-refreshes tokens if expired when loading credentials.
         """
         try:
-<<<<<<< HEAD
             # Use dynamic database path
             db_path = get_user_db_path(user_id)
             gsc_service = GSCService(db_path=db_path)
-=======
-            # Use absolute database path for consistency with onboarding
-            gsc_service = GSCService()
->>>>>>> pr-354
             credentials = gsc_service.load_user_credentials(user_id)
             
             if not credentials:
@@ -357,11 +352,7 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         Checks token expiration and attempts refresh if needed.
         """
         try:
-<<<<<<< HEAD
             # Initialize Bing service
-=======
-            # Use absolute database path for consistency with onboarding
->>>>>>> pr-354
             bing_service = BingOAuthService()
             
             # Get token status (includes expired tokens)
@@ -535,14 +526,9 @@ class OAuthTokenMonitoringExecutor(TaskExecutor):
         and require user re-authorization. We only check if token is valid.
         """
         try:
-<<<<<<< HEAD
             # Use dynamic database path
             db_path = get_user_db_path(user_id)
             wordpress_service = WordPressOAuthService(db_path=db_path)
-=======
-            # Use absolute database path for consistency with onboarding
-            wordpress_service = WordPressOAuthService()
->>>>>>> pr-354
             tokens = wordpress_service.get_user_tokens(user_id)
             
             if not tokens:

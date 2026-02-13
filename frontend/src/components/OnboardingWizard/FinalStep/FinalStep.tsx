@@ -448,7 +448,6 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
             {/* Capabilities Overview */}
             <CapabilitiesOverview capabilities={capabilities} />
 
-<<<<<<< HEAD
             {/* Agent Team */}
             {agentTeamError && (
               <Alert severity="warning" sx={{ mt: 3, borderRadius: 2 }}>

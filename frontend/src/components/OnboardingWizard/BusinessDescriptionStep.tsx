@@ -139,34 +139,12 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
 
   return (
     <Box sx={{ mt: 4 }}>
-<<<<<<< HEAD
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
-        <Box>
-          <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: '#111827' }}>
-            Tell us about your business
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Provide details about your business to help ALwrity tailor its services.
-          </Typography>
-        </Box>
-        <Button
-          variant="outlined"
-          color="primary"
-          startIcon={<LightbulbIcon />}
-          onClick={() => setShowExamples(true)}
-          sx={{ textTransform: 'none', borderRadius: '8px', whiteSpace: 'nowrap', ml: 2 }}
-        >
-          See Examples
-        </Button>
-      </Box>
-=======
       <Typography variant="h5" gutterBottom>
         Create your AI-generated website
       </Typography>
       <Typography variant="body1" color="textSecondary" sx={{ mb: 3 }}>
         Share a few details (even 3-4 lines is enough). If you are unsure, choose “Don't know yet” and we’ll fill the gaps with AI.
       </Typography>
->>>>>>> pr-354
 
       <Card sx={{ 
         p: 3, 

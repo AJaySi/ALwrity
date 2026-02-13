@@ -586,7 +586,6 @@ class GSCService:
     def revoke_user_access(self, user_id: str) -> bool:
         """Revoke user's GSC access."""
         try:
-<<<<<<< HEAD
             db_path = self._get_db_path(user_id)
             if not os.path.exists(db_path):
                 return True
@@ -604,21 +603,6 @@ class GSCService:
                 cursor.execute('DELETE FROM gsc_oauth_states WHERE user_id = ?', (user_id,))
                 
                 conn.commit()
-=======
-            with self._db_session() as db:
-                db.execute(
-                    text('DELETE FROM gsc_credentials WHERE user_id = :user_id'),
-                    {"user_id": user_id}
-                )
-                db.execute(
-                    text('DELETE FROM gsc_data_cache WHERE user_id = :user_id'),
-                    {"user_id": user_id}
-                )
-                db.execute(
-                    text('DELETE FROM gsc_oauth_states WHERE user_id = :user_id'),
-                    {"user_id": user_id}
-                )
->>>>>>> pr-354
             
             logger.info(f"GSC access revoked for user: {user_id}")
             return True
@@ -630,7 +614,6 @@ class GSCService:
     def clear_incomplete_credentials(self, user_id: str) -> bool:
         """Clear incomplete GSC credentials that are missing required fields."""
         try:
-<<<<<<< HEAD
             db_path = self._get_db_path(user_id)
             if not os.path.exists(db_path):
                 return True
@@ -639,13 +622,6 @@ class GSCService:
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM gsc_credentials WHERE user_id = ?', (user_id,))
                 conn.commit()
-=======
-            with self._db_session() as db:
-                db.execute(
-                    text('DELETE FROM gsc_credentials WHERE user_id = :user_id'),
-                    {"user_id": user_id}
-                )
->>>>>>> pr-354
             
             logger.info(f"Cleared incomplete GSC credentials for user: {user_id}")
             return True
@@ -657,7 +633,6 @@ class GSCService:
     def _get_cached_data(self, user_id: str, site_url: str, data_type: str, cache_key: str) -> Optional[Dict]:
         """Get cached data if not expired."""
         try:
-<<<<<<< HEAD
             db_path = self._get_db_path(user_id)
             if not os.path.exists(db_path):
                 return None
@@ -671,20 +646,6 @@ class GSCService:
                 ''', (user_id, site_url, data_type))
                 
                 result = cursor.fetchone()
-=======
-            with self._db_session() as db:
-                result = db.execute(
-                    text('''
-                        SELECT data_json FROM gsc_data_cache
-                        WHERE user_id = :user_id
-                          AND site_url = :site_url
-                          AND data_type = :data_type
-                          AND expires_at > CURRENT_TIMESTAMP
-                    '''),
-                    {"user_id": user_id, "site_url": site_url, "data_type": data_type}
-                ).fetchone()
-
->>>>>>> pr-354
                 if result:
                     return json.loads(result[0])
                 return None
@@ -701,7 +662,6 @@ class GSCService:
             
             expires_at = datetime.now() + timedelta(hours=1)  # Cache for 1 hour
             
-<<<<<<< HEAD
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -710,32 +670,6 @@ class GSCService:
                     VALUES (?, ?, ?, ?, ?)
                 ''', (user_id, site_url, data_type, json.dumps(data), expires_at))
                 conn.commit()
-=======
-            with self._db_session() as db:
-                db.execute(
-                    text('''
-                        DELETE FROM gsc_data_cache
-                        WHERE user_id = :user_id
-                          AND site_url = :site_url
-                          AND data_type = :data_type
-                    '''),
-                    {"user_id": user_id, "site_url": site_url, "data_type": data_type}
-                )
-                db.execute(
-                    text('''
-                        INSERT INTO gsc_data_cache
-                        (user_id, site_url, data_type, data_json, expires_at)
-                        VALUES (:user_id, :site_url, :data_type, :data_json, :expires_at)
-                    '''),
-                    {
-                        "user_id": user_id,
-                        "site_url": site_url,
-                        "data_type": data_type,
-                        "data_json": json.dumps(data),
-                        "expires_at": expires_at
-                    }
-                )
->>>>>>> pr-354
             
             logger.info(f"Data cached for user: {user_id}, type: {data_type}")
             

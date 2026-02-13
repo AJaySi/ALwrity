@@ -245,8 +245,12 @@ class BackgroundJobService:
             # Import here to avoid circular imports
             from services.analytics.insights.bing_insights_service import BingInsightsService
             import os
+            from services.database import get_user_db_path
             
-            database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
+            # Use user-specific database for Bing insights
+            db_path = get_user_db_path(user_id)
+            database_url = f"sqlite:///{db_path}"
+            
             insights_service = BingInsightsService(database_url)
             
             job.progress = 10
@@ -312,12 +316,8 @@ class BackgroundJobService:
             from services.database import DB_DATA_DIR
             import os
             
-<<<<<<< HEAD
-            db_path = os.path.join(DB_DATA_DIR, 'bing_analytics.db')
-            database_url = os.getenv('DATABASE_URL', f'sqlite:///{db_path}')
-=======
-            database_url = os.getenv('PLATFORM_DATABASE_URL') or _raise_postgresql_required()
->>>>>>> pr-354
+db_path = os.path.join(DB_DATA_DIR, 'bing_analytics.db')
+        database_url = os.getenv('DATABASE_URL', f'sqlite:///{db_path}')
             storage_service = BingAnalyticsStorageService(database_url)
             
             job.progress = 20

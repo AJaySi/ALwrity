@@ -10,21 +10,6 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 
 
-def _raise_postgresql_required():
-    """Raise error if PostgreSQL not configured."""
-    raise ValueError(
-        """
- POSTGRESQL REQUIRED - Clean Architecture
-        
-    ALwrity requires PostgreSQL environment variables to be set:
-    - DATABASE_URL=postgresql://user:pass@host:port/database_name
-    - PLATFORM_DATABASE_URL=postgresql://user:pass@host:port/database_name
-    - USER_DATA_DATABASE_URL=postgresql://user:pass@host:port/database_name
-
-    This is intentional - we no longer support SQLite or single database setups.
-    """
-    )
-
 from ..core.executor_interface import TaskExecutor, TaskExecutionResult
 from ..core.exception_handler import TaskExecutionError, DatabaseError, SchedulerExceptionHandler
 from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
