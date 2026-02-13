@@ -1,0 +1,20 @@
+[MASTER]
+ignore=ToBeMigrated
+jobs=0
+
+[MESSAGES CONTROL]
+disable=
+    C,
+    R,
+    W,
+    import-error,
+    no-name-in-module
+
+[FORMAT]
+max-line-length=120
+
+[DESIGN]
+max-args=10
+max-locals=25
+max-returns=8
+max-branches=20

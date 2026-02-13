@@ -1,0 +1,13 @@
+{
+  "extends": "stylelint-config-standard",
+  "ignoreFiles": [
+    "**/node_modules/**",
+    "**/build/**",
+    "ToBeMigrated/**"
+  ],
+  "rules": {
+    "color-function-notation": "legacy",
+    "alpha-value-notation": "number",
+    "selector-class-pattern": null
+  }
+}

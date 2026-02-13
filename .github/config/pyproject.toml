@@ -1,0 +1,14 @@
+[tool.ruff]
+line-length = 120
+exclude = [
+  "ToBeMigrated",
+  "frontend",
+  "docs-site",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F", "I"]
+ignore = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
