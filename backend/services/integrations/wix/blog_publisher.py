@@ -232,82 +232,9 @@ def create_blog_post(
     if not access_token:
         raise ValueError("access_token cannot be empty")
     
-    # BACK TO BASICS MODE: Try simplest possible structure FIRST
-    # Since posting worked before Ricos/SEO, let's test with absolute minimum
-    BACK_TO_BASICS_MODE = True  # Set to True to test with simplest structure
-    
     wix_logger.reset()
     wix_logger.log_operation_start("Blog Post Creation", title=title[:50] if title else None, member_id=member_id[:20] if member_id else None)
-    
-    if BACK_TO_BASICS_MODE:
-        logger.info("🔧 Wix: BACK TO BASICS MODE - Testing minimal structure")
-        
-        # Import auth utilities for proper token handling
-        from .auth_utils import get_wix_headers
-        
-        # Create absolute minimal Ricos structure
-        minimal_ricos = {
-            'nodes': [{
-                'id': str(uuid.uuid4()),
-                'type': 'PARAGRAPH',
-                'nodes': [{
-                    'id': str(uuid.uuid4()),
-                    'type': 'TEXT',
-                    'nodes': [],
-                    'textData': {
-                        'text': (content[:500] if content else "This is a post from ALwrity.").strip(),
-                        'decorations': []
-                    }
-                }],
-                'paragraphData': {}
-            }]
-        }
-        
-        # Extract wix-site-id from token if possible
-        extra_headers = {}
-        try:
-            token_str = str(access_token)
-            if token_str and token_str.startswith('OauthNG.JWS.'):
-                import jwt
-                import json
-                jwt_part = token_str[12:]
-                payload = jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
-                data_payload = payload.get('data', {})
-                if isinstance(data_payload, str):
-                    try:
-                        data_payload = json.loads(data_payload)
-                    except:
-                        pass
-                instance_data = data_payload.get('instance', {})
-                meta_site_id = instance_data.get('metaSiteId')
-                if isinstance(meta_site_id, str) and meta_site_id:
-                    extra_headers['wix-site-id'] = meta_site_id
-        except Exception:
-            pass
-        
-        # Build minimal payload
-        minimal_blog_data = {
-            'draftPost': {
-                'title': str(title).strip() if title else "Untitled",
-                'memberId': str(member_id).strip(),
-                'richContent': minimal_ricos
-            },
-            'publish': False,
-            'fieldsets': ['URL']
-        }
-        
-        try:
-            from .blog import WixBlogService
-            blog_service_test = WixBlogService('https://www.wixapis.com', None)
-            result = blog_service_test.create_draft_post(access_token, minimal_blog_data, extra_headers if extra_headers else None)
-            logger.success("✅✅✅ Wix: BACK TO BASICS SUCCEEDED! Issue is with Ricos/SEO structure")
-            wix_logger.log_operation_result("Back to Basics Test", True, result)
-            return result
-        except Exception as e:
-            logger.error(f"❌ Wix: BACK TO BASICS FAILED - {str(e)[:100]}")
-            logger.error("   ⚠️ Issue is NOT with Ricos/SEO - likely permissions/token")
-            wix_logger.add_error(f"Back to Basics: {str(e)[:100]}")
-    
+
     # Import auth utilities for proper token handling
     from .auth_utils import get_wix_headers
     
@@ -365,6 +292,7 @@ def create_blog_post(
     
     # Convert markdown to Ricos
     ricos_content = convert_content_to_ricos(content, None)
+    ricos_content = validate_ricos_content(ricos_content)
     nodes_count = len(ricos_content.get('nodes', []))
     wix_logger.log_ricos_conversion(nodes_count)
     
@@ -419,6 +347,19 @@ def create_blog_post(
     if excerpt and len(excerpt) > 0:
         blog_data['draftPost']['excerpt'] = str(excerpt)
     
+
+    def _normalize_string_list(values: Any) -> List[str]:
+        if values is None:
+            return []
+        if isinstance(values, str):
+            values = [v.strip() for v in values.split(',') if v and v.strip()]
+        if not isinstance(values, list):
+            return []
+        return [str(v).strip() for v in values if v is not None and str(v).strip()]
+
+    category_ids = _normalize_string_list(category_ids)
+    tag_ids = _normalize_string_list(tag_ids)
+
     # Add cover image if provided
     if cover_image_url and import_image_func:
         try:
@@ -741,4 +682,3 @@ def create_blog_post(
         if hasattr(e, 'response') and e.response is not None:
             logger.error(f"Response body: {e.response.text}")
         raise
-
