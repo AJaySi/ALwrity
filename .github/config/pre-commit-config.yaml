@@ -1,0 +1,30 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.2
+    hooks:
+      - id: ruff
+        args: [--config=.github/config/pyproject.toml]
+
+  - repo: local
+    hooks:
+      - id: pylint-backend
+        name: pylint-backend
+        entry: pylint --rcfile=.github/config/pylintrc backend
+        language: python
+        additional_dependencies:
+          - pylint
+        pass_filenames: false
