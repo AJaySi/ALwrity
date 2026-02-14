@@ -264,7 +264,19 @@ class WixService:
                 image_url,
                 display_name or f'Imported Image {datetime.now().strftime("%Y%m%d_%H%M%S")}'
             )
-            return result['file']['id']
+
+            # Wix response shape can vary (for example, `file`, `files[0]`, or nested id fields).
+            file_obj = result.get('file') if isinstance(result, dict) else None
+            if isinstance(file_obj, dict) and file_obj.get('id'):
+                return str(file_obj['id']).strip()
+
+            files = result.get('files') if isinstance(result, dict) else None
+            if isinstance(files, list) and files:
+                first = files[0]
+                if isinstance(first, dict) and first.get('id'):
+                    return str(first['id']).strip()
+
+            raise ValueError(f"Wix media import succeeded but no file id returned: {result}")
         except requests.RequestException as e:
             logger.error(f"Failed to import image to Wix: {e}")
             raise
