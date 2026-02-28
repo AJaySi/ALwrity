@@ -36,7 +36,7 @@ interface Guidelines {
 }
 
 interface EnhancedGuidelinesSectionProps {
-  guidelines: Guidelines;
+  guidelines?: Guidelines | null;
   domainName: string;
 }
 
@@ -45,6 +45,10 @@ const EnhancedGuidelinesSection: React.FC<EnhancedGuidelinesSectionProps> = ({
   domainName
 }) => {
   const styles = useOnboardingStyles();
+
+  if (!guidelines) {
+    return null;
+  }
 
   return (
     <Box sx={styles.analysisSection}>

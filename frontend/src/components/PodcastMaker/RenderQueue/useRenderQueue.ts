@@ -7,6 +7,7 @@ interface UseRenderQueueProps {
   jobs: Job[];
   knobs: Knobs;
   projectId: string;
+  bible?: any | null;
   budgetCap?: number;
   avatarImageUrl?: string | null;
   onUpdateJob: (sceneId: string, updates: Partial<Job>) => void;
@@ -21,6 +22,7 @@ export const useRenderQueue = ({
   jobs,
   knobs,
   projectId,
+  bible,
   budgetCap,
   avatarImageUrl,
   onUpdateJob,
@@ -441,6 +443,7 @@ export const useRenderQueue = ({
         sceneTitle: scene.title,
         sceneContent: sceneContent,
         baseAvatarUrl: avatarImageUrl || undefined, // Use base avatar if available
+        bible: bible,
         width: 1024,
         height: 1024,
       });
@@ -544,6 +547,7 @@ export const useRenderQueue = ({
           sceneTitle: scene.title,
           audioUrl,
           avatarImageUrl: sceneImageUrl,
+          bible: bible,
           resolution: targetResolution,
           prompt: settings?.prompt || undefined,
           seed: settings?.seed ?? -1,

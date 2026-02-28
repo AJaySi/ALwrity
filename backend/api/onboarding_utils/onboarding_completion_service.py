@@ -5,6 +5,7 @@ Handles the complex logic for completing the onboarding process.
 
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
+import os
 from fastapi import HTTPException
 from loguru import logger
 
@@ -306,18 +307,20 @@ class OnboardingCompletionService:
             db = get_session_for_user(user_id)
             integration_service = OnboardingDataIntegrationService()
             
-            # Debug logging
             logger.info(f"Validating steps for user {user_id}")
             
-            # Get integrated data
             integrated_data = await integration_service.process_onboarding_data(user_id, db)
             db.close()
+
+            from services.onboarding.progress_service import OnboardingProgressService
+            progress_service = OnboardingProgressService()
+            status = progress_service.get_onboarding_status(user_id)
+            current_step = status.get("current_step", 1)
             
-            # Check each required step
             for step_num in self.required_steps:
                 step_completed = False
                 
-                if step_num == 1:  # API Keys
+                if step_num == 1:
                     api_keys_data = integrated_data.get('api_keys_data', {})
                     logger.info(f"Step 1 - API Keys: {api_keys_data}")
                     step_completed = bool(
@@ -325,26 +328,49 @@ class OnboardingCompletionService:
                         api_keys_data.get('anthropic_api_key') or 
                         api_keys_data.get('google_api_key')
                     )
+                    if not step_completed:
+                        has_global_providers = bool(
+                            os.getenv("EXA_API_KEY") or
+                            os.getenv("GEMINI_API_KEY") or
+                            os.getenv("OPENAI_API_KEY") or
+                            os.getenv("ANTHROPIC_API_KEY") or
+                            os.getenv("GOOGLE_API_KEY")
+                        )
+                        if has_global_providers:
+                            step_completed = True
                     logger.info(f"Step 1 completed: {step_completed}")
-                elif step_num == 2:  # Website Analysis
+                elif step_num == 2:
                     website = integrated_data.get('website_analysis', {})
                     logger.info(f"Step 2 - Website Analysis: {website}")
                     step_completed = bool(website and (website.get('website_url') or website.get('writing_style')))
                     logger.info(f"Step 2 completed: {step_completed}")
-                elif step_num == 3:  # Research Preferences
+                elif step_num == 3:
                     research = integrated_data.get('research_preferences', {})
                     logger.info(f"Step 3 - Research Preferences: {research}")
                     step_completed = bool(research and (research.get('research_depth') or research.get('content_types')))
                     logger.info(f"Step 3 completed: {step_completed}")
-                elif step_num == 4:  # Persona Generation
+                elif step_num == 4:
                     persona = integrated_data.get('persona_data', {})
                     logger.info(f"Step 4 - Persona Data: {persona}")
                     step_completed = bool(persona and (persona.get('corePersona') or persona.get('platformPersonas')))
+                    if not step_completed:
+                        website = integrated_data.get('website_analysis', {})
+                        research = integrated_data.get('research_preferences', {})
+                        basic_ready = bool(
+                            website and (website.get('website_url') or website.get('writing_style'))
+                        ) and bool(research)
+                        if basic_ready:
+                            step_completed = True
                     logger.info(f"Step 4 completed: {step_completed}")
-                elif step_num == 5:  # Integrations
-                    # For now, consider this always completed if we reach this point
+                elif step_num == 5:
                     step_completed = True
                     logger.info(f"Step 5 completed: {step_completed}")
+
+                if not step_completed and current_step >= step_num:
+                    step_completed = True
+                    logger.info(
+                        f"Step {step_num} marked completed based on progress service (current_step={current_step})"
+                    )
                 
                 if not step_completed:
                     missing_steps.append(f"Step {step_num}")
@@ -357,20 +383,34 @@ class OnboardingCompletionService:
             return ["Validation error"]
     
     async def _validate_api_keys(self, user_id: str):
-        """Validate that API keys are configured for the current user (SSOT)."""
+        """Validate that API keys are configured for the current user (SSOT or environment)."""
         try:
             db = get_session_for_user(user_id)
-            integration_service = OnboardingDataIntegrationService()
-            integrated_data = await integration_service.process_onboarding_data(user_id, db)
-            db.close()
+            try:
+                integration_service = OnboardingDataIntegrationService()
+                integrated_data = await integration_service.process_onboarding_data(user_id, db)
+            finally:
+                db.close()
             
-            api_keys_data = integrated_data.get('api_keys_data', {})
+            api_keys_data = integrated_data.get('api_keys_data', {}) if integrated_data else {}
             
-            has_keys = bool(
+            has_user_keys = bool(
                 api_keys_data.get('openai_api_key') or 
                 api_keys_data.get('anthropic_api_key') or 
-                api_keys_data.get('google_api_key')
+                api_keys_data.get('google_api_key') or
+                api_keys_data.get('exa_api_key') or
+                api_keys_data.get('gemini_api_key')
             )
+
+            has_env_keys = bool(
+                os.getenv("OPENAI_API_KEY") or
+                os.getenv("ANTHROPIC_API_KEY") or
+                os.getenv("GOOGLE_API_KEY") or
+                os.getenv("EXA_API_KEY") or
+                os.getenv("GEMINI_API_KEY")
+            )
+
+            has_keys = has_user_keys or has_env_keys
             
             if not has_keys:
                 raise HTTPException(

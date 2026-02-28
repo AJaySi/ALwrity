@@ -42,7 +42,7 @@ class PlatformAnalyticsService:
         self.summary_generator = AnalyticsSummaryGenerator()
         self.cache_manager = AnalyticsCacheManager()
     
-    async def get_comprehensive_analytics(self, user_id: str, platforms: List[str] = None) -> Dict[str, AnalyticsData]:
+    async def get_comprehensive_analytics(self, user_id: str, platforms: List[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, AnalyticsData]:
         """
         Get analytics data from all connected platforms
         
@@ -93,9 +93,18 @@ class PlatformAnalyticsService:
                 
                 if handler:
                     if platform_type == PlatformType.GSC or platform_type == PlatformType.BING:
-                        analytics_data[platform_name] = await handler.get_analytics(user_id, target_url=target_url)
+                        analytics_data[platform_name] = await handler.get_analytics(
+                            user_id,
+                            target_url=target_url,
+                            start_date=start_date,
+                            end_date=end_date
+                        )
                     else:
-                        analytics_data[platform_name] = await handler.get_analytics(user_id)
+                        analytics_data[platform_name] = await handler.get_analytics(
+                            user_id,
+                            start_date=start_date,
+                            end_date=end_date
+                        )
                 else:
                     logger.warning(f"Unknown platform: {platform_name}")
                     analytics_data[platform_name] = self._create_error_response(platform_name, f"Unknown platform: {platform_name}")

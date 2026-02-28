@@ -20,10 +20,20 @@ export type Fact = {
   url: string;
   date: string;
   confidence: number;
+  image?: string;
+  author?: string;
+  highlights?: string[];
+};
+
+export type ResearchInsight = {
+  title: string;
+  content: string;
+  source_indices: number[];
 };
 
 export type Research = {
   summary: string;
+  keyInsights: ResearchInsight[];
   factCards: Fact[];
   mappedAngles: {
     title: string;
@@ -94,6 +104,7 @@ export type PodcastAnalysis = {
   suggestedOutlines: { id: number | string; title: string; segments: string[] }[];
   suggestedKnobs: Knobs;
   titleSuggestions: string[];
+  research_queries?: { query: string; rationale: string }[];
   exaSuggestedConfig?: {
     exa_search_type?: "auto" | "keyword" | "neural";
     exa_category?: string;
@@ -113,6 +124,37 @@ export type PodcastEstimate = {
   total: number;
 };
 
+export type HostPersona = {
+  name: string;
+  background: string;
+  expertise_level: string;
+  personality_traits: string[];
+  vocal_style: string;
+  catchphrases: string[];
+};
+
+export type AudienceDNA = {
+  expertise_level: string;
+  interests: string[];
+  pain_points: string[];
+  demographics?: string;
+};
+
+export type BrandDNA = {
+  industry: string;
+  tone: string;
+  communication_style: string;
+  key_messages: string[];
+  competitor_context?: string;
+};
+
+export type PodcastBible = {
+  project_id?: string;
+  host: HostPersona;
+  audience: AudienceDNA;
+  brand: BrandDNA;
+};
+
 export type CreateProjectPayload = {
   ideaOrUrl: string;
   speakers: number;
@@ -128,6 +170,9 @@ export type CreateProjectResult = {
   analysis: PodcastAnalysis;
   estimate: PodcastEstimate;
   queries: Query[];
+  bible?: PodcastBible;
+  avatar_url?: string | null;
+  avatar_prompt?: string | null;
 };
 
 export type RenderJobResult = {

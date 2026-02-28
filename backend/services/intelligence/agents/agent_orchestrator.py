@@ -76,7 +76,8 @@ class ALwrityAgentOrchestrator:
         try:
             # Initialize shared LLM
             if TXTAI_AVAILABLE:
-                self.llm = LLM(self.config.shared_llm)
+                # Hardening: Explicitly set task to avoid 'text2text-generation' default failures
+                self.llm = LLM(self.config.shared_llm, task="text-generation")
             else:
                 self.llm = None
             

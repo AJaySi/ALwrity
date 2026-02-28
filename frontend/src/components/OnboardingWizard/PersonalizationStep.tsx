@@ -67,7 +67,7 @@ interface QualityMetrics {
 type PersonalizationTab = 'text' | 'image' | 'audio';
 
 const PersonalizationStep: React.FC<PersonalizationStepProps> = ({ 
-  onContinue, 
+  onContinue: _onContinue, 
   updateHeaderContent, 
   onValidationChange,
   onDataChange,
@@ -80,7 +80,6 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
   // AI Generation state (Ported from PersonaStep)
   const [generationStep, setGenerationStep] = useState<string>('analyzing');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -94,7 +93,7 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
   // UI state
   const [showPreview, setShowPreview] = useState(false);
   const [expandedAccordion, setExpandedAccordion] = useState<string | false>('core');
-  const [hasCheckedCache, setHasCheckedCache] = useState(false);
+  const [, setHasCheckedCache] = useState(false);
   const [configurationOptions, setConfigurationOptions] = useState<any>(null);
 
   // Asset Status State
@@ -416,26 +415,6 @@ const PersonalizationStep: React.FC<PersonalizationStepProps> = ({
     setQualityMetrics(null);
     generatePersonas();
   };
-
-  const handleContinue = useCallback(() => {
-    if (corePersona && platformPersonas && qualityMetrics) {
-      if (!brandAvatarSet || !voiceCloneSet) {
-          setError('Please generate and set your Brand Avatar and Voice Clone before continuing.');
-          return;
-      }
-      const personaData = {
-        corePersona,
-        platformPersonas,
-        qualityMetrics,
-        selectedPlatforms,
-        stepType: 'personalization',
-        completedAt: new Date().toISOString()
-      };
-      onContinue(personaData);
-    } else {
-      setError('Missing persona data. Please generate your brand voice first.');
-    }
-  }, [corePersona, platformPersonas, qualityMetrics, selectedPlatforms, onContinue, brandAvatarSet, voiceCloneSet]);
 
   useEffect(() => {
     const hasValidData = !!(corePersona && platformPersonas && Object.keys(platformPersonas).length > 0 && qualityMetrics);

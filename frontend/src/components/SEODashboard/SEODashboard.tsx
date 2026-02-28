@@ -17,10 +17,11 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  CircularProgress
+  CircularProgress,
+  Drawer
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth, useUser, SignInButton, SignOutButton, useClerk } from '@clerk/clerk-react';
+import { useAuth, useUser, SignOutButton, useClerk } from '@clerk/clerk-react';
 import { apiClient } from '../../api/client';
 import {
   Refresh as RefreshIcon,
@@ -32,13 +33,15 @@ import {
   Schedule as ScheduleIcon,
   Info as InfoIcon,
   ExpandMore as ExpandMoreIcon,
+  Close as CloseIcon,
   AutoAwesome as AIIcon
 } from '@mui/icons-material';
 
 // Shared components
 import { DashboardContainer, GlassCard } from '../shared/styled';
 import SEOAnalyzerPanel from './components/SEOAnalyzerPanel';
-import { SEOCopilotKitProvider, SEOCopilotSuggestions } from './index';
+import { SEOCopilotSuggestions } from './index';
+import SEOCopilot from './SEOCopilot';
 // Removed SEOCopilotTest
 import useSEOCopilotStore from '../../stores/seoCopilotStore';
 
@@ -47,6 +50,8 @@ import { useSEODashboardStore } from '../../stores/seoDashboardStore';
 
 // API
 import { userDataAPI } from '../../api/userData';
+import { SIFIndexingHealth } from '../../api/seoDashboard';
+import { getSchedulerDashboard, SchedulerJob } from '../../api/schedulerDashboard';
 
 // Shared components
 import PlatformAnalytics from '../shared/PlatformAnalytics';
@@ -81,9 +86,7 @@ const SEODashboard: React.FC = () => {
     analysisError,
     setData,
     setLoading,
-    setError,
     runSEOAnalysis,
-    checkAndRunInitialAnalysis,
     refreshSEOAnalysis,
     getAnalysisFreshness,
   } = useSEODashboardStore();
@@ -109,7 +112,6 @@ const SEODashboard: React.FC = () => {
   // Menu state
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [statusMenuAnchor, setStatusMenuAnchor] = useState<null | HTMLElement>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   
   // Competitor analysis data from onboarding step 3
   const [competitorAnalysisData, setCompetitorAnalysisData] = useState<any>(null);
@@ -119,6 +121,11 @@ const SEODashboard: React.FC = () => {
   const [competitiveSitemapBenchmarkingReport, setCompetitiveSitemapBenchmarkingReport] = useState<any>(null);
   const [competitiveSitemapBenchmarkingLoading, setCompetitiveSitemapBenchmarkingLoading] = useState(false);
   const [competitiveSitemapBenchmarkingError, setCompetitiveSitemapBenchmarkingError] = useState<string | null>(null);
+  const [sifHealth, setSifHealth] = useState<SIFIndexingHealth | null>(null);
+  const [sifDetailsOpen, setSifDetailsOpen] = useState(false);
+  const [schedulerJobs, setSchedulerJobs] = useState<SchedulerJob[] | null>(null);
+  const [schedulerJobsLoading, setSchedulerJobsLoading] = useState(false);
+  const [schedulerJobsError, setSchedulerJobsError] = useState<string | null>(null);
 
   // PlatformAnalytics refresh handle
   const platformRefreshRef = useRef<(() => Promise<void>) | null>(null);
@@ -139,6 +146,27 @@ const SEODashboard: React.FC = () => {
     loadCompetitorAnalysisData();
     fetchStrategicInsightsHistory();
   }, []);
+
+  useEffect(() => {
+    if (!sifDetailsOpen || schedulerJobs || schedulerJobsLoading) return;
+    setSchedulerJobsLoading(true);
+    (async () => {
+      try {
+        const dashboard = await getSchedulerDashboard();
+        const currentUserId = dashboard.user_isolation?.current_user_id || null;
+        const filtered = dashboard.jobs.filter((job) =>
+          currentUserId ? job.user_id === currentUserId : Boolean(job.user_id)
+        );
+        setSchedulerJobs(filtered);
+        setSchedulerJobsError(null);
+      } catch (e) {
+        console.error('Failed to load scheduler jobs for SEO dashboard:', e);
+        setSchedulerJobsError('Failed to load scheduler jobs');
+      } finally {
+        setSchedulerJobsLoading(false);
+      }
+    })();
+  }, [sifDetailsOpen, schedulerJobs, schedulerJobsLoading]);
 
   const fetchStrategicInsightsHistory = async () => {
     setStrategicInsightsLoading(true);
@@ -232,14 +260,16 @@ const SEODashboard: React.FC = () => {
         setLoading(true);
         
         // Fetch platform status and user data in parallel
-        const [platformResponse, userData] = await Promise.all([
+        const [platformResponse, userData, sifHealthResponse] = await Promise.all([
           apiClient.get('/api/seo-dashboard/platforms'),
-          userDataAPI.getUserData()
+          userDataAPI.getUserData(),
+          apiClient.get('/api/seo-dashboard/sif-health')
         ]);
         
         console.log('Platform status response:', platformResponse.status, platformResponse.statusText);
         console.log('Platform status data:', platformResponse.data);
         setPlatformStatus(platformResponse.data);
+        setSifHealth(sifHealthResponse.data);
         
         websiteUrl = userData?.website_url || 'https://alwrity.com';
         
@@ -514,16 +544,15 @@ const SEODashboard: React.FC = () => {
   }
 
   return (
-    <SEOCopilotKitProvider enableDebugMode={false}>
-      <DashboardContainer>
-        <Container maxWidth="xl">
-          <AnimatePresence>
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              {/* Professional Compact Header */}
+    <DashboardContainer>
+      <Container maxWidth="xl">
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            {/* Professional Compact Header */}
               <Box sx={{ 
                 mb: 4, 
                 display: 'flex', 
@@ -593,6 +622,69 @@ const SEODashboard: React.FC = () => {
                       }}
                     />
                   </Tooltip>
+
+                  {sifHealth && (
+                    <Tooltip title="Semantic Indexing Status (SIF)">
+                      <Box
+                        onClick={() => setSifDetailsOpen(true)}
+                        sx={{
+                          ml: 2,
+                          px: 2,
+                          py: 0.75,
+                          borderRadius: 999,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          cursor: 'pointer',
+                          bgcolor:
+                            sifHealth.status === 'healthy'
+                              ? 'rgba(76, 175, 80, 0.15)'
+                              : sifHealth.status === 'warning'
+                              ? 'rgba(255, 152, 0, 0.15)'
+                              : sifHealth.status === 'critical'
+                              ? 'rgba(244, 67, 54, 0.15)'
+                              : 'rgba(255, 255, 255, 0.05)',
+                          border:
+                            sifHealth.status === 'healthy'
+                              ? '1px solid rgba(76, 175, 80, 0.5)'
+                              : sifHealth.status === 'warning'
+                              ? '1px solid rgba(255, 152, 0, 0.5)'
+                              : sifHealth.status === 'critical'
+                              ? '1px solid rgba(244, 67, 54, 0.5)'
+                              : '1px solid rgba(255, 255, 255, 0.15)',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            bgcolor:
+                              sifHealth.status === 'healthy'
+                                ? '#4CAF50'
+                                : sifHealth.status === 'warning'
+                                ? '#FF9800'
+                                : sifHealth.status === 'critical'
+                                ? '#F44336'
+                                : 'rgba(255, 255, 255, 0.5)',
+                          }}
+                        />
+                        <Typography
+                          variant="body2"
+                          sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 500 }}
+                        >
+                          Semantic Indexing:{' '}
+                          {sifHealth.status === 'not_scheduled'
+                            ? 'Not scheduled yet'
+                            : sifHealth.status === 'healthy'
+                            ? 'Up to date'
+                            : sifHealth.status === 'warning'
+                            ? 'Issues detected'
+                            : 'Needs intervention'}
+                        </Typography>
+                      </Box>
+                    </Tooltip>
+                  )}
                 </Box>
 
                 {/* Right Section - User Menu */}
@@ -1444,11 +1536,244 @@ const SEODashboard: React.FC = () => {
               <Box sx={{ mt: 4 }}>
                 <SEOCopilotSuggestions />
               </Box>
+              
+              {/* SEO Copilot Component for data loading and error handling */}
+              <SEOCopilot />
             </motion.div>
           </AnimatePresence>
         </Container>
+
+        <Drawer
+          anchor="right"
+          open={sifDetailsOpen}
+          onClose={() => setSifDetailsOpen(false)}
+          PaperProps={{
+            sx: {
+              width: { xs: '100%', sm: 360 },
+              maxWidth: '100vw',
+              bgcolor: 'rgba(15, 23, 42, 0.98)',
+              color: 'white'
+            }
+          }}
+        >
+          <Box
+            sx={{
+              p: 2,
+              borderBottom: 1,
+              borderColor: 'rgba(148, 163, 184, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <Typography variant="h6">Semantic Indexing Details</Typography>
+            <IconButton onClick={() => setSifDetailsOpen(false)} sx={{ color: 'rgba(148,163,184,0.9)' }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+
+          <Box sx={{ p: 2 }}>
+            {sifHealth ? (
+              <>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
+                    Overall Status
+                  </Typography>
+                  <Typography variant="body1">
+                    {sifHealth.status === 'not_scheduled'
+                      ? 'Not scheduled'
+                      : sifHealth.status === 'healthy'
+                      ? 'Healthy'
+                      : sifHealth.status === 'warning'
+                      ? 'Warning'
+                      : 'Critical'}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
+                    Next Scheduled Run
+                  </Typography>
+                  <Typography variant="body1">
+                    {sifHealth.task?.next_execution
+                      ? new Date(sifHealth.task.next_execution).toLocaleString()
+                      : 'Not scheduled'}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
+                    Last Success
+                  </Typography>
+                  <Typography variant="body1">
+                    {sifHealth.task?.last_success
+                      ? new Date(sifHealth.task.last_success).toLocaleString()
+                      : 'No successful runs yet'}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
+                    Last Failure
+                  </Typography>
+                  <Typography variant="body1">
+                    {sifHealth.task?.last_failure
+                      ? new Date(sifHealth.task.last_failure).toLocaleString()
+                      : 'No failures recorded'}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
+                    Consecutive Failures
+                  </Typography>
+                  <Typography variant="body1">
+                    {sifHealth.task?.consecutive_failures ?? 0}
+                  </Typography>
+                </Box>
+
+                {sifHealth.last_run?.status && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
+                      Last Run Status
+                    </Typography>
+                    <Typography variant="body1">
+                      {sifHealth.last_run.status}
+                      {sifHealth.last_run.time
+                        ? ` • ${new Date(sifHealth.last_run.time).toLocaleString()}`
+                        : ''}
+                    </Typography>
+                  </Box>
+                )}
+
+                {sifHealth.last_run?.error_message && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(248,113,113,0.9)', mb: 0.5 }}>
+                      Last Error (snippet)
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        whiteSpace: 'pre-wrap',
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        bgcolor: 'rgba(15,23,42,0.9)',
+                        borderRadius: 1,
+                        p: 1.5,
+                        border: '1px solid rgba(148,163,184,0.3)'
+                      }}
+                    >
+                      {sifHealth.last_run.error_message}
+                    </Typography>
+                  </Box>
+                )}
+
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
+                    Scheduled Jobs For Your Account
+                  </Typography>
+
+                  {schedulerJobsLoading && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CircularProgress size={16} sx={{ color: 'rgba(148,163,184,0.9)' }} />
+                      <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)' }}>
+                        Loading scheduler jobs…
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {schedulerJobsError && !schedulerJobsLoading && (
+                    <Typography variant="body2" sx={{ color: 'rgba(248,113,113,0.9)' }}>
+                      {schedulerJobsError}
+                    </Typography>
+                  )}
+
+                  {!schedulerJobsLoading && !schedulerJobsError && schedulerJobs && schedulerJobs.length === 0 && (
+                    <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)' }}>
+                      No scheduled jobs found for this account.
+                    </Typography>
+                  )}
+
+                  {!schedulerJobsLoading && !schedulerJobsError && schedulerJobs && schedulerJobs.length > 0 && (
+                    <Box
+                      sx={{
+                        mt: 1,
+                        maxHeight: 220,
+                        overflowY: 'auto',
+                        borderRadius: 1,
+                        border: '1px solid rgba(51,65,85,0.9)',
+                        bgcolor: 'rgba(15,23,42,0.9)'
+                      }}
+                    >
+                      {schedulerJobs
+                        .slice()
+                        .sort((a, b) => {
+                          const aTime = a.next_run_time ? new Date(a.next_run_time).getTime() : Number.MAX_SAFE_INTEGER;
+                          const bTime = b.next_run_time ? new Date(b.next_run_time).getTime() : Number.MAX_SAFE_INTEGER;
+                          return aTime - bTime;
+                        })
+                        .map((job) => {
+                          const label =
+                            job.task_category === 'website_analysis'
+                              ? 'Website Analysis'
+                              : job.task_category === 'platform_insights'
+                              ? 'Platform Insights'
+                              : job.task_category === 'deep_website_crawl'
+                              ? 'Deep Website Crawl'
+                              : job.function_name || job.id;
+
+                          const subtitle =
+                            job.website_url ||
+                            (job.platform ? `${job.platform.toUpperCase()} insights` : job.job_store);
+
+                          const nextRun = job.next_run_time
+                            ? new Date(job.next_run_time).toLocaleString()
+                            : 'Not scheduled';
+
+                          return (
+                            <Box
+                              key={job.id}
+                              sx={{
+                                px: 1.5,
+                                py: 1,
+                                borderBottom: '1px solid rgba(30,41,59,0.9)',
+                                '&:last-of-type': { borderBottom: 'none' }
+                              }}
+                            >
+                              <Typography
+                                variant="body2"
+                                sx={{ color: 'rgba(248,250,252,0.95)', fontWeight: 500 }}
+                              >
+                                {label}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{ display: 'block', color: 'rgba(148,163,184,0.9)' }}
+                              >
+                                {subtitle}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', mt: 0.25 }}
+                              >
+                                Next run: {nextRun}
+                                {job.frequency ? ` • ${job.frequency}` : ''}
+                              </Typography>
+                            </Box>
+                          );
+                        })}
+                    </Box>
+                  )}
+                </Box>
+              </>
+            ) : (
+              <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)' }}>
+                No semantic indexing information available.
+              </Typography>
+            )}
+          </Box>
+        </Drawer>
       </DashboardContainer>
-    </SEOCopilotKitProvider>
   );
 };
 

@@ -1,6 +1,6 @@
 import axios, { AxiosResponse } from 'axios';
 import { emitApiEvent } from '../utils/apiEvents';
-import { getApiUrl } from '../api/client';
+import { getApiUrl, getAuthTokenGetter } from '../api/client';
 import {
   SystemHealth,
   APIStats,
@@ -32,27 +32,37 @@ const monitoringAPI = axios.create({
   },
 });
 
-// Request interceptor for authentication
 monitoringAPI.interceptors.request.use(
-  (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    try {
+      const tokenGetter = getAuthTokenGetter();
+      if (tokenGetter) {
+        const token = await tokenGetter();
+        if (token) {
+          config.headers = config.headers || {};
+          (config.headers as any).Authorization = `Bearer ${token}`;
+        }
+      } else {
+        const legacyToken = localStorage.getItem('auth_token');
+        if (legacyToken) {
+          config.headers = config.headers || {};
+          (config.headers as any).Authorization = `Bearer ${legacyToken}`;
+        }
+      }
+    } catch (e) {
+      console.error('Monitoring API: Error getting auth token', e);
     }
     
-    // Add user ID to ALL requests for billing tracking
     const userId = localStorage.getItem('user_id') || 'demo-user';
     
-    // Add user_id as query parameter for billing tracking
     if (config.params) {
-      config.params.user_id = userId;
+      (config.params as any).user_id = userId;
     } else {
       config.params = { user_id: userId };
     }
     
-    // Also add as header for additional tracking
-    config.headers['X-User-ID'] = userId;
+    config.headers = config.headers || {};
+    (config.headers as any)['X-User-ID'] = userId;
     
     return config;
   },
@@ -61,7 +71,6 @@ monitoringAPI.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
 monitoringAPI.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
@@ -69,13 +78,7 @@ monitoringAPI.interceptors.response.use(
   (error) => {
     console.error('Monitoring API Error:', error);
     
-    // Handle specific error cases
-    if (error.response?.status === 401) {
-      // Unauthorized - redirect to login
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
-    } else if (error.response?.status === 503) {
-      // Service unavailable
+    if (error.response?.status === 503) {
       console.warn('Monitoring service temporarily unavailable');
     }
     

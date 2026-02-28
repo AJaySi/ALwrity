@@ -10,7 +10,6 @@ import {
   CreateProjectResult,
   Fact,
   Knobs,
-  Line,
   PodcastAnalysis,
   PodcastEstimate,
   Query,
@@ -128,6 +127,9 @@ const mapSourcesToFacts = (sources: ExaSource[]): Fact[] => {
     url: source.url || "",
     date: source.published_at || "Unknown",
     confidence: typeof (source as any).credibility_score === "number" ? (source as any).credibility_score : Math.max(0.5, 0.85 - idx * 0.02),
+    image: source.image,
+    author: source.author,
+    highlights: source.highlights,
   }));
 };
 
@@ -140,6 +142,8 @@ type ExaSource = {
   summary?: string;
   source_type?: string;
   index?: number;
+  image?: string;
+  author?: string;
 };
 
 type ExaResearchResult = {
@@ -151,15 +155,20 @@ type ExaResearchResult = {
   content?: string;
 };
 
-const mapExaResearchResponse = (response: ExaResearchResult): Research => {
+const mapExaResearchResponse = (response: any): Research => {
   const factCards = mapSourcesToFacts(response.sources);
-  const summary =
-    response.content?.slice(0, 1200) ||
-    (response.search_queries && response.search_queries.length
-      ? `Research completed for queries: ${response.search_queries.join(", ")}`
-      : "Research completed. Review fact cards for details.");
+  // Use backend summary if available, otherwise use full content (no truncation) or fallback text
+  const summary = response.summary || response.content || "Research completed.";
+  
+  const keyInsights = (response.key_insights || []).map((insight: any) => ({
+    title: insight.title || "Insight",
+    content: insight.content || "",
+    source_indices: insight.source_indices || []
+  }));
+
   return {
     summary,
+    keyInsights,
     factCards,
     mappedAngles: [],
     searchQueries: response.search_queries,
@@ -169,58 +178,6 @@ const mapExaResearchResponse = (response: ExaResearchResult): Research => {
     sourceCount: response.sources?.length || 0,
   };
 };
-
-const splitIntoLines = (text: string, speakers: number): Line[] => {
-  const sentences = text
-    .split(/(?<=[.?!])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 4);
-  if (!sentences.length) {
-    return [
-      {
-        id: createId("line"),
-        speaker: "Host",
-        text: text || "Let's dive into today’s topic.",
-      },
-    ];
-  }
-  return sentences.map((sentence, idx) => ({
-    id: createId("line"),
-    speaker: idx % speakers === 0 ? "Host" : `Guest ${((idx % speakers) + 1).toString()}`,
-    text: sentence,
-  }));
-};
-
-// Unused helper functions - kept for reference but not currently used
-// const storySceneToPodcastScene = (scene: StoryScene, knobs: Knobs, speakers: number): Scene => {
-//   const text = scene.description || scene.audio_narration || scene.image_prompt || scene.title || "Narration";
-//   return {
-//     id: `scene-${scene.scene_number || createId("scene")}`,
-//     title: scene.title || `Scene ${scene.scene_number}`,
-//     duration: Math.max(20, knobs.scene_length_target || DEFAULT_KNOBS.scene_length_target),
-//     lines: splitIntoLines(text, Math.max(1, speakers)),
-//     approved: false,
-//   };
-// };
-
-// const ensureScenes = (outline: StorySetupGenerationResponse["options"] | StoryScene[] | string | undefined): StoryScene[] => {
-//   if (!outline) return [];
-//   if (typeof outline === "string") {
-//     return [
-//       {
-//         scene_number: 1,
-//         title: outline.slice(0, 60),
-//         description: outline,
-//         image_prompt: outline,
-//         audio_narration: outline,
-//       } as StoryScene,
-//     ];
-//   }
-//   if (Array.isArray(outline)) {
-//     return outline as StoryScene[];
-//   }
-//   return [];
-// };
 
 const ensurePreflight = async (operation: PreflightOperation) => {
   const result = await checkPreflight(operation);
@@ -232,14 +189,24 @@ const ensurePreflight = async (operation: PreflightOperation) => {
 };
 
 export const podcastApi = {
-  async createProject(payload: CreateProjectPayload): Promise<CreateProjectResult> {
+  async createProject(payload: CreateProjectPayload, bible?: any, feedback?: string): Promise<CreateProjectResult> {
     const storyIdea = payload.ideaOrUrl || "AI marketing for small businesses";
+
+    await ensurePreflight({
+      provider: "gemini",
+      operation_type: "podcast_analysis",
+      tokens_requested: 1500,
+      actual_provider_name: "gemini",
+    });
 
     // Podcast-specific analysis (not story setup)
     const analysisResp = await aiApiClient.post("/api/podcast/analyze", {
       idea: storyIdea,
       duration: payload.duration,
       speakers: payload.speakers,
+      bible: bible,
+      avatar_url: payload.avatarUrl,
+      feedback: feedback, // Pass feedback to backend
     });
 
     const outlines = (analysisResp.data?.suggested_outlines || []).map((o: any, idx: number) => ({
@@ -255,11 +222,24 @@ export const podcastApi = {
       suggestedOutlines: outlines,
       suggestedKnobs: { ...DEFAULT_KNOBS, ...payload.knobs },
       titleSuggestions: (analysisResp.data?.title_suggestions || []).filter(Boolean),
+      research_queries: analysisResp.data?.research_queries || [],
       exaSuggestedConfig: analysisResp.data?.exa_suggested_config || undefined,
     };
 
     const researchConfig = await getResearchConfig().catch(() => null);
-    const queries = mapPersonaQueries(researchConfig?.research_persona, storyIdea);
+    
+    // Use AI-generated queries if available, fallback to legacy mapping
+    let queries: Query[] = [];
+    if (analysis.research_queries && analysis.research_queries.length > 0) {
+      queries = analysis.research_queries.map(rq => ({
+        id: createId("q"),
+        query: rq.query,
+        rationale: rq.rationale,
+        needsRecentStats: /202[45]|latest|trend/i.test(rq.query)
+      }));
+    } else {
+      queries = mapPersonaQueries(researchConfig?.research_persona, storyIdea);
+    }
 
     const projectId = createId("podcast");
     const estimate = estimateCosts({
@@ -276,7 +256,15 @@ export const podcastApi = {
       analysis,
       estimate,
       queries,
+      bible: analysisResp.data?.bible || undefined,
+      avatar_url: analysisResp.data?.avatar_url || null,
+      avatar_prompt: analysisResp.data?.avatar_prompt || null,
     };
+  },
+
+  async enhanceIdea(params: { idea: string; bible?: any }): Promise<{ enhanced_idea: string; rationale: string }> {
+    const response = await aiApiClient.post("/api/podcast/idea/enhance", params);
+    return response.data;
   },
 
   async runResearch(params: {
@@ -285,6 +273,8 @@ export const podcastApi = {
     approvedQueries: Query[];
     provider?: ResearchProvider;
     exaConfig?: ResearchConfig;
+    bible?: any;
+    analysis?: PodcastAnalysis | null;
     onProgress?: (message: string) => void;
   }): Promise<{ research: Research; raw: any }> {
     const keywords = params.approvedQueries.map((q) => q.query).filter(Boolean);
@@ -317,12 +307,14 @@ export const podcastApi = {
       topic: params.topic || keywords[0],
       queries: keywords,
       exa_config: sanitizedExaConfig,
+      bible: params.bible,
+      analysis: params.analysis,
     });
 
     const exaResult = response.data as ExaResearchResult;
-          if (params.onProgress) {
+    if (params.onProgress) {
       params.onProgress("Deep research completed with Exa.");
-          }
+    }
     const mapped = mapExaResearchResponse(exaResult);
     return { research: mapped, raw: exaResult };
   },
@@ -334,6 +326,9 @@ export const podcastApi = {
     knobs: Knobs;
     speakers: number;
     durationMinutes: number;
+    bible?: any;
+    outline?: any;
+    analysis?: PodcastAnalysis | null;
   }): Promise<Script> {
     await ensurePreflight({
       provider: "gemini",
@@ -347,6 +342,9 @@ export const podcastApi = {
       duration_minutes: params.durationMinutes,
       speakers: params.speakers,
       research: params.research,
+      bible: params.bible,
+      outline: params.outline,
+      analysis: params.analysis,
     });
 
     const scenes = response.data?.scenes || [];
@@ -564,8 +562,14 @@ export const podcastApi = {
     duration: number;
     speakers: number;
     budget_cap: number;
+    avatar_url?: string | null;
   }): Promise<any> {
     const response = await aiApiClient.post("/api/podcast/projects", params);
+    return response.data;
+  },
+
+  async updateProject(projectId: string, updates: any): Promise<any> {
+    const response = await aiApiClient.put(`/api/podcast/projects/${projectId}`, updates);
     return response.data;
   },
 
@@ -619,6 +623,7 @@ export const podcastApi = {
     sceneTitle: string;
     audioUrl: string;
     avatarImageUrl?: string;
+    bible?: any;
     resolution?: string;
     prompt?: string;
     seed?: number;
@@ -630,6 +635,7 @@ export const podcastApi = {
       scene_title: params.sceneTitle,
       audio_url: params.audioUrl,
       avatar_image_url: params.avatarImageUrl,
+      bible: params.bible,
       resolution: params.resolution || "720p",
       prompt: params.prompt,
       seed: params.seed ?? -1,
@@ -692,6 +698,7 @@ export const podcastApi = {
     sceneTitle: string;
     sceneContent?: string;
     baseAvatarUrl?: string;
+    bible?: any;
     idea?: string;
     width?: number;
     height?: number;
@@ -715,6 +722,7 @@ export const podcastApi = {
       scene_title: params.sceneTitle,
       scene_content: params.sceneContent,
       base_avatar_url: params.baseAvatarUrl || null,
+      bible: params.bible,
       idea: params.idea || null,
       width: params.width || 1024,
       height: params.height || 1024,
@@ -752,8 +760,8 @@ export const podcastApi = {
       scene_ids: params.sceneIds,
       scene_audio_urls: params.sceneAudioUrls,
     });
-      return response.data;
-    },
+    return response.data;
+  },
 
   async uploadAvatar(file: File, projectId?: string): Promise<{ avatar_url: string; avatar_filename: string }> {
     const formData = new FormData();

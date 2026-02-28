@@ -64,7 +64,18 @@ import { useOnboardingStyles } from '../../common/useOnboardingStyles';
 
 import { apiClient } from '../../../../api/client';
 
-interface StyleAnalysis {
+export interface StyleAnalysis {
+  id?: number;
+  guidelines?: {
+    tone_recommendations?: string[];
+    structure_guidelines?: string[];
+    vocabulary_suggestions?: string[];
+    engagement_tips?: string[];
+    audience_considerations?: string[];
+    brand_alignment?: string[];
+    seo_optimization?: string[];
+    conversion_optimization?: string[];
+  } | null;
   writing_style?: {
     tone: string;
     voice: string;
@@ -132,6 +143,7 @@ interface AnalysisResultsDisplayProps {
   onUseAnalysisChange: (use: boolean) => void;
   crawlResult?: any;
   onAnalysisUpdate?: (updatedAnalysis: StyleAnalysis) => void;
+   warning?: string;
   onSave?: () => void;
 }
 
@@ -142,11 +154,16 @@ const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
   onUseAnalysisChange,
   crawlResult,
   onAnalysisUpdate,
+  warning,
   onSave
 }) => {
   const styles = useOnboardingStyles();
   const [isCrawlExpanded, setIsCrawlExpanded] = useState(false);
   const [isEditable, setIsEditable] = useState(false);
+
+  const warningParts = warning ? warning.split('|').map(part => part.trim()).filter(Boolean) : [];
+  const guidelineWarning = warningParts.find(part => part.toLowerCase().startsWith('guidelines generation failed'));
+  const sitemapWarning = warningParts.find(part => part.toLowerCase().startsWith('sitemap analysis failed'));
 
   // Helper to handle section updates
   const handleSectionUpdate = (section: string, fieldPath: string, value: any) => {
@@ -383,17 +400,25 @@ const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
             {renderBrandAnalysisSection(analysis)}
           </Box>
 
-          {/* Style Guidelines Section */}
-          <Box sx={{ mt: 4 }}>
-            <SectionHeader 
-              title="Style Guidelines" 
-              icon={<AutoAwesomeIcon />} 
-            />
-            <EnhancedGuidelinesSection 
-              guidelines={analysis.style_guidelines}
-              domainName={domainName}
-            />
-          </Box>
+          {(analysis.guidelines || guidelineWarning) && (
+            <Box sx={{ mt: 4 }}>
+              <SectionHeader 
+                title="Style Guidelines" 
+                icon={<AutoAwesomeIcon />} 
+              />
+              {guidelineWarning && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {guidelineWarning}
+                </Alert>
+              )}
+              {analysis.guidelines && (
+                <EnhancedGuidelinesSection 
+                  guidelines={analysis.guidelines}
+                  domainName={domainName}
+                />
+              )}
+            </Box>
+          )}
 
           {/* SEO Audit Section */}
           <Box sx={{ mt: 4 }}>
@@ -408,12 +433,16 @@ const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
              />
           </Box>
 
-          {/* Sitemap Analysis Section */}
           <Box sx={{ mt: 4 }}>
              <SectionHeader 
               title="Sitemap Analysis" 
               icon={<LinkIcon />} 
             />
+             {sitemapWarning && (
+               <Alert severity="warning" sx={{ mb: 2 }}>
+                 {sitemapWarning}
+               </Alert>
+             )}
              <SitemapAnalysisSection
                sitemapAnalysis={analysis.sitemap_analysis}
                domainName={domainName}

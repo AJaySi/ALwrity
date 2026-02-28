@@ -86,6 +86,19 @@ async def generate_podcast_scene_image(
             logger.info(f"[Podcast] No base avatar URL provided, will generate from scratch")
             base_avatar_bytes = None
         
+        # Extract Podcast Bible context for hyper-personalization
+        bible_context = ""
+        bible_obj = None
+        if request.bible:
+            try:
+                from services.podcast_bible_service import PodcastBibleService
+                from models.podcast_bible_models import PodcastBible
+                bible_service = PodcastBibleService()
+                bible_obj = PodcastBible(**request.bible)
+                bible_context = bible_service.serialize_bible(bible_obj)
+            except Exception as exc:
+                logger.warning(f"[Podcast Image] Failed to serialize podcast bible: {exc}")
+
         # Build optimized prompt for scene image generation
         # When base avatar is provided, use Ideogram Character to maintain consistency
         # Otherwise, generate from scratch with podcast-optimized prompt
@@ -105,6 +118,14 @@ async def generate_podcast_scene_image(
                 # Scene context (primary focus)
                 if request.scene_title:
                     prompt_parts.append(f"Scene: {request.scene_title}")
+                
+                # Use Bible visual style if available
+                if bible_obj:
+                    prompt_parts.append(f"Style: {bible_obj.visual_style.style_preset}")
+                    prompt_parts.append(f"Environment: {bible_obj.visual_style.environment}")
+                    prompt_parts.append(f"Lighting: {bible_obj.visual_style.lighting}")
+                    if bible_obj.host.look:
+                        prompt_parts.append(f"Host Look: {bible_obj.host.look}")
                 
                 # Scene content insights for visual context
                 if request.scene_content:
@@ -127,12 +148,14 @@ async def generate_podcast_scene_image(
                     prompt_parts.append(f"Topic: {idea_preview}")
                 
                 # Studio setting (maintains podcast aesthetic)
-                prompt_parts.extend([
-                    "Professional podcast recording studio",
-                    "Modern microphone setup",
-                    "Clean background, professional lighting",
-                    "16:9 aspect ratio, video-optimized composition"
-                ])
+                if not bible_obj:
+                    prompt_parts.extend([
+                        "Professional podcast recording studio",
+                        "Modern microphone setup",
+                        "Clean background, professional lighting"
+                    ])
+                
+                prompt_parts.append("16:9 aspect ratio, video-optimized composition")
                 
                 image_prompt = ", ".join(prompt_parts)
             
@@ -221,14 +244,22 @@ async def generate_podcast_scene_image(
             # Standard generation from scratch (no base avatar provided)
             prompt_parts = []
             
-            # Core podcast studio elements
-            prompt_parts.extend([
-                "Professional podcast recording studio",
-                "Modern podcast setup with high-quality microphone",
-                "Clean, minimalist background suitable for video",
-                "Professional studio lighting with soft, even illumination",
-                "Podcast host environment, professional and inviting"
-            ])
+            # Use Bible visual style if available
+            if bible_obj:
+                prompt_parts.append(f"Style: {bible_obj.visual_style.style_preset}")
+                prompt_parts.append(f"Environment: {bible_obj.visual_style.environment}")
+                prompt_parts.append(f"Lighting: {bible_obj.visual_style.lighting}")
+                if bible_obj.host.look:
+                    prompt_parts.append(f"Host Look: {bible_obj.host.look}")
+            else:
+                # Core podcast studio elements
+                prompt_parts.extend([
+                    "Professional podcast recording studio",
+                    "Modern podcast setup with high-quality microphone",
+                    "Clean, minimalist background suitable for video",
+                    "Professional studio lighting with soft, even illumination",
+                    "Podcast host environment, professional and inviting"
+                ])
             
             # Scene-specific context
             if request.scene_title:
@@ -264,12 +295,13 @@ async def generate_podcast_scene_image(
             ])
             
             # Style constraints
-            prompt_parts.extend([
-                "Realistic photography style, not illustration or cartoon",
-                "Professional broadcast quality",
-                "Warm, inviting atmosphere",
-                "Clean composition with breathing room for avatar placement"
-            ])
+            if not bible_obj:
+                prompt_parts.extend([
+                    "Realistic photography style, not illustration or cartoon",
+                    "Professional broadcast quality",
+                    "Warm, inviting atmosphere",
+                    "Clean composition with breathing room for avatar placement"
+                ])
             
             image_prompt = ", ".join(prompt_parts)
             

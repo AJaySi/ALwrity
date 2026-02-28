@@ -20,8 +20,10 @@ interface RenderQueueProps {
   script: Script;
   knobs: Knobs;
   jobs: Job[];
+  bible?: any | null;
   budgetCap?: number;
   avatarImageUrl?: string | null;
+  analysis?: any | null; // Add analysis prop
   onUpdateJob: (sceneId: string, updates: Partial<Job>) => void;
   onUpdateScript?: (script: Script) => void;
   onBack: () => void;
@@ -33,8 +35,10 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
   script,
   knobs,
   jobs,
+  bible,
   budgetCap,
   avatarImageUrl,
+  analysis,
   onUpdateJob,
   onUpdateScript,
   onBack,
@@ -57,6 +61,7 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
     jobs,
     knobs,
     projectId,
+    bible,
     budgetCap,
     avatarImageUrl,
     onUpdateJob,
@@ -167,41 +172,124 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
         </Alert>
       )}
 
-      {/* Info Alert */}
-      <Alert severity="info" sx={{ mb: 3, background: alpha("#3b82f6", 0.1), border: "1px solid rgba(59,130,246,0.3)" }}>
-        <Typography variant="body2">
-          <strong>Audio Generation:</strong> Preview creates a quick sample to test voice and pacing. Full render generates the complete, production-ready audio file for your episode.
-        </Typography>
-      </Alert>
+      {/* Compact Status Dashboard */}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 2,
+          background: "#ffffff",
+          border: "1px solid rgba(0,0,0,0.08)",
+          borderRadius: 3,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 2,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
+        }}
+      >
+        <Stack direction="row" spacing={3} alignItems="center" flexWrap="wrap" useFlexGap>
+          {/* Status Chips */}
+          <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+            <Box
+              sx={{
+                px: 1.5,
+                py: 0.75,
+                borderRadius: 2,
+                background: alpha("#6366f1", 0.08),
+                color: "#4f46e5",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                border: "1px solid",
+                borderColor: alpha("#6366f1", 0.2),
+              }}
+            >
+              <Typography variant="caption" fontWeight={700} sx={{ textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Scenes
+              </Typography>
+              <Typography variant="subtitle2" fontWeight={800}>
+                {script.scenes.length}
+              </Typography>
+            </Box>
 
-      {/* Summary Stats */}
-      <SummaryStats jobs={jobs} scenes={script.scenes} />
+            <Box
+              sx={{
+                px: 1.5,
+                py: 0.75,
+                borderRadius: 2,
+                background: script.scenes.every(s => s.audioUrl) 
+                  ? alpha("#10b981", 0.1) 
+                  : alpha("#f59e0b", 0.1),
+                color: script.scenes.every(s => s.audioUrl) ? "#059669" : "#d97706",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                border: "1px solid",
+                borderColor: script.scenes.every(s => s.audioUrl) ? alpha("#10b981", 0.3) : alpha("#f59e0b", 0.3),
+              }}
+            >
+              <Typography variant="caption" fontWeight={700}>
+                Audio
+              </Typography>
+              {script.scenes.every(s => s.audioUrl) ? (
+                <CheckCircleIcon sx={{ fontSize: 18 }} />
+              ) : (
+                <Typography variant="subtitle2" fontWeight={800}>
+                  {script.scenes.filter(s => s.audioUrl).length}/{script.scenes.length}
+                </Typography>
+              )}
+            </Box>
 
-      {/* Empty State */}
-      {jobs.length === 0 && script.scenes.length === 0 && (
-                  <Paper
-                    sx={{
-            p: 4,
-            textAlign: "center",
-            background: "linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)",
-            border: "2px dashed rgba(102, 126, 234, 0.3)",
-            borderRadius: 2,
-                    }}
-                  >
-          <Typography variant="h6" sx={{ color: "#0f172a", fontWeight: 600, mb: 1 }}>
-            No scenes to render
-                    </Typography>
-          <Typography variant="body2" sx={{ color: "#64748b", mb: 3 }}>
-            Go back to the script editor to generate and approve scenes first.
-                        </Typography>
-          <SecondaryButton onClick={onBack} startIcon={<ArrowBackIcon />}>
-            Back to Script Editor
-          </SecondaryButton>
-        </Paper>
-      )}
+            <Box
+              sx={{
+                px: 1.5,
+                py: 0.75,
+                borderRadius: 2,
+                background: script.scenes.every(s => s.imageUrl) 
+                  ? alpha("#10b981", 0.1) 
+                  : alpha("#f59e0b", 0.1),
+                color: script.scenes.every(s => s.imageUrl) ? "#059669" : "#d97706",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                border: "1px solid",
+                borderColor: script.scenes.every(s => s.imageUrl) ? alpha("#10b981", 0.3) : alpha("#f59e0b", 0.3),
+              }}
+            >
+              <Typography variant="caption" fontWeight={700}>
+                Images
+              </Typography>
+              {script.scenes.every(s => s.imageUrl) ? (
+                <CheckCircleIcon sx={{ fontSize: 18 }} />
+              ) : (
+                <Typography variant="subtitle2" fontWeight={800}>
+                  {script.scenes.filter(s => s.imageUrl).length}/{script.scenes.length}
+                </Typography>
+              )}
+            </Box>
+          </Box>
 
-      {/* Guidance Panel */}
-      {script.scenes.length > 0 && <GuidancePanel scenes={script.scenes} />}
+          {/* Dynamic Guidance Message */}
+          <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 500, display: "flex", alignItems: "center", gap: 1 }}>
+            <Box component="span" sx={{ 
+              width: 6, 
+              height: 6, 
+              borderRadius: "50%", 
+              bgcolor: allVideosReady ? "#10b981" : "#3b82f6",
+              display: "inline-block"
+            }} />
+            {allVideosReady 
+              ? "All assets ready. You can combine videos below." 
+              : !script.scenes.every(s => s.audioUrl)
+              ? "Generate audio for all scenes to proceed."
+              : !script.scenes.every(s => s.imageUrl)
+              ? "Generate images for video backgrounds."
+              : "Ready to generate scene videos."}
+          </Typography>
+        </Stack>
+      </Paper>
 
       {/* Scene Cards */}
       <Stack spacing={2}>
@@ -216,6 +304,8 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
               generatingImage={generatingImage}
               isBusy={isBusy}
               avatarImageUrl={avatarImageUrl}
+              bible={bible}
+              analysis={analysis}
               onRender={runRender}
               onImageGenerate={runImageGeneration}
               onVideoGenerate={(sceneId, settings) => runVideoRender(sceneId, settings)}

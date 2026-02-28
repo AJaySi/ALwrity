@@ -12,13 +12,11 @@ from services.user_workspace_manager import UserWorkspaceManager
 
 
 BASE_DIR = Path(__file__).resolve().parents[4]  # root/
-DATA_MEDIA_DIR = BASE_DIR / "workspace" / "media"
+# Default global media directory matches story image/audio services (root/data/media)
+DATA_MEDIA_DIR = BASE_DIR / "data" / "media"
 
 STORY_IMAGES_DIR = (DATA_MEDIA_DIR / "story_images").resolve()
-# STORY_IMAGES_DIR.mkdir(parents=True, exist_ok=True)  # Disabled global creation
-
 STORY_AUDIO_DIR = (DATA_MEDIA_DIR / "story_audio").resolve()
-# STORY_AUDIO_DIR.mkdir(parents=True, exist_ok=True)  # Disabled global creation
 
 
 def _get_user_media_path(user_id: str, media_type: str) -> Optional[Path]:

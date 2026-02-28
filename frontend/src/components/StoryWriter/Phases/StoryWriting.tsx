@@ -168,10 +168,12 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
     
     const loadImage = async () => {
       try {
+        // Remove query parameters (token) from URL if present, we'll use authenticated request instead
+        const cleanUrl = currentSceneImageUrl.split('?')[0];
         // Use relative URL path directly (aiApiClient will add base URL and auth)
-        const imageUrl = currentSceneImageUrl.startsWith('/') 
-          ? currentSceneImageUrl 
-          : `/${currentSceneImageUrl}`;
+        const imageUrl = cleanUrl.startsWith('/') 
+          ? cleanUrl 
+          : `/${cleanUrl}`;
         // Use aiApiClient to get authenticated response with blob
         const response = await aiApiClient.get(imageUrl, {
           responseType: 'blob',
@@ -291,6 +293,23 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
     }
   }, [storySections.length]);
 
+  const lastSavedWordCountRef = React.useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!state.projectId) {
+      return;
+    }
+    if (!state.storyContent || !state.storyContent.trim()) {
+      return;
+    }
+    const wordCount = state.storyContent.split(/\s+/).filter((word) => word.length > 0).length;
+    if (lastSavedWordCountRef.current === wordCount) {
+      return;
+    }
+    lastSavedWordCountRef.current = wordCount;
+    state.saveProjectToDb();
+  }, [state.projectId, state.storyContent, state.saveProjectToDb, state]);
+
   const handlePrevPage = () => {
     if (canGoPrev) {
       setPageDirection(-1);
@@ -305,7 +324,7 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
     }
   };
 
-  const handleGenerateStart = async () => {
+  const handleGenerateStart = React.useCallback(async () => {
     if (!state.premise || (!state.outline && !state.outlineScenes)) {
       setError('Please generate a premise and outline first');
       return;
@@ -362,7 +381,17 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
     } finally {
       setIsGenerating(false);
     }
-  };
+  }, [state]);
+
+  useEffect(() => {
+    if (state.autoGenerateOnWriting && !state.storyContent && !isGenerating) {
+      const run = async () => {
+        await handleGenerateStart();
+        state.setAutoGenerateOnWriting(false);
+      };
+      run();
+    }
+  }, [state.autoGenerateOnWriting, state.storyContent, isGenerating, handleGenerateStart, state]);
 
   const handleContinue = async () => {
     if (!state.premise || (!state.outline && !state.outlineScenes) || !state.storyContent) {
@@ -809,9 +838,11 @@ const StoryWriting: React.FC<StoryWritingProps> = ({ state, onNext }) => {
       ) : (
         <Box>
           <Alert severity="info" sx={{ mb: 3 }}>
-            {state.premise && (state.outline || state.outlineScenes)
-              ? 'Click "Generate Story" to start writing your story.'
-              : 'Please generate a premise and outline first.'}
+            {!state.premise || (!state.outline && !state.outlineScenes)
+              ? 'Please generate a premise and outline first.'
+              : state.autoGenerateOnWriting || isGenerating
+                ? 'Generating your story now...'
+                : 'Click "Generate Story" to start writing your story.'}
           </Alert>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button

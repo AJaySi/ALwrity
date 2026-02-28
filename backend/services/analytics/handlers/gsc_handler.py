@@ -22,7 +22,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
         super().__init__(PlatformType.GSC)
         self.gsc_service = GSCService()
     
-    async def get_analytics(self, user_id: str, target_url: str = None, **kwargs) -> AnalyticsData:
+    async def get_analytics(self, user_id: str, target_url: str = None, start_date: str = None, end_date: str = None, **kwargs) -> AnalyticsData:
         """
         Get Google Search Console analytics data with caching
         
@@ -35,8 +35,16 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
         self.log_analytics_request(user_id, "get_analytics")
         
         # Check cache first - GSC API calls can be expensive
-        # Include target_url in cache key if provided
-        cache_key = f"{user_id}_{target_url}" if target_url else user_id
+        # Include target_url and date range in cache key if provided
+        cache_key_parts = [user_id]
+        if target_url:
+            cache_key_parts.append(str(target_url))
+        if start_date:
+            cache_key_parts.append(str(start_date))
+        if end_date:
+            cache_key_parts.append(str(end_date))
+        # Bump cache version to include page insights (v2)
+        cache_key = "_".join(cache_key_parts + ['v2pages'])
         cached_data = analytics_cache.get('gsc_analytics', cache_key)
         if cached_data:
             logger.info("Using cached GSC analytics for user {user_id}", user_id=user_id)
@@ -70,9 +78,11 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             site_url = selected_site['siteUrl']
             logger.info(f"Using GSC site URL: {site_url}")
             
-            # Get search analytics for last 30 days
-            end_date = datetime.now().strftime('%Y-%m-%d')
-            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            # Determine date range (defaults to last 30 days)
+            if not end_date:
+                end_date = datetime.now().strftime('%Y-%m-%d')
+            if not start_date:
+                start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             logger.info(f"GSC Date range: {start_date} to {end_date}")
             
             search_analytics = self.gsc_service.get_search_analytics(
@@ -86,10 +96,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             # Process GSC data into standardized format
             processed_metrics = self._process_gsc_metrics(search_analytics)
             
-            result = self.create_success_response(
-                metrics=processed_metrics,
-                date_range={'start': start_date, 'end': end_date}
-            )
+            result = self.create_success_response(metrics=processed_metrics, date_range={'start': start_date, 'end': end_date})
             
             # Cache the result to avoid expensive API calls
             analytics_cache.set('gsc_analytics', cache_key, result.__dict__)
@@ -101,8 +108,8 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             self.log_analytics_error(user_id, "get_analytics", e)
             error_result = self.create_error_response(str(e))
             
-            # Cache error result for shorter time to retry sooner
-            analytics_cache.set('gsc_analytics', cache_key, error_result.__dict__, ttl_override=300)  # 5 minutes
+            # Cache error result briefly to avoid repeated failures but allow quick recovery
+            analytics_cache.set('gsc_analytics', cache_key, error_result.__dict__, ttl_override=30)  # 30 seconds
             return error_result
     
     def get_connection_status(self, user_id: str) -> Dict[str, Any]:
@@ -202,18 +209,159 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 sorted_queries = sorted(top_queries_source, key=lambda x: x.get('clicks', 0), reverse=True)[:10]
                 
                 for row in sorted_queries:
+                    clicks_val = row.get('clicks', 0) or 0
+                    impr_val = row.get('impressions', 0) or 0
+                    raw_ctr = row.get('ctr', None)
+                    # Calculate CTR% robustly even if 'ctr' field is missing in row
+                    if raw_ctr is not None:
+                        ctr_percent = round(float(raw_ctr) * 100, 2)
+                    else:
+                        ctr_percent = round(((clicks_val / impr_val) * 100), 2) if impr_val > 0 else 0.0
                     top_queries.append({
                         'query': self._extract_query_from_row(row),
-                        'clicks': row.get('clicks', 0),
-                        'impressions': row.get('impressions', 0),
-                        'ctr': round(row.get('ctr', 0) * 100, 2),
-                        'position': round(row.get('position', 0), 2)
+                        'clicks': clicks_val,
+                        'impressions': impr_val,
+                        'ctr': ctr_percent,
+                        'position': round(row.get('position', 0) or 0, 2)
                     })
 
-            # Prepare Top Pages (requires page dimension, but we only requested query dimension in gsc_service step 3)
-            # To get top pages, we would need another API call with dimension=['page']
-            # For now, we'll return empty top_pages or infer from what we have if possible (we can't from query data)
-            top_pages = [] 
+            # Prepare Top Pages from page_data when available
+            top_pages = []
+            try:
+                page_rows = search_analytics.get('page_data', {}).get('rows', [])
+                qp_rows = search_analytics.get('query_page_data', {}).get('rows', [])
+                # Build queries-by-page map
+                queries_by_page: Dict[str, list] = {}
+                if qp_rows:
+                    for r in qp_rows:
+                        keys = r.get('keys', [])
+                        if not keys or len(keys) < 2:
+                            continue
+                        query_key = keys[0]['keys'][0] if isinstance(keys[0], dict) else str(keys[0])
+                        page_key = keys[1]['keys'][0] if isinstance(keys[1], dict) else str(keys[1])
+                        clicks_val = r.get('clicks', 0) or 0
+                        impr_val = r.get('impressions', 0) or 0
+                        raw_ctr = r.get('ctr', None)
+                        if raw_ctr is not None:
+                            ctr_percent = round(float(raw_ctr) * 100, 2)
+                        else:
+                            ctr_percent = round(((clicks_val / impr_val) * 100), 2) if impr_val > 0 else 0.0
+                        lst = queries_by_page.setdefault(page_key, [])
+                        lst.append({
+                            'query': query_key,
+                            'clicks': clicks_val,
+                            'impressions': impr_val,
+                            'ctr': ctr_percent,
+                        })
+                if page_rows:
+                    sorted_pages = sorted(page_rows, key=lambda x: x.get('clicks', 0), reverse=True)[:10]
+                    for row in sorted_pages:
+                        clicks_val = row.get('clicks', 0) or 0
+                        impr_val = row.get('impressions', 0) or 0
+                        raw_ctr = row.get('ctr', None)
+                        if raw_ctr is not None:
+                            ctr_percent = round(float(raw_ctr) * 100, 2)
+                        else:
+                            ctr_percent = round(((clicks_val / impr_val) * 100), 2) if impr_val > 0 else 0.0
+                        page_url = self._extract_page_from_row(row)
+                        # attach top queries pointing to this page, sorted by clicks
+                        page_queries = sorted(queries_by_page.get(page_url, []), key=lambda x: x.get('clicks', 0), reverse=True)[:5]
+                        top_pages.append({
+                            'page': page_url,
+                            'clicks': clicks_val,
+                            'impressions': impr_val,
+                            'ctr': ctr_percent,
+                            'position': round(row.get('position', 0) or 0, 2) if 'position' in row else None,
+                            'queries': page_queries
+                        })
+            except Exception as e:
+                logger.warning(f"Failed processing top_pages: {e}")
+
+            # Detect Cannibalization (query mapping to multiple pages)
+            cannibalization = []
+            try:
+                qp_rows = search_analytics.get('query_page_data', {}).get('rows', [])
+                q_rows = search_analytics.get('query_data', {}).get('rows', [])
+                if qp_rows:
+                    # Determine window days for thresholding
+                    from datetime import datetime
+                    start_s = search_analytics.get('startDate')
+                    end_s = search_analytics.get('endDate')
+                    window_days = 30
+                    try:
+                        if start_s and end_s:
+                            sd = datetime.strptime(start_s, "%Y-%m-%d")
+                            ed = datetime.strptime(end_s, "%Y-%m-%d")
+                            window_days = max((ed - sd).days + 1, 1)
+                    except Exception:
+                        pass
+                    min_clicks = 10 if window_days <= 7 else (30 if window_days <= 30 else 60)
+                    # Build map: query -> { page -> metrics }
+                    by_query: Dict[str, Dict[str, Dict[str, float]]] = {}
+                    for r in qp_rows:
+                        keys = r.get('keys', [])
+                        if not keys or len(keys) < 2:
+                            continue
+                        qk = keys[0]['keys'][0] if isinstance(keys[0], dict) else str(keys[0])
+                        pk = keys[1]['keys'][0] if isinstance(keys[1], dict) else str(keys[1])
+                        clicks_val = float(r.get('clicks', 0) or 0)
+                        impr_val = float(r.get('impressions', 0) or 0)
+                        raw_ctr = r.get('ctr', None)
+                        if raw_ctr is not None:
+                            ctr_percent = float(raw_ctr) * 100.0
+                        else:
+                            ctr_percent = (clicks_val / impr_val * 100.0) if impr_val > 0 else 0.0
+                        pos_val = float(r.get('position', 0) or 0)
+                        by_query.setdefault(qk, {}).setdefault(pk, {"clicks": 0.0, "impressions": 0.0, "ctr": 0.0, "position_sum": 0.0, "position_count": 0.0})
+                        agg = by_query[qk][pk]
+                        agg["clicks"] += clicks_val
+                        agg["impressions"] += impr_val
+                        agg["ctr"] = max(agg["ctr"], ctr_percent)
+                        if pos_val > 0:
+                            agg["position_sum"] += pos_val
+                            agg["position_count"] += 1
+                    # Use query totals for context
+                    total_by_query: Dict[str, Dict[str, float]] = {}
+                    for r in q_rows or []:
+                        qk = self._extract_query_from_row(r)
+                        total_by_query[qk] = {
+                            "clicks": float(r.get('clicks', 0) or 0),
+                            "impressions": float(r.get('impressions', 0) or 0),
+                            "position": float(r.get('position', 0) or 0)
+                        }
+                    for qk, pages_map in by_query.items():
+                        if len(pages_map) < 2:
+                            continue
+                        total_clicks = sum(p["clicks"] for p in pages_map.values())
+                        if total_clicks < min_clicks:
+                            continue
+                        qpos = total_by_query.get(qk, {}).get("position", 0.0)
+                        if not (3.0 <= qpos <= 20.0) and qpos != 0.0:
+                            # Skip queries already ranking very well or very poorly (if pos present)
+                            continue
+                        pages_list = []
+                        for pk, m in pages_map.items():
+                            avg_pos = (m["position_sum"] / m["position_count"]) if m["position_count"] > 0 else 0.0
+                            pages_list.append({
+                                "page": pk,
+                                "clicks": round(m["clicks"], 0),
+                                "impressions": round(m["impressions"], 0),
+                                "ctr": round(m["ctr"], 2),
+                                "position": round(avg_pos, 2) if avg_pos > 0 else None
+                            })
+                        pages_list.sort(key=lambda x: x.get("clicks", 0), reverse=True)
+                        target_page = pages_list[0]["page"] if pages_list else None
+                        cannibalization.append({
+                            "query": qk,
+                            "total_clicks": int(round(total_clicks)),
+                            "recommended_target_page": target_page,
+                            "pages": pages_list[:3]
+                        })
+                    # Sort by impact
+                    cannibalization.sort(key=lambda item: item.get("total_clicks", 0), reverse=True)
+                    cannibalization = cannibalization[:10]
+            except Exception as e:
+                logger.warning(f"Failed computing cannibalization: {e}")
             
             return {
                 'connection_status': 'connected',
@@ -224,7 +372,8 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 'avg_position': round(avg_position, 2),
                 'total_queries': len(top_queries_source) if top_queries_source else 0,
                 'top_queries': top_queries,
-                'top_pages': top_pages
+                'top_pages': top_pages,
+                'cannibalization': cannibalization
             }
             
         except Exception as e:
@@ -256,3 +405,18 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
         except Exception as e:
             logger.error(f"Error extracting query from row: {e}")
             return 'Unknown'
+
+    def _extract_page_from_row(self, row: Dict[str, Any]) -> str:
+        """Extract page URL from GSC API row data"""
+        try:
+            keys = row.get('keys', [])
+            if keys and len(keys) > 0:
+                first_key = keys[0]
+                if isinstance(first_key, dict):
+                    return first_key.get('keys', [''])[0]
+                else:
+                    return str(first_key)
+            return ''
+        except Exception as e:
+            logger.error(f"Error extracting page from row: {e}")
+            return ''

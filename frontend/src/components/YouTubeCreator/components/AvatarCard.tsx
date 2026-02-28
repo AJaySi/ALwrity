@@ -123,10 +123,11 @@ export const AvatarCard: React.FC<AvatarCardProps> = React.memo(({
             <Box>
               <OperationButton
                 operation={{
-                  provider: 'image_generation',
+                  provider: 'stability',
+                  model: 'default',
                   operation_type: 'image_generation',
                   tokens_requested: 0,
-                  actual_provider_name: 'wavespeed',
+                  actual_provider_name: 'stability',
                 }}
                 label="Regenerate Avatar"
                 variant="outlined"

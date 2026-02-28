@@ -132,7 +132,19 @@ class YouTubeSceneBuilderService:
     ) -> List[Dict[str, Any]]:
         """Generate scenes from video plan using AI."""
         
-        content_outline = video_plan.get("content_outline", [])
+        raw_content_outline = video_plan.get("content_outline", [])
+        content_outline: List[Dict[str, Any]] = []
+        for item in raw_content_outline:
+            if isinstance(item, dict):
+                content_outline.append(item)
+            else:
+                content_outline.append(
+                    {
+                        "section": str(item),
+                        "description": "",
+                        "duration_estimate": 0,
+                    }
+                )
         hook_strategy = video_plan.get("hook_strategy", "")
         call_to_action = video_plan.get("call_to_action", "")
         visual_style = video_plan.get("visual_style", "cinematic")
@@ -263,16 +275,32 @@ Write narration that:
         # Normalize scene data
         normalized_scenes = []
         for idx, scene in enumerate(scenes, 1):
-            normalized_scenes.append({
-                "scene_number": scene.get("scene_number", idx),
-                "title": scene.get("title", f"Scene {idx}"),
-                "narration": scene.get("narration", ""),
-                "visual_description": scene.get("visual_description", ""),
-                "duration_estimate": scene.get("duration_estimate", scene_duration_range[0]),
-                "emphasis": scene.get("emphasis", "main_content"),
-                "visual_cues": scene.get("visual_cues", []),
-                "visual_prompt": scene.get("visual_description", ""),  # Initial prompt
-            })
+            if isinstance(scene, dict):
+                scene_data = scene
+            else:
+                scene_data = {
+                    "scene_number": idx,
+                    "title": f"Scene {idx}",
+                    "narration": str(scene),
+                    "visual_description": "",
+                    "duration_estimate": scene_duration_range[0],
+                    "emphasis": "main_content",
+                    "visual_cues": [],
+                }
+            normalized_scenes.append(
+                {
+                    "scene_number": scene_data.get("scene_number", idx),
+                    "title": scene_data.get("title", f"Scene {idx}"),
+                    "narration": scene_data.get("narration", ""),
+                    "visual_description": scene_data.get("visual_description", ""),
+                    "duration_estimate": scene_data.get(
+                        "duration_estimate", scene_duration_range[0]
+                    ),
+                    "emphasis": scene_data.get("emphasis", "main_content"),
+                    "visual_cues": scene_data.get("visual_cues", []),
+                    "visual_prompt": scene_data.get("visual_description", ""),
+                }
+            )
         
         return normalized_scenes
     
@@ -287,16 +315,32 @@ Write narration that:
         
         normalized_scenes = []
         for idx, scene in enumerate(scenes, 1):
-            normalized_scenes.append({
-                "scene_number": scene.get("scene_number", idx),
-                "title": scene.get("title", f"Scene {idx}"),
-                "narration": scene.get("narration", ""),
-                "visual_description": scene.get("visual_description", ""),
-                "duration_estimate": scene.get("duration_estimate", scene_duration_range[0]),
-                "emphasis": scene.get("emphasis", "main_content"),
-                "visual_cues": scene.get("visual_cues", []),
-                "visual_prompt": scene.get("visual_description", ""),  # Initial prompt
-            })
+            if isinstance(scene, dict):
+                scene_data = scene
+            else:
+                scene_data = {
+                    "scene_number": idx,
+                    "title": f"Scene {idx}",
+                    "narration": str(scene),
+                    "visual_description": "",
+                    "duration_estimate": scene_duration_range[0],
+                    "emphasis": "main_content",
+                    "visual_cues": [],
+                }
+            normalized_scenes.append(
+                {
+                    "scene_number": scene_data.get("scene_number", idx),
+                    "title": scene_data.get("title", f"Scene {idx}"),
+                    "narration": scene_data.get("narration", ""),
+                    "visual_description": scene_data.get("visual_description", ""),
+                    "duration_estimate": scene_data.get(
+                        "duration_estimate", scene_duration_range[0]
+                    ),
+                    "emphasis": scene_data.get("emphasis", "main_content"),
+                    "visual_cues": scene_data.get("visual_cues", []),
+                    "visual_prompt": scene_data.get("visual_description", ""),
+                }
+            )
         
         logger.info(
             f"[YouTubeSceneBuilder] ✅ Normalized {len(normalized_scenes)} scenes "

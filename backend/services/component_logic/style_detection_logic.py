@@ -159,14 +159,10 @@ class StyleDetectionLogic:
             }}
             """
             
-            # Call the LLM for analysis
             logger.debug("[StyleDetectionLogic.analyze_content_style] Sending enhanced prompt to LLM")
             try:
                 analysis_text = llm_text_gen(prompt, user_id=user_id)
-                
-                # Clean and parse the response
                 cleaned_json = self._clean_json_response(analysis_text)
-                
                 analysis_results = json.loads(cleaned_json)
                 logger.info("[StyleDetectionLogic.analyze_content_style] Successfully parsed enhanced analysis results")
                 return {
@@ -179,7 +175,7 @@ class StyleDetectionLogic:
                 return {
                     'success': True,
                     'analysis': fallback_results,
-                    'warning': 'AI analysis failed, used fallback detection'
+                    'warning': f'AI analysis failed ({str(e)}), used fallback detection'
                 }
                 
         except Exception as e:

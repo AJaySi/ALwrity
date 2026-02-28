@@ -262,8 +262,36 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
         }
       }
 
-      setMetadataResult(result);
-      setEditableMetadata(result);
+      const sanitizeMetadata = (data: any) => {
+        const safe = { ...data };
+        safe.seo_title = safe.seo_title ?? '';
+        safe.meta_description = safe.meta_description ?? '';
+        safe.url_slug = safe.url_slug ?? '';
+        safe.focus_keyword = safe.focus_keyword ?? '';
+        safe.reading_time = typeof safe.reading_time === 'number' ? safe.reading_time : 0;
+        safe.blog_tags = Array.isArray(safe.blog_tags) ? safe.blog_tags : [];
+        safe.blog_categories = Array.isArray(safe.blog_categories) ? safe.blog_categories : [];
+        safe.social_hashtags = Array.isArray(safe.social_hashtags) ? safe.social_hashtags : [];
+        safe.open_graph = {
+          ...(safe.open_graph || {}),
+          title: safe.open_graph?.title ?? '',
+          description: safe.open_graph?.description ?? '',
+          image: safe.open_graph?.image ?? '',
+          url: safe.open_graph?.url ?? ''
+        };
+        safe.twitter_card = {
+          ...(safe.twitter_card || {}),
+          title: safe.twitter_card?.title ?? '',
+          description: safe.twitter_card?.description ?? '',
+          image: safe.twitter_card?.image ?? '',
+          site: safe.twitter_card?.site ?? ''
+        };
+        safe.json_ld_schema = { ...(safe.json_ld_schema || {}) };
+        return safe;
+      };
+      const sanitized = sanitizeMetadata(result);
+      setMetadataResult(sanitized);
+      setEditableMetadata(sanitized);
       console.log('📊 Metadata result set:', result);
 
     } catch (err: any) {

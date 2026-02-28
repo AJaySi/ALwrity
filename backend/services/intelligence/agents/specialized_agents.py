@@ -13,6 +13,7 @@ from loguru import logger
 from ..txtai_service import TxtaiIntelligenceService
 from services.intelligence.agents.core_agent_framework import BaseALwrityAgent, AgentAction
 from services.seo_tools.content_strategy_service import ContentStrategyService
+from services.analytics import PlatformAnalyticsService
 from services.intelligence.sif_agents import SharedLLMWrapper, LocalLLMWrapper
 try:
     from services.intelligence.sif_integration import SIFIntegrationService
@@ -888,7 +889,37 @@ class ContentStrategyAgent(BaseALwrityAgent):
                     "name": "sitemap_analyzer",
                     "description": "Analyzes website structure and publishing velocity via sitemap",
                     "target": self._sitemap_analyzer_tool
-                }
+                },
+                {
+                    "name": "gsc_low_ctr_queries",
+                    "description": "Returns low-CTR queries with evidence from cached GSC metrics",
+                    "target": self._cs_gsc_low_ctr_queries_tool
+                },
+                {
+                    "name": "gsc_striking_distance_queries",
+                    "description": "Returns striking-distance queries (positions ~8–20) with evidence",
+                    "target": self._cs_gsc_striking_distance_tool
+                },
+                {
+                    "name": "gsc_declining_queries",
+                    "description": "Returns period-over-period declining queries with evidence",
+                    "target": self._cs_gsc_declining_queries_tool
+                },
+                {
+                    "name": "gsc_low_ctr_pages",
+                    "description": "Returns low-CTR pages with top contributing queries",
+                    "target": self._cs_gsc_low_ctr_pages_tool
+                },
+                {
+                    "name": "gsc_cannibalization_candidates",
+                    "description": "Returns query→multiple-pages cannibalization candidates with target recommendation",
+                    "target": self._cs_gsc_cannibalization_candidates_tool
+                },
+                {
+                    "name": "default_content_gsc_plan",
+                    "description": "Runs a default first-pass plan using GSC signals (titles/meta, consolidation, refreshes)",
+                    "target": self._default_content_gsc_plan_tool
+                },
             ],
             max_iterations=8,
             system=self.get_effective_system_prompt(f"""You are the Content Strategy Agent for ALwrity user {self.user_id}.
@@ -903,12 +934,153 @@ class ContentStrategyAgent(BaseALwrityAgent):
             - Performance-based content improvements
             
             Use semantic analysis (SIF) and sitemap analysis to understand content context.
-            Always prioritize user goals and maintain brand consistency."""
+            Always prioritize user goals and maintain brand consistency.
+            
+            In your first pass, call 'default_content_gsc_plan' to ground your actions on live GSC signals."""
             )
         )
     
     # Tool Implementations
     
+    async def _cs_fetch_gsc_analytics(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
+        svc = PlatformAnalyticsService()
+        data = await svc.get_comprehensive_analytics(self.user_id, platforms=["gsc"], start_date=start_date, end_date=end_date)
+        gsc = data.get("gsc")
+        if not gsc or gsc.status != "success":
+            err = getattr(gsc, "error_message", None) if gsc else "No data"
+            raise RuntimeError(f"GSC analytics unavailable: {err}")
+        return {"metrics": gsc.metrics, "date_range": gsc.date_range}
+
+    async def _cs_gsc_low_ctr_queries_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10)); min_impr = int(context.get("min_impressions", 100)); min_clicks = int(context.get("min_clicks", 10)); ctr_threshold = float(context.get("ctr_threshold", 1.5))
+        start_date = context.get("start_date"); end_date = context.get("end_date")
+        try:
+            result = await self._cs_fetch_gsc_analytics(start_date, end_date)
+            tq = result["metrics"].get("top_queries", []) or []
+            items = [
+                {"query": r.get("query"), "clicks": r.get("clicks", 0), "impressions": r.get("impressions", 0), "ctr": r.get("ctr", 0.0), "position": r.get("position")}
+                for r in tq
+                if (r.get("impressions", 0) >= min_impr and r.get("clicks", 0) >= min_clicks and float(r.get("ctr", 0.0)) < ctr_threshold)
+            ]
+            items.sort(key=lambda x: (x.get("impressions", 0), -x.get("ctr", 100.0)), reverse=True)
+            return {"items": items[:limit], "range": result["date_range"], "source": "gsc_cache"}
+        except Exception as e:
+            logger.error(f"cs low_ctr_queries failed: {e}"); return {"error": str(e)}
+
+    async def _cs_gsc_striking_distance_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10)); min_impr = int(context.get("min_impressions", 100)); start_date = context.get("start_date"); end_date = context.get("end_date")
+        try:
+            result = await self._cs_fetch_gsc_analytics(start_date, end_date)
+            tq = result["metrics"].get("top_queries", []) or []
+            items = [
+                {"query": r.get("query"), "clicks": r.get("clicks", 0), "impressions": r.get("impressions", 0), "ctr": r.get("ctr", 0.0), "position": r.get("position")}
+                for r in tq
+                if (r.get("impressions", 0) >= min_impr and r.get("position") is not None and 8.0 <= float(r.get("position")) <= 20.0)
+            ]
+            items.sort(key=lambda x: (x.get("position") if x.get("position") is not None else 999, -x.get("impressions", 0)))
+            return {"items": items[:limit], "range": result["date_range"], "source": "gsc_cache"}
+        except Exception as e:
+            logger.error(f"cs striking_distance failed: {e}"); return {"error": str(e)}
+
+    async def _cs_gsc_declining_queries_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10)); min_prev_clicks = int(context.get("min_prev_clicks", 10)); min_drop_pct = float(context.get("min_drop_pct", 30.0))
+        start_date = context.get("start_date"); end_date = context.get("end_date")
+        try:
+            curr = await self._cs_fetch_gsc_analytics(start_date, end_date)
+            curr_range = curr["date_range"]; s = curr_range.get("start"); e = curr_range.get("end")
+            from datetime import datetime, timedelta; fmt = "%Y-%m-%d"
+            sd = datetime.strptime(s, fmt) if s else datetime.utcnow() - timedelta(days=30); ed = datetime.strptime(e, fmt) if e else datetime.utcnow()
+            days = max((ed - sd).days + 1, 1); prev_end = sd - timedelta(days=1); prev_start = prev_end - timedelta(days=days - 1)
+            prev = await self._cs_fetch_gsc_analytics(prev_start.strftime(fmt), prev_end.strftime(fmt))
+            curr_queries = {r.get("query"): r for r in (curr["metrics"].get("top_queries", []) or [])}
+            prev_queries = {r.get("query"): r for r in (prev["metrics"].get("top_queries", []) or [])}
+            items = []
+            for q, prev_row in prev_queries.items():
+                curr_row = curr_queries.get(q); 
+                if not curr_row: continue
+                prev_clicks = int(prev_row.get("clicks", 0) or 0); curr_clicks = int(curr_row.get("clicks", 0) or 0)
+                if prev_clicks >= min_prev_clicks and curr_clicks < prev_clicks:
+                    drop_pct = ((prev_clicks - curr_clicks) / prev_clicks) * 100.0
+                    if drop_pct >= min_drop_pct:
+                        items.append({"query": q, "prev_clicks": prev_clicks, "curr_clicks": curr_clicks, "drop_pct": round(drop_pct, 2)})
+            items.sort(key=lambda x: (x.get("drop_pct", 0), x.get("prev_clicks", 0)), reverse=True)
+            return {"items": items[:limit], "range": curr_range, "previous_range": prev["date_range"], "source": "gsc_cache"}
+        except Exception as e:
+            logger.error(f"cs declining_queries failed: {e}"); return {"error": str(e)}
+
+    async def _cs_gsc_low_ctr_pages_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10)); min_impr = int(context.get("min_impressions", 200)); ctr_threshold = float(context.get("ctr_threshold", 1.5))
+        start_date = context.get("start_date"); end_date = context.get("end_date")
+        try:
+            result = await self._cs_fetch_gsc_analytics(start_date, end_date)
+            tp = result["metrics"].get("top_pages", []) or []
+            items = []
+            for r in tp:
+                if (r.get("impressions", 0) >= min_impr and float(r.get("ctr", 0.0)) < ctr_threshold):
+                    items.append({"page": r.get("page"), "clicks": r.get("clicks", 0), "impressions": r.get("impressions", 0), "ctr": r.get("ctr", 0.0), "position": r.get("position"), "evidence_queries": r.get("queries", [])[:5]})
+            items.sort(key=lambda x: (x.get("impressions", 0), -x.get("ctr", 100.0)), reverse=True)
+            return {"items": items[:limit], "range": result["date_range"], "source": "gsc_cache"}
+        except Exception as e:
+            logger.error(f"cs low_ctr_pages failed: {e}"); return {"error": str(e)}
+
+    async def _cs_gsc_cannibalization_candidates_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10)); start_date = context.get("start_date"); end_date = context.get("end_date")
+        try:
+            result = await self._cs_fetch_gsc_analytics(start_date, end_date)
+            candidates = result["metrics"].get("cannibalization", []) or []
+            return {"items": candidates[:limit], "range": result["date_range"], "source": "gsc_cache"}
+        except Exception as e:
+            logger.error(f"cs cannibalization_candidates failed: {e}"); return {"error": str(e)}
+
+    async def _default_content_gsc_plan_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        start_date = context.get("start_date"); end_date = context.get("end_date")
+        try:
+            low_ctr_pages = await self._cs_gsc_low_ctr_pages_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+            cannibals = await self._cs_gsc_cannibalization_candidates_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+            striking = await self._cs_gsc_striking_distance_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+            declining = await self._cs_gsc_declining_queries_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+
+            actions = []
+            for p in low_ctr_pages.get("items", []):
+                actions.append({
+                    "type": "improve_titles_meta",
+                    "target": p.get("page"),
+                    "reason": f"Low CTR {p.get('ctr')}% with {p.get('impressions')} impressions",
+                    "evidence": p.get("evidence_queries", [])
+                })
+            for c in cannibals.get("items", []):
+                actions.append({
+                    "type": "consolidate/internal_link",
+                    "target": c.get("recommended_target_page"),
+                    "reason": f"Cannibalization on query '{c.get('query')}'",
+                    "pages": c.get("pages", [])
+                })
+            for q in striking.get("items", []):
+                actions.append({
+                    "type": "refresh_content",
+                    "target": "query",
+                    "query": q.get("query"),
+                    "reason": f"Striking distance at position {q.get('position')} with {q.get('impressions')} impressions"
+                })
+            for q in declining.get("items", []):
+                actions.append({
+                    "type": "refresh_content",
+                    "target": "query",
+                    "query": q.get("query"),
+                    "reason": f"Clicks decline {q.get('prev_clicks')}→{q.get('curr_clicks')} ({q.get('drop_pct')}%)"
+                })
+
+            return {
+                "plan_name": "Default Content Plan from GSC",
+                "range": {"current": {"start": start_date, "end": end_date}},
+                "actions": actions,
+                "source": "gsc_cache",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"default_content_gsc_plan failed: {e}")
+            return {"error": str(e)}
+
     async def _sitemap_analyzer_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Sitemap analysis tool using ContentStrategyService"""
         website_url = context.get('website_url')
@@ -1324,7 +1496,37 @@ class SEOOptimizationAgent(BaseALwrityAgent):
                     "name": "query_seo_knowledge_base",
                     "description": "Queries the SIF knowledge base for SEO dashboard data, GSC/Bing metrics, and semantic insights",
                     "target": self._query_seo_knowledge_base_tool
-                }
+                },
+                {
+                    "name": "gsc_low_ctr_queries",
+                    "description": "Returns low-CTR queries with evidence from cached GSC metrics",
+                    "target": self._gsc_low_ctr_queries_tool
+                },
+                {
+                    "name": "gsc_striking_distance_queries",
+                    "description": "Returns striking-distance queries (positions ~8–20) with evidence",
+                    "target": self._gsc_striking_distance_tool
+                },
+                {
+                    "name": "gsc_declining_queries",
+                    "description": "Returns period-over-period declining queries with evidence",
+                    "target": self._gsc_declining_queries_tool
+                },
+                {
+                    "name": "gsc_low_ctr_pages",
+                    "description": "Returns low-CTR pages with top contributing queries",
+                    "target": self._gsc_low_ctr_pages_tool
+                },
+                {
+                    "name": "gsc_cannibalization_candidates",
+                    "description": "Returns query→multiple-pages cannibalization candidates with target recommendation",
+                    "target": self._gsc_cannibalization_candidates_tool
+                },
+                {
+                    "name": "default_seo_gsc_plan",
+                    "description": "Runs a default first-pass SEO plan using GSC signals (titles/meta, consolidation, refreshes)",
+                    "target": self._default_seo_gsc_plan_tool
+                },
             ],
             max_iterations=15,
             system=self.get_effective_system_prompt(f"""You are the SEO Optimization Agent for ALwrity user {self.user_id}.
@@ -1340,6 +1542,7 @@ class SEOOptimizationAgent(BaseALwrityAgent):
             - Deep semantic search of SEO data (GSC, Bing, Audits)
             
             Focus on high-impact, low-effort optimizations first.
+            In your first pass, call 'default_seo_gsc_plan' to ground your actions on live GSC signals.
             Always maintain SEO best practices and user experience."""
             )
         )
@@ -1665,6 +1868,223 @@ class SEOOptimizationAgent(BaseALwrityAgent):
             "next_steps": ["Execute auto-fixes", "Review content gaps"],
             "timestamp": datetime.utcnow().isoformat()
         }
+
+    # GSC Insights Tools (Option B)
+    async def _fetch_gsc_analytics(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
+        svc = PlatformAnalyticsService()
+        data = await svc.get_comprehensive_analytics(self.user_id, platforms=["gsc"], start_date=start_date, end_date=end_date)
+        gsc = data.get("gsc")
+        if not gsc or gsc.status != "success":
+            err = getattr(gsc, "error_message", None) if gsc else "No data"
+            raise RuntimeError(f"GSC analytics unavailable: {err}")
+        return {
+            "metrics": gsc.metrics,
+            "date_range": gsc.date_range
+        }
+
+    async def _gsc_low_ctr_queries_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10))
+        min_impr = int(context.get("min_impressions", 100))
+        min_clicks = int(context.get("min_clicks", 10))
+        ctr_threshold = float(context.get("ctr_threshold", 1.5))
+        start_date = context.get("start_date")
+        end_date = context.get("end_date")
+        try:
+            result = await self._fetch_gsc_analytics(start_date, end_date)
+            tq = result["metrics"].get("top_queries", []) or []
+            items = [
+                {
+                    "query": r.get("query"),
+                    "clicks": r.get("clicks", 0),
+                    "impressions": r.get("impressions", 0),
+                    "ctr": r.get("ctr", 0.0),
+                    "position": r.get("position")
+                }
+                for r in tq
+                if (r.get("impressions", 0) >= min_impr and r.get("clicks", 0) >= min_clicks and float(r.get("ctr", 0.0)) < ctr_threshold)
+            ]
+            items.sort(key=lambda x: (x.get("impressions", 0), -x.get("ctr", 100.0)), reverse=True)
+            return {
+                "items": items[:limit],
+                "range": result["date_range"],
+                "source": "gsc_cache"
+            }
+        except Exception as e:
+            logger.error(f"low_ctr_queries tool failed: {e}")
+            return {"error": str(e)}
+
+    async def _gsc_striking_distance_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10))
+        min_impr = int(context.get("min_impressions", 100))
+        start_date = context.get("start_date")
+        end_date = context.get("end_date")
+        try:
+            result = await self._fetch_gsc_analytics(start_date, end_date)
+            tq = result["metrics"].get("top_queries", []) or []
+            items = [
+                {
+                    "query": r.get("query"),
+                    "clicks": r.get("clicks", 0),
+                    "impressions": r.get("impressions", 0),
+                    "ctr": r.get("ctr", 0.0),
+                    "position": r.get("position")
+                }
+                for r in tq
+                if (r.get("impressions", 0) >= min_impr and r.get("position") is not None and 8.0 <= float(r.get("position")) <= 20.0)
+            ]
+            items.sort(key=lambda x: (x.get("position") if x.get("position") is not None else 999, -x.get("impressions", 0)))
+            return {
+                "items": items[:limit],
+                "range": result["date_range"],
+                "source": "gsc_cache"
+            }
+        except Exception as e:
+            logger.error(f"striking_distance tool failed: {e}")
+            return {"error": str(e)}
+
+    async def _gsc_declining_queries_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10))
+        min_prev_clicks = int(context.get("min_prev_clicks", 10))
+        min_drop_pct = float(context.get("min_drop_pct", 30.0))
+        start_date = context.get("start_date")
+        end_date = context.get("end_date")
+        try:
+            curr = await self._fetch_gsc_analytics(start_date, end_date)
+            curr_range = curr["date_range"]
+            s = curr_range.get("start")
+            e = curr_range.get("end")
+            from datetime import datetime, timedelta
+            fmt = "%Y-%m-%d"
+            sd = datetime.strptime(s, fmt) if s else datetime.utcnow() - timedelta(days=30)
+            ed = datetime.strptime(e, fmt) if e else datetime.utcnow()
+            days = max((ed - sd).days + 1, 1)
+            prev_end = sd - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=days - 1)
+            prev = await self._fetch_gsc_analytics(prev_start.strftime(fmt), prev_end.strftime(fmt))
+            curr_queries = {r.get("query"): r for r in (curr["metrics"].get("top_queries", []) or [])}
+            prev_queries = {r.get("query"): r for r in (prev["metrics"].get("top_queries", []) or [])}
+            items = []
+            for q, prev_row in prev_queries.items():
+                curr_row = curr_queries.get(q)
+                if not curr_row:
+                    continue
+                prev_clicks = int(prev_row.get("clicks", 0) or 0)
+                curr_clicks = int(curr_row.get("clicks", 0) or 0)
+                if prev_clicks >= min_prev_clicks and curr_clicks < prev_clicks:
+                    drop_pct = ((prev_clicks - curr_clicks) / prev_clicks) * 100.0
+                    if drop_pct >= min_drop_pct:
+                        items.append({
+                            "query": q,
+                            "prev_clicks": prev_clicks,
+                            "curr_clicks": curr_clicks,
+                            "drop_pct": round(drop_pct, 2)
+                        })
+            items.sort(key=lambda x: (x.get("drop_pct", 0), x.get("prev_clicks", 0)), reverse=True)
+            return {
+                "items": items[:limit],
+                "range": curr_range,
+                "previous_range": prev["date_range"],
+                "source": "gsc_cache"
+            }
+        except Exception as e:
+            logger.error(f"declining_queries tool failed: {e}")
+            return {"error": str(e)}
+
+    async def _gsc_low_ctr_pages_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10))
+        min_impr = int(context.get("min_impressions", 200))
+        ctr_threshold = float(context.get("ctr_threshold", 1.5))
+        start_date = context.get("start_date")
+        end_date = context.get("end_date")
+        try:
+            result = await self._fetch_gsc_analytics(start_date, end_date)
+            tp = result["metrics"].get("top_pages", []) or []
+            items = []
+            for r in tp:
+                if (r.get("impressions", 0) >= min_impr and float(r.get("ctr", 0.0)) < ctr_threshold):
+                    items.append({
+                        "page": r.get("page"),
+                        "clicks": r.get("clicks", 0),
+                        "impressions": r.get("impressions", 0),
+                        "ctr": r.get("ctr", 0.0),
+                        "position": r.get("position"),
+                        "evidence_queries": r.get("queries", [])[:5]
+                    })
+            items.sort(key=lambda x: (x.get("impressions", 0), -x.get("ctr", 100.0)), reverse=True)
+            return {
+                "items": items[:limit],
+                "range": result["date_range"],
+                "source": "gsc_cache"
+            }
+        except Exception as e:
+            logger.error(f"low_ctr_pages tool failed: {e}")
+            return {"error": str(e)}
+
+    async def _gsc_cannibalization_candidates_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        limit = int(context.get("limit", 10))
+        start_date = context.get("start_date")
+        end_date = context.get("end_date")
+        try:
+            result = await self._fetch_gsc_analytics(start_date, end_date)
+            candidates = result["metrics"].get("cannibalization", []) or []
+            return {
+                "items": candidates[:limit],
+                "range": result["date_range"],
+                "source": "gsc_cache"
+            }
+        except Exception as e:
+            logger.error(f"cannibalization_candidates tool failed: {e}")
+            return {"error": str(e)}
+
+    async def _default_seo_gsc_plan_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        start_date = context.get("start_date")
+        end_date = context.get("end_date")
+        try:
+            low_ctr_pages = await self._gsc_low_ctr_pages_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+            cannibals = await self._gsc_cannibalization_candidates_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+            striking = await self._gsc_striking_distance_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+            declining = await self._gsc_declining_queries_tool({"start_date": start_date, "end_date": end_date, "limit": 10})
+
+            actions = []
+            for p in low_ctr_pages.get("items", []):
+                actions.append({
+                    "type": "update_titles_meta",
+                    "target_page": p.get("page"),
+                    "justification": f"Low CTR {p.get('ctr')}% with {p.get('impressions')} impressions",
+                    "evidence": p.get("evidence_queries", [])
+                })
+            for c in cannibals.get("items", []):
+                actions.append({
+                    "type": "consolidate/internal_link",
+                    "target_page": c.get("recommended_target_page"),
+                    "justification": f"Cannibalization on query '{c.get('query')}'",
+                    "pages": c.get("pages", [])
+                })
+            for q in striking.get("items", []):
+                actions.append({
+                    "type": "refresh_content",
+                    "target": "query",
+                    "query": q.get("query"),
+                    "justification": f"Striking distance at position {q.get('position')} with {q.get('impressions')} impressions"
+                })
+            for q in declining.get("items", []):
+                actions.append({
+                    "type": "refresh_content",
+                    "target": "query",
+                    "query": q.get("query"),
+                    "justification": f"Clicks decline {q.get('prev_clicks')}→{q.get('curr_clicks')} ({q.get('drop_pct')}%)"
+                })
+
+            return {
+                "plan_name": "Default SEO Plan from GSC",
+                "range": {"current": {"start": start_date, "end": end_date}},
+                "actions": actions,
+                "source": "gsc_cache",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"default_seo_gsc_plan failed: {e}")
+            return {"error": str(e)}
 
 
 class SocialAmplificationAgent(BaseALwrityAgent):

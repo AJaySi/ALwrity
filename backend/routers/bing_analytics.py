@@ -11,7 +11,7 @@ from loguru import logger
 from services.integrations.bing_oauth import BingOAuthService
 from middleware.auth_middleware import get_current_user
 
-router = APIRouter(prefix="/bing", tags=["Bing Analytics"])
+router = APIRouter(prefix="/api/bing", tags=["Bing Analytics"])
 
 # Initialize Bing OAuth service
 bing_service = BingOAuthService()
@@ -26,7 +26,7 @@ async def get_query_stats(
 ):
     """Get search query statistics for a Bing Webmaster site."""
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.get("id") or current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=401, detail="User not authenticated")
         
@@ -67,7 +67,7 @@ async def get_user_sites(
 ):
     """Get list of user's verified sites from Bing Webmaster."""
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.get("id") or current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=401, detail="User not authenticated")
         
@@ -98,7 +98,7 @@ async def get_query_stats_summary(
 ):
     """Get summarized query statistics for a Bing Webmaster site."""
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.get("id") or current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=401, detail="User not authenticated")
         

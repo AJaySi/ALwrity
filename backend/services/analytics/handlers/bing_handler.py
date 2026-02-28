@@ -4,7 +4,6 @@ Bing Webmaster Tools Analytics Handler
 Handles Bing Webmaster Tools analytics data retrieval and processing.
 """
 
-import requests
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from loguru import logger
@@ -16,13 +15,23 @@ from ..models.platform_types import PlatformType
 from .base_handler import BaseAnalyticsHandler
 from ..insights.bing_insights_service import BingInsightsService
 from services.bing_analytics_storage_service import BingAnalyticsStorageService
-import os
 
 
 from services.database import get_user_db_path
 
 class BingAnalyticsHandler(BaseAnalyticsHandler):
-    """Handler for Bing Webmaster Tools analytics"""
+    """
+    Handler for Bing Webmaster Tools analytics
+    
+    NOTE (2026-02-14): Known issues and directions
+    - Verified sites list can be empty despite valid tokens. This leads to partial/error states and prevents storage collection.
+      Direction: UI now provides a manual site picker (with primary website fallback from onboarding) to trigger storage collection,
+      and a future improvement should accept a target_url from /api/analytics/data to influence site selection here.
+    - Token state mismatch (status shows connected, analytics reports expired) can happen across cache boundaries.
+      Direction: The frontend auto-resyncs once after OAuth success and provides a backend cache clear endpoint.
+    - Storage-backed summary reads rely on a selected site; when sites are missing, selected_site is None.
+      Direction: Allow explicit site_url parameter in the analytics orchestrator to override selected_site resolution.
+    """
     
     def __init__(self):
         super().__init__(PlatformType.BING)
@@ -42,14 +51,22 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
         db_url = f'sqlite:///{db_path}'
         return BingInsightsService(db_url)
 
-    async def get_analytics(self, user_id: str, target_url: str = None, **kwargs) -> AnalyticsData:
+    async def get_analytics(self, user_id: str, target_url: str = None, start_date: str = None, end_date: str = None, **kwargs) -> AnalyticsData:
         """
         Get Bing Webmaster analytics data using Bing Webmaster API
         """
         self.log_analytics_request(user_id, "get_analytics")
         
-        # Check cache first
-        cached_data = analytics_cache.get('bing_analytics', user_id)
+        # Check cache first (include date range and target_url in key)
+        cache_key_parts = [user_id]
+        if target_url:
+            cache_key_parts.append(str(target_url))
+        if start_date:
+            cache_key_parts.append(str(start_date))
+        if end_date:
+            cache_key_parts.append(str(end_date))
+        cache_key = "_".join(cache_key_parts)
+        cached_data = analytics_cache.get('bing_analytics', cache_key)
         if cached_data:
             logger.info(f"Using cached Bing analytics for user {user_id}")
             return AnalyticsData(**cached_data)
@@ -107,9 +124,22 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
             site_url_for_storage = selected_site.get('Url', '') if selected_site else ''
             logger.info(f"Using Bing site URL: {site_url_for_storage}")
             
+            # Determine date range (defaults to last 30 days)
+            if not end_date:
+                end_date = datetime.now().strftime('%Y-%m-%d')
+            if not start_date:
+                start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            # Compute days for storage/insights services (at least 1)
+            try:
+                dt_end = datetime.strptime(end_date, '%Y-%m-%d')
+                dt_start = datetime.strptime(start_date, '%Y-%m-%d')
+                days_range = max(1, (dt_end - dt_start).days + 1)
+            except Exception:
+                days_range = 30
+
             query_stats = {}
             try:
-                stored = storage_service.get_analytics_summary(user_id, site_url_for_storage, days=30)
+                stored = storage_service.get_analytics_summary(user_id, site_url_for_storage, days=days_range)
                 if stored and isinstance(stored, dict):
                     query_stats = {
                         'total_clicks': stored.get('summary', {}).get('total_clicks', 0),
@@ -138,19 +168,20 @@ class BingAnalyticsHandler(BaseAnalyticsHandler):
                 'insights': insights,
                 'note': 'Bing Webmaster API provides SEO insights, search performance, and index status data'
             }
-            
-            if (not sites) or (metrics.get('total_impressions', 0) == 0 and metrics.get('total_clicks', 0) == 0):
-                result = self.create_partial_response(metrics=metrics, error_message='Connected to Bing; waiting for stored analytics or site verification')
+
+            if not sites:
+                result = self.create_partial_response(metrics=metrics, error_message='Connected to Bing; no verified sites found')
             else:
-                result = self.create_success_response(metrics=metrics)
+                result = self.create_success_response(metrics=metrics, date_range={'start': start_date, 'end': end_date})
             
-            analytics_cache.set('bing_analytics', user_id, result.__dict__)
+            analytics_cache.set('bing_analytics', cache_key, result.__dict__)
             return result
             
         except Exception as e:
             self.log_analytics_error(user_id, "get_analytics", e)
             error_result = self.create_error_response(str(e))
-            analytics_cache.set('bing_analytics', user_id, error_result.__dict__, ttl_override=300)
+            # Cache error briefly to prevent hammering but recover quickly
+            analytics_cache.set('bing_analytics', cache_key, error_result.__dict__, ttl_override=30)
             return error_result
 
     def _get_enhanced_insights_with_service(self, insights_service: BingInsightsService, user_id: str, site_url: str) -> Dict[str, Any]:

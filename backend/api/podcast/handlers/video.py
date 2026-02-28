@@ -14,7 +14,7 @@ import re
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-from services.database import get_db
+from services.database import get_session_for_user
 from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from api.story_writer.utils.auth import require_authenticated_user
 from services.wavespeed.infinitetalk import animate_scene_with_voiceover
@@ -105,6 +105,34 @@ def _execute_podcast_video_task(
         scene_number_match = re.search(r'\d+', request.scene_id)
         scene_number = int(scene_number_match.group()) if scene_number_match else 0
 
+        # Fetch project context (Bible & Analysis) from DB if not provided in request
+        from services.database import get_session_for_user
+        from services.podcast_service import PodcastService
+        
+        project_bible = request.bible
+        project_analysis = None
+        
+        try:
+            # Create a dedicated session for this background task
+            db = get_session_for_user(user_id)
+            try:
+                podcast_service = PodcastService(db)
+                # Fetch project directly from DB to get latest analysis/bible
+                project = podcast_service.get_project(user_id, request.project_id)
+                if project:
+                    # Use project bible if request didn't provide one
+                    if not project_bible and project.bible:
+                        project_bible = project.bible
+                    
+                    # Get analysis for better context
+                    if project.analysis:
+                        project_analysis = project.analysis
+                        logger.info(f"[Podcast] Loaded analysis for video context: {list(project_analysis.keys())}")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"[Podcast] Failed to fetch project context for video generation: {e}")
+
         # Prepare scene data for animation
         scene_data = {
             "scene_number": scene_number,
@@ -114,6 +142,8 @@ def _execute_podcast_video_task(
         story_context = {
             "project_id": request.project_id,
             "type": "podcast",
+            "bible": project_bible,
+            "analysis": project_analysis,
         }
 
         animation_result = animate_scene_with_voiceover(
@@ -207,8 +237,8 @@ def _execute_podcast_video_task(
 
 @router.post("/render/video", response_model=PodcastVideoGenerationResponse)
 async def generate_podcast_video(
-    request_obj: Request,
-    request: PodcastVideoGenerationRequest,
+    request: Request,
+    body: PodcastVideoGenerationRequest,
     background_tasks: BackgroundTasks,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -216,22 +246,46 @@ async def generate_podcast_video(
     Generate video for a podcast scene using WaveSpeed InfiniteTalk (avatar image + audio).
     Returns task_id for polling since InfiniteTalk can take up to 10 minutes.
     """
+    # Debug logging to identify "Depends object has no attribute get" error source
+    logger.info(f"[Podcast] generate_podcast_video called. current_user type: {type(current_user)}")
+    
+    # Check if current_user is a Depends object (FastAPI injection failure)
+    if hasattr(current_user, "dependency"):
+        logger.error(f"[Podcast] CRITICAL: current_user is a Depends object! Dependency injection failed.")
+        # Attempt to manually resolve or fail gracefully
+        auth_header = None
+        try:
+            if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
+                 auth_header = request.headers.get("Authorization")
+        except:
+            pass
+            
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.replace("Bearer ", "").strip()
+            # Manually verify token if dependency injection failed
+            from middleware.auth_middleware import clerk_auth
+            current_user = await clerk_auth.verify_token(token)
+            if not current_user:
+                raise HTTPException(status_code=401, detail="Authentication failed (manual recovery)")
+        else:
+             raise HTTPException(status_code=401, detail="Authentication failed (injection error)")
+
     user_id = require_authenticated_user(current_user)
 
     logger.info(
-        f"[Podcast] Starting video generation for project {request.project_id}, scene {request.scene_id}"
+        f"[Podcast] Starting video generation for project {body.project_id}, scene {body.scene_id}"
     )
 
     # Load audio bytes
-    audio_bytes = load_podcast_audio_bytes(request.audio_url)
+    audio_bytes = load_podcast_audio_bytes(body.audio_url)
 
     # Validate resolution
-    if request.resolution not in {"480p", "720p"}:
+    if body.resolution not in {"480p", "720p"}:
         raise HTTPException(status_code=400, detail="Resolution must be '480p' or '720p'.")
 
     # Load image bytes (scene image is required for video generation)
-    if request.avatar_image_url:
-        image_bytes = load_podcast_image_bytes(request.avatar_image_url)
+    if body.avatar_image_url:
+        image_bytes = load_podcast_image_bytes(body.avatar_image_url)
     else:
         # Scene-specific image should be generated before video generation
         raise HTTPException(
@@ -240,9 +294,9 @@ async def generate_podcast_video(
         )
 
     mask_image_bytes = None
-    if request.mask_image_url:
+    if body.mask_image_url:
         try:
-            mask_image_bytes = load_podcast_image_bytes(request.mask_image_url)
+            mask_image_bytes = load_podcast_image_bytes(body.mask_image_url)
         except Exception as e:
             logger.error(f"[Podcast] Failed to load mask image: {e}")
             raise HTTPException(
@@ -251,7 +305,9 @@ async def generate_podcast_video(
             )
 
     # Validate subscription limits
-    db = next(get_db())
+    db = get_session_for_user(user_id)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database session unavailable for user.")
     try:
         pricing_service = PricingService(db)
         validate_scene_animation_operation(pricing_service=pricing_service, user_id=user_id)
@@ -260,16 +316,20 @@ async def generate_podcast_video(
 
     # Extract token for authenticated URL building
     auth_token = None
-    auth_header = request_obj.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        auth_token = auth_header.replace("Bearer ", "").strip()
+    try:
+        if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                auth_token = auth_header.replace("Bearer ", "").strip()
+    except Exception as e:
+        logger.warning(f"[Podcast] Failed to extract auth token from headers: {e}")
 
     # Create async task
     task_id = task_manager.create_task("podcast_video_generation")
     background_tasks.add_task(
         _execute_podcast_video_task,
         task_id=task_id,
-        request=request,
+        request=body,
         user_id=user_id,
         image_bytes=image_bytes,
         audio_bytes=audio_bytes,

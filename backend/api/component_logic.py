@@ -641,25 +641,18 @@ async def complete_style_detection(
             return await loop.run_in_executor(None, partial(style_logic.perform_seo_audit, request.url, crawl_result['content']))
         
         async def run_sitemap_analysis():
-            """Run AI sitemap analysis for home page"""
             if not request.url:
                 return None
-            try:
-                # Discover sitemap URL
-                sitemap_url = await sitemap_service.discover_sitemap_url(request.url)
-                if sitemap_url:
-                     # Analyze sitemap with AI insights
-                     return await sitemap_service.analyze_sitemap(
-                         sitemap_url=sitemap_url,
-                         analyze_content_trends=True,
-                         analyze_publishing_patterns=True,
-                         include_ai_insights=True,
-                         user_id=user_id
-                     )
-                return None
-            except Exception as e:
-                logger.error(f"Sitemap analysis failed: {e}")
-                return None
+            sitemap_url = await sitemap_service.discover_sitemap_url(request.url)
+            if sitemap_url:
+                return await sitemap_service.analyze_sitemap(
+                    sitemap_url=sitemap_url,
+                    analyze_content_trends=True,
+                    analyze_publishing_patterns=True,
+                    include_ai_insights=True,
+                    user_id=user_id
+                )
+            return None
 
         # Execute style, patterns, SEO analysis and sitemap analysis in parallel
         style_analysis, patterns_result, seo_audit_result, sitemap_result = await asyncio.gather(
@@ -710,15 +703,17 @@ async def complete_style_detection(
         elif isinstance(seo_audit_result, Exception):
             logger.warning(f"SEO audit failed: {seo_audit_result}")
 
-        # Process sitemap analysis result
         sitemap_analysis = None
+        sitemap_warning = None
         if sitemap_result and not isinstance(sitemap_result, Exception):
             sitemap_analysis = sitemap_result
         elif isinstance(sitemap_result, Exception):
             logger.warning(f"Sitemap analysis failed: {sitemap_result}")
+            sitemap_warning = f"Sitemap analysis failed: {sitemap_result}"
 
         # Step 4: Generate guidelines (depends on style_analysis, must run after)
         style_guidelines = None
+        guidelines_result = None
         if request.include_guidelines:
             loop = asyncio.get_event_loop()
             guidelines_result = await loop.run_in_executor(
@@ -728,10 +723,14 @@ async def complete_style_detection(
             if guidelines_result and guidelines_result.get('success'):
                 style_guidelines = guidelines_result.get('guidelines')
         
-        # Check if there's a warning about fallback data
-        warning = None
+        warning_parts = []
         if style_analysis and 'warning' in style_analysis:
-            warning = style_analysis['warning']
+            warning_parts.append(style_analysis['warning'])
+        if request.include_guidelines and guidelines_result and not guidelines_result.get('success') and guidelines_result.get('error'):
+            warning_parts.append(f"Guidelines generation failed: {guidelines_result.get('error')}")
+        if sitemap_warning:
+            warning_parts.append(sitemap_warning)
+        warning = " | ".join(warning_parts) if warning_parts else None
         
         # Prepare response data
         response_data = {

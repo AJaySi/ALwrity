@@ -55,17 +55,17 @@ function estimateYouTubeTokens(
   durationType?: DurationType | string | null
 ): number {
   const normalizedDuration = validateDurationType(durationType);
-  
+
   const baseEstimates = {
     video_planning: {
-      shorts: 9000,    // Includes scenes in one optimized call
-      medium: 6000,    // Plan only
-      long: 7000,      // Plan only (longer prompts)
+      shorts: 7000,
+      medium: 5000,
+      long: 8000,
     },
     scene_building: {
-      shorts: 0,       // Already included in planning for shorts
-      medium: 6500,    // Base generation + 1 batch enhancement
-      long: 10000,     // Base generation + 2 batch enhancements
+      shorts: 0,
+      medium: 5000,
+      long: 9000,
     },
   };
 
@@ -112,13 +112,12 @@ export function buildVideoPlanningOperation(
   durationType?: DurationType | string | null,
   providerOverride?: string
 ): PreflightOperation {
-  // Default to gemini (most common provider)
-  // Backend will use actual provider from GPT_PROVIDER env var regardless
-  const provider = providerOverride || 'gemini';
+  const provider = providerOverride || 'huggingface';
   const normalizedDuration = validateDurationType(durationType);
   
   return {
     provider: mapProviderToEnum(provider),
+    model: 'gemini-2.5-flash',
     operation_type: 'video_planning',
     tokens_requested: estimateYouTubeTokens('video_planning', normalizedDuration),
     actual_provider_name: getActualProviderName(provider),
@@ -139,13 +138,14 @@ export function buildSceneBuildingOperation(
   providerOverride?: string
 ): PreflightOperation {
   const normalizedDuration = validateDurationType(durationType);
-  const provider = providerOverride || 'gemini';
+  const provider = providerOverride || 'huggingface';
   
   // For shorts, scenes are included in planning, so no separate operation needed
   if (normalizedDuration === 'shorts' && hasPlan) {
     // Return minimal operation (scenes already generated)
     return {
       provider: mapProviderToEnum(provider),
+      model: 'gemini-2.5-flash',
       operation_type: 'scene_building',
       tokens_requested: 0, // Already included in planning
       actual_provider_name: getActualProviderName(provider),
@@ -154,6 +154,7 @@ export function buildSceneBuildingOperation(
 
   return {
     provider: mapProviderToEnum(provider),
+    model: 'gemini-2.5-flash',
     operation_type: 'scene_building',
     tokens_requested: estimateYouTubeTokens('scene_building', normalizedDuration),
     actual_provider_name: getActualProviderName(provider),
@@ -168,6 +169,7 @@ export function buildSceneBuildingOperation(
 export function buildImageEditingOperation(): PreflightOperation {
   return {
     provider: 'image_edit',
+    model: 'default',
     operation_type: 'image_editing',
     tokens_requested: 0, // Image operations are not token-based
     actual_provider_name: 'image_edit',

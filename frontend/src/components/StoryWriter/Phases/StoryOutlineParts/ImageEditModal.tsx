@@ -17,6 +17,7 @@ interface ImageEditModalProps {
   imageWidth?: number;
   imageHeight?: number;
   imageModel?: string | null;
+  onOpenAdvancedSettings?: (prompt: string) => void;
 }
 
 const ImageEditModal: React.FC<ImageEditModalProps> = ({ 
@@ -31,6 +32,7 @@ const ImageEditModal: React.FC<ImageEditModalProps> = ({
   imageWidth = 1024,
   imageHeight = 1024,
   imageModel,
+  onOpenAdvancedSettings,
 }) => {
   const [isRegenerating, setIsRegenerating] = React.useState(false);
   const [regenerateError, setRegenerateError] = React.useState<string | null>(null);
@@ -133,7 +135,6 @@ const ImageEditModal: React.FC<ImageEditModalProps> = ({
           <Divider sx={{ my: 1 }} />
 
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            {/* AI Prompt Optimizer */}
             <Button
               variant="outlined"
               size="medium"
@@ -145,7 +146,6 @@ const ImageEditModal: React.FC<ImageEditModalProps> = ({
               {isOptimizing ? 'Optimizing...' : 'AI Prompt Optimizer'}
             </Button>
 
-            {/* Regenerate Scene - Active with cost estimation */}
             {onRegenerate && (
               <OperationButton
                 operation={{
@@ -167,6 +167,20 @@ const ImageEditModal: React.FC<ImageEditModalProps> = ({
                 loading={isRegenerating}
                 sx={{ flex: 1, minWidth: '200px' }}
               />
+            )}
+            {onOpenAdvancedSettings && (
+              <Button
+                variant="text"
+                size="medium"
+                onClick={() => {
+                  if (!value.trim() || isOptimizing || isRegenerating) return;
+                  onOpenAdvancedSettings(value.trim());
+                }}
+                disabled={isOptimizing || isRegenerating || !value.trim()}
+                sx={{ minWidth: '200px' }}
+              >
+                Advanced image settings
+              </Button>
             )}
           </Box>
         </Box>

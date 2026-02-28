@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   StoryGenerationRequest,
-  StoryPremiseResponse,
-  StoryOutlineResponse,
-  StoryContentResponse,
-  StoryFullGenerationResponse,
+  StoryProjectSummary,
+  CreateStoryProjectRequest,
+  UpdateStoryProjectRequest,
+  storyWriterApi,
 } from '../services/storyWriterApi';
 
 export interface SceneAnimationResume {
@@ -15,6 +15,12 @@ export interface SceneAnimationResume {
 }
 
 export interface StoryWriterState {
+  // Persistent project identity
+  projectId: string | null;
+  projectTitle: string | null;
+  // Mode and template selection
+  storyMode: 'marketing' | 'pure';
+  storyTemplate: 'product_story' | 'brand_manifesto' | 'founder_story' | 'customer_story' | null;
   // Story parameters (Setup phase)
   persona: string;
   storySetting: string;
@@ -48,6 +54,9 @@ export interface StoryWriterState {
   audioSlow: boolean;
   audioRate: number;
 
+  // Anime-specific structured data
+  animeBible: any | null;
+
   // Generated content
   premise: string | null;
   outline: string | null;
@@ -55,6 +64,7 @@ export interface StoryWriterState {
   isOutlineStructured: boolean;
   storyContent: string | null;
   isComplete: boolean;
+  autoGenerateOnWriting: boolean;
   sceneImages: Map<number, string> | null; // Generated image URLs by scene number
   sceneAudio: Map<number, string> | null; // Generated audio URLs by scene number
   storyVideo: string | null; // Generated video URL
@@ -75,6 +85,10 @@ export interface StoryWriterState {
 }
 
 const DEFAULT_STATE: Partial<StoryWriterState> = {
+  projectId: null,
+  projectTitle: null,
+  storyMode: 'marketing',
+  storyTemplate: 'product_story',
   persona: '',
   storySetting: '',
   characters: '',
@@ -109,6 +123,7 @@ const DEFAULT_STATE: Partial<StoryWriterState> = {
   isOutlineStructured: false,
   storyContent: null,
   isComplete: false,
+  autoGenerateOnWriting: false,
   sceneImages: null,
   sceneAudio: null,
   storyVideo: null,
@@ -122,6 +137,7 @@ const DEFAULT_STATE: Partial<StoryWriterState> = {
   generationMessage: null,
   isLoading: false,
   error: null,
+  animeBible: null,
 };
 
 // Mapping for old values to new values (for migration)
@@ -212,6 +228,7 @@ export const useStoryWriterState = () => {
         sceneAnimationResumables: persistableState.sceneAnimationResumables
           ? Array.from(persistableState.sceneAnimationResumables.entries())
           : null,
+        animeBible: persistableState.animeBible || null,
       };
       
       localStorage.setItem('story_writer_state', JSON.stringify(serializableState));
@@ -221,6 +238,20 @@ export const useStoryWriterState = () => {
   }, [state]);
 
   // Setters
+  const setStoryMode = useCallback((storyMode: 'marketing' | 'pure') => {
+    setState((prev) => ({ ...prev, storyMode }));
+  }, []);
+
+  const setStoryTemplate = useCallback(
+    (storyTemplate: 'product_story' | 'brand_manifesto' | 'founder_story' | 'customer_story' | null) => {
+      setState((prev) => ({ ...prev, storyTemplate }));
+    },
+  []);
+
+  const setAnimeBible = useCallback((animeBible: any | null) => {
+    setState((prev) => ({ ...prev, animeBible }));
+  }, []);
+
   const setPersona = useCallback((persona: string) => {
     setState((prev) => ({ ...prev, persona }));
   }, []);
@@ -388,6 +419,10 @@ export const useStoryWriterState = () => {
     setState((prev) => ({ ...prev, isComplete: complete }));
   }, []);
 
+  const setAutoGenerateOnWriting = useCallback((autoGenerate: boolean) => {
+    setState((prev) => ({ ...prev, autoGenerateOnWriting: autoGenerate }));
+  }, []);
+
   const setCurrentTaskId = useCallback((taskId: string | null) => {
     setState((prev) => ({ ...prev, currentTaskId: taskId }));
   }, []);
@@ -407,6 +442,195 @@ export const useStoryWriterState = () => {
   const setError = useCallback((error: string | null) => {
     setState((prev) => ({ ...prev, error }));
   }, []);
+
+  const setProjectMeta = useCallback((projectId: string | null, title: string | null) => {
+    setState((prev) => ({ ...prev, projectId, projectTitle: title }));
+  }, []);
+
+  const mapProjectToState = useCallback((project: StoryProjectSummary): StoryWriterState => {
+    const outlineScenes = project.outline && Array.isArray((project.outline as any).scenes)
+      ? (project.outline as any).scenes
+      : null;
+
+    return {
+      ...(DEFAULT_STATE as StoryWriterState),
+      projectId: project.project_id,
+      projectTitle: project.title || null,
+      storyMode: (project.story_mode as any) || (DEFAULT_STATE.storyMode as 'marketing' | 'pure'),
+      storyTemplate: (project.story_template as any) || DEFAULT_STATE.storyTemplate || null,
+      premise: (project.setup as any)?.premise || null,
+      persona: (project.setup as any)?.persona || '',
+      storySetting: (project.setup as any)?.story_setting || '',
+      characters: (project.setup as any)?.character_input || '',
+      plotElements: (project.setup as any)?.plot_elements || '',
+      writingStyle: (project.setup as any)?.writing_style || (DEFAULT_STATE.writingStyle as string),
+      storyTone: (project.setup as any)?.story_tone || (DEFAULT_STATE.storyTone as string),
+      narrativePOV: (project.setup as any)?.narrative_pov || (DEFAULT_STATE.narrativePOV as string),
+      audienceAgeGroup:
+        (project.setup as any)?.audience_age_group || (DEFAULT_STATE.audienceAgeGroup as string),
+      contentRating:
+        (project.setup as any)?.content_rating || (DEFAULT_STATE.contentRating as string),
+      endingPreference:
+        (project.setup as any)?.ending_preference || (DEFAULT_STATE.endingPreference as string),
+      storyLength: (project.setup as any)?.story_length || (DEFAULT_STATE.storyLength as string),
+      enableExplainer:
+        (project.setup as any)?.enable_explainer ??
+        (DEFAULT_STATE.enableExplainer as boolean),
+      enableIllustration:
+        (project.setup as any)?.enable_illustration ??
+        (DEFAULT_STATE.enableIllustration as boolean),
+      enableNarration:
+        (project.setup as any)?.enable_narration ??
+        (DEFAULT_STATE.enableNarration as boolean),
+      enableVideoNarration:
+        (project.setup as any)?.enable_video_narration ??
+        (DEFAULT_STATE.enableVideoNarration as boolean),
+      outline: (project.outline as any)?.outline_text || null,
+      outlineScenes,
+      isOutlineStructured: Boolean(outlineScenes && outlineScenes.length > 0),
+      storyContent: (project.story_content as any)?.story || null,
+      isComplete: project.is_complete,
+      animeBible: project.anime_bible || null,
+      sceneImages: null,
+      sceneAudio: null,
+      storyVideo: (project.media_state as any)?.story_video || null,
+      sceneHdVideos: null,
+      sceneAnimatedVideos: null,
+      sceneAnimationResumables: null,
+      hdVideoGenerationStatus: (project.media_state as any)?.hd_video_status ||
+        (DEFAULT_STATE.hdVideoGenerationStatus as any),
+      currentHdSceneIndex:
+        (project.media_state as any)?.current_hd_scene_index ||
+        (DEFAULT_STATE.currentHdSceneIndex as number),
+      currentTaskId: (project.media_state as any)?.current_task_id || null,
+      generationProgress:
+        (project.media_state as any)?.generation_progress ||
+        (DEFAULT_STATE.generationProgress as number),
+      generationMessage:
+        (project.media_state as any)?.generation_message ||
+        (DEFAULT_STATE.generationMessage as string | null),
+      isLoading: false,
+      error: null,
+      autoGenerateOnWriting: DEFAULT_STATE.autoGenerateOnWriting as boolean,
+      audioProvider: DEFAULT_STATE.audioProvider as string,
+      audioLang: DEFAULT_STATE.audioLang as string,
+      audioSlow: DEFAULT_STATE.audioSlow as boolean,
+      audioRate: DEFAULT_STATE.audioRate as number,
+      imageProvider: DEFAULT_STATE.imageProvider as string | null,
+      imageWidth: DEFAULT_STATE.imageWidth as number,
+      imageHeight: DEFAULT_STATE.imageHeight as number,
+      imageModel: DEFAULT_STATE.imageModel as string | null,
+      videoFps: DEFAULT_STATE.videoFps as number,
+      videoTransitionDuration: DEFAULT_STATE.videoTransitionDuration as number,
+    };
+  }, []);
+
+  const loadProjectFromDb = useCallback(async (projectId: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const project = await storyWriterApi.loadStoryProject(projectId);
+      setState(() => mapProjectToState(project));
+    } catch (error) {
+      console.error('Error loading story project from database:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [mapProjectToState, setIsLoading, setError]);
+
+  const saveProjectToDb = useCallback(async () => {
+    if (!state.projectId) {
+      return;
+    }
+    try {
+      const payload: UpdateStoryProjectRequest = {
+        title: state.projectTitle || undefined,
+        story_mode: state.storyMode,
+        story_template: state.storyTemplate,
+        setup: {
+          premise: state.premise,
+          persona: state.persona,
+          story_setting: state.storySetting,
+          character_input: state.characters,
+          plot_elements: state.plotElements,
+          writing_style: state.writingStyle,
+          story_tone: state.storyTone,
+          narrative_pov: state.narrativePOV,
+          audience_age_group: state.audienceAgeGroup,
+          content_rating: state.contentRating,
+          ending_preference: state.endingPreference,
+          story_length: state.storyLength,
+          enable_explainer: state.enableExplainer,
+          enable_illustration: state.enableIllustration,
+          enable_narration: state.enableNarration,
+          enable_video_narration: state.enableVideoNarration,
+        },
+        outline: state.outline
+          ? {
+              outline_text: state.outline,
+              scenes: state.outlineScenes || [],
+            }
+          : undefined,
+        scenes: state.outlineScenes || undefined,
+        story_content: state.storyContent ? { story: state.storyContent } : undefined,
+        anime_bible: state.animeBible || undefined,
+        media_state: state.storyVideo
+          ? {
+              story_video: state.storyVideo,
+              hd_video_status: state.hdVideoGenerationStatus,
+              current_hd_scene_index: state.currentHdSceneIndex,
+              current_task_id: state.currentTaskId,
+              generation_progress: state.generationProgress,
+              generation_message: state.generationMessage,
+            }
+          : undefined,
+        is_complete: state.isComplete,
+      };
+
+      await storyWriterApi.updateStoryProject(state.projectId, payload);
+    } catch (error) {
+      console.error('Error saving story project to database:', error);
+    }
+  }, [state]);
+
+  const initializeProject = useCallback(
+    async (projectId: string, title: string | null, initialSetup?: CreateStoryProjectRequest) => {
+      try {
+        const payload: CreateStoryProjectRequest = {
+          project_id: projectId,
+          title: title || undefined,
+          story_mode: state.storyMode,
+          story_template: state.storyTemplate,
+          setup: initialSetup?.setup || {
+            premise: state.premise,
+            persona: state.persona,
+            story_setting: state.storySetting,
+            character_input: state.characters,
+            plot_elements: state.plotElements,
+            writing_style: state.writingStyle,
+            story_tone: state.storyTone,
+            narrative_pov: state.narrativePOV,
+            audience_age_group: state.audienceAgeGroup,
+            content_rating: state.contentRating,
+            ending_preference: state.endingPreference,
+            story_length: state.storyLength,
+            enable_explainer: state.enableExplainer,
+            enable_illustration: state.enableIllustration,
+            enable_narration: state.enableNarration,
+            enable_video_narration: state.enableVideoNarration,
+          },
+        };
+
+        await storyWriterApi.createStoryProject(payload);
+        setProjectMeta(projectId, title);
+      } catch (error) {
+        console.error('Error creating story project in database:', error);
+        setProjectMeta(projectId, title);
+      }
+    },
+    [state, setProjectMeta],
+  );
 
   // Helper to get request object
   const getRequest = useCallback((): StoryGenerationRequest => {
@@ -439,30 +663,29 @@ export const useStoryWriterState = () => {
       audio_lang: state.audioLang,
       audio_slow: state.audioSlow,
       audio_rate: state.audioRate,
+      anime_bible: state.animeBible || null,
     };
   }, [state]);
 
   // Reset state
   const resetState = useCallback(() => {
     setState(DEFAULT_STATE as StoryWriterState);
-    // Clear story writer state from localStorage
-    localStorage.removeItem('story_writer_state');
-    // Clear phase navigation from localStorage
     try {
       if (typeof window !== 'undefined') {
+        localStorage.removeItem('story_writer_state');
         localStorage.removeItem('storywriter_current_phase');
         localStorage.removeItem('storywriter_user_selected_phase');
       }
     } catch (error) {
-      console.error('Error clearing phase navigation from localStorage:', error);
+      console.error('Error clearing story studio state from localStorage:', error);
     }
   }, []);
 
   return {
-    // State
     ...state,
-
-    // Setters
+    setStoryMode,
+    setStoryTemplate,
+    setAnimeBible,
     setPersona,
     setStorySetting,
     setCharacters,
@@ -508,8 +731,14 @@ export const useStoryWriterState = () => {
     setIsLoading,
     setError,
 
+    setAutoGenerateOnWriting,
+
     // Helpers
     getRequest,
     resetState,
+    setProjectMeta,
+    loadProjectFromDb,
+    saveProjectToDb,
+    initializeProject,
   };
 };

@@ -11,6 +11,8 @@ import json
 from middleware.auth_middleware import get_current_user
 from api.story_writer.utils.auth import require_authenticated_user
 from services.llm_providers.main_text_generation import llm_text_gen
+from services.podcast_bible_service import PodcastBibleService
+from models.podcast_bible_models import PodcastBible
 from loguru import logger
 from ..models import (
     PodcastScriptRequest,
@@ -62,7 +64,38 @@ async def generate_podcast_script(
             logger.warning(f"Failed to parse research context: {exc}")
             research_context = ""
 
+    # Extract Podcast Bible context for hyper-personalization
+    bible_context = ""
+    if request.bible:
+        try:
+            bible_service = PodcastBibleService()
+            bible_obj = PodcastBible(**request.bible)
+            bible_context = bible_service.serialize_bible(bible_obj)
+        except Exception as exc:
+            logger.warning(f"Failed to serialize podcast bible: {exc}")
+
+    # Extract Analysis and Outline context for grounding
+    analysis_context = ""
+    if request.analysis:
+        analysis_context = f"""
+TARGET AUDIENCE: {request.analysis.get('audience', 'General')}
+CONTENT TYPE: {request.analysis.get('contentType', 'Conversational')}
+TOP KEYWORDS: {', '.join(request.analysis.get('topKeywords', []))}
+"""
+
+    outline_context = ""
+    if request.outline:
+        outline_context = f"""
+REFINED EPISODE OUTLINE (Follow this structure closely):
+Title: {request.outline.get('title', 'N/A')}
+Segments: {' | '.join(request.outline.get('segments', []))}
+"""
+
     prompt = f"""You are an expert podcast script planner. Create natural, conversational podcast scenes.
+
+{f"PODCAST BIBLE (Hyper-Personalization Context):\n{bible_context}\n" if bible_context else ""}
+{f"ANALYSIS CONTEXT:\n{analysis_context}\n" if analysis_context else ""}
+{f"REFINED OUTLINE:\n{outline_context}\n" if outline_context else ""}
 
 Podcast Idea: "{request.idea}"
 Duration: ~{request.duration_minutes} minutes
@@ -83,11 +116,13 @@ Return JSON with:
     * Mark "emphasis": true for key statistics or important points
 
 Guidelines:
-- Write for spoken delivery: conversational, natural, with contractions
-- Use research insights naturally - weave statistics into dialogue, don't just list them
-- Vary emotion per scene based on content
-- Ensure scenes match target duration: aim for ~2.5 words per second of audio
-- Keep it engaging and informative, like a real podcast conversation
+- Write for spoken delivery: conversational, natural, with contractions.
+- Follow the interaction tone specified in the Bible.
+- Ensure the Host persona matches the background and personality traits from the Bible.
+- Structure the intro and outro scenes according to the Bible's "Intro Format" and "Outro Format".
+- Adhere to any constraints mentioned in the Bible.
+- Use insights from the Research Context to ground the conversation in facts.
+- IMPORTANT: Follow the REFINED OUTLINE segments as the primary structure for the episode.
 """
 
     try:

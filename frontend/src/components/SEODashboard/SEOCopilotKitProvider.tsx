@@ -18,12 +18,6 @@ const SEOCopilotKitProvider: React.FC<SEOCopilotKitProviderProps> = ({
   children, 
   enableDebugMode = false 
 }) => {
-  const { 
-    loadPersonalizationData, 
-    error, 
-    clearError,
-    isLoading 
-  } = useSEOCopilotStore();
   const { analysisData } = useSEOCopilotStore();
 
   // Get the CopilotKit API key from the same sources as App.tsx
@@ -107,40 +101,11 @@ const SEOCopilotKitProvider: React.FC<SEOCopilotKitProviderProps> = ({
 
   // Initialize the provider
   useEffect(() => {
-    const initializeProvider = async () => {
-      try {
-        // Load personalization data on mount
-        await loadPersonalizationData();
-        
-        if (enableDebugMode) {
-          console.log('🔧 SEO CopilotKit Provider initialized successfully');
-          console.log('🔑 CopilotKit API Key:', publicApiKey ? 'Configured' : 'Missing');
-        }
-      } catch (error) {
-        console.error('❌ Failed to initialize SEO CopilotKit Provider:', error);
-      }
-    };
-
-    initializeProvider();
-  }, [loadPersonalizationData, enableDebugMode, publicApiKey]);
-
-  // Error handling
-  useEffect(() => {
-    if (error && enableDebugMode) {
-      console.error('🚨 SEO CopilotKit Error:', error);
+    if (enableDebugMode) {
+      console.log('🔧 SEO CopilotKit Provider initialized successfully');
+      console.log('🔑 CopilotKit API Key:', publicApiKey ? 'Configured' : 'Missing');
     }
-  }, [error, enableDebugMode]);
-
-  // Auto-clear errors after 5 seconds
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        clearError();
-      }, 5000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [error, clearError]);
+  }, [enableDebugMode, publicApiKey]);
 
   return (
     <CopilotKit publicApiKey={publicApiKey}>
@@ -193,33 +158,6 @@ Focus on actionable recommendations and use the registered tools.
           <SEOCopilotContext>
             {/* SEO CopilotKit Actions - Defines available actions */}
             <SEOCopilotActions />
-            
-            {/* Loading indicator */}
-            {isLoading && (
-              <div className="seo-copilotkit-loading">
-                <div className="loading-spinner">
-                  <div className="spinner"></div>
-                  <p>Loading SEO Assistant...</p>
-                </div>
-              </div>
-            )}
-            
-            {/* Error display */}
-            {error && (
-              <div className="seo-copilotkit-error">
-                <div className="error-message">
-                  <span className="error-icon">⚠️</span>
-                  <span className="error-text">{error}</span>
-                  <button 
-                    className="error-dismiss"
-                    onClick={clearError}
-                    aria-label="Dismiss error"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-            )}
             
             {/* Main content */}
             <div className="seo-copilotkit-content">

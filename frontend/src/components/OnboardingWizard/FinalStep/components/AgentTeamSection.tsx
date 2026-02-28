@@ -22,6 +22,7 @@ import {
   Chip,
   Stack,
   Divider,
+  Tooltip,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import GroupIcon from "@mui/icons-material/Group";
@@ -30,6 +31,7 @@ import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import SaveIcon from "@mui/icons-material/Save";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 
 import {
   aiOptimizeAgentProfile,
@@ -242,18 +244,168 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
   };
 
   return (
-    <Paper sx={{ mt: 3, p: 3, borderRadius: 3 }}>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-        <GroupIcon />
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          Meet {websiteName || "Your"} AI Marketing Team
-        </Typography>
-      </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        These agents work together to help you plan, execute, and improve your digital marketing. Tools and responsibilities are locked for safety and reliability.
-      </Typography>
+    <Paper
+      elevation={0}
+      sx={{
+        mt: 3,
+        p: 3,
+        borderRadius: 4,
+        border: "1px solid #e2e8f0",
+        bgcolor: "#ffffff",
+        color: "#0f172a",
+        boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+        "& .MuiTypography-root": {
+          color: "#111827 !important",
+          WebkitTextFillColor: "#111827",
+        },
+        "& .MuiTypography-body2": {
+          color: "#4b5563 !important",
+        },
+        "& .MuiTypography-caption": {
+          color: "#6b7280 !important",
+        },
+        "& .MuiFormLabel-root": {
+          color: "#4b5563 !important",
+        },
+        "& .MuiFormLabel-root.Mui-focused": {
+          color: "#4f46e5 !important",
+        },
+        "& .MuiInputBase-input": {
+          color: "#111827 !important",
+        },
+        "& .MuiOutlinedInput-root": {
+          bgcolor: "#ffffff !important",
+          color: "#111827 !important",
+        },
+        "& .MuiAccordionDetails-root": {
+          bgcolor: "#ffffff !important",
+        },
+      }}
+    >
+      <Box
+        sx={{
+          mb: 3,
+          p: 2.5,
+          borderRadius: 3,
+          background: "linear-gradient(135deg, #0f172a 0%, #312e81 40%, #4f46e5 100%)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 2,
+          boxShadow: "0 12px 30px rgba(15,23,42,0.45)",
+          "& .MuiTypography-root": {
+            color: "#e5e7eb !important",
+            WebkitTextFillColor: "#e5e7eb",
+          },
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Box
+            sx={{
+              width: 40,
+              height: 40,
+              borderRadius: "999px",
+              bgcolor: "rgba(129,140,248,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#e5e7eb",
+            }}
+          >
+            <GroupIcon />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: 0.2 }}>
+              Meet {websiteName || "Your"} AI Marketing Team
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.92 }}>
+              Enterprise-grade autonomous agents orchestrated by ALwrity&apos;s SIF framework to run your marketing.
+            </Typography>
+          </Box>
+        </Box>
+        <Tooltip
+          title="Semantic Intelligence Framework™ – Alwrity's orchestration layer for autonomous marketing agents."
+          arrow
+          placement="left"
+        >
+          <Chip
+            size="small"
+            label="SIF Agent Framework™"
+            sx={{
+              borderRadius: "999px",
+              border: "1px solid rgba(191,219,254,0.9)",
+              bgcolor: "rgba(15,23,42,0.75)",
+              color: "#e5e7eb",
+              fontWeight: 600,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+          />
+        </Tooltip>
+      </Box>
 
-      <Stack spacing={1.5}>
+      <Box
+        sx={{
+          mb: 2,
+          px: 0.5,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 1.5,
+        }}
+      >
+        <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+          <Typography variant="caption" sx={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6 }}>
+            Agent roles
+          </Typography>
+          <Chip
+            size="small"
+            label="Lead"
+            sx={{
+              height: 22,
+              borderRadius: "999px",
+              bgcolor: "#eef2ff",
+              color: "#312e81",
+              fontWeight: 600,
+            }}
+          />
+          <Chip
+            size="small"
+            label="Strategist"
+            sx={{
+              height: 22,
+              borderRadius: "999px",
+              bgcolor: "#ecfdf5",
+              color: "#047857",
+              fontWeight: 600,
+            }}
+          />
+          <Chip
+            size="small"
+            label="Analyst"
+            sx={{
+              height: 22,
+              borderRadius: "999px",
+              bgcolor: "#eff6ff",
+              color: "#1d4ed8",
+              fontWeight: 600,
+            }}
+          />
+        </Stack>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Box sx={{ width: 8, height: 8, borderRadius: "999px", bgcolor: "#22c55e" }} />
+            <Typography variant="caption">Enabled</Typography>
+          </Stack>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Box sx={{ width: 8, height: 8, borderRadius: "999px", bgcolor: "#e5e7eb" }} />
+            <Typography variant="caption">Disabled</Typography>
+          </Stack>
+        </Stack>
+      </Box>
+
+      <Stack spacing={2}>
         {agents.map((agent) => {
           const displayName = resolveDisplayName(agent, websiteName);
           const scheduleText = formatSchedule(agent.profile?.schedule ?? agent.defaults?.schedule);
@@ -261,66 +413,173 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
           const warnings = draft ? lintDraft(agent, draft) : [];
 
           return (
-            <Accordion key={agent.agent_key} disableGutters elevation={0} sx={{ borderRadius: 2, border: "1px solid rgba(0,0,0,0.08)" }}>
+            <Accordion
+              key={agent.agent_key}
+              disableGutters
+              elevation={0}
+              sx={{
+                borderRadius: 2,
+                border: "1px solid #e2e8f0",
+                bgcolor: "#f9fafb",
+                "&:before": { display: "none" },
+                transition: "all 160ms ease",
+                "&:hover": {
+                  borderColor: "#4f46e5",
+                  boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+                  transform: "translateY(-1px)",
+                },
+                "&.Mui-expanded": {
+                  borderColor: "#4f46e5",
+                  boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
+                  bgcolor: "#ffffff",
+                },
+              }}
+            >
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 2 }}>
                   <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{ fontWeight: 700, lineHeight: 1.2, color: "#0f172a" }}
+                      noWrap
+                    >
                       {displayName}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" noWrap>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "#64748b" }}
+                      noWrap
+                    >
                       {agent.role || agent.agent_key} • {scheduleText}
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                    <Chip size="small" icon={<LockIcon />} label="Tools locked" variant="outlined" />
-                    <Chip size="small" icon={<LockIcon />} label="Responsibilities locked" variant="outlined" />
+                    <Tooltip title="System tools this agent can call while executing your strategy." arrow>
+                      <Chip
+                        size="small"
+                        icon={<LockIcon />}
+                        label="Tools locked"
+                        variant="outlined"
+                        sx={{
+                          fontWeight: 500,
+                          borderColor: "#cbd5e1",
+                          bgcolor: "#e5edff",
+                          color: "#1e293b",
+                        }}
+                      />
+                    </Tooltip>
+                    <Tooltip title="High-level responsibilities are predefined for safety and reliability." arrow>
+                      <Chip
+                        size="small"
+                        icon={<LockIcon />}
+                        label="Responsibilities locked"
+                        variant="outlined"
+                        sx={{
+                          fontWeight: 500,
+                          borderColor: "#cbd5e1",
+                          bgcolor: "#e5edff",
+                          color: "#1e293b",
+                        }}
+                      />
+                    </Tooltip>
                   </Stack>
                 </Box>
               </AccordionSummary>
               <AccordionDetails>
                 <Stack spacing={2}>
                   <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<AutoFixHighIcon />}
-                      disabled={aiBusyKey === agent.agent_key}
-                      onClick={() => handleAiOptimize(agent)}
-                      sx={{ textTransform: "none" }}
+                    <Tooltip
+                      title="Let ALwrity refine this agent's prompts and schedule based on your brand context."
+                      arrow
                     >
-                      AI Optimize
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<VisibilityIcon />}
-                      disabled={previewBusyKey === agent.agent_key}
-                      onClick={() => handlePreview(agent)}
-                      sx={{ textTransform: "none" }}
+                      <span>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<AutoFixHighIcon />}
+                          disabled={aiBusyKey === agent.agent_key}
+                          onClick={() => handleAiOptimize(agent)}
+                          sx={{
+                            textTransform: "none",
+                            borderColor: "#4f46e5",
+                            color: "#4f46e5",
+                            "&:hover": {
+                              borderColor: "#4338ca",
+                              background: "rgba(79,70,229,0.04)",
+                            },
+                          }}
+                        >
+                          AI Optimize
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    <Tooltip
+                      title="Preview how this agent would respond using the current configuration."
+                      arrow
                     >
-                      Preview
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<SaveIcon />}
-                      disabled={!draft || savingKey === agent.agent_key}
-                      onClick={() => handleSave(agent)}
-                      sx={{ textTransform: "none" }}
+                      <span>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<VisibilityIcon />}
+                          disabled={previewBusyKey === agent.agent_key}
+                          onClick={() => handlePreview(agent)}
+                          sx={{
+                            textTransform: "none",
+                            borderColor: "#0f172a",
+                            color: "#0f172a",
+                            "&:hover": {
+                              borderColor: "#111827",
+                              background: "rgba(15,23,42,0.04)",
+                            },
+                          }}
+                        >
+                          Preview
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    <Tooltip
+                      title="Persist this agent's configuration for future sessions."
+                      arrow
                     >
-                      Save
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="text"
-                      startIcon={<RestartAltIcon />}
-                      disabled={savingKey === agent.agent_key}
-                      onClick={() => handleReset(agent)}
-                      sx={{ textTransform: "none" }}
+                      <span>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<SaveIcon />}
+                          disabled={!draft || savingKey === agent.agent_key}
+                          onClick={() => handleSave(agent)}
+                          sx={{
+                            textTransform: "none",
+                            background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+                            boxShadow: "0 4px 12px rgba(79,70,229,0.35)",
+                            "&:hover": {
+                              background: "linear-gradient(135deg, #4338ca 0%, #6d28d9 100%)",
+                              boxShadow: "0 6px 18px rgba(79,70,229,0.45)",
+                            },
+                          }}
+                        >
+                          Save
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    <Tooltip
+                      title="Revert this agent to its recommended default settings."
+                      arrow
                     >
-                      Reset
-                    </Button>
+                      <span>
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<RestartAltIcon />}
+                          disabled={savingKey === agent.agent_key}
+                          onClick={() => handleReset(agent)}
+                          sx={{ textTransform: "none" }}
+                        >
+                          Reset
+                        </Button>
+                      </span>
+                    </Tooltip>
                   </Box>
 
                   {warnings.length > 0 && (
@@ -367,9 +626,34 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
                   <Divider />
 
                   {draft && (
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    <Box
+                      sx={{
+                        mt: 1,
+                        p: 2.5,
+                        borderRadius: 2,
+                        border: "1px dashed #e5e7eb",
+                        bgcolor: "#f9fafb",
+                      }}
+                    >
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 700,
+                          mb: 1.5,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.75,
+                        }}
+                      >
+                        <EditOutlinedIcon sx={{ fontSize: 18, color: "#4f46e5" }} />
                         Editable settings
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          sx={{ ml: 0.75, color: "#6b7280" }}
+                        >
+                          Adjust how this agent behaves for your workspace.
+                        </Typography>
                       </Typography>
                       <Stack spacing={2}>
                         <TextField
@@ -377,6 +661,17 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
                           value={draft.display_name}
                           onChange={(e) => setDraftField(agent.agent_key, { display_name: e.target.value })}
                           fullWidth
+                          sx={{
+                            "& .MuiOutlinedInput-root": {
+                              bgcolor: "#ffffff",
+                              "& fieldset": { borderColor: "#e5e7eb" },
+                              "&:hover fieldset": { borderColor: "#4f46e5" },
+                              "&.Mui-focused fieldset": {
+                                borderColor: "#4f46e5",
+                                boxShadow: "0 0 0 1px rgba(79,70,229,0.25)",
+                              },
+                            },
+                          }}
                         />
                         <FormControlLabel
                           control={
@@ -388,7 +683,20 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
                           label="Enabled"
                         />
 
-                        <FormControl fullWidth>
+                        <FormControl
+                          fullWidth
+                          sx={{
+                            "& .MuiOutlinedInput-root": {
+                              bgcolor: "#ffffff",
+                              "& fieldset": { borderColor: "#e5e7eb" },
+                              "&:hover fieldset": { borderColor: "#4f46e5" },
+                              "&.Mui-focused fieldset": {
+                                borderColor: "#4f46e5",
+                                boxShadow: "0 0 0 1px rgba(79,70,229,0.25)",
+                              },
+                            },
+                          }}
+                        >
                           <InputLabel>Schedule</InputLabel>
                           <Select
                             label="Schedule"
@@ -418,12 +726,34 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
                                 })
                               }
                               fullWidth
+                              sx={{
+                                "& .MuiOutlinedInput-root": {
+                                  bgcolor: "#ffffff",
+                                  "& fieldset": { borderColor: "#e5e7eb" },
+                                  "&:hover fieldset": { borderColor: "#4f46e5" },
+                                  "&.Mui-focused fieldset": {
+                                    borderColor: "#4f46e5",
+                                    boxShadow: "0 0 0 1px rgba(79,70,229,0.25)",
+                                  },
+                                },
+                              }}
                             />
                             <TextField
                               label="Time (HH:MM)"
                               value={draft.schedule?.time || ""}
                               onChange={(e) => setDraftField(agent.agent_key, { schedule: { ...(draft.schedule || {}), time: e.target.value } })}
                               fullWidth
+                              sx={{
+                                "& .MuiOutlinedInput-root": {
+                                  bgcolor: "#ffffff",
+                                  "& fieldset": { borderColor: "#e5e7eb" },
+                                  "&:hover fieldset": { borderColor: "#4f46e5" },
+                                  "&.Mui-focused fieldset": {
+                                    borderColor: "#4f46e5",
+                                    boxShadow: "0 0 0 1px rgba(79,70,229,0.25)",
+                                  },
+                                },
+                              }}
                             />
                           </Stack>
                         )}
@@ -434,6 +764,17 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
                             value={draft.schedule?.time || ""}
                             onChange={(e) => setDraftField(agent.agent_key, { schedule: { ...(draft.schedule || {}), time: e.target.value } })}
                             fullWidth
+                            sx={{
+                              "& .MuiOutlinedInput-root": {
+                                bgcolor: "#ffffff",
+                                "& fieldset": { borderColor: "#e5e7eb" },
+                                "&:hover fieldset": { borderColor: "#4f46e5" },
+                                "&.Mui-focused fieldset": {
+                                  borderColor: "#4f46e5",
+                                  boxShadow: "0 0 0 1px rgba(79,70,229,0.25)",
+                                },
+                              },
+                            }}
                           />
                         )}
 
@@ -444,6 +785,17 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
                           multiline
                           minRows={6}
                           fullWidth
+                          sx={{
+                            "& .MuiOutlinedInput-root": {
+                              bgcolor: "#ffffff",
+                              "& fieldset": { borderColor: "#e5e7eb" },
+                              "&:hover fieldset": { borderColor: "#4f46e5" },
+                              "&.Mui-focused fieldset": {
+                                borderColor: "#4f46e5",
+                                boxShadow: "0 0 0 1px rgba(79,70,229,0.25)",
+                              },
+                            },
+                          }}
                         />
                         <TextField
                           label="Task prompt template"
@@ -452,6 +804,17 @@ const AgentTeamSection: React.FC<Props> = ({ websiteName, agents, contextCard })
                           multiline
                           minRows={6}
                           fullWidth
+                          sx={{
+                            "& .MuiOutlinedInput-root": {
+                              bgcolor: "#ffffff",
+                              "& fieldset": { borderColor: "#e5e7eb" },
+                              "&:hover fieldset": { borderColor: "#4f46e5" },
+                              "&.Mui-focused fieldset": {
+                                borderColor: "#4f46e5",
+                                boxShadow: "0 0 0 1px rgba(79,70,229,0.25)",
+                              },
+                            },
+                          }}
                         />
                       </Stack>
                     </Box>

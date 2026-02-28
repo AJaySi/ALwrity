@@ -26,6 +26,10 @@ interface VideoRegenerateModalProps {
   initialPrompt: string;
   initialResolution?: "480p" | "720p";
   initialSeed?: number | null;
+  // Add context props
+  sceneTitle?: string;
+  bible?: any;
+  analysis?: any;
 }
 
 export const VideoRegenerateModal: React.FC<VideoRegenerateModalProps> = ({
@@ -35,16 +39,44 @@ export const VideoRegenerateModal: React.FC<VideoRegenerateModalProps> = ({
   initialPrompt,
   initialResolution = "480p",
   initialSeed = -1,
+  sceneTitle,
+  bible,
+  analysis,
 }) => {
+  // Use a more intelligent default prompt based on context if available
   const [prompt, setPrompt] = useState(initialPrompt);
+  
+  // Update prompt when context changes or modal opens
+  useEffect(() => {
+    if (open) {
+      let smartPrompt = initialPrompt;
+      
+      // If the initial prompt is generic/empty, try to build a better one
+      if (!smartPrompt || smartPrompt === "Professional podcast scene with subtle movement") {
+        const parts = [];
+        
+        // Add scene context
+        if (sceneTitle) parts.push(`Scene: ${sceneTitle}`);
+        
+        // Add bible/persona context
+        if (bible?.host_persona) parts.push(`Host Persona: ${bible.host_persona}`);
+        if (bible?.tone) parts.push(`Tone: ${bible.tone}`);
+        
+        // Add analysis context
+        if (analysis?.content_type) parts.push(`Style: ${analysis.content_type}`);
+        
+        // Combine into a descriptive prompt
+        if (parts.length > 0) {
+          smartPrompt = `Professional talking head video for podcast. ${parts.join(". ")}. Cinematic lighting, 4k, high detail.`;
+        }
+      }
+      setPrompt(smartPrompt);
+    }
+  }, [open, initialPrompt, sceneTitle, bible, analysis]);
+
   const [resolution, setResolution] = useState<"480p" | "720p">(initialResolution);
   const [seed, setSeed] = useState<string>(initialSeed != null && initialSeed !== -1 ? String(initialSeed) : "");
   const [maskImageUrl, setMaskImageUrl] = useState<string>("");
-
-  useEffect(() => {
-    setPrompt(initialPrompt);
-    setResolution(initialResolution);
-  }, [initialResolution, initialPrompt]);
 
   const handleGenerate = () => {
     const parsedSeed = seed.trim() === "" ? undefined : Number.isNaN(Number(seed)) ? undefined : Number(seed);

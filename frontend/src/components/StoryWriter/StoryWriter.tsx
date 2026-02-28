@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Box, Container, Typography, useTheme, Dialog, DialogTitle, DialogContent, IconButton } from '@mui/material';
+import React, { useEffect, useState } from 'react';
+import { Box, Container, Typography, useTheme, Dialog, DialogTitle, DialogContent, IconButton, Chip } from '@mui/material';
 import { useStoryWriterState } from '../../hooks/useStoryWriterState';
 import { useStoryWriterPhaseNavigation } from '../../hooks/useStoryWriterPhaseNavigation';
 import StorySetup from './Phases/StorySetup';
@@ -11,11 +11,25 @@ import { MultimediaToolbar } from './components/MultimediaToolbar';
 import { storyWriterApi } from '../../services/storyWriterApi';
 import { triggerSubscriptionError } from '../../api/client';
 import CloseIcon from '@mui/icons-material/Close';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import { MultimediaSection } from './components/MultimediaSection';
+import SaveIcon from '@mui/icons-material/Save';
 import StoryWriterLanding from './StoryWriterLanding';
+import { AIStorySetupModal } from './Phases/StorySetup/AIStorySetupModal';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { SecondaryButton } from '../PodcastMaker/ui/SecondaryButton';
+
+const createStoryProjectId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `story_${crypto.randomUUID()}`;
+  }
+  return `story_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+};
 
 export const StoryWriter: React.FC = () => {
   const theme = useTheme();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // State management
   const state = useStoryWriterState();
@@ -29,6 +43,30 @@ export const StoryWriter: React.FC = () => {
     return window.localStorage.getItem('storywriter:landingDismissed') === 'true';
   });
 
+  const [autoOpenSetupModal, setAutoOpenSetupModal] = useState(false);
+  const [isLandingSetupModalOpen, setIsLandingSetupModalOpen] = useState(false);
+  const [landingSetupMode, setLandingSetupMode] = useState<'marketing' | 'pure' | null>(null);
+  const [landingSetupTemplate, setLandingSetupTemplate] = useState<string | null>(null);
+  const [landingCustomWritingStyles, setLandingCustomWritingStyles] = useState<string[]>([]);
+  const [landingCustomStoryTones, setLandingCustomStoryTones] = useState<string[]>([]);
+  const [landingCustomNarrativePOVs, setLandingCustomNarrativePOVs] = useState<string[]>([]);
+  const [landingCustomAudienceAgeGroups, setLandingCustomAudienceAgeGroups] = useState<string[]>([]);
+  const [landingCustomContentRatings, setLandingCustomContentRatings] = useState<string[]>([]);
+  const [landingCustomEndingPreferences, setLandingCustomEndingPreferences] = useState<string[]>([]);
+  const [isDirectorOpen, setIsDirectorOpen] = useState(false);
+  const [isSavingProject, setIsSavingProject] = useState(false);
+
+  useEffect(() => {
+    const navState = location.state as { projectId?: string } | null;
+    const incomingProjectId = navState?.projectId;
+    if (incomingProjectId) {
+      state.loadProjectFromDb(incomingProjectId).catch((error: any) => {
+        console.error('Failed to load story project:', error);
+      });
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, state, navigate]);
+
   // Phase navigation
   const {
     phases,
@@ -40,8 +78,9 @@ export const StoryWriter: React.FC = () => {
     hasStoryContent: !!state.storyContent,
     isComplete: state.isComplete,
   });
-  
+
   // Reset handler
+
   const handleReset = () => {
     // Reset story state (this also clears localStorage)
     state.resetState();
@@ -199,6 +238,34 @@ export const StoryWriter: React.FC = () => {
 
   const hasStoryProgress = Boolean(state.premise || state.outline || state.storyContent);
   const showLanding = !landingDismissed && !hasStoryProgress;
+  const hasAnimeBible = Boolean(state.animeBible);
+  const canSaveProject = Boolean(
+    state.premise || state.outline || state.outlineScenes || state.storyContent,
+  );
+
+  const handleSaveProject = async () => {
+    if (isSavingProject) {
+      return;
+    }
+    if (!canSaveProject) {
+      return;
+    }
+    setIsSavingProject(true);
+    try {
+      if (!state.projectId) {
+        const projectId = createStoryProjectId();
+        const title =
+          state.projectTitle ||
+          (state.premise && state.premise.trim().length > 0
+            ? state.premise.trim().slice(0, 80)
+            : 'Untitled Story');
+        await state.initializeProject(projectId, title);
+      }
+      await state.saveProjectToDb();
+    } finally {
+      setIsSavingProject(false);
+    }
+  };
 
   const handleLandingStart = () => {
     setLandingDismissed(true);
@@ -206,6 +273,36 @@ export const StoryWriter: React.FC = () => {
       window.localStorage.setItem('storywriter:landingDismissed', 'true');
     }
     navigateToPhase('setup');
+  };
+
+  const handleLandingSelectPath = (
+    mode: 'marketing' | 'pure',
+    template:
+      | 'product_story'
+      | 'brand_manifesto'
+      | 'founder_story'
+      | 'customer_story'
+      | 'short_fiction'
+      | 'long_fiction'
+      | 'anime_fiction'
+      | 'experimental_fiction'
+      | null,
+  ) => {
+    state.setStoryMode(mode);
+    if (
+      mode === 'marketing' &&
+      (template === 'product_story' ||
+        template === 'brand_manifesto' ||
+        template === 'founder_story' ||
+        template === 'customer_story')
+    ) {
+      state.setStoryTemplate(template);
+    } else {
+      state.setStoryTemplate(null);
+    }
+    setLandingSetupMode(mode);
+    setLandingSetupTemplate(template);
+    setIsLandingSetupModalOpen(true);
   };
 
   // Render phase content
@@ -218,7 +315,13 @@ export const StoryWriter: React.FC = () => {
       case 'writing':
         return <StoryWriting state={state} onNext={() => navigateToPhase('export')} />;
       case 'export':
-        return <StoryExport state={state} />;
+        return (
+          <StoryExport
+            state={state}
+            onSaveProject={handleSaveProject}
+            isSavingProject={isSavingProject}
+          />
+        );
       default:
         return <StorySetup state={state} onNext={() => navigateToPhase('outline')} />;
     }
@@ -234,7 +337,29 @@ export const StoryWriter: React.FC = () => {
         }}
       >
         <Container maxWidth="xl">
-          <StoryWriterLanding onStart={handleLandingStart} />
+          <StoryWriterLanding onStart={handleLandingStart} onSelectPath={handleLandingSelectPath} />
+          <AIStorySetupModal
+            open={isLandingSetupModalOpen}
+            onClose={() => setIsLandingSetupModalOpen(false)}
+            state={state}
+            customValuesSetters={{
+              setCustomWritingStyles: setLandingCustomWritingStyles,
+              setCustomStoryTones: setLandingCustomStoryTones,
+              setCustomNarrativePOVs: setLandingCustomNarrativePOVs,
+              setCustomAudienceAgeGroups: setLandingCustomAudienceAgeGroups,
+              setCustomContentRatings: setLandingCustomContentRatings,
+              setCustomEndingPreferences: setLandingCustomEndingPreferences,
+            }}
+            originMode={landingSetupMode}
+            originTemplate={landingSetupTemplate}
+            onApplied={() => {
+              setLandingDismissed(true);
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem('storywriter:landingDismissed', 'true');
+              }
+              navigateToPhase('setup');
+            }}
+          />
         </Container>
       </Box>
     );
@@ -245,7 +370,7 @@ export const StoryWriter: React.FC = () => {
       sx={{
         minHeight: '100vh',
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
-        padding: theme.spacing(4),
+        padding: theme.spacing(2, 4, 3),
         position: 'relative',
         '&::before': {
           content: '""',
@@ -279,18 +404,27 @@ export const StoryWriter: React.FC = () => {
         }}
       >
         {/* Header with Phase Navigation and Multimedia Toolbar */}
-        <Box sx={{ mb: 4 }}>
+        <Box sx={{ mb: 2, pt: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-            <Box>
-              <Typography variant="h3" component="h1" gutterBottom sx={{ color: 'white' }}>
-            Story Writer
-          </Typography>
-              <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
-            Create compelling stories with AI assistance
-          </Typography>
-        </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h5" component="h1" sx={{ color: 'white', fontWeight: 600, lineHeight: 1.2 }}>
+                Story Studio
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                Create fiction and non-fiction story campaigns with AI assistance
+              </Typography>
+            </Box>
             {/* Compact Phase Navigation */}
-            <Box sx={{ flex: '1 1 auto', minWidth: { xs: '100%', md: '600px' }, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                flex: '1 1 auto',
+                minWidth: { xs: '100%', md: '600px' },
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                justifyContent: 'flex-end',
+              }}
+            >
               <Box sx={{ flex: 1 }}>
         <PhaseNavigation
           phases={phases}
@@ -299,6 +433,40 @@ export const StoryWriter: React.FC = () => {
           onReset={handleReset}
         />
               </Box>
+              <Chip
+                icon={
+                  <LightbulbIcon
+                    sx={{
+                      color: hasAnimeBible ? '#22c55e' : '#f97373',
+                    }}
+                  />
+                }
+                label="Director"
+                variant={hasAnimeBible ? 'filled' : 'outlined'}
+                onClick={() => setIsDirectorOpen(true)}
+                sx={{
+                  borderColor: hasAnimeBible ? '#22c55e' : '#f97373',
+                  color: hasAnimeBible ? '#065f46' : '#7f1d1d',
+                  bgcolor: hasAnimeBible ? 'rgba(16,185,129,0.12)' : 'transparent',
+                  fontWeight: 500,
+                  height: 32,
+                }}
+              />
+              <SecondaryButton
+                onClick={handleSaveProject}
+                loading={isSavingProject}
+                startIcon={<SaveIcon />}
+                disabled={!canSaveProject}
+                ariaLabel="Save story project"
+                tooltip={
+                  state.projectId
+                    ? 'Save latest story changes to My Projects'
+                    : 'Save this story to My Projects'
+                }
+                sx={{ minWidth: 140 }}
+              >
+                {state.projectId ? 'Save Project' : 'Save to My Projects'}
+              </SecondaryButton>
               {/* Multimedia Toolbar */}
               <MultimediaToolbar
                 state={state}
@@ -313,7 +481,7 @@ export const StoryWriter: React.FC = () => {
         </Box>
 
         {/* Phase Content */}
-        <Box sx={{ mt: 4 }}>
+        <Box sx={{ mt: 2 }}>
           {renderPhaseContent()}
         </Box>
       </Container>
@@ -332,6 +500,34 @@ export const StoryWriter: React.FC = () => {
         </DialogTitle>
         <DialogContent dividers>
           <MultimediaSection state={state} />
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={isDirectorOpen}
+        onClose={() => setIsDirectorOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Anime Story Bible</DialogTitle>
+        <DialogContent dividers>
+          {state.animeBible ? (
+            <Box
+              component="pre"
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                m: 0,
+              }}
+            >
+              {JSON.stringify(state.animeBible, null, 2)}
+            </Box>
+          ) : (
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              No anime story bible is available yet. Generate an outline for an anime story to create one.
+            </Typography>
+          )}
         </DialogContent>
       </Dialog>
     </Box>

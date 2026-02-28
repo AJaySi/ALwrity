@@ -4,6 +4,8 @@ import {
   Typography,
   Alert,
   LinearProgress,
+  TextField,
+  MenuItem,
 } from '@mui/material';
 import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import { useStoryWriterState } from '../../../hooks/useStoryWriterState';
@@ -19,6 +21,24 @@ const logger = {
   info: (message: string, ...args: any[]) => console.info(`[HdVideoSection] ${message}`, ...args),
 };
 
+const VIDEO_MODEL_OPTIONS = [
+  {
+    id: 'huggingface:tencent/HunyuanVideo',
+    provider: 'huggingface',
+    model: 'tencent/HunyuanVideo',
+    label: 'HuggingFace · HunyuanVideo',
+  },
+  {
+    id: 'wavespeed:hunyuan-video-1.5',
+    provider: 'wavespeed',
+    model: 'hunyuan-video-1.5',
+    label: 'WaveSpeed · HunyuanVideo-1.5',
+  },
+];
+
+const getDefaultVideoOptionId = (storyMode: 'marketing' | 'pure') =>
+  storyMode === 'marketing' ? 'huggingface:tencent/HunyuanVideo' : 'wavespeed:hunyuan-video-1.5';
+
 interface HdVideoSectionProps {
   state: ReturnType<typeof useStoryWriterState>;
   error: string | null;
@@ -30,6 +50,9 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
   const [hdVideoProgress, setHdVideoProgress] = useState(0);
   const [hdVideoMessage, setHdVideoMessage] = useState<string>('');
   const [hdVideoPrompts, setHdVideoPrompts] = useState<Map<number, string>>(new Map());
+  const [selectedVideoOptionId, setSelectedVideoOptionId] = useState<string>(
+    getDefaultVideoOptionId(state.storyMode),
+  );
   
   const [approvalModal, setApprovalModal] = useState<{
     open: boolean;
@@ -41,6 +64,10 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
   const [regeneratingScene, setRegeneratingScene] = useState<number | null>(null);
   
   const processSceneRef = useRef<((sceneIndex: number) => Promise<void>) | null>(null);
+
+  const selectedVideoOption =
+    VIDEO_MODEL_OPTIONS.find((option) => option.id === selectedVideoOptionId) ||
+    VIDEO_MODEL_OPTIONS[0];
 
   const handleGenerateHdVideo = async () => {
     if (!state.outlineScenes || state.outlineScenes.length === 0) {
@@ -98,8 +125,8 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
           scene_data: scene,
           story_context: storyContext,
           all_scenes: scenes,
-          provider: 'huggingface',
-          model: 'tencent/HunyuanVideo',
+          provider: selectedVideoOption.provider,
+          model: selectedVideoOption.model,
           num_frames: 50,
           guidance_scale: 7.5,
         });
@@ -241,8 +268,8 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
         scene_data: scene,
         story_context: storyContext,
         all_scenes: scenes,
-        provider: 'huggingface',
-        model: 'tencent/HunyuanVideo',
+        provider: selectedVideoOption.provider,
+        model: selectedVideoOption.model,
         num_frames: 50,
         guidance_scale: 7.5,
       });
@@ -296,13 +323,32 @@ export const HdVideoSection: React.FC<HdVideoSectionProps> = ({ state, onError }
   return (
     <>
       <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <TextField
+          select
+          label="HD Video Model"
+          value={selectedVideoOptionId}
+          onChange={(e) => setSelectedVideoOptionId(e.target.value)}
+          size="small"
+          sx={{ maxWidth: 320 }}
+          disabled={
+            isGeneratingHdVideo ||
+            state.hdVideoGenerationStatus === 'awaiting_approval' ||
+            state.hdVideoGenerationStatus === 'generating'
+          }
+        >
+          {VIDEO_MODEL_OPTIONS.map((option) => (
+            <MenuItem key={option.id} value={option.id}>
+              {option.label}
+            </MenuItem>
+          ))}
+        </TextField>
         <OperationButton
           operation={{
             provider: 'video',
-            model: 'tencent/HunyuanVideo',
+            model: selectedVideoOption.model,
             tokens_requested: 0,
             operation_type: 'video_generation',
-            actual_provider_name: 'huggingface',
+            actual_provider_name: selectedVideoOption.provider,
           }}
           label="Generate HD Animation with AI"
           variant="contained"

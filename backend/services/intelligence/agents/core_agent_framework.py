@@ -181,7 +181,8 @@ class BaseALwrityAgent(ABC):
             try:
                 if not self.llm:
                     # Create new LLM if not provided
-                    raw_llm = LLM(model_name)
+                    # Hardening: Explicitly set task to avoid 'text2text-generation' default failures
+                    raw_llm = LLM(model_name, task="text-generation")
                     # Wrap it
                     self.llm = TrackingLLMWrapper(raw_llm, self.user_id, self.model_name)
                 
@@ -906,6 +907,11 @@ class StrategyOrchestratorAgent(BaseALwrityAgent):
                     "name": "task_delegator",
                     "description": "Delegates specific tasks to specialized agents (content, competitor, seo, social)",
                     "target": self._delegate_task_tool
+                },
+                {
+                    "name": "kickoff_gsc_first_pass",
+                    "description": "Kicks off first-pass execution by invoking SEO/Content default GSC plans",
+                    "target": self._kickoff_gsc_first_pass_tool
                 }
             ],
             max_iterations=15,
@@ -924,7 +930,9 @@ class StrategyOrchestratorAgent(BaseALwrityAgent):
             Do not just plan; EXECUTE by delegating.
             
             Always prioritize user goals and maintain safety constraints.
-            Coordinate multi-agent responses to market changes effectively."""
+            Coordinate multi-agent responses to market changes effectively.
+            
+            First, call 'kickoff_gsc_first_pass' to ground the plan on live GSC signals."""
             )
         )
     
@@ -1032,6 +1040,37 @@ class StrategyOrchestratorAgent(BaseALwrityAgent):
             }
         except Exception as e:
             return {"error": str(e)}
+    
+    async def _kickoff_gsc_first_pass_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Invoke SEO and Content agents' default GSC plans and combine results"""
+        try:
+            start_date = context.get("start_date")
+            end_date = context.get("end_date")
+            payload = {"start_date": start_date, "end_date": end_date}
+            results = {}
+            combined_actions = []
+            
+            seo = self.sub_agents.get("seo")
+            if seo and hasattr(seo, "_default_seo_gsc_plan_tool"):
+                plan = await seo._default_seo_gsc_plan_tool(payload)
+                results["seo"] = plan
+                combined_actions.extend(plan.get("actions", []) if isinstance(plan, dict) else [])
+            
+            content = self.sub_agents.get("content")
+            if content and hasattr(content, "_default_content_gsc_plan_tool"):
+                plan = await content._default_content_gsc_plan_tool(payload)
+                results["content"] = plan
+                combined_actions.extend(plan.get("actions", []) if isinstance(plan, dict) else [])
+            
+            return {
+                "status": "ok",
+                "invoked": list(results.keys()),
+                "results": results,
+                "combined_actions": combined_actions,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
     
     async def _strategy_synthesizer_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Tool for synthesizing strategies"""

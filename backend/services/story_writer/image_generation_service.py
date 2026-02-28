@@ -67,6 +67,77 @@ class StoryImageGenerationService:
         clean_title = "".join(c if c.isalnum() or c in ('-', '_') else '_' for c in scene_title[:30])
         unique_id = str(uuid.uuid4())[:8]
         return f"scene_{scene_number}_{clean_title}_{unique_id}.png"
+
+    def _refine_image_prompt_with_bible(
+        self,
+        image_prompt: str,
+        scene: Dict[str, Any],
+        anime_bible: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Lightweight image prompt refinement using the anime story bible.
+
+        Takes the existing scene image_prompt and enriches it with visual_style,
+        world, and cast hints from the bible. This is deterministic and avoids
+        extra LLM calls.
+        """
+        if not image_prompt or not isinstance(image_prompt, str):
+            return image_prompt
+
+        if not anime_bible or not isinstance(anime_bible, dict):
+            return image_prompt
+
+        visual_style = anime_bible.get("visual_style") or {}
+        world = anime_bible.get("world") or {}
+        main_cast = anime_bible.get("main_cast") or []
+
+        parts: List[str] = []
+
+        style_preset = visual_style.get("style_preset")
+        if style_preset:
+            parts.append(f"{style_preset} anime illustration style")
+
+        camera_style = visual_style.get("camera_style")
+        if camera_style:
+            parts.append(f"framing and camera style: {camera_style}")
+
+        color_mood = visual_style.get("color_mood")
+        if color_mood:
+            parts.append(f"color mood: {color_mood}")
+
+        lighting = visual_style.get("lighting")
+        if lighting:
+            parts.append(f"lighting: {lighting}")
+
+        line_style = visual_style.get("line_style")
+        if line_style:
+            parts.append(f"line style: {line_style}")
+
+        extra_tags = visual_style.get("extra_tags") or []
+        if isinstance(extra_tags, (list, tuple)):
+            extra_text = ", ".join(str(tag) for tag in extra_tags[:6] if tag)
+            if extra_text:
+                parts.append(extra_text)
+
+        setting = world.get("setting") if isinstance(world, dict) else None
+        if setting:
+            parts.append(f"world setting: {setting}")
+
+        if isinstance(main_cast, list):
+            names = [
+                c.get("name")
+                for c in main_cast
+                if isinstance(c, dict) and c.get("name")
+            ]
+            if names:
+                joined = ", ".join(names[:4])
+                parts.append(f"keep character designs consistent for: {joined}")
+
+        if not parts:
+            return image_prompt
+
+        suffix = ", " + ", ".join(parts)
+        return image_prompt.strip() + suffix
     
     def generate_scene_image(
         self,
@@ -75,7 +146,8 @@ class StoryImageGenerationService:
         provider: Optional[str] = None,
         width: int = 1024,
         height: int = 1024,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        anime_bible: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Generate an image for a single story scene.
@@ -94,6 +166,16 @@ class StoryImageGenerationService:
         scene_number = scene.get("scene_number", 0)
         scene_title = scene.get("title", "Untitled")
         image_prompt = scene.get("image_prompt", "")
+
+        if anime_bible:
+            try:
+                image_prompt = self._refine_image_prompt_with_bible(
+                    image_prompt=image_prompt,
+                    scene=scene,
+                    anime_bible=anime_bible,
+                )
+            except Exception as e:
+                logger.warning(f"[StoryImageGeneration] Failed to refine image prompt with bible: {e}")
         
         if not image_prompt:
             raise ValueError(f"Scene {scene_number} ({scene_title}) has no image_prompt")
@@ -156,7 +238,8 @@ class StoryImageGenerationService:
         height: int = 1024,
         model: Optional[str] = None,
         progress_callback: Optional[callable] = None,
-        db: Optional[Session] = None
+        db: Optional[Session] = None,
+        anime_bible: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Generate images for multiple story scenes.
@@ -192,7 +275,7 @@ class StoryImageGenerationService:
                     width=width,
                     height=height,
                     model=model,
-                    db=db
+                    anime_bible=anime_bible,
                 )
                 
                 image_results.append(image_result)
@@ -295,4 +378,3 @@ class StoryImageGenerationService:
         except Exception as e:
             logger.error(f"[StoryImageGeneration] Error regenerating image for scene {scene_number}: {e}")
             raise RuntimeError(f"Failed to regenerate image for scene {scene_number}: {str(e)}") from e
-

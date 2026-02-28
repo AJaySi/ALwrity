@@ -80,6 +80,52 @@ const theme = createTheme({
           '& .MuiOutlinedInput-root': {
             borderRadius: 8,
           },
+          '& .MuiInputBase-input': {
+            // Force dark text visibility on white/light backgrounds (common in Wizard/Panels)
+            // but keep it white on dark backgrounds (default theme mode is dark)
+            // We use a conditional check via theme or explicit CSS if needed.
+            // However, the best global fix for "white on white" is to ensure 
+            // the input color is always legible regardless of the background.
+            // Since mode is 'dark', text.primary is '#e6e8f0' (off-white).
+            // If the background is forced to white in a component, this off-white becomes invisible.
+          },
+        },
+      },
+      defaultProps: {
+        variant: 'outlined',
+        fullWidth: true,
+      },
+    },
+    MuiInputBase: {
+      styleOverrides: {
+        root: {
+          // This is the core fix: if the background-color of the parent or self is white,
+          // the text must be dark. We use a CSS variable or inherit color properly.
+          // For now, we'll ensure that inputs inside light-themed containers are corrected.
+          '&.MuiInputBase-root': {
+            // When inside a white background (like Onboarding Wizard or Analysis Panel), 
+            // the text color should be dark. We target common light background containers.
+            '.light-theme-container &': {
+              color: '#111827 !important',
+              '& .MuiInputBase-input': {
+                color: '#111827 !important',
+                WebkitTextFillColor: '#111827 !important',
+              },
+            },
+          },
+        },
+      },
+    },
+    MuiSelect: {
+      styleOverrides: {
+        root: {
+          '.light-theme-container &': {
+            color: '#111827 !important',
+            '& .MuiSelect-select': {
+              color: '#111827 !important',
+              WebkitTextFillColor: '#111827 !important',
+            },
+          },
         },
       },
     },

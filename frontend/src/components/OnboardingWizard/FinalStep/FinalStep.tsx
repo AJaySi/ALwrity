@@ -17,12 +17,14 @@ import {
   Warning
 } from '@mui/icons-material';
 import OnboardingButton from '../common/OnboardingButton';
+import { useNavigate } from 'react-router-dom';
 import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, setCurrentStep } from '../../../api/onboarding';
 import { SetupSummary, CapabilitiesOverview, AgentTeamSection } from './components';
 import { FinalStepProps, OnboardingData, Capability } from './types';
 import { getAgentTeam, type AgentTeamCatalogEntry } from '../../../api/agentsTeam';
 
 const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -297,22 +299,9 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
         localStorage.setItem('onboarding_active_step', String(stepsLengthFallback()));
       } catch {}
       
-      // Navigate directly to dashboard without calling onContinue
-      // This bypasses the wizard flow and goes straight to the dashboard
-      console.log('FinalStep: Navigating to dashboard...');
-      console.log('FinalStep: Setting window.location.href to /dashboard');
-      
-      // Try multiple navigation methods to ensure redirect works
-      try {
-        window.location.href = '/dashboard';
-        console.log('FinalStep: window.location.href set successfully');
-      } catch (navError) {
-        console.error('FinalStep: window.location.href failed:', navError);
-        console.log('FinalStep: Trying alternative navigation method...');
-        window.location.assign('/dashboard');
-      }
-      
-      console.log('FinalStep: Navigation initiated');
+      // Navigate directly to dashboard using React Router
+      console.log('FinalStep: Navigating to dashboard with react-router navigate("/dashboard")');
+      navigate('/dashboard', { replace: true });
     } catch (e: any) {
       console.error('FinalStep: Error completing onboarding:', e);
       console.error('FinalStep: Error details:', {
@@ -528,26 +517,27 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
                 onClick={handleLaunch}
                 startIcon={<Rocket />}
                 sx={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  fontSize: '1.125rem',
-                  fontWeight: 600,
-                  px: 4,
-                  py: 2,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-                  '&:hover': {
-                    background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
-                    transform: 'translateY(-1px)',
-                    boxShadow: '0 6px 16px rgba(102, 126, 234, 0.4)',
-                  },
-                  '&:disabled': {
-                    background: 'rgba(0,0,0,0.1)',
-                    color: 'rgba(0,0,0,0.4)',
-                    boxShadow: 'none',
-                    transform: 'none',
-                  }
-                }}
+              background: 'linear-gradient(135deg, #0f172a 0%, #312e81 40%, #4f46e5 100%)',
+              fontSize: '1.125rem',
+              fontWeight: 600,
+              px: 4,
+              py: 2,
+              borderRadius: 999,
+              textTransform: 'none',
+              boxShadow: '0 10px 28px rgba(15,23,42,0.45)',
+              letterSpacing: 0.2,
+              '&:hover': {
+                background: 'linear-gradient(135deg, #020617 0%, #1e1b4b 40%, #4338ca 100%)',
+                transform: 'translateY(-1px)',
+                boxShadow: '0 14px 36px rgba(15,23,42,0.55)',
+              },
+              '&:disabled': {
+                background: 'rgba(148,163,184,0.4)',
+                color: 'rgba(15,23,42,0.6)',
+                boxShadow: 'none',
+                transform: 'none',
+              }
+            }}
               >
                 Launch Alwrity & Complete Setup
               </Button>
@@ -555,12 +545,16 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
 
             {/* Help Text */}
             <Box sx={{ mt: 3, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 This will complete your onboarding and launch Alwrity with your configured settings.
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                <Star sx={{ fontSize: 16 }} />
-                Ready to create amazing content with AI-powered assistance
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}
+              >
+                <Star sx={{ fontSize: 16, color: '#fbbf24' }} />
+                Your SIF Agent Framework is ready to orchestrate your marketing.
               </Typography>
             </Box>
           </React.Fragment>

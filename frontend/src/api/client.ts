@@ -1,5 +1,21 @@
 import axios from 'axios';
 
+const sanitizeUrlForLogging = (url: string | undefined): string => {
+  if (!url) return '';
+  try {
+    const [base, query] = url.split('?');
+    if (!query) return url;
+    const params = new URLSearchParams(query);
+    if (params.has('token')) {
+      params.set('token', '***');
+    }
+    const queryString = params.toString();
+    return queryString ? `${base}?${queryString}` : base;
+  } catch {
+    return url;
+  }
+};
+
 // Global subscription error handler - will be set by the app
 // Can be async to support subscription status refresh
 let globalSubscriptionErrorHandler: ((error: any) => boolean | Promise<boolean>) | null = null;
@@ -108,7 +124,8 @@ export const pollingApiClient = axios.create({
 // Add request interceptor for logging and authentication
 apiClient.interceptors.request.use(
   async (config) => {
-    console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
+    const safeUrl = sanitizeUrlForLogging(config.url);
+    console.log(`Making ${config.method?.toUpperCase()} request to ${safeUrl}`);
     try {
       if (!authTokenGetter) {
         // If authTokenGetter is not set, reject the request to prevent 401 errors
@@ -123,7 +140,8 @@ apiClient.interceptors.request.use(
       if (token) {
             config.headers = config.headers || {};
             (config.headers as any)['Authorization'] = `Bearer ${token}`;
-            console.log(`[apiClient] ✅ Added auth token to request: ${config.url}`);
+            const safeUrlWithToken = sanitizeUrlForLogging(config.url);
+            console.log(`[apiClient] ✅ Auth token attached for request to ${safeUrlWithToken}`);
           } else {
             // Token getter returned null - reject request to prevent 401 errors
             // ProtectedRoute should ensure user is authenticated before components render
@@ -299,7 +317,8 @@ apiClient.interceptors.response.use(
 // Add interceptors for AI client
 aiApiClient.interceptors.request.use(
   async (config) => {
-    console.log(`Making AI ${config.method?.toUpperCase()} request to ${config.url}`);
+    const safeUrl = sanitizeUrlForLogging(config.url);
+    console.log(`Making AI ${config.method?.toUpperCase()} request to ${safeUrl}`);
     try {
       if (!authTokenGetter) {
         console.warn(`[aiApiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
@@ -309,7 +328,8 @@ aiApiClient.interceptors.request.use(
       if (token) {
         config.headers = config.headers || {};
         (config.headers as any)['Authorization'] = `Bearer ${token}`;
-            console.log(`[aiApiClient] ✅ Added auth token to request: ${config.url}`);
+            const safeUrlWithToken = sanitizeUrlForLogging(config.url);
+            console.log(`[aiApiClient] ✅ Auth token attached for request to ${safeUrlWithToken}`);
           } else {
             console.warn(`[aiApiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
           }

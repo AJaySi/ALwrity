@@ -140,7 +140,7 @@ class TaskManager:
                 audience_age_group=request_data["audience_age_group"],
                 content_rating=request_data["content_rating"],
                 ending_preference=request_data["ending_preference"],
-                user_id=user_id
+                user_id=user_id,
             )
             
             # Step 2: Generate outline
@@ -157,7 +157,7 @@ class TaskManager:
                 audience_age_group=request_data["audience_age_group"],
                 content_rating=request_data["content_rating"],
                 ending_preference=request_data["ending_preference"],
-                user_id=user_id
+                user_id=user_id,
             )
             
             # Step 3: Generate story start
@@ -175,7 +175,8 @@ class TaskManager:
                 audience_age_group=request_data["audience_age_group"],
                 content_rating=request_data["content_rating"],
                 ending_preference=request_data["ending_preference"],
-                user_id=user_id
+                anime_bible=request_data.get("anime_bible"),
+                user_id=user_id,
             )
             
             # Step 4: Continue story
@@ -208,7 +209,8 @@ class TaskManager:
                     audience_age_group=request_data["audience_age_group"],
                     content_rating=request_data["content_rating"],
                     ending_preference=request_data["ending_preference"],
-                    user_id=user_id
+                    anime_bible=request_data.get("anime_bible"),
+                    user_id=user_id,
                 )
                 
                 if continuation:

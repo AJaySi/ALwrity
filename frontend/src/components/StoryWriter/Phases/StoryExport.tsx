@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Box,
   Paper,
@@ -13,18 +13,22 @@ import {
 } from '@mui/material';
 import VideoLibraryIcon from '@mui/icons-material/VideoLibrary';
 import DownloadIcon from '@mui/icons-material/Download';
+import SaveIcon from '@mui/icons-material/Save';
 import { useStoryWriterState } from '../../../hooks/useStoryWriterState';
 import { storyWriterApi } from '../../../services/storyWriterApi';
 import { fetchMediaBlobUrl } from '../../../utils/fetchMediaBlobUrl';
 import { triggerSubscriptionError } from '../../../api/client';
 import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import SceneVideoApproval from '../components/SceneVideoApproval';
+import { PrimaryButton } from '../../PodcastMaker/ui/PrimaryButton';
 
 interface StoryExportProps {
   state: ReturnType<typeof useStoryWriterState>;
+  onSaveProject?: () => void;
+  isSavingProject?: boolean;
 }
 
-const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
+const StoryExport: React.FC<StoryExportProps> = ({ state, onSaveProject, isSavingProject }) => {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoMessage, setVideoMessage] = useState<string>('');
@@ -772,8 +776,23 @@ const StoryExport: React.FC<StoryExportProps> = ({ state }) => {
 
           <Divider sx={{ my: 3 }} />
 
-          {/* Export Actions */}
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {onSaveProject && (
+              <PrimaryButton
+                onClick={onSaveProject}
+                startIcon={<SaveIcon />}
+                loading={Boolean(isSavingProject)}
+                ariaLabel="Save story project"
+                tooltip={
+                  state.projectId
+                    ? 'Save changes to My Projects'
+                    : 'Save this story to My Projects'
+                }
+                sx={{ minWidth: 180 }}
+              >
+                {state.projectId ? 'Save to My Projects' : 'Save Story to My Projects'}
+              </PrimaryButton>
+            )}
             <Button variant="outlined" onClick={handleCopyToClipboard}>
               Copy to Clipboard
             </Button>

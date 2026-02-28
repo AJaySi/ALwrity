@@ -33,6 +33,7 @@ class PodcastProject(Base):
     
     # Project state (stored as JSON)
     # This mirrors the PodcastProjectState interface from frontend
+    bible = Column(JSON, nullable=True)  # PodcastBible structured data
     analysis = Column(JSON, nullable=True)  # PodcastAnalysis
     queries = Column(JSON, nullable=True)  # List[Query]
     selected_queries = Column(JSON, nullable=True)  # Array of query IDs
@@ -55,6 +56,11 @@ class PodcastProject(Base):
     
     # Final combined video URL (persisted for reloads)
     final_video_url = Column(String(1000), nullable=True)  # URL to final combined podcast video
+    
+    # Avatar details
+    avatar_url = Column(String(1000), nullable=True)
+    avatar_prompt = Column(Text, nullable=True)
+    avatar_persona_id = Column(String(255), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

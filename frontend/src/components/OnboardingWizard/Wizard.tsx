@@ -654,6 +654,20 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
       }
     }
 
+    // Special handling for IntegrationsStep (step 4)
+    if (activeStep === 4) {
+      const currentData = stepDataRef.current || {};
+      if (!currentStepData && currentData && typeof currentData === 'object') {
+        if (currentData.integrations) {
+          currentStepData = {
+            integrations: currentData.integrations,
+          };
+        } else {
+          currentStepData = currentData;
+        }
+      }
+    }
+
     // Store step data in state
     if (currentStepData) {
       setStepData(currentStepData);
@@ -681,7 +695,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
     // Complete the current step (activeStep + 1 because steps are 1-indexed)
     const currentStepNumber = activeStep + 1;
 
-    const stepWasCompleted = currentStepData && typeof currentStepData === 'object' && (
+    const hasCoreStepData = currentStepData && typeof currentStepData === 'object' && (
       currentStepData.website || 
       currentStepData.businessData || 
       currentStepData.competitors ||
@@ -691,6 +705,10 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
       currentStepData.platformPersonas ||
       currentStepData.qualityMetrics
     );
+
+    const hasIntegrationsData = !!(currentStepData && typeof currentStepData === 'object' && currentStepData.integrations);
+
+    const stepWasCompleted = hasCoreStepData || hasIntegrationsData;
 
     console.log('Wizard: Step completion check:', {
       currentStepNumber,
@@ -881,6 +899,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
         onContinue={handleNext} 
         updateHeaderContent={updateHeaderContent} 
         onValidationChange={(isValid: boolean) => handleStepValidationChange(4, isValid)}
+        onDataChange={handleStepDataChange}
       />,
       <FinalStep key="final" onContinue={handleComplete} updateHeaderContent={updateHeaderContent} />
     ];
@@ -901,6 +920,7 @@ const Wizard: React.FC<WizardProps> = ({ onComplete }) => {
 
   return (
     <Box
+      className="light-theme-container"
       sx={{
         minHeight: '100vh',
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',

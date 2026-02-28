@@ -12,6 +12,10 @@ from models.story_models import (
     StoryScene,
     StoryContinueRequest,
     StoryContinueResponse,
+    AnimeSceneTextRequest,
+    AnimeSceneTextResponse,
+    AnimeSceneGenerateRequest,
+    AnimeSceneGenerateResponse,
 )
 from services.story_writer.story_service import StoryWriterService
 
@@ -107,6 +111,7 @@ async def generate_story_start(
             content_rating=request.content_rating,
             ending_preference=request.ending_preference,
             story_length=story_length,
+            anime_bible=getattr(request, "anime_bible", None),
             user_id=user_id,
         )
 
@@ -211,6 +216,7 @@ async def continue_story(
             audience_age_group=request.audience_age_group,
             content_rating=request.content_rating,
             ending_preference=request.ending_preference,
+            anime_bible=getattr(request, "anime_bible", None),
             story_length=story_length,
             user_id=user_id,
         )
@@ -242,6 +248,105 @@ async def continue_story(
         raise
     except Exception as exc:
         logger.error(f"[StoryWriter] Failed to continue story: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/anime/scene-text", response_model=AnimeSceneTextResponse)
+async def refine_anime_scene_text(
+    request: AnimeSceneTextRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> AnimeSceneTextResponse:
+    try:
+        user_id = require_authenticated_user(current_user)
+
+        scene_dict = request.scene.dict()
+        if not scene_dict.get("title") and not scene_dict.get("description"):
+            raise HTTPException(status_code=400, detail="Scene title or description is required")
+
+        refined = story_service.refine_anime_scene_text(
+            scene=scene_dict,
+            persona=request.persona,
+            story_setting=request.story_setting,
+            character_input=request.character_input,
+            plot_elements=request.plot_elements,
+            writing_style=request.writing_style,
+            story_tone=request.story_tone,
+            narrative_pov=request.narrative_pov,
+            audience_age_group=request.audience_age_group,
+            content_rating=request.content_rating,
+            anime_bible=request.anime_bible,
+            user_id=user_id,
+        )
+
+        refined_scene = StoryScene(
+            scene_number=refined.get("scene_number", request.scene.scene_number),
+            title=refined.get("title", request.scene.title),
+            description=refined.get("description", request.scene.description),
+            image_prompt=refined.get("image_prompt", request.scene.image_prompt),
+            audio_narration=refined.get("audio_narration", request.scene.audio_narration),
+            character_descriptions=refined.get(
+                "character_descriptions", request.scene.character_descriptions
+            ),
+            key_events=refined.get("key_events", request.scene.key_events),
+        )
+
+        return AnimeSceneTextResponse(scene=refined_scene, success=True)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[StoryWriter] Failed to refine anime scene text: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/anime/scene-generate", response_model=AnimeSceneGenerateResponse)
+async def generate_anime_scene_from_bible(
+    request: AnimeSceneGenerateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> AnimeSceneGenerateResponse:
+    try:
+        user_id = require_authenticated_user(current_user)
+
+        if not request.anime_bible:
+            raise HTTPException(status_code=400, detail="Anime story bible is required")
+
+        previous_scenes_payload: Optional[List[Dict[str, Any]]] = None
+        if request.previous_scenes:
+            previous_scenes_payload = [scene.dict() for scene in request.previous_scenes]
+
+        generated = story_service.generate_anime_scene_from_bible(
+            premise=request.premise,
+            persona=request.persona,
+            story_setting=request.story_setting,
+            character_input=request.character_input,
+            plot_elements=request.plot_elements,
+            writing_style=request.writing_style,
+            story_tone=request.story_tone,
+            narrative_pov=request.narrative_pov,
+            audience_age_group=request.audience_age_group,
+            content_rating=request.content_rating,
+            anime_bible=request.anime_bible,
+            previous_scenes=previous_scenes_payload,
+            target_scene_number=request.target_scene_number,
+            user_id=user_id,
+        )
+
+        scene = StoryScene(
+            scene_number=generated.get("scene_number"),
+            title=generated.get("title", ""),
+            description=generated.get("description", ""),
+            image_prompt=generated.get("image_prompt", ""),
+            audio_narration=generated.get("audio_narration", ""),
+            character_descriptions=generated.get("character_descriptions") or [],
+            key_events=generated.get("key_events") or [],
+        )
+
+        return AnimeSceneGenerateResponse(scene=scene, success=True)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[StoryWriter] Failed to generate anime scene from bible: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

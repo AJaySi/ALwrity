@@ -2,15 +2,20 @@ import React from 'react';
 import { Box, Tooltip } from '@mui/material';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 interface OutlineHoverActionsProps {
   onEdit: () => void;
   onImprove: () => void;
+  onRefineAnime?: () => void;
+  isRefiningAnime?: boolean;
 }
 
 const OutlineHoverActions: React.FC<OutlineHoverActionsProps> = ({
   onEdit,
   onImprove,
+  onRefineAnime,
+  isRefiningAnime,
 }) => {
   return (
     <Box
@@ -74,6 +79,35 @@ const OutlineHoverActions: React.FC<OutlineHoverActionsProps> = ({
           <TipsAndUpdatesIcon />
         </Box>
       </Tooltip>
+      {onRefineAnime && (
+        <Tooltip title={isRefiningAnime ? "Refining scene with anime bible..." : "Refine scene (anime bible-aware)"}>
+          <Box
+            role="button"
+            aria-label="Refine scene (anime)"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isRefiningAnime) {
+                onRefineAnime();
+              }
+            }}
+            sx={{
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'linear-gradient(135deg, #111827 0%, #4b5563 50%, #9ca3af 100%)',
+              boxShadow: '0 8px 16px rgba(15,23,42,0.45)',
+              color: 'white',
+              cursor: isRefiningAnime ? 'default' : 'pointer',
+              opacity: isRefiningAnime ? 0.7 : 1,
+            }}
+          >
+            <AutoFixHighIcon />
+          </Box>
+        </Tooltip>
+      )}
     </Box>
   );
 };

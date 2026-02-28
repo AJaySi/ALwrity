@@ -1,9 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { ResearchProvider, ResearchConfig } from "../../../services/blogWriterApi";
 import { podcastApi } from "../../../services/podcastApi";
 import { usePreflightCheck } from "../../../hooks/usePreflightCheck";
 import { useBudgetTracking } from "../../../hooks/useBudgetTracking";
-import { CreateProjectPayload, Query, Research, Script, Job } from "../types";
+import { CreateProjectPayload, Script } from "../types";
 import { usePodcastProjectState } from "../../../hooks/usePodcastProjectState";
 import { sanitizeExaConfig, announceError, getStepLabel } from "./utils";
 
@@ -43,6 +42,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     setBudgetCap,
     updateRenderJob,
     initializeProject,
+    setBible,
   } = projectState;
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -75,7 +75,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       setShowResumeAlert(true);
       setTimeout(() => setShowResumeAlert(false), 5000);
     }
-  }, []); // Only on mount
+  }, [project, currentStep]);
 
   useEffect(() => {
     if (announcement) {
@@ -85,7 +85,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     return undefined;
   }, [announcement]);
 
-  const handleCreate = useCallback(async (payload: CreateProjectPayload) => {
+  const handleCreate = useCallback(async (payload: CreateProjectPayload, feedback?: string) => {
     if (isAnalyzing) return;
     setResearch(null);
     setRawResearch(null);
@@ -95,8 +95,8 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     try {
       setIsAnalyzing(true);
       
-      // Upload avatar if provided, or generate presenters
-      let avatarUrl: string | null = null;
+      // Use existing avatar URL if provided (e.g. brand avatar), or upload new file
+      let avatarUrl: string | null = payload.avatarUrl || null;
       if (payload.files.avatarFile) {
         try {
           setAnnouncement("Uploading presenter avatar...");
@@ -108,10 +108,46 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
         }
       }
       
-      setAnnouncement("Analyzing your idea — AI suggestions incoming");
-      const result = await podcastApi.createProject({ ...payload, avatarUrl });
-      await initializeProject(payload, result.projectId);
-      setProject({ id: result.projectId, idea: payload.ideaOrUrl, duration: payload.duration, speakers: payload.speakers, avatarUrl });
+      // NEW FLOW: Create project first to generate/get the Podcast Bible
+      // This allows the analysis to be personalized using the Bible context
+      const projectId = project?.id || `podcast_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      setAnnouncement("Initializing project and brand context...");
+      const dbProject = project ? null : await initializeProject(payload, projectId, avatarUrl);
+      const bible = dbProject?.bible || projectState.bible;
+
+      setAnnouncement(feedback ? "Regenerating analysis using your feedback..." : "Analyzing your idea — AI suggestions incoming");
+      const result = await podcastApi.createProject(payload, bible, feedback);
+      
+      if (result.bible) {
+        setBible(result.bible);
+      } else if (dbProject?.bible) {
+        setBible(dbProject.bible);
+      }
+      
+      // Update the project in database with the analysis results
+      try {
+        await podcastApi.updateProject(projectId, {
+          analysis: result.analysis,
+          estimate: result.estimate,
+          queries: result.queries,
+          selected_queries: result.queries.map(q => q.id),
+          avatar_url: result.avatar_url,
+          avatar_prompt: result.avatar_prompt,
+        });
+      } catch (error) {
+        console.error('Failed to update project with analysis results:', error);
+      }
+
+      setProject({ 
+        id: projectId, 
+        idea: payload.ideaOrUrl, 
+        duration: payload.duration, 
+        speakers: payload.speakers, 
+        avatarUrl: result.avatar_url || avatarUrl,
+        avatarPrompt: result.avatar_prompt || null,
+        avatarPersonaId: null,
+      });
+      
       setAnalysis(result.analysis);
       setEstimate(result.estimate);
       setQueries(result.queries);
@@ -188,7 +224,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     } finally {
       setIsAnalyzing(false);
     }
-  }, [isAnalyzing, setResearch, setRawResearch, setScriptData, setShowScriptEditor, setShowRenderQueue, initializeProject, setProject, setAnalysis, setEstimate, setQueries, setSelectedQueries, setKnobs, setBudgetCap]);
+  }, [isAnalyzing, setResearch, setRawResearch, setScriptData, setShowScriptEditor, setShowRenderQueue, initializeProject, setProject, setAnalysis, setEstimate, setQueries, setSelectedQueries, setKnobs, setBudgetCap, setBible]);
 
   const handleRunResearch = useCallback(async () => {
     if (isResearching) return;
@@ -230,6 +266,8 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
           approvedQueries,
           provider: researchProvider,
           exaConfig: sanitizeExaConfig(analysis?.exaSuggestedConfig),
+          bible: projectState.bible,
+          analysis: analysis,
           onProgress: (message) => {
             setAnnouncement(message);
           },
@@ -258,7 +296,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     } finally {
       setIsResearching(false);
     }
-  }, [isResearching, project, selectedQueries, queries, researchProvider, preflightCheck, analysis, setResearch, setRawResearch, setScriptData, setShowScriptEditor, setShowRenderQueue]);
+  }, [isResearching, project, selectedQueries, queries, researchProvider, preflightCheck, analysis, setResearch, setRawResearch, setScriptData, setShowScriptEditor, setShowRenderQueue, projectState.bible]);
 
   const handleGenerateScript = useCallback(async () => {
     if (showScriptEditor) return;
@@ -282,7 +320,25 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     setScriptData(null);
     setShowRenderQueue(false);
     setShowScriptEditor(true);
-  }, [showScriptEditor, project, research, preflightCheck, setScriptData, setShowRenderQueue, setShowScriptEditor]);
+
+    try {
+      const result = await podcastApi.generateScript({
+        projectId: project.id,
+        idea: project.idea,
+        research: rawResearch,
+        knobs: projectState.knobs,
+        speakers: project.speakers,
+        durationMinutes: project.duration,
+        bible: projectState.bible,
+        outline: analysis?.suggestedOutlines?.[0], // Pass the first (possibly refined) outline
+        analysis: analysis, // Pass full analysis context
+      });
+
+      setScriptData(result);
+    } catch (error) {
+      announceError(setAnnouncement, error);
+    }
+  }, [showScriptEditor, project, research, preflightCheck, setScriptData, setShowRenderQueue, setShowScriptEditor, rawResearch, projectState.knobs, projectState.bible])
 
   const handleProceedToRendering = useCallback((script: Script) => {
     setScriptData(script);
@@ -316,12 +372,29 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
   const activeStep = useMemo(() => {
     if (showRenderQueue) return 3;
     if (showScriptEditor) return 2;
-    if (research) return 1;
-    if (analysis) return 0;
+    if (currentStep === 'research' || research) return 1;
+    if (currentStep === 'analysis' || analysis) return 0;
     return -1;
-  }, [showRenderQueue, showScriptEditor, research, analysis]);
+  }, [showRenderQueue, showScriptEditor, currentStep, research, analysis]);
 
   const canGenerateScript = Boolean(project && research && rawResearch);
+
+  const handleRegenerate = useCallback(async (feedback?: string) => {
+    if (!project) return;
+    
+    // Prepare the payload from existing project state
+    const payload: CreateProjectPayload = {
+      ideaOrUrl: project.idea,
+      duration: project.duration,
+      speakers: project.speakers,
+      knobs: projectState.knobs,
+      budgetCap: projectState.budgetCap,
+      avatarUrl: project.avatarUrl,
+      files: {} // No new files for regeneration
+    };
+
+    await handleCreate(payload, feedback);
+  }, [project, projectState.knobs, projectState.budgetCap, handleCreate]);
 
   return {
     // State
@@ -336,6 +409,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     canGenerateScript,
     // Handlers
     handleCreate,
+    handleRegenerate,
     handleRunResearch,
     handleGenerateScript,
     handleProceedToRendering,

@@ -5,7 +5,7 @@
  * and improve performance while managing cache invalidation.
  */
 
-import { apiClient } from './client';
+import { apiClient, aiApiClient } from './client';
 import analyticsCache from '../services/analyticsCache';
 
 interface PlatformAnalytics {
@@ -73,16 +73,16 @@ class CachedAnalyticsAPI {
   /**
    * Get analytics data with caching
    */
-  async getAnalyticsData(platforms?: string[], bypassCache: boolean = false): Promise<AnalyticsResponse> {
+  async getAnalyticsData(platforms?: string[], bypassCache: boolean = false, opts?: { start_date?: string; end_date?: string }): Promise<AnalyticsResponse> {
     const baseParams: any = platforms ? { platforms: platforms.join(',') } : {};
     const endpoint = '/api/analytics/data';
     
     // If bypassing cache, add timestamp to force fresh request
-    const requestParams = bypassCache ? { ...baseParams, _t: Date.now() } : baseParams;
+    const requestParams = bypassCache ? { ...baseParams, _t: Date.now(), ...(opts || {}) } : { ...baseParams, ...(opts || {}) };
     
     // Try to get from cache first (unless bypassing)
     if (!bypassCache) {
-      const cached = analyticsCache.get<AnalyticsResponse>(endpoint, baseParams);
+      const cached = analyticsCache.get<AnalyticsResponse>(endpoint, requestParams);
       if (cached) {
         console.log('📦 Analytics Cache HIT: Analytics data (cached for 60 minutes)');
         return cached;
@@ -95,9 +95,16 @@ class CachedAnalyticsAPI {
     
     // Cache the result with extended TTL (unless bypassing)
     if (!bypassCache) {
-      analyticsCache.set(endpoint, baseParams, response.data, this.CACHE_TTL.ANALYTICS_DATA);
+      analyticsCache.set(endpoint, requestParams, response.data, this.CACHE_TTL.ANALYTICS_DATA);
     }
     
+    return response.data;
+  }
+
+  async getAIInsights(opts: { start_date: string; end_date: string }): Promise<{ success: boolean; insights?: any; error?: string }> {
+    const endpoint = '/api/analytics/ai-insights';
+    const params = { start_date: opts.start_date, end_date: opts.end_date, _t: Date.now() };
+    const response = await aiApiClient.get(endpoint, { params });
     return response.data;
   }
 
@@ -128,7 +135,7 @@ class CachedAnalyticsAPI {
   /**
    * Force refresh analytics data (bypass cache)
    */
-  async forceRefreshAnalyticsData(platforms?: string[]): Promise<AnalyticsResponse> {
+  async forceRefreshAnalyticsData(platforms?: string[], opts?: { start_date?: string; end_date?: string }): Promise<AnalyticsResponse> {
     // Try to clear backend cache first (but don't fail if it doesn't work)
     try {
       await this.clearBackendCache(platforms);
@@ -140,7 +147,7 @@ class CachedAnalyticsAPI {
     this.invalidateAnalyticsData();
     
     // Finally get fresh data with cache bypass
-    return this.getAnalyticsData(platforms, true);
+    return this.getAnalyticsData(platforms, true, opts);
   }
 
   /**

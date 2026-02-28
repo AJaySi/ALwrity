@@ -129,7 +129,8 @@ from api.seo_dashboard import (
     analyze_urls_ai,
     AnalyzeURLsRequest,
     get_analyzed_pages,
-    get_semantic_health  # Phase 2B: Semantic health monitoring
+    get_semantic_health,
+    get_sif_indexing_health
 )
 
 # Initialize FastAPI app
@@ -336,6 +337,15 @@ async def semantic_cache_stats_endpoint(current_user: dict = Depends(get_current
     Returns hit rate, memory usage, and eviction counts.
     """
     return await get_semantic_cache_stats(current_user)
+
+
+@app.get("/api/seo-dashboard/sif-health")
+async def sif_indexing_health_endpoint(current_user: dict = Depends(get_current_user)):
+    """
+    Get SIF indexing health summary for the current user.
+    Used by the Semantic Indexing Status widget on the dashboard.
+    """
+    return await get_sif_indexing_health(current_user)
 
 # Comprehensive SEO Analysis endpoints
 @app.post("/api/seo-dashboard/analyze-comprehensive")

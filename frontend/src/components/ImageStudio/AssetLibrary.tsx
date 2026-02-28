@@ -652,7 +652,7 @@ export const AssetLibrary: React.FC = () => {
               Asset Library
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Unified content archive for all ALwrity tools: Story Writer, Image Studio, Blog Writer, LinkedIn, Facebook, SEO Tools, and more.
+              Unified content archive for all ALwrity tools: Story Studio, Image Studio, Blog Writer, LinkedIn, Facebook, SEO Tools, and more.
             </Typography>
           </Box>
 

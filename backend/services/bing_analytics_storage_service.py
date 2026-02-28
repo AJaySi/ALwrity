@@ -237,7 +237,7 @@ class BingAnalyticsStorageService:
             Dict containing analytics summary
         """
         try:
-            db = self._get_db_session()
+            db = self._get_db_session(user_id)
             
             # Date range
             end_date = datetime.now()
@@ -331,7 +331,7 @@ class BingAnalyticsStorageService:
             List of top queries with performance data
         """
         try:
-            db = self._get_db_session()
+            db = self._get_db_session(user_id)
             
             # Calculate date range
             end_date = datetime.now()

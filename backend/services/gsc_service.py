@@ -343,7 +343,11 @@ class GSCService:
             if not credentials:
                 raise ValueError("No valid credentials found")
             
-            service = build('searchconsole', 'v1', credentials=credentials)
+            # Disable discovery file cache (suppress oauth2client file_cache warnings) with safe fallback
+            try:
+                service = build('searchconsole', 'v1', credentials=credentials, cache_discovery=False)
+            except TypeError:
+                service = build('searchconsole', 'v1', credentials=credentials)
             logger.info(f"Authenticated GSC service created for user: {user_id}")
             return service
         
@@ -395,9 +399,12 @@ class GSCService:
             # Check cache first
             cache_key = f"{user_id}_{site_url}_{start_date}_{end_date}"
             cached_data = self._get_cached_data(user_id, site_url, 'analytics', cache_key)
-            if cached_data:
-                logger.info(f"Returning cached analytics data for user: {user_id}")
-                return cached_data
+            if cached_data and isinstance(cached_data, dict):
+                has_pages = 'page_data' in cached_data and isinstance(cached_data.get('page_data'), dict)
+                has_queries = 'query_data' in cached_data and isinstance(cached_data.get('query_data'), dict)
+                if has_pages and has_queries:
+                    logger.info(f"Returning cached analytics data for user: {user_id} (includes page_data)")
+                    return cached_data
             
             try:
                 service = self.get_authenticated_service(user_id)
@@ -476,8 +483,54 @@ class GSCService:
                 ).execute()
                 
                 logger.info(f"GSC Query-level response for user {user_id}: {query_response}")
-                
-                # Combine overall metrics with query-level data
+
+                # Step 4: Get page-level data for top pages insights
+                page_request = {
+                    'startDate': start_date,
+                    'endDate': end_date,
+                    'dimensions': ['page'],  # Get page-level data
+                    'rowLimit': 1000
+                }
+                logger.info(f"GSC Page-level request for user {user_id}: {page_request}")
+                page_rows = []
+                page_row_count = 0
+                try:
+                    page_response = service.searchanalytics().query(
+                        siteUrl=site_url,
+                        body=page_request
+                    ).execute()
+                    logger.info(f"GSC Page-level response for user {user_id}: {page_response}")
+                    page_rows = page_response.get('rows', [])
+                    page_row_count = page_response.get('rowCount', 0)
+                except Exception as page_error:
+                    logger.warning(f"GSC Page-level request failed for user {user_id}: {page_error}")
+                    page_rows = []
+                    page_row_count = 0
+
+                # Step 5: Get query+page combined data for mapping queries to pages
+                qp_rows = []
+                qp_row_count = 0
+                try:
+                    qp_request = {
+                        'startDate': start_date,
+                        'endDate': end_date,
+                        'dimensions': ['query', 'page'],
+                        'rowLimit': 1000
+                    }
+                    logger.info(f"GSC Query+Page request for user {user_id}: {qp_request}")
+                    qp_response = service.searchanalytics().query(
+                        siteUrl=site_url,
+                        body=qp_request
+                    ).execute()
+                    logger.info(f"GSC Query+Page response for user {user_id}: {qp_response}")
+                    qp_rows = qp_response.get('rows', [])
+                    qp_row_count = qp_response.get('rowCount', 0)
+                except Exception as qp_error:
+                    logger.warning(f"GSC Query+Page request failed for user {user_id}: {qp_error}")
+                    qp_rows = []
+                    qp_row_count = 0
+
+                # Combine overall, query, page and query+page data
                 analytics_data = {
                     'overall_metrics': {
                         'rows': response.get('rows', []),
@@ -486,6 +539,14 @@ class GSCService:
                     'query_data': {
                         'rows': query_response.get('rows', []),
                         'rowCount': query_response.get('rowCount', 0)
+                    },
+                    'page_data': {
+                        'rows': page_rows,
+                        'rowCount': page_row_count
+                    },
+                    'query_page_data': {
+                        'rows': qp_rows,
+                        'rowCount': qp_row_count
                     },
                     'verification_data': {
                         'rows': verification_rows,
@@ -510,6 +571,8 @@ class GSCService:
                         'rowCount': response.get('rowCount', 0)
                     },
                     'query_data': {'rows': [], 'rowCount': 0},
+                    'page_data': {'rows': [], 'rowCount': 0},
+                    'query_page_data': {'rows': [], 'rowCount': 0},
                     'verification_data': {
                         'rows': verification_rows,
                         'rowCount': len(verification_rows)

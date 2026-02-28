@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Box, Paper, Stack, Alert, Divider, CircularProgress, alpha } from "@mui/material";
 import { usePodcastProjectState } from "../../hooks/usePodcastProjectState";
-import { Script } from "./types";
 import { CreateModal } from "./CreateModal";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { ScriptEditor } from "./ScriptEditor";
@@ -9,12 +8,14 @@ import { RenderQueue } from "./RenderQueue";
 import { RecentEpisodesPreview } from "./RecentEpisodesPreview";
 import { ProjectList } from "./ProjectList";
 import { PreflightBlockDialog } from "./PreflightBlockDialog";
+import { PodcastBiblePanel } from "./PodcastBiblePanel";
 import {
   Header,
   ProgressStepper,
   EstimateCard,
   QuerySelection,
   ResearchSummary,
+  RegenerationFeedbackModal,
   usePodcastWorkflow,
   DEFAULT_KNOBS,
   getStepLabel,
@@ -38,7 +39,9 @@ const PodcastDashboard: React.FC = () => {
     showScriptEditor,
     showRenderQueue,
     currentStep,
+    bible,
     setScriptData,
+    setBible,
     setShowScriptEditor,
     setShowRenderQueue,
     setResearchProvider,
@@ -56,6 +59,8 @@ const PodcastDashboard: React.FC = () => {
     },
   });
 
+  const [showRegenModal, setShowRegenModal] = useState(false);
+
   const handleSelectProject = useCallback(async (projectId: string) => {
     try {
       await loadProjectFromDb(projectId);
@@ -65,7 +70,7 @@ const PodcastDashboard: React.FC = () => {
       // Use workflow's setAnnouncement - workflow is stable from hook
       workflow.setAnnouncement(errorMsg);
     }
-  }, [loadProjectFromDb, workflow.setAnnouncement]);
+  }, [loadProjectFromDb, workflow]);
 
   const handleNewEpisode = useCallback(() => {
     resetState();
@@ -184,6 +189,14 @@ const PodcastDashboard: React.FC = () => {
             </Alert>
           )}
 
+          {/* Podcast Bible */}
+          {project && bible && (currentStep === 'analysis' || (currentStep === 'research' && !research)) && !showScriptEditor && !showRenderQueue && (
+            <PodcastBiblePanel 
+              bible={bible} 
+              onUpdate={(updated) => setBible(updated)} 
+            />
+          )}
+
           {(workflow.isAnalyzing || workflow.isResearching) && (
             <Alert
               severity="warning"
@@ -214,23 +227,22 @@ const PodcastDashboard: React.FC = () => {
 
           {/* Main Content */}
           <Stack spacing={3}>
-            {analysis && !showScriptEditor && !showRenderQueue && (
+            {analysis && (currentStep === 'analysis' || (currentStep === 'research' && !research)) && !showScriptEditor && !showRenderQueue && (
               <AnalysisPanel
                 analysis={analysis}
+                estimate={estimate}
                 idea={project?.idea}
                 duration={project?.duration}
                 speakers={project?.speakers}
                 avatarUrl={project?.avatarUrl}
                 avatarPrompt={project?.avatarPrompt}
-                onRegenerate={() => {}}
+                onRegenerate={() => setShowRegenModal(true)}
+                onUpdateAnalysis={(updated) => projectState.setAnalysis(updated)}
               />
             )}
 
-            {estimate && !showScriptEditor && !showRenderQueue && (
-              <EstimateCard estimate={estimate} />
-            )}
-
-            {queries.length > 0 && !showScriptEditor && !showRenderQueue && (
+            {/* Main content area */}
+            {queries.length > 0 && currentStep === 'research' && !research && !showScriptEditor && !showRenderQueue && (
               <QuerySelection
                 queries={queries}
                 selectedQueries={selectedQueries}
@@ -242,7 +254,7 @@ const PodcastDashboard: React.FC = () => {
               />
             )}
 
-            {research && !showScriptEditor && !showRenderQueue && (
+            {research && (currentStep === 'research' || currentStep === 'script') && !showScriptEditor && !showRenderQueue && (
               <ResearchSummary
                 research={research}
                 canGenerateScript={workflow.canGenerateScript}
@@ -260,6 +272,8 @@ const PodcastDashboard: React.FC = () => {
                 speakers={project.speakers}
                 durationMinutes={project.duration}
                 script={scriptData}
+                analysis={analysis}
+                outline={analysis?.suggestedOutlines?.[0]}
                 onScriptChange={(s) => setScriptData(s)}
                 onBackToResearch={() => setShowScriptEditor(false)}
                 onProceedToRendering={(s) => workflow.handleProceedToRendering(s)}
@@ -280,8 +294,10 @@ const PodcastDashboard: React.FC = () => {
                 script={scriptData}
                 knobs={knobsState}
                 jobs={renderJobs}
+                bible={bible}
                 budgetCap={projectState.budgetCap}
                 avatarImageUrl={null}
+                analysis={analysis} // Pass analysis context
                 onUpdateJob={updateRenderJob}
                 onUpdateScript={(updatedScript) => setScriptData(updatedScript)}
                 onBack={() => {
@@ -304,6 +320,17 @@ const PodcastDashboard: React.FC = () => {
         }}
         response={workflow.preflightResponse}
         operationName={workflow.preflightOperationName}
+      />
+
+      {/* Regeneration Feedback Modal */}
+      <RegenerationFeedbackModal
+        open={showRegenModal}
+        onClose={() => setShowRegenModal(false)}
+        onConfirm={async (feedback) => {
+          setShowRegenModal(false);
+          await workflow.handleRegenerate(feedback);
+        }}
+        isSubmitting={workflow.isAnalyzing}
       />
     </Box>
   );

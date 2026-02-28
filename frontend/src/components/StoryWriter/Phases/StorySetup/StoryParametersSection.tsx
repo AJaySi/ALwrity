@@ -19,11 +19,11 @@ export const StoryParametersSection: React.FC<StoryParametersSectionProps> = ({
       {/* Persona */}
       <Grid item xs={12}>
         <FormFieldWithTooltip
-          label="Persona"
+          label="Define the author's voice, style, and perspective that will guide the story's narrative"
           value={state.persona}
           onChange={(e) => state.setPersona(e.target.value)}
           placeholder="Describe the author persona (e.g., 'A fantasy writer who loves intricate world-building')"
-          helperText="Define the author's voice, style, and perspective that will guide the story's narrative"
+          helperText="Describe who is telling this story and how it should feel to read."
           required
           multiline
           rows={2}
@@ -38,6 +38,11 @@ export const StoryParametersSection: React.FC<StoryParametersSectionProps> = ({
             ],
           }}
         />
+        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="outlined" size="small">
+            Enhance Persona
+          </Button>
+        </Box>
       </Grid>
 
       {/* Story Setting */}
@@ -62,6 +67,13 @@ export const StoryParametersSection: React.FC<StoryParametersSectionProps> = ({
             ],
           }}
         />
+      </Grid>
+      <Grid item xs={12}>
+        <Box sx={{ mt: -1, mb: 1, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="outlined" size="small">
+            Enhance Story Settings
+          </Button>
+        </Box>
       </Grid>
 
       {/* Characters */}

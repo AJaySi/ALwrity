@@ -108,6 +108,7 @@ export const loadExistingAnalysis = async (analysisId: number, website: string):
   analysis?: any;
   domainName?: string;
   crawlResult?: any;
+  warning?: string;
   error?: string;
 }> => {
   try {
@@ -115,13 +116,12 @@ export const loadExistingAnalysis = async (analysisId: number, website: string):
     const result = response.data;
     
     if (result.success && result.analysis) {
-      // Extract domain name for personalization
       const extractedDomain = extractDomainName(website);
       
       // Database structure: flat fields at top level
       // Need to combine them into the format expected by UI
       const comprehensiveAnalysis = {
-        // Top-level style analysis fields from database
+        id: result.analysis.id,
         writing_style: result.analysis.writing_style,
         content_characteristics: result.analysis.content_characteristics,
         target_audience: result.analysis.target_audience,
@@ -151,7 +151,8 @@ export const loadExistingAnalysis = async (analysisId: number, website: string):
         success: true,
         analysis: comprehensiveAnalysis,
         domainName: extractedDomain,
-        crawlResult: result.analysis.crawl_result
+        crawlResult: result.analysis.crawl_result,
+        warning: result.analysis.warning_message
       };
     }
     return {
@@ -212,6 +213,7 @@ export const performAnalysis = async (
       
       // Combine all analysis data into a comprehensive object
       const comprehensiveAnalysis = {
+        id: result.analysis_id,
         ...result.style_analysis,
         seo_audit: result.seo_audit,
         sitemap_analysis: result.crawl_result?.sitemap_analysis,

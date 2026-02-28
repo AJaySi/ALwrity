@@ -227,7 +227,10 @@ class ClerkAuthMiddleware:
                             'last_name': last_name,
                             'clerk_user_id': user_id
                         }
-                    logger.error("Fallback decoding is disabled in production.")
+                    # In production mode, treat fallback as a soft failure:
+                    # log at warning level (once per process) and let the caller
+                    # handle this as an authentication failure without spamming logs.
+                    logger.warning("Fallback decoding is disabled in production.")
                     return None
                     
                 except Exception as e:
@@ -247,13 +250,25 @@ async def get_current_user(
 ) -> Dict[str, Any]:
     """Get current authenticated user."""
     try:
+        # Safe header access
+        auth_header = None
+        user_agent = "unknown"
+        all_headers = {}
+        
+        try:
+            if hasattr(request, 'headers'):
+                 if hasattr(request.headers, 'get'):
+                      auth_header = request.headers.get('authorization') or request.headers.get('Authorization')
+                      user_agent = request.headers.get('user-agent', 'unknown')
+                 
+                 if hasattr(request.headers, 'items'):
+                      all_headers = {k: v[:50] if len(v) > 50 else v for k, v in request.headers.items()}
+        except:
+             pass
+             
         if not credentials:
             # CRITICAL: Log as ERROR since this is a security issue - authenticated endpoint accessed without credentials
             endpoint_path = f"{request.method} {request.url.path}"
-            
-            # DEBUG: Log all headers to see what's actually being received
-            auth_header = request.headers.get('authorization') or request.headers.get('Authorization')
-            all_headers = {k: v[:50] if len(v) > 50 else v for k, v in request.headers.items()}
             
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: No credentials provided for authenticated endpoint: {endpoint_path} "
@@ -261,7 +276,7 @@ async def get_current_user(
                 f"auth_header_received={'YES' if auth_header else 'NO'}, "
                 f"auth_header_value={auth_header[:50] + '...' if auth_header and len(auth_header) > 50 else (auth_header or 'None')}, "
                 f"all_headers={list(all_headers.keys())}, "
-                f"user_agent={request.headers.get('user-agent', 'unknown')})"
+                f"user_agent={user_agent})"
             )
             
             # Get caller information for better debugging
@@ -328,11 +343,19 @@ async def get_current_user(
                 except Exception:
                     pass
             
+            # Safe header access for logging
+            safe_user_agent = "unknown"
+            try:
+                if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
+                    safe_user_agent = request.headers.get('user-agent', 'unknown')
+            except:
+                pass
+
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: Token verification failed for endpoint: {endpoint_path} "
                 f"(client_ip={request.client.host if request.client else 'unknown'}, "
                 f"caller={caller_info}, "
-                f"user_agent={request.headers.get('user-agent', 'unknown')})"
+                f"user_agent={safe_user_agent})"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -369,7 +392,7 @@ async def get_current_user(
             f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e} "
             f"(client_ip={request.client.host if request.client else 'unknown'}, "
             f"caller={caller_info}, "
-            f"user_agent={request.headers.get('user-agent', 'unknown')})",
+            f"user_agent={user_agent})",
             exc_info=True
         )
         raise HTTPException(
@@ -420,13 +443,26 @@ async def get_current_user_with_query_token(
             token_to_verify = credentials.credentials
         else:
             # Fall back to query parameter if no header
-            query_token = request.query_params.get("token")
+            query_token = None
+            try:
+                if hasattr(request, 'query_params') and hasattr(request.query_params, 'get'):
+                    query_token = request.query_params.get("token")
+            except:
+                pass
             if query_token:
                 token_to_verify = query_token
         
         if not token_to_verify:
             # CRITICAL: Log as ERROR since this is a security issue
             endpoint_path = f"{request.method} {request.url.path}"
+            
+            # Safe user agent access
+            user_agent = "unknown"
+            try:
+                if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
+                     user_agent = request.headers.get('user-agent', 'unknown')
+            except:
+                pass
             
             # Get caller information
             caller_frame = inspect.currentframe()
@@ -446,12 +482,20 @@ async def get_current_user_with_query_token(
                 except Exception:
                     pass
             
+            # Safe header access for logging
+            safe_user_agent = "unknown"
+            try:
+                if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
+                    safe_user_agent = request.headers.get('user-agent', 'unknown')
+            except:
+                pass
+
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: No credentials provided (neither header nor query parameter) "
                 f"for authenticated endpoint: {endpoint_path} "
                 f"(client_ip={request.client.host if request.client else 'unknown'}, "
                 f"caller={caller_info}, "
-                f"user_agent={request.headers.get('user-agent', 'unknown')})"
+                f"user_agent={safe_user_agent})"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -482,11 +526,19 @@ async def get_current_user_with_query_token(
                 except Exception:
                     pass
             
+            # Safe header access for logging
+            safe_user_agent = "unknown"
+            try:
+                if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
+                    safe_user_agent = request.headers.get('user-agent', 'unknown')
+            except:
+                pass
+            
             logger.error(
                 f"🔒 AUTHENTICATION ERROR: Token verification failed for endpoint: {endpoint_path} "
                 f"(client_ip={request.client.host if request.client else 'unknown'}, "
                 f"caller={caller_info}, "
-                f"user_agent={request.headers.get('user-agent', 'unknown')})"
+                f"user_agent={safe_user_agent})"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -519,11 +571,19 @@ async def get_current_user_with_query_token(
             except Exception:
                 pass
         
+        # Safe header access for logging
+        safe_user_agent = "unknown"
+        try:
+            if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
+                safe_user_agent = request.headers.get('user-agent', 'unknown')
+        except:
+            pass
+
         logger.error(
             f"🔒 AUTHENTICATION ERROR: Unexpected error during authentication for endpoint: {endpoint_path}: {e} "
             f"(client_ip={request.client.host if request.client else 'unknown'}, "
             f"caller={caller_info}, "
-            f"user_agent={request.headers.get('user-agent', 'unknown')})",
+            f"user_agent={safe_user_agent})",
             exc_info=True
         )
         raise HTTPException(

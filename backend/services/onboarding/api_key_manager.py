@@ -527,6 +527,11 @@ class APIKeyManager:
     def __init__(self):
         self.api_keys = {}
         self._load_from_env()
+
+    def load_api_keys(self):
+        self.api_keys = {}
+        self._load_from_env()
+        return self.api_keys
     
     def _load_from_env(self):
         """Load API keys from environment variables."""

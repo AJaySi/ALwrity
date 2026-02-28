@@ -11,6 +11,7 @@ from datetime import datetime
 import uuid
 
 from models.podcast_models import PodcastProject
+from services.podcast_bible_service import PodcastBibleService
 
 
 class PodcastService:
@@ -18,6 +19,7 @@ class PodcastService:
     
     def __init__(self, db: Session):
         self.db = db
+        self.bible_service = PodcastBibleService()
     
     def create_project(
         self,
@@ -30,6 +32,9 @@ class PodcastService:
         **kwargs
     ) -> PodcastProject:
         """Create a new podcast project."""
+        # Generate Podcast Bible automatically from onboarding data
+        bible = self.bible_service.generate_bible(user_id, project_id)
+        
         project = PodcastProject(
             project_id=project_id,
             user_id=user_id,
@@ -37,6 +42,7 @@ class PodcastService:
             duration=duration,
             speakers=speakers,
             budget_cap=budget_cap,
+            bible=bible.model_dump() if bible else None,
             status="draft",
             current_step="create",
             **kwargs

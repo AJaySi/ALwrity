@@ -35,10 +35,93 @@ export interface StoryGenerationRequest {
   audio_lang?: string;
   audio_slow?: boolean;
   audio_rate?: number;
+  anime_bible?: AnimeStoryBible | null;
 }
 
 export interface StorySetupGenerationRequest {
   story_idea: string;
+  story_mode?: 'marketing' | 'pure';
+  story_template?: string | null;
+  brand_context?: {
+    brand_name?: string | null;
+    writing_tone?: string | null;
+    audience_description?: string | null;
+  } | null;
+}
+
+export interface StoryIdeaEnhanceRequest {
+  story_idea: string;
+  story_mode?: 'marketing' | 'pure';
+  story_template?: string | null;
+  brand_context?: {
+    brand_name?: string | null;
+    writing_tone?: string | null;
+    audience_description?: string | null;
+  } | null;
+  fiction_variant?: string | null;
+  narrative_energy?: string | null;
+}
+
+export interface StoryIdeaEnhanceSuggestion {
+  idea: string;
+  whats_missing: string;
+  why_choose: string;
+}
+
+export interface StoryIdeaEnhanceResponse {
+  suggestions: StoryIdeaEnhanceSuggestion[];
+  success: boolean;
+}
+
+export interface StoryContextResponse {
+  canonical_profile: Record<string, any> | null;
+  website_url?: string | null;
+  research_preferences?: Record<string, any> | null;
+  brand_context?: {
+    brand_name?: string | null;
+    writing_tone?: string | null;
+    audience_description?: string | null;
+  } | null;
+  brand_assets?: {
+    avatar_url?: string | null;
+    voice_preview_url?: string | null;
+    custom_voice_id?: string | null;
+  } | null;
+  persona_enabled?: boolean;
+  has_persona_context?: boolean;
+}
+
+export interface AnimeCharacter {
+  id: string;
+  name: string;
+  age_range: string;
+  role: string;
+  look: string;
+  outfit_palette: string;
+  personality_tags: string[];
+}
+
+export interface AnimeWorld {
+  setting: string;
+  era: string;
+  tech_or_magic_level: string;
+  core_rules: string[];
+}
+
+export interface AnimeVisualStyle {
+  style_preset: string;
+  camera_style: string;
+  color_mood: string;
+  lighting: string;
+  line_style: string;
+  extra_tags: string[];
+}
+
+export interface AnimeStoryBible {
+  story_id?: string;
+  main_cast: AnimeCharacter[];
+  world: AnimeWorld;
+  visual_style: AnimeVisualStyle;
 }
 
 export interface StorySetupOption {
@@ -96,6 +179,7 @@ export interface StoryOutlineResponse {
   success: boolean;
   task_id?: string;
   is_structured?: boolean;
+  anime_bible?: AnimeStoryBible;
 }
 
 export interface StoryContentResponse {
@@ -261,6 +345,97 @@ export interface ResumeAnimateSceneRequest {
   duration?: 5 | 10;
 }
 
+export interface AnimeSceneTextRequest {
+  scene: StoryScene;
+  persona: string;
+  story_setting: string;
+  character_input: string;
+  plot_elements: string;
+  writing_style: string;
+  story_tone: string;
+  narrative_pov: string;
+  audience_age_group: string;
+  content_rating: string;
+  anime_bible?: AnimeStoryBible | null;
+}
+
+export interface AnimeSceneTextResponse {
+  scene: StoryScene;
+  success: boolean;
+}
+
+export interface AnimeSceneGenerateRequest {
+  premise: string;
+  persona: string;
+  story_setting: string;
+  character_input: string;
+  plot_elements: string;
+  writing_style: string;
+  story_tone: string;
+  narrative_pov: string;
+  audience_age_group: string;
+  content_rating: string;
+  anime_bible: AnimeStoryBible;
+  previous_scenes?: StoryScene[] | null;
+  target_scene_number?: number | null;
+}
+
+export interface AnimeSceneGenerateResponse {
+  scene: StoryScene;
+  success: boolean;
+}
+
+export interface StoryProjectSummary {
+  id: number;
+  project_id: string;
+  user_id: string;
+  title?: string | null;
+  story_mode?: string | null;
+  story_template?: string | null;
+  setup?: Record<string, any> | null;
+  outline?: Record<string, any> | null;
+  scenes?: Record<string, any>[] | null;
+  story_content?: Record<string, any> | null;
+  anime_bible?: AnimeStoryBible | null;
+  media_state?: Record<string, any> | null;
+  current_phase?: string | null;
+  status: string;
+  is_favorite: boolean;
+  is_complete: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoryProjectListResponse {
+  projects: StoryProjectSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CreateStoryProjectRequest {
+  project_id: string;
+  title?: string | null;
+  story_mode?: string | null;
+  story_template?: string | null;
+  setup?: Record<string, any> | null;
+}
+
+export interface UpdateStoryProjectRequest {
+  title?: string | null;
+  story_mode?: string | null;
+  story_template?: string | null;
+  setup?: Record<string, any> | null;
+  outline?: Record<string, any> | null;
+  scenes?: Record<string, any>[] | null;
+  story_content?: Record<string, any> | null;
+  anime_bible?: AnimeStoryBible | null;
+  media_state?: Record<string, any> | null;
+  current_phase?: string | null;
+  status?: string | null;
+  is_complete?: boolean | null;
+}
+
 class StoryWriterApi {
   /**
    * Generate 3 story setup options from a user's story idea
@@ -272,6 +447,24 @@ class StoryWriterApi {
       "/api/story/generate-setup",
       request
     );
+    return response.data;
+  }
+
+  async enhanceStoryIdea(
+    request: StoryIdeaEnhanceRequest
+  ): Promise<StoryIdeaEnhanceResponse> {
+    const response = await aiApiClient.post<StoryIdeaEnhanceResponse>(
+      "/api/story/enhance-idea",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Get onboarding-based story context for Story Studio
+   */
+  async getStoryContext(): Promise<StoryContextResponse> {
+    const response = await aiApiClient.get<StoryContextResponse>("/api/story/context");
     return response.data;
   }
 
@@ -437,6 +630,71 @@ class StoryWriterApi {
     const response = await aiApiClient.post<AnimateSceneResponse>(
       "/api/story/animate-scene-resume",
       request
+    );
+    return response.data;
+  }
+
+  async refineAnimeSceneText(request: AnimeSceneTextRequest): Promise<AnimeSceneTextResponse> {
+    const response = await aiApiClient.post<AnimeSceneTextResponse>(
+      "/api/story/anime/scene-text",
+      request
+    );
+    return response.data;
+  }
+
+  async generateAnimeSceneFromBible(
+    request: AnimeSceneGenerateRequest
+  ): Promise<AnimeSceneGenerateResponse> {
+    const response = await aiApiClient.post<AnimeSceneGenerateResponse>(
+      "/api/story/anime/scene-generate",
+      request
+    );
+    return response.data;
+  }
+
+  async createStoryProject(
+    payload: CreateStoryProjectRequest
+  ): Promise<StoryProjectSummary> {
+    const response = await aiApiClient.post<StoryProjectSummary>("/api/story/projects", payload);
+    return response.data;
+  }
+
+  async loadStoryProject(projectId: string): Promise<StoryProjectSummary> {
+    const response = await aiApiClient.get<StoryProjectSummary>(`/api/story/projects/${projectId}`);
+    return response.data;
+  }
+
+  async updateStoryProject(
+    projectId: string,
+    payload: UpdateStoryProjectRequest
+  ): Promise<StoryProjectSummary> {
+    const response = await aiApiClient.put<StoryProjectSummary>(
+      `/api/story/projects/${projectId}`,
+      payload
+    );
+    return response.data;
+  }
+
+  async listStoryProjects(params?: {
+    status?: string;
+    favorites_only?: boolean;
+    limit?: number;
+    offset?: number;
+    order_by?: "updated_at" | "created_at";
+  }): Promise<StoryProjectListResponse> {
+    const response = await aiApiClient.get<StoryProjectListResponse>("/api/story/projects", {
+      params,
+    });
+    return response.data;
+  }
+
+  async deleteStoryProject(projectId: string): Promise<void> {
+    await aiApiClient.delete(`/api/story/projects/${projectId}`);
+  }
+
+  async toggleStoryProjectFavorite(projectId: string): Promise<StoryProjectSummary> {
+    const response = await aiApiClient.post<StoryProjectSummary>(
+      `/api/story/projects/${projectId}/favorite`
     );
     return response.data;
   }

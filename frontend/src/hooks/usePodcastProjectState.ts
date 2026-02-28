@@ -8,6 +8,7 @@ import {
   Knobs,
   Job,
   CreateProjectPayload,
+  PodcastBible,
 } from '../components/PodcastMaker/types';
 import { BlogResearchResponse, ResearchProvider } from '../services/blogWriterApi';
 import { podcastApi } from '../services/podcastApi';
@@ -32,6 +33,7 @@ export interface PodcastProjectState {
   rawResearch: BlogResearchResponse | null;
   estimate: PodcastEstimate | null;
   scriptData: Script | null;
+  bible: PodcastBible | null;
   
   // Render jobs
   renderJobs: Job[];
@@ -74,6 +76,7 @@ const DEFAULT_STATE: PodcastProjectState = {
   rawResearch: null,
   estimate: null,
   scriptData: null,
+  bible: null,
   renderJobs: [],
   knobs: DEFAULT_KNOBS,
   researchProvider: "exa",
@@ -150,6 +153,7 @@ export const usePodcastProjectState = () => {
           raw_research: state.rawResearch,
           estimate: state.estimate,
           script_data: state.scriptData,
+          bible: state.bible,
           render_jobs: state.renderJobs,
           knobs: state.knobs,
           research_provider: state.researchProvider,
@@ -182,6 +186,7 @@ export const usePodcastProjectState = () => {
     state.scriptData,
     state.renderJobs,
     state.knobs,
+    state.bible,
     state.researchProvider,
     state.showScriptEditor,
     state.showRenderQueue,
@@ -237,6 +242,10 @@ export const usePodcastProjectState = () => {
       currentStep: scriptData ? 'render' : prev.currentStep,
       updatedAt: new Date().toISOString() 
     }));
+  }, []);
+
+  const setBible = useCallback((bible: PodcastBible | null) => {
+    setState((prev) => ({ ...prev, bible, updatedAt: new Date().toISOString() }));
   }, []);
 
   const setRenderJobs = useCallback((renderJobs: Job[]) => {
@@ -315,15 +324,19 @@ export const usePodcastProjectState = () => {
   }, []);
 
   // Initialize project from payload
-  const initializeProject = useCallback(async (payload: CreateProjectPayload, projectId: string) => {
+  const initializeProject = useCallback(async (payload: CreateProjectPayload, projectId: string, avatarUrlOverride?: string | null) => {
     // Create project in database
+    let dbProject: any = null;
+    const finalAvatarUrl = avatarUrlOverride !== undefined ? avatarUrlOverride : payload.avatarUrl;
+    
     try {
-      await podcastApi.createProjectInDb({
+      dbProject = await podcastApi.createProjectInDb({
         project_id: projectId,
         idea: payload.ideaOrUrl,
         duration: payload.duration,
         speakers: payload.speakers,
         budget_cap: payload.budgetCap,
+        avatar_url: finalAvatarUrl,
       });
     } catch (error) {
       console.error('Error creating project in database:', error);
@@ -337,16 +350,19 @@ export const usePodcastProjectState = () => {
         idea: payload.ideaOrUrl,
         duration: payload.duration,
         speakers: payload.speakers,
-        avatarUrl: payload.avatarUrl || null,
+        avatarUrl: finalAvatarUrl || null,
         avatarPrompt: null, // Will be set when avatar is generated
         avatarPersonaId: null,
       },
       knobs: payload.knobs,
       budgetCap: payload.budgetCap,
+      bible: dbProject?.bible || null,
       currentStep: 'analysis',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }));
+
+    return dbProject;
   }, []);
 
   // Load project from database
@@ -373,6 +389,7 @@ export const usePodcastProjectState = () => {
         rawResearch: dbProject.raw_research,
         estimate: dbProject.estimate,
         scriptData: dbProject.script_data,
+        bible: dbProject.bible,
         renderJobs: dbProject.render_jobs || [],
         knobs: dbProject.knobs || DEFAULT_KNOBS,
         researchProvider: dbProject.research_provider || 'exa',
@@ -403,6 +420,7 @@ export const usePodcastProjectState = () => {
     setRawResearch,
     setEstimate,
     setScriptData,
+    setBible,
     setRenderJobs,
     updateRenderJob,
     setKnobs,

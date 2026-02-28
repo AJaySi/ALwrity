@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Box, Stack, Typography, Alert, Paper, Chip, Divider, LinearProgress, CircularProgress, alpha } from "@mui/material";
+import { Box, Stack, Typography, Alert, Paper, Chip, Divider, LinearProgress, CircularProgress, alpha, Modal, IconButton } from "@mui/material";
 import {
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
   Info as InfoIcon,
   OpenInNew as OpenInNewIcon,
   Videocam as VideocamIcon,
+  Close as CloseIcon,
+  ZoomIn as ZoomInIcon,
 } from "@mui/icons-material";
 import { Scene, Job, VideoGenerationSettings } from "../types";
 import { GlassyCard, glassyCardSx } from "../ui";
@@ -22,6 +24,8 @@ interface SceneCardProps {
   generatingImage: string | null;
   isBusy: boolean;
   avatarImageUrl?: string | null;
+  bible?: any;
+  analysis?: any;
   onRender: (sceneId: string, mode: "preview" | "full") => void;
   onImageGenerate: (sceneId: string) => void;
   onVideoGenerate: (sceneId: string, settings: VideoGenerationSettings) => void;
@@ -75,6 +79,8 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   generatingImage,
   isBusy,
   avatarImageUrl,
+  bible,
+  analysis,
   onRender,
   onImageGenerate,
   onVideoGenerate,
@@ -96,6 +102,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
   const [initialVideoPrompt, setInitialVideoPrompt] = useState<string>("");
 
   // Prepare a simple default prompt based on the scene title/description
@@ -261,95 +268,150 @@ export const SceneCard: React.FC<SceneCardProps> = ({
     <GlassyCard sx={glassyCardSx}>
       <Stack spacing={2}>
         {/* Header */}
-        <Stack direction="row" spacing={2} alignItems="flex-start">
+        <Stack direction="row" spacing={2} alignItems="center">
+          {/* Visual Avatar */}
           <Paper
             sx={{
-              width: 56,
-              height: 56,
+              width: 48,
+              height: 48,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: alpha("#667eea", 0.2),
-              border: "1px solid rgba(102,126,234,0.3)",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "#ffffff",
               fontWeight: 700,
-              fontSize: "1.2rem",
+              fontSize: "1.1rem",
+              borderRadius: 2,
+              boxShadow: "0 2px 8px rgba(102, 126, 234, 0.25)",
             }}
           >
             {initials}
           </Paper>
+
+          {/* Title and Metadata */}
           <Box flex={1}>
-            <Typography variant="h6" sx={{ mb: 0.5, color: "#0f172a", fontWeight: 600 }}>
-              {scene.title}
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-              <Chip label={`Scene ${scene.id.slice(-4)}`} size="small" variant="outlined" />
+            <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+              <Typography variant="h6" sx={{ color: "#0f172a", fontWeight: 700, fontSize: "1.05rem" }}>
+                {scene.title}
+              </Typography>
+              
+              {/* Quick Downloads */}
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                {job?.finalUrl && (
+                  <Box
+                    component="a"
+                    href={job.finalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ 
+                      color: "#64748b", 
+                      textDecoration: "none", 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 0.5,
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      "&:hover": { color: "#6366f1" }
+                    }}
+                  >
+                    <OpenInNewIcon sx={{ fontSize: 14 }} />
+                    Audio
+                  </Box>
+                )}
+                {hasVideo && videoBlobUrl && (
+                  <Box
+                    component="a"
+                    href={videoBlobUrl}
+                    download={`${scene.title.replace(/[^a-z0-9]/gi, '_')}_video.mp4`}
+                    sx={{ 
+                      color: "#64748b", 
+                      textDecoration: "none", 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 0.5,
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      "&:hover": { color: "#6366f1" }
+                    }}
+                  >
+                    <VideocamIcon sx={{ fontSize: 14 }} />
+                    Video
+                  </Box>
+                )}
+              </Stack>
+            </Stack>
+
+            {/* Compact Metadata Row */}
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 0.5 }} useFlexGap>
+              {/* Scene ID */}
+              <Chip 
+                label={`Scene ${scene.id.slice(-4)}`} 
+                size="small" 
+                sx={{ 
+                  height: 20, 
+                  fontSize: "0.7rem", 
+                  background: alpha("#64748b", 0.08), 
+                  color: "#64748b",
+                  fontWeight: 600 
+                }} 
+              />
+              
+              {/* Audio Status */}
+              <Chip
+                label={hasAudio ? "Audio Ready" : "Needs Audio"}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: "0.7rem",
+                  background: hasAudio ? alpha("#10b981", 0.1) : alpha("#f59e0b", 0.1),
+                  color: hasAudio ? "#059669" : "#d97706",
+                  fontWeight: 700,
+                  border: "1px solid",
+                  borderColor: hasAudio ? alpha("#10b981", 0.2) : alpha("#f59e0b", 0.2),
+                }}
+              />
+
+              {/* Cost */}
               {job?.cost != null && (
                 <Chip
                   label={`$${job.cost.toFixed(2)}`}
                   size="small"
-                  sx={{ background: alpha("#10b981", 0.2), color: "#6ee7b7" }}
-                  title="Generation cost"
+                  sx={{ 
+                    height: 20,
+                    fontSize: "0.7rem",
+                    background: alpha("#6366f1", 0.08), 
+                    color: "#6366f1",
+                    fontWeight: 600
+                  }}
                 />
               )}
-              {job?.fileSize && (
-                <Typography variant="caption" color="text.secondary">
-                  {(job.fileSize / 1024).toFixed(1)} KB
-                </Typography>
-              )}
-              {!job && (
+
+              {/* Job Status (if active/failed) */}
+              {job && job.status !== "idle" && (
                 <Chip
-                  label={hasAudio ? "Audio Ready" : "Needs Audio"}
+                  icon={getStatusIcon(status)}
+                  label={status.charAt(0).toUpperCase() + status.slice(1)}
                   size="small"
-                  color={hasAudio ? "success" : "warning"}
                   sx={{
-                    background: hasAudio ? alpha("#10b981", 0.2) : alpha("#f59e0b", 0.2),
-                    color: hasAudio ? "#059669" : "#d97706",
-                    fontWeight: 600,
+                    height: 20,
+                    fontSize: "0.7rem",
+                    background: status === "completed" ? alpha("#10b981", 0.1) : status === "failed" ? alpha("#ef4444", 0.1) : alpha("#3b82f6", 0.1),
+                    color: status === "completed" ? "#059669" : status === "failed" ? "#dc2626" : "#2563eb",
+                    fontWeight: 700,
+                    "& .MuiChip-icon": { fontSize: 14, color: "inherit" }
                   }}
                 />
               )}
             </Stack>
-            {job?.finalUrl && (
-              <Box sx={{ mt: 1 }}>
-                <Box
-                  component="a"
-                  href={job.finalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={{ color: "#a78bfa", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 0.5 }}
-                >
-                  <OpenInNewIcon sx={{ fontSize: 16 }} />
-                  <Typography variant="caption">Download Final Audio</Typography>
-                </Box>
-              </Box>
-            )}
-            {hasVideo && videoBlobUrl && (
-              <Box sx={{ mt: 1 }}>
-                <Box
-                  component="a"
-                  href={videoBlobUrl}
-                  download={`${scene.title.replace(/[^a-z0-9]/gi, '_')}_video.mp4`}
-                  sx={{ color: "#a78bfa", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 0.5 }}
-                >
-                  <VideocamIcon sx={{ fontSize: 16 }} />
-                  <Typography variant="caption">Download Video</Typography>
-                </Box>
-              </Box>
-            )}
           </Box>
-          {job && (
-            <Chip
-              icon={getStatusIcon(status)}
-              label={status.charAt(0).toUpperCase() + status.slice(1)}
-              color={getStatusColor(status)}
-              size="small"
-              sx={{
-                textTransform: "capitalize",
-                minWidth: 100,
-              }}
-            />
-          )}
         </Stack>
+
+        {/* Audio Player - Now directly in header section (visual integration) */}
+        {hasAudio && audioUrl && (
+          <Box sx={{ width: "100%", mt: 1 }}>
+            <InlineAudioPlayer audioUrl={audioUrl} title={scene.title} />
+          </Box>
+        )}
 
         {/* Progress Bar */}
         {job && job.status !== "idle" && job.status !== "completed" && (
@@ -379,20 +441,6 @@ export const SceneCard: React.FC<SceneCardProps> = ({
 
         <Divider sx={{ borderColor: "rgba(15, 23, 42, 0.08)" }} />
 
-        {/* Success Alert for Pre-generated Audio */}
-        {hasAudio && !job && (
-          <Alert severity="success" sx={{ width: "100%", background: alpha("#10b981", 0.1), border: "1px solid rgba(16,185,129,0.3)" }}>
-            <Typography variant="body2" sx={{ color: "#059669", fontWeight: 500 }}>
-              ✅ Audio already generated in Script Editor. Ready to use!
-            </Typography>
-          </Alert>
-        )}
-
-        {/* Audio Player */}
-        {hasAudio && audioUrl && (
-          <InlineAudioPlayer audioUrl={audioUrl} title={scene.title} />
-        )}
-
         {/* Video Preview - Show video if available, otherwise show image */}
         {hasVideo && videoBlobUrl ? (
           <Box
@@ -415,7 +463,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
                 height: "auto",
                 display: "block",
                 maxHeight: 420,
-                objectFit: "cover",
+                objectFit: "contain",
                 backgroundColor: "black",
               }}
               onError={(e) => {
@@ -443,34 +491,62 @@ export const SceneCard: React.FC<SceneCardProps> = ({
               VIDEO
             </Box>
           </Box>
-        ) : hasImage && (imageBlobUrl || imageUrl) ? (
-          <Box
-            sx={{
-              width: "100%",
-              borderRadius: 2,
-              overflow: "hidden",
-              border: "1px solid rgba(102,126,234,0.2)",
-              background: alpha("#667eea", 0.05),
-            }}
-          >
+        ) : hasImage && (imageBlobUrl || (imageUrl && !imageUrl.includes('/api/'))) ? (
+          <Box sx={{ position: "relative", width: "100%" }}>
             <Box
-              component="img"
-              src={imageBlobUrl || imageUrl}
-              alt={scene.title}
               sx={{
                 width: "100%",
-                height: "auto",
-                display: "block",
-                maxHeight: 400,
-                objectFit: "cover",
+                borderRadius: 2,
+                overflow: "hidden",
+                border: "1px solid rgba(102,126,234,0.2)",
+                background: alpha("#667eea", 0.05),
+                cursor: "pointer",
+                "&:hover .zoom-icon": {
+                  opacity: 1,
+                }
               }}
-              onError={(e) => {
-                console.error("[SceneCard] Image failed to load:", {
-                  src: e.currentTarget.src,
-                  imageUrl,
-                });
-              }}
-            />
+              onClick={() => setShowImageModal(true)}
+            >
+              <Box
+                component="img"
+                src={imageBlobUrl || imageUrl}
+                alt={scene.title}
+                sx={{
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                  maxHeight: 400,
+                  objectFit: "contain",
+                  background: "#000",
+                }}
+                onError={(e) => {
+                  console.error("[SceneCard] Image failed to load:", {
+                    src: e.currentTarget.src,
+                    imageUrl,
+                  });
+                }}
+              />
+              <Box
+                className="zoom-icon"
+                sx={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  bgcolor: "rgba(0,0,0,0.6)",
+                  color: "white",
+                  borderRadius: "50%",
+                  p: 1.5,
+                  opacity: 0,
+                  transition: "opacity 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ZoomInIcon sx={{ fontSize: 32 }} />
+              </Box>
+            </Box>
           </Box>
         ) : null}
 
@@ -505,6 +581,9 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           initialPrompt={initialVideoPrompt}
           initialResolution="480p"
           initialSeed={-1}
+          sceneTitle={scene.title}
+          bible={bible}
+          analysis={analysis}
         />
       </Stack>
     </GlassyCard>

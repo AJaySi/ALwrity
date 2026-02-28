@@ -29,6 +29,7 @@ import {
 
 // Extracted components
 import { AnalysisResultsDisplay, AnalysisProgressDisplay } from './WebsiteStep/components';
+import type { StyleAnalysis } from './WebsiteStep/components/AnalysisResultsDisplay';
 
 // Import API client for saving
 import { apiClient } from '../../api/client';
@@ -46,104 +47,6 @@ interface WebsiteStepProps {
   onContinue: (stepData?: any) => void;
   updateHeaderContent: (content: { title: string; description: string }) => void;
   onValidationChange?: (isValid: boolean) => void;
-}
-
-interface StyleAnalysis {
-  id?: number;
-  writing_style?: {
-    tone: string;
-    voice: string;
-    complexity: string;
-    engagement_level: string;
-    brand_personality?: string;
-    formality_level?: string;
-    emotional_appeal?: string;
-  };
-  content_characteristics?: {
-    sentence_structure: string;
-    vocabulary_level: string;
-    paragraph_organization: string;
-    content_flow: string;
-    readability_score?: string;
-    content_density?: string;
-    visual_elements_usage?: string;
-  };
-  target_audience?: {
-    demographics: string[];
-    expertise_level: string;
-    industry_focus: string;
-    geographic_focus: string;
-    psychographic_profile?: string;
-    pain_points?: string[];
-    motivations?: string[];
-  };
-  content_type?: {
-    primary_type: string;
-    secondary_types: string[];
-    purpose: string;
-    call_to_action: string;
-    conversion_focus?: string;
-    educational_value?: string;
-  };
-  brand_analysis?: {
-    brand_voice: string;
-    brand_values: string[];
-    brand_positioning: string;
-    competitive_differentiation: string;
-    trust_signals: string[];
-    authority_indicators: string[];
-  };
-  content_strategy_insights?: {
-    strengths: string[];
-    weaknesses: string[];
-    opportunities: string[];
-    threats: string[];
-    recommended_improvements: string[];
-    content_gaps: string[];
-  };
-  recommended_settings?: {
-    writing_tone: string;
-    target_audience: string;
-    content_type: string;
-    creativity_level: string;
-    geographic_location: string;
-    industry_context?: string;
-    brand_alignment?: string;
-  };
-  guidelines?: {
-    tone_recommendations: string[];
-    structure_guidelines: string[];
-    vocabulary_suggestions: string[];
-    engagement_tips: string[];
-    audience_considerations: string[];
-    brand_alignment?: string[];
-    seo_optimization?: string[];
-    conversion_optimization?: string[];
-  };
-  best_practices?: string[];
-  avoid_elements?: string[];
-  content_strategy?: string;
-  ai_generation_tips?: string[];
-  competitive_advantages?: string[];
-  content_calendar_suggestions?: string[];
-  style_patterns?: {
-    sentence_length: string;
-    vocabulary_patterns: string[];
-    rhetorical_devices: string[];
-    paragraph_structure: string;
-    transition_phrases: string[];
-  };
-  patterns?: {
-    sentence_length: string;
-    vocabulary_patterns: string[];
-    rhetorical_devices: string[];
-    paragraph_structure: string;
-    transition_phrases: string[];
-  };
-  style_consistency?: string;
-  unique_elements?: string[];
-  seo_audit?: any;
-  sitemap_analysis?: any;
 }
 
 interface AnalysisProgress {
@@ -189,6 +92,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+  const [analysisWarning, setAnalysisWarning] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<StyleAnalysis | null>(null);
   const [crawlResult, setCrawlResult] = useState<any>(null);
   const [existingAnalysis, setExistingAnalysis] = useState<ExistingAnalysis | null>(null);
@@ -290,6 +194,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
       setDomainName(result.domainName || '');
       setAnalysis(result.analysis);
       setCrawlResult(result.crawlResult);
+      setAnalysisWarning(result.warning || null);
       setSuccess('Loaded previous analysis successfully!');
     }
     return result;
@@ -298,6 +203,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
   const handleAnalyze = async () => {
     setError(null);
     setSuccess(null);
+    setAnalysisWarning(null);
     setLoading(true);
     setAnalysis(null);
     setCrawlResult(null);
@@ -330,6 +236,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
         setDomainName(analysisResult.domainName || '');
         setAnalysis(analysisResult.analysis);
         setCrawlResult(analysisResult.crawlResult);
+        setAnalysisWarning(analysisResult.warning || null);
         
         // Store in localStorage for Step 3 (Competitor Analysis)
         localStorage.setItem('website_url', fixedUrl);
@@ -404,6 +311,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
         if (analysisResult.success) {
           setDomainName(analysisResult.domainName || '');
           setAnalysis(analysisResult.analysis);
+          setAnalysisWarning(analysisResult.warning || null);
           
           if (analysisResult.warning) {
             setSuccess(`Website style analysis completed successfully! Note: ${analysisResult.warning}`);
@@ -754,6 +662,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
             useAnalysisForGenAI={useAnalysisForGenAI}
             onUseAnalysisChange={setUseAnalysisForGenAI}
             onAnalysisUpdate={handleAnalysisUpdate}
+            warning={analysisWarning || undefined}
             onSave={() => saveAnalysis(analysis)}
           />
         </Box>

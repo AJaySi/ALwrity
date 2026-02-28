@@ -23,6 +23,8 @@ interface ScriptEditorProps {
   onProceedToRendering: (script: Script) => void;
   onError: (message: string) => void;
   avatarUrl?: string | null; // Base avatar URL for consistent scene image generation
+  analysis?: any;
+  outline?: any;
 }
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -39,6 +41,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   onProceedToRendering,
   onError,
   avatarUrl,
+  analysis,
+  outline,
 }) => {
   const [script, setScript] = useState<Script | null>(initialScript);
   const [loading, setLoading] = useState(false);
@@ -89,6 +93,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
         knobs,
         speakers,
         durationMinutes,
+        analysis,
+        outline,
       })
       .then((res) => {
         if (mounted) {
@@ -106,7 +112,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     return () => {
       mounted = false;
     };
-  }, [projectId, rawResearch, idea, knobs, speakers, durationMinutes]);
+  }, [projectId, rawResearch, idea, knobs, speakers, durationMinutes, analysis, outline, emitScriptChange, onError, script]);
 
   const updateScene = (updated: Scene) => {
     // Use functional update to ensure we're working with latest state

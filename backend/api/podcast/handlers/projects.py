@@ -47,6 +47,7 @@ async def create_project(
             duration=request.duration,
             speakers=request.speakers,
             budget_cap=request.budget_cap,
+            avatar_url=request.avatar_url,
         )
         
         return PodcastProjectResponse.model_validate(project)

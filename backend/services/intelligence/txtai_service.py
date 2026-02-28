@@ -25,7 +25,18 @@ except ImportError:
     TXTAI_AVAILABLE = False
 
 class TxtaiIntelligenceService:
+    _instances = {}
+
+    def __new__(cls, user_id: str, *args, **kwargs):
+        if user_id not in cls._instances:
+            cls._instances[user_id] = super(TxtaiIntelligenceService, cls).__new__(cls)
+        return cls._instances[user_id]
+
     def __init__(self, user_id: str, model_path: Optional[str] = None, enable_caching: bool = True):
+        # Singleton: prevent re-initialization if already initialized
+        if getattr(self, "_singleton_initialized", False):
+            return
+            
         self.user_id = user_id
         self.model_path = model_path or "sentence-transformers/all-MiniLM-L6-v2"
         self.index_path = f"workspace/workspace_{user_id}/indices/txtai"
@@ -33,6 +44,11 @@ class TxtaiIntelligenceService:
         self._initialized = False
         self.enable_caching = enable_caching
         self.cache_manager = semantic_cache_manager if enable_caching else None
+        self._backend = "faiss"  # Default backend
+        
+        # Mark as initialized for singleton pattern
+        self._singleton_initialized = True
+        
         # Lazy initialization - do not initialize embeddings on startup
         # self._initialize_embeddings()
 
@@ -52,17 +68,26 @@ class TxtaiIntelligenceService:
             logger.debug(f"Model path: {self.model_path}")
             logger.debug(f"Index path: {self.index_path}")
             
+            # Close existing embeddings if any to release file locks
+            if self.embeddings:
+                try:
+                    if hasattr(self.embeddings, 'close'):
+                        self.embeddings.close()
+                    self.embeddings = None
+                except Exception as close_err:
+                    logger.warning(f"Error closing existing embeddings: {close_err}")
+
             # Ensure directory exists
             os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
             logger.debug(f"Created index directory: {os.path.dirname(self.index_path)}")
             
             # Initialize embeddings with optimal configuration for ALwrity use case
+            # Hardening: Disabling quantization by default as it causes 'IndexIDMap' attribute errors with small indices on Windows
             self.embeddings = Embeddings({
                 "path": self.model_path,
                 "content": True,  # Enable content storage for retrieval
                 "objects": True,  # Enable object storage for metadata
-                "backend": "faiss",  # Use Faiss for efficient similarity search
-                "quantize": True,  # Enable quantization for memory efficiency
+                "backend": self._backend,  # Use Faiss for efficient similarity search
                 "batch": 32,  # Batch size for processing
                 "gpu": False,  # Force CPU usage for compatibility
                 "limit": 1000  # Maximum number of results for queries
@@ -76,7 +101,12 @@ class TxtaiIntelligenceService:
                 try:
                     self.embeddings.load(self.index_path)
                     logger.info(f"Successfully loaded existing txtai index for user {self.user_id}")
-                    logger.debug(f"Index contains {len(self.embeddings)} items")
+                    # Try to log count, handle if not supported
+                    try:
+                        count = self.embeddings.count() if hasattr(self.embeddings, 'count') else "unknown"
+                        logger.debug(f"Index contains {count} items")
+                    except:
+                        logger.debug("Index loaded (count unavailable)")
                 except Exception as load_error:
                     logger.warning(f"Failed to load existing index: {load_error}. Creating new index.")
                     # Reset embeddings to create new index
@@ -84,8 +114,7 @@ class TxtaiIntelligenceService:
                         "path": self.model_path,
                         "content": True,
                         "objects": True,
-                        "backend": "faiss",
-                        "quantize": True,
+                        "backend": self._backend,
                         "batch": 32,
                         "gpu": False,
                         "limit": 1000
@@ -146,8 +175,15 @@ class TxtaiIntelligenceService:
             logger.error(f"Error indexing content for user {self.user_id}: {e}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             logger.error(f"Items count: {len(items) if items else 0}")
-            if items and len(items) > 0:
-                logger.error(f"Sample item structure: {type(items[0])}")
+            
+            message = str(e)
+            is_windows_lock_error = isinstance(e, PermissionError) or "WinError 32" in message
+            if is_windows_lock_error:
+                logger.warning(
+                    f"Txtai index save skipped for user {self.user_id} due to file lock. "
+                    f"The index will be retried on a future run."
+                )
+                return
             raise
 
     async def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -172,7 +208,20 @@ class TxtaiIntelligenceService:
                     logger.debug(f"Cache miss for search query: '{query}'")
 
             logger.debug(f"Searching for query: '{query}' with limit: {limit}")
-            results = self.embeddings.search(query, limit=limit)
+            try:
+                results = self.embeddings.search(query, limit=limit)
+            except AttributeError as ae:
+                if "nprobe" in str(ae):
+                    logger.error(f"Detected known txtai/faiss IndexIDMap/nprobe incompatibility for user {self.user_id}. Attempting re-init with numpy backend fallback...")
+                    # Switch to numpy backend which doesn't have this issue
+                    self._backend = "numpy"
+                    self._initialize_embeddings()
+                    if self.embeddings:
+                        results = self.embeddings.search(query, limit=limit)
+                    else:
+                        raise ae
+                else:
+                    raise ae
             
             # Cache the results if caching is enabled
             if self.enable_caching and self.cache_manager and results:
@@ -216,7 +265,19 @@ class TxtaiIntelligenceService:
                     logger.debug(f"Cache miss for similarity calculation")
 
             logger.debug(f"Calculating similarity between texts: '{text1[:50]}...' and '{text2[:50]}...'")
-            similarity = self.embeddings.similarity(text1, text2)
+            try:
+                similarity = self.embeddings.similarity(text1, text2)
+            except AttributeError as ae:
+                if "nprobe" in str(ae):
+                    logger.error(f"Detected IndexIDMap nprobe error in similarity for user {self.user_id}. Falling back to numpy backend...")
+                    self._backend = "numpy"
+                    self._initialize_embeddings()
+                    if self.embeddings:
+                        similarity = self.embeddings.similarity(text1, text2)
+                    else:
+                        raise ae
+                else:
+                    raise ae
             
             # Cache the similarity result
             if self.enable_caching and self.cache_manager:
@@ -272,7 +333,19 @@ class TxtaiIntelligenceService:
             # Use graph-based clustering if available
             # Perform a search to get graph structure
             sample_query = "content marketing digital strategy"
-            graph_results = self.embeddings.search(sample_query, limit=10, graph=True)
+            try:
+                graph_results = self.embeddings.search(sample_query, limit=10, graph=True)
+            except AttributeError as ae:
+                if "nprobe" in str(ae):
+                    logger.error(f"Detected IndexIDMap nprobe error in cluster for user {self.user_id}. Falling back to numpy backend...")
+                    self._backend = "numpy"
+                    self._initialize_embeddings()
+                    if self.embeddings:
+                        graph_results = self.embeddings.search(sample_query, limit=10, graph=True)
+                    else:
+                        raise ae
+                else:
+                    raise ae
             
             if not graph_results:
                 logger.warning(f"No graph results for clustering user {self.user_id}")
@@ -306,7 +379,7 @@ class TxtaiIntelligenceService:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return self._fallback_clustering(min_score)
     
-    def _fallback_clustering(self, min_score: float) -> List[List[int]]:
+    async def _fallback_clustering(self, min_score: float) -> List[List[int]]:
         """Fallback clustering method when graph clustering is not available."""
         logger.info(f"Using fallback clustering for user {self.user_id}")
         
@@ -318,7 +391,8 @@ class TxtaiIntelligenceService:
             all_clusters = []
             
             for query in sample_queries:
-                results = self.embeddings.search(query, limit=5)
+                # Use our search wrapper for hardening
+                results = await self.search(query, limit=5)
                 if results and results[0].get("score", 0) >= min_score:
                     # Create a cluster from similar results
                     cluster = [i for i, result in enumerate(results) if result.get("score", 0) >= min_score]
@@ -393,9 +467,13 @@ class TxtaiIntelligenceService:
             return {"status": "not_initialized", "user_id": self.user_id}
         
         try:
-            # Get count of indexed items - txtai doesn't have a direct len() method
-            # We'll estimate based on available data or return a placeholder
-            index_size = getattr(self.embeddings, 'count', 0) or "unknown"
+            # Get count of indexed items
+            index_size = "unknown"
+            if hasattr(self.embeddings, 'count'):
+                try:
+                    index_size = self.embeddings.count()
+                except:
+                    pass
             
             return {
                 "status": "active",
@@ -410,5 +488,7 @@ class TxtaiIntelligenceService:
             return {"status": "error", "user_id": self.user_id, "error": str(e)}
 
     def is_initialized(self) -> bool:
-        """Check if the service is properly initialized."""
+        """Check if the service is properly initialized, triggering lazy init if needed."""
+        if not self._initialized:
+            self._ensure_initialized()
         return self._initialized and self.embeddings is not None

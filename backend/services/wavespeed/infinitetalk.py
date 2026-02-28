@@ -39,9 +39,34 @@ def _generate_simple_infinitetalk_prompt(
     # Build a balanced prompt: scene description + simple motion hint
     parts = []
     
-    # Start with the main subject/scene
+    # Add scene context
     if title and len(title) > 5 and title.lower() not in ("scene", "podcast", "episode"):
         parts.append(title)
+    
+    # Add analysis context
+    analysis = story_context.get("analysis", {})
+    if analysis:
+        content_type = analysis.get("content_type")
+        if content_type:
+             parts.append(f"Style: {content_type}")
+        
+        # Audience helps define the formality/vibe
+        audience = analysis.get("audience")
+        if audience:
+             # Just use first few words of audience to keep it short
+             short_audience = " ".join(audience.split()[:3])
+             parts.append(f"For: {short_audience}")
+
+    # Add bible context if available
+    bible = story_context.get("bible", {})
+    if bible:
+        host_persona = bible.get("host_persona")
+        tone = bible.get("tone")
+        if host_persona:
+            parts.append(f"Host: {host_persona}")
+        if tone:
+            parts.append(f"Tone: {tone}")
+
     elif description:
         # Take first sentence or first 60 chars
         desc_part = description.split('.')[0][:60].strip()

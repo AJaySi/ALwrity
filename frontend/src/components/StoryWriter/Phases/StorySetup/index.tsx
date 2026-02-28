@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Paper, Typography, Box, Button, Alert, Grid, CircularProgress } from '@mui/material';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import { useStoryWriterState } from '../../../../hooks/useStoryWriterState';
 import { storyWriterApi, StoryScene } from '../../../../services/storyWriterApi';
 import { triggerSubscriptionError } from '../../../../api/client';
 import { StoryParametersSection } from './StoryParametersSection';
 import { StoryConfigurationSection } from './StoryConfigurationSection';
-import { FeatureCheckboxesSection } from './FeatureCheckboxesSection';
-import { GenerationSettingsSection } from './GenerationSettingsSection';
-import { AIStorySetupModal } from './AIStorySetupModal';
+
+// TODO: Reintroduce FeatureCheckboxesSection and GenerationSettingsSection in a later
+// publishing/campaign configuration phase (after Outline/Writing), so they feel like
+// output configuration rather than part of the initial story setup step.
 import { textFieldStyles, paperStyles } from './styles';
 import { AUDIENCE_AGE_GROUPS } from './constants';
 import { StorySetupProps, CustomValuesState, CustomValuesSetters } from './types';
@@ -17,7 +16,6 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
   const [isRegeneratingPremise, setIsRegeneratingPremise] = useState(false);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Track custom values from AI-generated options
   const [customWritingStyles, setCustomWritingStyles] = useState<string[]>([]);
@@ -48,6 +46,10 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
     try {
       const request = state.getRequest();
       const response = await storyWriterApi.generateOutline(state.premise, request);
+
+      if (response.anime_bible) {
+        state.setAnimeBible(response.anime_bible);
+      }
 
       if (response.success && response.outline) {
         if (response.is_structured && Array.isArray(response.outline)) {
@@ -171,26 +173,57 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
 
   return (
     <>
-    <Paper sx={paperStyles}>
+      <Paper sx={paperStyles}>
         <Box
           sx={{
             display: 'flex',
             flexDirection: { xs: 'column', md: 'row' },
             justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', md: 'center' },
             gap: 3,
             mb: 4,
           }}
         >
           <Box>
             <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: '#1A1611' }}>
-        Story Setup
-      </Typography>
-            <Typography variant="body2" sx={{ color: '#5D4037' }}>
-              Configure your story parameters and premise. Fill in the required fields and click "Generate Outline" to
-              continue.
-      </Typography>
+              Story Studio Setup
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#5D4037', mb: 1.5 }}>
+              Configure your core story parameters and premise. These choices will guide outline and writing in the next phases.
+            </Typography>
+            {(() => {
+              const modeLabel =
+                state.storyMode === 'marketing'
+                  ? 'Non-fiction'
+                  : state.storyMode === 'pure'
+                    ? 'Fiction'
+                    : null;
+
+              let templateLabel: string | null = null;
+              if (state.storyMode === 'marketing') {
+                templateLabel =
+                  state.storyTemplate === 'product_story'
+                    ? 'Product Story'
+                    : state.storyTemplate === 'brand_manifesto'
+                      ? 'Brand Manifesto'
+                      : state.storyTemplate === 'founder_story'
+                        ? 'Founder Story'
+                        : state.storyTemplate === 'customer_story'
+                          ? 'Customer Story'
+                          : null;
+              }
+
+              if (!modeLabel && !templateLabel) return null;
+
+              return (
+                <Typography variant="body2" sx={{ color: '#374151', mt: 0.5 }}>
+                  You&apos;re setting up a {modeLabel || 'Story'}
+                  {templateLabel ? ` · ${templateLabel}` : ''}. You can fine-tune details later in the Outline and Writing phases.
+                </Typography>
+              );
+            })()}
           </Box>
-          <FeatureCheckboxesSection state={state} layout="inline" />
+          <Box sx={{ display: 'flex', alignItems: 'center' }} />
         </Box>
 
       {error && (
@@ -199,64 +232,26 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
         </Alert>
       )}
 
-      <Box sx={{ mb: 4 }}>
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<AutoAwesomeIcon />}
-            onClick={() => setIsModalOpen(true)}
-            sx={{
-              mb: 1,
-              px: 4,
-              py: 1.5,
-              borderRadius: '999px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #7F5AF0 0%, #2CB67D 100%)',
-              boxShadow: '0 12px 24px rgba(127, 90, 240, 0.3)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #6c4cd4 0%, #24a26f 100%)',
-                boxShadow: '0 14px 30px rgba(127, 90, 240, 0.35)',
-              },
-            }}
-          >
-            Generate Story Setup with Alwrity AI
-        </Button>
-          <Typography variant="caption" sx={{ color: '#5D4037' }}>
-            Let Alwrity AI craft a cohesive persona, setting, and premise instantly.
-          </Typography>
-      </Box>
-
         <Grid container spacing={4}>
-          <Grid item xs={12} md={8}>
-      <Grid container spacing={3}>
-        <StoryParametersSection
-          state={state}
-          customValues={customValues}
-          textFieldStyles={textFieldStyles}
-          isRegeneratingPremise={isRegeneratingPremise}
-          onRegeneratePremise={handleRegeneratePremise}
-        />
+          <Grid item xs={12}>
+            <Grid container spacing={3}>
+              <StoryParametersSection
+                state={state}
+                customValues={customValues}
+                textFieldStyles={textFieldStyles}
+                isRegeneratingPremise={isRegeneratingPremise}
+                onRegeneratePremise={handleRegeneratePremise}
+              />
 
-        <StoryConfigurationSection
-          state={state}
-          customValues={customValues}
-          textFieldStyles={textFieldStyles}
-          normalizedAudienceAgeGroup={normalizedAudienceAgeGroup}
-        />
+              <StoryConfigurationSection
+                state={state}
+                customValues={customValues}
+                textFieldStyles={textFieldStyles}
+                normalizedAudienceAgeGroup={normalizedAudienceAgeGroup}
+              />
             </Grid>
           </Grid>
-          <Grid item xs={12} md={4}>
-            <Box
-              sx={{
-                position: { md: 'sticky' },
-                top: { md: 16 },
-              }}
-            >
-              <GenerationSettingsSection state={state} customValues={customValues} textFieldStyles={textFieldStyles} />
-            </Box>
-          </Grid>
-      </Grid>
+        </Grid>
 
       {/* Generate Button */}
       <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
@@ -285,13 +280,6 @@ const StorySetup: React.FC<StorySetupProps> = ({ state, onNext }) => {
         </Button>
       </Box>
       </Paper>
-
-      <AIStorySetupModal
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        state={state}
-        customValuesSetters={customValuesSetters}
-      />
     </>
   );
 };

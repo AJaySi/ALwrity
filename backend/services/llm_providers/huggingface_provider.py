@@ -369,6 +369,12 @@ def huggingface_structured_json_response(
             response_text = re.sub(r'```\n?', '', response_text)
             response_text = response_text.strip()
             
+            # Fix common markdown artefacts that break JSON, e.g. lines starting with **"key":
+            #     **"narration": "text"
+            # becomes:
+            #     "narration": "text"
+            response_text = re.sub(r'^\s*\*\*(?=\s*")', '', response_text, flags=re.MULTILINE)
+            
             try:
                 parsed_json = json.loads(response_text)
                 logger.info("✅ Hugging Face structured JSON response parsed from text")

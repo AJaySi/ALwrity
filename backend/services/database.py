@@ -145,6 +145,7 @@ def init_user_database(user_id: str):
         SubscriptionBase.metadata.create_all(bind=engine)
         UserBusinessInfoBase.metadata.create_all(bind=engine)
         ContentAssetBase.metadata.create_all(bind=engine)
+        BingAnalyticsBase.metadata.create_all(bind=engine)
         
         # Initialize default data for new databases
         try:

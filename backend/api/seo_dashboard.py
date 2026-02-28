@@ -524,6 +524,80 @@ async def get_semantic_cache_stats(current_user: dict = Depends(get_current_user
             "memory_usage_mb": 0.0
         }
 
+
+async def get_sif_indexing_health(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    try:
+        from models.website_analysis_monitoring_models import SIFIndexingTask, SIFIndexingExecutionLog
+
+        user_id = str(current_user.get("id"))
+        db = get_session_for_user(user_id)
+        if not db:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+
+        try:
+            tasks = (
+                db.query(SIFIndexingTask)
+                .filter(SIFIndexingTask.user_id == user_id)
+                .order_by(SIFIndexingTask.created_at.desc())
+                .all()
+            )
+
+            if not tasks:
+                return {
+                    "has_task": False,
+                    "status": "not_scheduled",
+                    "message": "SIF indexing task not yet scheduled for this website.",
+                }
+
+            latest = tasks[0]
+            latest_log = (
+                db.query(SIFIndexingExecutionLog)
+                .filter(SIFIndexingExecutionLog.task_id == latest.id)
+                .order_by(SIFIndexingExecutionLog.execution_date.desc())
+                .first()
+            )
+
+            last_run_status = latest_log.status if latest_log else None
+            last_run_time = (
+                latest_log.execution_date.isoformat() if latest_log and latest_log.execution_date else None
+            )
+            last_error = (
+                (latest_log.error_message or "")[:500] if latest_log and latest_log.error_message else None
+            )
+
+            overall_status = "healthy"
+            if latest.consecutive_failures and latest.consecutive_failures > 0:
+                overall_status = "warning"
+            if latest.status in {"needs_intervention"}:
+                overall_status = "critical"
+
+            return {
+                "has_task": True,
+                "status": overall_status,
+                "task": {
+                    "id": latest.id,
+                    "website_url": latest.website_url,
+                    "raw_status": latest.status,
+                    "next_execution": latest.next_execution.isoformat() if latest.next_execution else None,
+                    "last_success": latest.last_success.isoformat() if latest.last_success else None,
+                    "last_failure": latest.last_failure.isoformat() if latest.last_failure else None,
+                    "consecutive_failures": latest.consecutive_failures or 0,
+                    "failure_pattern": latest.failure_pattern,
+                },
+                "last_run": {
+                    "status": last_run_status,
+                    "time": last_run_time,
+                    "error_message": last_error,
+                },
+            }
+        finally:
+            db.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get SIF indexing health: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get SIF indexing health")
+
 # New comprehensive SEO analysis endpoints
 async def analyze_seo_comprehensive(request: SEOAnalysisRequest) -> SEOAnalysisResponse:
     """

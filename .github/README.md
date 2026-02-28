@@ -8,7 +8,8 @@
 [![React](https://img.shields.io/badge/React-18+-blue.svg)](https://react.dev/)
 [![Stars](https://img.shields.io/github/stars/AJaySi/AI-Writer?style=social)](https://github.com/AJaySi/AI-Writer/stargazers)
 
-**Create, optimize, and publish high‑quality content across platforms — in minutes, not months.**
+**Core claim:
+ ALwrity is a contextual content OS: it understands your brand, website, competitors, and channels, then uses that understanding to drive every story, video, podcast, and campaign, with memory and analytics in one place.**
 
 [🌐 Live Demo](https://www.alwrity.com) • [📚 Docs Site](https://ajaysi.github.io/ALwrity/) • [📖 Wiki](https://github.com/AJaySi/AI-Writer/wiki) • [💬 Discussions](https://github.com/AJaySi/AI-Writer/discussions) • [🐛 Issues](https://github.com/AJaySi/AI-Writer/issues)
 
@@ -22,27 +23,41 @@
 
 ---
 
-### Why ALwrity
-- **AI-first outcomes**: Strategy-to-publishing in one flow — strategy, research, creation, QA, and distribution.
-- **Grounded & reliable**: Google grounding, Exa/Tavily research, citation management.
-- **Secure & scalable**: JWT auth, OAuth2, rate limiting, monitoring, subscription/usage tracking.
-- **Built for solopreneurs**: Enterprise-grade capabilities with a fast, friendly UI.
+### What ALwrity is
+- **Contextual content OS**: Ingests your website, competitors, and channels to build a reusable brand brain.
+- **Multi-surface by design**: Blogs, stories, YouTube, podcasts, and video all read from the same understanding.
+- **Agent-driven flows**: Orchestrated research, planning, writing, and optimization instead of one-off prompts.
+- **Production-ready**: JWT/OAuth2 auth, usage tracking, limits, monitoring, and cost awareness built-in.
+
+---
+
+### Why ALwrity exists
+ALwrity exists for people who care more about **context** than prompts.
+
+Most tools either drown you in knobs or reset to a blank page every time.  
+We wanted a system that:
+- Remembers what your brand stands for and who you’re speaking to.
+- Grounds content in real data (SEO, competitors, web) before it writes.
+- Reuses that understanding across every surface instead of duplicating effort.
 
 ---
 
 ### Why it matters for creators & marketers
-- **Reduce complexity of AI tools**: Guided flows (research → outline → write → optimize → publish) remove prompt engineering and tool-juggling.
-- **Save time, ship consistently**: Phase navigation and checklists keep you moving, ensuring on-time publishing across platforms.
-- **Trust the content**: Google grounding, retrieval (web/semantic/neural), and citations mean fewer rewrites and safer publishing.
-- **Stay on-brand and compliant**: Personas, tone controls, and rate limits help maintain voice and prevent platform penalties.
-- **Catch issues early**: Scheduler “tasks needing intervention,” alerts, and logs highlight problems before your audience sees them.
+- **One brain, many surfaces**: The same insights power blog posts, stories, YouTube scripts, podcast outlines, and video scenes.
+- **Less tool-juggling**: Guided flows replace “copy data between 5 SaaS tools and a spreadsheet”.
+- **Safer, more factual content**: Grounding and citations reduce hallucinations and rewrites.
+- **On-brand by default**: Personas and brand voice settings keep outputs consistent across channels.
+- **Operational visibility**: Scheduler “tasks needing intervention”, alerts, and logs highlight issues before your audience does.
 
 ---
 
 ### What’s functional now
 - **AI Blog Writer (Phases)**: Research → Outline → Content → SEO → Publish, with guarded navigation and local persistence (`frontend/src/hooks/usePhaseNavigation.ts`).
+- **Story Writer**: Premise → Outline → Chapters → Export, with phase navigation (`frontend/src/hooks/useStoryWriterPhaseNavigation.ts`).
+- **YouTube Creator Studio**: Plan → scenes → avatar → render workflow for YouTube videos (`frontend/src/components/YouTubeCreator`).
+- **Podcast Maker / Test Persona**: Turn voice + avatar into short videos using the shared video pipeline.
+- **Video Studio**: Multi-module video creation, editing, and transformation (`frontend/src/components/VideoStudio`).
 - **SEO Dashboard**: Analysis, metadata, and Google Search Console insights (see docs under `docs-site/docs/features/seo-dashboard`).
-- **Story Writer**: Setup (premise) → Outline → Writing → Export with phase navigation and reset (`frontend/src/hooks/useStoryWriterPhaseNavigation.ts`).
 - **LinkedIn (Factual, Google‑Grounded)**: Real Google grounding + citations + quality metrics for posts/articles/carousels/scripts (see `frontend/docs/linkedin_factual_google_grounded_url_content.md`).
 - **Persona System**: Core personas and platform adaptations via APIs (`backend/api/persona.py`).
 - **Facebook Persona Service**: Gemini structured JSON for Facebook‑specific persona optimization (`backend/services/persona/facebook/facebook_persona_service.py`).

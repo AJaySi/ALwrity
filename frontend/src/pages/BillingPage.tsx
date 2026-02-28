@@ -14,13 +14,15 @@ import {
 import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { DollarSign } from 'lucide-react';
+import { DollarSign, CreditCard } from 'lucide-react';
 import { styled } from '@mui/material/styles';
 import EnhancedBillingDashboard from '../components/billing/EnhancedBillingDashboard';
 import UsageLogsTable from '../components/billing/UsageLogsTable';
 import SubscriptionRenewalHistory from '../components/billing/SubscriptionRenewalHistory';
 import { showToastNotification } from '../utils/toastNotifications';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { apiClient } from '../api/client';
+import { Button } from '@mui/material';
 
 // Terminal-themed styled components
 const TerminalContainer = styled(Container)(({ theme }) => ({
@@ -164,6 +166,21 @@ const BillingPage: React.FC = () => {
     }, 500);
   };
 
+  const handleManageBilling = async () => {
+    try {
+      showToastNotification('Opening billing portal...', 'info');
+      const response = await apiClient.post('/api/subscription/create-portal-session', {
+        return_url: window.location.href
+      });
+      if (response.data.url) {
+        window.location.href = response.data.url;
+      }
+    } catch (error) {
+      console.error('Failed to create portal session', error);
+      showToastNotification('Failed to access billing portal', 'error');
+    }
+  };
+
   return (
     <TerminalContainer maxWidth="xl">
       {/* Header */}
@@ -183,6 +200,21 @@ const BillingPage: React.FC = () => {
               </Box>
             </Box>
             <Box display="flex" alignItems="center" gap={2}>
+              <Button
+                variant="outlined"
+                startIcon={<CreditCard size={18} />}
+                onClick={handleManageBilling}
+                sx={{ 
+                  borderColor: '#00ff00', 
+                  color: '#00ff00',
+                  '&:hover': {
+                    borderColor: '#00cc00',
+                    backgroundColor: 'rgba(0, 255, 0, 0.1)'
+                  }
+                }}
+              >
+                Manage Billing
+              </Button>
               <Tooltip 
                 title="Refresh billing data"
                 arrow

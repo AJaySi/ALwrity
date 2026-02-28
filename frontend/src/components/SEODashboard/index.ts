@@ -7,6 +7,7 @@ export { default as SEOCopilotContext } from './SEOCopilotContext';
 export { default as SEOCopilotActions } from './SEOCopilotActions';
 export { default as SEOCopilotSuggestions } from './SEOCopilotSuggestions';
 export { default as SEOCopilotTest } from './SEOCopilotTest';
+export { default as SEOCopilot } from './SEOCopilot';
 
 // Store and Services
 export { useSEOCopilotStore, useSEOCopilotAnalysis, useSEOCopilotSuggestions, useSEOCopilotDashboard } from '../../stores/seoCopilotStore';

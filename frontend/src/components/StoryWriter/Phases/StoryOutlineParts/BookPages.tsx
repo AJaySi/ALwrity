@@ -7,6 +7,7 @@ import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import ReplayIcon from '@mui/icons-material/Replay';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import { OperationButton } from '../../../shared/OperationButton';
 import { leftPageVariants, rightPageVariants } from './pageVariants';
 import { StoryScene } from '../../../../services/storyWriterApi';
@@ -31,6 +32,7 @@ interface BookPagesProps {
   audioUrl: string | null;
   hasAudio: boolean;
   onOpenImageModal: () => void;
+  onOpenImageFullscreen?: () => void;
   onOpenAudioModal: () => void;
   onOpenCharactersModal: () => void;
   onOpenKeyEventsModal: () => void;
@@ -42,6 +44,9 @@ interface BookPagesProps {
   isAnimatingScene?: boolean;
   animatedVideoUrl?: string | null;
   resumeInfo?: SceneAnimationResume | null;
+  onRefineAnimeScene?: () => void;
+  isRefiningAnimeScene?: boolean;
+  hasAnimeBible?: boolean;
 }
 
 const BookPages: React.FC<BookPagesProps> = ({
@@ -57,6 +62,7 @@ const BookPages: React.FC<BookPagesProps> = ({
   onImageError,
   narrationEnabled,
   onOpenImageModal,
+  onOpenImageFullscreen,
   onOpenAudioModal,
   audioUrl,
   hasAudio,
@@ -70,6 +76,9 @@ const BookPages: React.FC<BookPagesProps> = ({
   isAnimatingScene,
   animatedVideoUrl,
   resumeInfo,
+  onRefineAnimeScene,
+  isRefiningAnimeScene,
+  hasAnimeBible,
 }) => {
   const currentSceneNumber = currentScene?.scene_number || currentSceneIndex + 1;
   const showAnimatedVideo = Boolean(animatedVideoUrl);
@@ -157,6 +166,7 @@ const BookPages: React.FC<BookPagesProps> = ({
                 transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                 display: 'flex',
                 flexDirection: 'column',
+                position: 'relative',
                 '&:hover': canGoPrev
                   ? {
                       transform: 'translateX(-4px) rotate(-0.3deg)',
@@ -177,15 +187,236 @@ const BookPages: React.FC<BookPagesProps> = ({
                 },
               }}
             >
+              {hasImage && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 20,
+                    right: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    zIndex: 4,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <Tooltip title="View image full size">
+                    <Box
+                      role="button"
+                      aria-label="View image full size"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onOpenImageFullscreen) {
+                          onOpenImageFullscreen();
+                        }
+                      }}
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'linear-gradient(135deg, #111827 0%, #4b5563 100%)',
+                        boxShadow: '0 4px 10px rgba(15,23,42,0.35)',
+                        color: 'white',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <OpenInFullIcon fontSize="small" />
+                    </Box>
+                  </Tooltip>
+                  <Tooltip title="Edit scene image prompt">
+                    <Box
+                      role="button"
+                      aria-label="Edit scene image"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenImageModal();
+                      }}
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'linear-gradient(135deg, #7F5AF0 0%, #2CB67D 100%)',
+                        boxShadow: '0 4px 10px rgba(127,90,240,0.3)',
+                        color: 'white',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <EditNoteIcon fontSize="small" />
+                    </Box>
+                  </Tooltip>
+                  {hasImage && onAnimateScene && (
+                    <Box
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                      sx={{ display: 'inline-flex', pointerEvents: 'auto' }}
+                    >
+                      <OperationButton
+                        operation={{
+                          provider: 'video',
+                          model: 'kling-v2.5-turbo-std-5s',
+                          operation_type: 'scene_animation',
+                          actual_provider_name: 'wavespeed',
+                        }}
+                        label="Animate Scene"
+                        variant="contained"
+                        size="small"
+                        startIcon={<PlayArrowIcon />}
+                        showCost
+                        checkOnHover
+                        checkOnMount={false}
+                        onClick={onAnimateScene}
+                        disabled={isAnimatingScene}
+                        sx={{
+                          minWidth: 'auto',
+                          padding: '6px',
+                          width: 34,
+                          height: 34,
+                          borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #1f8a70 0%, #32d9c8 100%)',
+                          boxShadow: '0 4px 10px rgba(31,138,112,0.35)',
+                          color: 'white',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #1a7a60 0%, #2dc9b8 100%)',
+                          },
+                          '& .MuiButton-startIcon': {
+                            margin: 0,
+                          },
+                          '& .MuiButton-label': {
+                            display: 'none',
+                          },
+                        }}
+                        tooltipPlacement="bottom"
+                      />
+                    </Box>
+                  )}
+                  {hasImage && hasAudio && onAnimateWithVoiceover && (
+                    <Box
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                      sx={{ display: 'inline-flex', pointerEvents: 'auto' }}
+                    >
+                      <OperationButton
+                        operation={{
+                          provider: 'video',
+                          model: 'wavespeed-ai/infinitetalk',
+                          operation_type: 'scene_animation_voiceover',
+                          actual_provider_name: 'wavespeed',
+                        }}
+                        label="Animate with Voiceover"
+                        variant="contained"
+                        size="small"
+                        startIcon={<GraphicEqIcon />}
+                        showCost
+                        checkOnHover
+                        checkOnMount={false}
+                        onClick={onAnimateWithVoiceover}
+                        disabled={isAnimatingScene}
+                        sx={{
+                          minWidth: 'auto',
+                          padding: '6px',
+                          width: 34,
+                          height: 34,
+                          borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #733dd9 0%, #bb86fc 100%)',
+                          boxShadow: '0 4px 10px rgba(115,61,217,0.35)',
+                          color: 'white',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #6030ba 0%, #a974f1 100%)',
+                          },
+                          '& .MuiButton-startIcon': {
+                            margin: 0,
+                          },
+                          '& .MuiButton-label': {
+                            display: 'none',
+                          },
+                        }}
+                        tooltipPlacement="bottom"
+                      />
+                    </Box>
+                  )}
+                  {resumeInfo && onResumeScene && (
+                    <Tooltip
+                      title={resumeInfo.message || 'Resume animation download (no extra cost)'}
+                      placement="bottom"
+                    >
+                      <Box
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        sx={{ display: 'inline-flex', pointerEvents: 'auto' }}
+                      >
+                        <OperationButton
+                          operation={{
+                            provider: 'video',
+                            model: 'kling-v2.5-turbo-std-resume',
+                            operation_type: 'scene_animation_resume',
+                            actual_provider_name: 'wavespeed',
+                          }}
+                          label="Resume Animation"
+                          variant="contained"
+                          size="small"
+                          startIcon={<ReplayIcon />}
+                          showCost={false}
+                          checkOnHover={false}
+                          checkOnMount={false}
+                          onClick={onResumeScene}
+                          disabled={isAnimatingScene}
+                          sx={{
+                            minWidth: 'auto',
+                            padding: '6px',
+                            width: 34,
+                            height: 34,
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #b35c1e 0%, #f5a623 100%)',
+                            boxShadow: '0 4px 10px rgba(179,92,30,0.35)',
+                            color: 'white',
+                            '&:hover': {
+                              background: 'linear-gradient(135deg, #9c511a 0%, #e1911c 100%)',
+                            },
+                            '& .MuiButton-startIcon': {
+                              margin: 0,
+                            },
+                            '& .MuiButton-label': {
+                              display: 'none',
+                            },
+                          }}
+                          tooltipPlacement="bottom"
+                        />
+                      </Box>
+                    </Tooltip>
+                  )}
+                </Box>
+              )}
+
               <Box sx={{ flex: '0 0 auto' }}>
                 <Typography variant="overline" sx={{ color: '#7a5335', letterSpacing: 4, fontWeight: 600, display: 'block' }}>
                   Scene {currentSceneNumber} of {scenesLength}
                 </Typography>
-                <Box sx={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 1, '&:hover .title-edit': { opacity: 1, pointerEvents: 'auto' } }}>
+                <Box
+                  sx={{
+                    mt: 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    '&:hover .title-edit': { opacity: 1, pointerEvents: 'auto' },
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
                   <Typography
                     variant="h4"
                     sx={{
-                      mt: 1,
                       color: '#2C2416',
                       fontFamily: `'Playfair Display', serif`,
                       fontWeight: 600,
@@ -199,17 +430,20 @@ const BookPages: React.FC<BookPagesProps> = ({
                     className="title-edit"
                     role="button"
                     aria-label="Edit title"
-                    onClick={(e) => { e.stopPropagation(); onOpenTitleModal(); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenTitleModal();
+                    }}
                     sx={{
-                      width: 32,
-                      height: 32,
+                      width: 28,
+                      height: 28,
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       background: 'linear-gradient(135deg, #7F5AF0 0%, #2CB67D 100%)',
                       color: '#fff',
-                      boxShadow: '0 6px 12px rgba(127,90,240,0.25)',
+                      boxShadow: '0 4px 10px rgba(127,90,240,0.25)',
                       cursor: 'pointer',
                       opacity: 0,
                       pointerEvents: 'none',
@@ -231,7 +465,7 @@ const BookPages: React.FC<BookPagesProps> = ({
                   gap: 3,
                 }}
               >
-                <Box sx={{ position: 'relative', '&:hover .left-image-actions': { opacity: 1, pointerEvents: 'auto' } }}>
+                <Box sx={{ position: 'relative' }}>
                   {showAnimatedVideo ? (
                     <Box
                       sx={{
@@ -264,7 +498,6 @@ const BookPages: React.FC<BookPagesProps> = ({
                     </Box>
                   ) : hasImage ? (
                     <>
-                       {/* Removed 'Scene Illustration' heading for cleaner look */}
                       <Box
                         sx={{
                           width: '100%',
@@ -294,190 +527,6 @@ const BookPages: React.FC<BookPagesProps> = ({
                           }}
                           onError={onImageError}
                         />
-                        <Box
-                          className="left-image-actions"
-                          sx={{
-                            position: 'absolute',
-                            top: 8,
-                            right: 8,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 1,
-                            opacity: 0,
-                            pointerEvents: 'none',
-                            transition: 'opacity 0.2s ease',
-                            zIndex: 5,
-                            alignItems: 'flex-end',
-                          }}
-                        >
-                          <Tooltip title="Edit scene image prompt">
-                            <Box
-                              role="button"
-                              aria-label="Edit scene image"
-                              onClick={(e) => { e.stopPropagation(); onOpenImageModal(); }}
-                              sx={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                background: 'linear-gradient(135deg, #7F5AF0 0%, #2CB67D 100%)',
-                                boxShadow: '0 8px 16px rgba(127,90,240,0.3)',
-                                color: 'white',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <EditNoteIcon />
-                            </Box>
-                          </Tooltip>
-
-                          {hasImage && onAnimateScene && (
-                            <Box
-                              onClick={(e) => {
-                                e.stopPropagation();
-                              }}
-                              sx={{ display: 'inline-flex', pointerEvents: 'auto' }}
-                            >
-                              <OperationButton
-                                operation={{
-                                  provider: 'video',
-                                  model: 'kling-v2.5-turbo-std-5s',
-                                  operation_type: 'scene_animation',
-                                  actual_provider_name: 'wavespeed',
-                                }}
-                                label="Animate Scene"
-                                variant="contained"
-                                size="small"
-                                startIcon={<PlayArrowIcon />}
-                                showCost
-                                checkOnHover
-                                checkOnMount={false}
-                                onClick={onAnimateScene}
-                                disabled={isAnimatingScene}
-                                sx={{
-                                  minWidth: 'auto',
-                                  padding: '8px',
-                                  width: 40,
-                                  height: 40,
-                                  borderRadius: '50%',
-                                  background: 'linear-gradient(135deg, #1f8a70 0%, #32d9c8 100%)',
-                                  boxShadow: '0 8px 16px rgba(31,138,112,0.35)',
-                                  color: 'white',
-                                  '&:hover': {
-                                    background: 'linear-gradient(135deg, #1a7a60 0%, #2dc9b8 100%)',
-                                  },
-                                  '& .MuiButton-startIcon': {
-                                    margin: 0,
-                                  },
-                                  '& .MuiButton-label': {
-                                    display: 'none',
-                                  },
-                                }}
-                                tooltipPlacement="left"
-                              />
-                            </Box>
-                          )}
-
-                          {hasImage && hasAudio && onAnimateWithVoiceover && (
-                            <Box
-                              onClick={(e) => {
-                                e.stopPropagation();
-                              }}
-                              sx={{ display: 'inline-flex', pointerEvents: 'auto' }}
-                            >
-                              <OperationButton
-                                operation={{
-                                  provider: 'video',
-                                  model: 'wavespeed-ai/infinitetalk',
-                                  operation_type: 'scene_animation_voiceover',
-                                  actual_provider_name: 'wavespeed',
-                                }}
-                                label="Animate with Voiceover"
-                                variant="contained"
-                                size="small"
-                                startIcon={<GraphicEqIcon />}
-                                showCost
-                                checkOnHover
-                                checkOnMount={false}
-                                onClick={onAnimateWithVoiceover}
-                                disabled={isAnimatingScene}
-                                sx={{
-                                  minWidth: 'auto',
-                                  padding: '8px',
-                                  width: 40,
-                                  height: 40,
-                                  borderRadius: '50%',
-                                  background: 'linear-gradient(135deg, #733dd9 0%, #bb86fc 100%)',
-                                  boxShadow: '0 8px 16px rgba(115,61,217,0.35)',
-                                  color: 'white',
-                                  '&:hover': {
-                                    background: 'linear-gradient(135deg, #6030ba 0%, #a974f1 100%)',
-                                  },
-                                  '& .MuiButton-startIcon': {
-                                    margin: 0,
-                                  },
-                                  '& .MuiButton-label': {
-                                    display: 'none',
-                                  },
-                                }}
-                                tooltipPlacement="left"
-                              />
-                            </Box>
-                          )}
-
-                          {resumeInfo && onResumeScene && (
-                            <Tooltip
-                              title={resumeInfo.message || 'Resume animation download (no extra cost)'}
-                              placement="left"
-                            >
-                              <Box
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                }}
-                                sx={{ display: 'inline-flex', pointerEvents: 'auto' }}
-                              >
-                                <OperationButton
-                                  operation={{
-                                    provider: 'video',
-                                    model: 'kling-v2.5-turbo-std-resume',
-                                    operation_type: 'scene_animation_resume',
-                                    actual_provider_name: 'wavespeed',
-                                  }}
-                                  label="Resume Animation"
-                                  variant="contained"
-                                  size="small"
-                                  startIcon={<ReplayIcon />}
-                                  showCost={false}
-                                  checkOnHover={false}
-                                  checkOnMount={false}
-                                  onClick={onResumeScene}
-                                  disabled={isAnimatingScene}
-                                  sx={{
-                                    minWidth: 'auto',
-                                    padding: '8px',
-                                    width: 40,
-                                    height: 40,
-                                    borderRadius: '50%',
-                                    background: 'linear-gradient(135deg, #b35c1e 0%, #f5a623 100%)',
-                                    boxShadow: '0 8px 16px rgba(179,92,30,0.35)',
-                                    color: 'white',
-                                    '&:hover': {
-                                      background: 'linear-gradient(135deg, #9c511a 0%, #e1911c 100%)',
-                                    },
-                                    '& .MuiButton-startIcon': {
-                                      margin: 0,
-                                    },
-                                    '& .MuiButton-label': {
-                                      display: 'none',
-                                    },
-                                  }}
-                                  tooltipPlacement="left"
-                                />
-                              </Box>
-                            </Tooltip>
-                          )}
-                        </Box>
                       </Box>
                     </>
                   ) : (
@@ -590,6 +639,8 @@ const BookPages: React.FC<BookPagesProps> = ({
               <OutlineHoverActions
                 onEdit={onOpenEditModal}
                 onImprove={onOpenEditModal}
+                onRefineAnime={onRefineAnimeScene}
+                isRefiningAnime={isRefiningAnimeScene}
               />
               <Box sx={{ flex: 1, overflowY: 'auto', pt: { xs: 1, md: 2 } }}>
                 <Box className="chip-actions" sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5, opacity: 0, pointerEvents: 'none', transition: 'opacity 0.2s ease' }}>
@@ -684,4 +735,3 @@ const BookPages: React.FC<BookPagesProps> = ({
 };
 
 export default BookPages;
-

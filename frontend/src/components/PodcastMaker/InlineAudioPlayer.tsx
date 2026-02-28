@@ -162,7 +162,8 @@ export const InlineAudioPlayer: React.FC<InlineAudioPlayerProps> = ({ audioUrl, 
     setCurrentTime(newTime);
   };
 
-  const effectiveAudioUrl = blobUrl || audioUrl;
+  const isPodcastAudio = audioUrl.includes('/api/podcast/audio/') || audioUrl.includes('/api/story/audio/');
+  const effectiveAudioUrl = blobUrl || (!isPodcastAudio ? audioUrl : null);
 
   return (
     <Paper

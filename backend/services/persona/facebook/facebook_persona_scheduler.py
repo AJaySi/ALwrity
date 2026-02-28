@@ -27,6 +27,12 @@ async def generate_facebook_persona_task(user_id: str):
     try:
         logger.info(f"Scheduled Facebook persona generation started for user {user_id}")
         
+        # Ensure we have a valid session factory before trying to get session
+        from services.database import SessionLocal
+        if not SessionLocal:
+             logger.error("Database session factory not initialized")
+             return
+
         db = get_db_session()
         if not db:
             logger.error(f"Failed to get database session for Facebook persona generation (user: {user_id})")

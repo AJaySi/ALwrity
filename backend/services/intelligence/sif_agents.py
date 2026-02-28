@@ -14,9 +14,9 @@ from .txtai_service import TxtaiIntelligenceService, TXTAI_AVAILABLE
 from services.intelligence.agents.core_agent_framework import BaseALwrityAgent
 from services.llm_providers.main_text_generation import llm_text_gen
 
-# Optional txtai imports
+# Optional txtai imports (align with core agent framework)
 try:
-    from txtai.pipeline import Agent, LLM
+    from txtai import Agent, LLM
 except ImportError:
     Agent = None
     LLM = None
@@ -28,9 +28,13 @@ class SharedLLMWrapper:
     
     def generate(self, prompt: str, **kwargs) -> str:
         """Generate text using the shared LLM provider."""
-        # We ignore kwargs like 'max_tokens' as llm_text_gen handles defaults,
-        # but we could map them if needed.
-        return llm_text_gen(prompt, user_id=self.user_id)
+        try:
+            # We ignore kwargs like 'max_tokens' as llm_text_gen handles defaults,
+            # but we could map them if needed.
+            return llm_text_gen(prompt, user_id=self.user_id)
+        except Exception as e:
+            logger.error(f"SharedLLMWrapper failed to generate text: {e}")
+            return f"[ERROR: Shared LLM generation failed for user {self.user_id}]"
         
     def __call__(self, prompt: str, **kwargs) -> str:
         return self.generate(prompt, **kwargs)
@@ -40,8 +44,9 @@ class LocalLLMWrapper:
     Lazily loads a local LLM via txtai.
     This prevents blocking server startup with heavy model loads.
     """
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, task: str = "text-generation"):
         self.model_path = model_path
+        self.task = task
         self._llm = None
         
     @property
@@ -49,8 +54,9 @@ class LocalLLMWrapper:
         if self._llm is None:
             if LLM is None:
                 raise ImportError("txtai.pipeline.LLM is not available")
-            logger.info(f"Loading local LLM: {self.model_path}")
-            self._llm = LLM(path=self.model_path)
+            logger.info(f"Loading local LLM: {self.model_path} with task: {self.task}")
+            # Explicitly set task to avoid 'text2text-generation' default failures
+            self._llm = LLM(path=self.model_path, task=self.task)
         return self._llm
         
     def __call__(self, prompt: str, **kwargs) -> str:
@@ -67,11 +73,12 @@ class SIFBaseAgent(BaseALwrityAgent):
         
         # 2. Local LLM for internal agent work (default for SIF agents)
         if llm is None:
-            if TXTAI_AVAILABLE:
-                # Use Lazy Local LLM
-                llm = LocalLLMWrapper(model_name)
+            if TXTAI_AVAILABLE and LLM is not None:
+                # Use Lazy Local LLM when txtai LLM is available
+                # Hardening: Specify 'text-generation' task to avoid text2text defaults
+                llm = LocalLLMWrapper(model_name, task="text-generation")
             else:
-                # Fallback to Shared if txtai not available
+                # Fallback to Shared if txtai or LLM is not available
                 llm = self.shared_llm
             
         super().__init__(user_id, agent_type, model_name, llm)
@@ -85,14 +92,18 @@ class SIFBaseAgent(BaseALwrityAgent):
 
     def _create_txtai_agent(self):
         """
-        SIF agents use the intelligence service directly, but we can expose
-        capabilities via a standard agent interface if needed.
+        SIF agents primarily use the intelligence service directly, but we can expose
+        capabilities via a standard agent interface if available.
         """
-        if not TXTAI_AVAILABLE:
-            return None
-        
-        # Return a simple agent that can use the LLM
-        return Agent(llm=self.llm, tools=[])
+        if not TXTAI_AVAILABLE or Agent is None:
+            logger.debug(f"[{self.__class__.__name__}] txtai Agent not available, using fallback agent")
+            return self._create_fallback_agent()
+
+        try:
+            return Agent(llm=self.llm, tools=[])
+        except Exception as e:
+            logger.warning(f"[{self.__class__.__name__}] Failed to create txtai Agent: {e}")
+            return self._create_fallback_agent()
 
 class StrategyArchitectAgent(SIFBaseAgent):
     """Agent for discovering content pillars and identifying strategic gaps."""

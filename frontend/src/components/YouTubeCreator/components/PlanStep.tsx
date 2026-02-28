@@ -738,6 +738,7 @@ export const PlanStep: React.FC<PlanStepProps> = React.memo(({
       title="Select Avatar from Asset Library"
       sourceModule={undefined}
       allowFavoritesOnly={false}
+      showBrandAvatarShortcut
     />
     </motion.div>
   );

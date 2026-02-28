@@ -40,11 +40,53 @@ class StoryGenerationRequest(BaseModel):
     audio_lang: str = Field(default="en", description="Language code for TTS")
     audio_slow: bool = Field(default=False, description="Whether to speak slowly (gTTS only)")
     audio_rate: int = Field(default=150, description="Speech rate (pyttsx3 only)")
+    anime_bible: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional structured anime story bible for anime fiction templates",
+    )
 
 
 class StorySetupGenerationRequest(BaseModel):
     """Request model for AI story setup generation."""
     story_idea: str = Field(..., description="Basic story idea or information from the user")
+    story_mode: Optional[str] = Field(
+        default=None,
+        description="Story mode (marketing or pure) if provided by the UI",
+    )
+    story_template: Optional[str] = Field(
+        default=None,
+        description="Optional story template identifier (e.g. product_story, brand_manifesto)",
+    )
+    brand_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional high-signal brand context derived from onboarding",
+    )
+
+
+class StoryIdeaEnhanceRequest(BaseModel):
+    """Request model for AI story idea enhancement."""
+    story_idea: str = Field(..., description="Original story idea or concept text from the user")
+    story_mode: Optional[str] = Field(
+        default=None,
+        description="Story mode (marketing or pure) if provided by the UI",
+    )
+    story_template: Optional[str] = Field(
+        default=None,
+        description="Optional story template identifier (e.g. product_story, brand_manifesto)",
+    )
+    brand_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional high-signal brand context derived from onboarding",
+    )
+
+    fiction_variant: Optional[str] = Field(
+        default=None,
+        description="Optional fiction-specific focus label (e.g. high-concept twist, shonen action)",
+    )
+    narrative_energy: Optional[str] = Field(
+        default=None,
+        description="Optional narrative energy or pacing hint (e.g. grounded, balanced, cinematic)",
+    )
 
 
 class StorySetupOption(BaseModel):
@@ -78,6 +120,43 @@ class StorySetupOption(BaseModel):
     audio_lang: str = Field(default="en", description="Language code for TTS")
     audio_slow: bool = Field(default=False, description="Whether to speak slowly (gTTS only)")
     audio_rate: int = Field(default=150, description="Speech rate (pyttsx3 only)")
+    anime_bible: Optional["AnimeStoryBible"] = Field(
+        default=None,
+        description="Optional structured anime story bible for anime fiction templates",
+    )
+
+
+class AnimeCharacter(BaseModel):
+    id: str = Field(..., description="Stable identifier for the character (snake_case)")
+    name: str = Field(..., description="Character name")
+    age_range: str = Field(..., description="Approximate age range (e.g., 'late teens', '30s')")
+    role: str = Field(..., description="Narrative role (protagonist, antagonist, mentor, etc.)")
+    look: str = Field(..., description="Key visual details (hair, build, notable traits)")
+    outfit_palette: str = Field(..., description="Main outfit colors and style")
+    personality_tags: List[str] = Field(default_factory=list, description="Short tags describing personality")
+
+
+class AnimeWorld(BaseModel):
+    setting: str = Field(..., description="World description and primary locations")
+    era: str = Field(..., description="Time period (near-future, far future, alt 1990s, etc.)")
+    tech_or_magic_level: str = Field(..., description="Technology or magic sophistication level")
+    core_rules: List[str] = Field(default_factory=list, description="Key world rules and constraints")
+
+
+class AnimeVisualStyle(BaseModel):
+    style_preset: str = Field(..., description="High level style preset (anime_manga, cinematic_anime, cozy_slice_of_life)")
+    camera_style: str = Field(..., description="Typical camera behaviour and framing")
+    color_mood: str = Field(..., description="Dominant color palette and contrast")
+    lighting: str = Field(..., description="Lighting style")
+    line_style: str = Field(..., description="Line art style (thick, thin, rough, etc.)")
+    extra_tags: List[str] = Field(default_factory=list, description="Additional style tags")
+
+
+class AnimeStoryBible(BaseModel):
+    story_id: Optional[str] = Field(default=None, description="Optional story identifier")
+    main_cast: List[AnimeCharacter] = Field(default_factory=list, description="Main cast of characters")
+    world: AnimeWorld = Field(..., description="World and rules description")
+    visual_style: AnimeVisualStyle = Field(..., description="Visual style anchors for images and video")
 
 
 class StorySetupGenerationResponse(BaseModel):
@@ -86,8 +165,28 @@ class StorySetupGenerationResponse(BaseModel):
     success: bool = Field(default=True, description="Whether the generation was successful")
 
 
+class StoryIdeaEnhanceSuggestion(BaseModel):
+    """A single enhanced story idea suggestion."""
+    idea: str = Field(..., description="AI-enhanced story idea text")
+    whats_missing: str = Field(
+        ...,
+        description="Concise explanation of missing or underspecified plot/context elements",
+    )
+    why_choose: str = Field(
+        ...,
+        description="Why this idea is a strong direction based on the original input",
+    )
+
+
+class StoryIdeaEnhanceResponse(BaseModel):
+    """Response model for story idea enhancement."""
+    suggestions: List[StoryIdeaEnhanceSuggestion] = Field(
+        ..., description="List of enhanced story idea suggestions"
+    )
+    success: bool = Field(default=True, description="Whether the enhancement was successful")
+
+
 class StoryScene(BaseModel):
-    """Model for a story scene."""
     scene_number: int = Field(..., description="Scene number")
     title: str = Field(..., description="Scene title")
     description: str = Field(..., description="Scene description")
@@ -95,6 +194,58 @@ class StoryScene(BaseModel):
     audio_narration: str = Field(..., description="Audio narration text for the scene")
     character_descriptions: List[str] = Field(default_factory=list, description="Character descriptions in the scene")
     key_events: List[str] = Field(default_factory=list, description="Key events in the scene")
+
+
+class AnimeSceneTextRequest(BaseModel):
+    scene: StoryScene = Field(..., description="Scene to refine using the anime bible")
+    persona: str = Field(..., description="Persona context for the scene")
+    story_setting: str = Field(..., description="Story setting")
+    character_input: str = Field(..., description="Characters description from story setup")
+    plot_elements: str = Field(..., description="Plot elements from story setup")
+    writing_style: str = Field(..., description="Writing style")
+    story_tone: str = Field(..., description="Story tone")
+    narrative_pov: str = Field(..., description="Narrative point of view")
+    audience_age_group: str = Field(..., description="Audience age group")
+    content_rating: str = Field(..., description="Content rating")
+    anime_bible: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional anime story bible used to refine the scene",
+    )
+
+
+class AnimeSceneTextResponse(BaseModel):
+    scene: StoryScene = Field(..., description="Refined scene with bible-aware text and prompts")
+    success: bool = Field(default=True, description="Whether the refinement was successful")
+
+
+class AnimeSceneGenerateRequest(BaseModel):
+    premise: str = Field(..., description="Overall story premise for context")
+    persona: str = Field(..., description="Persona context for the scene")
+    story_setting: str = Field(..., description="Story setting")
+    character_input: str = Field(..., description="Characters description from story setup")
+    plot_elements: str = Field(..., description="Plot elements from story setup")
+    writing_style: str = Field(..., description="Writing style")
+    story_tone: str = Field(..., description="Story tone")
+    narrative_pov: str = Field(..., description="Narrative point of view")
+    audience_age_group: str = Field(..., description="Audience age group")
+    content_rating: str = Field(..., description="Content rating")
+    anime_bible: Dict[str, Any] = Field(
+        ...,
+        description="Anime story bible used as a hard constraint for generation",
+    )
+    previous_scenes: Optional[List[StoryScene]] = Field(
+        default=None,
+        description="Optional list of previous scenes for continuity context",
+    )
+    target_scene_number: Optional[int] = Field(
+        default=None,
+        description="Optional target scene number for the new scene",
+    )
+
+
+class AnimeSceneGenerateResponse(BaseModel):
+    scene: StoryScene = Field(..., description="Newly generated anime scene based on the bible")
+    success: bool = Field(default=True, description="Whether the scene generation was successful")
 
 
 class StoryStartRequest(StoryGenerationRequest):
@@ -116,6 +267,10 @@ class StoryOutlineResponse(BaseModel):
     success: bool = Field(default=True, description="Whether the generation was successful")
     task_id: Optional[str] = Field(None, description="Task ID for async operations")
     is_structured: bool = Field(default=False, description="Whether the outline is structured (scenes) or plain text")
+    anime_bible: Optional[AnimeStoryBible] = Field(
+        default=None,
+        description="Optional structured anime story bible generated from final story setup",
+    )
 
 
 class StoryContentResponse(BaseModel):
@@ -156,6 +311,10 @@ class StoryContinueRequest(BaseModel):
     content_rating: str = Field(..., description="The content rating")
     ending_preference: str = Field(..., description="The preferred ending")
     story_length: str = Field(default="Medium", description="Target story length (Short: >1000 words, Medium: >5000 words, Long: >10000 words)")
+    anime_bible: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional structured anime story bible for anime fiction templates",
+    )
 
 
 class StoryContinueResponse(BaseModel):

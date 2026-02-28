@@ -2,25 +2,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Typography,
-  Button,
   TextField,
   Alert,
-  CircularProgress,
   Snackbar,
-  FormControlLabel,
-  Checkbox,
+  Dialog,
 } from '@mui/material';
 import GlobalStyles from '@mui/material/GlobalStyles';
-import ImageIcon from '@mui/icons-material/Image';
-import VolumeUpIcon from '@mui/icons-material/VolumeUp';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useStoryWriterState, SceneAnimationResume } from '../../../hooks/useStoryWriterState';
 import { storyWriterApi } from '../../../services/storyWriterApi';
 import { aiApiClient, triggerSubscriptionError } from '../../../api/client';
-import OutlineHoverActions from './StoryOutlineParts/OutlineHoverActions';
 import EditSectionModal from './StoryOutlineParts/EditSectionModal';
-import { leftPageVariants, rightPageVariants } from './StoryOutlineParts/pageVariants';
-import { outlineActionButtonSx, primaryButtonSx } from './StoryOutlineParts/buttonStyles';
 import BookPages from './StoryOutlineParts/BookPages';
 import OutlineActionsBar from './StoryOutlineParts/OutlineActionsBar';
 import ImageEditModal from './StoryOutlineParts/ImageEditModal';
@@ -28,8 +20,10 @@ import AudioScriptModal from './StoryOutlineParts/AudioScriptModal';
 import CharactersModal from './StoryOutlineParts/CharactersModal';
 import KeyEventsModal from './StoryOutlineParts/KeyEventsModal';
 import TitleEditModal from './StoryOutlineParts/TitleEditModal';
-
-const MotionBox = motion.create(Box);
+import {
+  StoryImageGenerationModal,
+  StoryImageGenerationSettings,
+} from '../components/StoryImageGenerationModal';
 
 // styles imported
 
@@ -53,6 +47,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
   const [hasVideoLoadError, setVideoLoadError] = useState<Set<number>>(new Set());
   const [outlineToastOpen, setOutlineToastOpen] = useState(false);
   const lastToastSceneCount = useRef<number | null>(null);
+  const lastSavedSceneCount = useRef<number | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editText, setEditText] = useState<string>('');
   const [aiFeedback, setAiFeedback] = useState<string>('');
@@ -62,6 +57,8 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
   const [isRegeneratingSceneAudio, setIsRegeneratingSceneAudio] = useState<boolean>(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imagePromptDraft, setImagePromptDraft] = useState('');
+  const [isImageSettingsModalOpen, setIsImageSettingsModalOpen] = useState(false);
+  const [isImageSettingsGenerating, setIsImageSettingsGenerating] = useState(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
   const [audioScriptDraft, setAudioScriptDraft] = useState('');
   const [isCharactersModalOpen, setIsCharactersModalOpen] = useState(false);
@@ -69,11 +66,13 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
   const [isTitleModalOpen, setIsTitleModalOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [animatingSceneNumber, setAnimatingSceneNumber] = useState<number | null>(null);
+  const [isRefiningAnimeScene, setIsRefiningAnimeScene] = useState(false);
+  const [isImageFullscreenOpen, setIsImageFullscreenOpen] = useState(false);
   
   // Use state from hook instead of local state
   const sceneImages = state.sceneImages || new Map<number, string>();
   const sceneAudio = state.sceneAudio || new Map<number, string>();
-  const sceneAnimatedVideos = state.sceneAnimatedVideos || new Map<number, string>();
+  const sceneAnimatedVideos = React.useMemo(() => state.sceneAnimatedVideos || new Map<number, string>(), [state.sceneAnimatedVideos]);
   const sceneAnimationResumables = state.sceneAnimationResumables || new Map<number, SceneAnimationResume>();
 
   const updateSceneAnimatedVideo = (sceneNumber: number, videoUrl: string) => {
@@ -236,6 +235,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
   const sceneCount = scenes.length;
   const hasScenes = state.isOutlineStructured && scenes.length > 0;
   const hasOutlineScenes = Boolean(state.outlineScenes && state.outlineScenes.length > 0);
+  const hasAnimeBible = Boolean(state.animeBible);
   const resumableScenesArray = Array.from(sceneAnimationResumables.entries());
   const resumableSummaryMessage =
     resumableScenesArray.length === 0
@@ -253,6 +253,20 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
       lastToastSceneCount.current = sceneCount;
     }
   }, [state.isOutlineStructured, sceneCount]);
+
+  useEffect(() => {
+    if (!state.projectId) {
+      return;
+    }
+    if (!state.isOutlineStructured || sceneCount <= 0) {
+      return;
+    }
+    if (lastSavedSceneCount.current === sceneCount) {
+      return;
+    }
+    lastSavedSceneCount.current = sceneCount;
+    state.saveProjectToDb();
+  }, [state.projectId, state.isOutlineStructured, sceneCount, state.saveProjectToDb, state]);
 
   useEffect(() => {
     if (hasScenes) {
@@ -284,10 +298,12 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     
     const loadImage = async () => {
       try {
+        // Remove query parameters (token) from URL if present, we'll use authenticated request instead
+        const cleanUrl = currentSceneImageUrl.split('?')[0];
         // Use relative URL path directly (aiApiClient will add base URL and auth)
-        const imageUrl = currentSceneImageUrl.startsWith('/') 
-          ? currentSceneImageUrl 
-          : `/${currentSceneImageUrl}`;
+        const imageUrl = cleanUrl.startsWith('/') 
+          ? cleanUrl 
+          : `/${cleanUrl}`;
         // Use aiApiClient to get authenticated response with blob
         const response = await aiApiClient.get(imageUrl, {
           responseType: 'blob',
@@ -312,7 +328,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     };
     
     loadImage();
-  }, [currentSceneNumber, currentSceneImageUrl, hasImageLoadError]);
+  }, [currentSceneNumber, currentSceneImageUrl, hasImageLoadError, imageBlobUrls]);
   
   // Fetch video as blob with authentication
   useEffect(() => {
@@ -353,7 +369,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     };
     
     loadVideo();
-  }, [currentSceneNumber, sceneAnimatedVideos, hasVideoLoadError, videoBlobUrls]);
+  }, [currentSceneNumber, sceneAnimatedVideos, hasVideoLoadError, videoBlobUrls, audioBlobUrls, imageBlobUrls]);
 
   // Cleanup blob URLs when component unmounts or scenes change
   useEffect(() => {
@@ -392,6 +408,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     premise: state.premise,
     outline: state.outline,
     story_content: state.storyContent,
+    anime_bible: state.animeBible,
   });
 
   // Reset image/audio/video load errors when scene changes (to allow retry for new scene)
@@ -485,7 +502,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     };
 
     loadAudio();
-  }, [currentSceneAudioUrl, currentSceneNumber, currentSceneAudioFullUrl, hasAudioLoadError, sceneAudio]);
+  }, [currentSceneAudioUrl, currentSceneNumber, currentSceneAudioFullUrl, hasAudioLoadError, sceneAudio, state.enableNarration]);
 
   const handlePrevScene = () => {
     if (canGoPrev) {
@@ -511,6 +528,11 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
   const openImageModal = () => {
     setImagePromptDraft(currentScene?.image_prompt || '');
     setIsImageModalOpen(true);
+  };
+
+  const handleOpenAdvancedImageSettings = (prompt: string) => {
+    setImagePromptDraft(prompt);
+    setIsImageSettingsModalOpen(true);
   };
 
   const openAudioModal = () => {
@@ -560,6 +582,53 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     }
   };
 
+  const handleGenerateImageWithSettings = async (
+    settings: StoryImageGenerationSettings,
+  ) => {
+    if (!hasScenes || !currentScene) {
+      return;
+    }
+
+    setIsImageSettingsGenerating(true);
+    try {
+      const sceneNum = currentScene.scene_number || currentSceneIndex + 1;
+      const sceneTitle = currentScene.title || `Scene ${sceneNum}`;
+
+      const resp = await storyWriterApi.regenerateSceneImage({
+        scene_number: sceneNum,
+        scene_title: sceneTitle,
+        prompt: settings.prompt.trim(),
+        provider: state.imageProvider || undefined,
+        width: state.imageWidth,
+        height: state.imageHeight,
+        model: settings.model || state.imageModel || undefined,
+      });
+
+      if (resp.success && resp.image_url) {
+        const nextMap = new Map(state.sceneImages || []);
+        nextMap.set(sceneNum, resp.image_url);
+        state.setSceneImages(nextMap);
+
+        const updated = [...scenes];
+        updated[currentSceneIndex] = {
+          ...updated[currentSceneIndex],
+          image_prompt: settings.prompt.trim(),
+        };
+        (state.setOutlineScenes as any)(updated);
+        setImagePromptDraft(settings.prompt.trim());
+        setIsImageSettingsModalOpen(false);
+        setIsImageModalOpen(false);
+      } else {
+        throw new Error(resp.error || 'Failed to regenerate image');
+      }
+    } catch (err: any) {
+      console.error('Failed to regenerate scene image with settings:', err);
+      setError(err?.message || 'Failed to regenerate scene image');
+    } finally {
+      setIsImageSettingsGenerating(false);
+    }
+  };
+
   const applySuggestion = (index: number) => {
     const chosen = aiSuggestions[index];
     if (chosen) {
@@ -586,6 +655,10 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     try {
       const request = state.getRequest();
       const response = await storyWriterApi.generateOutline(state.premise, request);
+
+      if (response.anime_bible) {
+        state.setAnimeBible(response.anime_bible);
+      }
       
       if (response.success && response.outline) {
         // Handle structured outline (scenes) or plain text outline
@@ -618,8 +691,14 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
+    if (!state.premise || (!state.outline && !state.outlineScenes)) {
+      setError('Please generate a premise and outline first');
+      return;
+    }
+
     if (state.outline || state.outlineScenes) {
+      state.setAutoGenerateOnWriting(true);
       onNext();
     }
   };
@@ -709,6 +788,62 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
       state.setError(errorMessage);
     } finally {
       setIsGeneratingAudio(false);
+    }
+  };
+
+  const handleRefineCurrentSceneAnime = async () => {
+    if (!hasScenes || !currentScene) {
+      setError('Please generate your outline before refining scenes.');
+      return;
+    }
+    if (!state.animeBible) {
+      setError('Anime story bible is not available. Generate an anime outline first.');
+      return;
+    }
+
+    setIsRefiningAnimeScene(true);
+    setError(null);
+
+    try {
+      const storyRequest = state.getRequest();
+      const response = await storyWriterApi.refineAnimeSceneText({
+        scene: currentScene,
+        persona: storyRequest.persona,
+        story_setting: storyRequest.story_setting,
+        character_input: storyRequest.character_input,
+        plot_elements: storyRequest.plot_elements,
+        writing_style: storyRequest.writing_style,
+        story_tone: storyRequest.story_tone,
+        narrative_pov: storyRequest.narrative_pov,
+        audience_age_group: storyRequest.audience_age_group,
+        content_rating: storyRequest.content_rating,
+        anime_bible: state.animeBible || null,
+      });
+
+      if (response.success && response.scene) {
+        const refinedScene = response.scene;
+        const nextScenes = [...scenes];
+        if (currentSceneIndex >= 0 && currentSceneIndex < nextScenes.length) {
+          nextScenes[currentSceneIndex] = refinedScene;
+        }
+        state.setOutlineScenes(nextScenes);
+
+        const formattedOutline = nextScenes
+          .map((scene, idx2) =>
+            `Scene ${scene.scene_number || idx2 + 1}: ${scene.title}\n${scene.description}`
+          )
+          .join('\n\n');
+        state.setOutline(formattedOutline);
+      } else {
+        throw new Error('Failed to refine scene with anime bible');
+      }
+    } catch (err: any) {
+      const errorMessage =
+        err.response?.data?.detail || err.message || 'Failed to refine scene with anime bible';
+      setError(errorMessage);
+      state.setError(errorMessage);
+    } finally {
+      setIsRefiningAnimeScene(false);
     }
   };
 
@@ -810,57 +945,6 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
     }
   };
 
-  const handleRegenerateCurrentSceneImage = async () => {
-    if (!hasScenes || !currentScene) return;
-    setIsRegeneratingSceneImage(true);
-    try {
-      const resp = await storyWriterApi.generateSceneImages({
-        scenes: [currentScene],
-        provider: state.imageProvider || undefined,
-        width: state.imageWidth,
-        height: state.imageHeight,
-        model: state.imageModel || undefined,
-      });
-      if (resp.success && resp.images && resp.images.length > 0) {
-        const img = resp.images[0];
-        const sceneNum = currentScene.scene_number || currentSceneIndex + 1;
-        const nextMap = new Map(state.sceneImages || []);
-        nextMap.set(sceneNum, img.image_url);
-        state.setSceneImages(nextMap);
-      }
-    } catch (e) {
-      console.warn('Failed to regenerate image for current scene', e);
-    } finally {
-      setIsRegeneratingSceneImage(false);
-    }
-  };
-
-  const handleRegenerateCurrentSceneAudio = async () => {
-    if (!hasScenes || !currentScene) return;
-    if (!state.enableNarration) return;
-    setIsRegeneratingSceneAudio(true);
-    try {
-      const resp = await storyWriterApi.generateSceneAudio({
-        scenes: [currentScene],
-        provider: state.audioProvider,
-        lang: state.audioLang,
-        slow: state.audioSlow,
-        rate: state.audioRate,
-      });
-      if (resp.success && resp.audio_files && resp.audio_files.length > 0) {
-        const au = resp.audio_files[0];
-        const sceneNum = currentScene.scene_number || currentSceneIndex + 1;
-        const nextMap = new Map(state.sceneAudio || []);
-        nextMap.set(sceneNum, au.audio_url);
-        state.setSceneAudio(nextMap);
-      }
-    } catch (e) {
-      console.warn('Failed to regenerate audio for current scene', e);
-    } finally {
-      setIsRegeneratingSceneAudio(false);
-    }
-  };
-
   return (
     <Box sx={{ mt: 2 }}>
       <GlobalStyles
@@ -927,6 +1011,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
             audioUrl={resolvedSceneAudioUrl || null}
             hasAudio={hasAudioForScene}
             onOpenImageModal={openImageModal}
+            onOpenImageFullscreen={() => setIsImageFullscreenOpen(true)}
             onOpenAudioModal={openAudioModal}
             onOpenCharactersModal={openCharactersModal}
             onOpenKeyEventsModal={openKeyEventsModal}
@@ -942,6 +1027,9 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
             resumeInfo={currentSceneResumeInfo}
             isAnimatingScene={isCurrentSceneAnimating}
             animatedVideoUrl={currentSceneAnimatedVideoUrl}
+            onRefineAnimeScene={handleRefineCurrentSceneAnime}
+            isRefiningAnimeScene={isRefiningAnimeScene}
+            hasAnimeBible={hasAnimeBible}
           />
           <OutlineActionsBar
             isGenerating={isGenerating}
@@ -969,6 +1057,42 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
               sx={{ mb: 3 }}
             />
           )}
+      <Dialog
+        open={isImageFullscreenOpen}
+        onClose={() => setIsImageFullscreenOpen(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <Box
+          sx={{
+            bgcolor: 'black',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            p: 2,
+          }}
+        >
+          {currentSceneImageFullUrl ? (
+            <Box
+              component="img"
+              src={currentSceneImageFullUrl}
+              alt={currentScene?.title || `Scene ${currentSceneNumber} illustration`}
+              sx={{
+                width: '100%',
+                height: 'auto',
+                maxHeight: '85vh',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          ) : (
+            <Typography variant="body2" sx={{ color: 'white' }}>
+              No image is available for this scene yet.
+            </Typography>
+          )}
+        </Box>
+      </Dialog>
+
       <EditSectionModal
         open={isEditModalOpen}
         sceneNumber={currentSceneNumber}
@@ -1002,7 +1126,7 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
           try {
             const sceneNum = currentScene.scene_number || currentSceneIndex + 1;
             const sceneTitle = currentScene.title || `Scene ${sceneNum}`;
-            
+
             const resp = await storyWriterApi.regenerateSceneImage({
               scene_number: sceneNum,
               scene_title: sceneTitle,
@@ -1012,26 +1136,23 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
               height: state.imageHeight,
               model: state.imageModel || undefined,
             });
-            
+
             if (resp.success && resp.image_url) {
               const nextMap = new Map(state.sceneImages || []);
               nextMap.set(sceneNum, resp.image_url);
               state.setSceneImages(nextMap);
-              
-              // Update the scene with the new prompt if generation was successful
+
               const updated = [...scenes];
               updated[currentSceneIndex] = { ...updated[currentSceneIndex], image_prompt: prompt.trim() };
               (state.setOutlineScenes as any)(updated);
               setImagePromptDraft(prompt.trim());
-              
-              // Close the modal after successful regeneration
               setIsImageModalOpen(false);
             } else {
               throw new Error(resp.error || 'Failed to regenerate image');
             }
           } catch (err: any) {
             console.error('Failed to regenerate scene image:', err);
-            throw err; // Re-throw to be handled by modal
+            throw err;
           } finally {
             setIsRegeneratingSceneImage(false);
           }
@@ -1040,6 +1161,16 @@ const StoryOutline: React.FC<StoryOutlineProps> = ({ state, onNext }) => {
         imageWidth={state.imageWidth}
         imageHeight={state.imageHeight}
         imageModel={state.imageModel}
+        onOpenAdvancedSettings={handleOpenAdvancedImageSettings}
+      />
+      <StoryImageGenerationModal
+        open={isImageSettingsModalOpen}
+        onClose={() => setIsImageSettingsModalOpen(false)}
+        onGenerate={handleGenerateImageWithSettings}
+        initialPrompt={imagePromptDraft}
+        sceneTitle={currentScene?.title || undefined}
+        storyMode={state.storyMode}
+        isGenerating={isImageSettingsGenerating}
       />
       <AudioScriptModal
         open={isAudioModalOpen}

@@ -48,6 +48,23 @@ export const FactCard: React.FC<FactCardProps> = ({ fact }) => {
       }}
     >
       <Stack spacing={1} sx={{ flex: 1, minHeight: 0 }}>
+        {/* Source Image */}
+        {fact.image && (
+          <Box 
+            component="img" 
+            src={fact.image} 
+            alt={fact.url} 
+            sx={{ 
+              width: "100%", 
+              height: 120, 
+              objectFit: "cover", 
+              borderRadius: 1, 
+              mb: 1,
+              border: "1px solid rgba(0,0,0,0.04)" 
+            }} 
+          />
+        )}
+
         {/* Quote Text - Truncated with expand option */}
         <Box sx={{ flex: 1, minHeight: 0 }}>
           <Typography 
@@ -66,6 +83,21 @@ export const FactCard: React.FC<FactCardProps> = ({ fact }) => {
           >
             {expanded ? fullText : previewText}
           </Typography>
+          
+          {/* Highlights */}
+          {fact.highlights && fact.highlights.length > 0 && expanded && (
+            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: "1px dashed rgba(0,0,0,0.06)" }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: "#64748b", mb: 0.5, display: "block" }}>
+                Highlights:
+              </Typography>
+              {fact.highlights.slice(0, 2).map((highlight, idx) => (
+                <Typography key={idx} variant="caption" sx={{ display: "block", color: "#475569", mb: 0.5, fontStyle: "italic" }}>
+                  "{highlight}"
+                </Typography>
+              ))}
+            </Box>
+          )}
+
           {shouldTruncate && (
             <IconButton
               size="small"

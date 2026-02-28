@@ -648,11 +648,13 @@ async def ai_video_generate(
 
     # PRE-FLIGHT VALIDATION: Validate video generation before API call
     # MUST happen BEFORE any API calls - return immediately if validation fails
-    from services.database import get_db
+    from services.database import get_session_for_user
     from services.subscription.preflight_validator import validate_video_generation_operations
     from fastapi import HTTPException
     
-    db = next(get_db())
+    db = get_session_for_user(user_id)
+    if not db:
+        raise RuntimeError("Database session unavailable for user.")
     try:
         pricing_service = PricingService(db)
         # Raises HTTPException immediately if validation fails - frontend gets immediate response
@@ -762,9 +764,11 @@ def track_video_usage(
     from datetime import datetime
 
     from models.subscription_models import APIProvider, APIUsageLog, UsageSummary
-    from services.database import get_db
+    from services.database import get_session_for_user
 
-    db_track = next(get_db())
+    db_track = get_session_for_user(user_id)
+    if not db_track:
+        return {}
     try:
         logger.info(f"[video_gen] Starting usage tracking for user={user_id}, provider={provider}, model={model_name}")
         pricing_service_track = PricingService(db_track)

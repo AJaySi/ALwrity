@@ -121,7 +121,8 @@ class BaseALwrityAgent(ABC):
         if TXTAI_AVAILABLE:
             try:
                 if not self.llm:
-                    self.llm = LLM(model_name)
+                    # Hardening: Explicitly set task to avoid 'text2text-generation' default failures
+                    self.llm = LLM(model_name, task="text-generation")
                     
                 self.txtai_agent = self._create_txtai_agent()
                 logger.info(f"Initialized txtai agent for {agent_type} - {self.agent_id}")

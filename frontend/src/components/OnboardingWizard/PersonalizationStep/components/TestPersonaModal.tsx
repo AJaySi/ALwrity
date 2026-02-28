@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import { createAvatarVideoAsync } from '../../../../api/videoStudioApi';
 import { useVideoGenerationPolling } from '../../../../hooks/usePolling';
+import { fetchMediaBlobUrl } from '../../../../utils/fetchMediaBlobUrl';
 import { VideoCameraFront, SkipNext, PlayArrow, InfoOutlined, Close as CloseIcon, HelpOutline, Refresh, RestartAlt, Undo } from '@mui/icons-material';
 import { VideoGenerationLoader } from '../../../shared/VideoGenerationLoader';
 import { OperationButton } from '../../../shared/OperationButton';
@@ -29,6 +30,7 @@ export const TestPersonaModal: React.FC<TestPersonaModalProps> = ({
   const [success, setSuccess] = useState<string | null>(null);
   const [model, setModel] = useState<'infinitetalk' | 'hunyuan-avatar'>('infinitetalk');
   const [showCapabilities, setShowCapabilities] = useState(false);
+  const [avatarBlobUrl, setAvatarBlobUrl] = useState<string | null>(null);
   const STORAGE_KEY = 'test_persona_video_url';
   const STORAGE_BACKUP_KEY = 'test_persona_video_url_backup';
   
@@ -135,9 +137,29 @@ export const TestPersonaModal: React.FC<TestPersonaModalProps> = ({
     setGeneratedVideoUrl(null);
 
     try {
-      // 1. Fetch blobs from URLs (works for data URIs too)
-      const avatarBlob = await fetch(avatarUrl).then(r => r.blob());
-      const voiceBlob = await fetch(voiceUrl).then(r => r.blob());
+      let avatarBlob: Blob;
+      try {
+        const avatarBlobUrl = await fetchMediaBlobUrl(avatarUrl);
+        if (avatarBlobUrl) {
+          avatarBlob = await fetch(avatarBlobUrl).then(r => r.blob());
+        } else {
+          avatarBlob = await fetch(avatarUrl).then(r => r.blob());
+        }
+      } catch {
+        avatarBlob = await fetch(avatarUrl).then(r => r.blob());
+      }
+
+      let voiceBlob: Blob;
+      try {
+        const voiceBlobUrl = await fetchMediaBlobUrl(voiceUrl);
+        if (voiceBlobUrl) {
+          voiceBlob = await fetch(voiceBlobUrl).then(r => r.blob());
+        } else {
+          voiceBlob = await fetch(voiceUrl).then(r => r.blob());
+        }
+      } catch {
+        voiceBlob = await fetch(voiceUrl).then(r => r.blob());
+      }
 
       // 2. Create Files
       const avatarFile = new File([avatarBlob], "avatar.png", { type: avatarBlob.type });
@@ -174,6 +196,68 @@ export const TestPersonaModal: React.FC<TestPersonaModalProps> = ({
         }
     }, 100);
   };
+
+  useEffect(() => {
+    if (!avatarUrl) {
+      setAvatarBlobUrl(null);
+      return;
+    }
+
+    if (avatarUrl.startsWith('data:') || avatarUrl.startsWith('blob:')) {
+      setAvatarBlobUrl(null);
+      return;
+    }
+
+    const isInternal =
+      avatarUrl.includes('/api/podcast/') ||
+      avatarUrl.includes('/api/youtube/') ||
+      avatarUrl.includes('/api/story/') ||
+      (avatarUrl.startsWith('/') && !avatarUrl.startsWith('//'));
+
+    if (!isInternal) {
+      setAvatarBlobUrl(null);
+      return;
+    }
+
+    let isMounted = true;
+    const currentAvatarUrl = avatarUrl;
+
+    const loadAvatarBlob = async () => {
+      try {
+        const blobUrl = await fetchMediaBlobUrl(currentAvatarUrl);
+
+        if (!isMounted || avatarUrl !== currentAvatarUrl) {
+          if (blobUrl && blobUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(blobUrl);
+          }
+          return;
+        }
+
+        setAvatarBlobUrl(prev => {
+          if (prev && prev !== blobUrl && prev.startsWith('blob:')) {
+            URL.revokeObjectURL(prev);
+          }
+          return blobUrl;
+        });
+      } catch {
+        if (isMounted && avatarUrl === currentAvatarUrl) {
+          setAvatarBlobUrl(null);
+        }
+      }
+    };
+
+    loadAvatarBlob();
+
+    return () => {
+      isMounted = false;
+      setAvatarBlobUrl(prev => {
+        if (prev && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+    };
+  }, [avatarUrl]);
 
   const CapabilitiesModal = () => (
     <Dialog 
@@ -429,7 +513,7 @@ export const TestPersonaModal: React.FC<TestPersonaModalProps> = ({
                     {/* Avatar Preview */}
                     <Box sx={{ position: 'relative' }}>
                         <Avatar 
-                            src={avatarUrl} 
+                            src={avatarBlobUrl || avatarUrl} 
                             sx={{ width: 140, height: 140, border: '4px solid #ffffff', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
                         />
                         <Box sx={{ position: 'absolute', bottom: 0, right: 0, bgcolor: '#10b981', color: 'white', p: 0.5, borderRadius: '50%', border: '2px solid white' }}>

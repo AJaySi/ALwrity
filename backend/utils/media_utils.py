@@ -6,9 +6,12 @@ Promotes reuse between Podcast, YouTube, and other media-heavy modules.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional, List
 from urllib.parse import urlparse
+
+from services.database import WORKSPACE_DIR
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -58,6 +61,23 @@ def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
         if not filename:
             return None
             
+        # Handle workspace avatar assets: /api/assets/{user_id}/avatars/{filename}
+        if "/api/assets/" in media_url_or_path and "/avatars/" in media_url_or_path:
+            try:
+                parsed_path = urlparse(media_url_or_path).path
+                parts = parsed_path.split("/")
+                if len(parts) >= 6:
+                    user_id = parts[3]
+                    safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ("-", "_"))
+                    if safe_user_id == user_id:
+                        safe_filename = os.path.basename(filename)
+                        assets_path = Path(WORKSPACE_DIR) / f"workspace_{safe_user_id}" / "assets" / "avatars" / safe_filename
+                        if assets_path.exists() and assets_path.is_file():
+                            logger.debug(f"[MediaUtils] Resolved assets avatar {media_url_or_path} to {assets_path}")
+                            return assets_path
+            except Exception as exc:
+                logger.error(f"[MediaUtils] Error resolving assets avatar path: {exc}")
+
         # Define search paths in order of likelihood
         # We search all avatar/image directories
         search_paths: List[Path] = [

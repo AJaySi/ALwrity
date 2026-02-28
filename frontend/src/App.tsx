@@ -12,6 +12,7 @@ import FacebookWriter from './components/FacebookWriter/FacebookWriter';
 import LinkedInWriter from './components/LinkedInWriter/LinkedInWriter';
 import BlogWriter from './components/BlogWriter/BlogWriter';
 import StoryWriter from './components/StoryWriter/StoryWriter';
+import { StoryProjectList } from './components/StoryWriter/StoryProjectList';
 import YouTubeCreator from './components/YouTubeCreator/YouTubeCreator';
 import { CreateStudio, EditStudio, UpscaleStudio, ControlStudio, SocialOptimizer, AssetLibrary, ImageStudioDashboard, FaceSwapStudio, CompressionStudio, ImageProcessingStudio } from './components/ImageStudio';
 import {
@@ -48,6 +49,7 @@ import IntentResearchTest from './pages/IntentResearchTest';
 import SchedulerDashboard from './pages/SchedulerDashboard';
 import BillingPage from './pages/BillingPage';
 import ApprovalsPage from './pages/ApprovalsPage';
+import StripeDisputesDashboard from './pages/StripeDisputesDashboard';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
 import Landing from './components/Landing/Landing';
@@ -170,8 +172,7 @@ const AuthenticatedCopilotWrapper: React.FC<{
 // Flow: Subscription → Onboarding → Dashboard
 const InitialRouteHandler: React.FC = () => {
   const { loading, error, isOnboardingComplete, initializeOnboarding, data } = useOnboarding();
-  const { subscription, loading: subscriptionLoading, error: subscriptionError, checkSubscription } = useSubscription();
-  // Note: subscriptionError is available for future error handling
+  const { subscription, loading: subscriptionLoading, checkSubscription } = useSubscription();
   const [connectionError, setConnectionError] = useState<{
     hasError: boolean;
     error: Error | null;
@@ -586,6 +587,7 @@ const App: React.FC = () => {
                   <Route path="/linkedin-writer" element={<ProtectedRoute><LinkedInWriter /></ProtectedRoute>} />
                   <Route path="/blog-writer" element={<ProtectedRoute><BlogWriter /></ProtectedRoute>} />
                   <Route path="/story-writer" element={<ProtectedRoute><StoryWriter /></ProtectedRoute>} />
+                  <Route path="/story-projects" element={<ProtectedRoute><StoryProjectList /></ProtectedRoute>} />
                   <Route path="/youtube-creator" element={<ProtectedRoute><YouTubeCreator /></ProtectedRoute>} />
                   <Route path="/podcast-maker" element={<ProtectedRoute><PodcastDashboard /></ProtectedRoute>} />
                   <Route path="/image-studio" element={<ProtectedRoute><ImageStudioDashboard /></ProtectedRoute>} />
@@ -620,6 +622,7 @@ const App: React.FC = () => {
                   <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                   <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                   <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
+                  <Route path="/stripe-disputes" element={<ProtectedRoute><StripeDisputesDashboard /></ProtectedRoute>} />
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/research-test" element={<ResearchDashboard />} />
                   <Route path="/research-dashboard" element={<ResearchDashboard />} />

@@ -21,7 +21,7 @@ class WixAnalyticsHandler(BaseAnalyticsHandler):
         super().__init__(PlatformType.WIX)
         self.wix_service = WixService()
     
-    async def get_analytics(self, user_id: str) -> AnalyticsData:
+    async def get_analytics(self, user_id: str, start_date: str = None, end_date: str = None, **kwargs) -> AnalyticsData:
         """
         Get Wix analytics data using the Business Management API
         

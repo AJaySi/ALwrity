@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from loguru import logger
 
 from services.onboarding.api_key_manager import get_api_key_manager
-from services.database import get_db
+from services.database import get_session_for_user
 from services.website_analysis_service import WebsiteAnalysisService
 from services.research_preferences_service import ResearchPreferencesService
 from services.persona_analysis_service import PersonaAnalysisService
@@ -32,10 +32,13 @@ class OnboardingSummaryService:
     async def get_onboarding_summary(self) -> Dict[str, Any]:
         """Get comprehensive onboarding summary for FinalStep."""
         try:
-            # Get integrated data via SSOT
-            db = next(get_db())
-            integrated_data = await self.integration_service.process_onboarding_data(self.user_id, db)
-            db.close()
+            db = get_session_for_user(self.user_id)
+            if not db:
+                raise HTTPException(status_code=500, detail="Database session could not be created")
+            try:
+                integrated_data = await self.integration_service.process_onboarding_data(self.user_id, db)
+            finally:
+                db.close()
             
             # Extract components from integrated data
             website_analysis = integrated_data.get('website_analysis', {})
@@ -152,15 +155,34 @@ class OnboardingSummaryService:
         
         return capabilities
     
+    async def get_website_analysis_data(self) -> Dict[str, Any]:
+        """Get website analysis data for the user (Step 2 output)."""
+        try:
+            db = get_session_for_user(self.user_id)
+            if not db:
+                raise HTTPException(status_code=500, detail="Database session could not be created")
+            try:
+                integrated_data = await self.integration_service.process_onboarding_data(self.user_id, db)
+                website_analysis = integrated_data.get("website_analysis") or {}
+                return website_analysis
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error getting website analysis data: {e}")
+            raise
+    
     async def get_research_preferences_data(self) -> Dict[str, Any]:
         """Get research preferences data for the user."""
         try:
-            db = next(get_db())
-            research_prefs_service = ResearchPreferencesService(db)
-            # Use the new method that accepts user_id directly
-            result = research_prefs_service.get_research_preferences_by_user_id(self.user_id)
-            db.close()
-            return result
+            db = get_session_for_user(self.user_id)
+            if not db:
+                raise HTTPException(status_code=500, detail="Database session could not be created")
+            try:
+                research_prefs_service = ResearchPreferencesService(db)
+                result = research_prefs_service.get_research_preferences_by_user_id(self.user_id)
+                return result
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error getting research preferences data: {e}")
             raise

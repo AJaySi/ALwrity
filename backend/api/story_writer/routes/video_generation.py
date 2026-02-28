@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
+import json
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -350,9 +351,21 @@ def execute_complete_video_generation(
     Runs in a background task and performs blocking operations.
     """
     try:
-        task_manager.update_task_status(task_id, "processing", progress=5.0, message="Starting complete video generation...")
+        task_manager.update_task_status(
+            task_id,
+            "processing",
+            progress=5.0,
+            message="Starting complete video generation...",
+        )
 
-        task_manager.update_task_status(task_id, "processing", progress=10.0, message="Generating story premise...")
+        anime_bible = request_data.get("anime_bible")
+
+        task_manager.update_task_status(
+            task_id,
+            "processing",
+            progress=10.0,
+            message="Generating story premise...",
+        )
         premise = story_service.generate_premise(
             persona=request_data["persona"],
             story_setting=request_data["story_setting"],
@@ -367,7 +380,12 @@ def execute_complete_video_generation(
             user_id=user_id,
         )
 
-        task_manager.update_task_status(task_id, "processing", progress=20.0, message="Generating structured outline with scenes...")
+        task_manager.update_task_status(
+            task_id,
+            "processing",
+            progress=20.0,
+            message="Generating structured outline with scenes...",
+        )
         outline_scenes = story_service.generate_outline(
             premise=premise,
             persona=request_data["persona"],
@@ -401,6 +419,7 @@ def execute_complete_video_generation(
             height=request_data.get("image_height", 1024),
             model=request_data.get("image_model"),
             progress_callback=image_progress_callback,
+            anime_bible=anime_bible,
         )
 
         task_manager.update_task_status(task_id, "processing", progress=50.0, message="Generating audio narration for scenes...")

@@ -57,6 +57,7 @@ class StoryOutlineMixin(StoryServiceBase):
         ending_preference: str,
         user_id: str,
         use_structured_output: bool = True,
+        include_anime_bible: bool = False,
     ) -> Any:
         """Generate a story outline with optional structured JSON output."""
         persona_prompt = self.build_persona_prompt(

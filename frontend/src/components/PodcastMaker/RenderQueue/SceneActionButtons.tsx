@@ -1,16 +1,17 @@
 import React from "react";
-import { Stack } from "@mui/material";
+import { Stack, alpha } from "@mui/material";
 import {
   VolumeUp as VolumeUpIcon,
-  PlayArrow as PlayArrowIcon,
-  Refresh as RefreshIcon,
   Image as ImageIcon,
   Videocam as VideocamIcon,
   Download as DownloadIcon,
   Share as ShareIcon,
+  PlayArrow as PlayArrowIcon,
+  Refresh as RefreshIcon,
 } from "@mui/icons-material";
 import { Scene, Job } from "../types";
 import { PrimaryButton, SecondaryButton } from "../ui";
+import { Typography } from "@mui/material"; // Import Typography
 
 interface SceneActionButtonsProps {
   scene: Scene;
@@ -76,7 +77,26 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
     );
   }
 
-  // Failed - show retry
+  // Video generation failed - show specific retry for video
+  if (job?.status === "failed" && !needsAudio && hasAudio) {
+    return (
+      <Stack direction="row" spacing={1} justifyContent="flex-end">
+        <Typography variant="caption" color="error" sx={{ alignSelf: "center", mr: 1 }}>
+          Video Generation Failed
+        </Typography>
+        <SecondaryButton
+          onClick={() => onVideoRender(scene.id)}
+          startIcon={<RefreshIcon />}
+          tooltip="Retry video generation"
+          sx={{ borderColor: "error.main", color: "error.main" }}
+        >
+          Retry Video
+        </SecondaryButton>
+      </Stack>
+    );
+  }
+
+  // Failed (Audio) - show retry
   if (job?.status === "failed") {
     return (
       <Stack direction="row" spacing={1} justifyContent="flex-end">
@@ -85,7 +105,7 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
           startIcon={<RefreshIcon />}
           tooltip="Retry audio generation"
         >
-          Retry
+          Retry Audio
         </SecondaryButton>
       </Stack>
     );
@@ -97,40 +117,49 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
 
   return (
     <Stack direction="row" spacing={1.5} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
-      {/* Generate Image */}
+      {/* Generate/Regenerate Image - ALWAYS visible if we have audio */}
       <PrimaryButton
         onClick={() => onImageGenerate(scene.id)}
-        disabled={isGeneratingImage || hasImage}
+        disabled={isGeneratingImage}
         loading={isGeneratingImage}
         startIcon={<ImageIcon />}
         tooltip={
-          hasImage
-            ? "Image already generated for this scene"
-            : isGeneratingImage
+          isGeneratingImage
             ? "Generating image..."
+            : hasImage
+            ? "Regenerate image for this scene"
             : "Generate image for video (optional)"
         }
-        sx={{ minWidth: 160 }}
+        sx={{ 
+          minWidth: 160,
+          // Use secondary style if image exists (to de-emphasize), primary if needed
+          background: hasImage ? alpha("#667eea", 0.1) : undefined,
+          color: hasImage ? "#667eea" : undefined,
+          border: hasImage ? "1px solid rgba(102,126,234,0.3)" : undefined,
+          "&:hover": {
+             background: hasImage ? alpha("#667eea", 0.2) : undefined,
+          }
+        }}
       >
-        {isGeneratingImage ? "Generating..." : hasImage ? "Image Ready" : "Generate Image"}
+        {isGeneratingImage ? "Generating..." : hasImage ? "Regenerate Image" : "Generate Image"}
       </PrimaryButton>
 
-      {/* Generate Video */}
+      {/* Generate Video - ALWAYS visible if we have audio */}
       <PrimaryButton
         onClick={() => {
           onVideoRender(scene.id);
         }}
-        disabled={isBusy || videoInProgress || !hasImage || hasVideo}
+        disabled={isBusy || videoInProgress || !hasImage}
         startIcon={<VideocamIcon />}
         tooltip={
-          hasVideo
-            ? "Video already generated"
-            : !hasImage
+          !hasImage
             ? "Generate an image first to create video"
             : videoInProgress
             ? "A video generation is already running. Please wait..."
             : isBusy
             ? "Another operation in progress"
+            : hasVideo 
+            ? "Regenerate video"
             : "Generate video for this scene"
         }
         sx={{ minWidth: 180 }}
@@ -138,7 +167,7 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
         {videoInProgress && isCurrentVideo
           ? "Generating Video..."
           : hasVideo
-          ? "Video Ready"
+          ? "Regenerate Video"
           : "Generate Video"}
       </PrimaryButton>
 
@@ -154,36 +183,48 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
       )}
 
       {/* Download Audio */}
-      <SecondaryButton
-        onClick={() => {
-          if (!audioUrl) {
-            onError("Audio URL not found. Please regenerate audio.");
-            return;
-          }
-          onDownloadAudio(audioUrl, scene.title);
-        }}
-        startIcon={<DownloadIcon />}
-        tooltip={hasAudio ? "Download this scene's audio file" : "No audio available. Generate audio first."}
-        disabled={!hasAudio}
-      >
-        Download Audio
-      </SecondaryButton>
+      {hasAudio && audioUrl && (
+        <PrimaryButton
+          onClick={() => onDownloadAudio(audioUrl, scene.title)}
+          startIcon={<DownloadIcon />}
+          tooltip="Download audio file"
+          sx={{
+            minWidth: 40,
+            width: 40,
+            padding: 0,
+            background: alpha("#64748b", 0.1),
+            color: "#64748b",
+            border: "1px solid rgba(100, 116, 139, 0.2)",
+            "&:hover": {
+              background: alpha("#64748b", 0.2),
+            },
+          }}
+        >
+          {/* Icon only */}
+        </PrimaryButton>
+      )}
 
       {/* Share */}
-      <SecondaryButton
-        onClick={() => {
-          if (!audioUrl) {
-            onError("Audio URL not found. Please regenerate audio.");
-            return;
-          }
-          onShare(audioUrl, scene.title);
-        }}
-        startIcon={<ShareIcon />}
-        tooltip={hasAudio ? "Share this scene's audio" : "No audio available. Generate audio first."}
-        disabled={!hasAudio}
-      >
-        Share
-      </SecondaryButton>
+      {hasAudio && audioUrl && (
+        <PrimaryButton
+          onClick={() => onShare(audioUrl, scene.title)}
+          startIcon={<ShareIcon />}
+          tooltip="Share audio link"
+          sx={{
+            minWidth: 40,
+            width: 40,
+            padding: 0,
+            background: alpha("#64748b", 0.1),
+            color: "#64748b",
+            border: "1px solid rgba(100, 116, 139, 0.2)",
+            "&:hover": {
+              background: alpha("#64748b", 0.2),
+            },
+          }}
+        >
+          {/* Icon only */}
+        </PrimaryButton>
+      )}
     </Stack>
   );
 };

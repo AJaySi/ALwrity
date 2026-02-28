@@ -26,6 +26,8 @@ class UsageStatus(enum.Enum):
     WARNING = "warning"  # 80% usage
     LIMIT_REACHED = "limit_reached"  # 100% usage
     SUSPENDED = "suspended"
+    CANCELLED = "cancelled"
+    PAST_DUE = "past_due"
 
 class APIProvider(enum.Enum):
     GEMINI = "gemini"
@@ -390,3 +392,19 @@ class SubscriptionRenewalHistory(Base):
     __table_args__ = (
         {'mysql_engine': 'InnoDB'},
     )
+
+class FraudWarning(Base):
+    __tablename__ = "fraud_warnings"
+    
+    id = Column(String(100), primary_key=True)
+    charge_id = Column(String(100), nullable=False)
+    payment_intent_id = Column(String(100), nullable=True)
+    user_id = Column(String(100), nullable=True)
+    amount = Column(Integer, nullable=False, default=0)
+    currency = Column(String(10), nullable=False, default="")
+    status = Column(String(20), nullable=False, default="open")
+    action = Column(String(20), nullable=False, default="none")
+    action_at = Column(DateTime, nullable=True)
+    reason_notes = Column(Text, nullable=True)
+    meta_info = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

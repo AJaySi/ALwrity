@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import { useContentAssets, ContentAsset } from '../../hooks/useContentAssets';
 import { fetchMediaBlobUrl } from '../../utils/fetchMediaBlobUrl';
+import { getLatestBrandAvatar, AssetResponse as BrandAvatarResponse } from '../../api/brandAssets';
 
 export interface AssetLibraryImageModalProps {
   open: boolean;
@@ -37,6 +38,7 @@ export interface AssetLibraryImageModalProps {
   title?: string;
   sourceModule?: string | string[]; // Optional filter by source module(s) (e.g., 'youtube_creator', 'podcast_maker', or ['youtube_creator', 'podcast_maker'])
   allowFavoritesOnly?: boolean; // Optional favorites-only filter toggle
+  showBrandAvatarShortcut?: boolean; // Optional shortcut to show latest onboarding brand avatar
 }
 
 /**
@@ -50,6 +52,7 @@ export const AssetLibraryImageModal: React.FC<AssetLibraryImageModalProps> = ({
   title = 'Select Image from Asset Library',
   sourceModule,
   allowFavoritesOnly = false,
+  showBrandAvatarShortcut = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<ContentAsset | null>(null);
@@ -57,6 +60,9 @@ export const AssetLibraryImageModal: React.FC<AssetLibraryImageModalProps> = ({
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [imageBlobUrls, setImageBlobUrls] = useState<Map<number, string>>(new Map());
   const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
+  const [brandAvatar, setBrandAvatar] = useState<BrandAvatarResponse | null>(null);
+  const [brandAvatarLoading, setBrandAvatarLoading] = useState(false);
+  const [brandAvatarError, setBrandAvatarError] = useState<string | null>(null);
   const pageSize = 24;
 
   // Filter for images only
@@ -70,6 +76,48 @@ export const AssetLibraryImageModal: React.FC<AssetLibraryImageModalProps> = ({
   };
 
   const { assets, loading, error, total, toggleFavorite, refetch } = useContentAssets(filters);
+
+  // Load latest brand avatar generated in onboarding (Step 4)
+  useEffect(() => {
+    if (!open || !showBrandAvatarShortcut) {
+      setBrandAvatar(null);
+      setBrandAvatarError(null);
+      setBrandAvatarLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadBrandAvatar = async () => {
+      try {
+        setBrandAvatarLoading(true);
+        setBrandAvatarError(null);
+        const response = await getLatestBrandAvatar();
+        if (cancelled) return;
+
+        if (response.success && response.image_url) {
+          setBrandAvatar(response);
+        } else {
+          setBrandAvatar(null);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('[AssetLibraryImageModal] Failed to load brand avatar:', err);
+        setBrandAvatar(null);
+        setBrandAvatarError('Failed to load brand avatar');
+      } finally {
+        if (!cancelled) {
+          setBrandAvatarLoading(false);
+        }
+      }
+    };
+
+    loadBrandAvatar();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, showBrandAvatarShortcut]);
 
   // Check if a URL requires authentication (internal API endpoints)
   const isAuthenticatedUrl = useCallback((url: string): boolean => {
@@ -172,6 +220,43 @@ export const AssetLibraryImageModal: React.FC<AssetLibraryImageModalProps> = ({
     setSelectedAsset(asset);
   }, []);
 
+  const handleBrandAvatarSelect = useCallback(() => {
+    if (!brandAvatar || !brandAvatar.image_url) return;
+
+    const now = new Date().toISOString();
+
+    const asset: ContentAsset = {
+      id: brandAvatar.asset_id ?? -1,
+      user_id: 'current_user',
+      asset_type: 'image',
+      source_module: 'brand_avatar_generator',
+      filename: brandAvatar.image_url,
+      file_url: brandAvatar.image_url,
+      file_path: undefined,
+      file_size: undefined,
+      mime_type: 'image/png',
+      title: 'Brand Avatar',
+      description: brandAvatar.prompt || 'Brand avatar from onboarding',
+      prompt: brandAvatar.prompt,
+      tags: ['brand_avatar', 'onboarding'],
+      asset_metadata: {
+        source: 'onboarding_step4',
+      },
+      provider: undefined,
+      model: undefined,
+      cost: 0,
+      generation_time: undefined,
+      is_favorite: false,
+      download_count: 0,
+      share_count: 0,
+      created_at: now,
+      updated_at: now,
+    };
+
+    onSelect(asset);
+    handleClose();
+  }, [brandAvatar, onSelect, handleClose]);
+
   const handleFavoriteToggle = useCallback(
     async (assetId: number, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -214,6 +299,80 @@ export const AssetLibraryImageModal: React.FC<AssetLibraryImageModalProps> = ({
       </DialogTitle>
 
       <DialogContent dividers sx={{ backgroundColor: '#f9fafb' }}>
+        {/* Brand Avatar Shortcut (from Onboarding Step 4) */}
+        {showBrandAvatarShortcut && (
+          <Box sx={{ mb: 3 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#111827' }}>
+                Brand Avatar from Onboarding
+              </Typography>
+              {brandAvatarLoading && <CircularProgress size={18} />}
+            </Stack>
+            {brandAvatarError && (
+              <Alert severity="warning" sx={{ mb: 1 }}>
+                {brandAvatarError}
+              </Alert>
+            )}
+            {!brandAvatarLoading && !brandAvatar && !brandAvatarError && (
+              <Typography variant="body2" sx={{ color: '#6b7280' }}>
+                No brand avatar found. Create one in Step 4 of onboarding to see it here.
+              </Typography>
+            )}
+            {!brandAvatarLoading && brandAvatar && brandAvatar.image_url && (
+              <Card
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  p: 1.5,
+                  borderRadius: 2,
+                  border: '1px solid #e5e7eb',
+                  cursor: 'pointer',
+                  mb: 1.5,
+                  '&:hover': {
+                    boxShadow: 3,
+                    borderColor: '#9ca3af',
+                  },
+                }}
+                onClick={handleBrandAvatarSelect}
+              >
+                <Box
+                  sx={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    mr: 2,
+                    bgcolor: '#f3f4f6',
+                  }}
+                >
+                  <CardMedia
+                    component="img"
+                    image={brandAvatar.image_url}
+                    alt="Brand Avatar"
+                    sx={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#111827' }}>
+                    Use Brand Avatar
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#6b7280' }}>
+                    Quickly apply the avatar you created during onboarding.
+                  </Typography>
+                </Box>
+              </Card>
+            )}
+          </Box>
+        )}
+
         {/* Search and Filters */}
         <Box sx={{ mb: 3 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">

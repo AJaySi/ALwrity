@@ -241,6 +241,9 @@ class ExaResearchProvider(BaseProvider):
         for idx, result in enumerate(results):
             source_type = self._determine_source_type(result.url if hasattr(result, 'url') else '')
             
+            # Extract image if available (some Exa results include image URL)
+            image_url = result.image if hasattr(result, 'image') else None
+            
             sources.append({
                 'title': result.title if hasattr(result, 'title') else '',
                 'url': result.url if hasattr(result, 'url') else '',
@@ -251,17 +254,21 @@ class ExaResearchProvider(BaseProvider):
                 'source_type': source_type,
                 'content': result.text if hasattr(result, 'text') else '',
                 'highlights': result.highlights if hasattr(result, 'highlights') else [],
-                'summary': result.summary if hasattr(result, 'summary') else ''
+                'summary': result.summary if hasattr(result, 'summary') else '',
+                'image': image_url,
+                'author': result.author if hasattr(result, 'author') else None
             })
         
         return sources
     
     def _get_excerpt(self, result):
-        """Extract excerpt from Exa result."""
+        """Extract excerpt from Exa result. Prefer highlights if available."""
+        if hasattr(result, 'highlights') and result.highlights and len(result.highlights) > 0:
+            return result.highlights[0]
+        if hasattr(result, 'summary') and result.summary:
+            return result.summary
         if hasattr(result, 'text') and result.text:
             return result.text[:500]
-        elif hasattr(result, 'summary') and result.summary:
-            return result.summary
         return ''
     
     def _determine_source_type(self, url):
@@ -280,16 +287,30 @@ class ExaResearchProvider(BaseProvider):
             return 'web'
     
     def _aggregate_content(self, results):
-        """Aggregate content from Exa results for LLM analysis."""
+        """Aggregate content from Exa results for LLM analysis, including highlights."""
         content_parts = []
         
         for idx, result in enumerate(results):
+            part = [f"Source {idx + 1}: {result.title if hasattr(result, 'title') else 'Untitled'}"]
+            if hasattr(result, 'url') and result.url:
+                part.append(f"URL: {result.url}")
+            
+            # Add highlights if available (most valuable for LLM)
+            if hasattr(result, 'highlights') and result.highlights:
+                highlights_text = "\n".join([f"- {h}" for h in result.highlights])
+                part.append(f"Key Highlights:\n{highlights_text}")
+            
+            # Add summary if available
             if hasattr(result, 'summary') and result.summary:
-                content_parts.append(f"Source {idx + 1}: {result.summary}")
+                part.append(f"Summary: {result.summary}")
+            
+            # Add text snippet if highlights/summary insufficient
             elif hasattr(result, 'text') and result.text:
-                content_parts.append(f"Source {idx + 1}: {result.text[:1000]}")
+                part.append(f"Excerpt: {result.text[:1000]}")
+                
+            content_parts.append("\n".join(part))
         
-        return "\n\n".join(content_parts)
+        return "\n\n---\n\n".join(content_parts)
     
     def track_exa_usage(self, user_id: str, cost: float):
         """Track Exa API usage after successful call."""

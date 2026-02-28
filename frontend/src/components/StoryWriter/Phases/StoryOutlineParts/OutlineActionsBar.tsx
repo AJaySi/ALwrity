@@ -100,7 +100,7 @@ const OutlineActionsBar: React.FC<OutlineActionsBarProps> = ({
         disabled={!canContinue}
         sx={primaryButtonSx}
       >
-        Continue to Writing
+        Generate Story
       </Button>
     </Box>
   );

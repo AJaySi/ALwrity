@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+import json
 
 from fastapi import HTTPException
 from loguru import logger
 
+from services.llm_providers.main_text_generation import llm_text_gen
 from services.story_writer.image_generation_service import StoryImageGenerationService
 
 from .base import StoryServiceBase
@@ -36,6 +38,7 @@ class StoryContentMixin(StoryOutlineMixin):
         content_rating: str,
         ending_preference: str,
         story_length: str = "Medium",
+        anime_bible: Optional[Dict[str, Any]] = None,
         user_id: str,
     ) -> str:
         """Generate the starting section (or full short story)."""
@@ -52,6 +55,19 @@ class StoryContentMixin(StoryOutlineMixin):
             ending_preference,
         )
 
+        anime_bible_context = ""
+        if anime_bible:
+            try:
+                serialized_bible = json.dumps(anime_bible, ensure_ascii=False, indent=2)
+            except Exception:
+                serialized_bible = str(anime_bible)
+            anime_bible_context = f"""
+
+You also have a structured ANIME STORY BIBLE that defines the main cast, world rules, and visual style. Use it as a hard constraint for character consistency, worldbuilding, and visual storytelling:
+
+{serialized_bible}
+"""
+
         outline_text = self._format_outline_for_prompt(outline)
         story_length_lower = story_length.lower()
         is_short_story = "short" in story_length_lower or "1000" in story_length_lower
@@ -60,6 +76,8 @@ class StoryContentMixin(StoryOutlineMixin):
             logger.info(f"[StoryWriter] Generating complete short story (~1000 words) in single call for user {user_id}")
             short_story_prompt = f"""\
 {persona_prompt}
+
+{anime_bible_context}
 
 You have a gripping premise in mind:
 
@@ -155,6 +173,285 @@ on establishing the setting, characters, and beginning of the plot in {initial_w
             raise RuntimeError(f"Failed to generate story start: {exc}") from exc
 
     # ------------------------------------------------------------------ #
+    # Anime scene refinement
+    # ------------------------------------------------------------------ #
+
+    def refine_anime_scene_text(
+        self,
+        *,
+        scene: Dict[str, Any],
+        persona: str,
+        story_setting: str,
+        character_input: str,
+        plot_elements: str,
+        writing_style: str,
+        story_tone: str,
+        narrative_pov: str,
+        audience_age_group: str,
+        content_rating: str,
+        anime_bible: Optional[Dict[str, Any]],
+        user_id: str,
+    ) -> Dict[str, Any]:
+        persona_prompt = self.build_persona_prompt(
+            persona,
+            story_setting,
+            character_input,
+            plot_elements,
+            writing_style,
+            story_tone,
+            narrative_pov,
+            audience_age_group,
+            content_rating,
+            "Neutral",
+        )
+
+        anime_bible_context = ""
+        if anime_bible:
+            try:
+                serialized_bible = json.dumps(anime_bible, ensure_ascii=False, indent=2)
+            except Exception:
+                serialized_bible = str(anime_bible)
+            anime_bible_context = f"""
+
+You also have a structured ANIME STORY BIBLE that defines the main cast, world rules, and visual style. Use it as a hard constraint for character consistency, worldbuilding, and visual storytelling:
+
+{serialized_bible}
+"""
+
+        current_title = scene.get("title", "")
+        current_description = scene.get("description", "")
+        current_image_prompt = scene.get("image_prompt", "")
+        current_audio_narration = scene.get("audio_narration", "")
+        current_character_descriptions = scene.get("character_descriptions") or []
+        current_key_events = scene.get("key_events") or []
+
+        scene_schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "image_prompt": {"type": "string"},
+                "audio_narration": {"type": "string"},
+                "character_descriptions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "key_events": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["title", "description", "image_prompt", "audio_narration"],
+        }
+
+        prompt = f"""
+{persona_prompt}
+
+{anime_bible_context}
+
+You are refining a single anime story scene so that it fully respects the anime story bible for characters, world rules, and visual style.
+
+Current scene:
+- Title: {current_title}
+- Description: {current_description}
+- Image prompt: {current_image_prompt}
+- Audio narration: {current_audio_narration}
+- Character descriptions: {current_character_descriptions}
+- Key events: {current_key_events}
+
+Refine the scene so that:
+- Title is concise and evocative
+- Description clearly describes what happens in the scene
+- Image prompt is vivid, visual, and aligned with the anime bible style and cast
+- Audio narration is natural, spoken-friendly text matching the scene
+- Character descriptions highlight key visual and personality traits relevant to this moment
+- Key events list the main beats of the scene
+
+Respond with JSON matching this schema:
+{scene_schema}
+"""
+
+        try:
+            raw = llm_text_gen(
+                prompt=prompt.strip(),
+                json_struct=scene_schema,
+                user_id=user_id,
+            )
+            data = self.load_json_response(raw)
+        except Exception as exc:
+            logger.warning(f"[StoryWriter] Failed to refine anime scene text via LLM: {exc}")
+            return {
+                "scene_number": scene.get("scene_number"),
+                "title": current_title,
+                "description": current_description,
+                "image_prompt": current_image_prompt,
+                "audio_narration": current_audio_narration,
+                "character_descriptions": current_character_descriptions,
+                "key_events": current_key_events,
+            }
+
+        refined = {
+            "scene_number": scene.get("scene_number"),
+            "title": data.get("title", current_title),
+            "description": data.get("description", current_description),
+            "image_prompt": data.get("image_prompt", current_image_prompt),
+            "audio_narration": data.get("audio_narration", current_audio_narration),
+            "character_descriptions": data.get(
+                "character_descriptions", current_character_descriptions
+            ),
+            "key_events": data.get("key_events", current_key_events),
+        }
+        return refined
+
+    # ------------------------------------------------------------------ #
+    # Anime scene generation from bible
+    # ------------------------------------------------------------------ #
+
+    def generate_anime_scene_from_bible(
+        self,
+        *,
+        premise: str,
+        persona: str,
+        story_setting: str,
+        character_input: str,
+        plot_elements: str,
+        writing_style: str,
+        story_tone: str,
+        narrative_pov: str,
+        audience_age_group: str,
+        content_rating: str,
+        anime_bible: Dict[str, Any],
+        previous_scenes: Optional[List[Dict[str, Any]]],
+        target_scene_number: Optional[int],
+        user_id: str,
+    ) -> Dict[str, Any]:
+        persona_prompt = self.build_persona_prompt(
+            persona,
+            story_setting,
+            character_input,
+            plot_elements,
+            writing_style,
+            story_tone,
+            narrative_pov,
+            audience_age_group,
+            content_rating,
+            "Neutral",
+        )
+
+        try:
+            serialized_bible = json.dumps(anime_bible, ensure_ascii=False, indent=2)
+        except Exception:
+            serialized_bible = str(anime_bible)
+
+        anime_bible_context = f"""
+
+You have a structured ANIME STORY BIBLE that defines the main cast, world rules, and visual style. You MUST treat it as a hard constraint for character consistency, worldbuilding, and visual storytelling:
+
+{serialized_bible}
+"""
+
+        previous_summary_lines: List[str] = []
+        if previous_scenes:
+            for s in previous_scenes[:6]:
+                num = s.get("scene_number")
+                title = s.get("title") or ""
+                desc = s.get("description") or ""
+                summary = desc
+                if len(summary) > 200:
+                    summary = summary[:197] + "..."
+                previous_summary_lines.append(
+                    f"- Scene {num}: {title} — {summary}".strip()
+                )
+
+        previous_block = ""
+        if previous_summary_lines:
+            previous_block = (
+                "\nPrevious scenes so far (for continuity, do NOT contradict):\n"
+                + "\n".join(previous_summary_lines)
+            )
+
+        scene_schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "image_prompt": {"type": "string"},
+                "audio_narration": {"type": "string"},
+                "character_descriptions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "key_events": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["title", "description", "image_prompt", "audio_narration"],
+        }
+
+        prompt = f"""
+{persona_prompt}
+
+{anime_bible_context}
+
+You are generating a brand new anime story scene that must fully respect the anime story bible for characters, world rules, and visual style.
+
+Overall premise:
+{premise}
+{previous_block}
+
+Your task:
+- Create the NEXT SCENE in this story.
+- It must be consistent with the anime bible (cast, world rules, visual style).
+- It must logically follow from any previous scenes given above.
+
+Design the scene so that:
+- Title is concise and evocative.
+- Description clearly describes what happens in the scene.
+- Image prompt is vivid, visual, and aligned with the anime bible style and cast.
+- Audio narration is natural, spoken-friendly text matching the scene.
+- Character descriptions highlight key visual and personality traits relevant to this moment.
+- Key events list the main beats of the scene.
+
+Respond with JSON matching this schema:
+{scene_schema}
+"""
+
+        try:
+            raw = llm_text_gen(
+                prompt=prompt.strip(),
+                json_struct=scene_schema,
+                user_id=user_id,
+            )
+            data = self.load_json_response(raw)
+        except Exception as exc:
+            logger.error(f"[StoryWriter] Failed to generate anime scene from bible: {exc}")
+            raise RuntimeError(f"Failed to generate anime scene from bible: {exc}") from exc
+
+        next_scene_number = target_scene_number
+        if next_scene_number is None:
+            if previous_scenes and len(previous_scenes) > 0:
+                last = previous_scenes[-1]
+                try:
+                    last_num = int(last.get("scene_number") or 0)
+                except Exception:
+                    last_num = len(previous_scenes)
+                next_scene_number = last_num + 1
+            else:
+                next_scene_number = 1
+
+        result = {
+            "scene_number": next_scene_number,
+            "title": data.get("title", "").strip(),
+            "description": data.get("description", "").strip(),
+            "image_prompt": data.get("image_prompt", "").strip(),
+            "audio_narration": data.get("audio_narration", "").strip(),
+            "character_descriptions": data.get("character_descriptions") or [],
+            "key_events": data.get("key_events") or [],
+        }
+        return result
+
+    # ------------------------------------------------------------------ #
     # Continuation
     # ------------------------------------------------------------------ #
 
@@ -174,6 +471,7 @@ on establishing the setting, characters, and beginning of the plot in {initial_w
         audience_age_group: str,
         content_rating: str,
         ending_preference: str,
+        anime_bible: Optional[Dict[str, Any]] = None,
         story_length: str = "Medium",
         user_id: str,
     ) -> str:
@@ -190,6 +488,19 @@ on establishing the setting, characters, and beginning of the plot in {initial_w
             content_rating,
             ending_preference,
         )
+
+        anime_bible_context = ""
+        if anime_bible:
+            try:
+                serialized_bible = json.dumps(anime_bible, ensure_ascii=False, indent=2)
+            except Exception:
+                serialized_bible = str(anime_bible)
+            anime_bible_context = f"""
+
+You also have a structured ANIME STORY BIBLE that defines the main cast, world rules, and visual style. Use it as a hard constraint for character consistency, worldbuilding, and visual storytelling:
+
+{serialized_bible}
+"""
 
         outline_text = self._format_outline_for_prompt(outline)
         _, continuation_word_count = self._get_story_length_guidance(story_length)
@@ -226,6 +537,8 @@ on establishing the setting, characters, and beginning of the plot in {initial_w
 
         continuation_prompt = f"""\
 {persona_prompt}
+
+{anime_bible_context}
 
 You have a gripping premise in mind:
 
@@ -298,6 +611,7 @@ You have written approximately {current_word_count} words so far, leaving approx
         audience_age_group: str,
         content_rating: str,
         ending_preference: str,
+        anime_bible: Optional[Dict[str, Any]] = None,
         user_id: str,
         max_iterations: int = 10,
     ) -> Dict[str, Any]:
@@ -352,6 +666,7 @@ You have written approximately {current_word_count} words so far, leaving approx
                 audience_age_group=audience_age_group,
                 content_rating=content_rating,
                 ending_preference=ending_preference,
+                anime_bible=anime_bible,
                 user_id=user_id,
             )
             if not draft:
@@ -375,6 +690,7 @@ You have written approximately {current_word_count} words so far, leaving approx
                     audience_age_group=audience_age_group,
                     content_rating=content_rating,
                     ending_preference=ending_preference,
+                    anime_bible=anime_bible,
                     user_id=user_id,
                 )
                 if continuation:
@@ -420,6 +736,7 @@ You have written approximately {current_word_count} words so far, leaving approx
         height: int = 1024,
         model: Optional[str] = None,
         db: Optional[Session] = None,
+        anime_bible: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Generate images for story scenes."""
         image_service = StoryImageGenerationService()
@@ -431,5 +748,6 @@ You have written approximately {current_word_count} words so far, leaving approx
             height=height,
             model=model,
             db=db,
+            anime_bible=anime_bible,
         )
 

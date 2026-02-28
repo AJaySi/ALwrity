@@ -25,6 +25,7 @@ class PodcastProjectResponse(BaseModel):
     raw_research: Optional[Dict[str, Any]] = None
     estimate: Optional[Dict[str, Any]] = None
     script_data: Optional[Dict[str, Any]] = None
+    bible: Optional[Dict[str, Any]] = None
     render_jobs: Optional[List[Dict[str, Any]]] = None
     knobs: Optional[Dict[str, Any]] = None
     research_provider: Optional[str] = None
@@ -34,6 +35,9 @@ class PodcastProjectResponse(BaseModel):
     status: str = "draft"
     is_favorite: bool = False
     final_video_url: Optional[str] = None
+    avatar_url: Optional[str] = None
+    avatar_prompt: Optional[str] = None
+    avatar_persona_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -46,6 +50,9 @@ class PodcastAnalyzeRequest(BaseModel):
     idea: str = Field(..., description="Podcast topic or idea")
     duration: int = Field(default=10, description="Target duration in minutes")
     speakers: int = Field(default=1, description="Number of speakers")
+    bible: Optional[Dict[str, Any]] = Field(None, description="Optional Podcast Bible for context")
+    avatar_url: Optional[str] = Field(None, description="Current avatar URL if selected")
+    feedback: Optional[str] = Field(None, description="User feedback for regeneration")
 
 
 class PodcastAnalyzeResponse(BaseModel):
@@ -55,7 +62,23 @@ class PodcastAnalyzeResponse(BaseModel):
     top_keywords: list[str]
     suggested_outlines: list[Dict[str, Any]]
     title_suggestions: list[str]
+    research_queries: Optional[List[Dict[str, str]]] = None
     exa_suggested_config: Optional[Dict[str, Any]] = None
+    bible: Optional[Dict[str, Any]] = None
+    avatar_url: Optional[str] = None
+    avatar_prompt: Optional[str] = None
+
+
+class PodcastEnhanceIdeaRequest(BaseModel):
+    """Request model for enhancing a podcast idea with AI."""
+    idea: str = Field(..., description="The raw podcast idea or keywords")
+    bible: Optional[Dict[str, Any]] = Field(None, description="Optional Podcast Bible for context")
+
+
+class PodcastEnhanceIdeaResponse(BaseModel):
+    """Response model for enhanced podcast idea."""
+    enhanced_idea: str
+    rationale: str
 
 
 class PodcastScriptRequest(BaseModel):
@@ -64,6 +87,9 @@ class PodcastScriptRequest(BaseModel):
     duration_minutes: int = Field(default=10, description="Target duration in minutes")
     speakers: int = Field(default=1, description="Number of speakers")
     research: Optional[Dict[str, Any]] = Field(None, description="Optional research payload to ground the script")
+    bible: Optional[Dict[str, Any]] = Field(None, description="Podcast Bible for hyper-personalization")
+    outline: Optional[Dict[str, Any]] = Field(None, description="The refined episode outline to follow")
+    analysis: Optional[Dict[str, Any]] = Field(None, description="The full analysis context (audience, keywords, etc.)")
 
 
 class PodcastSceneLine(BaseModel):
@@ -106,6 +132,8 @@ class PodcastExaResearchRequest(BaseModel):
     topic: str
     queries: List[str]
     exa_config: Optional[PodcastExaConfig] = None
+    bible: Optional[Dict[str, Any]] = Field(None, description="Podcast Bible for hyper-personalization")
+    analysis: Optional[Dict[str, Any]] = Field(None, description="Podcast analysis context (audience, content type, etc.)")
 
 
 class PodcastExaSource(BaseModel):
@@ -117,15 +145,26 @@ class PodcastExaSource(BaseModel):
     summary: Optional[str] = None
     source_type: Optional[str] = None
     index: Optional[int] = None
+    image: Optional[str] = None
+    author: Optional[str] = None
+
+
+class PodcastResearchInsight(BaseModel):
+    """Deep insight extracted from research."""
+    title: str
+    content: str
+    source_indices: List[int] = []
 
 
 class PodcastExaResearchResponse(BaseModel):
     sources: List[PodcastExaSource]
     search_queries: List[str] = []
+    summary: str = ""
+    key_insights: List[PodcastResearchInsight] = []
     cost: Optional[Dict[str, Any]] = None
     search_type: Optional[str] = None
     provider: str = "exa"
-    content: Optional[str] = None
+    content: Optional[str] = None  # Raw aggregated content (deprecated)
 
 
 class PodcastScriptResponse(BaseModel):
@@ -191,6 +230,7 @@ class UpdateProjectRequest(BaseModel):
     raw_research: Optional[Dict[str, Any]] = None
     estimate: Optional[Dict[str, Any]] = None
     script_data: Optional[Dict[str, Any]] = None
+    bible: Optional[Dict[str, Any]] = None
     render_jobs: Optional[List[Dict[str, Any]]] = None
     knobs: Optional[Dict[str, Any]] = None
     research_provider: Optional[str] = None
@@ -224,6 +264,7 @@ class PodcastImageRequest(BaseModel):
     scene_content: Optional[str] = None  # Optional: scene lines text for context
     idea: Optional[str] = None  # Optional: podcast idea for context
     base_avatar_url: Optional[str] = None  # Base avatar image URL for scene variations
+    bible: Optional[Dict[str, Any]] = Field(None, description="Podcast Bible for hyper-personalization")
     width: int = 1024
     height: int = 1024
     custom_prompt: Optional[str] = None  # Custom prompt from user (overrides auto-generated prompt)
@@ -252,6 +293,7 @@ class PodcastVideoGenerationRequest(BaseModel):
     scene_title: str = Field(..., description="Scene title")
     audio_url: str = Field(..., description="URL to the generated audio file")
     avatar_image_url: Optional[str] = Field(None, description="URL to scene image (required for video generation)")
+    bible: Optional[Dict[str, Any]] = Field(None, description="Podcast Bible for hyper-personalization")
     resolution: str = Field("720p", description="Video resolution (480p or 720p)")
     prompt: Optional[str] = Field(None, description="Optional animation prompt override")
     seed: Optional[int] = Field(-1, description="Random seed; -1 for random")

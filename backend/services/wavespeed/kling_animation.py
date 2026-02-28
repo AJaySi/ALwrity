@@ -52,6 +52,46 @@ def _build_fallback_prompt(scene_data: Dict[str, Any], story_context: Dict[str, 
     image_prompt = (scene_data.get("image_prompt") or "").strip()
     tone = (story_context.get("story_tone") or "story").strip()
     setting = (story_context.get("story_setting") or "the scene").strip()
+    anime_bible = story_context.get("anime_bible") or {}
+
+    anime_style_parts = []
+    if isinstance(anime_bible, dict):
+        visual_style = anime_bible.get("visual_style") or {}
+        world = anime_bible.get("world") or {}
+        main_cast = anime_bible.get("main_cast") or []
+
+        style_preset = visual_style.get("style_preset")
+        camera_style = visual_style.get("camera_style")
+        color_mood = visual_style.get("color_mood")
+        lighting = visual_style.get("lighting")
+        line_style = visual_style.get("line_style")
+        extra_tags = visual_style.get("extra_tags") or []
+
+        if style_preset:
+            anime_style_parts.append(f"Follow {style_preset} anime visual style.")
+        if camera_style:
+            anime_style_parts.append(f"Use camera style: {camera_style}.")
+        if color_mood:
+            anime_style_parts.append(f"Color mood: {color_mood}.")
+        if lighting:
+            anime_style_parts.append(f"Lighting: {lighting}.")
+        if line_style:
+            anime_style_parts.append(f"Line art: {line_style}.")
+        if extra_tags:
+            anime_style_parts.append("Style tags: " + ", ".join(str(tag) for tag in extra_tags[:6]))
+
+        if world:
+            setting_desc = world.get("setting")
+            if setting_desc:
+                anime_style_parts.append(f"World context: {setting_desc}.")
+
+        if main_cast:
+            names = [c.get("name") for c in main_cast if isinstance(c, dict) and c.get("name")]
+            if names:
+                joined = ", ".join(names[:4])
+                anime_style_parts.append(f"Keep character designs consistent for: {joined}.")
+
+    anime_style_text = " ".join(anime_style_parts).strip()
 
     parts = [
         f"{title} cinematic motion shot.",
@@ -60,6 +100,7 @@ def _build_fallback_prompt(scene_data: Dict[str, Any], story_context: Dict[str, 
         f"Maintain a {tone} mood with natural lighting accents.",
         f"Honor the original illustration details: {image_prompt[:200]}." if image_prompt else "",
         "5-second sequence, gentle push-in, flowing cloth and atmospheric particles.",
+        anime_style_text,
     ]
     fallback_prompt = " ".join(filter(None, parts))
     return fallback_prompt.strip()
@@ -142,6 +183,66 @@ def generate_animation_prompt(
     title = scene_data.get("title", "")
     tone = story_context.get("story_tone") or story_context.get("story_tone", "")
     setting = story_context.get("story_setting") or story_context.get("story_setting", "")
+    anime_bible = story_context.get("anime_bible") or {}
+
+    anime_bible_block = ""
+    if isinstance(anime_bible, dict) and anime_bible:
+        try:
+            visual_style = anime_bible.get("visual_style") or {}
+            world = anime_bible.get("world") or {}
+            main_cast = anime_bible.get("main_cast") or []
+
+            style_lines = []
+            if visual_style:
+                style_preset = visual_style.get("style_preset")
+                camera_style = visual_style.get("camera_style")
+                color_mood = visual_style.get("color_mood")
+                lighting = visual_style.get("lighting")
+                line_style = visual_style.get("line_style")
+                extra_tags = visual_style.get("extra_tags") or []
+
+                if style_preset:
+                    style_lines.append(f"- Visual style preset: {style_preset}")
+                if camera_style:
+                    style_lines.append(f"- Preferred camera style: {camera_style}")
+                if color_mood:
+                    style_lines.append(f"- Color mood: {color_mood}")
+                if lighting:
+                    style_lines.append(f"- Lighting: {lighting}")
+                if line_style:
+                    style_lines.append(f"- Line art style: {line_style}")
+                if extra_tags:
+                    style_lines.append(
+                        "- Extra style tags: " + ", ".join(str(tag) for tag in extra_tags[:6])
+                    )
+
+            cast_line = ""
+            if main_cast:
+                names = [c.get("name") for c in main_cast if isinstance(c, dict) and c.get("name")]
+                if names:
+                    cast_line = "- Main cast to keep visually consistent: " + ", ".join(names[:4])
+
+            world_line = ""
+            if world:
+                setting_desc = world.get("setting")
+                if setting_desc:
+                    world_line = "- World/setting context: " + str(setting_desc)
+
+            detail_lines = []
+            if cast_line:
+                detail_lines.append(cast_line)
+            if world_line:
+                detail_lines.append(world_line)
+            detail_lines.extend(style_lines)
+
+            if detail_lines:
+                anime_bible_block = (
+                    "\nANIME STORY BIBLE VISUAL GUIDANCE:\n"
+                    + "\n".join(detail_lines)
+                    + "\nAlways respect these constraints in the motion description."
+                )
+        except Exception:
+            anime_bible_block = ""
 
     prompt = f"""
 Create a concise animation prompt (2-3 sentences) for a 5-second cinematic clip.
@@ -151,6 +252,7 @@ Description: {description}
 Existing Image Prompt: {image_prompt}
 Story Tone: {tone}
 Setting: {setting}
+{anime_bible_block}
 
 Focus on:
 - Motion of characters/objects

@@ -35,6 +35,27 @@ export interface AIInsight {
   tool_path?: string;
 }
 
+export interface SIFIndexingHealth {
+  has_task: boolean;
+  status: 'healthy' | 'warning' | 'critical' | 'not_scheduled';
+  message?: string;
+  task?: {
+    id: number;
+    website_url: string;
+    raw_status: string;
+    next_execution: string | null;
+    last_success: string | null;
+    last_failure: string | null;
+    consecutive_failures: number;
+    failure_pattern?: any;
+  };
+  last_run?: {
+    status: string | null;
+    time: string | null;
+    error_message: string | null;
+  };
+}
+
 export interface SEODashboardData {
   health_score: SEOHealthScore;
   key_insight: string;
@@ -139,6 +160,16 @@ export const seoDashboardAPI = {
       return response.data;
     } catch (error) {
       console.error('Error checking SEO dashboard health:', error);
+      throw error;
+    }
+  },
+
+  async getSIFHealth(): Promise<SIFIndexingHealth> {
+    try {
+      const response = await apiClient.get('/api/seo-dashboard/sif-health');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching SIF indexing health:', error);
       throw error;
     }
   }

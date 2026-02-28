@@ -1,25 +1,142 @@
 import React, { useState, useEffect } from "react";
-import { Stack, Box, Typography, Divider, Chip, Paper, alpha, CircularProgress } from "@mui/material";
-import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon } from "@mui/icons-material";
-import { PodcastAnalysis } from "./types";
+import { Stack, Box, Typography, Divider, Chip, Paper, alpha, CircularProgress, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, InputLabel, Switch, FormControlLabel } from "@mui/material";
+import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, EditNote as EditNoteIcon } from "@mui/icons-material";
+import { PodcastAnalysis, PodcastEstimate } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
 import { aiApiClient } from "../../api/client";
 
 interface AnalysisPanelProps {
   analysis: PodcastAnalysis | null;
+  estimate: PodcastEstimate | null;
   idea?: string;
   duration?: number;
   speakers?: number;
   avatarUrl?: string | null;
   avatarPrompt?: string | null;
   onRegenerate?: () => void;
+  onUpdateAnalysis?: (updatedAnalysis: PodcastAnalysis) => void;
 }
 
-export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, idea, duration, speakers, avatarUrl, avatarPrompt, onRegenerate }) => {
+const inputStyles = {
+  '& .MuiInputBase-input': { 
+    color: '#111827 !important', 
+    fontWeight: 500,
+    WebkitTextFillColor: '#111827 !important', // Fix for some browsers
+  },
+  '& .MuiInputLabel-root': { 
+    color: '#4b5563 !important',
+  },
+  '& .MuiOutlinedInput-root': {
+    bgcolor: '#ffffff !important',
+    '& fieldset': {
+      borderColor: '#d1d5db !important',
+    },
+    '&:hover fieldset': {
+      borderColor: '#4f46e5 !important',
+    },
+    '&.Mui-focused fieldset': {
+      borderColor: '#4f46e5 !important',
+    }
+  },
+  '& .MuiSelect-select': {
+    color: '#111827 !important',
+    WebkitTextFillColor: '#111827 !important',
+  }
+};
+
+export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ 
+  analysis, 
+  estimate,
+  idea, 
+  duration, 
+  speakers, 
+  avatarUrl, 
+  avatarPrompt, 
+  onRegenerate,
+  onUpdateAnalysis
+}) => {
   const [avatarBlobUrl, setAvatarBlobUrl] = useState<string | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  
+  // Edit states
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedAnalysis, setEditedAnalysis] = useState<PodcastAnalysis | null>(null);
+
+  // Sync editedAnalysis with analysis initially
+  useEffect(() => {
+    if (analysis && !editedAnalysis) {
+      setEditedAnalysis(JSON.parse(JSON.stringify(analysis)));
+    }
+  }, [analysis]);
+
+  const handleSave = () => {
+    if (editedAnalysis && onUpdateAnalysis) {
+      console.log('[AnalysisPanel] Saving updated analysis:', editedAnalysis);
+      onUpdateAnalysis(JSON.parse(JSON.stringify(editedAnalysis)));
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditedAnalysis(JSON.parse(JSON.stringify(analysis)));
+  };
+
+  const updateExaConfig = (field: string, value: any) => {
+    if (!editedAnalysis) return;
+    setEditedAnalysis({
+      ...editedAnalysis,
+      exaSuggestedConfig: {
+        ...(editedAnalysis.exaSuggestedConfig || {}),
+        [field]: value
+      }
+    });
+  };
+
+  const handleAddKeyword = (keyword: string) => {
+    if (!editedAnalysis || !keyword.trim()) return;
+    if (editedAnalysis.topKeywords.includes(keyword.trim())) return;
+    setEditedAnalysis({
+      ...editedAnalysis,
+      topKeywords: [...editedAnalysis.topKeywords, keyword.trim()]
+    });
+  };
+
+  const handleRemoveKeyword = (keyword: string) => {
+    if (!editedAnalysis) return;
+    setEditedAnalysis({
+      ...editedAnalysis,
+      topKeywords: editedAnalysis.topKeywords.filter(k => k !== keyword)
+    });
+  };
+
+  const handleAddTitle = (title: string) => {
+    if (!editedAnalysis || !title.trim()) return;
+    setEditedAnalysis({
+      ...editedAnalysis,
+      titleSuggestions: [...editedAnalysis.titleSuggestions, title.trim()]
+    });
+  };
+
+  const handleRemoveTitle = (title: string) => {
+    if (!editedAnalysis) return;
+    setEditedAnalysis({
+      ...editedAnalysis,
+      titleSuggestions: editedAnalysis.titleSuggestions.filter(t => t !== title)
+    });
+  };
+
+  const handleUpdateOutline = (id: string | number, field: 'title' | 'segments', value: any) => {
+    if (!editedAnalysis) return;
+    setEditedAnalysis({
+      ...editedAnalysis,
+      suggestedOutlines: editedAnalysis.suggestedOutlines.map(o => 
+        o.id === id ? { ...o, [field]: value } : o
+      )
+    });
+  };
 
   // Load avatar image as blob for authenticated URLs
   useEffect(() => {
@@ -93,44 +210,117 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, idea, du
   }, [avatarUrl]);
 
   if (!analysis) return null;
+  const currentAnalysis = isEditing && editedAnalysis ? editedAnalysis : analysis;
+
+  console.log('[AnalysisPanel] Rendering:', { isEditing, hasEditedAnalysis: !!editedAnalysis });
+
   return (
     <GlassyCard
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28 }}
+      className="light-theme-container"
       sx={{
         ...glassyCardSx,
         background: "#ffffff",
         border: "1px solid rgba(0,0,0,0.06)",
         boxShadow: "0 10px 28px rgba(15,23,42,0.06)",
-        color: "#0f172a",
+        color: "#111827",
       }}
       aria-label="analysis-panel"
     >
       <Stack spacing={3}>
-        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-          <Box>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" alignItems="center" spacing={2} flex={1}>
             <Typography
               variant="h6"
               sx={{
-                color: "#0f172a",
+                color: "#1e293b",
                 fontWeight: 800,
-                mb: 0.5,
                 display: "flex",
                 alignItems: "center",
                 gap: 1,
+                whiteSpace: "nowrap"
               }}
             >
-              <PsychologyIcon />
+              <PsychologyIcon sx={{ color: "#4f46e5" }} />
               AI Analysis
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Insights derived from AI analysis of your topic and content preferences
-            </Typography>
-          </Box>
-          <SecondaryButton onClick={onRegenerate} startIcon={<RefreshIcon />} tooltip="Regenerate analysis with different parameters">
-            Regenerate
-          </SecondaryButton>
+            
+            {estimate && (
+              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ ml: 2, flex: 1, overflow: 'hidden' }}>
+                <Divider orientation="vertical" flexItem sx={{ height: 24, alignSelf: 'center', borderColor: "rgba(0,0,0,0.1)" }} />
+                <Typography variant="subtitle2" fontWeight={700} sx={{ color: "#4f46e5" }}>
+                  Est. Cost: ${estimate.total.toFixed(2)}
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ display: { xs: 'none', lg: 'flex' } }}>
+                  <Chip 
+                    label={`Voice: $${estimate.ttsCost.toFixed(2)}`} 
+                    size="small" 
+                    variant="outlined" 
+                    sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
+                  />
+                  <Chip 
+                    label={`Visuals: $${estimate.avatarCost.toFixed(2)}`} 
+                    size="small" 
+                    variant="outlined" 
+                    sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
+                  />
+                  <Chip 
+                    label={`Research: $${estimate.researchCost.toFixed(2)}`} 
+                    size="small" 
+                    variant="outlined" 
+                    sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
+                  />
+                </Stack>
+              </Stack>
+            )}
+          </Stack>
+
+          <Stack direction="row" spacing={1}>
+            {isEditing ? (
+              <>
+                <SecondaryButton 
+                  onClick={handleSave} 
+                  startIcon={<SaveIcon />} 
+                  sx={{ 
+                    color: '#059669', 
+                    borderColor: '#10b981', 
+                    bgcolor: 'white',
+                    fontWeight: 600,
+                    '&:hover': { bgcolor: alpha('#10b981', 0.05) } 
+                  }}
+                >
+                  Save Changes
+                </SecondaryButton>
+                <SecondaryButton 
+                  onClick={handleCancel} 
+                  startIcon={<CloseIcon />}
+                  sx={{ color: '#4b5563', borderColor: '#d1d5db', bgcolor: 'white' }}
+                >
+                  Cancel
+                </SecondaryButton>
+              </>
+            ) : (
+              <>
+                <SecondaryButton 
+                  onClick={() => setIsEditing(true)} 
+                  startIcon={<EditIcon />}
+                  sx={{ color: '#4f46e5', borderColor: '#4f46e5', bgcolor: 'white', fontWeight: 600 }}
+                >
+                  Edit Analysis
+                </SecondaryButton>
+                <SecondaryButton 
+                  onClick={onRegenerate} 
+                  startIcon={<RefreshIcon />} 
+                  tooltip="Regenerate analysis with different parameters"
+                  sx={{ color: '#4b5563', borderColor: '#d1d5db', bgcolor: 'white' }}
+                >
+                  Regenerate
+                </SecondaryButton>
+              </>
+            )}
+          </Stack>
         </Stack>
 
         <Divider sx={{ borderColor: "rgba(0,0,0,0.06)" }} />
@@ -359,31 +549,56 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, idea, du
         )}
 
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
-          <Stack spacing={2}>
+          <Stack spacing={3}>
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1, display: "flex", alignItems: "center", gap: 0.5 }}>
                 <InsightsIcon fontSize="small" sx={{ color: "#4f46e5" }} />
                 Target Audience
               </Typography>
-              <Typography variant="body2" sx={{ color: "#0f172a" }}>
-                {analysis.audience}
-              </Typography>
+              {isEditing ? (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  size="small"
+                  value={currentAnalysis.audience}
+                  onChange={(e) => setEditedAnalysis({ ...currentAnalysis, audience: e.target.value })}
+                  placeholder="Describe your target audience..."
+                  sx={inputStyles}
+                />
+              ) : (
+                <Typography variant="body2" sx={{ color: "#0f172a" }}>
+                  {currentAnalysis.audience}
+                </Typography>
+              )}
             </Box>
 
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a" }}>Content Type</Typography>
-              <Chip label={analysis.contentType} size="small" sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }} />
+              {isEditing ? (
+                <TextField
+                  fullWidth
+                  size="small"
+                  value={currentAnalysis.contentType}
+                  onChange={(e) => setEditedAnalysis({ ...currentAnalysis, contentType: e.target.value })}
+                  placeholder="e.g. Interview, Narrative, Solo..."
+                  sx={inputStyles}
+                />
+              ) : (
+                <Chip label={currentAnalysis.contentType} size="small" sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }} />
+              )}
             </Box>
 
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a" }}>Top Keywords</Typography>
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                {analysis.topKeywords.map((k) => (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: isEditing ? 1.5 : 0 }}>
+                {currentAnalysis.topKeywords.map((k) => (
                   <Chip
                     key={k}
                     label={k}
                     size="small"
                     variant="outlined"
+                    onDelete={isEditing ? () => handleRemoveKeyword(k) : undefined}
                     sx={{
                       borderColor: "rgba(0,0,0,0.1)",
                       color: "#0f172a",
@@ -392,120 +607,291 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, idea, du
                   />
                 ))}
               </Stack>
+              {isEditing && (
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Add keyword and press Enter..."
+                  sx={inputStyles}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddKeyword((e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <IconButton size="small" onClick={(e) => {
+                        const input = (e.currentTarget.parentElement?.parentElement?.querySelector('input') as HTMLInputElement);
+                        handleAddKeyword(input.value);
+                        input.value = '';
+                      }}>
+                        <AddIcon fontSize="small" sx={{ color: '#4f46e5' }} />
+                      </IconButton>
+                    )
+                  }}
+                />
+              )}
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: "#111827", fontWeight: 700, display: "flex", alignItems: "center", gap: 1 }}>
+                <EditNoteIcon fontSize="small" sx={{ color: "#4f46e5" }} />
+                Suggested Episode Outlines
+              </Typography>
+              <Stack spacing={2}>
+                {currentAnalysis.suggestedOutlines.map((o) => (
+                  <Paper
+                    key={o.id}
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      background: isEditing ? "#ffffff" : "#f8fafc",
+                      border: "1px solid",
+                      borderColor: isEditing ? "#e2e8f0" : "rgba(0,0,0,0.04)",
+                      borderRadius: 2,
+                      wordBreak: "break-word",
+                      position: 'relative',
+                      transition: "all 0.2s ease",
+                      "&:hover": {
+                        borderColor: "#4f46e5",
+                        boxShadow: "0 4px 12px rgba(79, 70, 229, 0.05)"
+                      }
+                    }}
+                  >
+                    {isEditing ? (
+                      <Stack spacing={2}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Outline Title"
+                          value={o.title}
+                          onChange={(e) => handleUpdateOutline(o.id, 'title', e.target.value)}
+                          sx={inputStyles}
+                        />
+                        <TextField
+                          fullWidth
+                          multiline
+                          size="small"
+                          label="Segments"
+                          value={o.segments.join(' • ')}
+                          onChange={(e) => handleUpdateOutline(o.id, 'segments', e.target.value.split(/•|,/).map(s => s.trim()).filter(Boolean))}
+                          helperText="Use • or comma to separate segments"
+                          sx={inputStyles}
+                        />
+                      </Stack>
+                    ) : (
+                      <>
+                        <Typography variant="body1" sx={{ fontWeight: 800, mb: 1, color: "#111827" }}>
+                          {o.title}
+                        </Typography>
+                        <Stack spacing={1}>
+                          {o.segments.map((segment, idx) => (
+                            <Box key={idx} sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+                              <Box sx={{ mt: 1, width: 6, height: 6, borderRadius: "50%", bgcolor: "#4f46e5", flexShrink: 0 }} />
+                              <Typography variant="body2" sx={{ color: "#4b5563", lineHeight: 1.5 }}>
+                                {segment}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </>
+                    )}
+                  </Paper>
+                ))}
+              </Stack>
             </Box>
           </Stack>
 
-          <Stack spacing={2}>
-            {analysis.exaSuggestedConfig && (
+          <Stack spacing={3}>
+            {currentAnalysis.exaSuggestedConfig && (
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a", display: "flex", alignItems: "center", gap: 0.5 }}>
                   <SearchIcon fontSize="small" sx={{ color: "#4f46e5" }} />
                   Exa Research Suggestions
                 </Typography>
-                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                  {analysis.exaSuggestedConfig.exa_search_type && (
-                    <Chip
-                      label={`Search: ${analysis.exaSuggestedConfig.exa_search_type}`}
-                      size="small"
-                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
-                    />
-                  )}
-                  {analysis.exaSuggestedConfig.exa_category && (
-                    <Chip
-                      label={`Category: ${analysis.exaSuggestedConfig.exa_category}`}
-                      size="small"
-                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
-                    />
-                  )}
-                  {analysis.exaSuggestedConfig.date_range && (
-                    <Chip
-                      label={`Date: ${analysis.exaSuggestedConfig.date_range}`}
-                      size="small"
-                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
-                    />
-                  )}
-                  {typeof analysis.exaSuggestedConfig.include_statistics === "boolean" && (
-                    <Chip
-                      label={analysis.exaSuggestedConfig.include_statistics ? "Include stats" : "No stats needed"}
-                      size="small"
-                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
-                    />
-                  )}
-                  {analysis.exaSuggestedConfig.max_sources && (
-                    <Chip
-                      label={`Max sources: ${analysis.exaSuggestedConfig.max_sources}`}
-                      size="small"
-                      sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
-                    />
-                  )}
-                </Stack>
+                
+                {isEditing ? (
+                  <Stack spacing={2} sx={{ p: 2, border: '1px solid #e2e8f0', borderRadius: 2, bgcolor: '#ffffff' }}>
+                    <Stack direction="row" spacing={2}>
+                      <FormControl fullWidth size="small" sx={inputStyles}>
+                        <InputLabel>Search Type</InputLabel>
+                        <Select
+                          value={currentAnalysis.exaSuggestedConfig.exa_search_type || 'auto'}
+                          label="Search Type"
+                          onChange={(e) => updateExaConfig('exa_search_type', e.target.value)}
+                        >
+                          <MenuItem value="auto">Auto</MenuItem>
+                          <MenuItem value="neural">Neural</MenuItem>
+                          <MenuItem value="keyword">Keyword</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <FormControl fullWidth size="small" sx={inputStyles}>
+                        <InputLabel>Category</InputLabel>
+                        <Select
+                          value={currentAnalysis.exaSuggestedConfig.exa_category || 'news'}
+                          label="Category"
+                          onChange={(e) => updateExaConfig('exa_category', e.target.value)}
+                        >
+                          <MenuItem value="news">News</MenuItem>
+                          <MenuItem value="research paper">Research Paper</MenuItem>
+                          <MenuItem value="company">Company</MenuItem>
+                          <MenuItem value="pdf">PDF</MenuItem>
+                          <MenuItem value="tweet">Tweet</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Stack>
 
-                {(analysis.exaSuggestedConfig.exa_include_domains?.length || analysis.exaSuggestedConfig.exa_exclude_domains?.length) && (
-                  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-                    {analysis.exaSuggestedConfig.exa_include_domains?.length ? (
-                      <Box>
-                        <Typography variant="caption" sx={{ color: "#475569", fontWeight: 600, display: "block", mb: 0.5 }}>
-                          Prefer domains
-                        </Typography>
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                          {analysis.exaSuggestedConfig.exa_include_domains.map((d) => (
-                            <Chip key={d} label={d} size="small" sx={{ background: "#f8fafc", color: "#0f172a", border: "1px solid rgba(0,0,0,0.08)" }} />
-                          ))}
-                        </Stack>
-                      </Box>
-                    ) : null}
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <FormControl fullWidth size="small" sx={inputStyles}>
+                        <InputLabel>Date Range</InputLabel>
+                        <Select
+                          value={currentAnalysis.exaSuggestedConfig.date_range || 'all_time'}
+                          label="Date Range"
+                          onChange={(e) => updateExaConfig('date_range', e.target.value)}
+                        >
+                          <MenuItem value="all_time">All Time</MenuItem>
+                          <MenuItem value="last_month">Last Month</MenuItem>
+                          <MenuItem value="last_year">Last Year</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        type="number"
+                        label="Max Sources"
+                        size="small"
+                        value={currentAnalysis.exaSuggestedConfig.max_sources || 10}
+                        onChange={(e) => updateExaConfig('max_sources', parseInt(e.target.value))}
+                        sx={{ ...inputStyles, width: 120 }}
+                      />
+                    </Stack>
 
-                    {analysis.exaSuggestedConfig.exa_exclude_domains?.length ? (
-                      <Box>
-                        <Typography variant="caption" sx={{ color: "#475569", fontWeight: 600, display: "block", mb: 0.5 }}>
-                          Avoid domains
-                        </Typography>
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                          {analysis.exaSuggestedConfig.exa_exclude_domains.map((d) => (
-                            <Chip key={d} label={d} size="small" sx={{ background: "#fff7ed", color: "#b45309", border: "1px solid rgba(180,83,9,0.25)" }} />
-                          ))}
-                        </Stack>
-                      </Box>
-                    ) : null}
+                    <FormControlLabel
+                      control={
+                        <Switch 
+                          size="small"
+                          checked={currentAnalysis.exaSuggestedConfig.include_statistics || false} 
+                          onChange={(e) => updateExaConfig('include_statistics', e.target.checked)}
+                          sx={{ '& .MuiSwitch-track': { bgcolor: '#4f46e5' } }}
+                        />
+                      }
+                      label={<Typography variant="body2" sx={{ color: '#111827', fontWeight: 500 }}>Include Statistics</Typography>}
+                    />
+
+                    <Stack spacing={1}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Prefer Domains"
+                        placeholder="e.g. techcrunch.com, wired.com (press Enter)"
+                        sx={inputStyles}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            if (val) {
+                              const domains = currentAnalysis.exaSuggestedConfig?.exa_include_domains || [];
+                              updateExaConfig('exa_include_domains', [...domains, val]);
+                              (e.target as HTMLInputElement).value = '';
+                            }
+                          }
+                        }}
+                      />
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {(currentAnalysis.exaSuggestedConfig.exa_include_domains || []).map(d => (
+                          <Chip key={d} label={d} size="small" onDelete={() => {
+                            const domains = currentAnalysis.exaSuggestedConfig?.exa_include_domains?.filter(item => item !== d);
+                            updateExaConfig('exa_include_domains', domains);
+                          }} sx={{ bgcolor: '#f3f4f6', color: '#111827' }} />
+                        ))}
+                      </Stack>
+                    </Stack>
                   </Stack>
+                ) : (
+                  <>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                      {currentAnalysis.exaSuggestedConfig.exa_search_type && (
+                        <Chip
+                          label={`Search: ${currentAnalysis.exaSuggestedConfig.exa_search_type}`}
+                          size="small"
+                          sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                        />
+                      )}
+                      {currentAnalysis.exaSuggestedConfig.exa_category && (
+                        <Chip
+                          label={`Category: ${currentAnalysis.exaSuggestedConfig.exa_category}`}
+                          size="small"
+                          sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                        />
+                      )}
+                      {currentAnalysis.exaSuggestedConfig.date_range && (
+                        <Chip
+                          label={`Date: ${currentAnalysis.exaSuggestedConfig.date_range}`}
+                          size="small"
+                          sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                        />
+                      )}
+                      {typeof currentAnalysis.exaSuggestedConfig.include_statistics === "boolean" && (
+                        <Chip
+                          label={currentAnalysis.exaSuggestedConfig.include_statistics ? "Include stats" : "No stats needed"}
+                          size="small"
+                          sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                        />
+                      )}
+                      {currentAnalysis.exaSuggestedConfig.max_sources && (
+                        <Chip
+                          label={`Max sources: ${currentAnalysis.exaSuggestedConfig.max_sources}`}
+                          size="small"
+                          sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+                        />
+                      )}
+                    </Stack>
+
+                    {(currentAnalysis.exaSuggestedConfig.exa_include_domains?.length || currentAnalysis.exaSuggestedConfig.exa_exclude_domains?.length) && (
+                      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                        {currentAnalysis.exaSuggestedConfig.exa_include_domains?.length ? (
+                          <Box>
+                            <Typography variant="caption" sx={{ color: "#475569", fontWeight: 600, display: "block", mb: 0.5 }}>
+                              Prefer domains
+                            </Typography>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                              {currentAnalysis.exaSuggestedConfig.exa_include_domains.map((d) => (
+                                <Chip key={d} label={d} size="small" sx={{ background: "#f8fafc", color: "#0f172a", border: "1px solid rgba(0,0,0,0.08)" }} />
+                              ))}
+                            </Stack>
+                          </Box>
+                        ) : null}
+
+                        {currentAnalysis.exaSuggestedConfig.exa_exclude_domains?.length ? (
+                          <Box>
+                            <Typography variant="caption" sx={{ color: "#475569", fontWeight: 600, display: "block", mb: 0.5 }}>
+                              Avoid domains
+                            </Typography>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                              {currentAnalysis.exaSuggestedConfig.exa_exclude_domains.map((d) => (
+                                <Chip key={d} label={d} size="small" sx={{ background: "#fff7ed", color: "#b45309", border: "1px solid rgba(180,83,9,0.25)" }} />
+                              ))}
+                            </Stack>
+                          </Box>
+                        ) : null}
+                      </Stack>
+                    )}
+                  </>
                 )}
               </Box>
             )}
 
             <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a" }}>Suggested Episode Outlines</Typography>
-              <Stack spacing={1.5}>
-                {analysis.suggestedOutlines.map((o) => (
-                  <Paper
-                    key={o.id}
-                    sx={{
-                      p: 1.5,
-                      background: "#f8fafc",
-                      border: "1px solid rgba(0,0,0,0.06)",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5, color: "#0f172a", wordBreak: "break-word" }}>
-                      {o.title}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#475569", display: "block", wordBreak: "break-word" }}>
-                      {o.segments.join(" • ")}
-                    </Typography>
-                  </Paper>
-                ))}
-              </Stack>
-            </Box>
-
-            <Box>
               <Typography variant="subtitle2" sx={{ mb: 1, color: "#0f172a" }}>Title Suggestions</Typography>
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                {analysis.titleSuggestions.map((t) => (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: isEditing ? 1.5 : 0 }}>
+                {currentAnalysis.titleSuggestions.map((t) => (
                   <Chip
                     key={t}
                     label={t}
                     size="small"
+                    onDelete={isEditing ? () => handleRemoveTitle(t) : undefined}
                     sx={{
-                      cursor: "pointer",
+                      cursor: isEditing ? "default" : "pointer",
                       color: "#0f172a",
                       background: "#f8fafc",
                       maxWidth: "100%",
@@ -519,7 +905,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, idea, du
                         paddingTop: 0.25,
                         paddingBottom: 0.25,
                       },
-                      "&:hover": {
+                      "&:hover": isEditing ? {} : {
                         background: alpha("#667eea", 0.15),
                         border: "1px solid rgba(102,126,234,0.35)",
                       },
@@ -527,6 +913,32 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ analysis, idea, du
                   />
                 ))}
               </Stack>
+              {isEditing && (
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Add title suggestion..."
+                  sx={inputStyles}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddTitle((e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <IconButton size="small" onClick={(e) => {
+                        const input = (e.currentTarget.parentElement?.parentElement?.querySelector('input') as HTMLInputElement);
+                        handleAddTitle(input.value);
+                        input.value = '';
+                      }}>
+                        <AddIcon fontSize="small" sx={{ color: '#4f46e5' }} />
+                      </IconButton>
+                    )
+                  }}
+                />
+              )}
             </Box>
           </Stack>
         </Box>

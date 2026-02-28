@@ -12,7 +12,10 @@ from .routes import (
     alerts,
     dashboard,
     logs,
-    preflight
+    preflight,
+    payment,
+    disputes,
+    fraud_warnings,
 )
 
 # Create main router
@@ -26,5 +29,8 @@ router.include_router(alerts.router, tags=["subscription"])
 router.include_router(dashboard.router, tags=["subscription"])
 router.include_router(logs.router, tags=["subscription"])
 router.include_router(preflight.router, tags=["subscription"])
+router.include_router(payment.router, tags=["subscription"])
+router.include_router(disputes.router, tags=["subscription"])
+router.include_router(fraud_warnings.router, tags=["subscription"])
 
 __all__ = ["router"]

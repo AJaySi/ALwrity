@@ -22,7 +22,7 @@ class WordPressAnalyticsHandler(BaseAnalyticsHandler):
         super().__init__(PlatformType.WORDPRESS)
         self.wordpress_service = WordPressOAuthService()
     
-    async def get_analytics(self, user_id: str) -> AnalyticsData:
+    async def get_analytics(self, user_id: str, start_date: str = None, end_date: str = None, **kwargs) -> AnalyticsData:
         """
         Get WordPress analytics data using WordPress.com REST API
         
