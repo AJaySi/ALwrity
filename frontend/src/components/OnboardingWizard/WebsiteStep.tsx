@@ -42,6 +42,7 @@ import {
   performAnalysis,
   fetchLastAnalysis
 } from './WebsiteStep/utils';
+import { onboardingCache, WebsiteIntakeCache } from '../../services/onboardingCache';
 
 interface WebsiteStepProps {
   onContinue: (stepData?: any) => void;
@@ -369,7 +370,15 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
       analysis: analysis,
       useAnalysisForGenAI: useAnalysisForGenAI
     };
-    
+
+    const cachedIntake = onboardingCache.getStepData(2) as WebsiteIntakeCache | undefined;
+    onboardingCache.saveStepData(2, {
+      ...cachedIntake,
+      website: fixedUrl,
+      analysis: analysis,
+      hasWebsite: true
+    });
+
     // Store in localStorage for Step 3 (Competitor Analysis)
     localStorage.setItem('website_url', fixedUrl);
     localStorage.setItem('website_analysis_data', JSON.stringify(analysis));
@@ -619,6 +628,15 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
                     businessData: businessData
                   };
                   
+                  const cachedIntake = onboardingCache.getStepData(2) as WebsiteIntakeCache | undefined;
+                  onboardingCache.saveStepData(2, {
+                    ...cachedIntake,
+                    website: fixUrlFormat(website),
+                    analysis: analysis,
+                    businessInfo: businessData,
+                    hasWebsite: false
+                  });
+
                   // Store in localStorage for Step 3 (Competitor Analysis)
                   const fixedUrl = fixUrlFormat(website);
                   if (fixedUrl) {

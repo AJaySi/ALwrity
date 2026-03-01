@@ -3,6 +3,21 @@
  * Manages client-side caching of onboarding data until final submission
  */
 
+export type PageImages = {
+  home?: string;
+  about?: string;
+  contact?: string;
+  products?: string;
+};
+
+export interface WebsiteIntakeCache {
+  website?: string;
+  analysis?: any;
+  businessInfo?: any;
+  hasWebsite?: boolean;
+  page_images?: PageImages;
+}
+
 interface OnboardingCacheData {
   step1?: {
     apiKeys?: Record<string, string>;
@@ -12,6 +27,7 @@ interface OnboardingCacheData {
     website?: string;
     analysis?: any;
     businessInfo?: any;
+    websiteIntake?: any;
     hasWebsite?: boolean;
   };
   step3?: {
