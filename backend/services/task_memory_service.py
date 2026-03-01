@@ -13,6 +13,10 @@ from sqlalchemy.orm import Session
 from models.daily_workflow_models import TaskHistory, DailyWorkflowTask
 from services.intelligence.txtai_service import TxtaiIntelligenceService
 
+EXACT_DUPLICATE_LOOKBACK_DAYS = 7
+SEMANTIC_SUPPRESSION_SCORE_THRESHOLD = 0.85
+SUPPRESSED_STATUSES = {"dismissed", "rejected"}
+
 class TaskMemoryService:
     """
     Manages the long-term memory of user tasks.
@@ -96,7 +100,7 @@ class TaskMemoryService:
         filtered = []
         
         # Get recent history hashes (last 7 days)
-        cutoff = datetime.utcnow() - timedelta(days=7)
+        cutoff = datetime.utcnow() - timedelta(days=EXACT_DUPLICATE_LOOKBACK_DAYS)
         recent_hashes = {
             row.task_hash for row in 
             self.db.query(TaskHistory.task_hash)
@@ -117,23 +121,39 @@ class TaskMemoryService:
             is_semantic_duplicate = False
             try:
                 # Check if similar tasks were REJECTED recently
-                results = self.intelligence.search(
+                results = await self.intelligence.search(
                     f"{p.title} {p.description}", 
                     limit=1
                 )
                 
                 if results:
                     top = results[0]
-                    # If very similar (>0.85) and was REJECTED/DISMISSED
-                    # We might need to fetch the metadata from the result if txtai returns it
-                    # For now, this is a heuristic stub. Txtai search returns dict with 'id', 'score', 'text', etc.
-                    # If we stored 'status' in metadata, we check it.
-                    
-                    if top['score'] > 0.85:
-                         # Retrieve status from DB using vector_id if needed, or if metadata is returned
-                         # Assuming we want to avoid repeating REJECTED ideas
-                         # This requires storing 'status' in the index metadata
-                         pass
+                    top_score = float(top.get("score", 0))
+                    if top_score >= SEMANTIC_SUPPRESSION_SCORE_THRESHOLD:
+                        indexed_status = self._extract_indexed_status(top)
+                        if indexed_status in SUPPRESSED_STATUSES:
+                            logger.info(
+                                f"Filtering redundant task (semantic {top_score:.2f}, indexed status={indexed_status}): {p.title}"
+                            )
+                            is_semantic_duplicate = True
+                        else:
+                            vector_id = top.get("id") or top.get("vector_id")
+                            if vector_id:
+                                history = (
+                                    self.db.query(TaskHistory.status)
+                                    .filter(
+                                        TaskHistory.user_id == self.user_id,
+                                        TaskHistory.vector_id == str(vector_id),
+                                    )
+                                    .order_by(TaskHistory.created_at.desc())
+                                    .first()
+                                )
+                                history_status = getattr(history, "status", None)
+                                if history_status in SUPPRESSED_STATUSES:
+                                    logger.info(
+                                        f"Filtering redundant task (semantic {top_score:.2f}, history status={history_status}): {p.title}"
+                                    )
+                                    is_semantic_duplicate = True
             except Exception:
                 pass
                 
@@ -141,3 +161,16 @@ class TaskMemoryService:
                 filtered.append(p)
                 
         return filtered
+
+    def _extract_indexed_status(self, search_result: Dict[str, Any]) -> Optional[str]:
+        """Extract indexed status from txtai result metadata if available."""
+        status = search_result.get("status")
+        if status:
+            return str(status).lower()
+
+        obj = search_result.get("object")
+        if isinstance(obj, dict):
+            obj_status = obj.get("status")
+            return str(obj_status).lower() if obj_status else None
+
+        return None

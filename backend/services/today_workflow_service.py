@@ -204,8 +204,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
         agent_tasks = list(unique_map.values())
         
         # Phase 3: Check memory for rejections (Semantic Filter)
-        # For now, we rely on exact match logic in memory service if implemented fully
-        # agent_tasks = await memory_service.filter_redundant_proposals(agent_tasks)
+        agent_tasks = await memory_service.filter_redundant_proposals(agent_tasks)
                 
     except Exception as e:
         logger.error(f"Committee proposal phase failed: {e}")
