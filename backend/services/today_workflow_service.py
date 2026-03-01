@@ -8,7 +8,6 @@ from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 from models.agent_activity_models import AgentAlert
 from services.agent_activity_service import AgentActivityService
 from services.llm_providers.main_text_generation import llm_text_gen
-from api.content_planning.services.content_strategy.onboarding.data_integration import OnboardingDataIntegrationService
 from loguru import logger
 
 PILLAR_IDS = ["plan", "generate", "publish", "analyze", "engage", "remarket"]
@@ -93,6 +92,122 @@ def _fallback_tasks(date: str) -> List[Dict[str, Any]]:
             "enabled": True,
         },
     ]
+
+
+def _is_coverage_guardrail_enabled(grounding: Dict[str, Any]) -> bool:
+    workflow_config = grounding.get("workflow_config", {}) if isinstance(grounding, dict) else {}
+    if not isinstance(workflow_config, dict):
+        return True
+    if workflow_config.get("disable_pillar_coverage_guardrail") is True:
+        return False
+    if workflow_config.get("enforce_pillar_coverage") is False:
+        return False
+    return True
+
+
+def _sanitize_task(task: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(task, dict):
+        return None
+
+    pillar_id = str(task.get("pillarId") or "").lower().strip()
+    title = str(task.get("title") or "").strip()
+    if pillar_id not in PILLAR_IDS or not title:
+        return None
+
+    sanitized = dict(task)
+    sanitized["pillarId"] = pillar_id
+    sanitized["title"] = title
+    sanitized["description"] = str(task.get("description") or "").strip()
+    sanitized["priority"] = _coerce_priority(task.get("priority"))
+    sanitized["estimatedTime"] = max(5, int(task.get("estimatedTime") or 15))
+    sanitized["actionType"] = str(task.get("actionType") or "navigate").strip() or "navigate"
+    sanitized["actionUrl"] = str(task.get("actionUrl") or "").strip() or None
+    sanitized["enabled"] = bool(task.get("enabled", True))
+    return sanitized
+
+
+def _build_single_task_for_missing_pillar(
+    user_id: str,
+    date: str,
+    pillar_id: str,
+    grounding: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    schema = {
+        "type": "object",
+        "properties": {
+            "pillarId": {"type": "string"},
+            "title": {"type": "string"},
+            "description": {"type": "string"},
+            "priority": {"type": "string"},
+            "estimatedTime": {"type": "number"},
+            "actionType": {"type": "string"},
+            "actionUrl": {"type": "string"},
+            "enabled": {"type": "boolean"},
+            "metadata": {"type": "object"},
+        },
+        "required": ["pillarId", "title", "description", "priority", "estimatedTime", "actionType", "enabled"],
+    }
+    prompt = (
+        "Generate exactly one actionable JSON task for today's workflow.\n"
+        f"Date: {date}\n"
+        f"Required pillarId: {pillar_id}\n"
+        "Constraints:\n"
+        "- Return a single JSON object only.\n"
+        "- Keep title concise and practical.\n"
+        "- Task must be completable today.\n"
+        "- Use actionType='navigate' and a valid ALwrity route when possible.\n"
+        f"User context: {json.dumps(grounding.get('onboarding_data', {}), indent=2)}\n"
+    )
+    try:
+        raw = llm_text_gen(prompt=prompt, json_struct=schema, user_id=user_id)
+        candidate = raw if isinstance(raw, dict) else json.loads(raw)
+    except Exception as e:
+        logger.warning(f"Failed to generate pillar backfill task for {pillar_id}: {e}")
+        return None
+
+    candidate = _sanitize_task(candidate)
+    if candidate:
+        candidate["pillarId"] = pillar_id
+        metadata = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else {}
+        metadata["source"] = "llm_pillar_backfill"
+        candidate["metadata"] = metadata
+    return candidate
+
+
+def _ensure_pillar_coverage(
+    tasks: List[Dict[str, Any]],
+    user_id: str,
+    date: str,
+    grounding: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    sanitized_tasks = [t for t in (_sanitize_task(task) for task in tasks) if t]
+    if not _is_coverage_guardrail_enabled(grounding):
+        return sanitized_tasks
+
+    covered_pillars = {task["pillarId"] for task in sanitized_tasks}
+    fallback_by_pillar = {
+        task["pillarId"]: task for task in (_sanitize_task(t) for t in _fallback_tasks(date)) if task
+    }
+
+    for pillar_id in PILLAR_IDS:
+        if pillar_id in covered_pillars:
+            continue
+
+        generated = _build_single_task_for_missing_pillar(user_id, date, pillar_id, grounding)
+        if generated:
+            sanitized_tasks.append(generated)
+            covered_pillars.add(pillar_id)
+            continue
+
+        controlled_fallback = fallback_by_pillar.get(pillar_id)
+        if controlled_fallback:
+            metadata = controlled_fallback.get("metadata") if isinstance(controlled_fallback.get("metadata"), dict) else {}
+            metadata["source"] = "controlled_fallback"
+            controlled_fallback["metadata"] = metadata
+            sanitized_tasks.append(controlled_fallback)
+            covered_pillars.add(pillar_id)
+
+    return sanitized_tasks
 
 
 def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, Any]:
@@ -234,8 +349,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
                 }
             })
             
-        # Ensure we have coverage for all pillars (fill gaps with fallback/LLM if needed)
-        # For now, let's just return what the agents proposed
+        final_tasks = _ensure_pillar_coverage(final_tasks, user_id, date, grounding)
         return {
             "date": date,
             "tasks": final_tasks
@@ -319,7 +433,11 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
 
     tasks = result.get("tasks") if isinstance(result, dict) else None
     if not isinstance(tasks, list) or not tasks:
-        result = {"date": date, "tasks": _fallback_tasks(date)}
+        tasks = _fallback_tasks(date)
+    result = {
+        "date": date,
+        "tasks": _ensure_pillar_coverage(tasks, user_id, date, grounding),
+    }
 
     activity.log_event(
         event_type="final_summary",
