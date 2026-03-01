@@ -33,7 +33,8 @@ import {
   Info as InfoIcon,
   CheckCircle as CheckCircleIcon,
   PriorityHigh as PriorityHighIcon,
-  Stars as StarsIcon
+  Stars as StarsIcon,
+  Face as AgentIcon
 } from '@mui/icons-material';
 
 // TypeScript interfaces for semantic insights
@@ -45,6 +46,7 @@ export interface ContentPillar {
   key_topics: string[];
   competitor_coverage: number;
   user_coverage: number;
+  source_agent?: string; // Added for agent attribution
 }
 
 export interface SemanticGap {
@@ -53,6 +55,7 @@ export interface SemanticGap {
   competitor_count: number;
   opportunity_score: number;
   suggested_content_ideas: string[];
+  source_agent?: string; // Added for agent attribution
 }
 
 export interface ThemeAnalysis {
@@ -271,6 +274,15 @@ const ContentPillarsSection: React.FC<{ pillars: ContentPillar[] }> = ({ pillars
                     Competitor Coverage: {Math.round(pillar.competitor_coverage * 100)}%
                   </Typography>
                 </Box>
+                
+                {pillar.source_agent && (
+                  <Box mt={2} pt={1} borderTop="1px solid #eee" display="flex" alignItems="center" gap={1}>
+                    <AgentIcon fontSize="small" color="action" sx={{ width: 16, height: 16 }} />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      Identified by {pillar.source_agent}
+                    </Typography>
+                  </Box>
+                )}
               </CardContent>
             </Card>
           </Grid>
@@ -336,10 +348,19 @@ const SemanticGapsSection: React.FC<{ gaps: SemanticGap[] }> = ({ gaps }) => {
               </Box>
             )}
 
-            <Box mt={2}>
+            <Box mt={2} display="flex" justifyContent="space-between" alignItems="center">
               <Typography variant="caption" color="text.secondary">
                 Opportunity Score: {Math.round(gap.opportunity_score * 100)}%
               </Typography>
+              
+              {gap.source_agent && (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <AgentIcon fontSize="small" color="action" sx={{ width: 16, height: 16 }} />
+                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                    Spotted by {gap.source_agent}
+                  </Typography>
+                </Box>
+              )}
             </Box>
           </AccordionDetails>
         </Accordion>

@@ -48,7 +48,7 @@ async def get_today_workflow(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     user_id = str(current_user.get("id"))
-    plan, created = get_or_create_daily_workflow_plan(db, user_id, date=date)
+    plan, created = await get_or_create_daily_workflow_plan(db, user_id, date=date)
 
     tasks = (
         db.query(DailyWorkflowTask)
@@ -154,6 +154,8 @@ async def get_today_workflow(
     }
 
 
+from services.task_memory_service import TaskMemoryService
+
 @router.post("/tasks/{task_id}/status")
 async def set_task_status(
     task_id: int,
@@ -170,6 +172,17 @@ async def set_task_status(
     task = update_task_status(db, user_id, task_id, status=status, completion_notes=completion_notes)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    # Record outcome in memory for self-learning
+    try:
+        memory = TaskMemoryService(user_id, db)
+        await memory.record_task_outcome(
+            task, 
+            feedback_score=1 if status == "completed" else -1 if status == "dismissed" else 0,
+            feedback_text=completion_notes
+        )
+    except Exception as e:
+        pass # Don't block response on memory update failure
 
     plan_for_date = db.query(DailyWorkflowPlan).filter(DailyWorkflowPlan.id == task.plan_id).first()
     plan_date = plan_for_date.date if plan_for_date and plan_for_date.date else ""

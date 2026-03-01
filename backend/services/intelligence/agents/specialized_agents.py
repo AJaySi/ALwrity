@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from loguru import logger
 from ..txtai_service import TxtaiIntelligenceService
-from services.intelligence.agents.core_agent_framework import BaseALwrityAgent, AgentAction
+from services.intelligence.agents.core_agent_framework import BaseALwrityAgent, AgentAction, TaskProposal
 from services.seo_tools.content_strategy_service import ContentStrategyService
 from services.analytics import PlatformAnalyticsService
 from services.intelligence.sif_agents import SharedLLMWrapper, LocalLLMWrapper
@@ -121,6 +121,56 @@ class StrategyArchitectAgent(SIFBaseAgent):
         """Calculate confidence score for a cluster based on its size and coherence."""
         # Simple confidence based on cluster size - larger clusters are more reliable
         return min(1.0, len(cluster_indices) / 10.0)
+
+    async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
+        """Propose PLAN pillar tasks based on semantic analysis."""
+        proposals = []
+        
+        # 1. Pillar Health Check
+        try:
+            # We use a shorter timeout or cached check if possible, but discover_pillars is fairly fast
+            pillars = await self.discover_pillars()
+            if not pillars:
+                proposals.append(TaskProposal(
+                    title="Establish Content Pillars",
+                    description="Your content strategy lacks defined pillars. Let's analyze your niche to find core topics.",
+                    pillar_id="plan",
+                    priority="high",
+                    estimated_time=15,
+                    source_agent="StrategyArchitectAgent",
+                    reasoning="No content pillars detected via SIF clustering.",
+                    action_type="navigate",
+                    action_url="/content-planning-dashboard"
+                ))
+            elif len(pillars) < 3:
+                proposals.append(TaskProposal(
+                    title="Expand Content Pillars",
+                    description=f"You only have {len(pillars)} active pillars. Consider diversifying your strategy.",
+                    pillar_id="plan",
+                    priority="medium",
+                    estimated_time=20,
+                    source_agent="StrategyArchitectAgent",
+                    reasoning=f"Low pillar diversity ({len(pillars)} detected).",
+                    action_type="navigate",
+                    action_url="/content-planning-dashboard"
+                ))
+        except Exception as e:
+            logger.warning(f"[{self.__class__.__name__}] Error checking pillars for proposals: {e}")
+
+        # 2. Strategy Review (Generic fallback)
+        proposals.append(TaskProposal(
+            title="Review Strategic Goals",
+            description="Ensure your content output aligns with your quarterly business goals.",
+            pillar_id="plan",
+            priority="low",
+            estimated_time=10,
+            source_agent="StrategyArchitectAgent",
+            reasoning="Routine strategy maintenance.",
+            action_type="navigate",
+            action_url="/content-planning-dashboard"
+        ))
+        
+        return proposals
 
     async def find_semantic_gaps(self, competitor_indices: List[int]) -> List[Dict[str, Any]]:
         """Compare user content vs competitor content to find missing topics."""
@@ -856,6 +906,38 @@ class ContentStrategyAgent(BaseALwrityAgent):
                 self.sif_service = SIFIntegrationService(user_id)
             except Exception as e:
                 logger.warning(f"Failed to initialize SIF service for ContentStrategyAgent: {e}")
+
+    async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
+        """Propose GENERATE pillar tasks."""
+        proposals = []
+        
+        # 1. Content Gap Analysis
+        proposals.append(TaskProposal(
+            title="Analyze Content Gaps",
+            description="Identify missing topics in your strategy compared to competitors.",
+            pillar_id="generate",
+            priority="high",
+            estimated_time=30,
+            source_agent="ContentStrategyAgent",
+            reasoning="Regular gap analysis ensures competitive relevance.",
+            action_type="navigate",
+            action_url="/content-planning-dashboard"
+        ))
+
+        # 2. Draft New Content
+        proposals.append(TaskProposal(
+            title="Draft New Blog Post",
+            description="Create a new article targeting your primary keywords.",
+            pillar_id="generate",
+            priority="medium",
+            estimated_time=45,
+            source_agent="ContentStrategyAgent",
+            reasoning="Maintain publishing consistency.",
+            action_type="navigate",
+            action_url="/blog-writer"
+        ))
+        
+        return proposals
         
     def _create_txtai_agent(self) -> Agent:
         """Create Content Strategy Agent using txtai native framework"""
@@ -1274,7 +1356,26 @@ class CompetitorResponseAgent(BaseALwrityAgent):
                 self.sif_service = SIFIntegrationService(user_id)
             except Exception as e:
                 logger.warning(f"Failed to initialize SIF service for CompetitorResponseAgent: {e}")
+
+    async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
+        """Propose REMARKET pillar tasks."""
+        proposals = []
         
+        # 1. Competitor Monitoring
+        proposals.append(TaskProposal(
+            title="Monitor Competitor Activity",
+            description="Check for new moves from your key competitors.",
+            pillar_id="remarket",
+            priority="medium",
+            estimated_time=15,
+            source_agent="CompetitorResponseAgent",
+            reasoning="Stay ahead of market changes.",
+            action_type="navigate",
+            action_url="/seo-dashboard" 
+        ))
+        
+        return proposals
+
     def _create_txtai_agent(self) -> Agent:
         """Create Competitor Response Agent using txtai native framework"""
         if not TXTAI_AVAILABLE:
@@ -1463,7 +1564,39 @@ class SEOOptimizationAgent(BaseALwrityAgent):
                 self.sif_service = SIFIntegrationService(user_id)
             except Exception as e:
                 logger.warning(f"Failed to initialize SIF service for SEOOptimizationAgent: {e}")
+
+    async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
+        """Propose ANALYZE pillar tasks."""
+        proposals = []
         
+        # 1. Technical Audit
+        proposals.append(TaskProposal(
+            title="Review SEO Health",
+            description="Check for critical technical issues affecting your search visibility.",
+            pillar_id="analyze",
+            priority="high",
+            estimated_time=20,
+            source_agent="SEOOptimizationAgent",
+            reasoning="Regular health checks prevent traffic drops.",
+            action_type="navigate",
+            action_url="/seo-dashboard"
+        ))
+        
+        # 2. Keyword Opportunities
+        proposals.append(TaskProposal(
+            title="Optimize Underperforming Keywords",
+            description="Identify keywords where you rank on page 2 and optimize content to boost them.",
+            pillar_id="analyze",
+            priority="medium",
+            estimated_time=40,
+            source_agent="SEOOptimizationAgent",
+            reasoning="Low-hanging fruit for traffic growth.",
+            action_type="navigate",
+            action_url="/seo-dashboard"
+        ))
+        
+        return proposals
+
     def _create_txtai_agent(self) -> Agent:
         """Create SEO Optimization Agent using txtai native framework"""
         if not TXTAI_AVAILABLE:
@@ -2101,7 +2234,39 @@ class SocialAmplificationAgent(BaseALwrityAgent):
                 self.sif_service = SIFIntegrationService(user_id)
             except Exception as e:
                 logger.warning(f"Failed to initialize SIF service for SocialAmplificationAgent: {e}")
+
+    async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
+        """Propose PUBLISH and ENGAGE pillar tasks."""
+        proposals = []
         
+        # 1. Publish Task
+        proposals.append(TaskProposal(
+            title="Schedule Social Content",
+            description="Plan and schedule your posts for the week to maintain consistent presence.",
+            pillar_id="publish",
+            priority="high",
+            estimated_time=20,
+            source_agent="SocialAmplificationAgent",
+            reasoning="Consistency is key for algorithm growth.",
+            action_type="navigate",
+            action_url="/scheduler-dashboard"
+        ))
+        
+        # 2. Engage Task
+        proposals.append(TaskProposal(
+            title="Engage with Community",
+            description="Respond to comments and interact with industry leaders' posts.",
+            pillar_id="engage",
+            priority="medium",
+            estimated_time=15,
+            source_agent="SocialAmplificationAgent",
+            reasoning="Community building increases reach.",
+            action_type="navigate",
+            action_url="/social-dashboard"
+        ))
+        
+        return proposals
+
     def _create_txtai_agent(self) -> Agent:
         """Create Social Amplification Agent using txtai native framework"""
         if not TXTAI_AVAILABLE:

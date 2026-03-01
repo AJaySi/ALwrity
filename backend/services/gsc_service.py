@@ -366,17 +366,24 @@ class GSCService:
                 service = self.get_authenticated_service(user_id)
             except ValueError:
                 # User not connected or credentials invalid
-                logger.warning(f"User {user_id} not connected to GSC. Returning empty site list.")
+                # logger.warning(f"User {user_id} not connected to GSC. Returning empty site list.")
                 return []
+            except Exception as e:
+                logger.warning(f"Failed to get authenticated service for {user_id}: {e}")
+                return []
+
+            if not service:
+                 return []
 
             sites = service.sites().list().execute()
             
             site_list = []
-            for site in sites.get('siteEntry', []):
-                site_list.append({
-                    'siteUrl': site.get('siteUrl'),
-                    'permissionLevel': site.get('permissionLevel')
-                })
+            if 'siteEntry' in sites:
+                for site in sites.get('siteEntry', []):
+                    site_list.append({
+                        'siteUrl': site.get('siteUrl'),
+                        'permissionLevel': site.get('permissionLevel')
+                    })
             
             logger.info(f"Retrieved {len(site_list)} sites for user: {user_id}")
             return site_list

@@ -22,7 +22,9 @@ import {
   CheckCircle as CheckIcon,
   PlayArrow as PlayIcon,
   SkipNext as SkipIcon,
-  NavigateNext
+  NavigateNext,
+  Psychology as AgentIcon,
+  Lightbulb as ReasonIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore } from '../../../stores/workflowStore';
@@ -351,6 +353,35 @@ const EnhancedTodayModal: React.FC<EnhancedTodayModalProps> = ({
                           </Typography>
                         </Box>
                       </Box>
+                      
+                      {/* Agent Reasoning Section */}
+                      {task.metadata?.source_agent && (
+                        <Box sx={{ 
+                          mt: 1.5, 
+                          mb: 1.5,
+                          p: 1.5, 
+                          bgcolor: '#f8f9fa', 
+                          borderRadius: 2,
+                          border: '1px solid #e0e0e0',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 1.5
+                        }}>
+                          <AgentIcon sx={{ fontSize: 16, color: pillarColor, mt: 0.3 }} />
+                          <Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#444' }}>
+                                Suggested by {task.metadata.source_agent.replace('Agent', '')}
+                              </Typography>
+                            </Box>
+                            {task.metadata.reasoning && (
+                              <Typography variant="caption" sx={{ color: '#666', display: 'block', lineHeight: 1.4 }}>
+                                "{task.metadata.reasoning}"
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      )}
 
                       {/* Task Actions */}
                       <Box sx={{ display: 'flex', gap: 1.25, mt: 2 }}>

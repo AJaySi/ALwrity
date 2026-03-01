@@ -155,7 +155,7 @@ def track_agent_usage_sync(user_id: str, model_name: str, prompt: str, response_
                 
                 db.execute(log_query, {
                     'user_id': user_id,
-                    'provider': provider_enum.name,  # Use name (GEMINI) not value (gemini) for SQLAlchemy Enum
+                    'provider': provider_enum.value,  # Use value (gemini) not name (GEMINI) for consistency
                     'endpoint': 'agent_action',
                     'method': 'GENERATE',
                     'model_used': model_name,

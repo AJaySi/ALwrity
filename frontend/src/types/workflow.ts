@@ -19,7 +19,12 @@ export interface TodayTask {
   actionType: ActionType;
   completedAt?: Date;
   startedAt?: Date;
-  metadata?: Record<string, any>;
+  metadata?: {
+    source_agent?: string;
+    reasoning?: string;
+    context_data?: any;
+    [key: string]: any;
+  };
   icon?: string | React.ComponentType<any>; // icon name or component reference
   color?: string;
   enabled: boolean;

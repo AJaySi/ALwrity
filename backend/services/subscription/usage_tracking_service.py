@@ -10,6 +10,7 @@ import asyncio
 from typing import Dict, Any, List, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
 from loguru import logger
 import json
 
@@ -338,36 +339,59 @@ class UsageTrackingService:
         ).order_by(UsageAlert.created_at.desc()).limit(10).all()
         
         if not summary:
-            # No usage this period - return complete structure with zeros
-            provider_breakdown = {}
-            usage_percentages = {}
+            # If no summary exists for current period, we should initialize it
+            # This handles the "start of month" case where a user logs in but hasn't made calls yet
+            if billing_period == datetime.now().strftime("%Y-%m"):
+                logger.info(f"Initializing empty UsageSummary for user {user_id} in period {billing_period}")
+                summary = UsageSummary(
+                    user_id=user_id,
+                    billing_period=billing_period,
+                    usage_status=UsageStatus.ACTIVE,
+                    total_calls=0,
+                    total_tokens=0,
+                    total_cost=0.0
+                )
+                try:
+                    self.db.add(summary)
+                    self.db.commit()
+                    self.db.refresh(summary)
+                except Exception as e:
+                    logger.error(f"Failed to initialize summary: {e}")
+                    self.db.rollback()
+                    # Fallback to zero-struct return if DB write fails
+                    pass
             
-            # Initialize provider breakdown with zeros
-            for provider in APIProvider:
-                provider_name = provider.value
-                provider_breakdown[provider_name] = {
-                    'calls': 0,
-                    'tokens': 0,
-                    'cost': 0.0
+            if not summary: # Still no summary after attempt
+                # No usage this period - return complete structure with zeros
+                provider_breakdown = {}
+                usage_percentages = {}
+                
+                # Initialize provider breakdown with zeros
+                for provider in APIProvider:
+                    provider_name = provider.value
+                    provider_breakdown[provider_name] = {
+                        'calls': 0,
+                        'tokens': 0,
+                        'cost': 0.0
+                    }
+                    usage_percentages[f"{provider_name}_calls"] = 0
+                
+                usage_percentages['cost'] = 0
+                
+                return {
+                    'billing_period': billing_period,
+                    'usage_status': 'active',
+                    'total_calls': 0,
+                    'total_tokens': 0,
+                    'total_cost': 0.0,
+                    'avg_response_time': 0.0,
+                    'error_rate': 0.0,
+                    'last_updated': datetime.now().isoformat(),
+                    'limits': limits,
+                    'provider_breakdown': provider_breakdown,
+                    'alerts': [],
+                    'usage_percentages': usage_percentages
                 }
-                usage_percentages[f"{provider_name}_calls"] = 0
-            
-            usage_percentages['cost'] = 0
-            
-            return {
-                'billing_period': billing_period,
-                'usage_status': 'active',
-                'total_calls': 0,
-                'total_tokens': 0,
-                'total_cost': 0.0,
-                'avg_response_time': 0.0,
-                'error_rate': 0.0,
-                'last_updated': datetime.now().isoformat(),
-                'limits': limits,
-                'provider_breakdown': provider_breakdown,
-                'alerts': [],
-                'usage_percentages': {}
-            }
         
         # Provider breakdown - calculate costs first, then use for percentages
         # Only include Gemini and HuggingFace (HuggingFace is stored under MISTRAL enum)
@@ -547,12 +571,18 @@ class UsageTrackingService:
             stability_cost + image_edit_cost + tavily_cost + serper_cost + exa_cost
         )
         summary_total_cost = summary.total_cost or 0.0
-        # Use calculated cost if summary cost is 0, otherwise use summary cost (it's more accurate)
-        final_total_cost = summary_total_cost if summary_total_cost > 0 else calculated_total_cost
         
-        # If we calculated costs from logs, update the summary for future requests
-        if calculated_total_cost > 0 and summary_total_cost == 0.0:
-            logger.info(f"[UsageStats] Updating summary costs: total_cost={final_total_cost:.6f}, gemini_cost={gemini_cost:.6f}, mistral_cost={mistral_cost:.6f}, video_cost={video_cost:.6f}, audio_cost={audio_cost:.6f}, image_cost={stability_cost:.6f}")
+        # Determine the best cost value to use
+        # If summary cost is 0 but we have calculated cost, use calculated cost
+        # If summary cost exists but is less than calculated cost (out of sync), use calculated cost
+        if calculated_total_cost > summary_total_cost:
+            final_total_cost = calculated_total_cost
+        else:
+            final_total_cost = summary_total_cost
+        
+        # If we found a discrepancy (summary cost is 0 or less than calculated), update the DB
+        if calculated_total_cost > 0 and (summary_total_cost == 0.0 or calculated_total_cost > summary_total_cost):
+            logger.info(f"[UsageStats] Updating summary costs (was {summary_total_cost}): total_cost={final_total_cost:.6f}, gemini_cost={gemini_cost:.6f}, mistral_cost={mistral_cost:.6f}, video_cost={video_cost:.6f}, audio_cost={audio_cost:.6f}, image_cost={stability_cost:.6f}")
             summary.total_cost = final_total_cost
             summary.gemini_cost = gemini_cost
             summary.mistral_cost = mistral_cost
@@ -622,7 +652,7 @@ class UsageTrackingService:
         }
     
     def get_usage_trends(self, user_id: str, months: int = 6) -> Dict[str, Any]:
-        """Get usage trends over time."""
+        """Get usage trends over time with self-healing from logs."""
         
         # Calculate billing periods
         end_date = datetime.now()
@@ -633,13 +663,111 @@ class UsageTrackingService:
         
         periods.reverse()  # Oldest first
         
-        # Get usage summaries for these periods
+        # 1. Fetch existing summaries
         summaries = self.db.query(UsageSummary).filter(
             UsageSummary.user_id == user_id,
             UsageSummary.billing_period.in_(periods)
-        ).order_by(UsageSummary.billing_period).all()
+        ).all()
+        summary_dict = {s.billing_period: s for s in summaries}
         
-        # Create trends data
+        # 2. Fetch aggregated logs for self-healing
+        # Group by (billing_period, provider) to fix provider breakdowns too
+        try:
+            log_stats = self.db.query(
+                APIUsageLog.billing_period,
+                APIUsageLog.provider,
+                func.count(APIUsageLog.id).label('calls'),
+                func.sum(APIUsageLog.cost_total).label('cost'),
+                func.sum(APIUsageLog.tokens_total).label('tokens')
+            ).filter(
+                APIUsageLog.user_id == user_id,
+                APIUsageLog.billing_period.in_(periods)
+            ).group_by(APIUsageLog.billing_period, APIUsageLog.provider).all()
+
+            # Organize log stats by period -> provider
+            log_data_by_period = {}
+            for period, provider_enum, calls, cost, tokens in log_stats:
+                if period not in log_data_by_period:
+                    log_data_by_period[period] = {}
+                
+                # Handle provider enum or string
+                provider_name = provider_enum.value if hasattr(provider_enum, 'value') else str(provider_enum).lower()
+                # Normalize provider names (e.g. 'GEMINI' -> 'gemini')
+                if '.' in provider_name:
+                    provider_name = provider_name.split('.')[-1].lower()
+                
+                if provider_name not in log_data_by_period[period]:
+                    log_data_by_period[period][provider_name] = {'calls': 0, 'cost': 0.0, 'tokens': 0}
+
+                log_data_by_period[period][provider_name]['calls'] += (calls or 0)
+                log_data_by_period[period][provider_name]['cost'] += float(cost or 0.0)
+                log_data_by_period[period][provider_name]['tokens'] += (tokens or 0)
+
+            # 3. Update/Create Summaries based on logs
+            for period in periods:
+                period_logs = log_data_by_period.get(period, {})
+                summary = summary_dict.get(period)
+                
+                # If no summary exists but logs do, create one
+                if not summary and period_logs:
+                    logger.info(f"[UsageStats] Self-healing: Creating missing summary for {period}")
+                    summary = UsageSummary(
+                        user_id=user_id,
+                        billing_period=period,
+                        usage_status=UsageStatus.ACTIVE,
+                        total_calls=0,
+                        total_cost=0.0,
+                        total_tokens=0
+                    )
+                    self.db.add(summary)
+                    summary_dict[period] = summary
+                
+                if summary and period_logs:
+                    total_calls_calc = 0
+                    total_cost_calc = 0.0
+                    total_tokens_calc = 0
+                    
+                    for prov, data in period_logs.items():
+                        total_calls_calc += data['calls']
+                        total_cost_calc += data['cost']
+                        total_tokens_calc += data['tokens']
+                        
+                        # Update provider specific fields if logs > summary
+                        calls_attr = f"{prov}_calls"
+                        cost_attr = f"{prov}_cost"
+                        tokens_attr = f"{prov}_tokens"
+                        
+                        if hasattr(summary, calls_attr):
+                            current_val = getattr(summary, calls_attr, 0)
+                            if current_val < data['calls']:
+                                setattr(summary, calls_attr, data['calls'])
+                        
+                        if hasattr(summary, cost_attr):
+                            current_val = getattr(summary, cost_attr, 0.0)
+                            # Use significant difference to avoid float noise
+                            if (data['cost'] - current_val) > 0.000001:
+                                setattr(summary, cost_attr, data['cost'])
+                                
+                        if hasattr(summary, tokens_attr):
+                             current_val = getattr(summary, tokens_attr, 0)
+                             if current_val < data['tokens']:
+                                 setattr(summary, tokens_attr, data['tokens'])
+
+                    # Update totals if under-reported
+                    if (summary.total_cost or 0.0) < total_cost_calc:
+                        logger.info(f"[UsageStats] Self-healing cost for {period}: {summary.total_cost} -> {total_cost_calc}")
+                        summary.total_cost = total_cost_calc
+                    if (summary.total_calls or 0) < total_calls_calc:
+                        summary.total_calls = total_calls_calc
+                    if (summary.total_tokens or 0) < total_tokens_calc:
+                        summary.total_tokens = total_tokens_calc
+            
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to self-heal usage trends: {e}")
+            self.db.rollback()
+
+        # 4. Construct Return Data
         trends = {
             'periods': periods,
             'total_calls': [],
@@ -648,7 +776,14 @@ class UsageTrackingService:
             'provider_trends': {}
         }
         
-        summary_dict = {s.billing_period: s for s in summaries}
+        # Initialize provider trends structure
+        for provider in APIProvider:
+            provider_name = provider.value
+            trends['provider_trends'][provider_name] = {
+                'calls': [],
+                'cost': [],
+                'tokens': []
+            }
         
         for period in periods:
             summary = summary_dict.get(period)
@@ -661,13 +796,6 @@ class UsageTrackingService:
                 # Provider-specific trends
                 for provider in APIProvider:
                     provider_name = provider.value
-                    if provider_name not in trends['provider_trends']:
-                        trends['provider_trends'][provider_name] = {
-                            'calls': [],
-                            'cost': [],
-                            'tokens': []
-                        }
-                    
                     trends['provider_trends'][provider_name]['calls'].append(
                         getattr(summary, f"{provider_name}_calls", 0) or 0
                     )
@@ -685,13 +813,6 @@ class UsageTrackingService:
                 
                 for provider in APIProvider:
                     provider_name = provider.value
-                    if provider_name not in trends['provider_trends']:
-                        trends['provider_trends'][provider_name] = {
-                            'calls': [],
-                            'cost': [],
-                            'tokens': []
-                        }
-                    
                     trends['provider_trends'][provider_name]['calls'].append(0)
                     trends['provider_trends'][provider_name]['cost'].append(0.0)
                     trends['provider_trends'][provider_name]['tokens'].append(0)

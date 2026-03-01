@@ -21,6 +21,7 @@ import AnalyticsInsights from './components/AnalyticsInsights';
 import ToolsModal from './components/ToolsModal';
 import EnhancedBillingDashboard from '../billing/EnhancedBillingDashboard';
 import CompactSidebar from './components/CompactSidebar';
+import TeamHuddleWidget from './components/TeamHuddleWidget';
 
 // Shared types and utilities
 import { Tool } from '../shared/types';
@@ -346,7 +347,10 @@ const MainDashboard: React.FC = () => {
               </Box>
 
               {/* Area 3: Analytics and Billing */}
-              <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* Team Huddle Widget - New Addition */}
+                <TeamHuddleWidget />
+
                 {/* Analytics Insights - Good/Bad/Ugly */}
                 <AnalyticsInsights />
 

@@ -21,6 +21,7 @@ router = APIRouter()
 @router.get("/dashboard/{user_id}")
 async def get_dashboard_data(
     user_id: str,
+    billing_period: str = None,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get comprehensive dashboard data for usage monitoring."""
@@ -29,16 +30,17 @@ async def get_dashboard_data(
         ensure_subscription_plan_columns(db)
         ensure_usage_summaries_columns(db)
         
-        # Check cache first
-        cached_data = get_cached_dashboard(user_id)
-        if cached_data:
-            return cached_data
+        # Check cache first (skip if billing_period is specified)
+        if not billing_period:
+            cached_data = get_cached_dashboard(user_id)
+            if cached_data:
+                return cached_data
 
         usage_service = UsageTrackingService(db)
         pricing_service = PricingService(db)
         
-        # Get current usage stats
-        current_usage = usage_service.get_user_usage_stats(user_id)
+        # Get current usage stats (for the requested period)
+        current_usage = usage_service.get_user_usage_stats(user_id, billing_period)
         
         # Get usage trends (last 6 months)
         trends = usage_service.get_usage_trends(user_id, 6)
@@ -47,10 +49,14 @@ async def get_dashboard_data(
         limits = pricing_service.get_user_limits(user_id)
         
         # Get unread alerts
-        alerts = db.query(UsageAlert).filter(
+        alerts_query = db.query(UsageAlert).filter(
             UsageAlert.user_id == user_id,
             UsageAlert.is_read == False
-        ).order_by(UsageAlert.created_at.desc()).limit(5).all()
+        )
+        if billing_period:
+            alerts_query = alerts_query.filter(UsageAlert.billing_period == billing_period)
+            
+        alerts = alerts_query.order_by(UsageAlert.created_at.desc()).limit(5).all()
         
         alerts_data = [
             {
@@ -64,11 +70,17 @@ async def get_dashboard_data(
             for alert in alerts
         ]
         
-        # Calculate cost projections
+        # Calculate cost projections (only relevant for current month)
         current_cost = current_usage.get('total_cost', 0)
         days_in_period = 30
         current_day = datetime.now().day
-        projected_cost = (current_cost / current_day) * days_in_period if current_day > 0 else 0
+        
+        # Only project costs if viewing current month
+        is_current_month = not billing_period or billing_period == datetime.now().strftime("%Y-%m")
+        if is_current_month:
+            projected_cost = (current_cost / current_day) * days_in_period if current_day > 0 else 0
+        else:
+            projected_cost = current_cost # For past months, projected is actual
         
         response_payload = {
             "success": True,
@@ -91,8 +103,10 @@ async def get_dashboard_data(
             }
         }
         
-        # Cache the response
-        set_cached_dashboard(user_id, response_payload)
+        # Cache the response only for default view
+        if not billing_period:
+            set_cached_dashboard(user_id, response_payload)
+            
         return response_payload
     
     except (sqlite3.OperationalError, Exception) as e:

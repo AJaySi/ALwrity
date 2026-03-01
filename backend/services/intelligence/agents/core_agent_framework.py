@@ -108,6 +108,20 @@ class AgentAction:
             self.created_at = datetime.utcnow().isoformat()
 
 @dataclass
+class TaskProposal:
+    """Represents a daily task proposed by an agent"""
+    title: str
+    description: str
+    pillar_id: str  # plan, generate, publish, analyze, engage, remarket
+    priority: str   # high, medium, low
+    estimated_time: int  # minutes
+    source_agent: str
+    reasoning: str
+    context_data: Optional[Dict[str, Any]] = None
+    action_type: str = "navigate"
+    action_url: Optional[str] = None
+
+@dataclass
 class MarketSignal:
     """Represents a market change or opportunity"""
     signal_id: str
@@ -833,6 +847,13 @@ class BaseALwrityAgent(ABC):
             self.performance.success_rate = (
                 self.performance.successful_actions / self.performance.total_actions
             )
+
+    async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
+        """
+        Propose daily tasks based on the agent's domain and context.
+        Must be implemented by specialized agents.
+        """
+        return []
         
         # Calculate efficiency score (0.0 to 1.0)
         # Based on success rate and response time

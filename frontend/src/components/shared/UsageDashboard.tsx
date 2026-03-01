@@ -9,7 +9,11 @@ import {
   IconButton,
   Menu,
   MenuItem,
-  LinearProgress
+  LinearProgress,
+  Select,
+  FormControl,
+  InputLabel,
+  SelectChangeEvent
 } from '@mui/material';
 import {
   TrendingUp,
@@ -17,7 +21,8 @@ import {
   CheckCircle,
   Refresh,
   MoreVert,
-  Dashboard
+  Dashboard,
+  CalendarMonth
 } from '@mui/icons-material';
 import { useUser } from '@clerk/clerk-react';
 import { apiClient } from '../../api/client';
@@ -34,6 +39,7 @@ interface UsageStats {
     tokens: number;
     cost: number;
   }>;
+  billing_period?: string;
 }
 
 interface UsageLimits {
@@ -65,6 +71,7 @@ interface DashboardData {
     usage_status: string;
     unread_alerts: number;
   };
+  trends?: { periods: string[] };
 }
 
 interface UsageDashboardProps {
@@ -82,6 +89,8 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
+  const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
 
   const { user } = useUser();
   const userId = localStorage.getItem('user_id') || user?.id;
@@ -93,42 +102,57 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     checkInterval: 120000, // Check every 2 minutes
   });
 
-  const fetchUsageData = useCallback(async () => {
+  const fetchUsageData = useCallback(async (period?: string) => {
     if (!userId) return;
     
     setLoading(true);
     setError(null);
-    
     try {
-      const response = await apiClient.get(`/api/subscription/dashboard/${userId}`);
-      setDashboardData(response.data.data);
-      setLastUpdated(new Date());
-    } catch (err) {
+      const url = period 
+        ? `/api/subscription/dashboard/${userId}?billing_period=${period}`
+        : `/api/subscription/dashboard/${userId}`;
+        
+      const response = await apiClient.get<any>(url);
+      
+      if (response.data && response.data.success) {
+        setDashboardData(response.data.data);
+        setLastUpdated(new Date());
+        
+        // Extract available periods from trends if not set
+        if (!period && response.data.data.trends?.periods) {
+          setAvailablePeriods(response.data.data.trends.periods);
+          // Set current period if not selected
+          if (!selectedPeriod) {
+            const current = new Date().toISOString().slice(0, 7); // YYYY-MM
+            setSelectedPeriod(current);
+          }
+        }
+      } else {
+        throw new Error(response.data?.error || 'Failed to fetch usage data');
+      }
+    } catch (err: any) {
       console.error('Error fetching usage data:', err);
-      setError('Failed to load usage data');
+      setError(err.message || 'Failed to load usage statistics');
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
+  const handlePeriodChange = (event: SelectChangeEvent) => {
+    const period = event.target.value;
+    setSelectedPeriod(period);
+    fetchUsageData(period);
+  };
+
   useEffect(() => {
-    fetchUsageData();
-
-    // Listen for custom event to refresh usage data
-    const handleUsageRefresh = () => {
-      console.log('UsageDashboard: Refreshing usage data due to event');
+    // Initial fetch
+    if (userId) {
       fetchUsageData();
-    };
-
-    window.addEventListener('alwrity:refresh-usage', handleUsageRefresh);
-
-    return () => {
-      window.removeEventListener('alwrity:refresh-usage', handleUsageRefresh);
-    };
-  }, [fetchUsageData, userId]);
+    }
+  }, [userId, fetchUsageData]); // Added fetchUsageData to deps since it's memoized
 
   const handleRefresh = () => {
-    fetchUsageData();
+    fetchUsageData(selectedPeriod);
   };
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -141,111 +165,125 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
 
   const handleViewFullDashboard = () => {
     handleMenuClose();
-    window.open('/billing', '_blank');
+    window.location.href = '/dashboard';
   };
 
-  const getUsageColor = (used: number, limit: number) => {
-    const percentage = (used / limit) * 100;
-    if (percentage >= 90) return '#f44336'; // Red
-    if (percentage >= 75) return '#ff9800'; // Orange
-    if (percentage >= 50) return '#ffeb3b'; // Yellow
-    return '#4caf50'; // Green
-  };
-
-  const getUsageStatusIcon = (status: string) => {
-    switch (status) {
-      case 'active': return <CheckCircle sx={{ fontSize: 16, color: '#4caf50' }} />;
-      case 'warning': return <Warning sx={{ fontSize: 16, color: '#ff9800' }} />;
-      case 'limit_exceeded': return <Warning sx={{ fontSize: 16, color: '#f44336' }} />;
-      default: return <CheckCircle sx={{ fontSize: 16, color: '#4caf50' }} />;
-    }
+  const getUsageColor = (current: number, max: number) => {
+    if (max === 0) return '#757575';
+    const percentage = (current / max) * 100;
+    if (percentage >= 100) return '#d32f2f'; // error
+    if (percentage >= 80) return '#ed6c02'; // warning
+    return '#2e7d32'; // success
   };
 
   const getProviderDisplayName = (provider: string) => {
-    const names: Record<string, string> = {
-      'gemini': 'Gemini',
-      'openai': 'OpenAI',
-      'anthropic': 'Claude',
-      'mistral': 'Mistral',
-      'tavily': 'Tavily',
-      'serper': 'Serper',
-      'metaphor': 'Metaphor',
+    // Map internal provider names to display names
+    const displayNames: Record<string, string> = {
+      'gemini': 'Google Gemini',
+      'openai': 'OpenAI GPT-4',
+      'anthropic': 'Anthropic Claude',
+      'mistral': 'HuggingFace (Mistral)',
+      'tavily': 'Tavily Search',
+      'serper': 'Serper Google',
+      'metaphor': 'Exa Search', // Metaphor is now Exa
+      'exa': 'Exa Search',
       'firecrawl': 'Firecrawl',
-      'stability': 'Stability',
+      'stability': 'Stability AI',
+      'video': 'Video Gen',
+      'audio': 'Audio Gen',
+      'image_edit': 'Image Edit',
       'wavespeed': 'WaveSpeed'
     };
-    return names[provider] || provider;
+    return displayNames[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
   };
 
-  if (!dashboardData) {
-    if (loading) {
-      return (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CircularProgress size={16} />
-          <Typography variant="caption" color="text.secondary">
-            Loading usage...
-          </Typography>
-        </Box>
-      );
-    }
-    
-    if (error) {
-      return (
-        <Alert severity="error" sx={{ py: 0.5 }}>
-          <Typography variant="caption">{error}</Typography>
-        </Alert>
-      );
-    }
-    
-    // If no data and not loading/error, try to fetch again or show placeholder
-    if (userId && !dashboardData) {
-       // Optional: could auto-trigger another fetch here if needed, but useEffect handles it
-       return <Box />;
-    }
-    
-    return <Box />;
+  if (!dashboardData && loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
   }
+
+  if (error && !dashboardData) {
+    return (
+      <Alert severity="error" sx={{ mb: 2 }}>
+        {error}
+        <IconButton size="small" onClick={() => fetchUsageData(selectedPeriod)}>
+          <Refresh fontSize="small" />
+        </IconButton>
+      </Alert>
+    );
+  }
+
+  if (!dashboardData) return null;
+
+  const currentUsage = dashboardData.current_usage;
+  const limits = dashboardData.limits;
 
   if (compact) {
     // Compact view - show key metrics as chips
     // Use current_usage for accurate cost (properly coerced from provider breakdown)
     // Fallback to summary if current_usage is not available
-    const totalCalls = dashboardData.current_usage?.total_calls ?? dashboardData.summary.total_api_calls_this_month;
-    const totalCost = dashboardData.current_usage?.total_cost ?? dashboardData.summary.total_cost_this_month ?? 0;
-    const monthlyLimit = dashboardData.limits.limits.monthly_cost;
+    const usageData = dashboardData?.current_usage || {
+        total_calls: dashboardData?.summary?.total_api_calls_this_month || 0,
+        total_cost: dashboardData?.summary?.total_cost_this_month || 0,
+        usage_status: dashboardData?.summary?.usage_status || 'active',
+        provider_breakdown: {}
+    };
+    
+    const totalCalls = usageData.total_calls;
+    const totalCost = usageData.total_cost;
+    const monthlyLimit = dashboardData?.limits?.limits?.monthly_cost || 0;
     const usagePercentage = monthlyLimit > 0 ? (totalCost / monthlyLimit) * 100 : 0;
 
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {/* Priority 2 Alerts - Shows cost trends, OSS recommendations, spending velocity */}
+      <Box sx={{ width: '100%' }}>
+        {/* Priority 2 Alert Banner (Usage limits) */}
         {priority2Alerts.length > 0 && (
-          <Box sx={{ mb: 0.5 }}>
-            <Priority2AlertBanner
-              alerts={priority2Alerts}
-              onDismiss={dismissPriority2Alert}
-              maxAlerts={1} // Show only 1 alert in compact view
+          <Box sx={{ mb: 1 }}>
+            <Priority2AlertBanner 
+              alerts={[priority2Alerts[0]]} 
+              onDismiss={() => dismissPriority2Alert(priority2Alerts[0].id)} 
             />
           </Box>
         )}
         
-        {/* Usage Statistics */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {/* Total API Calls */}
-        <Tooltip title={`${totalCalls.toLocaleString()} API calls this month`}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        
+        {/* Month Selector for Compact View */}
+        {availablePeriods.length > 1 && (
+          <FormControl variant="standard" size="small" sx={{ minWidth: 100, mr: 1 }}>
+            <Select
+              value={selectedPeriod}
+              onChange={handlePeriodChange}
+              disableUnderline
+              sx={{ 
+                fontSize: '0.875rem', 
+                fontWeight: 500,
+                color: 'text.secondary',
+                '& .MuiSelect-select': { py: 0.5 }
+              }}
+              IconComponent={() => <CalendarMonth sx={{ fontSize: 16, color: 'action.active', ml: 0.5 }} />}
+            >
+              {availablePeriods.map((period) => (
+                <MenuItem key={period} value={period} dense>
+                  {period}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+
+        {/* Status Chip */}
+        <Tooltip title={`Status: ${usageData.usage_status}`}>
           <Chip
-            icon={getUsageStatusIcon(dashboardData.summary.usage_status)}
-            label={`${totalCalls.toLocaleString()}`}
+            icon={usageData.usage_status === 'active' ? <CheckCircle sx={{ fontSize: 14 }} /> : <Warning sx={{ fontSize: 14 }} />}
+            label={usageData.usage_status === 'limit_reached' ? 'Limit Reached' : 'Active'}
             size="small"
+            color={usageData.usage_status === 'limit_reached' ? 'error' : usageData.usage_status === 'warning' ? 'warning' : 'success'}
             variant="outlined"
-            sx={{
-              bgcolor: 'rgba(33, 150, 243, 0.1)',
-              borderColor: '#2196f3',
-              color: '#1976d2',
-              fontWeight: 600,
-              '& .MuiChip-icon': {
-                color: '#2196f3'
-              }
-            }}
+            sx={{ fontWeight: 600 }}
           />
         </Tooltip>
 
@@ -347,11 +385,38 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
   }
 
   // Full dashboard view (for dedicated usage page)
+  const usageData = dashboardData?.current_usage || {
+    total_calls: dashboardData?.summary?.total_api_calls_this_month || 0,
+    total_cost: dashboardData?.summary?.total_cost_this_month || 0,
+    provider_breakdown: {}
+  };
+  
   return (
     <Box sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Usage Dashboard
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">
+          Usage Dashboard
+        </Typography>
+        
+        {/* Month Selector for Full View */}
+        {availablePeriods.length > 1 && (
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Billing Period</InputLabel>
+            <Select
+              value={selectedPeriod}
+              onChange={handlePeriodChange}
+              label="Billing Period"
+              startAdornment={<CalendarMonth sx={{ fontSize: 18, mr: 1, color: 'action.active' }} />}
+            >
+              {availablePeriods.map((period) => (
+                <MenuItem key={period} value={period}>
+                  {period}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+      </Box>
       
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 2 }}>
         {/* Total Calls */}
@@ -360,7 +425,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             Total API Calls
           </Typography>
           <Typography variant="h4" color="primary">
-            {(dashboardData.current_usage?.total_calls ?? dashboardData.summary.total_api_calls_this_month).toLocaleString()}
+            {usageData.total_calls.toLocaleString()}
           </Typography>
         </Box>
 
@@ -370,10 +435,10 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             Monthly Cost
           </Typography>
           <Typography variant="h4" color="secondary">
-            ${(dashboardData.current_usage?.total_cost ?? dashboardData.summary.total_cost_this_month ?? 0).toFixed(2)}
+            ${usageData.total_cost.toFixed(2)}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            of ${dashboardData.limits.limits.monthly_cost} limit
+            of ${dashboardData?.limits?.limits?.monthly_cost || 0} limit
           </Typography>
         </Box>
 
@@ -382,16 +447,21 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
           <Typography variant="subtitle2" color="text.secondary" gutterBottom>
             Usage by Provider
           </Typography>
-          {Object.entries(dashboardData.current_usage.provider_breakdown).map(([provider, stats]) => (
+          {Object.entries(usageData.provider_breakdown || {}).map(([provider, stats]) => (
             <Box key={provider} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="body2">
                 {getProviderDisplayName(provider)}
               </Typography>
               <Typography variant="body2" fontWeight={600}>
-                {stats.calls.toLocaleString()}
+                {(stats as any).calls?.toLocaleString() || 0}
               </Typography>
             </Box>
           ))}
+          {Object.keys(usageData.provider_breakdown || {}).length === 0 && (
+            <Typography variant="body2" color="text.secondary" fontStyle="italic">
+              No usage this period
+            </Typography>
+          )}
         </Box>
       </Box>
     </Box>

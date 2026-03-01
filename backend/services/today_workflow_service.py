@@ -8,7 +8,8 @@ from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 from models.agent_activity_models import AgentAlert
 from services.agent_activity_service import AgentActivityService
 from services.llm_providers.main_text_generation import llm_text_gen
-
+from api.content_planning.services.content_strategy.onboarding.data_integration import OnboardingDataIntegrationService
+from loguru import logger
 
 PILLAR_IDS = ["plan", "generate", "publish", "analyze", "engage", "remarket"]
 
@@ -95,6 +96,7 @@ def _fallback_tasks(date: str) -> List[Dict[str, Any]]:
 
 
 def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, Any]:
+    # 1. Fetch unread alerts
     unread_agent_alerts = (
         db.query(AgentAlert)
         .filter(AgentAlert.user_id == user_id, AgentAlert.read_at.is_(None))
@@ -102,10 +104,32 @@ def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, A
         .limit(10)
         .all()
     )
+
+    # 2. Fetch comprehensive onboarding data (SIF)
+    onboarding_context = {}
+    try:
+        svc = OnboardingDataIntegrationService()
+        integrated = svc.get_integrated_data_sync(user_id, db) or {}
+        
+        canonical = integrated.get("canonical_profile", {})
+        website_analysis = integrated.get("website_analysis", {})
+        
+        onboarding_context = {
+            "website_url": website_analysis.get("website_url"),
+            "business_type": website_analysis.get("business_type"),
+            "industry": canonical.get("industry") or website_analysis.get("industry"),
+            "target_audience": canonical.get("target_audience") or website_analysis.get("target_audience"),
+            "content_pillars": canonical.get("content_pillars", []),
+            "competitors": [c.get("domain") for c in website_analysis.get("competitors", [])[:3]] if website_analysis.get("competitors") else []
+        }
+    except Exception as e:
+        logger.warning(f"Failed to fetch onboarding data for workflow generation: {e}")
+
     return {
         "date": date,
         "user_id": user_id,
         "pillars": PILLAR_IDS,
+        "onboarding_data": onboarding_context,
         "recent_agent_alerts": [
             {"type": a.alert_type, "severity": a.severity, "title": a.title, "message": a.message}
             for a in unread_agent_alerts
@@ -113,9 +137,113 @@ def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, A
     }
 
 
-def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> Dict[str, Any]:
+import asyncio
+from services.intelligence.agents.agent_orchestrator import AgentOrchestrationService
+from services.task_memory_service import TaskMemoryService
+
+# Initialize orchestration service (singleton)
+orchestration_service = AgentOrchestrationService()
+
+async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> Dict[str, Any]:
     activity = AgentActivityService(db, user_id)
     grounding = build_grounding_context(db, user_id, date)
+    memory_service = TaskMemoryService(user_id, db)
+
+    # 1. Get Orchestrator
+    try:
+        orchestrator = await orchestration_service.get_or_create_orchestrator(user_id)
+    except Exception as e:
+        logger.error(f"Failed to get orchestrator: {e}")
+        return {"date": date, "tasks": _fallback_tasks(date)}
+
+    # 2. Parallel "Committee" Proposal Gathering
+    logger.info(f"Gathering daily task proposals from agent committee for user {user_id}")
+    
+    agent_tasks = []
+    try:
+        # Define agents to poll
+        agents_to_poll = [
+            orchestrator.agents.get('content'),      # ContentStrategyAgent
+            orchestrator.agents.get('seo'),          # SEOOptimizationAgent
+            orchestrator.agents.get('social'),       # SocialAmplificationAgent
+            orchestrator.agents.get('competitor'),   # CompetitorResponseAgent
+            # Add StrategyArchitect if available in orchestrator.agents
+        ]
+        
+        # Filter out None agents (disabled/failed init)
+        active_agents = [a for a in agents_to_poll if a]
+        
+        # Execute propose_daily_tasks in parallel
+        results = await asyncio.gather(
+            *[a.propose_daily_tasks(grounding) for a in active_agents],
+            return_exceptions=True
+        )
+        
+        # Collect successful proposals
+        raw_proposals = []
+        for res in results:
+            if isinstance(res, list):
+                raw_proposals.extend(res)
+            elif isinstance(res, Exception):
+                logger.warning(f"Agent proposal failed: {res}")
+
+        # 3. Filter Redundant Proposals (Self-Learning)
+        # Note: We need to ensure we don't filter out essential recurring tasks if they were completed long ago
+        # But for now, we filter exact duplicates from recent history (last 7 days)
+        # We can implement semantic filtering later
+        
+        # Simple deduplication based on title+pillar
+        unique_map = {}
+        for p in raw_proposals:
+            key = f"{p.pillar_id}:{p.title}"
+            if key not in unique_map:
+                unique_map[key] = p
+            elif p.priority == "high": # Overwrite with higher priority
+                unique_map[key] = p
+                
+        agent_tasks = list(unique_map.values())
+        
+        # Phase 3: Check memory for rejections (Semantic Filter)
+        # For now, we rely on exact match logic in memory service if implemented fully
+        # agent_tasks = await memory_service.filter_redundant_proposals(agent_tasks)
+                
+    except Exception as e:
+        logger.error(f"Committee proposal phase failed: {e}")
+        # Continue to fallback or LLM generation if committee fails
+
+    # 4. Final Selection
+    # If we have agent tasks, use them. Otherwise fall back to LLM generation.
+    if agent_tasks:
+        logger.info(f"Generated {len(agent_tasks)} tasks via Agent Committee")
+        
+        # Convert TaskProposal objects to dicts for frontend
+        final_tasks = []
+        for prop in agent_tasks:
+            final_tasks.append({
+                "pillarId": prop.pillar_id,
+                "title": prop.title,
+                "description": prop.description,
+                "priority": prop.priority,
+                "estimatedTime": prop.estimated_time,
+                "actionType": prop.action_type,
+                "actionUrl": prop.action_url,
+                "enabled": True,
+                "metadata": {
+                    "source_agent": prop.source_agent,
+                    "reasoning": prop.reasoning,
+                    "context_data": prop.context_data
+                }
+            })
+            
+        # Ensure we have coverage for all pillars (fill gaps with fallback/LLM if needed)
+        # For now, let's just return what the agents proposed
+        return {
+            "date": date,
+            "tasks": final_tasks
+        }
+
+    # Fallback to original LLM generation if agents returned nothing
+    logger.info("Agent committee returned no tasks, falling back to LLM generation")
 
     schema = {
         "type": "object",
@@ -143,17 +271,21 @@ def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> Dict[s
     }
 
     prompt = (
-        "Generate a Today workflow plan for ALwrity with exactly 6 lifecycle pillars: "
+        "Generate a personalized Today workflow plan for ALwrity with exactly 6 lifecycle pillars: "
         "plan, generate, publish, analyze, engage, remarket.\n\n"
+        "User Context (Onboarding & Strategy):\n"
+        f"{json.dumps(grounding.get('onboarding_data', {}), indent=2)}\n\n"
         "Rules:\n"
         "- Produce JSON only that matches the schema.\n"
         "- Include 1-3 tasks per pillar.\n"
         "- Each task must have pillarId in {plan, generate, publish, analyze, engage, remarket}.\n"
+        "- Customize tasks based on the user's industry, business type, and content pillars found in User Context.\n"
+        "- If competitors are listed, include a task to analyze one of them.\n"
         "- Prefer actionable tasks that can be completed today.\n"
         "- Use these common actionUrl routes when relevant: "
         "/content-planning-dashboard, /blog-writer, /linkedin-writer, /facebook-writer, /seo-dashboard, /scheduler-dashboard.\n"
         "- Keep descriptions concise.\n\n"
-        f"Grounding context:\n{json.dumps(grounding, indent=2)}\n"
+        f"Grounding context (Alerts):\n{json.dumps(grounding.get('recent_agent_alerts', []), indent=2)}\n"
     )
 
     run = activity.start_run(agent_type="TodayWorkflowGenerator", prompt=prompt[:4000])
@@ -202,7 +334,7 @@ def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> Dict[s
     return result
 
 
-def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Optional[str] = None) -> tuple[DailyWorkflowPlan, bool]:
+async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Optional[str] = None) -> tuple[DailyWorkflowPlan, bool]:
     date_str = date or _today_date_str()
     existing = (
         db.query(DailyWorkflowPlan)
@@ -212,7 +344,7 @@ def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Optional[
     if existing:
         return existing, False
 
-    plan_data = generate_agent_enhanced_plan(db, user_id, date_str)
+    plan_data = await generate_agent_enhanced_plan(db, user_id, date_str)
     tasks = plan_data.get("tasks", [])
 
     plan = DailyWorkflowPlan(

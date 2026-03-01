@@ -53,11 +53,20 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
         logger.info("Fetching fresh GSC analytics for user {user_id}", user_id=user_id)
         try:
             # Get user's sites
-            sites = self.gsc_service.get_site_list(user_id)
-            logger.info(f"GSC Sites found for user {user_id}: {sites}")
+            try:
+                sites = self.gsc_service.get_site_list(user_id)
+            except Exception as e:
+                logger.warning(f"GSC site list fetch failed for user {user_id}: {e}")
+                sites = []
+
+            # logger.info(f"GSC Sites found for user {user_id}: {sites}")
             if not sites:
-                logger.warning(f"No GSC sites found for user {user_id}")
-                return self.create_error_response('No GSC sites found')
+                # logger.warning(f"No GSC sites found for user {user_id}")
+                # Return standard empty response instead of error to avoid logs noise
+                return self.create_success_response(
+                    metrics={"clicks": 0, "impressions": 0, "ctr": 0, "position": 0}, 
+                    date_range={'start': start_date, 'end': end_date}
+                )
             
             # Select site: Prefer target_url match, otherwise first site
             selected_site = sites[0]
@@ -125,7 +134,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 'error': None
             }
         except Exception as e:
-            self.log_analytics_error(user_id, "get_connection_status", e)
+            # self.log_analytics_error(user_id, "get_connection_status", e)
             return {
                 'connected': False,
                 'sites_count': 0,
