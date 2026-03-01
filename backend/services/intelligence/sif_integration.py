@@ -974,60 +974,36 @@ class SIFIntegrationService:
         return pillars
     
     async def _identify_semantic_gaps(self, website_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Identify semantic gaps in user content by comparing against competitor topics or industry standards.
-        Uses txtai semantic search to check coverage of key topics.
-        """
-        gaps = []
+        """Identify semantic gaps using StrategyArchitectAgent evidence-driven analysis."""
         try:
-            # 1. Determine target topics to check
-            # In a real scenario, these come from competitor analysis or keyword research.
-            # Here we extract potential topics from competitor data or use defaults.
-            competitors = website_data.get('competitors', [])
-            target_topics = []
-            
-            # Placeholder: Extract topics from competitor names/descriptions if available
-            # For now, we'll use a mix of generic marketing topics and any provided tags
-            target_topics = [
-                "content strategy", "SEO optimization", "social media marketing", 
-                "email campaigns", "brand storytelling", "customer retention",
-                "voice search", "video marketing", "influencer partnerships"
-            ]
-            
-            # Add specific topics from input if available
-            if 'target_keywords' in website_data:
-                target_topics.extend(website_data['target_keywords'])
+            if not self.strategy_agent:
+                from .sif_agents import StrategyArchitectAgent
+                self.strategy_agent = StrategyArchitectAgent(self.intelligence_service, user_id=self.user_id)
 
-            # 2. Check coverage for each topic in the user's index
-            for topic in target_topics:
-                # Search the user's index
-                results = await self.intelligence_service.search(topic, limit=1)
-                
-                # Check relevance
-                max_score = results[0]['score'] if results else 0.0
-                
-                # If relevance is low, it's a gap
-                GAP_THRESHOLD = 0.45
-                if max_score < GAP_THRESHOLD:
-                    gaps.append({
-                        "topic": topic,
-                        "current_coverage_score": float(max_score),
-                        "gap_severity": "high" if max_score < 0.2 else "medium",
-                        "reason": "Low semantic relevance in current content index",
-                        "suggested_action": f"Create dedicated content for '{topic}'"
-                    })
-            
-            # Sort by severity (lower score = higher severity)
-            gaps.sort(key=lambda x: x['current_coverage_score'])
-            
-            return gaps[:5]  # Return top 5 gaps
+            competitor_ids = website_data.get("competitor_indices", []) or []
+            gaps = await self.strategy_agent.find_semantic_gaps(competitor_indices=competitor_ids)
+
+            normalized_gaps = []
+            for gap in gaps:
+                density = gap.get("topic_density", {})
+                normalized_gaps.append({
+                    "topic": gap.get("topic"),
+                    "priority": gap.get("priority", "medium"),
+                    "reason": gap.get("reason", "Competitor coverage gap"),
+                    "confidence": gap.get("confidence", 0.0),
+                    "current_coverage_score": density.get("user", 0.0),
+                    "competitor_coverage_score": density.get("competitor", 0.0),
+                    "gap_severity": gap.get("priority", "medium"),
+                    "suggested_action": f"Create dedicated content for '{gap.get('topic', 'this topic')}'",
+                    "topic_density": density,
+                    "evidence": gap.get("evidence", {})
+                })
+
+            return normalized_gaps
 
         except Exception as e:
             logger.error(f"Error identifying semantic gaps: {e}")
-            # Fallback to sample data if index search fails completely
-            return [
-                {"topic": "error_fallback", "reason": str(e), "current_coverage_score": 0.0}
-            ]
+            return []
     
     async def _analyze_competitor_semantics(self, website_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze competitor semantic positioning."""

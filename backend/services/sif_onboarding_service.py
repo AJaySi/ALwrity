@@ -52,9 +52,9 @@ class SIFOnboardingIntegration:
         self.harvester = SemanticHarvesterService()
         
         # Initialize agents
-        self.strategy_agent = StrategyArchitectAgent(self.intelligence)
-        self.guardian_agent = ContentGuardianAgent(self.intelligence)
-        self.link_agent = LinkGraphAgent(self.intelligence)
+        self.strategy_agent = StrategyArchitectAgent(self.intelligence, user_id)
+        self.guardian_agent = ContentGuardianAgent(self.intelligence, user_id)
+        self.link_agent = LinkGraphAgent(self.intelligence, user_id)
         
         logger.info(f"[SIFOnboarding] Initialized for user {user_id}")
     
@@ -254,7 +254,23 @@ class SIFOnboardingIntegration:
                     "priority": "high",
                     "title": "Fill Content Gaps",
                     "description": f"Competitors are covering {len(semantic_gaps)} topics you haven't addressed.",
-                    "action_items": [f"Create content about: {gap.get('topic', 'Unknown topic')}" for gap in semantic_gaps[:5]]
+                    "action_items": [
+                        (
+                            f"Create content about: {gap.get('topic', 'Unknown topic')} "
+                            f"({gap.get('priority', 'medium')} priority) - {gap.get('reason', 'Coverage gap identified')}"
+                        )
+                        for gap in semantic_gaps[:5]
+                    ],
+                    "evidence": [
+                        {
+                            "topic": gap.get("topic"),
+                            "priority": gap.get("priority"),
+                            "confidence": gap.get("confidence"),
+                            "topic_density": gap.get("topic_density"),
+                            "competitor_sample_titles": gap.get("evidence", {}).get("competitor_sample_titles", [])
+                        }
+                        for gap in semantic_gaps[:5]
+                    ]
                 })
             
             # Theme-based recommendations
