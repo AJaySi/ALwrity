@@ -108,32 +108,32 @@ def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, A
     # 2. Fetch comprehensive onboarding data (SIF)
     onboarding_context = {}
     try:
+        from api.content_planning.services.content_strategy.onboarding.data_integration import OnboardingDataIntegrationService
+
         svc = OnboardingDataIntegrationService()
         integrated = svc.get_integrated_data_sync(user_id, db) or {}
-        
-        canonical = integrated.get("canonical_profile", {})
-        website_analysis = integrated.get("website_analysis", {})
-        
-        onboarding_context = {
-            "website_url": website_analysis.get("website_url"),
-            "business_type": website_analysis.get("business_type"),
-            "industry": canonical.get("industry") or website_analysis.get("industry"),
-            "target_audience": canonical.get("target_audience") or website_analysis.get("target_audience"),
-            "content_pillars": canonical.get("content_pillars", []),
-            "competitors": [c.get("domain") for c in website_analysis.get("competitors", [])[:3]] if website_analysis.get("competitors") else []
-        }
+
+        # Populate key sections
+        onboarding_context = integrated
     except Exception as e:
-        logger.warning(f"Failed to fetch onboarding data for workflow generation: {e}")
+        logger.warning(f"Failed to load full onboarding data for context: {e}")
+
+    # Ensure workflow_config exists
+    if "workflow_config" not in onboarding_context:
+        onboarding_context["workflow_config"] = {}
 
     return {
-        "date": date,
-        "user_id": user_id,
-        "pillars": PILLAR_IDS,
-        "onboarding_data": onboarding_context,
         "recent_agent_alerts": [
-            {"type": a.alert_type, "severity": a.severity, "title": a.title, "message": a.message}
+            {
+                "title": a.title,
+                "message": a.message,
+                "created_at": a.created_at.isoformat(),
+                "alert_type": a.alert_type,
+            }
             for a in unread_agent_alerts
         ],
+        "onboarding_data": onboarding_context,
+        "workflow_config": onboarding_context.get("workflow_config", {})
     }
 
 
