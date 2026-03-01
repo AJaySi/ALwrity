@@ -29,6 +29,19 @@ def _coerce_status(value: Any) -> str:
     return "pending"
 
 
+def _proposal_priority_rank(priority: str) -> int:
+    return {"low": 0, "medium": 1, "high": 2}.get(str(priority or "").lower(), 1)
+
+
+def _proposal_order_key(proposal: Any) -> tuple:
+    return (
+        str(getattr(proposal, "source_agent", "") or "").lower(),
+        str(getattr(proposal, "title", "") or "").lower(),
+        str(getattr(proposal, "description", "") or "").lower(),
+        str(getattr(proposal, "action_url", "") or "").lower(),
+    )
+
+
 def _fallback_tasks(date: str) -> List[Dict[str, Any]]:
     return [
         {
@@ -282,7 +295,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
             orchestrator.agents.get('seo'),          # SEOOptimizationAgent
             orchestrator.agents.get('social'),       # SocialAmplificationAgent
             orchestrator.agents.get('competitor'),   # CompetitorResponseAgent
-            # Add StrategyArchitect if available in orchestrator.agents
+            orchestrator.agents.get('strategy'),     # StrategyArchitectAgent
         ]
         
         # Filter out None agents (disabled/failed init)
@@ -313,7 +326,18 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
             key = f"{p.pillar_id}:{p.title}"
             if key not in unique_map:
                 unique_map[key] = p
-            elif p.priority == "high": # Overwrite with higher priority
+                continue
+
+            existing = unique_map[key]
+            if _proposal_priority_rank(p.priority) > _proposal_priority_rank(existing.priority):
+                unique_map[key] = p
+                continue
+
+            # Deterministic tie-breaker for equal priority proposals.
+            if (
+                _proposal_priority_rank(p.priority) == _proposal_priority_rank(existing.priority)
+                and _proposal_order_key(p) < _proposal_order_key(existing)
+            ):
                 unique_map[key] = p
                 
         agent_tasks = list(unique_map.values())
