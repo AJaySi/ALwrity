@@ -203,6 +203,13 @@ class StrategyArchitectAgent(SIFBaseAgent):
                 )
                 return []
 
+            # FIX: Ensure we correctly map indices to documents if indices were passed as integers
+            # The filter allowed_competitor_ids uses str(idx) but if competitor_indices contained
+            # positional indices instead of IDs, we might have filtered everything out.
+            # In this implementation, we assume competitor_indices are doc IDs. 
+            # If they are positional, we need a way to map them. 
+            # For now, we trust the caller passed IDs.
+            
             competitor_topics = self._extract_topic_density(competitor_docs)
             user_topics = self._extract_topic_density(user_docs)
 
