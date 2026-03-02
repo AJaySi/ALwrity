@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -85,6 +86,8 @@ const AGENT_TEAM: AgentStatus[] = [
 ];
 
 const TeamHuddleWidget: React.FC = () => {
+  const navigate = useNavigate();
+
   return (
     <Paper
       elevation={0}
@@ -195,7 +198,21 @@ const TeamHuddleWidget: React.FC = () => {
       </List>
       
       <Box mt={2} pt={2} borderTop="1px solid #eee" display="flex" justifyContent="center">
-        <Typography variant="caption" color="primary" sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
+        <Typography
+          component="button"
+          type="button"
+          variant="caption"
+          color="primary"
+          onClick={() => navigate('/team-activity')}
+          sx={{
+            border: 0,
+            bgcolor: 'transparent',
+            p: 0,
+            fontWeight: 600,
+            cursor: 'pointer',
+            '&:hover': { textDecoration: 'underline' }
+          }}
+        >
           View Full Team Activity
         </Typography>
       </Box>
