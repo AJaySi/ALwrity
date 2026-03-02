@@ -462,6 +462,39 @@ async def get_agent_alerts_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/huddle/feed")
+async def get_agent_huddle_feed_endpoint(
+    since: Optional[str] = None,
+    cursor: Optional[str] = None,
+    runs_limit: int = 20,
+    events_limit: int = 50,
+    alerts_limit: int = 20,
+    approvals_limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    try:
+        user_id = str(current_user.get("id"))
+        service = AgentActivityService(db, user_id)
+        feed = service.get_huddle_feed(
+            since=since,
+            cursor=cursor,
+            runs_limit=runs_limit,
+            events_limit=events_limit,
+            alerts_limit=alerts_limit,
+            approvals_limit=approvals_limit,
+        )
+        return {
+            "success": True,
+            "data": feed,
+            "timestamp": datetime.utcnow().isoformat(),
+            "user_id": user_id,
+        }
+    except Exception as e:
+        logger.error(f"Error getting huddle feed for user {current_user.get('id')}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/alerts/{alert_id}/mark-read")
 async def mark_agent_alert_read_endpoint(
     alert_id: int,
