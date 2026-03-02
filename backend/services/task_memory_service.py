@@ -30,6 +30,17 @@ class TaskMemoryService:
         self.user_id = user_id
         self.db = db
         self.intelligence = TxtaiIntelligenceService(user_id)
+        self._metrics_counters: Dict[str, int] = {}
+
+    def _increment_metric(self, metric_name: str, increment: int = 1) -> None:
+        """Increment lightweight in-memory counters for observability hooks."""
+        self._metrics_counters[metric_name] = self._metrics_counters.get(metric_name, 0) + increment
+        logger.debug(
+            "TaskMemory metric updated user_id={} metric={} value={}",
+            self.user_id,
+            metric_name,
+            self._metrics_counters[metric_name],
+        )
         
     def _compute_hash(self, title: str, description: str) -> str:
         """Compute a consistent hash for task deduplication."""
@@ -154,8 +165,16 @@ class TaskMemoryService:
                                         f"Filtering redundant task (semantic {top_score:.2f}, history status={history_status}): {p.title}"
                                     )
                                     is_semantic_duplicate = True
-            except Exception:
-                pass
+            except Exception as semantic_err:
+                self._increment_metric("semantic_filter_failures")
+                self._increment_metric("semantic_filter_degraded_path_taken")
+                logger.warning(
+                    "Semantic filter degraded for user_id={} proposal_title={} error_class={} error_message={}",
+                    self.user_id,
+                    getattr(p, "title", ""),
+                    type(semantic_err).__name__,
+                    str(semantic_err),
+                )
                 
             if not is_semantic_duplicate:
                 filtered.append(p)
