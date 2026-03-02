@@ -49,6 +49,7 @@ import IntentResearchTest from './pages/IntentResearchTest';
 import SchedulerDashboard from './pages/SchedulerDashboard';
 import BillingPage from './pages/BillingPage';
 import ApprovalsPage from './pages/ApprovalsPage';
+import TeamActivityPage from './pages/TeamActivityPage';
 import StripeDisputesDashboard from './pages/StripeDisputesDashboard';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
@@ -622,6 +623,7 @@ const App: React.FC = () => {
                   <Route path="/scheduler-dashboard" element={<ProtectedRoute><SchedulerDashboard /></ProtectedRoute>} />
                   <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                   <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
+                  <Route path="/team-activity" element={<ProtectedRoute><TeamActivityPage /></ProtectedRoute>} />
                   <Route path="/stripe-disputes" element={<ProtectedRoute><StripeDisputesDashboard /></ProtectedRoute>} />
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/research-test" element={<ResearchDashboard />} />
