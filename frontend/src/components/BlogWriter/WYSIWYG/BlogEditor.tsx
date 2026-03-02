@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { createTheme, ThemeProvider, Paper, IconButton, TextField, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Divider } from '@mui/material';
+import { createTheme, ThemeProvider, Paper, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Divider } from '@mui/material';
 import {
   AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
@@ -50,7 +50,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   const [blogTitle, setBlogTitle] = useState(initialTitle || 'Your Amazing Blog Title');
   const [introduction, setIntroduction] = useState('Click "Generate Introduction" to create a compelling opening for your blog post based on your content and research.');
   const [sections, setSections] = useState<any[]>([]);
-  const [isTitleLoading, setIsTitleLoading] = useState(false);
+  // const [isTitleLoading, setIsTitleLoading] = useState(false); // Unused state
   const [isIntroductionLoading, setIsIntroductionLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<any>>(new Set());
   const [showTitleModal, setShowTitleModal] = useState(false);

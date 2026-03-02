@@ -135,6 +135,7 @@ const BlogSection: React.FC<BlogSectionProps> = ({
       const formattedContent = formatContent(initialContent);
       setContent(formattedContent);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialContent]);
   
   const handleContentChange = (e: any) => {
@@ -324,71 +325,48 @@ const BlogSection: React.FC<BlogSectionProps> = ({
         </div>
       )}
       
-      <div 
-        className="relative"
-        onMouseUp={assistiveWriting.handleTextSelection}
-        onKeyUp={assistiveWriting.handleTextSelection}
-      >
-        <TextField
-          multiline
-          fullWidth
-          variant="standard"
-          value={content}
-          onChange={handleContentChange}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          placeholder="Start writing your section here... Select text for assistive writing features!"
-          InputProps={{
-            disableUnderline: true,
-            className: 'text-gray-600 leading-relaxed text-base md:text-lg focus-within:bg-indigo-50/50 p-2 rounded-md transition-colors duration-200',
-            style: {
-              whiteSpace: 'pre-wrap', // Preserve line breaks and spaces
-              lineHeight: '1.8', // Better line spacing for readability
-            },
-          }}
-          inputRef={contentRef}
-        />
-        
-        {/* Render assistive writing selection menu */}
-        {assistiveWriting.renderSelectionMenu()}
-        {/* Simple AI generation button - only show when no text selection menu is active */}
-        {content && isFocused && !assistiveWriting.selectionMenu && (
-          <div 
-            className="absolute z-10"
-            style={{
-              right: '8px',
-              bottom: '8px',
-            }}
-          >
-            <Tooltip title="✨ Generate Content">
-              <IconButton 
-                size="small" 
-                onClick={handleGenerateContent} 
-                disabled={isGenerating}
-                sx={{
-                  background: 'rgba(79, 70, 229, 0.1)',
-                  color: '#4f46e5',
-                  border: '1px solid rgba(79, 70, 229, 0.2)',
-                  '&:hover': {
-                    background: 'rgba(79, 70, 229, 0.2)',
-                    transform: 'translateY(-1px)',
-                  },
-                  '&:disabled': {
-                    background: 'rgba(255, 255, 255, 0.7)',
-                    color: '#9CA3AF',
-                  },
-                }}
-              >
-                {isGenerating ? (
-                  <CircularProgress size={16} color="inherit" />
-                ) : (
-                  <AutoAwesomeIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
+        {isGenerating ? (
+          <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg animate-pulse">
+            <span className="text-gray-500 font-medium">Generating content based on research...</span>
+          </div>
+        ) : (
+          <div className="relative">
+            {/* Image Placeholder */}
+            {outlineData?.keywords && outlineData.keywords.length > 0 && (
+              <div className="absolute -right-4 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Tooltip title="Section image coming soon">
+                  <IconButton size="small">
+                    <img 
+                      src={`https://source.unsplash.com/random/800x600?${outlineData.keywords[0]}`}
+                      alt="" 
+                      className="w-8 h-8 rounded object-cover" 
+                    />
+                  </IconButton>
+                </Tooltip>
+              </div>
+            )}
+            
+            <TextField
+              multiline
+              fullWidth
+              variant="outlined"
+              placeholder="Start writing or use AI to generate content..."
+              value={content}
+              onChange={handleContentChange}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              minRows={6}
+              InputProps={{
+                className: `font-serif text-lg leading-relaxed text-gray-700 p-0 border-none ${isFocused ? 'bg-white' : 'bg-transparent'} transition-colors duration-200`,
+                style: { lineHeight: '1.8' }
+              }}
+              sx={{
+                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '& .MuiOutlinedInput-root': { padding: 0 }
+              }}
+            />
           </div>
         )}
-      </div>
 
       {/* Outline Information Section */}
       {outlineData && expandedSections.has(id) && (

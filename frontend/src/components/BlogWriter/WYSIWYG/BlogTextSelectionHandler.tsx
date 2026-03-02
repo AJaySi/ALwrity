@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { hallucinationDetectorService, HallucinationDetectionResponse } from '../../../services/hallucinationDetectorService';
 import TextSelectionMenu from './TextSelectionMenu';
 import useSmartTypingAssist from './SmartTypingAssist';
-import { debug } from '../../../utils/debug';
+// import { debug } from '../../../utils/debug'; // Unused import
 
 interface BlogTextSelectionHandlerProps {
   contentRef: React.RefObject<HTMLDivElement | HTMLTextAreaElement>;

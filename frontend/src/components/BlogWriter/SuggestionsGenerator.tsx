@@ -205,10 +205,6 @@ export const useSuggestions = ({
     outlinePolling,
     mediumPolling,
     hasContent,
-    flowAnalysisCompleted,
-    contentConfirmed,
-    seoAnalysis,
-    seoMetadata,
     seoRecommendationsApplied
   ]);
 };
