@@ -198,6 +198,8 @@ export const useCampaignCreator = () => {
   const updatePreferencesLoading = useCallback((loading: boolean) => {
     setIsLoadingPreferences(loading);
   }, []);
+
+  const createCampaignBlueprint = useCallback(
     async (request: CampaignCreateRequest): Promise<CampaignBlueprint> => {
       setIsCreatingBlueprint(true);
       setError(null);
