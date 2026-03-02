@@ -114,6 +114,76 @@ The agents are visible to the user in three key areas:
 
 ---
 
+## 🤝 Team Huddle (System Contract)
+
+The Team Huddle is the canonical operational surface for multi-agent coordination. It must stay consistent across dashboard widget, notifications, and the full activity view.
+
+### Event/Data Contract
+All orchestration updates are emitted as typed records under a shared schema:
+
+- **`status`**
+  - `agent_id`, `state`, `started_at`, `last_heartbeat_at`, `run_id?`
+  - State enum: `idle`, `running`, `blocked`, `waiting_approval`, `degraded`.
+- **`run`**
+  - `run_id`, `workflow_type`, `trigger`, `started_at`, `ended_at`, `duration_ms`, `outcome`
+  - Trigger enum: `scheduled`, `manual`, `event_driven`.
+- **`event`**
+  - `event_id`, `run_id`, `agent_id`, `event_type`, `severity`, `summary`, `created_at`, `metadata`
+  - Event type enum: `insight`, `task`, `system`, `handoff`.
+- **`alert`**
+  - `alert_id`, `event_id`, `threshold_key`, `threshold_value`, `observed_value`, `created_at`, `is_acknowledged`
+- **`approval`**
+  - `approval_id`, `run_id`, `action_label`, `requested_by`, `requested_at`, `expires_at`, `approval_state`
+  - Approval state enum: `pending`, `approved`, `rejected`, `expired`.
+
+### Refresh + Stream Semantics
+- Primary transport is SSE with incremental delivery for each record type.
+- Clients bootstrap with latest N (default 50) records, then subscribe for deltas.
+- On disconnect: exponential backoff reconnect; if retries exhausted, switch to 15-second polling.
+- Feed ordering is deterministic by `created_at DESC`, tie-broken by `event_id`.
+- Duplicate prevention uses idempotency key = `event_id` (`status` events key by `agent_id + last_heartbeat_at`).
+
+### Latency SLOs
+- P50 ingest-to-UI: <= 2s for status/event.
+- P95 ingest-to-UI: <= 5s for all non-bulk events.
+- Critical alert propagation: <= 3s P95.
+- Approval decision reflection: <= 2s P95.
+
+### Failure + Fallback Behavior
+- If ingestion pipeline lags, emit synthetic `system` event with severity `warning` to inform users.
+- If an agent misses two heartbeat windows, transition status to `degraded` and suspend dependent handoffs.
+- If schema validation fails, route to dead-letter queue and emit sanitized `system` placeholder event.
+- If transport unavailable, UI remains functional in read-only cached mode with manual refresh controls.
+
+### User Detail Tiers + Security Constraints
+- **Tier 1: Summary** — agent, summary, timestamp, severity.
+- **Tier 2: Operational** — run context, thresholds, workflow outcome, approval state.
+- **Tier 3: Diagnostic** — trace/correlation IDs, retry counters, raw sanitized metadata.
+- Role mapping:
+  - Workspace Member -> Tier 1
+  - Analyst/Editor -> Tier 1-2
+  - Admin/Owner -> Tier 1-3
+- Security rules:
+  - Secrets, credentials, API keys, and personal identifiers are redacted before persistence.
+  - Tier 3 data is never included in default exports or external webhook mirrors.
+  - Approval actions require explicit authorization and audit logging of actor + timestamp.
+
+### Acceptance Criteria: View Full Team Activity
+- The "View Full Team Activity" control navigates from widget to a dedicated timeline route and preserves filters.
+- The timeline supports filtering by agent, event type, severity, status, and approval state.
+- Minimum visible fields per row:
+  - `event_id`, `created_at`, `agent_id`, `event_type`, `severity`, `summary`
+  - `run_id`, `workflow_type`, `outcome`
+  - `alert_id` (when present), `approval_id` + `approval_state` (when present)
+- Row expansion reveals Tier 2 details; Tier 3 panel is visible only for admin/owner roles.
+- Inline interactions:
+  1. Acknowledge/unacknowledge alerts.
+  2. Approve/reject pending approval requests.
+  3. Jump from event row to related task/insight detail.
+- Navigation continuity: returning to dashboard restores previous Team Huddle scroll position and active filters.
+
+---
+
 ## 🚀 Future Roadmap
 
 *   **Inter-Agent Chat**: Allow agents to debate strategy (e.g., SEO Agent vs. Creative Agent).

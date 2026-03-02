@@ -79,3 +79,60 @@ The `RealTimeSemanticMonitor` service runs periodically (default: daily or on-de
 1.  **Polls SIF**: Checks for new indexed documents.
 2.  **Runs Agents**: Executes agent logic against the fresh index.
 3.  **Generates Alerts**: If a critical threshold is breached (e.g., Health < 50%), it sends a system notification.
+
+---
+
+## 🤝 Team Huddle
+
+The SEO Dashboard includes a dedicated **Team Huddle** stream that translates agent orchestration into a user-readable operational timeline.
+
+### Data Contract
+Each huddle item conforms to a normalized event envelope so the widget, activity page, and notification system render the same source of truth.
+
+| Contract Block | Required Fields | Notes |
+|---|---|---|
+| `status` | `agent_id`, `state`, `started_at`, `last_heartbeat_at` | `state` enum: `idle`, `running`, `blocked`, `waiting_approval`, `degraded`. |
+| `run` | `run_id`, `workflow_type`, `trigger`, `started_at`, `ended_at`, `duration_ms`, `outcome` | `trigger` enum: `scheduled`, `manual`, `event_driven`. |
+| `event` | `event_id`, `run_id`, `agent_id`, `event_type`, `severity`, `summary`, `created_at` | `event_type` enum: `insight`, `task`, `system`, `handoff`. |
+| `alert` | `alert_id`, `event_id`, `threshold_key`, `threshold_value`, `observed_value`, `created_at`, `is_acknowledged` | Used by in-product banners and digest notifications. |
+| `approval` | `approval_id`, `run_id`, `action_label`, `requested_by`, `requested_at`, `expires_at`, `approval_state` | `approval_state` enum: `pending`, `approved`, `rejected`, `expired`. |
+
+### Refresh + Stream Semantics
+- **Initial load**: fetch the latest 50 Team Huddle rows for the active workspace.
+- **Near real-time stream**: server-sent events (SSE) push deltas every 1-3 seconds when new events exist.
+- **Polling fallback**: if SSE disconnects, poll every 15 seconds with `since=<last_event_timestamp>`.
+- **Ordering rule**: sort by `created_at DESC`, break ties using monotonically increasing `event_id`.
+- **Idempotency**: clients de-duplicate using `event_id` to prevent duplicate cards during reconnect.
+
+### Latency Targets
+- **P50 ingest-to-display**: <= 2 seconds for `status` and `event` updates.
+- **P95 ingest-to-display**: <= 5 seconds under normal load.
+- **Critical alerts**: banner render in <= 3 seconds P95 after alert creation.
+- **Approval state changes**: reflected in UI in <= 2 seconds P95.
+
+### Failure + Fallback Behavior
+- If stream transport fails, show a non-blocking "Live updates paused" badge and automatically switch to polling.
+- If both stream and polling fail, keep last known data, mark timestamp as stale, and expose a "Retry" action.
+- If huddle payload validation fails, quarantine invalid records and render a generic "system event" row instead of crashing the feed.
+- If agent status heartbeats are missing for >2 intervals, render agent as `degraded` with tooltip context.
+
+### User-Visible Detail Tiers + Security Constraints
+- **Tier 1 (Overview)**: summary text, agent name, timestamp, severity color.
+- **Tier 2 (Operational)**: run metadata (`run_id`, trigger, duration, outcome), alert thresholds, approval state.
+- **Tier 3 (Debug/Admin)**: correlation IDs, raw payload excerpt, retry metadata, trace IDs.
+- Access controls:
+  - Tier 1 is available to all workspace members.
+  - Tier 2 requires analyst/editor role.
+  - Tier 3 requires admin role and is excluded from exported reports by default.
+- Sensitive fields (tokens, secrets, external auth headers, personal identifiers) must be redacted prior to persistence and never emitted in SSE payloads.
+
+### Acceptance Criteria: View Full Team Activity
+- "View Full Team Activity" opens a full-page activity timeline filtered to the currently selected date range and workspace.
+- Expected row fields: `event_id`, `created_at`, `agent_id`, `event_type`, `severity`, `summary`, `run_id`, `workflow_type`, `outcome`, `approval_state` (if present), `alert_id` (if present).
+- Interaction flow:
+  1. User clicks **View Full Team Activity** from Team Huddle widget.
+  2. System opens Activity page and preserves dashboard filters (date, agent, severity).
+  3. User expands a row to view Tier 2 details; admins can toggle Tier 3 diagnostics.
+  4. User can acknowledge alerts inline and approve/reject pending approvals where authorized.
+  5. Returning to Dashboard restores previous scroll position and active widget tab.
+- Empty state behavior: show "No team activity in this range" plus quick actions to clear filters or jump to last 24 hours.
