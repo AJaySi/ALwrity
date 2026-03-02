@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Any, Dict, Optional
 from datetime import datetime
+from loguru import logger
 
 from sqlalchemy.orm import Session
 
@@ -182,7 +183,13 @@ async def set_task_status(
             feedback_text=completion_notes
         )
     except Exception as e:
-        pass # Don't block response on memory update failure
+        logger.warning(
+            "Task memory outcome recording failed for user_id={} task_id={} error_class={} error_message={}",
+            user_id,
+            task_id,
+            type(e).__name__,
+            str(e),
+        )
 
     plan_for_date = db.query(DailyWorkflowPlan).filter(DailyWorkflowPlan.id == task.plan_id).first()
     plan_date = plan_for_date.date if plan_for_date and plan_for_date.date else ""

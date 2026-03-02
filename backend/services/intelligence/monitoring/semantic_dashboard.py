@@ -368,9 +368,15 @@ class RealTimeSemanticMonitor:
                 
                 # Using StrategyArchitect for pillar/gap analysis
                 if hasattr(self.strategy_agent, 'find_semantic_gaps'):
-                    # This method requires competitor indices, which is complex to get here without full context.
-                    # Let's use the SIF service directly for lighter weight insights or call the agent's high level method.
-                    pass
+                    logger.warning(
+                        "Skipping direct semantic gap method invocation for user_id={} due to missing competitor index context",
+                        self.user_id,
+                    )
+                else:
+                    logger.warning(
+                        "Strategy agent missing find_semantic_gaps for user_id={}, using dashboard-context fallback",
+                        self.user_id,
+                    )
                 
                 # Alternative: Query SIF directly for "content gaps" if they are indexed as such
                 # Or generate them now via LLM + SIF Context
@@ -421,6 +427,17 @@ class RealTimeSemanticMonitor:
                             expires_at=(current_time + timedelta(days=7)).isoformat(),
                             source_agent="Strategy Architect Agent"
                         ))
+
+                    if not ai_insights:
+                        logger.warning(
+                            "Dashboard context returned no ai_insights for user_id={}, insight generation is degraded",
+                            self.user_id,
+                        )
+                else:
+                    logger.warning(
+                        "SEO dashboard context unavailable for user_id={}, using fallback insight only",
+                        self.user_id,
+                    )
 
             except Exception as agent_err:
                 logger.warning(f"Agent insight generation failed: {agent_err}")
@@ -514,8 +531,13 @@ class RealTimeSemanticMonitor:
                             dedupe_key=dedupe_key,
                         )
                     db.close()
-            except Exception:
-                pass
+            except Exception as alert_err:
+                logger.warning(
+                    "Unable to persist semantic alerts for user_id={} error_class={} error_message={}",
+                    self.user_id,
+                    type(alert_err).__name__,
+                    str(alert_err),
+                )
             await self._send_alerts(alerts)
 
     async def get_cache_stats(self) -> Dict[str, Any]:
