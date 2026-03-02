@@ -1,2 +1,0 @@
-# Import content planning endpoints
-from api.content_planning import router as content_planning_router
