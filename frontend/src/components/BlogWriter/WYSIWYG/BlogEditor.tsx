@@ -237,8 +237,9 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                     </h1>
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-1">
                       <Tooltip title="✨ ALwrity it">
-                        <IconButton onClick={handleSuggestTitle} disabled={isTitleLoading} size="small">
-                          {isTitleLoading ? <CircularProgress size={20} /> : <AutoAwesomeIcon className="text-purple-500" fontSize="small"/>}
+                        {/* isTitleLoading is currently unused but kept for future implementation */}
+                        <IconButton onClick={handleSuggestTitle} size="small">
+                          <AutoAwesomeIcon className="text-purple-500" fontSize="small"/>
                         </IconButton>
                       </Tooltip>
                     </div>
