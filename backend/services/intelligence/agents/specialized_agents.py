@@ -14,6 +14,7 @@ from datetime import datetime
 from loguru import logger
 from ..txtai_service import TxtaiIntelligenceService
 from services.intelligence.agents.core_agent_framework import BaseALwrityAgent, AgentAction, TaskProposal
+from services.agent_activity_service import AgentActivityService, build_agent_event_payload
 from services.seo_tools.content_strategy_service import ContentStrategyService
 from services.analytics import PlatformAnalyticsService
 from services.intelligence.sif_agents import SharedLLMWrapper, LocalLLMWrapper
@@ -61,6 +62,41 @@ class SIFBaseAgent(BaseALwrityAgent):
         logger.info(f"[{self.__class__.__name__}] {operation}")
         if kwargs:
             logger.debug(f"[{self.__class__.__name__}] Parameters: {kwargs}")
+
+        db = None
+        try:
+            from services.database import get_session_for_user
+
+            db = get_session_for_user(self.user_id)
+            if not db:
+                return
+
+            activity = AgentActivityService(db, self.user_id)
+            activity.log_event(
+                event_type="progress",
+                severity="info",
+                message=f"{self.__class__.__name__}: {operation}",
+                payload=build_agent_event_payload(
+                    phase="specialized_agent",
+                    step=operation.lower().replace(" ", "_"),
+                    tool_name=self.__class__.__name__,
+                    input_summary=str(kwargs)[:300] if kwargs else None,
+                    output_summary="Operation invoked",
+                    decision_reason="Agent method execution trace",
+                    safe_debug=True,
+                    metadata={"params": kwargs} if kwargs else {},
+                ),
+                run_id=None,
+                agent_type=self.agent_type,
+            )
+        except Exception:
+            pass
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
 
     def _create_txtai_agent(self):
         """

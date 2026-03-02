@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 from models.agent_activity_models import AgentAlert
-from services.agent_activity_service import AgentActivityService
+from services.agent_activity_service import AgentActivityService, build_agent_event_payload
 from services.llm_providers.main_text_generation import llm_text_gen
 from loguru import logger
 
@@ -430,7 +430,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
         event_type="plan",
         severity="info",
         message="Building grounded daily workflow plan",
-        payload={"grounding": grounding},
+        payload=build_agent_event_payload(phase="planning", step="build_grounded_plan", tool_name="llm_text_gen", progress_percent=10, input_summary="Grounding data assembled from onboarding + alerts", output_summary="Preparing daily workflow generation", decision_reason="Need context-aware workflow", evidence_refs=["onboarding_data","recent_agent_alerts"], safe_debug=True, metadata={"grounding": grounding}),
         run_id=run.id,
         agent_type="TodayWorkflowGenerator",
     )
@@ -449,7 +449,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
             event_type="warning",
             severity="warning",
             message=str(e)[:2000],
-            payload={"fallback": True},
+            payload=build_agent_event_payload(phase="generation", step="llm_failed_fallback", tool_name="llm_text_gen", progress_percent=70, output_summary="LLM generation failed, using fallback tasks", decision_reason="Exception during workflow generation", safe_debug=False, metadata={"fallback": True}),
             run_id=run.id,
             agent_type="TodayWorkflowGenerator",
         )
@@ -467,7 +467,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
         event_type="final_summary",
         severity="info",
         message="Daily workflow plan generated",
-        payload={"date": date, "task_count": len(result.get("tasks", []))},
+        payload=build_agent_event_payload(phase="generation", step="workflow_generated", tool_name="llm_text_gen", progress_percent=100, output_summary=f"Generated {len(result.get('tasks', []))} tasks", decision_reason="Workflow assembled successfully", evidence_refs=[date], safe_debug=True, metadata={"date": date, "task_count": len(result.get("tasks", []))}),
         run_id=run.id,
         agent_type="TodayWorkflowGenerator",
     )
