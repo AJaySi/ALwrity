@@ -438,10 +438,12 @@ export const useCampaignCreator = () => {
   }, []);
 
   // Personalization
-  const [userPreferences, setUserPreferences] = useState<any>(null);
-  const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
-  const [recommendations, setRecommendations] = useState<any>(null);
-  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  // Removed duplicate state declarations that were causing build errors
+  // These are already declared at the top of the hook
+  // const [userPreferences, setUserPreferences] = useState<any>(null);
+  // const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
+  // const [recommendations, setRecommendations] = useState<any>(null);
+  // const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
 
   const getPersonalizedDefaults = useCallback(
     async (formType: string): Promise<any> => {
