@@ -474,11 +474,11 @@ async def seo_dashboard_health_check():
 # Phase 2B: Semantic health monitoring endpoint
 async def get_semantic_health(current_user: dict = Depends(get_current_user)) -> SemanticHealthMetric:
     """
-    Get real-time semantic health metrics for the user's content and competitors.
+    Get the canonical semantic health summary for the user's content and competitors.
     This endpoint provides Phase 2B semantic intelligence monitoring data.
-    
+
     Returns:
-        SemanticHealthMetric with current health status, score, and recommendations
+        SemanticHealthMetric with health status, aggregate score, and recommendations.
     """
     try:
         user_id = str(current_user.get('id'))
@@ -487,7 +487,7 @@ async def get_semantic_health(current_user: dict = Depends(get_current_user)) ->
         semantic_monitor = RealTimeSemanticMonitor(user_id)
         
         # Get current semantic health (will use cache if available)
-        semantic_health = await semantic_monitor.check_semantic_health(user_id)
+        semantic_health: SemanticHealthMetric = await semantic_monitor.check_semantic_health(user_id)
         
         logger.info(f"[Semantic Health API] Retrieved health data for user {user_id}: {semantic_health.status} (score: {semantic_health.value:.2f})")
         
