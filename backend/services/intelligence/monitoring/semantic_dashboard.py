@@ -100,7 +100,7 @@ class RealTimeSemanticMonitor:
         
         logger.info(f"Real-time semantic monitor initialized for user {user_id}")
 
-    async def check_semantic_health(self, user_id: Optional[str] = None) -> Any:
+    async def check_semantic_health(self, user_id: Optional[str] = None) -> SemanticHealthMetric:
         """
         Public wrapper for semantic health check.
         Aggregates metrics into a single health status object.
@@ -109,12 +109,19 @@ class RealTimeSemanticMonitor:
         metrics = await self._check_semantic_health()
         
         if not metrics:
-            # Return default/unknown state if no metrics
-            @dataclass
-            class HealthResult:
-                status: str = "unknown"
-                value: float = 0.0
-            return HealthResult()
+            # Return a canonical semantic health summary when no metrics are available.
+            return SemanticHealthMetric(
+                metric_name="semantic_health",
+                value=0.0,
+                threshold=0.0,
+                status="warning",
+                timestamp=datetime.utcnow().isoformat(),
+                description="No semantic health metrics available yet",
+                recommendations=[
+                    "Run semantic analysis to populate health metrics",
+                    "Check data sources and try again shortly"
+                ]
+            )
             
         # Aggregate metrics
         # 1. Status: "critical" if any critical, else "warning" if any warning, else "healthy"
@@ -128,13 +135,32 @@ class RealTimeSemanticMonitor:
         
         # 2. Value: Average of metric values
         avg_value = sum(m.value for m in metrics) / len(metrics)
-        
-        @dataclass
-        class HealthResult:
-            status: str
-            value: float
-            
-        return HealthResult(status=status, value=avg_value)
+
+        # 3. Threshold: Average threshold across health metrics
+        avg_threshold = sum(m.threshold for m in metrics) / len(metrics)
+
+        # 4. Recommendations: de-duplicated recommendations from non-healthy metrics
+        recommendations = []
+        seen_recommendations = set()
+        for metric in metrics:
+            if metric.status != "healthy":
+                for recommendation in metric.recommendations:
+                    if recommendation not in seen_recommendations:
+                        seen_recommendations.add(recommendation)
+                        recommendations.append(recommendation)
+
+        if not recommendations:
+            recommendations = ["Continue monitoring semantic performance"]
+
+        return SemanticHealthMetric(
+            metric_name="semantic_health",
+            value=avg_value,
+            threshold=avg_threshold,
+            status=status,
+            timestamp=datetime.utcnow().isoformat(),
+            description="Aggregated semantic health across monitoring metrics",
+            recommendations=recommendations,
+        )
     
     async def start_monitoring(self, competitors: List[str] = None) -> bool:
         """Start real-time semantic monitoring."""
