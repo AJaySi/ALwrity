@@ -531,15 +531,57 @@ class ContentGuardianAgent(SIFBaseAgent):
                 logger.warning(f"[{self.__class__.__name__}] Text too short for meaningful originality check")
                 return {"originality_score": 0.0, "reason": "Text too short"}
             
-            # STUB: Implement cross-index search against competitor content
-            # This would search the text against a competitor-specific index
-            
-            logger.info(f"[{self.__class__.__name__}] Originality verification stub completed")
+            query = text.strip()
+            competitor_results = []
+            method = "user_index_competitor_filter"
+
+            if competitor_index is not None and hasattr(competitor_index, "search"):
+                method = "competitor_index_search"
+                raw_results = competitor_index.search(query, limit=5)
+                if asyncio.iscoroutine(raw_results):
+                    raw_results = await raw_results
+                competitor_results = raw_results or []
+            else:
+                raw_results = await self.intelligence.search(query, limit=10)
+                for result in raw_results or []:
+                    metadata_raw = result.get("object")
+                    metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
+                    if not metadata and isinstance(metadata_raw, str):
+                        try:
+                            metadata = json.loads(metadata_raw)
+                        except Exception:
+                            metadata = {}
+
+                    doc_type = str((metadata or {}).get("type", "")).lower()
+                    source = str((metadata or {}).get("source", "")).lower()
+                    if "competitor" in doc_type or "competitor" in source:
+                        competitor_results.append(result)
+
+            if not competitor_results:
+                return {
+                    "originality_score": 1.0,
+                    "confidence": 0.6,
+                    "method": method,
+                    "notes": "No competitor overlap detected in available index"
+                }
+
+            top_match = max(competitor_results, key=lambda item: float(item.get("score", 0.0)))
+            top_score = max(0.0, min(1.0, float(top_match.get("score", 0.0))))
+            originality_score = max(0.0, round(1.0 - top_score, 4))
+            confidence = round(min(1.0, 0.55 + (min(len(competitor_results), 5) * 0.07)), 3)
+            warning = originality_score < self.ORIGINALITY_THRESHOLD
+
             return {
-                "originality_score": 0.95,  # Placeholder
-                "confidence": 0.8,
-                "method": "semantic_comparison",
-                "notes": "Competitor index integration pending"
+                "originality_score": originality_score,
+                "confidence": confidence,
+                "method": method,
+                "warning": warning,
+                "threshold": self.ORIGINALITY_THRESHOLD,
+                "top_competitor_match": {
+                    "id": top_match.get("id"),
+                    "score": round(top_score, 4)
+                },
+                "matches_evaluated": len(competitor_results)
             }
             
         except Exception as e:

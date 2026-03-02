@@ -168,12 +168,6 @@ class ALwrityAgentOrchestrator:
                 self.social_agent = SocialAmplificationAgent(self.user_id, self.config.shared_llm, llm=self.llm)
                 self.agents['social'] = self.social_agent
 
-            # Strategy Architect Agent
-            if enabled_by_key.get("strategy_architect", True):
-                from services.intelligence.txtai_service import TxtaiIntelligenceService
-                intel_service = TxtaiIntelligenceService(self.user_id)
-                self.strategy_agent = StrategyArchitectAgent(intel_service, self.user_id)
-                self.agents['strategy'] = self.strategy_agent
 
             # Trend Surfer Agent
             if enabled_by_key.get("trend_surfer", True):

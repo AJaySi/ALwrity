@@ -271,3 +271,33 @@ The Today's Tasks Workflow System is designed to transform ALwrity's complex dig
 ---
 
 *This document serves as the foundation for implementing the Today's Tasks Workflow System. It should be reviewed and updated regularly as the project progresses and new insights are gained.*
+
+## ✅ **Production Release Gates (SIF Today Workflow)**
+
+Before enabling broad production rollout, verify the following release gates:
+
+1. **Committee completeness**
+   - `StrategyArchitectAgent` is initialized once and included in committee polling.
+   - Daily workflow generation includes all major agent lanes (`strategy`, `content`, `seo`, `social`, `competitor`).
+
+2. **Semantic intelligence quality gates**
+   - `find_semantic_gaps` returns evidence-backed topic gaps (no placeholder outputs).
+   - `verify_originality` uses real competitor similarity evidence (no synthetic placeholder score).
+
+3. **Response contract gates**
+   - Semantic health API returns the canonical `SemanticHealthMetric` structure in success and fallback paths.
+   - Workflow task payloads always pass pillar coverage guardrails unless explicitly disabled by config.
+
+4. **Observability gates**
+   - Error paths emit structured logs with `user_id` and operation context.
+   - Semantic filter degraded-path counters are incremented and logged.
+
+5. **Test and validation gates**
+   - Automated tests cover:
+     - single strategy agent initialization path,
+     - semantic health aggregation contract,
+     - originality score computation path,
+     - pillar coverage backfill behavior.
+   - Static compile check passes on modified backend modules.
+
+**Release recommendation**: proceed only when all gates pass in CI and staging smoke tests.
