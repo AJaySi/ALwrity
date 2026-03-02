@@ -292,10 +292,10 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
         # Define agents to poll
         agents_to_poll = [
             orchestrator.agents.get('content'),      # ContentStrategyAgent
+            orchestrator.agents.get('strategy'),     # StrategyArchitectAgent
             orchestrator.agents.get('seo'),          # SEOOptimizationAgent
             orchestrator.agents.get('social'),       # SocialAmplificationAgent
             orchestrator.agents.get('competitor'),   # CompetitorResponseAgent
-            orchestrator.agents.get('strategy'),     # StrategyArchitectAgent
         ]
         
         # Filter out None agents (disabled/failed init)
