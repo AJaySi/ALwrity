@@ -153,10 +153,16 @@ class SIFOnboardingIntegration:
             content_pillars = await self.strategy_agent.discover_pillars()
             
             # Find semantic gaps (what competitors cover that user doesn't)
-            semantic_gaps = await self.strategy_agent.find_semantic_gaps(competitor_indices=[])
-            
+            indexed_documents = await self.strategy_agent._fetch_index_documents()
+            competitor_doc_ids = [
+                str(doc.get("id", ""))
+                for doc in indexed_documents
+                if self.strategy_agent._infer_document_role(doc.get("metadata", {})) == "competitor"
+            ]
+            semantic_gaps = await self.strategy_agent.find_semantic_gaps(competitor_indices=competitor_doc_ids)
+
             # Analyze content themes and topics
-            themes_analysis = await self._analyze_content_themes(user_content, competitor_content)
+            themes_analysis = await self._analyze_content_themes(indexed_documents)
             
             # Generate strategic recommendations
             recommendations = await self._generate_strategic_recommendations(
@@ -185,47 +191,65 @@ class SIFOnboardingIntegration:
                 "error": str(e)
             }
     
-    async def _analyze_content_themes(self, user_content: List[Dict], competitor_content: List[Dict]) -> Optional[Dict[str, Any]]:
-        """Analyze content themes and topics using semantic search."""
+    async def _analyze_content_themes(self, indexed_documents: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Analyze themes from indexed metadata instead of static literals."""
         logger.info("[SIFOnboarding] Analyzing content themes")
-        
+
         try:
-            # Combine all content for theme analysis
-            all_content = user_content + competitor_content
-            
-            if not all_content:
+            if not indexed_documents:
                 return None
-            
-            # Extract key themes using semantic search
-            themes = []
-            theme_queries = [
-                "digital marketing strategies",
-                "content marketing best practices",
-                "SEO optimization techniques",
-                "social media marketing",
-                "email marketing campaigns",
-                "brand positioning and messaging"
+
+            user_docs = [
+                doc for doc in indexed_documents
+                if self.strategy_agent._infer_document_role(doc.get("metadata", {})) == "user"
             ]
-            
-            for query in theme_queries:
-                results = await self.intelligence.search(query, limit=3)
-                if results:
-                    themes.append({
-                        "theme": query,
-                        "relevance_score": results[0].get("score", 0) if results else 0,
-                        "top_result": results[0] if results else None
-                    })
-            
-            # Sort themes by relevance
-            themes.sort(key=lambda x: x["relevance_score"], reverse=True)
-            
+            competitor_docs = [
+                doc for doc in indexed_documents
+                if self.strategy_agent._infer_document_role(doc.get("metadata", {})) == "competitor"
+            ]
+            if not user_docs and not competitor_docs:
+                return None
+
+            user_theme_density = self.strategy_agent._extract_topic_density(user_docs)
+            competitor_theme_density = self.strategy_agent._extract_topic_density(competitor_docs)
+            all_topics = set(user_theme_density) | set(competitor_theme_density)
+
+            ranked_themes = []
+            for topic in all_topics:
+                user_score = user_theme_density.get(topic, 0.0)
+                competitor_score = competitor_theme_density.get(topic, 0.0)
+                ranked_themes.append({
+                    "theme": topic,
+                    "user_density": round(user_score, 4),
+                    "competitor_density": round(competitor_score, 4),
+                    "combined_relevance": round((user_score + competitor_score) / 2, 4),
+                    "coverage_delta": round(competitor_score - user_score, 4),
+                    "classification": (
+                        "competitor_led"
+                        if competitor_score > user_score + 0.05
+                        else "user_led"
+                        if user_score > competitor_score + 0.05
+                        else "shared"
+                    ),
+                    "evidence": {
+                        "user_sample_titles": self.strategy_agent._sample_titles_for_topic(user_docs, topic),
+                        "competitor_sample_titles": self.strategy_agent._sample_titles_for_topic(competitor_docs, topic)
+                    }
+                })
+
+            ranked_themes.sort(
+                key=lambda item: (item["combined_relevance"], abs(item["coverage_delta"])),
+                reverse=True
+            )
+
             return {
-                "top_themes": themes[:5],
-                "total_themes_analyzed": len(themes),
-                "user_content_themes": [t for t in themes if any(t["theme"] in page.get("content", "") for page in user_content)],
-                "competitor_content_themes": [t for t in themes if any(t["theme"] in page.get("content", "") for page in competitor_content)]
+                "top_themes": ranked_themes[:8],
+                "total_themes_analyzed": len(ranked_themes),
+                "user_theme_count": len(user_theme_density),
+                "competitor_theme_count": len(competitor_theme_density),
+                "theme_source": "indexed_metadata"
             }
-            
+
         except Exception as e:
             logger.error(f"[SIFOnboarding] Theme analysis failed: {e}")
             return None
