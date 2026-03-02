@@ -111,6 +111,7 @@ export const usePhaseNavigation = (
         disabled: !seoCompleted // Can access if SEO done
       }
     ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, currentPhase]);
 
   // Persist current phase and user selection

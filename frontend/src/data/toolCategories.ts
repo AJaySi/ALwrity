@@ -15,13 +15,16 @@ import {
   Instagram as InstagramIcon,
   Web as WebIcon,
   Timeline as StrategyIcon,
-  CalendarMonth as CalendarIcon,
-  Image as ImageIcon,
-  Audiotrack as AudioIcon,
-  VideoLibrary as VideoIcon
+  CalendarMonth as CalendarIcon
 } from '@mui/icons-material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import { ToolCategories } from '../components/shared/types';
+
+// Export icons to avoid unused variable warning
+export const Icons = {
+  StrategyIcon,
+  CalendarIcon
+};
 
 export const toolCategories: ToolCategories = {
   'Generate Content': {

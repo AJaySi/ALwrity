@@ -66,7 +66,7 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
       asset_type: filters.asset_type,
       source_module: filters.source_module,
       search: filters.search,
-      tags: filters.tags,
+      tags: filters.tags ? [...filters.tags] : undefined, // Create new array to ensure stability
       favorites_only: filters.favorites_only,
       collection_id: filters.collection_id,
       date_from: filters.date_from,
@@ -80,7 +80,8 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
     filters.asset_type,
     filters.source_module,
     filters.search,
-    filters.tags?.join(','),
+    // Use JSON.stringify for array comparison in dependency array
+    filters.tags ? JSON.stringify(filters.tags) : undefined,
     filters.favorites_only,
     filters.collection_id,
     filters.date_from,
