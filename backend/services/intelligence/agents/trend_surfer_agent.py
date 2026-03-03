@@ -18,8 +18,8 @@ class TrendSurferAgent(SIFBaseAgent):
     "Surfs" the trends detected by MarketSignalDetector to propose timely content.
     """
     
-    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str):
-        super().__init__(intelligence_service, user_id, agent_type="trend_surfer")
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, **kwargs):
+        super().__init__(intelligence_service, user_id, agent_type="trend_surfer", **kwargs)
         self.user_id = user_id
         self.signal_detector = MarketSignalDetector(user_id)
         self.trends_service = GoogleTrendsService()

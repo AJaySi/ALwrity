@@ -13,12 +13,19 @@ from abc import ABC, abstractmethod
 
 # txtai imports for native agent framework
 try:
-    from txtai import Agent, LLM
-    TXTAI_AVAILABLE = Agent.__module__ != "txtai.agent.placeholder"
+    from txtai.pipeline import Agent, LLM
+    TXTAI_AVAILABLE = True
 except ImportError:
-    TXTAI_AVAILABLE = False
-    # Fallback implementation for development
-    logging.warning("txtai not available, using fallback implementation")
+    try:
+        from txtai import Agent, LLM
+        TXTAI_AVAILABLE = True
+    except ImportError:
+        TXTAI_AVAILABLE = False
+        Agent = None
+        LLM = None
+        logging.warning("txtai not available")
+
+_core_llm_cache = {}
 
 # Optional MLflow integration
 try:
@@ -162,12 +169,15 @@ class BaseALwrityAgent(ABC):
     _prompt_context_cache: Dict[str, Dict[str, Any]] = {}
     _profile_cache: Dict[str, Dict[str, Any]] = {}
     
-    def __init__(self, user_id: str, agent_type: str, model_name: str = "Qwen/Qwen3-4B-Instruct-2507", llm: Any = None, enable_tracing: bool = True):
+    def __init__(self, user_id: str, agent_type: str, model_name: str = "Qwen/Qwen3-4B-Instruct-2507", llm: Any = None, enable_tracing: bool = True, **kwargs):
         self.user_id = user_id
         self.agent_type = agent_type
         self.model_name = model_name
         self.agent_id = f"{agent_type}_{user_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         self.enable_tracing = enable_tracing
+        self.kwargs = kwargs
+        # Optional task hint; do not enforce
+        self.llm_task = str(self.kwargs.get("task") or "").strip()
         self.performance = AgentPerformance(
             agent_id=self.agent_id,
             total_actions=0,
@@ -191,26 +201,90 @@ class BaseALwrityAgent(ABC):
         self._agent_profile = self._load_agent_profile_overrides()
         self._prompt_context = self._load_prompt_context()
         
+        # Note: We cannot await async methods in __init__.
+        # If _create_txtai_agent is async, it must be called explicitly after initialization
+        # or we must use a factory method.
+        # For now, we will handle sync initialization here, and specialized agents 
+        # must handle their async initialization separately or via a sync wrapper.
+        
         if TXTAI_AVAILABLE:
             try:
                 if not self.llm:
-                    # Create new LLM if not provided
-                    # Hardening: Explicitly set task to avoid 'text2text-generation' default failures
-                    raw_llm = LLM(model_name, task="text-generation")
-                    # Wrap it
+                    try:
+                        # Use global cache for core agent LLMs too
+                        cache_key = f"{model_name}:language-generation"
+                        if cache_key in _core_llm_cache:
+                            raw_llm = _core_llm_cache[cache_key]
+                        else:
+                            # Use language-generation for txtai internal mapping
+                            raw_llm = LLM(path=model_name, task="language-generation")
+                            _core_llm_cache[cache_key] = raw_llm
+                    except Exception as e:
+                        logger.error(f"Failed to initialize LLM for {agent_type}: {e}")
+                        raise
                     self.llm = TrackingLLMWrapper(raw_llm, self.user_id, self.model_name)
                 
                 try:
-                    self.txtai_agent = self._create_txtai_agent()
-                    logger.info(f"Initialized txtai agent for {agent_type} - {self.agent_id}")
+                    # _create_txtai_agent might be async or sync
+                    # CRITICAL FIX: We cannot await here. If it's async, we must run it in a loop or warn.
+                    # Given specialized agents define it as async, we need a sync wrapper or run_until_complete.
+                    
+                    if asyncio.iscoroutinefunction(self._create_txtai_agent):
+                         try:
+                             # Check if we are in a running loop
+                             try:
+                                 loop = asyncio.get_running_loop()
+                             except RuntimeError:
+                                 loop = None
+                             
+                             if loop and loop.is_running():
+                                 # We are already in a loop (e.g. server), we can't block.
+                                 # This is a design flaw in initializing async agents in __init__.
+                                 # We will defer initialization or use a sync wrapper if possible.
+                                 logger.warning(f"Cannot await async _create_txtai_agent for {agent_type} in __init__ within running loop. Initializing via create_task (agent may not be ready immediately).")
+                                 
+                                 # Create a task to initialize it
+                                 async def async_init():
+                                     try:
+                                         self.txtai_agent = await self._create_txtai_agent()
+                                         logger.info(f"Async initialized txtai agent for {agent_type} - {self.agent_id}")
+                                     except Exception as e:
+                                         logger.error(f"Async initialization failed for {agent_type}: {e}")
+                                         
+                                 loop.create_task(async_init())
+                                 # Temporarily set to None or a placeholder, but we can't set it to the result yet
+                                 self.txtai_agent = None 
+                             else:
+                                 # No running loop, we can run_until_complete
+                                 if not loop:
+                                     loop = asyncio.new_event_loop()
+                                     asyncio.set_event_loop(loop)
+                                 self.txtai_agent = loop.run_until_complete(self._create_txtai_agent())
+                         except Exception as e:
+                             logger.error(f"Failed to handle async initialization for {agent_type}: {e}")
+                             # Try fallback to sync run if possible
+                             try:
+                                 self.txtai_agent = asyncio.run(self._create_txtai_agent())
+                             except Exception as e2:
+                                 logger.error(f"Even asyncio.run failed: {e2}")
+                                 raise e
+                    else:
+                         self.txtai_agent = self._create_txtai_agent()
+                         
+                    if self.txtai_agent:
+                        logger.info(f"Initialized txtai agent for {agent_type} - {self.agent_id}")
+                    else:
+                        raise RuntimeError(f"txtai agent creation returned None for {agent_type}")
                 except Exception as inner_e:
-                    logger.warning(f"Could not initialize specific txtai agent for {agent_type}: {inner_e}")
-                    self.txtai_agent = self._create_fallback_agent()
+                    logger.error(f"Could not initialize specific txtai agent for {agent_type}: {inner_e}")
+                    # Fail fast: Re-raise exception
+                    raise inner_e
             except Exception as e:
                 logger.error(f"Failed to initialize txtai agent for {agent_type}: {e}")
-                self.txtai_agent = self._create_fallback_agent()
+                # Fail fast: Re-raise exception
+                raise e
         else:
-            self.txtai_agent = self._create_fallback_agent()
+            raise RuntimeError(f"txtai not available for {agent_type}")
 
         # Initialize safety framework
         self.safety_framework = get_safety_framework(user_id)
@@ -252,6 +326,10 @@ class BaseALwrityAgent(ABC):
         if value.lower() == "strategyorchestrator".lower():
             return "strategy_orchestrator"
         return value
+
+    def _resolve_llm_task(self, requested_task: Optional[str]) -> str:
+        # No enforcement; return provided value or empty string
+        return str(requested_task or "").strip()
 
     def _load_agent_profile_overrides(self) -> Dict[str, Any]:
         cache_key = f"{self.user_id}:{self.agent_key}"
@@ -880,8 +958,8 @@ class BaseALwrityAgent(ABC):
 class StrategyOrchestratorAgent(BaseALwrityAgent):
     """Central orchestrator agent that coordinates all marketing agents"""
     
-    def __init__(self, user_id: str, market_detector: Any = None, performance_monitor: Any = None, llm: Any = None):
-        super().__init__(user_id, "StrategyOrchestrator", llm=llm)
+    def __init__(self, user_id: str, market_detector: Any = None, performance_monitor: Any = None, llm: Any = None, **kwargs):
+        super().__init__(user_id, "StrategyOrchestrator", llm=llm, **kwargs)
         self.market_detector = market_detector
         self.performance_monitor = performance_monitor
         self.sub_agents = {}
@@ -895,67 +973,11 @@ class StrategyOrchestratorAgent(BaseALwrityAgent):
         """Create txtai orchestrator agent with coordination tools"""
         if not TXTAI_AVAILABLE:
             return None
-            
-        return Agent(
-            llm=self.llm,
-            tools=[
-                {
-                    "name": "market_signal_detector",
-                    "description": "Detects market changes and competitor activities",
-                    "target": self._market_signal_detector_tool
-                },
-                {
-                    "name": "google_trends_fetcher",
-                    "description": "Fetches Google Trends data and embeds it into SIF for retrieval",
-                    "target": self._google_trends_fetcher_tool
-                },
-                {
-                    "name": "agent_coordinator",
-                    "description": "Coordinates actions between multiple agents",
-                    "target": self._agent_coordinator_tool
-                },
-                {
-                    "name": "performance_analyzer",
-                    "description": "Analyzes marketing performance metrics",
-                    "target": self._performance_analyzer_tool
-                },
-                {
-                    "name": "strategy_synthesizer",
-                    "description": "Synthesizes unified strategies from multiple inputs",
-                    "target": self._strategy_synthesizer_tool
-                },
-                {
-                    "name": "task_delegator",
-                    "description": "Delegates specific tasks to specialized agents (content, competitor, seo, social)",
-                    "target": self._delegate_task_tool
-                },
-                {
-                    "name": "kickoff_gsc_first_pass",
-                    "description": "Kicks off first-pass execution by invoking SEO/Content default GSC plans",
-                    "target": self._kickoff_gsc_first_pass_tool
-                }
-            ],
-            max_iterations=15,
-            system=self.get_effective_system_prompt(f"""You are the Marketing Strategy Orchestrator for ALwrity user {self.user_id}.
-            
-            Your role is to coordinate all marketing agents, analyze market signals,
-            and synthesize unified strategies.
-            
-            Key Responsibility: DELEGATE tasks to specialized agents.
-            - Content Strategy Agent: For content analysis, gaps, and optimization.
-            - Competitor Response Agent: For monitoring and counter-strategies.
-            - SEO Optimization Agent: For technical SEO and keywords.
-            - Social Amplification Agent: For social trends and distribution.
-            
-            Use the 'task_delegator' tool to assign work to these agents.
-            Do not just plan; EXECUTE by delegating.
-            
-            Always prioritize user goals and maintain safety constraints.
-            Coordinate multi-agent responses to market changes effectively.
-            
-            First, call 'kickoff_gsc_first_pass' to ground the plan on live GSC signals."""
-            )
-        )
+
+        _llm_for_agent = self.llm
+        for _ in range(3):
+            _llm_for_agent = getattr(_llm_for_agent, "llm", _llm_for_agent)
+        return Agent(llm=_llm_for_agent, tools=[], max_iterations=15)
     
     async def _market_signal_detector_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Tool for detecting market signals"""

@@ -25,8 +25,9 @@ except ImportError:
 
 class SharedLLMWrapper:
     """Wraps the shared ALwrity LLM service to look like a txtai LLM."""
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, task: Optional[str] = None):
         self.user_id = user_id
+        self.task = task
     
     def generate(self, prompt: str, **kwargs) -> str:
         """Generate text using the shared LLM provider."""
@@ -41,25 +42,54 @@ class SharedLLMWrapper:
     def __call__(self, prompt: str, **kwargs) -> str:
         return self.generate(prompt, **kwargs)
 
+_local_llm_cache = {}
+
 class LocalLLMWrapper:
     """
-    Lazily loads a local LLM via txtai.
-    This prevents blocking server startup with heavy model loads.
+    Lazily loads a local LLM via txtai and caches it globally.
+    This prevents blocking server startup and redundant model loads.
     """
-    def __init__(self, model_path: str, task: str = "text-generation"):
+    def __init__(self, model_path: str, task: str = None):
         self.model_path = model_path
         self.task = task
-        self._llm = None
+        # No self._llm here, we use the global cache
         
     @property
     def llm(self):
-        if self._llm is None:
-            if LLM is None:
-                raise ImportError("txtai.pipeline.LLM is not available")
-            logger.info(f"Loading local LLM: {self.model_path} with task: {self.task}")
-            # Explicitly set task to avoid 'text2text-generation' default failures
-            self._llm = LLM(path=self.model_path, task=self.task)
-        return self._llm
+        # Create a cache key based on model path and task
+        cache_key = f"{self.model_path}:{self.task}"
+        
+        if cache_key in _local_llm_cache:
+            return _local_llm_cache[cache_key]
+            
+        if LLM is None:
+            raise ImportError("txtai.pipeline.LLM is not available")
+            
+        task_to_use = (self.task or "language-generation").strip()
+        # Explicitly force language-generation for known models if auto-detect fails
+        if any(x in self.model_path for x in ["Qwen", "Instruct", "GPT", "Llama"]):
+            task_to_use = "language-generation"
+        if task_to_use == "text-generation":
+            task_to_use = "language-generation"
+            
+        logger.info(f"Loading local LLM (singleton): {self.model_path} (task={task_to_use})")
+        try:
+            _local_llm_cache[cache_key] = LLM(path=self.model_path, task=task_to_use)
+        except Exception as e:
+            try:
+                import transformers
+                from transformers.pipelines import SUPPORTED_TASKS
+                logger.error(
+                    f"LocalLLMWrapper init failed (model={self.model_path}, requested_task={task_to_use}, "
+                    f"transformers={getattr(transformers, '__version__', 'unknown')}, "
+                    f"supported_tasks={sorted(list(SUPPORTED_TASKS.keys()))[:50]})"
+                )
+            except Exception:
+                pass
+            logger.error(f"Failed to initialize LocalLLMWrapper: {e}")
+            raise e
+            
+        return _local_llm_cache[cache_key]
         
     def __call__(self, prompt: str, **kwargs) -> str:
         return self.llm(prompt, **kwargs)
@@ -75,13 +105,9 @@ class SIFBaseAgent(BaseALwrityAgent):
         
         # 2. Local LLM for internal agent work (default for SIF agents)
         if llm is None:
-            if TXTAI_AVAILABLE and LLM is not None:
-                # Use Lazy Local LLM when txtai LLM is available
-                # Hardening: Specify 'text-generation' task to avoid text2text defaults
-                llm = LocalLLMWrapper(model_name, task="text-generation")
-            else:
-                # Fallback to Shared if txtai or LLM is not available
-                llm = self.shared_llm
+            if not (TXTAI_AVAILABLE and LLM is not None):
+                raise RuntimeError("txtai LLM is required for SIF agents but is not available")
+            llm = LocalLLMWrapper(model_name, task="text-generation")
             
         super().__init__(user_id, agent_type, model_name, llm)
         self.intelligence = intelligence_service
@@ -98,14 +124,16 @@ class SIFBaseAgent(BaseALwrityAgent):
         capabilities via a standard agent interface if available.
         """
         if not TXTAI_AVAILABLE or Agent is None:
-            logger.debug(f"[{self.__class__.__name__}] txtai Agent not available, using fallback agent")
-            return self._create_fallback_agent()
+            raise RuntimeError(f"[{self.__class__.__name__}] txtai Agent not available")
 
         try:
-            return Agent(llm=self.llm, tools=[])
+            _llm_for_agent = self.llm
+            for _ in range(3):
+                _llm_for_agent = getattr(_llm_for_agent, "llm", _llm_for_agent)
+            return Agent(llm=_llm_for_agent, tools=[])
         except Exception as e:
-            logger.warning(f"[{self.__class__.__name__}] Failed to create txtai Agent: {e}")
-            return self._create_fallback_agent()
+            logger.error(f"[{self.__class__.__name__}] Failed to create txtai Agent: {e}")
+            raise
 
 class StrategyArchitectAgent(SIFBaseAgent):
     """Agent for discovering content pillars and identifying strategic gaps."""

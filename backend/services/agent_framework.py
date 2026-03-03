@@ -13,12 +13,17 @@ from abc import ABC, abstractmethod
 
 # txtai imports for native agent framework
 try:
-    from txtai import Agent, LLM
-    TXTAI_AVAILABLE = Agent.__module__ != "txtai.agent.placeholder"
+    from txtai.pipeline import Agent, LLM
+    TXTAI_AVAILABLE = True
 except ImportError:
-    TXTAI_AVAILABLE = False
-    # Fallback implementation for development
-    logging.warning("txtai not available, using fallback implementation")
+    try:
+        from txtai import Agent, LLM
+        TXTAI_AVAILABLE = True
+    except ImportError:
+        TXTAI_AVAILABLE = False
+        Agent = None
+        LLM = None
+        logging.warning("txtai not available")
 
 # Optional MLflow integration
 try:
@@ -121,8 +126,10 @@ class BaseALwrityAgent(ABC):
         if TXTAI_AVAILABLE:
             try:
                 if not self.llm:
-                    # Hardening: Explicitly set task to avoid 'text2text-generation' default failures
-                    self.llm = LLM(model_name, task="text-generation")
+                    # Allow txtai to auto-detect the correct task for the model
+                    # But force language-generation (txtai mapping for text-generation) for known models
+                    task_hint = "language-generation" if any(x in model_name for x in ["Qwen", "Instruct", "GPT", "Llama"]) else None
+                    self.llm = LLM(path=model_name, task=task_hint) if task_hint else LLM(path=model_name)
                     
                 self.txtai_agent = self._create_txtai_agent()
                 logger.info(f"Initialized txtai agent for {agent_type} - {self.agent_id}")
@@ -776,60 +783,9 @@ class StrategyOrchestratorAgent(BaseALwrityAgent):
         """Create txtai orchestrator agent with coordination tools"""
         if not TXTAI_AVAILABLE:
             return None
-            
-        return Agent(
-            llm=self.llm,
-            tools=[
-                {
-                    "name": "market_signal_detector",
-                    "description": "Detects market changes and competitor activities",
-                    "target": self._market_signal_detector_tool
-                },
-                {
-                    "name": "google_trends_fetcher",
-                    "description": "Fetches Google Trends data and embeds it into SIF for retrieval",
-                    "target": self._google_trends_fetcher_tool
-                },
-                {
-                    "name": "agent_coordinator",
-                    "description": "Coordinates actions between multiple agents",
-                    "target": self._agent_coordinator_tool
-                },
-                {
-                    "name": "performance_analyzer",
-                    "description": "Analyzes marketing performance metrics",
-                    "target": self._performance_analyzer_tool
-                },
-                {
-                    "name": "strategy_synthesizer",
-                    "description": "Synthesizes unified strategies from multiple inputs",
-                    "target": self._strategy_synthesizer_tool
-                },
-                {
-                    "name": "task_delegator",
-                    "description": "Delegates specific tasks to specialized agents (content, competitor, seo, social)",
-                    "target": self._delegate_task_tool
-                }
-            ],
-            max_iterations=15,
-            system=self.get_effective_system_prompt(f"""You are the Marketing Strategy Orchestrator for ALwrity user {self.user_id}.
-            
-            Your role is to coordinate all marketing agents, analyze market signals,
-            and synthesize unified strategies.
-            
-            Key Responsibility: DELEGATE tasks to specialized agents.
-            - Content Strategy Agent: For content analysis, gaps, and optimization.
-            - Competitor Response Agent: For monitoring and counter-strategies.
-            - SEO Optimization Agent: For technical SEO and keywords.
-            - Social Amplification Agent: For social trends and distribution.
-            
-            Use the 'task_delegator' tool to assign work to these agents.
-            Do not just plan; EXECUTE by delegating.
-            
-            Always prioritize user goals and maintain safety constraints.
-            Coordinate multi-agent responses to market changes effectively."""
-            )
-        )
+
+        llm = getattr(self.llm, "llm", self.llm)
+        return Agent(llm=llm, tools=[], max_iterations=15)
     
     async def _market_signal_detector_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Tool for detecting market signals"""

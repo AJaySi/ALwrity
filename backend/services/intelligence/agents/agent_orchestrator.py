@@ -47,7 +47,7 @@ logger = get_service_logger(__name__)
 class AgentTeamConfiguration:
     """Configuration for the complete agent team"""
     user_id: str
-    shared_llm: str = "Qwen/Qwen3-4B-Instruct-2507"
+    shared_llm: str = "Qwen/Qwen2.5-3B-Instruct"  # Updated to a stable model known for text-generation
     max_iterations: int = 15
     enable_safety: bool = True
     enable_performance_monitoring: bool = True
@@ -70,6 +70,9 @@ class ALwrityAgentOrchestrator:
         self.performance_monitor: Optional[AgentPerformanceMonitor] = None
         self.safety_framework: Optional[Dict[str, Any]] = None
         
+        # Initialize execution history for tracking agent activities
+        self.execution_history: List[Dict[str, Any]] = []
+        
         # Initialize components
         self._initialize_components()
         
@@ -80,8 +83,14 @@ class ALwrityAgentOrchestrator:
         try:
             # Initialize shared LLM
             if TXTAI_AVAILABLE:
-                # Hardening: Explicitly set task to avoid 'text2text-generation' default failures
-                self.llm = LLM(self.config.shared_llm, task="text-generation")
+                try:
+                    # Allow auto-detection of task
+                    self.llm = LLM(self.config.shared_llm)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to initialize shared LLM '{self.config.shared_llm}': {e}"
+                    )
+                    raise
             else:
                 self.llm = None
             
@@ -117,6 +126,36 @@ class ALwrityAgentOrchestrator:
                 status = onboarding_service.get_onboarding_status(self.user_id)
                 if not status.get("is_completed", False):
                     logger.info(f"Skipping agent initialization for user {self.user_id} - Onboarding incomplete")
+                    self.execution_history.append({
+                        "user_id": self.user_id,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "agent_id": "system",
+                        "action": "system_check",
+                        "status": "pending",
+                        "details": "Agent initialization paused. Waiting for user onboarding completion.",
+                        "agent_name": "System Orchestrator",
+                        "agent_type": "orchestrator"
+                    })
+                    
+                    # Persist this check to DB so it survives refreshes
+                    try:
+                        from services.database import get_session_for_user
+                        from services.agent_activity_service import AgentActivityService
+                        db = get_session_for_user(self.user_id)
+                        if db:
+                            try:
+                                activity_service = AgentActivityService(db, self.user_id)
+                                run = activity_service.start_run(agent_type="system_orchestrator", prompt="System Check")
+                                activity_service.finish_run(
+                                    run_id=run.id, 
+                                    success=True, 
+                                    result_summary="Agent initialization paused. Waiting for user onboarding completion."
+                                )
+                            finally:
+                                db.close()
+                    except Exception:
+                        pass
+                        
                     return
             except Exception as e:
                 logger.warning(f"Could not check onboarding status for {self.user_id}: {e}")
@@ -141,10 +180,14 @@ class ALwrityAgentOrchestrator:
                 except Exception:
                     pass
 
+            # Track successful initializations
+            initialized_agents = []
+
             # Content Strategy Agent
             if enabled_by_key.get("content_strategist", True):
                 self.content_agent = ContentStrategyAgent(self.user_id, self.config.shared_llm, llm=self.llm)
                 self.agents['content'] = self.content_agent
+                initialized_agents.append("Content Strategist")
 
             # Strategy Architect Agent
             if enabled_by_key.get("strategy_architect", True):
@@ -152,43 +195,37 @@ class ALwrityAgentOrchestrator:
                 intel_service = TxtaiIntelligenceService(self.user_id)
                 self.strategy_agent = StrategyArchitectAgent(intel_service, self.user_id)
                 self.agents['strategy'] = self.strategy_agent
+                initialized_agents.append("Strategy Architect")
             
             # Competitor Response Agent
             if enabled_by_key.get("competitor_analyst", True):
                 self.competitor_agent = CompetitorResponseAgent(self.user_id, self.config.shared_llm, llm=self.llm)
                 self.agents['competitor'] = self.competitor_agent
+                initialized_agents.append("Competitor Analyst")
             
             # SEO Optimization Agent
             if enabled_by_key.get("seo_specialist", True):
                 self.seo_agent = SEOOptimizationAgent(self.user_id, self.config.shared_llm, llm=self.llm)
                 self.agents['seo'] = self.seo_agent
+                initialized_agents.append("SEO Specialist")
             
             # Social Amplification Agent
             if enabled_by_key.get("social_media_manager", True):
                 self.social_agent = SocialAmplificationAgent(self.user_id, self.config.shared_llm, llm=self.llm)
                 self.agents['social'] = self.social_agent
-
-            # Strategy Architect Agent
-            if enabled_by_key.get("strategy_architect", True):
-                from services.intelligence.txtai_service import TxtaiIntelligenceService
-                intel_service = TxtaiIntelligenceService(self.user_id)
-                self.strategy_agent = StrategyArchitectAgent(intel_service, self.user_id)
-                self.agents['strategy'] = self.strategy_agent
+                initialized_agents.append("Social Media Manager")
 
             # Trend Surfer Agent
             if enabled_by_key.get("trend_surfer", True):
-                # TrendSurferAgent needs TxtaiIntelligenceService, which we might need to get from SIF or initialize
-                # For now, we assume SIF integration is handled elsewhere or we pass a mock/stub if needed
-                # But wait, TrendSurferAgent constructor is (intelligence_service, user_id)
-                # We need to get the intelligence service here.
-                # Since AgentOrchestrator doesn't hold TxtaiIntelligenceService directly (SIFIntegrationService does),
-                # this is tricky. 
-                # However, SIFIntegrationService initializes AgentOrchestrator.
-                # Let's import TxtaiIntelligenceService and initialize it here for the agent
-                from services.intelligence.txtai_service import TxtaiIntelligenceService
-                intel_service = TxtaiIntelligenceService(self.user_id)
-                self.trend_surfer_agent = TrendSurferAgent(intel_service, self.user_id)
-                self.agents['trend'] = self.trend_surfer_agent
+                # TrendSurferAgent needs TxtaiIntelligenceService
+                try:
+                    from services.intelligence.txtai_service import TxtaiIntelligenceService
+                    intel_service = TxtaiIntelligenceService(self.user_id)
+                    self.trend_surfer_agent = TrendSurferAgent(intel_service, self.user_id)
+                    self.agents['trend'] = self.trend_surfer_agent
+                    initialized_agents.append("Trend Surfer")
+                except Exception as e:
+                    logger.error(f"Failed to initialize TrendSurferAgent: {e}")
             
             # Content Guardian Agent
             if enabled_by_key.get("content_guardian", True):
@@ -206,11 +243,51 @@ class ALwrityAgentOrchestrator:
                         sif_service=None # SIF service is optional/circular dependency handling
                     )
                     self.agents['guardian'] = self.content_guardian_agent
+                    initialized_agents.append("Content Guardian")
                     logger.info(f"Initialized ContentGuardianAgent for user {self.user_id}")
                 except Exception as e:
                     logger.error(f"Failed to initialize ContentGuardianAgent: {e}")
 
             logger.info(f"Created {len(self.agents)} specialized agents for user {self.user_id}")
+
+            # Log initialization activity
+            if initialized_agents:
+                # 1. Add to in-memory history
+                self.execution_history.append({
+                    "user_id": self.user_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "agent_id": "system",
+                    "action": "agent_initialization",
+                    "status": "completed",
+                    "details": f"Successfully initialized agent team: {', '.join(initialized_agents)}",
+                    "agent_name": "System Orchestrator",
+                    "agent_type": "orchestrator"
+                })
+
+                # 2. Add to persistent database history (so dashboard sees it on refresh)
+                try:
+                    from services.database import get_session_for_user
+                    from services.agent_activity_service import AgentActivityService
+                    
+                    db = get_session_for_user(self.user_id)
+                    if db:
+                        try:
+                            activity_service = AgentActivityService(db, self.user_id)
+                            # Create a run record
+                            run = activity_service.start_run(
+                                agent_type="system_orchestrator",
+                                prompt="Initialize Autonomous Agent Team"
+                            )
+                            # Immediately finish it
+                            activity_service.finish_run(
+                                run_id=run.id,
+                                success=True,
+                                result_summary=f"Successfully initialized agent team: {', '.join(initialized_agents)}"
+                            )
+                        finally:
+                            db.close()
+                except Exception as e:
+                    logger.error(f"Failed to log initialization activity to DB: {e}")
             
         except Exception as e:
             logger.error(f"Error creating specialized agents for user {self.user_id}: {e}")
@@ -258,6 +335,11 @@ class ALwrityAgentOrchestrator:
                 "4. Provide specific action recommendations.\n\n"
                 "Return a comprehensive strategy with specific actions, priorities, and expected outcomes."
             )
+            
+            # Ensure orchestrator is initialized
+            if not self.orchestrator_agent:
+                self._create_orchestrator_agent()
+                
             orchestrator_prompt = self.orchestrator_agent.build_task_prompt(instruction=instruction, task_context=context)
             result = await self.orchestrator_agent.run(orchestrator_prompt)
             
@@ -322,6 +404,7 @@ class ALwrityAgentOrchestrator:
                 "timestamp": datetime.utcnow().isoformat(),
                 "agent_statuses": agent_statuses,
                 "performance_summary": performance_summary,
+                "recent_activity": self.get_execution_history(limit=5),
                 "market_signals_active": self.config.enable_market_signals,
                 "safety_enabled": self.config.enable_safety,
                 "performance_monitoring_enabled": self.config.enable_performance_monitoring
@@ -342,6 +425,10 @@ class ALwrityAgentOrchestrator:
     
     # Helper methods
     
+    def get_execution_history(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get execution history for this orchestrator"""
+        return self.execution_history[-limit:]
+
     async def _prepare_orchestrator_context(self, market_context: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare comprehensive context for orchestrator"""
         context = {
@@ -382,7 +469,13 @@ class AgentOrchestrationService:
             self.orchestrators[user_id] = ALwrityAgentOrchestrator(config)
             logger.info(f"Created new orchestrator for user: {user_id}")
         
-        return self.orchestrators[user_id]
+        # Ensure initialization happened, if not try again (e.g. if onboarding was just completed)
+        orchestrator = self.orchestrators[user_id]
+        if not orchestrator.agents and not orchestrator.execution_history:
+             logger.info(f"Orchestrator for {user_id} has no agents. Attempting re-initialization.")
+             orchestrator._create_specialized_agents()
+             
+        return orchestrator
     
     async def execute_marketing_strategy(self, user_id: str, market_context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute marketing strategy for a user"""
