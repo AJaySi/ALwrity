@@ -1,6 +1,7 @@
 import React from 'react';
-import { Box, Typography, Paper, Stack, Button, Chip, CircularProgress } from '@mui/material';
+import { Box, Typography, Paper, Stack, Button, Chip, CircularProgress, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import { apiClient } from '../api/client';
+import { useUser } from '@clerk/clerk-react';
 
 type Approval = {
   id: number;
@@ -16,15 +17,27 @@ type Approval = {
 };
 
 export default function ApprovalsPage() {
+  const { user } = useUser();
   const [loading, setLoading] = React.useState(false);
   const [approvals, setApprovals] = React.useState<Approval[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [detailTier, setDetailTier] = React.useState<'summary' | 'detailed'>('summary');
+
+  const canUseDetailed = React.useMemo(() => {
+    const role = String(user?.publicMetadata?.role || '').toLowerCase().trim();
+    const featureFlags = user?.publicMetadata?.feature_flags as Record<string, any> | string[] | undefined;
+    const hasFeatureFlag = Array.isArray(featureFlags)
+      ? featureFlags.map((flag) => String(flag).toLowerCase()).includes('agent_activity_detailed')
+      : Boolean(featureFlags && (featureFlags['agent_activity_detailed'] || featureFlags['agents_activity_detailed']));
+    return role === 'admin' || role === 'internal' || hasFeatureFlag;
+  }, [user]);
 
   const loadApprovals = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiClient.get('/api/agents/approvals', { params: { status: 'pending', limit: 50 } });
+      const tier = canUseDetailed ? detailTier : 'summary';
+      const resp = await apiClient.get('/api/agents/approvals', { params: { status: 'pending', limit: 50, detail_tier: tier } });
       const items = resp?.data?.data?.approvals || [];
       setApprovals(items);
     } catch (e: any) {
@@ -32,7 +45,7 @@ export default function ApprovalsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canUseDetailed, detailTier]);
 
   React.useEffect(() => {
     loadApprovals();
@@ -55,7 +68,22 @@ export default function ApprovalsPage() {
     <Box sx={{ p: 3 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>Agent Approvals</Typography>
-        <Button variant="outlined" onClick={loadApprovals} disabled={loading}>Refresh</Button>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <ToggleButtonGroup
+            size="small"
+            value={detailTier}
+            exclusive
+            onChange={(_, value) => {
+              if (value) {
+                setDetailTier(value);
+              }
+            }}
+          >
+            <ToggleButton value="summary">Basic</ToggleButton>
+            <ToggleButton value="detailed" disabled={!canUseDetailed}>Detailed</ToggleButton>
+          </ToggleButtonGroup>
+          <Button variant="outlined" onClick={loadApprovals} disabled={loading}>Refresh</Button>
+        </Stack>
       </Stack>
 
       {error && (
@@ -89,6 +117,16 @@ export default function ApprovalsPage() {
             {a.target_resource && (
               <Typography sx={{ color: '#6b7280', mb: 1 }}>{a.target_resource}</Typography>
             )}
+            {detailTier === 'detailed' && a.payload && (
+              <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5, bgcolor: '#fafafa' }}>
+                <Typography variant="caption" sx={{ display: 'block', color: '#6b7280', mb: 0.5 }}>
+                  Detailed payload
+                </Typography>
+                <Typography component="pre" sx={{ m: 0, whiteSpace: 'pre-wrap', fontSize: 12 }}>
+                  {JSON.stringify(a.payload, null, 2)}
+                </Typography>
+              </Paper>
+            )}
 
             <Stack direction="row" spacing={1}>
               <Button variant="contained" onClick={() => decide(a.id, 'approved')} disabled={loading}>Approve</Button>
@@ -100,4 +138,3 @@ export default function ApprovalsPage() {
     </Box>
   );
 }
-

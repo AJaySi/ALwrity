@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from typing import Dict, List, Any, Optional
 import asyncio
+import os
 from datetime import datetime
 import json
 
@@ -20,6 +21,15 @@ from services.intelligence.agents.market_signal_detector import MarketSignal
 from services.intelligence.agents.performance_monitor import PerformanceMetric, AgentStatus
 from services.database import get_db
 from services.agent_activity_service import AgentActivityService
+from services.agent_activity_serializers import (
+    DETAIL_TIER_DEBUG,
+    DETAIL_TIER_SUMMARY,
+    normalize_detail_tier,
+    serialize_alert,
+    serialize_approval,
+    serialize_event,
+    serialize_run,
+)
 from sqlalchemy.orm import Session
 from models.agent_activity_models import AgentProfile, AgentRun, AgentEvent, AgentAlert, AgentApprovalRequest
 from services.intelligence.agents.team_catalog import AGENT_TEAM_CATALOG, get_agent_catalog_entry
@@ -29,63 +39,33 @@ logger = get_service_logger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["Autonomous Agents"])
 
 
-def _serialize_run(run: AgentRun) -> Dict[str, Any]:
-    return {
-        "id": run.id,
-        "user_id": run.user_id,
-        "agent_type": run.agent_type,
-        "status": run.status,
-        "success": run.success,
-        "error_message": run.error_message,
-        "result_summary": run.result_summary,
-        "mlflow_run_id": run.mlflow_run_id,
-        "started_at": run.started_at.isoformat() if run.started_at else None,
-        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-    }
+def _can_access_advanced_activity(current_user: Dict[str, Any]) -> bool:
+    role = str(current_user.get("role") or "").lower().strip()
+    metadata = current_user.get("public_metadata")
+    if isinstance(metadata, dict):
+        role = str(metadata.get("role") or role).lower().strip()
+
+    feature_flags = current_user.get("feature_flags")
+    if not feature_flags and isinstance(metadata, dict):
+        feature_flags = metadata.get("feature_flags") or metadata.get("features")
+
+    has_flag = False
+    if isinstance(feature_flags, list):
+        has_flag = any(str(flag).strip().lower() in {"agent_activity_detailed", "agents_activity_detailed"} for flag in feature_flags)
+    elif isinstance(feature_flags, dict):       
+        has_flag = bool(feature_flags.get("agent_activity_detailed") or feature_flags.get("agents_activity_detailed"))
+
+    if os.getenv("DISABLE_AUTH", "false").lower() == "true":
+        return True
+
+    return role in {"admin", "internal"} or has_flag
 
 
-def _serialize_event(event: AgentEvent) -> Dict[str, Any]:
-    return {
-        "id": event.id,
-        "run_id": event.run_id,
-        "agent_type": event.agent_type,
-        "event_type": event.event_type,
-        "severity": event.severity,
-        "message": event.message,
-        "payload": event.payload,
-        "created_at": event.created_at.isoformat() if event.created_at else None,
-    }
-
-
-def _serialize_alert(alert: AgentAlert) -> Dict[str, Any]:
-    return {
-        "id": alert.id,
-        "source": alert.source,
-        "type": alert.alert_type,
-        "severity": alert.severity,
-        "title": alert.title,
-        "message": alert.message,
-        "cta_path": alert.cta_path,
-        "payload": alert.payload,
-        "created_at": alert.created_at.isoformat() if alert.created_at else None,
-        "read_at": alert.read_at.isoformat() if alert.read_at else None,
-    }
-
-
-def _serialize_approval(approval: AgentApprovalRequest) -> Dict[str, Any]:
-    return {
-        "id": approval.id,
-        "status": approval.status,
-        "decision": approval.decision,
-        "action_id": approval.action_id,
-        "action_type": approval.action_type,
-        "agent_type": approval.agent_type,
-        "target_resource": approval.target_resource,
-        "risk_level": approval.risk_level,
-        "payload": approval.payload,
-        "created_at": approval.created_at.isoformat() if approval.created_at else None,
-        "decided_at": approval.decided_at.isoformat() if approval.decided_at else None,
-    }
+def _resolve_detail_tier(requested_tier: str, current_user: Dict[str, Any]) -> str:
+    tier = normalize_detail_tier(requested_tier)
+    if tier == DETAIL_TIER_DEBUG and not _can_access_advanced_activity(current_user):
+        return DETAIL_TIER_SUMMARY
+    return tier
 
 
 def _build_huddle_snapshot(
@@ -133,6 +113,35 @@ def _build_huddle_snapshot(
             "approval_id": max([since_approval_id] + [a.id for a in approvals_sorted]),
         },
     }
+=======
+def _can_access_advanced_activity(current_user: Dict[str, Any]) -> bool:
+    role = str(current_user.get("role") or "").lower().strip()
+    metadata = current_user.get("public_metadata")
+    if isinstance(metadata, dict):
+        role = str(metadata.get("role") or role).lower().strip()
+
+    feature_flags = current_user.get("feature_flags")
+    if not feature_flags and isinstance(metadata, dict):
+        feature_flags = metadata.get("feature_flags") or metadata.get("features")
+
+    has_flag = False
+    if isinstance(feature_flags, list):
+        has_flag = any(str(flag).strip().lower() in {"agent_activity_detailed", "agents_activity_detailed"} for flag in feature_flags)
+    elif isinstance(feature_flags, dict):
+        has_flag = bool(feature_flags.get("agent_activity_detailed") or feature_flags.get("agents_activity_detailed"))
+
+    if os.getenv("DISABLE_AUTH", "false").lower() == "true":
+        return True
+
+    return role in {"admin", "internal"} or has_flag
+
+
+def _resolve_detail_tier(requested_tier: str, current_user: Dict[str, Any]) -> str:
+    tier = normalize_detail_tier(requested_tier)
+    if tier == DETAIL_TIER_DEBUG and not _can_access_advanced_activity(current_user):
+        return DETAIL_TIER_SUMMARY
+    return tier
+>>>>>>> pr-370
 
 @router.get("/team")
 async def get_agent_team_endpoint(
@@ -535,32 +544,21 @@ Return ONLY a JSON object that matches the schema.
 async def get_agent_alerts_endpoint(
     unread_only: bool = True,
     limit: int = 50,
+    detail_tier: str = DETAIL_TIER_SUMMARY,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
         user_id = str(current_user.get("id"))
+        resolved_tier = _resolve_detail_tier(detail_tier, current_user)
         service = AgentActivityService(db, user_id)
         alerts = service.list_alerts(unread_only=unread_only, limit=limit)
         return {
             "success": True,
             "data": {
-                "alerts": [
-                    {
-                        "id": a.id,
-                        "source": a.source,
-                        "type": a.alert_type,
-                        "severity": a.severity,
-                        "title": a.title,
-                        "message": a.message,
-                        "cta_path": a.cta_path,
-                        "payload": a.payload,
-                        "created_at": a.created_at.isoformat() if a.created_at else None,
-                        "read_at": a.read_at.isoformat() if a.read_at else None,
-                    }
-                    for a in alerts
-                ],
+                "alerts": [serialize_alert(a, resolved_tier) for a in alerts],
                 "total": len(alerts),
+                "detail_tier": resolved_tier,
             },
             "timestamp": datetime.utcnow().isoformat(),
             "user_id": user_id,
@@ -626,31 +624,20 @@ async def mark_agent_alert_read_endpoint(
 @router.get("/runs")
 async def get_agent_runs_endpoint(
     limit: int = 30,
+    detail_tier: str = DETAIL_TIER_SUMMARY,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
         user_id = str(current_user.get("id"))
+        resolved_tier = _resolve_detail_tier(detail_tier, current_user)
         service = AgentActivityService(db, user_id)
         runs = service.list_runs(limit=limit)
         return {
             "success": True,
             "data": {
-                "runs": [
-                    {
-                        "id": r.id,
-                        "user_id": r.user_id,
-                        "agent_type": r.agent_type,
-                        "status": r.status,
-                        "success": r.success,
-                        "error_message": r.error_message,
-                        "result_summary": r.result_summary,
-                        "mlflow_run_id": r.mlflow_run_id,
-                        "started_at": r.started_at.isoformat() if r.started_at else None,
-                        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-                    }
-                    for r in runs
-                ]
+                "runs": [serialize_run(r, resolved_tier) for r in runs],
+                "detail_tier": resolved_tier,
             },
             "timestamp": datetime.utcnow().isoformat(),
             "user_id": user_id,
@@ -664,29 +651,20 @@ async def get_agent_runs_endpoint(
 async def get_agent_run_events_endpoint(
     run_id: int,
     limit: int = 200,
+    detail_tier: str = DETAIL_TIER_SUMMARY,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
         user_id = str(current_user.get("id"))
+        resolved_tier = _resolve_detail_tier(detail_tier, current_user)
         service = AgentActivityService(db, user_id)
         events = service.list_events(run_id=run_id, limit=limit)
         return {
             "success": True,
             "data": {
-                "events": [
-                    {
-                        "id": e.id,
-                        "run_id": e.run_id,
-                        "agent_type": e.agent_type,
-                        "event_type": e.event_type,
-                        "severity": e.severity,
-                        "message": e.message,
-                        "payload": e.payload,
-                        "created_at": e.created_at.isoformat() if e.created_at else None,
-                    }
-                    for e in events
-                ]
+                "events": [serialize_event(e, resolved_tier) for e in events],
+                "detail_tier": resolved_tier,
             },
             "timestamp": datetime.utcnow().isoformat(),
             "user_id": user_id,
@@ -700,32 +678,20 @@ async def get_agent_run_events_endpoint(
 async def get_agent_approvals_endpoint(
     status: str = "pending",
     limit: int = 50,
+    detail_tier: str = DETAIL_TIER_SUMMARY,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
         user_id = str(current_user.get("id"))
+        resolved_tier = _resolve_detail_tier(detail_tier, current_user)
         service = AgentActivityService(db, user_id)
         approvals = service.list_approval_requests(status=status, limit=limit)
         return {
             "success": True,
             "data": {
-                "approvals": [
-                    {
-                        "id": a.id,
-                        "status": a.status,
-                        "decision": a.decision,
-                        "action_id": a.action_id,
-                        "action_type": a.action_type,
-                        "agent_type": a.agent_type,
-                        "target_resource": a.target_resource,
-                        "risk_level": a.risk_level,
-                        "payload": a.payload,
-                        "created_at": a.created_at.isoformat() if a.created_at else None,
-                        "decided_at": a.decided_at.isoformat() if a.decided_at else None,
-                    }
-                    for a in approvals
-                ]
+                "approvals": [serialize_approval(a, resolved_tier) for a in approvals],
+                "detail_tier": resolved_tier,
             },
             "timestamp": datetime.utcnow().isoformat(),
             "user_id": user_id,
