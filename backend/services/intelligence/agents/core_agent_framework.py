@@ -29,7 +29,7 @@ _core_llm_cache = {}
 
 # Optional MLflow integration
 try:
-    import mlflow
+    import mlflow # type: ignore # pylint: disable=import-error
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False

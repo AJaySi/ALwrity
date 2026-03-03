@@ -41,7 +41,7 @@ const TeamHuddleWidget: React.FC = () => {
     return runs.slice(0, 5).map((run) => {
       const agentType = String(run.agent_type || 'strategy');
       // Simple heuristic for icon mapping
-      let IconComponent = StrategyIcon;
+      let IconComponent: React.ElementType = StrategyIcon;
       for (const key in ICON_BY_AGENT) {
         if (agentType.toLowerCase().includes(key)) {
           IconComponent = ICON_BY_AGENT[key];
