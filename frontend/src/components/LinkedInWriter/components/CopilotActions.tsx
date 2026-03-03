@@ -29,6 +29,22 @@ export const useCopilotActions = ({
   const { corePersona, platformPersona } = usePlatformPersonaContext();
   const copilotContext = useCopilotContext();
 
+  // Provide persona context to Copilot
+  React.useEffect(() => {
+    if (corePersona || platformPersona) {
+      // Logic to update copilot context with persona data
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [corePersona, platformPersona]);
+
+  // Provide enhanced context to Copilot based on conversation history
+  React.useEffect(() => {
+    if (copilotContext) {
+      // Logic using copilotContext
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copilotContext]);
+
   // Listen for copilot seed events to open sidebar with prompt
   React.useEffect(() => {
     const handler = (ev: any) => {

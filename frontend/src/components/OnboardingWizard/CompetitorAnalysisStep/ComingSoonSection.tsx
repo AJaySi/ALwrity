@@ -44,7 +44,7 @@ export const ComingSoonSection: React.FC<{ missingData?: boolean }> = ({ missing
   const [strategicInsightsRunning, setStrategicInsightsRunning] = useState(false);
   const [strategicInsightsError, setStrategicInsightsError] = useState<string | null>(null);
   const [strategicInsightsData, setStrategicInsightsData] = useState<any>(null);
-  const [loadingStrategicHistory, setLoadingStrategicHistory] = useState(false);
+  // const [loadingStrategicHistory, setLoadingStrategicHistory] = useState(false);
 
   useEffect(() => {
     const loadStatus = async () => {
@@ -62,7 +62,7 @@ export const ComingSoonSection: React.FC<{ missingData?: boolean }> = ({ missing
     };
 
     const loadHistory = async () => {
-      setLoadingStrategicHistory(true);
+      // setLoadingStrategicHistory(true);
       try {
         const res = await apiClient.get('/api/seo-dashboard/strategic-insights/history');
         if (res.data?.history?.length > 0) {
@@ -71,7 +71,7 @@ export const ComingSoonSection: React.FC<{ missingData?: boolean }> = ({ missing
       } catch (e) {
         console.error("Failed to fetch strategic insights history", e);
       } finally {
-        setLoadingStrategicHistory(false);
+        // setLoadingStrategicHistory(false);
       }
     };
 

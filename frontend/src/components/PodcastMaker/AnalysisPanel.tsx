@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Stack, Box, Typography, Divider, Chip, Paper, alpha, CircularProgress, TextField, IconButton, Tooltip, Select, MenuItem, FormControl, InputLabel, Switch, FormControlLabel } from "@mui/material";
-import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, EditNote as EditNoteIcon } from "@mui/icons-material";
+import { Stack, Box, Typography, Divider, Chip, Paper, alpha, CircularProgress, TextField, IconButton, Select, MenuItem, FormControl, InputLabel, Switch, FormControlLabel } from "@mui/material";
+import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Add as AddIcon, EditNote as EditNoteIcon } from "@mui/icons-material";
 import { PodcastAnalysis, PodcastEstimate } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
@@ -69,7 +69,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     if (analysis && !editedAnalysis) {
       setEditedAnalysis(JSON.parse(JSON.stringify(analysis)));
     }
-  }, [analysis]);
+  }, [analysis, editedAnalysis]);
 
   const handleSave = () => {
     if (editedAnalysis && onUpdateAnalysis) {

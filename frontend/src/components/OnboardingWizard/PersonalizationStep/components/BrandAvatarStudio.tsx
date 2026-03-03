@@ -15,7 +15,7 @@ import {
   IconButton,
   Alert,
   Chip,
-  Divider,
+  // Divider,
   Modal,
   Fade,
   Backdrop,
@@ -25,20 +25,18 @@ import {
   InputLabel,
   FormHelperText
 } from '@mui/material';
-import { keyframes } from '@mui/system';
 import {
-  AutoAwesome,
   CloudUpload,
-  Refresh,
+  // // Refresh,
   PhotoCamera,
   AutoFixHigh,
   InfoOutlined,
   Close,
-  PlayArrow,
+  // PlayArrow,
   HelpOutline,
-  Palette,
+  // Palette,
   Psychology,
-  AutoFixNormal,
+  // AutoFixNormal,
   Create,
   CheckCircle,
   Fullscreen,
@@ -70,11 +68,11 @@ import {
 
 type GenerationMode = 'generate' | 'variation' | 'enhance';
 
-const pulse = keyframes`
+/* const pulse = keyframes`
   0% { transform: scale(1); }
   50% { transform: scale(1.05); }
   100% { transform: scale(1); }
-`;
+`; */
 
 export const BrandAvatarStudio: React.FC<{ domainName?: string; onAvatarSet?: () => void }> = ({ domainName, onAvatarSet }) => {
   const [mode, setMode] = useState<GenerationMode>('generate');

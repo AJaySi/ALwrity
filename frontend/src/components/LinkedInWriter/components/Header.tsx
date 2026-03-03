@@ -76,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handlePersonaUpdate = (personaData: any) => {
     console.log('Persona updated in LinkedIn writer:', personaData);
-    setPersonaOverride(personaData);
+    // setPersonaOverride(personaData);
     // You can also save this to user preferences or pass it up to the parent component
   };
 

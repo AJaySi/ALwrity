@@ -10,7 +10,7 @@ import {
   RadioGroup,
   FormControlLabel,
   FormControl,
-  FormLabel,
+  // FormLabel,
   Card,
   CardContent,
   Alert,
@@ -18,8 +18,8 @@ import {
 } from '@mui/material';
 import {
   ArrowForward as ArrowForwardIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
+  // ExpandMore as ExpandMoreIcon,
+  // ExpandLess as ExpandLessIcon,
   PlayArrow as PlayArrowIcon,
   // Social Media Icons
   Facebook as FacebookIcon,
@@ -39,7 +39,7 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Lightbulb as LightbulbIcon,
   CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon
+  // Error as ErrorIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 
@@ -89,7 +89,7 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
   }, []);
 
   // Force refresh analytics data (bypass cache)
-  const forceRefreshAnalytics = useCallback(async () => {
+  /* const forceRefreshAnalytics = useCallback(async () => {
     try {
       // Clear all cache first
       cachedAnalyticsAPI.clearCache();
@@ -103,7 +103,7 @@ const IntegrationsStep: React.FC<IntegrationsStepProps> = ({ onContinue, updateH
     } catch (error) {
       console.error('IntegrationsStep: Error force refreshing analytics:', error);
     }
-  }, []);
+  }, []); */
   const { isLoading, showToast, setShowToast, toastMessage, handleConnect } = usePlatformConnections();
   
   // WordPress OAuth hook

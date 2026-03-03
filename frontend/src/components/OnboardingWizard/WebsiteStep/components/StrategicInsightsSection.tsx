@@ -21,7 +21,7 @@ import {
   Info as InfoIcon,
   CheckCircle as CheckIcon,
   Lightbulb as LightbulbIcon,
-  Star as StarIcon
+  // Star as StarIcon
 } from '@mui/icons-material';
 import SectionHeader from './SectionHeader';
 

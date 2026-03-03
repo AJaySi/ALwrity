@@ -11,7 +11,6 @@ import {
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
   Speed as SpeedIcon,
   BugReport as BugReportIcon,
   Storage as StorageIcon,
@@ -20,8 +19,9 @@ import {
 import { motion } from 'framer-motion';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, RadarChart, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis, Radar
+  RadarChart, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis, Radar,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
 
 interface ChartData {
@@ -46,7 +46,7 @@ interface MonitoringChartsProps {
   };
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+// const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
 const MonitoringCharts: React.FC<MonitoringChartsProps> = ({
   chartData,

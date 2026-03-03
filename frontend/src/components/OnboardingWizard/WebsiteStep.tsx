@@ -348,6 +348,7 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
     setAnalysis(updatedAnalysis);
   };
 
+  /*
   const handleContinue = async () => {
     setError(null);
     const fixedUrl = fixUrlFormat(website);
@@ -385,6 +386,17 @@ const WebsiteStep: React.FC<WebsiteStepProps> = ({ onContinue, updateHeaderConte
     
     onContinue(stepData);
   };
+  */
+  /*
+  const handleContinue = async () => {
+    // This function is now triggered by the user via the AnalysisResultsDisplay component
+    // or manually via a button if we were to add one here.
+    // Since AnalysisResultsDisplay has its own flow, we might not use this directly 
+    // in the main render unless we want a global "Continue" button.
+    // For now, silencing the unused var warning by logging or commenting out.
+    console.log('Main handleContinue ready');
+  };
+  */
 
   // Conditional rendering for business description form - now handled inline via toggle
   /*

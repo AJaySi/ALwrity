@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Button,
   Card,
   CardContent,
   FormControlLabel,
@@ -12,14 +11,11 @@ import {
   Grid,
   Accordion,
   AccordionSummary,
-  AccordionDetails,
-  LinearProgress
+  AccordionDetails
 } from '@mui/material';
 import {
-  PlayArrow as PlayIcon,
   ExpandMore as ExpandMoreIcon,
   CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
 
@@ -85,6 +81,8 @@ const GenerateCalendarStep: React.FC<GenerateCalendarStepProps> = ({
     setValidationErrors(errors);
   }, [calendarConfig]);
 
+  /*
+  // Unused generation handler - logic moved to parent/stepper
   const handleGenerate = () => {
     if (validationErrors.length > 0) {
       return; // Don't proceed if there are validation errors
@@ -114,6 +112,7 @@ const GenerateCalendarStep: React.FC<GenerateCalendarStepProps> = ({
   };
 
   const canGenerate = validationErrors.length === 0;
+  */
 
   return (
     <Box sx={{ p: 2 }}>

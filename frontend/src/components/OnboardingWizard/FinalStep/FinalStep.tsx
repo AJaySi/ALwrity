@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Button, 
@@ -13,10 +13,10 @@ import {
   Rocket,
   Star,
   CheckCircle,
-  CreditCard,
-  Warning
+  // CreditCard,
+  // Warning
 } from '@mui/icons-material';
-import OnboardingButton from '../common/OnboardingButton';
+// import OnboardingButton from '../common/OnboardingButton';
 import { useNavigate } from 'react-router-dom';
 import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, setCurrentStep } from '../../../api/onboarding';
 import { SetupSummary, CapabilitiesOverview, AgentTeamSection } from './components';
@@ -35,7 +35,7 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
   const [validationStatus, setValidationStatus] = useState<{isValid: boolean, missingSteps: string[]} | null>(null);
   const [agentTeam, setAgentTeam] = useState<AgentTeamCatalogEntry[]>([]);
   const [agentTeamError, setAgentTeamError] = useState<string | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  // const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     updateHeaderContent({
@@ -44,6 +44,7 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
     });
     // Always attempt to load data once on mount
     loadOnboardingData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateHeaderContent]);
 
   // Remove the DOM manipulation approach - we'll use React's built-in event handling

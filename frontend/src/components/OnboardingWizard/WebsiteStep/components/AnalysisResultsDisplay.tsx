@@ -15,10 +15,10 @@ import {
   FormControlLabel,
   Alert,
   Paper,
-  List,
-  ListItem,
-  ListItemText,
-  Link,
+  // List,
+  // ListItem,
+  // ListItemText,
+  // Link,
   Collapse,
   Switch,
   Button
@@ -31,7 +31,7 @@ import {
   Business as BusinessIcon,
   Info as InfoIcon,
   Link as LinkIcon,
-  Edit as EditIcon,
+  // Edit as EditIcon,
   Save as SaveIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
@@ -40,7 +40,7 @@ import {
 
 // Import rendering utilities
 import {
-  renderProUpgradeAlert,
+  // renderProUpgradeAlert,
   renderBestPracticesSection,
   renderAvoidElementsSection,
   renderBrandAnalysisSection

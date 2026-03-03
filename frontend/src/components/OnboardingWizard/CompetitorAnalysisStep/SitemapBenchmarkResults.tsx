@@ -130,12 +130,12 @@ export const SitemapBenchmarkResults: React.FC<Props> = ({ data }) => {
     : 0;
 
   const MetricCard = ({ title, userValue, competitorValue, icon, unit = '', description }: any) => {
-    const isBelowAvg = userValue < competitorValue;
+    // const isBelowAvg = userValue < competitorValue;
     
     return (
       <Card 
         elevation={0}
-        sx={{ 
+        sx={{  
           height: '100%', 
           border: `1px solid #e2e8f0`,
           borderRadius: 3,

@@ -5,13 +5,11 @@ import {
   Typography,
   Stack,
   Chip,
-  Divider,
   alpha,
+  Divider,
 } from '@mui/material';
 import {
   AttachMoney,
-  TrendingUp,
-  Speed,
   Info,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';

@@ -4,18 +4,18 @@ import {
   Button,
   CircularProgress,
   Typography,
+  Snackbar,
   Alert,
-  Snackbar
 } from '@mui/material';
 import {
   Check as CheckIcon,
   PlayArrow as PlayArrowIcon,
   AutoAwesome as AutoAwesomeIcon,
-  Celebration as CelebrationIcon
+  Celebration as CelebrationIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence, easeOut } from 'framer-motion';
 import StrategyActivationModal from '../../StrategyActivationModal';
-import { useNavigationOrchestrator } from '../../../../../services/navigationOrchestrator';
+import { safeRenderText } from '../utils/defensiveRendering';
 
 
 interface EnhancedStrategyActivationButtonProps {
@@ -40,7 +40,7 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
   const [showActivationModal, setShowActivationModal] = useState(false);
   
   // Initialize navigation orchestrator
-  const navigationOrchestrator = useNavigationOrchestrator();
+  // const navigationOrchestrator = useNavigationOrchestrator();
 
   const handleActivation = async () => {
     console.log('🎯 EnhancedStrategyActivationButton: handleActivation called');
@@ -60,7 +60,8 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
   };
 
   const handleSetupMonitoring = async (monitoringPlan: any) => {
-    try {
+    setIsLoading(true);
+    // try {
       console.log('🎯 EnhancedStrategyActivationButton: handleSetupMonitoring called');
       
       // Get strategy ID
@@ -97,38 +98,22 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
       } catch (error) {
         console.warn('Could not activate strategy with monitoring:', error);
         // Continue with local activation only
+      } finally {
+        setIsLoading(false);
       }
       
       // Step 3: Call the local confirmation function
       console.log('🎯 EnhancedStrategyActivationButton: Calling onConfirmStrategy()');
       await onConfirmStrategy();
       console.log('🎯 EnhancedStrategyActivationButton: onConfirmStrategy() completed');
-      
-      // Step 4: Update analytics and monitoring data
-      console.log('🎯 Setting up analytics and monitoring...');
-      await setupAnalyticsAndMonitoring(strategyId, finalMonitoringPlan);
-      
-      // Show success state
-      setIsSuccess(true);
-      setShowSuccessMessage(true);
-      
-      // Use navigation orchestrator to handle successful activation
-      const userId = strategyData?.strategy_metadata?.user_id || strategyData?.metadata?.user_id || '1';
-      navigationOrchestrator.handleStrategyActivationSuccess(userId, strategyData);
-      
-      // Reset after success animation
-      setTimeout(() => {
-        setIsSuccess(false);
-        setActivationProgress(0);
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Strategy activation failed:', error);
-      throw error;
-    }
+    // } catch (error) {
+    //   setIsLoading(false);
+    //   console.error('Strategy activation failed:', error);
+    //   throw error;
+    // }
   };
 
-  const setupAnalyticsAndMonitoring = async (strategyId: number, monitoringPlan: any) => {
+  /* const setupAnalyticsAndMonitoring = async (strategyId: number, monitoringPlan: any) => {
     try {
       console.log('🎯 Setting up analytics and monitoring for strategy:', strategyId);
       
@@ -154,7 +139,7 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
       console.error('Error setting up analytics and monitoring:', error);
       // Don't fail the activation if analytics setup fails
     }
-  };
+  }; */
 
   // Success animation variants
   const successVariants = {

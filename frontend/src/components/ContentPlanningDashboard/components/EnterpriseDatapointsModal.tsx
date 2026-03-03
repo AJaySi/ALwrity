@@ -27,7 +27,6 @@ import {
   Analytics as AnalyticsIcon,
   Schedule as ScheduleIcon,
   Group as GroupIcon,
-  Assessment as AssessmentIcon,
   Build as BuildIcon,
   Palette as BrandingIcon,
   Storage as StorageIcon,

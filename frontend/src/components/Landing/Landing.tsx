@@ -18,11 +18,6 @@ import {
 import { keyframes } from '@mui/system';
 import {
   Analytics,
-  Psychology,
-  AccessTime,
-  MonetizationOn,
-  TrendingDown,
-  Group,
   CalendarToday,
   Create,
   Publish,

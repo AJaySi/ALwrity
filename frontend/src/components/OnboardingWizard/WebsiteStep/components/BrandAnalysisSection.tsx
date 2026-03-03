@@ -23,7 +23,6 @@ import {
   School as AuthorityIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
-import SectionHeader from './SectionHeader';
 
 interface BrandAnalysis {
   brand_voice: string;

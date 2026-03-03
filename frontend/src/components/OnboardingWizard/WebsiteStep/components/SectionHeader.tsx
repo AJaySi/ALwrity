@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Box,
   Typography,
   Tooltip,
   IconButton,
-  Popover,
-  Fade,
-  Paper
+  // Popover,
+  // Fade,
+  // Paper
 } from '@mui/material';
 import {
   Info as InfoIcon,
-  HelpOutline as HelpIcon
+  // HelpOutline as HelpIcon
 } from '@mui/icons-material';
 
 interface SectionHeaderProps {
@@ -28,9 +28,9 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
   variant = 'h5',
   sx = {}
 }) => {
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  // const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  const handlePopoverOpen = (event: React.MouseEvent<HTMLElement>) => {
+  /* const handlePopoverOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
 
@@ -38,7 +38,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
     setAnchorEl(null);
   };
 
-  const open = Boolean(anchorEl);
+  const open = Boolean(anchorEl); */
 
   return (
     <Box 

@@ -15,7 +15,10 @@ import {
   Instagram as InstagramIcon,
   Web as WebIcon,
   Timeline as StrategyIcon,
-  CalendarMonth as CalendarIcon
+  CalendarMonth as CalendarIcon,
+  AudioFile as AudioIcon,
+  Image as ImageIcon,
+  VideoLibrary as VideoIcon
 } from '@mui/icons-material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import { ToolCategories } from '../components/shared/types';

@@ -6,9 +6,6 @@ import {
   CardContent,
   Typography
 } from '@mui/material';
-import {
-  BarChart as BarChartIcon
-} from '@mui/icons-material';
 import { useContentPlanningStore } from '../../../stores/contentPlanningStore';
 
 const PerformanceAnalyticsTab: React.FC = () => {

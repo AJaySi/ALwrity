@@ -24,7 +24,6 @@ import {
   SkipNext as SkipIcon,
   NavigateNext,
   Psychology as AgentIcon,
-  Lightbulb as ReasonIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore } from '../../../stores/workflowStore';

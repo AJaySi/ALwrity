@@ -200,7 +200,7 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
             },
           }}
         >
-          {/* Icon only */}
+          {null}
         </PrimaryButton>
       )}
 
@@ -222,7 +222,7 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
             },
           }}
         >
-          {/* Icon only */}
+          {null}
         </PrimaryButton>
       )}
     </Stack>

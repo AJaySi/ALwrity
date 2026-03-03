@@ -15,7 +15,7 @@ import { PlatformPersonaProvider, usePlatformPersonaContext } from '../shared/Pe
 const useCopilotActionTyped = useCopilotAction as any;
 
 // Optional debug flag: set to true to enable verbose logs locally
-const DEBUG_LINKEDIN = false;
+// const DEBUG_LINKEDIN = false;
 
 interface LinkedInWriterProps {
   className?: string;
@@ -43,9 +43,9 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
     currentAction,
     chatHistory,
     userPreferences,
-    currentSuggestions,
+    // currentSuggestions,
     showPreferencesModal,
-    showContextModal,
+    // showContextModal,
     showPreview,
     justGeneratedContent,
     
@@ -65,14 +65,14 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
     setPendingEdit,
     setUserPreferences,
     setShowPreferencesModal,
-    setShowContextModal,
+    // setShowContextModal,
     setShowPreview,
     
     // Handlers
     handleDraftChange,
     handleContextChange,
-    handleClear,
-    handleCopy,
+    // handleClear,
+    // handleCopy,
     handleClearHistory,
     
     // Utilities
@@ -82,17 +82,18 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
   } = useLinkedInWriter();
 
   // Get persona context for enhanced AI assistance
-  const { corePersona, platformPersona, loading: personaLoading } = usePlatformPersonaContext();
+  const { corePersona, platformPersona } = usePlatformPersonaContext();
+  // const { corePersona, platformPersona, loading: personaLoading } = usePlatformPersonaContext();
 
   // Get enhanced persistence functionality
   const {
-    persistenceManager,
-    saveChatHistory,
+    // persistenceManager,
+    // saveChatHistory,
     loadChatHistory,
-    addChatMessage,
+    // addChatMessage,
     saveUserPreferences: savePersistedPreferences,
     loadUserPreferences: loadPersistedPreferences,
-    saveConversationContext,
+    // saveConversationContext,
     loadConversationContext,
     saveDraftContent,
     loadDraftContent,
@@ -149,6 +150,7 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
     return () => {
       saveLastSession();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle preview changes

@@ -20,7 +20,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Tooltip
+  // Tooltip
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -75,12 +75,10 @@ const CompetitorsGrid: React.FC<CompetitorsGridProps> = ({
 }) => {
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [newCompetitorUrl, setNewCompetitorUrl] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
 
-  const handleAddSubmit = async () => {
+  const handleAddSubmit = () => {
     if (!newCompetitorUrl) return;
     
-    setIsAdding(true);
     try {
       // Create a basic competitor object
       // In a real implementation, you might want to fetch metadata here or let the parent handle it
@@ -114,8 +112,6 @@ const CompetitorsGrid: React.FC<CompetitorsGridProps> = ({
       setNewCompetitorUrl('');
     } catch (error) {
       console.error('Error adding competitor:', error);
-    } finally {
-      setIsAdding(false);
     }
   };
 

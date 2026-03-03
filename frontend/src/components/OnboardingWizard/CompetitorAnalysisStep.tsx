@@ -20,7 +20,7 @@ import {
   Divider,
   Chip,
   Tooltip,
-  IconButton,
+  // IconButton,
   Collapse
 } from '@mui/material';
 import {
@@ -99,7 +99,7 @@ const CompetitorAnalysisStep: React.FC<CompetitorAnalysisStepProps> = ({
   const [isAnalyzingSitemap, setIsAnalyzingSitemap] = useState(false);
   const [isDiscoveringSocial, setIsDiscoveringSocial] = useState(false);
   const [showHeaderInfo, setShowHeaderInfo] = useState(false);
-  const [showWhyImportant, setShowWhyImportant] = useState(false);
+  // const [showWhyImportant, setShowWhyImportant] = useState(false);
   const [missingData, setMissingData] = useState(false);
 
   // Ref to track if initialization has already started to prevent duplicate calls
@@ -399,7 +399,7 @@ const CompetitorAnalysisStep: React.FC<CompetitorAnalysisStepProps> = ({
     } finally {
       setIsDiscoveringSocial(false);
     }
-  }, [userUrl, isDiscoveringSocial]);
+  }, [userUrl, isDiscoveringSocial, socialMediaAccounts]);
 
   // Sitemap Analysis Function
   const startSitemapAnalysis = useCallback(async (force = false) => {

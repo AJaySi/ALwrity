@@ -112,6 +112,7 @@ export function useLinkedInWriter() {
     };
 
     loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Listen for lightweight progress events

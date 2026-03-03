@@ -27,9 +27,9 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import EnhancedTodayChip from './EnhancedTodayChip';
-import { TodayTask } from '../../../types/workflow';
-
-// Today Modal Component
+  import { TodayTask } from '../../../types/workflow';
+  
+  // Today Modal Component
 const TodayModal: React.FC<{
   open: boolean;
   onClose: () => void;
@@ -257,15 +257,25 @@ const GenerateChip: React.FC<{
 }> = ({ chip, delay = 0, onTodayClick }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // Effect to handle animation timing
   useEffect(() => {
-    if (chip.bubbles && chip.bubbles.length > 0) {
-      const interval = setInterval(() => {
-        setCurrentIndex((prev) => (prev + 1) % chip.bubbles.length);
-      }, 2000 + delay * 300);
+    // Only proceed if there are bubbles to show
+    if (!chip.bubbles || chip.bubbles.length === 0) return;
 
-      return () => clearInterval(interval);
-    }
-  }, [chip.bubbles?.length, delay]);
+    // Reset bubble index when chip changes
+    setCurrentIndex(0);
+    
+    // Start interval to cycle through bubbles
+    const interval = setInterval(() => {
+      setCurrentIndex(prev => {
+        // If we've reached the end, reset to 0
+        if (prev >= (chip.bubbles?.length || 0) - 1) return 0;
+        return prev + 1;
+      });
+    }, 3000); // Change bubble every 3 seconds
+    
+    return () => clearInterval(interval);
+  }, [chip.bubbles]); // Only re-run when bubbles change
 
   const IconComponent = chip.icon;
 

@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useMemo, useImperativeHandle } from 'react';
 import { 
   Box, Button, MenuItem, Select, TextField, Typography, FormControl, InputLabel, Grid, 
   Card, CardMedia, CircularProgress, LinearProgress, Tabs, Tab, 
-  Tooltip, Alert, Chip, IconButton
+  Tooltip, Alert, Chip
 } from '@mui/material';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import InfoIcon from '@mui/icons-material/Info';
@@ -590,7 +590,7 @@ export const ImageGenerator = React.forwardRef<ImageGeneratorHandle, ImageGenera
                   <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
                     Important Notes:
                   </Typography>
-                  {guidance.warnings.map((warning, idx) => (
+                  {guidance.warnings.map((warning: string, idx: number) => (
                     <Typography key={idx} variant="body2" sx={{ fontSize: '13px', mb: 0.5 }}>
                       • {warning}
                     </Typography>
@@ -612,7 +612,7 @@ export const ImageGenerator = React.forwardRef<ImageGeneratorHandle, ImageGenera
                   <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
                     💡 Best Practices for {model}:
                   </Typography>
-                  {guidance.tips.map((tip, idx) => (
+                  {guidance.tips.map((tip: string, idx: number) => (
                     <Typography key={idx} variant="body2" sx={{ fontSize: '13px', mb: 0.5 }}>
                       • {tip}
                     </Typography>

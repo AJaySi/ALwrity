@@ -12,8 +12,8 @@ import {
   Button,
   List,
   ListItem,
-  ListItemIcon,
-  ListItemText,
+  // ListItemIcon,
+  // ListItemText,
   Divider,
   Avatar
 } from '@mui/material';
@@ -66,7 +66,6 @@ export interface Props {
 }
 
 export const StrategicInsightsResults: React.FC<Props> = ({ report, hideCreateContent = false }) => {
-  const theme = useTheme();
   const { insights, metrics, week_commencing } = report;
 
   const handleCreateContent = (topic: string) => {

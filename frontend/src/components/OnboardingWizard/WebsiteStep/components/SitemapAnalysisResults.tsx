@@ -12,7 +12,6 @@ import {
   Chip,
   Card,
   CardContent,
-  Divider,
   LinearProgress
 } from '@mui/material';
 import {
@@ -72,7 +71,7 @@ const SitemapAnalysisResults: React.FC<SitemapAnalysisResultsProps> = ({
 }) => {
   const structureAnalysis: StructureAnalysis = analysisData.structure_analysis || {};
   const contentTrends: ContentTrends = analysisData.content_trends || {};
-  const publishingPatterns: PublishingPatterns = analysisData.publishing_patterns || {};
+  // const publishingPatterns: PublishingPatterns = analysisData.publishing_patterns || {};
   const onboardingInsights: OnboardingInsights = analysisData.onboarding_insights || {};
 
   if (isLoading) {

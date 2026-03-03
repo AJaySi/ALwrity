@@ -29,7 +29,7 @@ import {
   getListItemStyles
 } from '../styles';
 import ProgressiveCard from './ProgressiveCard';
-import { safeRenderText, safeRenderArray, hasValidData, getFallbackValue } from '../utils/defensiveRendering';
+import { safeRenderText, hasValidData } from '../utils/defensiveRendering';
 
 interface StrategicInsightsCardProps {
   strategyData: StrategyData | null;

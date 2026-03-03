@@ -3,8 +3,8 @@ import {
   Box,
   Typography,
   Grid,
-  Card,
-  CardContent,
+  // Card,
+  // CardContent,
   Chip,
   Tabs,
   Tab,
@@ -12,7 +12,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider,
+  // Divider,
   Alert,
   Paper,
   Tooltip,
@@ -74,9 +74,9 @@ const SitemapAnalysisSection: React.FC<SitemapAnalysisSectionProps> = ({
   const {
     structure_analysis,
     content_trends,
-    publishing_patterns,
+    // publishing_patterns,
     ai_insights,
-    seo_recommendations
+    // seo_recommendations
   } = sitemapAnalysis;
 
   return (

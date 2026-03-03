@@ -139,7 +139,7 @@ export const ControlStudio: React.FC = () => {
   const {
     loadControlOperations,
     controlOperations,
-    isLoadingControlOps,
+    // isLoadingControlOps,
     processControl,
     isProcessingControl,
     controlResult,

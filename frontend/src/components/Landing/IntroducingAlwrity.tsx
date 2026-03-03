@@ -12,7 +12,7 @@ import {
   alpha,
   Skeleton
 } from '@mui/material';
-import { SignInButton, useClerk } from '@clerk/clerk-react';
+import { useClerk } from '@clerk/clerk-react';
 import {
   RocketLaunch,
   Business,

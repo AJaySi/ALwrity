@@ -28,7 +28,7 @@ import {
   getListItemStyles
 } from '../styles';
 import ProgressiveCard from './ProgressiveCard';
-import { safeRenderText, safeRenderArray, hasValidData, getFallbackValue } from '../utils/defensiveRendering';
+// import { safeRenderText, safeRenderArray, hasValidData, getFallbackValue } from '../utils/defensiveRendering';
 
 interface ImplementationRoadmapCardProps {
   strategyData: StrategyData | null;

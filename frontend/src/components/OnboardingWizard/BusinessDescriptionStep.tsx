@@ -79,7 +79,7 @@ const BusinessDescriptionStep: React.FC<BusinessDescriptionStepProps> = ({ onBac
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showExamples, setShowExamples] = useState(false);
+  // const [showExamples, setShowExamples] = useState(false);
 
   useEffect(() => {
     console.log('🔄 BusinessDescriptionStep mounted. Loading cached data...');

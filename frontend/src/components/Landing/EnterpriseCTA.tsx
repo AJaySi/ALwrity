@@ -10,7 +10,7 @@ import {
   alpha
 } from '@mui/material';
 import OptimizedImage from './OptimizedImage';
-import { SignInButton, useClerk } from '@clerk/clerk-react';
+import { useClerk } from '@clerk/clerk-react';
 import { RocketLaunch } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { ScrambleText } from '../ScrambleText';

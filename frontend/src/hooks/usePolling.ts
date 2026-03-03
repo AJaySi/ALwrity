@@ -60,7 +60,7 @@ export function usePolling<T = any>(
   const attemptsRef = useRef(0);
   const currentTaskIdRef = useRef<string | null>(null);
 
-  const stopPolling = useCallback(() => {
+  /* const stopPolling = useCallback(() => {
     // Only log and clear if actually polling (not just cleanup on unmount when idle)
     const wasPolling = intervalRef.current !== null || isPolling;
     
@@ -81,7 +81,17 @@ export function usePolling<T = any>(
       }
     }
     // Silently handle cleanup when not polling (common on unmount/re-render)
-  }, [isPolling]);
+  }, [isPolling]); */
+
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setIsPolling(false);
+    attemptsRef.current = 0;
+    currentTaskIdRef.current = null;
+  }, []);
 
   const startPolling = useCallback((taskId: string) => {
     if (isPolling) {

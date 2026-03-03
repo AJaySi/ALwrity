@@ -18,10 +18,10 @@ import {
 } from '@mui/material';
 import {
   Analytics as AnalyticsIcon,
-  AutoAwesome as AutoAwesomeIcon,
+  // AutoAwesome as AutoAwesomeIcon,
   Psychology as PsychologyIcon,
   Info as InfoIcon,
-  MenuBook as MenuBookIcon,
+  // MenuBook as MenuBookIcon,
   Timeline as TimelineIcon,
   Star as StarIcon
 } from '@mui/icons-material';

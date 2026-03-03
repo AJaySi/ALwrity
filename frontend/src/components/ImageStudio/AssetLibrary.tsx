@@ -4,23 +4,12 @@ import {
   Box,
   Paper,
   Typography,
-  TextField,
-  InputAdornment,
   Grid,
-  Card,
-  CardContent,
-  CardMedia,
-  Chip,
-  IconButton,
   Stack,
   Button,
   ButtonGroup,
   Tabs,
   Tab,
-  FormControl,
-  Select,
-  MenuItem,
-  InputLabel,
   Divider,
   CircularProgress,
   Alert,
@@ -32,94 +21,27 @@ import {
   TableHead,
   TableRow,
   Checkbox,
-  Tooltip,
-  Menu,
-  ListItemIcon,
-  ListItemText,
 } from '@mui/material';
 import {
   Search,
   GridView,
   ViewList,
   Favorite,
-  FavoriteBorder,
   Download,
-  Share,
   Delete,
   Image as ImageIcon,
-  VideoLibrary,
-  TextFields,
-  AudioFile,
   Collections,
   History,
   Star,
-  MoreVert,
-  Upload,
-  CalendarToday,
-  CheckCircle,
-  HourglassEmpty,
-  Error as ErrorIcon,
   Refresh,
   Warning,
-  ExpandMore,
-  ExpandLess,
 } from '@mui/icons-material';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { useContentAssets, AssetFilters, ContentAsset } from '../../hooks/useContentAssets';
 import { intentResearchApi } from '../../api/intentResearchApi';
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
-}
-
-const getStatusIcon = (status: string) => {
-  switch (status?.toLowerCase()) {
-    case 'completed':
-      return <CheckCircle sx={{ color: '#10b981', fontSize: 18 }} />;
-    case 'processing':
-      return <HourglassEmpty sx={{ color: '#f59e0b', fontSize: 18 }} />;
-    case 'failed':
-      return <ErrorIcon sx={{ color: '#ef4444', fontSize: 18 }} />;
-    default:
-      return <HourglassEmpty sx={{ color: '#6b7280', fontSize: 18 }} />;
-  }
-};
-
-const getStatusChip = (status: string) => {
-  const statusLower = status?.toLowerCase() || 'completed';
-  const colors: Record<string, { bg: string; color: string }> = {
-    completed: { bg: 'rgba(16,185,129,0.2)', color: '#10b981' },
-    processing: { bg: 'rgba(245,158,11,0.2)', color: '#f59e0b' },
-    failed: { bg: 'rgba(239,68,68,0.2)', color: '#ef4444' },
-    pending: { bg: 'rgba(107,114,128,0.2)', color: '#6b7280' },
-  };
-  const style = colors[statusLower] || colors.completed;
-  return (
-    <Chip
-      icon={getStatusIcon(status)}
-      label={statusLower}
-      size="small"
-      sx={{
-        background: style.bg,
-        color: style.color,
-        fontWeight: 600,
-        textTransform: 'capitalize',
-        height: 28,
-      }}
-    />
-  );
-};
+import { AssetFilters as AssetFiltersComponent } from './AssetLibraryComponents/AssetFilters';
+import { AssetCard } from './AssetLibraryComponents/AssetCard';
+import { AssetTableRow } from './AssetLibraryComponents/AssetTableRow';
 
 export const AssetLibrary: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -134,7 +56,7 @@ export const AssetLibrary: React.FC = () => {
   const [modelSearch, setModelSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list'); // Default to list like reference
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [tabValue, setTabValue] = useState(0);
   const [filterType, setFilterType] = useState(() => {
     // Set filter type from URL if present
@@ -163,6 +85,10 @@ export const AssetLibrary: React.FC = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  const onSearch = (value: string) => {
+    setSearchQuery(value);
+  };
 
   // Build filters based on UI state
   const filters: AssetFilters = useMemo(() => {
@@ -207,10 +133,9 @@ export const AssetLibrary: React.FC = () => {
   useEffect(() => {
     if (urlSourceModule === 'research_tools' && urlAssetType === 'text') {
       console.log('[AssetLibrary] Refetching assets for research_tools/text filter');
-      // Small delay to ensure any recent saves are complete
       const timer = setTimeout(() => {
         refetch();
-      }, 1000); // Increased delay to ensure save completes
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [urlSourceModule, urlAssetType, refetch]);
@@ -330,14 +255,12 @@ export const AssetLibrary: React.FC = () => {
 
   const handleRestoreResearchProject = async (asset: ContentAsset) => {
     try {
-      // Extract project_id from asset metadata
       const projectId = asset.asset_metadata?.project_id;
       if (!projectId) {
         setSnackbar({ open: true, message: 'Project ID not found', severity: 'error' });
         return;
       }
 
-      // Load full project from database
       const project = await intentResearchApi.getResearchProject(projectId);
       
       if (!project) {
@@ -345,35 +268,12 @@ export const AssetLibrary: React.FC = () => {
         return;
       }
 
-      // Store project ID for restoration hook to pick up
       localStorage.setItem('alwrity_research_project_id', projectId);
-      
-      // Navigate to Research Dashboard
       navigate('/research-dashboard');
-      
       setSnackbar({ open: true, message: 'Research project restored', severity: 'success' });
     } catch (error) {
       console.error('[AssetLibrary] Error restoring research project:', error);
       setSnackbar({ open: true, message: 'Failed to restore research project', severity: 'error' });
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
-      const timezoneOffset = -date.getTimezoneOffset();
-      const offsetHours = String(Math.floor(Math.abs(timezoneOffset) / 60)).padStart(2, '0');
-      const offsetMinutes = String(Math.abs(timezoneOffset) % 60).padStart(2, '0');
-      const offsetSign = timezoneOffset >= 0 ? '+' : '-';
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} GMT${offsetSign}${offsetHours}.${offsetMinutes}`;
-    } catch {
-      return dateString;
     }
   };
 
@@ -417,191 +317,6 @@ export const AssetLibrary: React.FC = () => {
         [asset.id]: { ...prev[asset.id], expanded: !prev[asset.id].expanded }
       }));
     }
-  };
-
-  const getAssetPreview = (asset: ContentAsset, isListView: boolean = false) => {
-    if (asset.asset_type === 'image') {
-      return (
-        <Box
-          component="img"
-          src={asset.file_url}
-          alt={asset.title || asset.filename}
-          sx={{
-            width: 80,
-            height: 80,
-            objectFit: 'cover',
-            borderRadius: 1,
-            border: '1px solid rgba(255,255,255,0.1)',
-            cursor: 'pointer',
-          }}
-          onClick={() => window.open(asset.file_url, '_blank')}
-        />
-      );
-    } else if (asset.asset_type === 'video') {
-      return (
-        <Box
-          sx={{
-            width: 80,
-            height: 80,
-            borderRadius: 1,
-            background: 'rgba(99,102,241,0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '1px solid rgba(255,255,255,0.1)',
-            cursor: 'pointer',
-          }}
-          onClick={() => window.open(asset.file_url, '_blank')}
-        >
-          <VideoLibrary sx={{ color: '#c7d2fe', fontSize: 32 }} />
-        </Box>
-      );
-    } else if (asset.asset_type === 'audio') {
-      return (
-        <Box
-          sx={{
-            width: 80,
-            height: 80,
-            borderRadius: 1,
-            background: 'rgba(59,130,246,0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '1px solid rgba(255,255,255,0.1)',
-            cursor: 'pointer',
-          }}
-          onClick={() => window.open(asset.file_url, '_blank')}
-        >
-          <AudioFile sx={{ color: '#93c5fd', fontSize: 32 }} />
-        </Box>
-      );
-    } else if (asset.asset_type === 'text') {
-      const preview = textPreviews[asset.id];
-      const previewText = preview?.content || '';
-      const lines = previewText.split('\n');
-      const previewLines = lines.slice(0, 2).join('\n');
-      const hasMore = lines.length > 2 || previewText.length > 100;
-      
-      return (
-        <Box
-          sx={{
-            width: isListView ? 'auto' : 80,
-            minHeight: isListView ? 'auto' : 80,
-            maxWidth: isListView ? 300 : 80,
-            borderRadius: 1,
-            background: 'rgba(107,114,128,0.2)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            cursor: 'pointer',
-            p: isListView ? 1.5 : 1,
-            display: 'flex',
-            flexDirection: 'column',
-            position: 'relative',
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleTextPreview(asset);
-          }}
-        >
-          {preview?.loading ? (
-            <CircularProgress size={20} sx={{ m: 'auto' }} />
-          ) : preview?.expanded ? (
-            <Box sx={{ 
-              flex: 1, 
-              overflow: 'auto', 
-              fontSize: isListView ? '0.8rem' : '0.7rem', 
-              color: '#d1d5db',
-              maxHeight: isListView ? 200 : 150,
-            }}>
-              <Typography 
-                variant="caption" 
-                sx={{ 
-                  whiteSpace: 'pre-wrap', 
-                  wordBreak: 'break-word',
-                  fontFamily: isListView ? 'monospace' : 'inherit',
-                  lineHeight: 1.5,
-                }}
-              >
-                {previewText.substring(0, isListView ? 1000 : 500)}
-                {previewText.length > (isListView ? 1000 : 500) && '...'}
-              </Typography>
-              <IconButton 
-                size="small" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleTextPreview(asset);
-                }}
-                sx={{ position: 'absolute', bottom: 4, right: 4, p: 0.5 }}
-              >
-                <ExpandLess sx={{ fontSize: 16, color: '#d1d5db' }} />
-              </IconButton>
-            </Box>
-          ) : (
-            <>
-              <TextFields sx={{ color: '#d1d5db', fontSize: isListView ? 28 : 24, mb: 0.5 }} />
-              {previewText ? (
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    fontSize: isListView ? '0.75rem' : '0.65rem', 
-                    color: '#9ca3af', 
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: '-webkit-box',
-                    WebkitLineClamp: isListView ? 3 : 2,
-                    WebkitBoxOrient: 'vertical',
-                    lineHeight: 1.3,
-                    mb: 0.5,
-                  }}
-                >
-                  {previewLines || previewText.substring(0, 100)}
-                </Typography>
-              ) : (
-                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: '#9ca3af' }}>
-                  Click to preview
-                </Typography>
-              )}
-              {hasMore && (
-                <IconButton 
-                  size="small" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleTextPreview(asset);
-                  }}
-                  sx={{ position: 'absolute', bottom: 4, right: 4, p: 0.5 }}
-                >
-                  <ExpandMore sx={{ fontSize: 16, color: '#d1d5db' }} />
-                </IconButton>
-              )}
-            </>
-          )}
-        </Box>
-      );
-    } else {
-      return (
-        <Box
-          sx={{
-            width: 80,
-            height: 80,
-            borderRadius: 1,
-            background: 'rgba(107,114,128,0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '1px solid rgba(255,255,255,0.1)',
-            cursor: 'pointer',
-          }}
-          onClick={() => window.open(asset.file_url, '_blank')}
-        >
-          <TextFields sx={{ color: '#d1d5db', fontSize: 32 }} />
-        </Box>
-      );
-    }
-  };
-
-  const getModelName = (asset: ContentAsset) => {
-    if (asset.model) return asset.model;
-    if (asset.provider) return `${asset.provider}/${asset.source_module.replace('_', ' ')}`;
-    return asset.source_module.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   const filteredAssets = useMemo(() => {
@@ -674,115 +389,21 @@ export const AssetLibrary: React.FC = () => {
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
           {/* Advanced Search and Filters */}
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="ID"
-                value={idSearch}
-                onChange={e => setIdSearch(e.target.value)}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    background: 'rgba(15,23,42,0.5)',
-                    color: '#f8fafc',
-                  },
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Search model..."
-                value={modelSearch}
-                onChange={e => setModelSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 18 }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    background: 'rgba(15,23,42,0.5)',
-                    color: '#f8fafc',
-                  },
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                type="date"
-                placeholder="Pick a date"
-                value={dateFilter}
-                onChange={e => setDateFilter(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CalendarToday sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 18 }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    background: 'rgba(15,23,42,0.5)',
-                    color: '#f8fafc',
-                  },
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Status</InputLabel>
-                <Select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
-                  label="Status"
-                  sx={{
-                    background: 'rgba(15,23,42,0.5)',
-                    color: '#f8fafc',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'rgba(255,255,255,0.2)',
-                    },
-                  }}
-                >
-                  <MenuItem value="all">All</MenuItem>
-                  <MenuItem value="completed">Completed</MenuItem>
-                  <MenuItem value="processing">Processing</MenuItem>
-                  <MenuItem value="failed">Failed</MenuItem>
-                  <MenuItem value="pending">Pending</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Type</InputLabel>
-                <Select
-                  value={filterType}
-                  onChange={e => setFilterType(e.target.value)}
-                  label="Type"
-                  sx={{
-                    background: 'rgba(15,23,42,0.5)',
-                    color: '#f8fafc',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'rgba(255,255,255,0.2)',
-                    },
-                  }}
-                >
-                  <MenuItem value="all">All Assets</MenuItem>
-                  <MenuItem value="images">Images</MenuItem>
-                  <MenuItem value="videos">Videos</MenuItem>
-                  <MenuItem value="audio">Audio</MenuItem>
-                  <MenuItem value="text">Text</MenuItem>
-                  <MenuItem value="favorites">Favorites</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+          <AssetFiltersComponent
+            idSearch={idSearch}
+            setIdSearch={setIdSearch}
+            modelSearch={modelSearch}
+            setModelSearch={setModelSearch}
+            dateFilter={dateFilter}
+            setDateFilter={setDateFilter}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            filterType={filterType}
+            setFilterType={setFilterType}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            onSearch={onSearch}
+          />
 
           {/* Bulk Actions */}
           {selectedAssets.size > 0 && (
@@ -966,131 +587,26 @@ export const AssetLibrary: React.FC = () => {
                 </TableHead>
                 <TableBody>
                   {filteredAssets.map(asset => (
-                    <TableRow
+                    <AssetTableRow
                       key={asset.id}
-                      sx={{
-                        '&:hover': { background: 'rgba(255,255,255,0.05)' },
-                        cursor: 'pointer',
+                      asset={asset}
+                      isSelected={selectedAssets.has(asset.id)}
+                      onSelect={(checked) => handleSelectAsset(asset.id, checked)}
+                      onDownload={handleDownload}
+                      onShare={handleShare}
+                      onDelete={handleDelete}
+                      onFavorite={handleFavorite}
+                      onRestore={handleRestoreResearchProject}
+                      onMenuOpen={handleMenuOpen}
+                      onMenuClose={handleMenuClose}
+                      anchorEl={anchorEl[asset.id]}
+                      textPreview={textPreviews[asset.id]}
+                      onToggleTextPreview={toggleTextPreview}
+                      onCopyId={(id) => {
+                        navigator.clipboard.writeText(id);
+                        setSnackbar({ open: true, message: 'ID copied', severity: 'success' });
                       }}
-                    >
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={selectedAssets.has(asset.id)}
-                          onChange={e => handleSelectAsset(asset.id, e.target.checked)}
-                          onClick={e => e.stopPropagation()}
-                          sx={{ color: 'rgba(255,255,255,0.6)' }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: '#c7d2fe',
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer',
-                            '&:hover': { textDecoration: 'underline' },
-                          }}
-                          onClick={() => {
-                            navigator.clipboard.writeText(String(asset.id));
-                            setSnackbar({ open: true, message: 'ID copied', severity: 'success' });
-                          }}
-                        >
-                          {String(asset.id).slice(0, 8)}...
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: '#f8fafc',
-                            cursor: 'pointer',
-                            '&:hover': { textDecoration: 'underline' },
-                          }}
-                        >
-                          {getModelName(asset)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>{getStatusChip(asset.asset_metadata?.status || 'completed')}</TableCell>
-                      <TableCell>{getAssetPreview(asset, true)}</TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem' }}>
-                          {formatDate(asset.created_at)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={0.5}>
-                          <Tooltip title="Upload">
-                            <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                              <Upload fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Download">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleDownload(asset)}
-                              sx={{ color: 'rgba(255,255,255,0.6)' }}
-                            >
-                              <Download fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="More">
-                            <IconButton
-                              size="small"
-                              onClick={e => handleMenuOpen(asset.id, e)}
-                              sx={{ color: 'rgba(255,255,255,0.6)' }}
-                            >
-                              <MoreVert fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Menu
-                            anchorEl={anchorEl[asset.id]}
-                            open={Boolean(anchorEl[asset.id])}
-                            onClose={() => handleMenuClose(asset.id)}
-                          >
-                            {/* Restore Research Project option for research_tools assets */}
-                            {asset.source_module === 'research_tools' && asset.asset_type === 'text' && asset.asset_metadata?.project_type === 'research_project' && (
-                              <MenuItem 
-                                onClick={() => { 
-                                  handleRestoreResearchProject(asset); 
-                                  handleMenuClose(asset.id); 
-                                }}
-                                sx={{ color: '#667eea' }}
-                              >
-                                <ListItemIcon>
-                                  <Box sx={{ color: '#667eea', fontSize: 20 }}>🔬</Box>
-                                </ListItemIcon>
-                                <ListItemText>Restore in Researcher</ListItemText>
-                              </MenuItem>
-                            )}
-                            <MenuItem onClick={() => { handleFavorite(asset.id); handleMenuClose(asset.id); }}>
-                              <ListItemIcon>
-                                {asset.is_favorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
-                              </ListItemIcon>
-                              <ListItemText>{asset.is_favorite ? 'Remove Favorite' : 'Add Favorite'}</ListItemText>
-                            </MenuItem>
-                            <MenuItem onClick={() => { handleShare(asset); handleMenuClose(asset.id); }}>
-                              <ListItemIcon>
-                                <Share fontSize="small" />
-                              </ListItemIcon>
-                              <ListItemText>Share</ListItemText>
-                            </MenuItem>
-                            <MenuItem
-                              onClick={() => {
-                                handleDelete(asset.id);
-                                handleMenuClose(asset.id);
-                              }}
-                              sx={{ color: '#ef4444' }}
-                            >
-                              <ListItemIcon>
-                                <Delete fontSize="small" sx={{ color: '#ef4444' }} />
-                              </ListItemIcon>
-                              <ListItemText>Delete</ListItemText>
-                            </MenuItem>
-                          </Menu>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
+                    />
                   ))}
                 </TableBody>
               </Table>
@@ -1099,216 +615,16 @@ export const AssetLibrary: React.FC = () => {
             <Grid container spacing={3}>
               {filteredAssets.map(asset => (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={asset.id}>
-                  <Card
-                    sx={{
-                      background: 'rgba(15,23,42,0.5)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 3,
-                      overflow: 'hidden',
-                      transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: '0 10px 25px rgba(124,58,237,0.25)',
-                      },
-                    }}
-                  >
-                    <Box sx={{ position: 'relative', aspectRatio: asset.asset_type === 'video' ? '16/9' : '1' }}>
-                      {asset.asset_type === 'image' ? (
-                        <CardMedia
-                          component="img"
-                          image={asset.file_url}
-                          alt={asset.title || asset.filename}
-                          sx={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                          }}
-                        />
-                      ) : asset.asset_type === 'video' ? (
-                        <Box
-                          component="video"
-                          src={asset.file_url}
-                          controls
-                          sx={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                          }}
-                        />
-                      ) : asset.asset_type === 'text' ? (
-                        <Box
-                          sx={{
-                            width: '100%',
-                            height: '100%',
-                            p: 2,
-                            background: 'rgba(107,114,128,0.2)',
-                            color: '#d1d5db',
-                            overflow: 'auto',
-                            display: 'flex',
-                            flexDirection: 'column',
-                          }}
-                        >
-                          {textPreviews[asset.id]?.loading ? (
-                            <CircularProgress size={24} sx={{ m: 'auto' }} />
-                          ) : textPreviews[asset.id]?.expanded ? (
-                            <>
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  whiteSpace: 'pre-wrap',
-                                  wordBreak: 'break-word',
-                                  flex: 1,
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.875rem',
-                                  lineHeight: 1.6,
-                                }}
-                              >
-                                {textPreviews[asset.id].content}
-                              </Typography>
-                              <IconButton
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleTextPreview(asset);
-                                }}
-                                sx={{ alignSelf: 'flex-end', mt: 1 }}
-                              >
-                                <ExpandLess />
-                              </IconButton>
-                            </>
-                          ) : (
-                            <>
-                              <TextFields sx={{ fontSize: 48, mb: 1, opacity: 0.7 }} />
-                              <Typography variant="body2" sx={{ textAlign: 'center', mb: 1 }}>
-                                Text Content
-                              </Typography>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleTextPreview(asset);
-                                }}
-                                sx={{ mt: 'auto' }}
-                              >
-                                Preview
-                              </Button>
-                            </>
-                          )}
-                        </Box>
-                      ) : (
-                        <Box
-                          sx={{
-                            width: '100%',
-                            height: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'rgba(99,102,241,0.2)',
-                            color: '#c7d2fe',
-                          }}
-                        >
-                          {getAssetIcon(asset.asset_type)}
-                        </Box>
-                      )}
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          display: 'flex',
-                          gap: 1,
-                        }}
-                      >
-                        <IconButton
-                          size="small"
-                          onClick={() => handleFavorite(asset.id)}
-                          sx={{
-                            background: 'rgba(15,23,42,0.8)',
-                            color: asset.is_favorite ? '#fbbf24' : 'rgba(255,255,255,0.6)',
-                            '&:hover': { background: 'rgba(15,23,42,0.95)' },
-                          }}
-                        >
-                          {asset.is_favorite ? <Favorite /> : <FavoriteBorder />}
-                        </IconButton>
-                      </Box>
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: 8,
-                          left: 8,
-                        }}
-                      >
-                        <Chip
-                          label={asset.source_module.replace(/_/g, ' ')}
-                          size="small"
-                          sx={{
-                            background: 'rgba(15,23,42,0.8)',
-                            color: '#c7d2fe',
-                            fontSize: '0.7rem',
-                          }}
-                        />
-                      </Box>
-                    </Box>
-                    <CardContent>
-                      <Typography variant="subtitle2" fontWeight={600} gutterBottom noWrap>
-                        {asset.title || asset.filename}
-                      </Typography>
-                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                        {getStatusChip(asset.asset_metadata?.status || 'completed')}
-                        <Chip
-                          label={asset.asset_type}
-                          size="small"
-                          sx={{ background: 'rgba(99,102,241,0.2)', color: '#c7d2fe' }}
-                        />
-                        {asset.cost > 0 && (
-                          <Chip
-                            label={`$${asset.cost.toFixed(2)}`}
-                            size="small"
-                            sx={{ background: 'rgba(16,185,129,0.2)', color: '#6ee7b7' }}
-                          />
-                        )}
-                      </Stack>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block', mb: 1 }}>
-                        {formatDate(asset.created_at)}
-                      </Typography>
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        {/* Restore Research Project button for research_tools assets */}
-                        {asset.source_module === 'research_tools' && asset.asset_type === 'text' && asset.asset_metadata?.project_type === 'research_project' && (
-                          <Tooltip title="Restore in Researcher">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleRestoreResearchProject(asset)}
-                              sx={{ color: '#667eea' }}
-                            >
-                              <Box sx={{ fontSize: 20 }}>🔬</Box>
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDownload(asset)}
-                          sx={{ color: 'rgba(255,255,255,0.6)' }}
-                        >
-                          <Download />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleShare(asset)}
-                          sx={{ color: 'rgba(255,255,255,0.6)' }}
-                        >
-                          <Share />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDelete(asset.id)}
-                          sx={{ color: 'rgba(255,255,255,0.6)' }}
-                        >
-                          <Delete />
-                        </IconButton>
-                      </Stack>
-                    </CardContent>
-                  </Card>
+                  <AssetCard
+                    asset={asset}
+                    textPreview={textPreviews[asset.id]}
+                    onToggleTextPreview={toggleTextPreview}
+                    onFavorite={handleFavorite}
+                    onDownload={handleDownload}
+                    onShare={handleShare}
+                    onDelete={handleDelete}
+                    onRestore={handleRestoreResearchProject}
+                  />
                 </Grid>
               ))}
             </Grid>
@@ -1351,19 +667,4 @@ export const AssetLibrary: React.FC = () => {
       </Paper>
     </ImageStudioLayout>
   );
-};
-
-const getAssetIcon = (assetType: string) => {
-  switch (assetType) {
-    case 'image':
-      return <ImageIcon />;
-    case 'video':
-      return <VideoLibrary />;
-    case 'audio':
-      return <AudioFile />;
-    case 'text':
-      return <TextFields />;
-    default:
-      return <ImageIcon />;
-  }
 };

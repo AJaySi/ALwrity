@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import {
-  Paper,
-  Grid,
-  Typography,
-  Chip,
   Box,
   Tooltip,
-  LinearProgress,
   Badge,
   Card,
   CardContent,
   CircularProgress,
-  Button
+  Button,
+  Paper,
+  Grid,
+  Typography,
+  Chip
 } from '@mui/material';
 import {
   Psychology as PsychologyIcon,

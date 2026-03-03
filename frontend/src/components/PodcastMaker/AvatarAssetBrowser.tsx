@@ -121,7 +121,7 @@ export const AvatarAssetBrowser: React.FC<AvatarAssetBrowserProps> = ({ onSelect
               if (url.startsWith('blob:')) URL.revokeObjectURL(url);
           });
       };
-  }, []); 
+  }, [imageBlobUrls]); 
 
   const handleLoadMore = () => {
     setLimit(prev => prev + 24);

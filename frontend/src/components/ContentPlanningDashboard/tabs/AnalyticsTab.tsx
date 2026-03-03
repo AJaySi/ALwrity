@@ -10,7 +10,6 @@ import {
   Divider,
   Alert,
   CircularProgress,
-  LinearProgress,
   Tabs,
   Tab,
   Button
@@ -21,12 +20,10 @@ import {
   ShowChart as ShowChartIcon,
   Assessment as AssessmentIcon,
   Visibility as VisibilityIcon,
-  Timeline as TimelineIcon,
-  AutoAwesome as AutoAwesomeIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { useContentPlanningStore } from '../../../stores/contentPlanningStore';
-import { contentPlanningApi } from '../../../services/contentPlanningApi';
+// import { contentPlanningApi } from '../../../services/contentPlanningApi';
 import EnhancedPerformanceVisualization from '../components/StrategyIntelligence/components/EnhancedPerformanceVisualization';
 import TrendAnalysis from '../components/StrategyIntelligence/components/TrendAnalysis';
 import DataTransparencyPanel from '../components/StrategyIntelligence/components/DataTransparencyPanel';
@@ -70,6 +67,7 @@ const AnalyticsTab: React.FC = () => {
 
   useEffect(() => {
     loadAnalyticsData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAnalyticsData = async () => {
