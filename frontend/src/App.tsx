@@ -49,6 +49,7 @@ import IntentResearchTest from './pages/IntentResearchTest';
 import SchedulerDashboard from './pages/SchedulerDashboard';
 import BillingPage from './pages/BillingPage';
 import ApprovalsPage from './pages/ApprovalsPage';
+import TeamActivityPage from './pages/TeamActivityPage';
 import StripeDisputesDashboard from './pages/StripeDisputesDashboard';
 import TeamActivityPage from './pages/TeamActivityPage';
 import ProtectedRoute from './components/shared/ProtectedRoute';
