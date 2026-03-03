@@ -1,12 +1,80 @@
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models.agent_activity_models import AgentAlert, AgentApprovalRequest, AgentEvent, AgentRun
+
+
+@dataclass
+class AgentEventPayload:
+    """Shared schema for agent activity event payloads."""
+
+    phase: Optional[str] = None
+    step: Optional[str] = None
+    tool_name: Optional[str] = None
+    progress_percent: Optional[float] = None
+    input_summary: Optional[str] = None
+    output_summary: Optional[str] = None
+    decision_reason: Optional[str] = None
+    evidence_refs: List[str] = field(default_factory=list)
+    safe_debug: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+def build_agent_event_payload(
+    *,
+    phase: Optional[str] = None,
+    step: Optional[str] = None,
+    tool_name: Optional[str] = None,
+    progress_percent: Optional[float] = None,
+    input_summary: Optional[str] = None,
+    output_summary: Optional[str] = None,
+    decision_reason: Optional[str] = None,
+    evidence_refs: Optional[List[str]] = None,
+    safe_debug: bool = True,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return asdict(
+        AgentEventPayload(
+            phase=phase,
+            step=step,
+            tool_name=tool_name,
+            progress_percent=progress_percent,
+            input_summary=input_summary,
+            output_summary=output_summary,
+            decision_reason=decision_reason,
+            evidence_refs=list(evidence_refs or []),
+            safe_debug=bool(safe_debug),
+            metadata=dict(metadata or {}),
+        )
+    )
+
+
+def _normalize_event_payload(payload: Optional[Union[Dict[str, Any], AgentEventPayload]]) -> Dict[str, Any]:
+    if payload is None:
+        return build_agent_event_payload()
+    if isinstance(payload, AgentEventPayload):
+        return asdict(payload)
+    if not isinstance(payload, dict):
+        return build_agent_event_payload(output_summary=str(payload)[:2000], safe_debug=False)
+
+    return build_agent_event_payload(
+        phase=payload.get("phase"),
+        step=payload.get("step"),
+        tool_name=payload.get("tool_name"),
+        progress_percent=payload.get("progress_percent"),
+        input_summary=payload.get("input_summary"),
+        output_summary=payload.get("output_summary"),
+        decision_reason=payload.get("decision_reason"),
+        evidence_refs=payload.get("evidence_refs") if isinstance(payload.get("evidence_refs"), list) else [],
+        safe_debug=bool(payload.get("safe_debug", True)),
+        metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+    )
 
 
 class AgentActivityService:
@@ -51,10 +119,11 @@ class AgentActivityService:
         event_type: str,
         severity: str = "info",
         message: Optional[str] = None,
-        payload: Optional[Dict[str, Any]] = None,
+        payload: Optional[Union[Dict[str, Any], AgentEventPayload]] = None,
         run_id: Optional[int] = None,
         agent_type: Optional[str] = None,
     ) -> AgentEvent:
+        normalized_payload = _normalize_event_payload(payload)
         evt = AgentEvent(
             run_id=run_id,
             user_id=self.user_id,
@@ -62,7 +131,7 @@ class AgentActivityService:
             event_type=event_type,
             severity=severity,
             message=message,
-            payload=payload,
+            payload=normalized_payload,
             created_at=datetime.utcnow(),
         )
         self.db.add(evt)

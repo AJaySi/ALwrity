@@ -3,106 +3,161 @@ import {
   Box,
   Paper,
   Typography,
-  Avatar,
   Chip,
   List,
   ListItem,
-  ListItemAvatar,
-  ListItemText,
   Divider,
   IconButton,
-  Tooltip
+  Tooltip,
+  CircularProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Stack,
 } from '@mui/material';
 import {
-  Psychology as StrategyIcon,
-  Article as ContentIcon,
-  Search as SeoIcon,
-  Campaign as SocialIcon,
-  CompareArrows as CompetitorIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
-import { Link as RouterLink } from 'react-router-dom';
-import { useAgentHuddleFeed } from '../../../hooks/useAgentHuddleFeed';
+import { apiClient } from '../../../api/client';
 
-const ICON_BY_AGENT: Record<string, React.ElementType> = {
-  strategy: StrategyIcon,
-  content: ContentIcon,
-  seo: SeoIcon,
-  social: SocialIcon,
-  competitor: CompetitorIcon,
+type EventPayload = {
+  phase?: string | null;
+  step?: string | null;
+  tool_name?: string | null;
+  progress_percent?: number | null;
+  input_summary?: string | null;
+  output_summary?: string | null;
+  decision_reason?: string | null;
+  evidence_refs?: string[] | null;
+  safe_debug?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+type TeamActivityEvent = {
+  id: number;
+  event_type: string;
+  severity: string;
+  message?: string | null;
+  created_at?: string | null;
+  payload?: EventPayload | null;
+};
+
+type AgentRun = {
+  id: number;
+  agent_type: string;
+  status: string;
+  started_at?: string | null;
 };
 
 const TeamHuddleWidget: React.FC = () => {
-  const { runs, connectionMode, lastHeartbeatAt } = useAgentHuddleFeed();
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [timeline, setTimeline] = React.useState<Array<{ run: AgentRun; events: TeamActivityEvent[] }>>([]);
 
-  // Create rows for the widget from the feed runs
-  // Note: events are not directly used in the simple widget view, but available if needed
-  const rows = React.useMemo(() => {
-    return runs.slice(0, 5).map((run) => {
-      const agentType = String(run.agent_type || 'strategy');
-      // Simple heuristic for icon mapping
-      let IconComponent: React.ElementType = StrategyIcon;
-      for (const key in ICON_BY_AGENT) {
-        if (agentType.toLowerCase().includes(key)) {
-          IconComponent = ICON_BY_AGENT[key];
-          break;
-        }
-      }
-      
-      const status = run.status === 'running' ? 'thinking' : run.success === false ? 'offline' : 'active';
-      return {
-        id: run.id,
-        name: agentType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-        role: run.status || 'active',
-        status,
-        current_activity: run.result_summary || run.error_message || 'Awaiting next update',
-        icon: IconComponent,
-      };
-    });
-  }, [runs]);
+  const loadTimeline = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const runsResp = await apiClient.get('/api/agents/runs', { params: { limit: 5 } });
+      const runs: AgentRun[] = runsResp?.data?.data?.runs || [];
+
+      const eventResponses = await Promise.all(
+        runs.slice(0, 3).map(async (run) => {
+          const eventsResp = await apiClient.get(`/api/agents/runs/${run.id}/events`, { params: { limit: 25 } });
+          return {
+            run,
+            events: (eventsResp?.data?.data?.events || []) as TeamActivityEvent[],
+          };
+        }),
+      );
+
+      setTimeline(eventResponses);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load team activity');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadTimeline();
+  }, [loadTimeline]);
 
   return (
-    <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider', height: '100%', background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)' }}>
+    <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider', height: '100%' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center" gap={1}>
-          <Typography variant="h6" fontWeight={700} color="text.primary">Team Huddle</Typography>
-          <Chip label={connectionMode === 'sse' ? 'Live' : connectionMode === 'polling' ? 'Polling' : 'Connecting'} size="small" color={connectionMode === 'sse' ? 'success' : 'warning'} sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }} />
+          <Typography variant="h6" fontWeight={700}>Team Activity</Typography>
+          <Chip label="Live" size="small" color="success" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }} />
         </Box>
-        <Tooltip title={lastHeartbeatAt ? `Heartbeat ${new Date(lastHeartbeatAt).toLocaleTimeString()}` : 'Waiting for heartbeat'}>
-          <IconButton size="small"><RefreshIcon fontSize="small" /></IconButton>
+        <Tooltip title="Refresh Team Activity">
+          <IconButton size="small" onClick={loadTimeline}>
+            <RefreshIcon fontSize="small" />
+          </IconButton>
         </Tooltip>
       </Box>
 
-      {rows.length === 0 ? (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={180}>
-          <Typography variant="body2" color="text.secondary" textAlign="center">
-            No active agent activity right now.
-          </Typography>
+      {loading && (
+        <Box py={4} textAlign="center">
+          <CircularProgress size={24} />
         </Box>
-      ) : (
+      )}
+
+      {!loading && error && (
+        <Typography variant="body2" color="error">{error}</Typography>
+      )}
+
+      {!loading && !error && timeline.length === 0 && (
+        <Typography variant="body2" color="text.secondary">No team activity yet.</Typography>
+      )}
+
+      {!loading && !error && timeline.length > 0 && (
         <List disablePadding>
-          {rows.map((agent, index) => (
-            <React.Fragment key={agent.id}>
-              {index > 0 && <Divider variant="inset" component="li" sx={{ my: 1, ml: 7 }} />}
-              <ListItem alignItems="flex-start" disableGutters sx={{ py: 0.5 }}>
-                <ListItemAvatar>
-                  <Avatar sx={{ bgcolor: '#eef2ff', color: '#6366f1', width: 40, height: 40 }}><agent.icon fontSize="small" /></Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={<Box display="flex" alignItems="center" gap={1}><Typography variant="subtitle2" fontWeight={600}>{agent.name}</Typography><Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', border: '1px solid #e2e8f0', px: 0.5, borderRadius: 1 }}>{agent.role}</Typography></Box>}
-                  secondary={<Typography variant="body2" color="text.secondary" sx={{ display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: '0.75rem', mt: 0.25 }}>{agent.current_activity}</Typography>}
-                />
+          {timeline.map(({ run, events }, index) => (
+            <React.Fragment key={run.id}>
+              {index > 0 && <Divider sx={{ my: 1 }} />}
+              <ListItem disableGutters sx={{ display: 'block' }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                  <Chip size="small" label={run.agent_type || 'Agent'} />
+                  <Chip size="small" color={run.status === 'completed' ? 'success' : 'warning'} label={run.status} />
+                  <Typography variant="caption" color="text.secondary">
+                    {run.started_at ? new Date(run.started_at).toLocaleString() : ''}
+                  </Typography>
+                </Stack>
+
+                {events.map((event) => {
+                  const payload = event.payload || {};
+                  return (
+                    <Accordion key={event.id} disableGutters elevation={0} sx={{ border: '1px solid #e5e7eb', mb: 1 }}>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%' }}>
+                          <Chip size="small" label={payload.phase || event.event_type} />
+                          {payload.step && <Chip size="small" variant="outlined" label={payload.step} />}
+                          <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                            {event.message || payload.output_summary || 'Activity update'}
+                          </Typography>
+                          {typeof payload.progress_percent === 'number' && (
+                            <Typography variant="caption" color="text.secondary">{payload.progress_percent}%</Typography>
+                          )}
+                        </Stack>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Typography variant="caption" display="block">Tool: {payload.tool_name || '—'}</Typography>
+                        <Typography variant="caption" display="block">Input: {payload.input_summary || '—'}</Typography>
+                        <Typography variant="caption" display="block">Output: {payload.output_summary || '—'}</Typography>
+                        <Typography variant="caption" display="block">Decision: {payload.decision_reason || '—'}</Typography>
+                        <Typography variant="caption" display="block">Evidence: {(payload.evidence_refs || []).join(', ') || '—'}</Typography>
+                        <Typography variant="caption" display="block">Safe debug: {String(payload.safe_debug ?? true)}</Typography>
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                })}
               </ListItem>
             </React.Fragment>
           ))}
         </List>
       )}
-
-      <Box mt={2} pt={2} borderTop="1px solid #eee" display="flex" justifyContent="center">
-        <Typography component={RouterLink} to="/team-activity" variant="caption" color="primary" sx={{ fontWeight: 600, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
-          View Full Team Activity
-        </Typography>
-      </Box>
     </Paper>
   );
 };

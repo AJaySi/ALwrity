@@ -38,7 +38,7 @@ from utils.logger_utils import get_service_logger
 from services.database import get_session_for_user
 from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor
 from services.intelligence.agents.safety_framework import get_safety_framework
-from services.agent_activity_service import AgentActivityService
+from services.agent_activity_service import AgentActivityService, build_agent_event_payload
 from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
 import time
 
@@ -504,7 +504,7 @@ class BaseALwrityAgent(ABC):
                         event_type="plan",
                         severity="info",
                         message=(prompt[:2000] if prompt else None),
-                        payload={"kind": "prompt"},
+                        payload=build_agent_event_payload(phase="planning", step="run_started", tool_name="agent_run", progress_percent=0, input_summary=prompt[:250], output_summary="Agent run initialized", decision_reason="Received run prompt", safe_debug=False, metadata={"kind": "prompt"}),
                         run_id=run_record.id,
                         agent_type=self.agent_type,
                     )
@@ -531,7 +531,7 @@ class BaseALwrityAgent(ABC):
                     event_type="final_summary",
                     severity="info",
                     message=(str(result)[:2000] if result is not None else None),
-                    payload={"kind": "result"},
+                    payload=build_agent_event_payload(phase="execution", step="run_completed", tool_name="agent_run", progress_percent=100, output_summary=str(result)[:400] if result is not None else "No output", decision_reason="Run completed", safe_debug=True, metadata={"kind": "result"}),
                     run_id=run_record.id,
                     agent_type=self.agent_type,
                 )
@@ -545,7 +545,7 @@ class BaseALwrityAgent(ABC):
                         event_type="error",
                         severity="error",
                         message=str(e)[:2000],
-                        payload={"kind": "exception"},
+                        payload=build_agent_event_payload(phase="execution", step="run_error", tool_name="agent_runtime", output_summary=str(e)[:400], decision_reason="Unhandled exception during run", safe_debug=False, metadata={"kind": "exception"}),
                         run_id=run_record.id,
                         agent_type=self.agent_type,
                     )
@@ -591,7 +591,7 @@ class BaseALwrityAgent(ABC):
                         event_type="plan",
                         severity="info",
                         message=f"{action.action_type} -> {action.target_resource}",
-                        payload={"action": asdict(action)},
+                        payload=build_agent_event_payload(phase="planning", step="action_received", tool_name=action.action_type, progress_percent=5, input_summary=f"target={action.target_resource}", output_summary="Action accepted for execution", decision_reason="Start run lifecycle", safe_debug=True, metadata={"action": asdict(action)}),
                         run_id=run_record.id,
                         agent_type=self.agent_type,
                     )
@@ -606,7 +606,7 @@ class BaseALwrityAgent(ABC):
                         event_type="decision",
                         severity="warning",
                         message="Action failed safety validation",
-                        payload={"action_id": action.action_id, "action_type": action.action_type},
+                        payload=build_agent_event_payload(phase="validation", step="safety_blocked", tool_name="safety_framework", progress_percent=10, input_summary=action.action_type, output_summary="Action blocked by safety validation", decision_reason="Safety framework rejected action", safe_debug=True, metadata={"action_id": action.action_id, "action_type": action.action_type}),
                         run_id=run_record.id,
                         agent_type=self.agent_type,
                     )
@@ -646,7 +646,7 @@ class BaseALwrityAgent(ABC):
                             event_type="decision",
                             severity="info",
                             message="Action requires approval",
-                            payload={"approval_id": req.id, "action_id": action.action_id},
+                            payload=build_agent_event_payload(phase="approval", step="awaiting_user_decision", tool_name=action.action_type, progress_percent=20, input_summary=action.target_resource, output_summary="Approval request created", decision_reason="Action requires human approval", safe_debug=True, metadata={"approval_id": req.id, "action_id": action.action_id}),
                             run_id=run_record.id,
                             agent_type=self.agent_type,
                         )
@@ -671,7 +671,7 @@ class BaseALwrityAgent(ABC):
                         event_type="progress",
                         severity="info",
                         message="Rollback checkpoint created",
-                        payload={"checkpoint_id": checkpoint_id},
+                        payload=build_agent_event_payload(phase="safety", step="checkpoint_created", tool_name="rollback_manager", progress_percent=35, output_summary="Rollback checkpoint created", decision_reason="Prepare rollback safety net", safe_debug=True, metadata={"checkpoint_id": checkpoint_id}),
                         run_id=run_record.id,
                         agent_type=self.agent_type,
                     )
@@ -682,7 +682,7 @@ class BaseALwrityAgent(ABC):
                         event_type="warning",
                         severity="warning",
                         message=str(e)[:2000],
-                        payload={"checkpoint": "failed"},
+                        payload=build_agent_event_payload(phase="safety", step="checkpoint_failed", tool_name="rollback_manager", progress_percent=30, output_summary="Checkpoint creation failed", decision_reason="Proceeding without checkpoint", safe_debug=False, metadata={"checkpoint": "failed"}),
                         run_id=run_record.id,
                         agent_type=self.agent_type,
                     )
@@ -717,7 +717,7 @@ class BaseALwrityAgent(ABC):
                     event_type="final_summary",
                     severity="info",
                     message=str(result)[:2000] if result is not None else None,
-                    payload={"action_id": action.action_id},
+                    payload=build_agent_event_payload(phase="execution", step="completed", tool_name=action.action_type, progress_percent=100, output_summary=str(result)[:400] if result is not None else "No output", decision_reason="Action execution completed", safe_debug=True, metadata={"action_id": action.action_id}),
                     run_id=run_record.id,
                     agent_type=self.agent_type,
                 )
@@ -768,7 +768,7 @@ class BaseALwrityAgent(ABC):
                         event_type="error",
                         severity="error",
                         message=str(e)[:2000],
-                        payload={"action_id": action.action_id, "checkpoint_id": checkpoint_id},
+                        payload=build_agent_event_payload(phase="execution", step="failed", tool_name=action.action_type, progress_percent=100, output_summary=str(e)[:400], decision_reason="Exception during action execution", safe_debug=False, metadata={"action_id": action.action_id, "checkpoint_id": checkpoint_id}),
                         run_id=run_record.id,
                         agent_type=self.agent_type,
                     )
