@@ -139,20 +139,20 @@ const TeamHuddleWidget: React.FC = () => {
 
       const runByAgent = new Map<string, string>();
       runsPayload.forEach((run: Record<string, unknown>) => {
-        const key = normalizeAgentKey(run.agent_key || run.agent || run.agent_id || '');
+        const key = normalizeAgentKey((run.agent_key || run.agent || run.agent_id || '') as string);
         if (!key || runByAgent.has(key)) return;
 
         runByAgent.set(
           key,
-          run.summary || run.context || run.activity || run.status_message || 'Working on recent tasks'
+          (run.summary || run.context || run.activity || run.status_message || 'Working on recent tasks') as string
         );
       });
 
       const normalizedAgents: AgentCard[] = statusPayload.map((agent: Record<string, unknown>, index: number) => {
-        const rawKey = agent.key || agent.agent_key || agent.id || agent.name || `agent-${index}`;
+        const rawKey = (agent.key || agent.agent_key || agent.id || agent.name || `agent-${index}`) as string;
         const normalizedKey = normalizeAgentKey(rawKey);
         const meta = AGENT_META[normalizedKey] || {
-          name: agent.display_name || agent.name || rawKey,
+          name: (agent.display_name || agent.name || rawKey) as string,
           role: 'AI Agent',
           icon: AgentIcon,
           color: '#64748b'
@@ -160,14 +160,14 @@ const TeamHuddleWidget: React.FC = () => {
 
         return {
           id: String(rawKey),
-          name: agent.display_name || meta.name,
-          role: agent.role || meta.role,
-          status: normalizeStatus(agent.status || agent.operational_status || ''),
+          name: (agent.display_name || meta.name) as string,
+          role: (agent.role || meta.role) as string,
+          status: normalizeStatus((agent.status || agent.operational_status || '') as string),
           current_activity:
-            agent.current_activity ||
+            (agent.current_activity ||
             runByAgent.get(normalizedKey) ||
             agent.last_message ||
-            'Waiting for next instruction',
+            'Waiting for next instruction') as string,
           icon: meta.icon,
           color: meta.color
         };
