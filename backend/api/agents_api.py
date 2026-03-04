@@ -5,6 +5,7 @@ Provides REST API access to agent orchestration functionality
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from typing import Dict, List, Any, Optional
 import asyncio
 import os
@@ -19,7 +20,7 @@ from services.intelligence.agents.agent_orchestrator import (
 from services.intelligence.agents.core_agent_framework import AgentAction
 from services.intelligence.agents.market_signal_detector import MarketSignal
 from services.intelligence.agents.performance_monitor import PerformanceMetric, AgentStatus
-from services.database import get_db
+from services.database import get_db, get_session_for_user
 from services.agent_activity_service import AgentActivityService
 from services.agent_activity_serializers import (
     DETAIL_TIER_DEBUG,
@@ -76,6 +77,7 @@ def _build_huddle_snapshot(
     since_alert_id: int = 0,
     since_approval_id: int = 0,
     limit: int = 50,
+    detail_tier: str = DETAIL_TIER_SUMMARY,
 ) -> Dict[str, Any]:
     runs_query = db.query(AgentRun).filter(AgentRun.user_id == user_id)
     events_query = db.query(AgentEvent).filter(AgentEvent.user_id == user_id)
@@ -102,10 +104,10 @@ def _build_huddle_snapshot(
     approvals_sorted = list(reversed(approvals))
 
     return {
-        "runs": [_serialize_run(r) for r in runs_sorted],
-        "events": [_serialize_event(e) for e in events_sorted],
-        "alerts": [_serialize_alert(a) for a in alerts_sorted],
-        "approvals": [_serialize_approval(a) for a in approvals_sorted],
+        "runs": [serialize_run(r, detail_tier) for r in runs_sorted],
+        "events": [serialize_event(e, detail_tier) for e in events_sorted],
+        "alerts": [serialize_alert(a, detail_tier) for a in alerts_sorted],
+        "approvals": [serialize_approval(a, detail_tier) for a in approvals_sorted],
         "cursor": {
             "run_id": max([since_run_id] + [r.id for r in runs_sorted]),
             "event_id": max([since_event_id] + [e.id for e in events_sorted]),
@@ -113,35 +115,6 @@ def _build_huddle_snapshot(
             "approval_id": max([since_approval_id] + [a.id for a in approvals_sorted]),
         },
     }
-=======
-def _can_access_advanced_activity(current_user: Dict[str, Any]) -> bool:
-    role = str(current_user.get("role") or "").lower().strip()
-    metadata = current_user.get("public_metadata")
-    if isinstance(metadata, dict):
-        role = str(metadata.get("role") or role).lower().strip()
-
-    feature_flags = current_user.get("feature_flags")
-    if not feature_flags and isinstance(metadata, dict):
-        feature_flags = metadata.get("feature_flags") or metadata.get("features")
-
-    has_flag = False
-    if isinstance(feature_flags, list):
-        has_flag = any(str(flag).strip().lower() in {"agent_activity_detailed", "agents_activity_detailed"} for flag in feature_flags)
-    elif isinstance(feature_flags, dict):
-        has_flag = bool(feature_flags.get("agent_activity_detailed") or feature_flags.get("agents_activity_detailed"))
-
-    if os.getenv("DISABLE_AUTH", "false").lower() == "true":
-        return True
-
-    return role in {"admin", "internal"} or has_flag
-
-
-def _resolve_detail_tier(requested_tier: str, current_user: Dict[str, Any]) -> str:
-    tier = normalize_detail_tier(requested_tier)
-    if tier == DETAIL_TIER_DEBUG and not _can_access_advanced_activity(current_user):
-        return DETAIL_TIER_SUMMARY
-    return tier
->>>>>>> pr-370
 
 @router.get("/team")
 async def get_agent_team_endpoint(
@@ -708,11 +681,13 @@ async def get_agent_huddle_feed_endpoint(
     since_alert_id: int = 0,
     since_approval_id: int = 0,
     limit: int = 50,
+    detail_tier: str = DETAIL_TIER_SUMMARY,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
         user_id = str(current_user.get("id"))
+        resolved_tier = _resolve_detail_tier(detail_tier, current_user)
         payload = _build_huddle_snapshot(
             db=db,
             user_id=user_id,
@@ -721,6 +696,7 @@ async def get_agent_huddle_feed_endpoint(
             since_alert_id=max(0, int(since_alert_id)),
             since_approval_id=max(0, int(since_approval_id)),
             limit=max(1, min(int(limit), 200)),
+            detail_tier=resolved_tier,
         )
         return {
             "success": True,
@@ -735,16 +711,39 @@ async def get_agent_huddle_feed_endpoint(
 
 @router.get("/huddle/stream")
 async def stream_agent_huddle_endpoint(
+    detail_tier: str = DETAIL_TIER_SUMMARY,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     user_id = str(current_user.get("id"))
+    resolved_tier = _resolve_detail_tier(detail_tier, current_user)
+
+    # Helper function to get a snapshot safely within a threadpool
+    # Manages its own short-lived DB session to avoid blocking the pool
+    def _fetch_snapshot_safe(user_id: str, limit: int, **kwargs):
+        session = get_session_for_user(user_id)
+        if not session:
+            # Should not happen if user_id is valid, but handle gracefully
+            return {"runs": [], "events": [], "alerts": [], "approvals": [], "cursor": {}}
+        try:
+            return _build_huddle_snapshot(
+                db=session,
+                user_id=user_id,
+                limit=limit,
+                **kwargs
+            )
+        finally:
+            session.close()
 
     async def event_generator():
         cursor = {"run_id": 0, "event_id": 0, "alert_id": 0, "approval_id": 0}
         run_signatures: Dict[int, str] = {}
 
-        initial_snapshot = _build_huddle_snapshot(db=db, user_id=user_id, limit=50)
+        initial_snapshot = await run_in_threadpool(
+            _fetch_snapshot_safe,
+            user_id=user_id, 
+            limit=50, 
+            detail_tier=resolved_tier
+        )
         cursor.update(initial_snapshot.get("cursor") or {})
         for run in initial_snapshot.get("runs", []):
             run_signatures[int(run.get("id") or 0)] = json.dumps(
@@ -761,23 +760,36 @@ async def stream_agent_huddle_endpoint(
 
         while True:
             try:
-                delta = _build_huddle_snapshot(
-                    db=db,
+                # Use threadpool for delta snapshot with fresh session
+                delta = await run_in_threadpool(
+                    _fetch_snapshot_safe,
                     user_id=user_id,
                     since_run_id=int(cursor.get("run_id", 0)),
                     since_event_id=int(cursor.get("event_id", 0)),
                     since_alert_id=int(cursor.get("alert_id", 0)),
                     since_approval_id=int(cursor.get("approval_id", 0)),
                     limit=50,
+                    detail_tier=resolved_tier,
                 )
 
-                recent_runs = (
-                    db.query(AgentRun)
-                    .filter(AgentRun.user_id == user_id)
-                    .order_by(AgentRun.id.desc())
-                    .limit(100)
-                    .all()
-                )
+                # Helper for fetching recent runs in threadpool
+                def _fetch_recent_runs_safe():
+                    session = get_session_for_user(user_id)
+                    if not session:
+                        return []
+                    try:
+                        return (
+                            session.query(AgentRun)
+                            .filter(AgentRun.user_id == user_id)
+                            .order_by(AgentRun.id.desc())
+                            .limit(100)
+                            .all()
+                        )
+                    finally:
+                        session.close()
+
+                recent_runs = await run_in_threadpool(_fetch_recent_runs_safe)
+                
                 lifecycle_updates: List[Dict[str, Any]] = []
                 for run in recent_runs:
                     signature = json.dumps(
@@ -791,7 +803,7 @@ async def stream_agent_huddle_endpoint(
                     )
                     previous = run_signatures.get(run.id)
                     if previous != signature:
-                        lifecycle_updates.append(_serialize_run(run))
+                        lifecycle_updates.append(serialize_run(run, resolved_tier))
                         run_signatures[run.id] = signature
 
                 if len(run_signatures) > 300:

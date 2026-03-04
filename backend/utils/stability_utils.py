@@ -618,20 +618,24 @@ def _extract_dominant_colors(img: Image.Image, num_colors: int = 5) -> List[Tupl
         List of RGB tuples
     """
     # Resize image for faster processing
-    img_small = img.resize((150, 150))
-    
-    # Convert to numpy array
-    img_array = np.array(img_small)
-    pixels = img_array.reshape(-1, 3)
-    
-    # Use k-means clustering to find dominant colors
-    from sklearn.cluster import KMeans
-    
-    kmeans = KMeans(n_clusters=num_colors, random_state=42, n_init=10)
-    kmeans.fit(pixels)
-    
-    colors = kmeans.cluster_centers_.astype(int)
-    return [tuple(color) for color in colors]
+    img_small = img.resize((150, 150)).convert("RGBA")
+
+    try:
+        paletted = img_small.convert("P", palette=Image.ADAPTIVE, colors=max(1, num_colors))
+        palette = paletted.getpalette() or []
+        color_counts = paletted.getcolors() or []
+
+        color_counts.sort(key=lambda x: x[0], reverse=True)
+
+        colors: List[Tuple[int, int, int]] = []
+        for _, idx in color_counts[:num_colors]:
+            base = int(idx) * 3
+            if base + 2 < len(palette):
+                colors.append((palette[base], palette[base + 1], palette[base + 2]))
+
+        return colors
+    except Exception:
+        return []
 
 
 def _assess_image_quality(img: Image.Image) -> Dict[str, Any]:

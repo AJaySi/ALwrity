@@ -61,7 +61,6 @@ nltk>=3.8.0
 # Image and audio processing for Stability AI
 Pillow>=10.0.0
 huggingface_hub>=1.1.4
-scikit-learn>=1.3.0
 
 # Text-to-Speech (TTS) dependencies
 gtts>=2.4.0
