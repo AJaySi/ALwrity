@@ -38,6 +38,9 @@ google-auth-oauthlib>=1.0.0
 # Web scraping and content processing
 beautifulsoup4>=4.12.0
 requests>=2.31.0
+urllib3<2.0.0
+chardet>=5.0.0
+charset-normalizer<3.0.0
 lxml>=4.9.0
 html5lib>=1.1
 aiohttp>=3.9.0

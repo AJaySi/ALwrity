@@ -112,6 +112,13 @@ def bootstrap_local_llm_models():
     # The code had: "Qwen/Qwen3-4B-Instruct-2507". I suspect this is a placeholder or internal model.
     # I will use "Qwen/Qwen2.5-3B-Instruct" as a safe, modern, powerful laptop-friendly default.
     
+    # Render Free Tier has 512MB RAM. Downloading a 3B model (6GB+) will instantly crash it.
+    # We must skip this on Render unless we are on a paid instance with persistent disk and lots of RAM.
+    if os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT"):
+        if verbose:
+            print("   ⚠️  Cloud environment detected (Render/Railway). Skipping local LLM bootstrap to save RAM/Time.")
+        return True
+    
     target_model = "Qwen/Qwen2.5-3B-Instruct"
     
     if verbose:
@@ -157,6 +164,7 @@ def start_backend(enable_reload=False, production_mode=False):
     # Set host based on environment and mode
     # Use 127.0.0.1 for local production testing on Windows
     # Use 0.0.0.0 for actual cloud deployments (Render, Railway, etc.)
+    # Render provides PORT env var, we must bind to it.
     default_host = os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("DEPLOY_ENV")
     if default_host:
         # Cloud deployment detected - use 0.0.0.0
@@ -165,7 +173,9 @@ def start_backend(enable_reload=False, production_mode=False):
         # Local deployment - use 127.0.0.1 for better Windows compatibility
         os.environ.setdefault("HOST", "127.0.0.1")
     
-    os.environ.setdefault("PORT", "8000")
+    # Render sets PORT automatically. We should respect it if present, otherwise default to 8000.
+    # We don't setdefault("PORT", "8000") here because we want to use os.getenv("PORT") directly later
+    # to catch if it's missing and THEN default.
     
     # Set reload based on argument or environment variable
     if enable_reload and not production_mode:
@@ -181,6 +191,7 @@ def start_backend(enable_reload=False, production_mode=False):
     
     print(f"   📍 Host: {host}")
     print(f"   🔌 Port: {port}")
+    print(f"   🔄 Reload: {reload}")
     print(f"   🔄 Reload: {reload}")
     
     try:
