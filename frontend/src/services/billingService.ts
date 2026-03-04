@@ -294,9 +294,9 @@ export const billingService = {
   /**
    * Get comprehensive dashboard data for a user
    */
-  getDashboardData: async (userId?: string): Promise<DashboardData> => {
+  getDashboardData: async (userId: string): Promise<DashboardData> => {
     try {
-      const actualUserId = userId || localStorage.getItem('user_id') || 'demo-user';
+      const actualUserId = userId;
       // Debug logs removed to reduce console noise
       
       const response = await billingAPI.get<DashboardAPIResponse>(`/dashboard/${actualUserId}`);
@@ -383,9 +383,9 @@ export const billingService = {
   /**
    * Get current usage statistics for a user
    */
-  getUsageStats: async (userId?: string, period?: string): Promise<UsageStats> => {
+  getUsageStats: async (userId: string, period?: string): Promise<UsageStats> => {
     try {
-      const actualUserId = userId || localStorage.getItem('user_id') || 'demo-user';
+      const actualUserId = userId;
       const params = period ? { billing_period: period } : {};
       
       const response = await billingAPI.get<UsageAPIResponse>(`/usage/${actualUserId}`, { params });
@@ -409,9 +409,9 @@ export const billingService = {
   /**
    * Get usage trends over time
    */
-  getUsageTrends: async (userId?: string, months: number = 6): Promise<UsageTrends> => {
+  getUsageTrends: async (userId: string, months: number = 6): Promise<UsageTrends> => {
     try {
-      const actualUserId = userId || localStorage.getItem('user_id') || 'demo-user';
+      const actualUserId = userId;
       const response = await billingAPI.get(`/usage/${actualUserId}/trends`, {
         params: { months }
       });
@@ -469,9 +469,9 @@ export const billingService = {
   /**
    * Get usage alerts for a user
    */
-  getUsageAlerts: async (userId?: string, unreadOnly: boolean = false): Promise<UsageAlert[]> => {
+  getUsageAlerts: async (userId: string, unreadOnly: boolean = false): Promise<UsageAlert[]> => {
     try {
-      const actualUserId = userId || localStorage.getItem('user_id') || 'demo-user';
+      const actualUserId = userId;
       const response = await billingAPI.get<AlertsAPIResponse>(`/alerts/${actualUserId}`, {
         params: { unread_only: unreadOnly }
       });
@@ -507,9 +507,9 @@ export const billingService = {
   /**
    * Get user's current subscription information
    */
-  getUserSubscription: async (userId?: string) => {
+  getUserSubscription: async (userId: string) => {
     try {
-      const actualUserId = userId || localStorage.getItem('user_id') || 'demo-user';
+      const actualUserId = userId;
       const response = await billingAPI.get(`/user/${actualUserId}/subscription`);
       
       if (!response.data.success) {
@@ -555,12 +555,12 @@ export const billingService = {
    * Get subscription renewal history for the current user
    */
   getRenewalHistory: async (
-    userId?: string,
+    userId: string,
     limit: number = 50,
     offset: number = 0
   ): Promise<RenewalHistoryResponse> => {
     try {
-      const actualUserId = userId || localStorage.getItem('user_id') || 'demo-user';
+      const actualUserId = userId;
       const params: any = { limit, offset };
       
       const response = await billingAPI.get<RenewalHistoryAPIResponse>(

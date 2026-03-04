@@ -24,7 +24,7 @@ interface UseOAuthTokenAlertsOptions {
   enabled?: boolean;
   
   /**
-   * User ID - if not provided, will use localStorage or skip polling
+   * Authenticated user ID from Clerk; polling is skipped when unavailable
    */
   userId?: string;
 }
@@ -54,8 +54,7 @@ export function useOAuthTokenAlerts(options: UseOAuthTokenAlertsOptions = {}) {
       return;
     }
     
-    const actualUserId = userId || localStorage.getItem('user_id');
-    if (!actualUserId) {
+    if (!userId) {
       console.debug('useOAuthTokenAlerts: No user ID available, skipping polling');
       return;
     }
@@ -70,7 +69,7 @@ export function useOAuthTokenAlerts(options: UseOAuthTokenAlertsOptions = {}) {
         isPollingRef.current = true;
         
         // Fetch unread alerts only
-        const alerts = await billingService.getUsageAlerts(actualUserId, true);
+        const alerts = await billingService.getUsageAlerts(userId, true);
         
         // Filter for OAuth token alerts
         const oauthAlerts = alerts.filter(

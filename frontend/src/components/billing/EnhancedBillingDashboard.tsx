@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import {
   Box,
   Container,
@@ -64,6 +65,8 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
   // Conditional component selection based on terminal theme
   const TypographyComponent = terminalTheme ? TerminalTypography : Typography;
   const AlertComponent = terminalTheme ? TerminalAlert : Alert;
+  const { userId: authUserId } = useAuth();
+  const effectiveUserId = userId || authUserId;
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,10 +76,16 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
   const [healthError, setHealthError] = useState<string | null>(null);
 
   const fetchDashboardData = async (showSuccessToast: boolean = false) => {
+    if (!effectiveUserId) {
+      setLoading(false);
+      setError('Unable to load billing data: missing authenticated user context.');
+      return;
+    }
+
     try {
       // Use Promise.allSettled to prevent health check timeout from blocking dashboard
       const results = await Promise.allSettled([
-        billingService.getDashboardData(),
+        billingService.getDashboardData(effectiveUserId),
         monitoringService.getSystemHealth()
       ]);
       
@@ -147,14 +156,16 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
   };
 
   useEffect(() => {
+    if (!effectiveUserId) return;
     fetchDashboardData();
-  }, [userId]);
+  }, [effectiveUserId]);
 
   // Event-driven refresh: refresh only when non-billing/monitoring APIs complete
   useEffect(() => {
     const unsubscribe = onApiEvent((detail) => {
       if (detail.source && detail.source !== 'other') return;
-      Promise.allSettled([billingService.getDashboardData(), monitoringService.getSystemHealth()])
+      if (!effectiveUserId) return;
+      Promise.allSettled([billingService.getDashboardData(effectiveUserId), monitoringService.getSystemHealth()])
         .then((results) => {
           if (results[0].status === 'fulfilled') {
             setDashboardData(results[0].value);
@@ -176,25 +187,26 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
         .catch(() => {/* ignore */});
     });
     return unsubscribe;
-  }, []);
+  }, [effectiveUserId]);
 
   // Refetch when tab becomes visible again (cheap, avoids polling)
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && effectiveUserId) {
         fetchDashboardData();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
+  }, [effectiveUserId]);
 
   // Listen for billing refresh requests (e.g., when subscription limits are exceeded)
   useEffect(() => {
     const handleBillingRefresh = () => {
       console.log('EnhancedBillingDashboard: Billing refresh requested, refreshing data...');
       // Use allSettled to prevent health check from blocking refresh
-      Promise.allSettled([billingService.getDashboardData(), monitoringService.getSystemHealth()])
+      if (!effectiveUserId) return;
+      Promise.allSettled([billingService.getDashboardData(effectiveUserId), monitoringService.getSystemHealth()])
         .then((results) => {
           if (results[0].status === 'fulfilled') {
             setDashboardData(results[0].value);
@@ -233,7 +245,7 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
     return () => {
       window.removeEventListener('billing-refresh-requested', handleBillingRefresh);
     };
-  }, []); // Empty deps - handler doesn't depend on component state
+  }, [effectiveUserId]); // Empty deps - handler doesn't depend on component state
 
   const handleViewModeChange = (
     event: React.MouseEvent<HTMLElement>,
@@ -463,7 +475,11 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.3 }}
           >
-            <CompactBillingDashboard userId={userId} terminalTheme={terminalTheme} />
+            {effectiveUserId ? (
+              <CompactBillingDashboard userId={effectiveUserId} terminalTheme={terminalTheme} />
+            ) : (
+              <AlertComponent severity="warning">Unable to load billing data: missing authenticated user context.</AlertComponent>
+            )}
           </motion.div>
         ) : (
           <motion.div

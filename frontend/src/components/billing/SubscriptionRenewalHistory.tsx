@@ -42,7 +42,7 @@ import {
 import { showToastNotification } from '../../utils/toastNotifications';
 
 interface SubscriptionRenewalHistoryProps {
-  userId?: string;
+  userId: string;
   terminalTheme?: boolean;
   initialLimit?: number;
 }
