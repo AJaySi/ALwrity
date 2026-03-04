@@ -26,7 +26,7 @@ async def get_user_usage(
     
     # Verify user can only access their own data
     verify_user_access(user_id, current_user)
-    
+
     try:
         usage_service = UsageTrackingService(db)
         stats = usage_service.get_user_usage_stats(user_id, billing_period)
@@ -44,9 +44,12 @@ async def get_user_usage(
 async def get_usage_trends(
     user_id: str,
     months: int = Query(6, ge=1, le=24, description="Number of months to include"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Get usage trends over time."""
+
+    verify_user_access(user_id, current_user)
     
     try:
         usage_service = UsageTrackingService(db)
