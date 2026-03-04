@@ -14,6 +14,9 @@ Tick each item as you complete it.
 - [ ] **Environment variables configured for production**
   - [ ] `STRIPE_SECRET_KEY` set to **live** secret key.
   - [ ] `STRIPE_WEBHOOK_SECRET` set to **live** webhook signing secret.
+  - [ ] `STRIPE_MODE=live` is set (recommended for explicit mode selection).
+  - [ ] `STRIPE_PLAN_PRICE_MAPPING_LIVE` is set to JSON mapping live price IDs.
+  - [ ] (Optional fallback) `STRIPE_PLAN_PRICE_MAPPING` is set only if you intentionally use one shared mapping across environments.
   - [ ] `ADMIN_EMAILS` configured with correct admin emails (comma-separated).
   - [ ] `ADMIN_EMAIL_DOMAIN` configured if using domain-based admin access.
   - [ ] `DISABLE_AUTH` is **not** set to `"true"` in production.
@@ -30,8 +33,10 @@ Tick each item as you complete it.
   - [ ] PRO monthly price created (if used).
   - [ ] Yearly prices created if you plan to sell yearly plans.
 - [ ] **Price mapping in backend updated**
-  - [ ] `STRIPE_PLAN_PRICE_MAPPING` uses **live** price IDs (not test IDs).
-  - [ ] Mapping covers all tiers and billing cycles you intend to offer.
+  - [ ] `STRIPE_PLAN_PRICE_MAPPING_LIVE` uses **live** price IDs (not test IDs).
+  - [ ] `STRIPE_PLAN_PRICE_MAPPING_TEST` is configured separately for test deployments.
+  - [ ] Mapping includes required keys: `basic.monthly` and `pro.monthly`.
+  - [ ] Mapping covers any additional tiers and billing cycles you intend to offer.
 - [ ] **SubscriptionPlan data is consistent**
   - [ ] DB has `SubscriptionPlan` rows for each tier (BASIC/PRO/etc.).
   - [ ] `is_active` is set to true for sellable plans.
@@ -199,4 +204,3 @@ Perform these in **test** environment first, then in live with small amounts.
   - [ ] Ops team confirms they can use Disputes and Fraud Warnings tools comfortably.
 
 Once all items are checked, you can consider the Stripe integration ready for production traffic.
-

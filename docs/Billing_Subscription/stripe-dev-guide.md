@@ -41,6 +41,14 @@ Required environment variables (backend):
   - Stripe API key (test or live).
 - `STRIPE_WEBHOOK_SECRET`
   - Webhook signing secret for subscription webhooks.
+- `STRIPE_MODE`
+  - Stripe mode selector (`test` or `live`). If unset, mode is inferred from `STRIPE_SECRET_KEY` prefix.
+- `STRIPE_PLAN_PRICE_MAPPING_TEST`
+  - JSON map for test mode tier/cycle to Stripe price IDs.
+- `STRIPE_PLAN_PRICE_MAPPING_LIVE`
+  - JSON map for live mode tier/cycle to Stripe price IDs.
+- `STRIPE_PLAN_PRICE_MAPPING` (fallback)
+  - Optional shared JSON map used only if mode-specific mapping env vars are not set.
 - `ADMIN_EMAILS` (optional)
   - Comma-separated list of admin emails allowed to access dispute/fraud endpoints.
 - `ADMIN_EMAIL_DOMAIN` (optional)
@@ -50,7 +58,9 @@ Required environment variables (backend):
 
 Stripe configuration:
 
-- Price IDs are mapped in code (see below) and must exist in the configured Stripe account.
+- Price IDs are loaded from environment JSON and validated at backend startup.
+- Required mapping keys (fail-fast): `basic.monthly`, `pro.monthly`.
+- Mode-specific env vars allow separate test/live values with no code edits.
 - Webhook endpoint must be configured in Stripe Dashboard:
   - Path: `/api/subscription/webhook`
   - Events: `checkout.session.completed`, `invoice.payment_succeeded`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`, `radar.early_fraud_warning.created` (and optionally `radar.early_fraud_warning.updated`).
@@ -59,14 +69,14 @@ Stripe configuration:
 
 ## 3. Plans, Prices and Mapping
 
-Stripe price mapping lives in `StripeService`:
+Stripe price mapping is loaded in `StripeService` from env JSON:
 
 - File: `backend/services/subscription/stripe_service.py`
 
 Key structures:
 
 - `STRIPE_PLAN_PRICE_MAPPING`
-  - Maps `(SubscriptionTier, BillingCycle)` → Stripe `price_id`.
+  - Runtime map of `(SubscriptionTier, BillingCycle)` → Stripe `price_id` parsed from env vars.
 - `STRIPE_PRICE_TO_PLAN`
   - Reverse map: `price_id` → `{ tier, billing_cycle }`.
 
@@ -80,9 +90,9 @@ Helper methods:
 ### Adding or updating plans
 
 1. Create prices in Stripe (with correct recurring configuration).
-2. Update `STRIPE_PLAN_PRICE_MAPPING` with new price IDs.
+2. Update mapping env vars (`STRIPE_PLAN_PRICE_MAPPING_TEST` / `STRIPE_PLAN_PRICE_MAPPING_LIVE`) with new price IDs.
 3. Ensure a `SubscriptionPlan` row exists in the DB for the tier being mapped.
-4. Redeploy backend with updated mapping.
+4. Redeploy backend. Startup validation will fail if required keys are missing or mapping JSON is malformed.
 
 ---
 
@@ -291,7 +301,7 @@ Considerations:
 ### Adding new subscription tiers or prices
 
 1. Create or update prices in Stripe.
-2. Update `STRIPE_PLAN_PRICE_MAPPING` in `StripeService`.
+2. Update the relevant mapping environment variable (`STRIPE_PLAN_PRICE_MAPPING_TEST` or `STRIPE_PLAN_PRICE_MAPPING_LIVE`).
 3. Ensure corresponding rows in `SubscriptionPlan`.
 4. Add any needed frontend logic (e.g. additional tiers in pricing UI).
 
