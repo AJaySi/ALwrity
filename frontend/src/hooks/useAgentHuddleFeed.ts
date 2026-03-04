@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient, getApiUrl, getAuthTokenGetter } from '../api/client';
 
-export interface AgentRunItem { id: number; agent_type?: string; status?: string; success?: boolean | null; result_summary?: string | null; finished_at?: string | null; }
-export interface AgentEventItem { id: number; agent_type?: string; event_type?: string; message?: string | null; created_at?: string | null; }
-export interface AgentAlertItem { id: number; title?: string; message?: string; severity?: string; read_at?: string | null; }
+export interface AgentRunItem { id: number; agent_type?: string; status?: string; success?: boolean | null; result_summary?: string | null; error_message?: string | null; finished_at?: string | null; started_at?: string | null; }
+export interface AgentEventItem { id: number; run_id?: number; agent_type?: string; event_type?: string; message?: string | null; created_at?: string | null; payload?: any; }
+export interface AgentAlertItem { id: number; title?: string; message?: string; severity?: string; read_at?: string | null; payload?: any; }
 export interface AgentApprovalItem { id: number; action_type?: string; status?: string; risk_level?: number; created_at?: string | null; }
 
 interface Cursor { run_id: number; event_id: number; alert_id: number; approval_id: number; }
@@ -42,13 +42,14 @@ const parseSseLines = (raw: string): Array<{ event: string; data: string }> => {
     });
 };
 
-export const useAgentHuddleFeed = () => {
+export const useAgentHuddleFeed = (options?: { detailTier?: 'summary' | 'detailed' | 'debug' }) => {
   const [feed, setFeed] = useState<FeedPayload>({ runs: [], events: [], alerts: [], approvals: [], cursor: DEFAULT_CURSOR });
   const [connectionMode, setConnectionMode] = useState<'connecting' | 'sse' | 'polling'>('connecting');
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null);
   const stopRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const cursorRef = useRef<Cursor>(DEFAULT_CURSOR);
+  const detailTier = options?.detailTier || 'summary';
 
   const applyPayload = useCallback((payload: Partial<FeedPayload>, replace = false) => {
     setFeed((prev) => ({
@@ -74,11 +75,12 @@ export const useAgentHuddleFeed = () => {
   }, []);
 
   const loadSnapshot = useCallback(async (cursor?: Cursor) => {
-    const resp = await apiClient.get('/api/agents/huddle/feed', { params: cursor || {} });
+    const params = { ...(cursor || {}), detail_tier: detailTier };
+    const resp = await apiClient.get('/api/agents/huddle/feed', { params });
     const data = resp?.data?.data as FeedPayload;
     applyPayload(data, !cursor);
     return data;
-  }, [applyPayload]);
+  }, [applyPayload, detailTier]);
 
   useEffect(() => {
     stopRef.current = false;
@@ -104,7 +106,8 @@ export const useAgentHuddleFeed = () => {
         const token = tokenGetter ? await tokenGetter() : null;
         if (!token) throw new Error('No auth token available for SSE stream');
 
-        const response = await fetch(`${getApiUrl()}/api/agents/huddle/stream`, {
+        const streamUrl = `${getApiUrl()}/api/agents/huddle/stream?detail_tier=${detailTier}`;
+        const response = await fetch(streamUrl, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
         });
 

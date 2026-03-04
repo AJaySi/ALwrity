@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -19,7 +19,7 @@ import {
   Refresh as RefreshIcon,
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
-import { apiClient } from '../../../api/client';
+import { useAgentHuddleFeed } from '../../../hooks/useAgentHuddleFeed';
 
 type EventPayload = {
   phase?: string | null;
@@ -34,68 +34,39 @@ type EventPayload = {
   metadata?: Record<string, unknown>;
 };
 
-type TeamActivityEvent = {
-  id: number;
-  event_type: string;
-  severity: string;
-  message?: string | null;
-  created_at?: string | null;
-  payload?: EventPayload | null;
-};
-
-type AgentRun = {
-  id: number;
-  agent_type: string;
-  status: string;
-  started_at?: string | null;
-};
-
 const TeamHuddleWidget: React.FC = () => {
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [timeline, setTimeline] = React.useState<Array<{ run: AgentRun; events: TeamActivityEvent[] }>>([]);
+  const { runs, events, connectionMode } = useAgentHuddleFeed({ detailTier: 'detailed' });
 
-  const loadTimeline = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const runsResp = await apiClient.get('/api/agents/runs', { params: { limit: 5 } });
-      const runs: AgentRun[] = runsResp?.data?.data?.runs || [];
+  // Group events by run_id for the UI
+  const timeline = useMemo(() => {
+    // Only take top 5 runs
+    const topRuns = runs.slice(0, 5);
+    return topRuns.map(run => {
+      // Find events for this run
+      const runEvents = events
+        .filter(e => e.run_id === run.id)
+        .map(e => ({
+          ...e,
+          payload: (e.payload || {}) as EventPayload
+        }));
+      return { run, events: runEvents };
+    });
+  }, [runs, events]);
 
-      const eventResponses = await Promise.all(
-        runs.slice(0, 3).map(async (run) => {
-          const eventsResp = await apiClient.get(`/api/agents/runs/${run.id}/events`, { params: { limit: 25 } });
-          return {
-            run,
-            events: (eventsResp?.data?.data?.events || []) as TeamActivityEvent[],
-          };
-        }),
-      );
-
-      setTimeline(eventResponses);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load team activity');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    loadTimeline();
-  }, [loadTimeline]);
+  const loading = connectionMode === 'connecting' && runs.length === 0;
 
   return (
     <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider', height: '100%' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center" gap={1}>
           <Typography variant="h6" fontWeight={700}>Team Activity</Typography>
-          <Chip label="Live" size="small" color="success" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }} />
+          <Chip 
+            label={connectionMode === 'sse' ? 'Live' : (connectionMode === 'polling' ? 'Polling' : 'Connecting')} 
+            size="small" 
+            color={connectionMode === 'sse' ? 'success' : 'warning'} 
+            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }} 
+          />
         </Box>
-        <Tooltip title="Refresh Team Activity">
-          <IconButton size="small" onClick={loadTimeline}>
-            <RefreshIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
       </Box>
 
       {loading && (
@@ -104,15 +75,11 @@ const TeamHuddleWidget: React.FC = () => {
         </Box>
       )}
 
-      {!loading && error && (
-        <Typography variant="body2" color="error">{error}</Typography>
-      )}
-
-      {!loading && !error && timeline.length === 0 && (
+      {!loading && timeline.length === 0 && (
         <Typography variant="body2" color="text.secondary">No team activity yet.</Typography>
       )}
 
-      {!loading && !error && timeline.length > 0 && (
+      {!loading && timeline.length > 0 && (
         <List disablePadding>
           {timeline.map(({ run, events }, index) => (
             <React.Fragment key={run.id}>

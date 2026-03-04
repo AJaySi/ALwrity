@@ -51,7 +51,6 @@ import BillingPage from './pages/BillingPage';
 import ApprovalsPage from './pages/ApprovalsPage';
 import TeamActivityPage from './pages/TeamActivityPage';
 import StripeDisputesDashboard from './pages/StripeDisputesDashboard';
-import TeamActivityPage from './pages/TeamActivityPage';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import GSCAuthCallback from './components/SEODashboard/components/GSCAuthCallback';
 import Landing from './components/Landing/Landing';
