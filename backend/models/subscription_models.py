@@ -408,3 +408,17 @@ class FraudWarning(Base):
     reason_notes = Column(Text, nullable=True)
     meta_info = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StripeWebhookEvent(Base):
+    """Processed Stripe webhook events for idempotency and replay protection."""
+
+    __tablename__ = "stripe_webhook_events"
+
+    event_id = Column(String(100), primary_key=True)
+    event_type = Column(String(100), nullable=False)
+    status = Column(String(20), nullable=False, default="processing")  # processing, processed, failed
+    error_message = Column(Text, nullable=True)
+    processed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
