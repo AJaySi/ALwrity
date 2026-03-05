@@ -6,7 +6,7 @@ Comprehensive models for usage-based subscription system with API cost tracking.
 # Ensure Optional is available in global scope for dynamic imports
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, JSON, Text, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, JSON, Text, ForeignKey, Enum, Index, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime, timedelta
@@ -174,6 +174,12 @@ class APIUsageLog(Base):
     
     # Indexes for performance
     __table_args__ = (
+        Index('idx_api_usage_logs_user_id', 'user_id'),
+        Index('idx_api_usage_logs_billing_period', 'billing_period'),
+        Index('idx_api_usage_logs_timestamp', 'timestamp'),
+        Index('idx_api_usage_logs_provider', 'provider'),
+        Index('idx_api_usage_logs_user_period', 'user_id', 'billing_period'),
+        Index('idx_api_usage_logs_user_provider_period', 'user_id', 'provider', 'billing_period'),
         {'mysql_engine': 'InnoDB'},
     )
 
@@ -241,6 +247,8 @@ class UsageSummary(Base):
     
     # Unique constraint on user_id and billing_period
     __table_args__ = (
+        UniqueConstraint('user_id', 'billing_period', name='uq_usage_summaries_user_period'),
+        Index('idx_usage_summaries_user_period', 'user_id', 'billing_period'),
         {'mysql_engine': 'InnoDB'},
     )
 
@@ -390,6 +398,11 @@ class SubscriptionRenewalHistory(Base):
     
     # Indexes for performance
     __table_args__ = (
+        UniqueConstraint('user_id', 'new_period_start', 'new_period_end', 'renewal_type', name='uq_subscription_renewal_event'),
+        Index('idx_subscription_renewal_history_user_id', 'user_id'),
+        Index('idx_subscription_renewal_history_created_at', 'created_at'),
+        Index('idx_subscription_renewal_history_user_created', 'user_id', 'created_at'),
+        Index('idx_subscription_renewal_history_user_period', 'user_id', 'new_period_start', 'new_period_end'),
         {'mysql_engine': 'InnoDB'},
     )
 
