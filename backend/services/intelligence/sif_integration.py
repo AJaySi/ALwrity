@@ -925,6 +925,8 @@ class SIFIntegrationService:
             # Content pillar analysis
             if self.intelligence_service.is_initialized():
                 clusters = await self.intelligence_service.cluster(min_score=0.6)
+                if asyncio.iscoroutine(clusters):
+                    clusters = await clusters
                 insights["content_pillars"] = self._format_clusters_as_pillars(clusters)
                 
                 # Semantic gaps analysis

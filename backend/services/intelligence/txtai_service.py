@@ -215,6 +215,7 @@ class TxtaiIntelligenceService:
                     logger.error(f"Detected known txtai/faiss IndexIDMap/nprobe incompatibility for user {self.user_id}. Attempting re-init with numpy backend fallback...")
                     # Switch to numpy backend which doesn't have this issue
                     self._backend = "numpy"
+                    self._initialized = False
                     self._initialize_embeddings()
                     if self.embeddings:
                         results = self.embeddings.search(query, limit=limit)
@@ -270,7 +271,9 @@ class TxtaiIntelligenceService:
             except AttributeError as ae:
                 if "nprobe" in str(ae):
                     logger.error(f"Detected IndexIDMap nprobe error in similarity for user {self.user_id}. Falling back to numpy backend...")
+                    # Switch to numpy backend which doesn't have this issue
                     self._backend = "numpy"
+                    self._initialized = False
                     self._initialize_embeddings()
                     if self.embeddings:
                         similarity = self.embeddings.similarity(text1, text2)
@@ -328,7 +331,7 @@ class TxtaiIntelligenceService:
             # Check if we have graph functionality available
             if not hasattr(self.embeddings, 'graph') or not self.embeddings.graph:
                 logger.warning(f"Graph clustering not available for user {self.user_id}. Using fallback clustering.")
-                return self._fallback_clustering(min_score)
+                return await self._fallback_clustering(min_score)
             
             # Use graph-based clustering if available
             # Perform a search to get graph structure
@@ -338,10 +341,13 @@ class TxtaiIntelligenceService:
             except AttributeError as ae:
                 if "nprobe" in str(ae):
                     logger.error(f"Detected IndexIDMap nprobe error in cluster for user {self.user_id}. Falling back to numpy backend...")
+                    # Force re-initialization with numpy backend to bypass FAISS issue
                     self._backend = "numpy"
+                    self._initialized = False
                     self._initialize_embeddings()
                     if self.embeddings:
-                        graph_results = self.embeddings.search(sample_query, limit=10, graph=True)
+                        # Retry with numpy backend (no graph support, so fallback)
+                        return await self._fallback_clustering(min_score)
                     else:
                         raise ae
                 else:
@@ -349,7 +355,7 @@ class TxtaiIntelligenceService:
             
             if not graph_results:
                 logger.warning(f"No graph results for clustering user {self.user_id}")
-                return self._fallback_clustering(min_score)
+                return await self._fallback_clustering(min_score)
             
             # Extract clusters from graph results
             clusters = self._extract_clusters_from_graph(graph_results, min_score)
@@ -377,7 +383,7 @@ class TxtaiIntelligenceService:
             logger.error(f"Clustering failed for user {self.user_id}: {e}")
             logger.error(f"Min score: {min_score}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
-            return self._fallback_clustering(min_score)
+            return await self._fallback_clustering(min_score)
     
     async def _fallback_clustering(self, min_score: float) -> List[List[int]]:
         """Fallback clustering method when graph clustering is not available."""
