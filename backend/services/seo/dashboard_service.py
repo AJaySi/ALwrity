@@ -183,14 +183,17 @@ class SEODashboardService:
 
             task_status = None
             next_execution = None
+            failure_pattern = None
             if task:
                 task_status = task.status
                 next_execution = task.next_execution.isoformat() if task.next_execution else None
+                failure_pattern = task.failure_pattern
 
             return {
                 "status": "ready" if pages_audited > 0 else ("scheduled" if task_status == "active" else "pending"),
                 "task_status": task_status,
                 "next_execution": next_execution,
+                "failure_pattern": failure_pattern,
                 "pages_audited": pages_audited,
                 "avg_score": avg_score,
                 "fix_scheduled_pages": fix_scheduled_pages,
