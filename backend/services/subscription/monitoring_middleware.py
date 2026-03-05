@@ -477,14 +477,20 @@ async def get_lightweight_stats(user_id: str) -> Dict[str, Any]:
         
         # Optimized: Single query with conditional aggregation instead of two separate queries
         # This is much faster as it only scans the table once
-        stats = db.query(
-            func.count(APIRequest.id).label('total_requests'),
-            func.sum(
-                case((APIRequest.status_code >= 400, 1), else_=0)
-            ).label('total_errors')
-        ).filter(
-            APIRequest.timestamp >= five_minutes_ago
-        ).first()
+        # Use run_in_threadpool to avoid blocking the event loop with sync DB query
+        from starlette.concurrency import run_in_threadpool
+        
+        def _fetch_stats():
+            return db.query(
+                func.count(APIRequest.id).label('total_requests'),
+                func.sum(
+                    case((APIRequest.status_code >= 400, 1), else_=0)
+                ).label('total_errors')
+            ).filter(
+                APIRequest.timestamp >= five_minutes_ago
+            ).first()
+
+        stats = await run_in_threadpool(_fetch_stats)
         
         recent_requests = stats.total_requests or 0 if stats else 0
         recent_errors = int(stats.total_errors or 0) if stats else 0

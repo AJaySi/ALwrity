@@ -555,7 +555,10 @@ async def get_agent_huddle_feed_endpoint(
     try:
         user_id = str(current_user.get("id"))
         service = AgentActivityService(db, user_id)
-        feed = service.get_huddle_feed(
+        
+        # Use run_in_threadpool to execute the blocking service call in a separate thread
+        feed = await run_in_threadpool(
+            service.get_huddle_feed,
             since=since,
             cursor=cursor,
             runs_limit=runs_limit,

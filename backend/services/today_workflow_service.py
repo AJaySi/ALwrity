@@ -476,54 +476,65 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
 
 
 async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Optional[str] = None) -> tuple[DailyWorkflowPlan, bool]:
+    from starlette.concurrency import run_in_threadpool
+    
     date_str = date or _today_date_str()
-    existing = (
-        db.query(DailyWorkflowPlan)
-        .filter(DailyWorkflowPlan.user_id == user_id, DailyWorkflowPlan.date == date_str)
-        .first()
-    )
+    
+    def _get_existing():
+        return (
+            db.query(DailyWorkflowPlan)
+            .filter(DailyWorkflowPlan.user_id == user_id, DailyWorkflowPlan.date == date_str)
+            .first()
+        )
+    
+    existing = await run_in_threadpool(_get_existing)
+    
     if existing:
         return existing, False
 
     plan_data = await generate_agent_enhanced_plan(db, user_id, date_str)
     tasks = plan_data.get("tasks", [])
 
-    plan = DailyWorkflowPlan(
-        user_id=user_id,
-        date=date_str,
-        source="agent",
-        plan_json=plan_data,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-    )
-    db.add(plan)
-    db.commit()
-    db.refresh(plan)
-
-    for t in tasks:
-        pillar_id = str(t.get("pillarId") or "").lower().strip()
-        if pillar_id not in PILLAR_IDS:
-            continue
-        task = DailyWorkflowTask(
-            plan_id=plan.id,
+    def _create_plan():
+        plan = DailyWorkflowPlan(
             user_id=user_id,
-            pillar_id=pillar_id,
-            title=str(t.get("title") or "Task").strip()[:255],
-            description=str(t.get("description") or "").strip(),
-            status=_coerce_status(t.get("status")),
-            priority=_coerce_priority(t.get("priority")),
-            estimated_time=int(t.get("estimatedTime") or 15),
-            action_type=str(t.get("actionType") or "navigate").strip()[:20],
-            action_url=str(t.get("actionUrl") or "").strip() or None,
-            enabled=bool(t.get("enabled", True)),
-            dependencies=t.get("dependencies") if isinstance(t.get("dependencies"), list) else None,
-            metadata_json=t.get("metadata") if isinstance(t.get("metadata"), dict) else None,
+            date=date_str,
+            source="agent",
+            plan_json=plan_data,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
-        db.add(task)
-    db.commit()
-    db.refresh(plan)
+        db.add(plan)
+        db.commit()
+        db.refresh(plan)
+
+        for t in tasks:
+            pillar_id = str(t.get("pillarId") or "").lower().strip()
+            if pillar_id not in PILLAR_IDS:
+                continue
+            task = DailyWorkflowTask(
+                plan_id=plan.id,
+                user_id=user_id,
+                pillar_id=pillar_id,
+                title=str(t.get("title") or "Task").strip()[:255],
+                description=str(t.get("description") or "").strip(),
+                status=_coerce_status(t.get("status")),
+                priority=_coerce_priority(t.get("priority")),
+                estimated_time=int(t.get("estimatedTime") or 15),
+                action_type=str(t.get("actionType") or "navigate").strip()[:20],
+                action_url=str(t.get("actionUrl") or "").strip(),
+                dependencies=json.dumps(t.get("dependencies") or []),
+                metadata_json=t.get("metadata") or {},
+                enabled=bool(t.get("enabled", True)),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(task)
+        
+        db.commit()
+        return plan
+
+    plan = await run_in_threadpool(_create_plan)
     return plan, True
 
 

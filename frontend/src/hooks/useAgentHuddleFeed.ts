@@ -85,17 +85,37 @@ export const useAgentHuddleFeed = (options?: { detailTier?: 'summary' | 'detaile
   useEffect(() => {
     stopRef.current = false;
     let pollingTimer: ReturnType<typeof setInterval> | null = null;
+    let backoffMs = BASE_BACKOFF_MS;
+
+    // If polling fails repeatedly, try to reconnect SSE
+    const handlePollingError = () => {
+       if (connectionMode === 'polling' && reconnectAttemptRef.current < 5) {
+         connect();
+       }
+    };
 
     const startPolling = () => {
       setConnectionMode('polling');
       if (pollingTimer) clearInterval(pollingTimer);
-      pollingTimer = setInterval(async () => {
+      
+      const poll = async () => {
+        if (document.hidden) return;
         try {
           await loadSnapshot(cursorRef.current);
-        } catch {
-          // no-op
+          backoffMs = BASE_BACKOFF_MS;
+        } catch (err: any) {
+          if (err?.response?.status === 429) {
+             // Exponential backoff for 429s
+             backoffMs = Math.min(backoffMs * 2, 60000);
+             clearInterval(pollingTimer!);
+             pollingTimer = setInterval(poll, backoffMs);
+          } else {
+             handlePollingError();
+          }
         }
-      }, 7000);
+      };
+
+      pollingTimer = setInterval(poll, 10000);
     };
 
     const connect = async () => {

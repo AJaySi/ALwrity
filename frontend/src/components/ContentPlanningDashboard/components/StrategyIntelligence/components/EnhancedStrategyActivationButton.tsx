@@ -61,13 +61,16 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
 
   const handleSetupMonitoring = async (monitoringPlan: any) => {
     setIsLoading(true);
-    // try {
+    setActivationProgress(10);
+    
+    try {
       console.log('🎯 EnhancedStrategyActivationButton: handleSetupMonitoring called');
       
       // Get strategy ID
       const strategyId = strategyData?.id || 1;
       
       // Step 1: Generate monitoring plan if not provided
+      setActivationProgress(30);
       let finalMonitoringPlan = monitoringPlan;
       if (!finalMonitoringPlan) {
         console.log('🎯 Generating monitoring plan...');
@@ -85,6 +88,8 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
         }
       }
       
+      setActivationProgress(60);
+      
       // Step 2: Activate strategy with monitoring plan
       console.log('🎯 Activating strategy with monitoring...');
       try {
@@ -98,19 +103,31 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
       } catch (error) {
         console.warn('Could not activate strategy with monitoring:', error);
         // Continue with local activation only
-      } finally {
-        setIsLoading(false);
       }
+      
+      setActivationProgress(80);
       
       // Step 3: Call the local confirmation function
       console.log('🎯 EnhancedStrategyActivationButton: Calling onConfirmStrategy()');
       await onConfirmStrategy();
       console.log('🎯 EnhancedStrategyActivationButton: onConfirmStrategy() completed');
-    // } catch (error) {
-    //   setIsLoading(false);
-    //   console.error('Strategy activation failed:', error);
-    //   throw error;
-    // }
+      
+      setActivationProgress(100);
+      setIsSuccess(true);
+      setShowSuccessMessage(true);
+      
+      // Reset success state after a delay
+      setTimeout(() => {
+        setIsSuccess(false);
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Strategy activation failed:', error);
+      // Optional: Show error message
+    } finally {
+      setIsLoading(false);
+      setActivationProgress(0);
+    }
   };
 
   /* const setupAnalyticsAndMonitoring = async (strategyId: number, monitoringPlan: any) => {
@@ -212,6 +229,8 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
                   size={20} 
                   sx={{ color: 'white' }} 
                 />
+              ) : isSuccess ? (
+                <CheckIcon />
               ) : strategyConfirmed ? (
                 <AutoAwesomeIcon />
               ) : (
@@ -289,13 +308,24 @@ const EnhancedStrategyActivationButton: React.FC<EnhancedStrategyActivationButto
               ) : isSuccess ? (
                 <motion.div
                   key="success"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.3 }}
+                  variants={successVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
                 >
-                  <Typography variant="button" sx={{ fontWeight: 600 }}>
-                    Strategy Activated! 🎉
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CelebrationIcon />
+                    <Typography variant="button" sx={{ fontWeight: 600 }}>
+                      Strategy Activated!
+                    </Typography>
+                    <motion.span
+                      variants={confettiVariants}
+                      initial="initial"
+                      animate="animate"
+                    >
+                      🎉
+                    </motion.span>
+                  </Box>
                 </motion.div>
               ) : strategyConfirmed ? (
                 <motion.div

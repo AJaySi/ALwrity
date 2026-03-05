@@ -54,7 +54,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
             model = "gemini-2.0-flash-001"
         elif env_provider in ['hf_response_api', 'huggingface', 'hf']:
             gpt_provider = "huggingface"
-            model = "openai/gpt-oss-120b:groq"
+            model = "mistralai/Mistral-7B-Instruct-v0.3"
         
         # Default blog characteristics
         blog_tone = "Professional"
@@ -80,7 +80,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                 model = "gemini-2.0-flash-001"
             elif "huggingface" in available_providers:
                 gpt_provider = "huggingface"
-                model = "openai/gpt-oss-120b:groq"
+                model = "mistralai/Mistral-7B-Instruct-v0.3"
             else:
                 logger.error("[llm_text_gen] No API keys found for supported providers.")
                 raise RuntimeError("No LLM API keys configured. Configure GEMINI_API_KEY or HF_TOKEN to enable AI responses.")
@@ -93,7 +93,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                     model = "gemini-2.0-flash-001"
                 elif "huggingface" in available_providers:
                     gpt_provider = "huggingface"
-                    model = "openai/gpt-oss-120b:groq"
+                    model = "mistralai/Mistral-7B-Instruct-v0.3"
                 else:
                     raise RuntimeError("No supported providers available.")
             
@@ -303,7 +303,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                     elif fallback_provider == "huggingface":
                         provider_enum = APIProvider.MISTRAL
                         actual_provider_name = "huggingface"
-                        fallback_model = "openai/gpt-oss-120b:groq"
+                        fallback_model = "mistralai/Mistral-7B-Instruct-v0.3"
                     
                     if fallback_provider == "google":
                         if json_struct:
@@ -330,7 +330,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                             response_text = huggingface_structured_json_response(
                                 prompt=prompt,
                                 schema=json_struct,
-                                model="openai/gpt-oss-120b:groq",
+                                model="mistralai/Mistral-7B-Instruct-v0.3",
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 system_prompt=system_instructions
@@ -338,7 +338,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         else:
                             response_text = huggingface_text_response(
                                 prompt=prompt,
-                                model="openai/gpt-oss-120b:groq",
+                                model="mistralai/Mistral-7B-Instruct-v0.3",
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 top_p=top_p,

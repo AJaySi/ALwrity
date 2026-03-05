@@ -48,15 +48,19 @@ async def get_today_workflow(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
+    from starlette.concurrency import run_in_threadpool
     user_id = str(current_user.get("id"))
     plan, created = await get_or_create_daily_workflow_plan(db, user_id, date=date)
 
-    tasks = (
-        db.query(DailyWorkflowTask)
-        .filter(DailyWorkflowTask.plan_id == plan.id, DailyWorkflowTask.user_id == user_id)
-        .order_by(DailyWorkflowTask.created_at.asc())
-        .all()
-    )
+    def _fetch_tasks():
+        return (
+            db.query(DailyWorkflowTask)
+            .filter(DailyWorkflowTask.plan_id == plan.id, DailyWorkflowTask.user_id == user_id)
+            .order_by(DailyWorkflowTask.created_at.asc())
+            .all()
+        )
+
+    tasks = await run_in_threadpool(_fetch_tasks)
 
     response_tasks = []
     for t in tasks:
@@ -100,18 +104,26 @@ async def get_today_workflow(
             from datetime import date as date_type, timedelta
 
             y_str = (date_type.fromisoformat(plan.date) - timedelta(days=1)).isoformat()
-            y_plan = (
-                db.query(DailyWorkflowPlan)
-                .filter(DailyWorkflowPlan.user_id == user_id, DailyWorkflowPlan.date == y_str)
-                .first()
-            )
-            if y_plan:
-                y_tasks = (
-                    db.query(DailyWorkflowTask)
-                    .filter(DailyWorkflowTask.plan_id == y_plan.id, DailyWorkflowTask.user_id == user_id)
-                    .order_by(DailyWorkflowTask.created_at.asc())
-                    .all()
+            
+            def _fetch_yesterday():
+                y_plan = (
+                    db.query(DailyWorkflowPlan)
+                    .filter(DailyWorkflowPlan.user_id == user_id, DailyWorkflowPlan.date == y_str)
+                    .first()
                 )
+                if y_plan:
+                    y_tasks = (
+                        db.query(DailyWorkflowTask)
+                        .filter(DailyWorkflowTask.plan_id == y_plan.id, DailyWorkflowTask.user_id == user_id)
+                        .order_by(DailyWorkflowTask.created_at.asc())
+                        .all()
+                    )
+                    return y_tasks
+                return []
+
+            y_tasks = await run_in_threadpool(_fetch_yesterday)
+            
+            if y_tasks:
                 y_response = []
                 for t in y_tasks:
                     y_response.append(

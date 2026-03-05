@@ -158,25 +158,25 @@ def huggingface_text_response(
         if not api_key:
             raise Exception("HF_TOKEN not found in environment variables")
             
-        # Initialize Hugging Face client using Responses API
+        # Initialize Hugging Face client
         client = OpenAI(
-            base_url="https://router.huggingface.co/v1",
+            base_url=f"https://router.huggingface.co/hf/v1",
             api_key=api_key,
         )
         logger.info("✅ Hugging Face client initialized for text response")
 
         # Prepare input for the API
-        input_content = []
+        messages = []
         
         # Add system prompt if provided
         if system_prompt:
-            input_content.append({
+            messages.append({
                 "role": "system",
                 "content": system_prompt
             })
         
         # Add user prompt
-        input_content.append({
+        messages.append({
             "role": "user", 
             "content": prompt
         })
@@ -191,31 +191,23 @@ def huggingface_text_response(
             max_tokens,
         )
         
-        logger.info("🚀 Making Hugging Face API call...")
+        logger.info("🚀 Making Hugging Face API call (chat completion)...")
         
         # Add rate limiting to prevent expensive API calls
         import time
         time.sleep(1)  # 1 second delay between API calls
         
-        # Make the API call using Responses API
-        response = client.responses.parse(
+        # Make the API call using Chat Completions
+        response = client.chat.completions.create(
             model=model,
-            input=input_content,
+            messages=messages,
             temperature=temperature,
             top_p=top_p,
+            max_tokens=max_tokens
         )
         
         # Extract text from response
-        if hasattr(response, 'output_text') and response.output_text:
-            generated_text = response.output_text
-        elif hasattr(response, 'output') and response.output:
-            # Handle case where output is a list
-            if isinstance(response.output, list) and len(response.output) > 0:
-                generated_text = response.output[0].get('content', '')
-            else:
-                generated_text = str(response.output)
-        else:
-            generated_text = str(response)
+        generated_text = response.choices[0].message.content
         
         # Clean up the response
         if generated_text:
@@ -296,26 +288,28 @@ def huggingface_structured_json_response(
         if not api_key:
             raise Exception("HF_TOKEN not found in environment variables")
             
-        # Initialize Hugging Face client using Responses API
+        # Initialize OpenAI client with Hugging Face base URL
+        # Use standard Inference API endpoint
         client = OpenAI(
-            base_url="https://router.huggingface.co/v1",
+            base_url=f"https://router.huggingface.co/hf/v1",
             api_key=api_key,
         )
         logger.info("✅ Hugging Face client initialized for structured JSON response")
 
         # Prepare input for the API
-        input_content = []
+        messages = []
         
         # Add system prompt if provided
         if system_prompt:
-            input_content.append({
+            messages.append({
                 "role": "system",
                 "content": system_prompt
             })
         
         # Add user prompt with JSON instruction
+        # For HF models, explicit JSON instruction in prompt is often better than response_format
         json_instruction = "Please respond with valid JSON that matches the provided schema."
-        input_content.append({
+        messages.append({
             "role": "user", 
             "content": f"{prompt}\n\n{json_instruction}"
         })
@@ -332,52 +326,39 @@ def huggingface_structured_json_response(
         
         logger.info("🚀 Making Hugging Face structured API call...")
         
-        # Make the API call using Responses API with structured output
-        # Use simple text generation and parse JSON manually to avoid API format issues
-        logger.info("🚀 Making Hugging Face API call (text mode with JSON parsing)...")
+        # Make the API call using standard Chat Completions
+        logger.info("🚀 Making Hugging Face API call (chat completion)...")
         
-        # Add JSON instruction to the prompt
-        json_instruction = "\n\nPlease respond with valid JSON that matches this exact structure:\n" + json.dumps(schema, indent=2)
-        input_content[-1]["content"] = input_content[-1]["content"] + json_instruction
+        # Add JSON schema to prompt for guidance
+        json_schema_str = json.dumps(schema, indent=2)
+        messages[-1]["content"] += f"\n\nJSON Schema:\n{json_schema_str}"
         
         # Add rate limiting to prevent expensive API calls
         import time
         time.sleep(1)  # 1 second delay between API calls
         
-        response = client.responses.parse(
-            model=model,
-            input=input_content,
-            temperature=temperature
-        )
-        
-        # Extract structured data from response
-        if hasattr(response, 'output_parsed') and response.output_parsed:
-            # The new API returns parsed data directly (Pydantic model case)
-            logger.info("✅ Hugging Face structured JSON response parsed successfully")
-            # Convert Pydantic model to dict if needed
-            if hasattr(response.output_parsed, 'model_dump'):
-                return response.output_parsed.model_dump()
-            elif hasattr(response.output_parsed, 'dict'):
-                return response.output_parsed.dict()
-            else:
-                return response.output_parsed
-        elif hasattr(response, 'output_text') and response.output_text:
-            # Fallback to text parsing if output_parsed is not available
-            response_text = response.output_text
-            # Clean up the response text
-            response_text = re.sub(r'```json\n?', '', response_text)
-            response_text = re.sub(r'```\n?', '', response_text)
-            response_text = response_text.strip()
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"} # Try to enforce JSON mode if supported
+            )
             
-            # Fix common markdown artefacts that break JSON, e.g. lines starting with **"key":
-            #     **"narration": "text"
-            # becomes:
-            #     "narration": "text"
-            response_text = re.sub(r'^\s*\*\*(?=\s*")', '', response_text, flags=re.MULTILINE)
+            response_text = response.choices[0].message.content
+            
+            # Clean up response text if needed
+            response_text = response_text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
             
             try:
                 parsed_json = json.loads(response_text)
-                logger.info("✅ Hugging Face structured JSON response parsed from text")
+                logger.info("✅ Hugging Face structured JSON response parsed successfully")
                 return parsed_json
             except json.JSONDecodeError as json_err:
                 logger.error(f"❌ JSON parsing failed: {json_err}")
@@ -393,20 +374,30 @@ def huggingface_structured_json_response(
                     except json.JSONDecodeError:
                         pass
                 
-                # If all else fails, return a structured error response
-                logger.error("❌ All JSON parsing attempts failed")
-                return {
-                    "error": "Failed to parse JSON response",
-                    "raw_response": response_text,
-                    "schema_expected": schema
-                }
-        else:
-            logger.error("❌ No valid response data found")
-            return {
-                "error": "No valid response data found",
-                "raw_response": str(response),
-                "schema_expected": schema
-            }
+                return {"error": "Failed to parse JSON response", "raw_response": response_text}
+                
+        except Exception as e:
+            logger.error(f"❌ Hugging Face API call failed: {e}")
+            # If 422 Unprocessable Entity (often due to response_format not supported), retry without it
+            if "422" in str(e) or "not supported" in str(e).lower():
+                logger.info("Retrying without response_format...")
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                response_text = response.choices[0].message.content
+                # ... (same parsing logic would apply, simplified here for brevity)
+                try:
+                    return json.loads(response_text)
+                except:
+                     # Regex fallback
+                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                    if json_match:
+                         return json.loads(json_match.group())
+                    return {"error": "Failed to parse JSON response", "raw_response": response_text}
+            raise e
         
     except Exception as e:
         error_msg = str(e) if str(e) else repr(e)
