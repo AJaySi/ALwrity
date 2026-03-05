@@ -300,6 +300,7 @@ class APIProviderPricing(Base):
     
     # Unique constraint on provider and model
     __table_args__ = (
+        UniqueConstraint('provider', 'model_name', name='uq_api_provider_pricing_provider_model'),
         {'mysql_engine': 'InnoDB'},
     )
 
@@ -437,3 +438,4 @@ class FraudWarning(Base):
     reason_notes = Column(Text, nullable=True)
     meta_info = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+

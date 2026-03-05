@@ -75,7 +75,8 @@ async def preflight_check(
                     'provider': provider_enum,
                     'tokens_requested': op.tokens_requested or 0,
                     'actual_provider_name': op.actual_provider_name or op.provider,
-                    'operation_type': op.operation_type
+                    'operation_type': op.operation_type,
+                    'model': op.model
                 })
             except Exception as e:
                 logger.warning(f"Error processing operation {op.operation_type}: {e}")
@@ -94,7 +95,7 @@ async def preflight_check(
         operation_results = []
         total_cost = 0.0
         
-        for i, op in enumerate(operations_to_validate):
+        for op in operations_to_validate:
             op_result = {
                 'provider': op['actual_provider_name'],
                 'operation_type': op['operation_type'],
@@ -105,7 +106,7 @@ async def preflight_check(
             }
             
             # Get pricing for this operation
-            model_name = request.operations[i].model
+            model_name = op.get('model')
             if model_name:
                 pricing_info = pricing_service.get_pricing_for_provider_model(
                     op['provider'],
@@ -124,11 +125,9 @@ async def preflight_check(
                             chars = max(0, int(op.get('tokens_requested') or 0))
                             cost = max(0.005, 0.005 * (chars / 100.0))
                         else:
-                            # Audio pricing is per character (every character is 1 token)
-                            cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * (op['tokens_requested'] / 1000.0)
+                            cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * op['tokens_requested']
                     elif op['tokens_requested'] > 0:
-                        # Token-based cost estimation (rough estimate)
-                        cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * (op['tokens_requested'] / 1000)
+                        cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * op['tokens_requested']
                     else:
                         cost = pricing_info.get('cost_per_request', 0.0) or 0.0
                     

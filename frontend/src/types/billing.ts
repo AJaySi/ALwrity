@@ -201,11 +201,7 @@ export const ProviderUsageSchema = z.object({
   cost: z.number(),
 });
 
-export const ProviderBreakdownSchema = z.object({
-  gemini: ProviderUsageSchema,
-  huggingface: ProviderUsageSchema,
-  wavespeed: ProviderUsageSchema.optional(),
-});
+export const ProviderBreakdownSchema = z.record(ProviderUsageSchema);
 
 export const SubscriptionLimitsSchema = z.object({
   plan_name: z.string(),
