@@ -248,6 +248,67 @@ const SEODashboard: React.FC = () => {
   // One-run guard to avoid duplicate fetches under StrictMode
   const dataFetchedRef = useRef(false);
 
+  const technicalAuditStatus = data?.technical_seo_audit?.status;
+
+  const getTechnicalAuditStatusChip = () => {
+    const nextExecution = data?.technical_seo_audit?.next_execution;
+    switch (technicalAuditStatus) {
+      case 'scheduled':
+        return (
+          <Chip
+            icon={<ScheduleIcon />}
+            label={`Scheduled${nextExecution ? ` • ${new Date(nextExecution).toLocaleString()}` : ''}`}
+            sx={{ bgcolor: 'rgba(255, 193, 7, 0.15)', color: '#FFC107' }}
+          />
+        );
+      case 'ready':
+        return (
+          <Chip
+            icon={<CheckCircleIcon />}
+            label="Results Available"
+            sx={{ bgcolor: 'rgba(76, 175, 80, 0.15)', color: '#4CAF50' }}
+          />
+        );
+      case 'failed':
+        return (
+          <Chip
+            label="Audit Failed"
+            sx={{ bgcolor: 'rgba(244, 67, 54, 0.15)', color: '#F44336' }}
+          />
+        );
+      case 'needs_intervention':
+        return (
+          <Chip
+            label="Needs Intervention"
+            sx={{ bgcolor: 'rgba(255, 152, 0, 0.15)', color: '#FF9800' }}
+          />
+        );
+      case 'paused':
+        return (
+          <Chip
+            label="Audit Paused"
+            sx={{ bgcolor: 'rgba(158, 158, 158, 0.2)', color: '#E0E0E0' }}
+          />
+        );
+      case 'pending':
+        return (
+          <Chip
+            label="Pending"
+            sx={{ bgcolor: 'rgba(3, 169, 244, 0.15)', color: '#4FC3F7' }}
+          />
+        );
+      case 'error':
+        return (
+          <Chip
+            label="Audit Error"
+            sx={{ bgcolor: 'rgba(244, 67, 54, 0.15)', color: '#F44336' }}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   // Consolidated data fetching effect
   useEffect(() => {
     if (dataFetchedRef.current || !isSignedIn) return;
@@ -957,31 +1018,35 @@ const SEODashboard: React.FC = () => {
                       <InfoIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 18 }} />
                     </Tooltip>
                     <Box sx={{ flexGrow: 1 }} />
-                    {data.technical_seo_audit.status === 'scheduled' && (
-                      <Chip
-                        icon={<ScheduleIcon />}
-                        label={`Scheduled${data.technical_seo_audit.next_execution ? ` • ${new Date(data.technical_seo_audit.next_execution).toLocaleString()}` : ''}`}
-                        sx={{ bgcolor: 'rgba(255, 193, 7, 0.15)', color: '#FFC107' }}
-                      />
-                    )}
-                    {data.technical_seo_audit.status === 'ready' && (
-                      <Chip
-                        icon={<CheckCircleIcon />}
-                        label="Results Available"
-                        sx={{ bgcolor: 'rgba(76, 175, 80, 0.15)', color: '#4CAF50' }}
-                      />
-                    )}
-                    {data.technical_seo_audit.status === 'error' && (
-                      <Chip
-                        label="Audit Error"
-                        sx={{ bgcolor: 'rgba(244, 67, 54, 0.15)', color: '#F44336' }}
-                      />
-                    )}
+                    {getTechnicalAuditStatusChip()}
                   </Box>
 
-                  {data.technical_seo_audit.status === 'scheduled' && (
+                  {technicalAuditStatus === 'scheduled' && (
                     <Alert severity="info" sx={{ mb: 2 }}>
                       Full-site audit runs automatically after onboarding. This may take a few minutes depending on how many pages we discover.
+                    </Alert>
+                  )}
+                  {technicalAuditStatus === 'pending' && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      Full-site audit setup is pending. We&apos;ll begin auditing once the task is created.
+                    </Alert>
+                  )}
+                  {technicalAuditStatus === 'paused' && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      Full-site audit automation is currently paused. Resume scheduling to continue collecting fresh results.
+                    </Alert>
+                  )}
+                  {technicalAuditStatus === 'needs_intervention' && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      Audit automation needs intervention.
+                      {data.technical_seo_audit.failure_reason ? ` ${data.technical_seo_audit.failure_reason}` : ''}
+                    </Alert>
+                  )}
+                  {technicalAuditStatus === 'failed' && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      Most recent full-site audit failed.
+                      {data.technical_seo_audit.failure_reason ? ` ${data.technical_seo_audit.failure_reason}` : ''}
+                      {typeof data.technical_seo_audit.consecutive_failures === 'number' ? ` Consecutive failures: ${data.technical_seo_audit.consecutive_failures}.` : ''}
                     </Alert>
                   )}
 
@@ -1017,6 +1082,17 @@ const SEODashboard: React.FC = () => {
                       </GlassCard>
                     </Grid>
                   </Grid>
+
+                  {(data.technical_seo_audit.last_success || data.technical_seo_audit.last_failure) && (
+                    <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255, 255, 255, 0.6)', mt: 1.5 }}>
+                      {data.technical_seo_audit.last_success
+                        ? `Last success: ${new Date(data.technical_seo_audit.last_success).toLocaleString()}`
+                        : 'No successful audit recorded yet.'}
+                      {data.technical_seo_audit.last_failure
+                        ? ` • Last failure: ${new Date(data.technical_seo_audit.last_failure).toLocaleString()}`
+                        : ''}
+                    </Typography>
+                  )}
 
                   {data.technical_seo_audit.worst_pages?.length > 0 && (
                     <Box sx={{ mt: 2 }}>

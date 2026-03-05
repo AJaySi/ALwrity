@@ -183,14 +183,38 @@ class SEODashboardService:
 
             task_status = None
             next_execution = None
+            failure_reason = None
+            consecutive_failures = 0
+            last_success = None
+            last_failure = None
             if task:
                 task_status = task.status
                 next_execution = task.next_execution.isoformat() if task.next_execution else None
+                failure_reason = task.failure_reason
+                consecutive_failures = task.consecutive_failures or 0
+                last_success = task.last_success.isoformat() if task.last_success else None
+                last_failure = task.last_failure.isoformat() if task.last_failure else None
+
+            status = "pending"
+            if pages_audited > 0:
+                status = "ready"
+            elif task_status == "active":
+                status = "scheduled"
+            elif task_status == "failed":
+                status = "failed"
+            elif task_status == "needs_intervention":
+                status = "needs_intervention"
+            elif task_status == "paused":
+                status = "paused"
 
             return {
-                "status": "ready" if pages_audited > 0 else ("scheduled" if task_status == "active" else "pending"),
+                "status": status,
                 "task_status": task_status,
                 "next_execution": next_execution,
+                "failure_reason": failure_reason,
+                "consecutive_failures": consecutive_failures,
+                "last_success": last_success,
+                "last_failure": last_failure,
                 "pages_audited": pages_audited,
                 "avg_score": avg_score,
                 "fix_scheduled_pages": fix_scheduled_pages,
