@@ -1,6 +1,6 @@
 """SEO Dashboard API endpoints for ALwrity."""
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -24,6 +24,8 @@ from sqlalchemy.orm.attributes import flag_modified
 
 # Phase 2B: Import semantic monitoring
 from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor, SemanticHealthMetric
+
+router = APIRouter(prefix="/api/seo-dashboard", tags=["SEO Dashboard"])
 
 # Initialize the SEO analyzer
 seo_analyzer = ComprehensiveSEOAnalyzer()
@@ -1215,60 +1217,59 @@ async def run_strategic_insights(
         raise HTTPException(status_code=500, detail=f"Failed to run strategic insights: {str(e)}")
 
 
-async def get_strategic_insights_history(
-    current_user: dict = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Fetch the history of strategic insights for the user."""
-    try:
-        user_id = str(current_user.get('id'))
-        db_session = get_session_for_user(user_id)
-        
-        if not db_session:
-            raise HTTPException(status_code=500, detail="Database connection failed")
-
-        try:
-            integration_service = OnboardingDataIntegrationService()
-            integrated = integration_service.get_integrated_data_sync(user_id, db_session)
-            
-            website_analysis = integrated.get("website_analysis")
-            if not website_analysis or not isinstance(website_analysis, dict):
-                return {"history": []}
-            
-            history = website_analysis.get("strategic_insights_history") or []
-            return {"history": history}
-        finally:
-            db_session.close()
-    except Exception as e:
-        logger.error(f"Error fetching strategic insights history: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch strategic insights history")
-
-async def refresh_analytics_data(
-    current_user: dict = Depends(get_current_user),
-    site_url: Optional[str] = None
-) -> Dict[str, Any]:
-    """Refresh analytics data by invalidating cache and fetching fresh data."""
+@router.post("/refresh-data")
+async def refresh_analytics_data(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Force refresh of analytics data from GSC/Bing."""
+    # This would trigger background jobs to fetch fresh data
     try:
         user_id = str(current_user.get('id'))
         db_session = get_db_session(user_id)
         
         if not db_session:
-            logger.error("No database session available")
-            raise HTTPException(status_code=500, detail="Database connection failed")
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
         
         try:
-            # Use SEO dashboard service to refresh data
             dashboard_service = SEODashboardService(db_session)
-            refresh_result = await dashboard_service.refresh_analytics_data(user_id, site_url)
-            
-            logger.info(f"Refreshed analytics data for user {user_id}")
-            return refresh_result
-            
+            return await dashboard_service.refresh_analytics_data(user_id, site_url)
         finally:
             db_session.close()
             
     except Exception as e:
         logger.error(f"Error refreshing analytics data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to refresh analytics data")
+        return {"status": "error", "message": str(e)}
+
+@router.get("/strategic-insights-history")
+async def get_strategic_insights_history(
+    current_user: dict = Depends(get_current_user)
+) -> List[Dict[str, Any]]:
+    """Get history of strategic insights reports."""
+    try:
+        user_id = str(current_user.get('id'))
+        db_session = get_db_session(user_id)
+        
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+            
+        try:
+            # Get latest website analysis
+            latest_analysis = db_session.query(WebsiteAnalysis).join(
+                OnboardingSession, WebsiteAnalysis.session_id == OnboardingSession.id
+            ).filter(
+                OnboardingSession.user_id == user_id
+            ).order_by(WebsiteAnalysis.updated_at.desc()).first()
+            
+            if not latest_analysis:
+                return []
+                
+            return latest_analysis.strategic_insights_history or []
+            
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        logger.error(f"Error fetching strategic insights history: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Helper methods for data conversion
 def _convert_metrics(summary_data: Dict[str, Any]) -> Dict[str, SEOMetric]:
