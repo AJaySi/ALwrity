@@ -20,7 +20,6 @@ import {
   ProviderBreakdown,
   UsagePercentages,
   ProviderUsage,
-  ProviderBreakdownSchema,
   SubscriptionRenewal,
   RenewalHistoryResponse,
   RenewalHistoryAPIResponse,
@@ -122,11 +121,6 @@ billingAPI.interceptors.response.use(
 
 const defaultProviderUsage = { calls: 0, tokens: 0, cost: 0 };
 
-const defaultProviderBreakdown = {
-  gemini: { ...defaultProviderUsage },
-  huggingface: { ...defaultProviderUsage },
-};
-
 const defaultLimits = {
   plan_name: 'Unknown Plan',
   tier: 'free' as const,
@@ -196,79 +190,65 @@ function coerceUsageStats(raw: any): UsageStats {
     features: raw?.limits?.features ?? [],
   };
 
-  // Extract provider breakdown - only include gemini and huggingface
-  // Backend sends mistral data for HuggingFace, so we map it to huggingface
-  // Explicitly extract and type the provider usage data
-  const geminiData = providerBreakdown.gemini;
-  const mistralData = providerBreakdown.mistral; // Backend sends 'mistral' for HuggingFace
-  const huggingfaceData = providerBreakdown.huggingface;
-  const wavespeedData = providerBreakdown.wavespeed;
-  
-  // Create properly typed ProviderUsage objects
-  const geminiUsage: ProviderUsage = geminiData && typeof geminiData === 'object' && 'calls' in geminiData
-    ? { calls: Number(geminiData.calls) || 0, tokens: Number(geminiData.tokens) || 0, cost: Number(geminiData.cost) || 0 }
-    : { calls: 0, tokens: 0, cost: 0 };
-  
-  // Map mistral data to huggingface (HuggingFace is stored as MISTRAL in DB)
-  const huggingfaceUsage: ProviderUsage = (huggingfaceData && typeof huggingfaceData === 'object' && 'calls' in huggingfaceData)
-    ? { calls: Number(huggingfaceData.calls) || 0, tokens: Number(huggingfaceData.tokens) || 0, cost: Number(huggingfaceData.cost) || 0 }
-    : (mistralData && typeof mistralData === 'object' && 'calls' in mistralData)
-      ? { calls: Number(mistralData.calls) || 0, tokens: Number(mistralData.tokens) || 0, cost: Number(mistralData.cost) || 0 }
-      : { calls: 0, tokens: 0, cost: 0 };
+  // Preserve full provider breakdown from backend (dynamic keys).
+  // Also normalize mistral -> huggingface for display consistency while
+  // retaining the original mistral key for transparency.
+  const providerBreakdownCoerced: ProviderBreakdown = {};
+  const normalizeProviderUsage = (value: any): ProviderUsage => ({
+    calls: Number(value?.calls) || 0,
+    tokens: Number(value?.tokens) || 0,
+    cost: Number(value?.cost) || 0,
+  });
 
-  const wavespeedUsage: ProviderUsage = wavespeedData && typeof wavespeedData === 'object' && 'calls' in wavespeedData
-    ? { calls: Number(wavespeedData.calls) || 0, tokens: Number(wavespeedData.tokens) || 0, cost: Number(wavespeedData.cost) || 0 }
-    : { calls: 0, tokens: 0, cost: 0 };
-  
-  // Create ProviderBreakdown with only gemini and huggingface
-  const providerBreakdownCoerced: ProviderBreakdown = {
-    gemini: geminiUsage,
-    huggingface: huggingfaceUsage,
-    wavespeed: wavespeedUsage,
-  };
+  Object.entries(providerBreakdown).forEach(([provider, usage]) => {
+    providerBreakdownCoerced[provider] = normalizeProviderUsage(usage);
+  });
 
-  // Extract usage percentages - only include gemini and huggingface
-  // Backend sends mistral_calls for HuggingFace, map it to huggingface_calls
-  const usagePercentagesCoerced: UsagePercentages = {
-    gemini_calls: typeof raw?.usage_percentages?.gemini_calls === 'number' ? raw.usage_percentages.gemini_calls : 0,
-    huggingface_calls: typeof raw?.usage_percentages?.mistral_calls === 'number' 
-      ? raw.usage_percentages.mistral_calls 
-      : (typeof raw?.usage_percentages?.huggingface_calls === 'number' ? raw.usage_percentages.huggingface_calls : 0),
-    cost: typeof raw?.usage_percentages?.cost === 'number' ? raw.usage_percentages.cost : 0,
-  };
-
-  // Calculate total_cost from provider breakdown
-  // Always calculate from provider breakdown to ensure accuracy, but prefer backend total if it's more accurate
-  const backendTotalCost = typeof raw?.total_cost === 'number' ? raw.total_cost : 0;
-  const calculatedTotalCost = geminiUsage.cost + huggingfaceUsage.cost + wavespeedUsage.cost;
-  
-  // Use the maximum of backend cost and calculated cost to ensure we show the actual cost
-  // If backend cost is 0 but we have provider costs, use calculated cost
-  // If both are 0, the cost is genuinely 0 (no API calls with costs yet)
-  const totalCost = Math.max(backendTotalCost, calculatedTotalCost);
-  
-  // Debug logging for cost calculation
-  if (calculatedTotalCost > 0 || backendTotalCost > 0) {
-    console.log('💰 [BILLING DEBUG] Cost calculation in coerceUsageStats:', {
-      backendTotalCost,
-      calculatedTotalCost,
-      finalTotalCost: totalCost,
-      geminiCost: geminiUsage.cost,
-      huggingfaceCost: huggingfaceUsage.cost,
-      wavespeedCost: wavespeedUsage.cost,
-      geminiCalls: geminiUsage.calls,
-      huggingfaceCalls: huggingfaceUsage.calls,
-      wavespeedCalls: wavespeedUsage.calls,
-    });
+  if (!providerBreakdownCoerced.gemini) {
+    providerBreakdownCoerced.gemini = { ...defaultProviderUsage };
+  }
+  if (!providerBreakdownCoerced.huggingface) {
+    if (providerBreakdownCoerced.mistral) {
+      providerBreakdownCoerced.huggingface = { ...providerBreakdownCoerced.mistral };
+    } else {
+      providerBreakdownCoerced.huggingface = { ...defaultProviderUsage };
+    }
+  }
+  if (!providerBreakdownCoerced.wavespeed) {
+    providerBreakdownCoerced.wavespeed = { ...defaultProviderUsage };
   }
 
-  // Calculate total_calls and total_tokens from provider breakdown if needed
+  // Extract usage percentages (fallback to provider breakdown if backend omits fields)
+  const usagePercentagesCoerced: UsagePercentages = {
+    gemini_calls:
+      typeof raw?.usage_percentages?.gemini_calls === 'number'
+        ? raw.usage_percentages.gemini_calls
+        : providerBreakdownCoerced.gemini?.calls ?? 0,
+    huggingface_calls:
+      typeof raw?.usage_percentages?.mistral_calls === 'number'
+        ? raw.usage_percentages.mistral_calls
+        : typeof raw?.usage_percentages?.huggingface_calls === 'number'
+          ? raw.usage_percentages.huggingface_calls
+          : providerBreakdownCoerced.huggingface?.calls ?? 0,
+    cost:
+      typeof raw?.usage_percentages?.cost === 'number'
+        ? raw.usage_percentages.cost
+        : 0,
+  };
+
+  // Calculate totals from the full provider breakdown for complete analytics visibility
+  const providerUsageValues = Object.values(providerBreakdownCoerced);
+  const calculatedTotalCost = providerUsageValues.reduce((sum, usage) => sum + (usage?.cost ?? 0), 0);
+  const calculatedTotalCalls = providerUsageValues.reduce((sum, usage) => sum + (usage?.calls ?? 0), 0);
+  const calculatedTotalTokens = providerUsageValues.reduce((sum, usage) => sum + (usage?.tokens ?? 0), 0);
+
+  const backendTotalCost = typeof raw?.total_cost === 'number' ? raw.total_cost : 0;
+  const totalCost = Math.max(backendTotalCost, calculatedTotalCost);
+
   const backendTotalCalls = typeof raw?.total_calls === 'number' ? raw.total_calls : 0;
-  const calculatedTotalCalls = geminiUsage.calls + huggingfaceUsage.calls + wavespeedUsage.calls;
   const totalCalls = backendTotalCalls > 0 ? backendTotalCalls : calculatedTotalCalls;
 
   const backendTotalTokens = typeof raw?.total_tokens === 'number' ? raw.total_tokens : 0;
-  const calculatedTotalTokens = geminiUsage.tokens + huggingfaceUsage.tokens + wavespeedUsage.tokens;
   const totalTokens = backendTotalTokens > 0 ? backendTotalTokens : calculatedTotalTokens;
 
   const coerced: UsageStats = {
@@ -340,9 +320,13 @@ export const billingService = {
       // Debug: Log cost calculation details
       console.log('💰 [BILLING DEBUG] Cost calculation:', {
         backendTotalCost: coerced.current_usage.total_cost,
-        geminiCost: coerced.current_usage.provider_breakdown.gemini?.cost ?? 0,
-        huggingfaceCost: coerced.current_usage.provider_breakdown.huggingface?.cost ?? 0,
-        calculatedTotal: (coerced.current_usage.provider_breakdown.gemini?.cost ?? 0) + (coerced.current_usage.provider_breakdown.huggingface?.cost ?? 0),
+        providerCosts: Object.entries(coerced.current_usage.provider_breakdown || {}).map(([provider, usage]) => ({
+          provider,
+          cost: usage?.cost ?? 0,
+          calls: usage?.calls ?? 0,
+          tokens: usage?.tokens ?? 0,
+        })),
+        calculatedTotal: Object.values(coerced.current_usage.provider_breakdown || {}).reduce((sum, usage) => sum + (usage?.cost ?? 0), 0),
         providerBreakdown: coerced.current_usage.provider_breakdown,
       });
 
@@ -354,23 +338,6 @@ export const billingService = {
         emitApiEvent({ url: `/dashboard/${actualUserId}`, method: 'GET', source: 'billing' });
         return validatedData;
       } catch (validationError: any) {
-        // Check if error is due to old schema expecting other providers
-        const isOldSchemaError = validationError.errors?.some((err: any) => 
-          err.path?.includes('provider_breakdown') && 
-          err.path[err.path.length - 1] !== 'gemini' && 
-          err.path[err.path.length - 1] !== 'huggingface'
-        );
-        
-        if (isOldSchemaError) {
-          console.error('❌ [BILLING DEBUG] Validation failed due to cached old schema. Browser cache needs to be cleared.');
-          console.error('❌ [BILLING DEBUG] Error details:', validationError.errors);
-          // Still return the coerced data - it's correct, just schema validation is cached
-          // The data structure is correct with only gemini and huggingface
-          emitApiEvent({ url: `/dashboard/${actualUserId}`, method: 'GET', source: 'billing' });
-          return coerced;
-        }
-        
-        // For other validation errors, throw them
         console.error('❌ [BILLING DEBUG] Validation error:', validationError);
         throw validationError;
       }
@@ -758,7 +725,21 @@ export const calculateUsagePercentage = (current: number, limit: number): number
 export const getProviderIcon = (provider: string): string => {
   const icons: { [key: string]: string } = {
     gemini: '🤖',
-    huggingface: '🤗', // HuggingFace icon
+    huggingface: '🤗',
+    mistral: '🤗',
+    wavespeed: '🌊',
+    openai: '🧠',
+    anthropic: '📝',
+    tavily: '🔎',
+    serper: '🌐',
+    metaphor: '📚',
+    firecrawl: '🕷️',
+    stability: '🖼️',
+    video: '🎬',
+    image: '🖼️',
+    image_edit: '✂️',
+    audio: '🔊',
+    exa: '🧭',
   };
   return icons[provider.toLowerCase()] || '🔧';
 };
@@ -766,7 +747,21 @@ export const getProviderIcon = (provider: string): string => {
 export const getProviderColor = (provider: string): string => {
   const colors: { [key: string]: string } = {
     gemini: '#4285f4',
-    huggingface: '#ffd21e', // HuggingFace yellow color
+    huggingface: '#ffd21e',
+    mistral: '#ffd21e',
+    wavespeed: '#06b6d4',
+    openai: '#10a37f',
+    anthropic: '#d97706',
+    tavily: '#22c55e',
+    serper: '#3b82f6',
+    metaphor: '#8b5cf6',
+    firecrawl: '#f97316',
+    stability: '#ec4899',
+    video: '#ef4444',
+    image: '#a855f7',
+    image_edit: '#f43f5e',
+    audio: '#14b8a6',
+    exa: '#6366f1',
   };
   return colors[provider.toLowerCase()] || '#6b7280';
 };
