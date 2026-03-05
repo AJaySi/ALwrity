@@ -69,21 +69,25 @@ export const UsageLimitRings: React.FC<UsageLimitRingsProps> = ({
       label: 'AI Calls',
       used: currentUsage.total_calls,
       limit: limits.limits.gemini_calls || limits.limits.openai_calls || 50,
-      color: '#3b82f6'
+      color: '#3b82f6',
+      unlimited: false,
     },
     {
       label: 'Images',
       used: imageCalls,
       limit: limits.limits.stability_calls || 50,
-      color: '#a855f7'
+      color: '#a855f7',
+      unlimited: false,
     },
     {
       label: 'Videos',
       used: videoCalls,
-      limit: limits.limits.video_calls || 30,
-      color: '#ec4899'
+      // IMPORTANT: 0 means unlimited (do not coerce to fallback finite value)
+      limit: limits.limits.video_calls,
+      color: '#ec4899',
+      unlimited: limits.limits.video_calls === 0,
     }
-  ].filter(item => item.limit > 0);
+  ].filter(item => item.unlimited || item.limit > 0);
 
   if (keyLimits.length === 0) return null;
 
@@ -104,15 +108,34 @@ export const UsageLimitRings: React.FC<UsageLimitRingsProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: index * 0.1, duration: 0.4 }}
           >
-            <UsageLimitRing
-              used={item.used}
-              limit={item.limit}
-              label={item.label}
-              color={item.color}
-              size={100}
-              terminalTheme={terminalTheme}
-              terminalColors={terminalColors}
-            />
+            {item.unlimited ? (
+              <Box
+                sx={{
+                  width: 100,
+                  height: 100,
+                  borderRadius: '50%',
+                  border: `2px dashed ${item.color}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(255,255,255,0.04)',
+                }}
+              >
+                <TypographyComponent sx={{ fontSize: 26, fontWeight: 700, color: item.color, lineHeight: 1 }}>∞</TypographyComponent>
+                <TypographyComponent sx={{ fontSize: 10, opacity: 0.8, mt: 0.5 }}>{item.label}</TypographyComponent>
+              </Box>
+            ) : (
+              <UsageLimitRing
+                used={item.used}
+                limit={item.limit}
+                label={item.label}
+                color={item.color}
+                size={100}
+                terminalTheme={terminalTheme}
+                terminalColors={terminalColors}
+              />
+            )}
           </motion.div>
         ))}
       </Box>
