@@ -199,6 +199,26 @@ You can customize the server behavior with these environment variables:
 - `PORT`: Server port (default: 8000)
 - `RELOAD`: Enable auto-reload (default: true)
 
+Subscription billing (Stripe) variables used in deployment:
+
+- `STRIPE_SECRET_KEY`: Stripe API secret key (`sk_test_...` for test, `sk_live_...` for live).
+- `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `/api/subscription/webhook`.
+- `STRIPE_MODE`: Stripe mode selector (`test` or `live`). Recommended to set explicitly in each environment.
+- `STRIPE_PLAN_PRICE_MAPPING_TEST`: JSON mapping for test mode price IDs.
+- `STRIPE_PLAN_PRICE_MAPPING_LIVE`: JSON mapping for live mode price IDs.
+- `STRIPE_PLAN_PRICE_MAPPING`: Optional fallback JSON mapping used when mode-specific variable is not provided.
+
+Required mapping keys validated at startup:
+
+- `basic.monthly`
+- `pro.monthly`
+
+Example mapping value:
+
+```json
+{"basic":{"monthly":"price_123"},"pro":{"monthly":"price_456"}}
+```
+
 Example:
 ```bash
 HOST=127.0.0.1 PORT=8080 python start_alwrity_backend.py
