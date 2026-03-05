@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import {
   Box,
   Container,
@@ -73,6 +74,7 @@ const TerminalIconButton = styled(IconButton)({
 
 const BillingPage: React.FC = () => {
   const { subscription, checkSubscription } = useSubscription();
+  const { userId } = useAuth();
   
   // Monitor subscription status and show toast notifications
   useEffect(() => {
@@ -232,14 +234,18 @@ const BillingPage: React.FC = () => {
 
           {/* Billing Dashboard Content */}
           <Box>
-            <EnhancedBillingDashboard terminalTheme={true} />
+            {userId ? (
+              <EnhancedBillingDashboard userId={userId} terminalTheme={true} />
+            ) : null}
 
             {/* Subscription Renewal History Section */}
-            <SubscriptionRenewalHistory 
-              userId={undefined} 
+            {userId ? (
+              <SubscriptionRenewalHistory 
+                userId={userId} 
               terminalTheme={true}
-              initialLimit={20}
-            />
+                initialLimit={20}
+              />
+            ) : null}
 
             {/* Usage Logs Section */}
             <Box sx={{ mt: 4 }}>

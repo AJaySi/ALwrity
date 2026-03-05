@@ -24,7 +24,7 @@ interface UseCompactBillingDataReturn {
 /**
  * Custom hook for managing CompactBillingDashboard data fetching and state
  */
-export const useCompactBillingData = (userId?: string): UseCompactBillingDataReturn => {
+export const useCompactBillingData = (userId: string): UseCompactBillingDataReturn => {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);

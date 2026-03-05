@@ -21,7 +21,7 @@ import { MonthlyBudgetUsage } from './components/MonthlyBudgetUsage';
 import { AlertsSection } from './components/AlertsSection';
 
 interface CompactBillingDashboardProps {
-  userId?: string;
+  userId: string;
   terminalTheme?: boolean;
 }
 
