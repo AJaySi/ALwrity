@@ -129,6 +129,22 @@ class UserSubscription(Base):
     # Relationships
     plan = relationship("SubscriptionPlan")
 
+
+class ProcessedStripeEvent(Base):
+    """Tracks Stripe webhook processing to enforce idempotency and aid observability."""
+
+    __tablename__ = "processed_stripe_events"
+
+    event_id = Column(String(255), primary_key=True)
+    event_type = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False, default="processing")
+    attempt_count = Column(Integer, nullable=False, default=1)
+    received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    processing_started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    processed_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class APIUsageLog(Base):
     """Detailed log of every API call for billing and monitoring."""
     

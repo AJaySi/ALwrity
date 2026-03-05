@@ -5,7 +5,8 @@ from typing import Optional, Dict, Any
 from loguru import logger
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from models.subscription_models import UserSubscription, SubscriptionPlan, SubscriptionTier, BillingCycle, UsageStatus, FraudWarning
+from sqlalchemy.exc import IntegrityError
+from models.subscription_models import UserSubscription, SubscriptionPlan, SubscriptionTier, BillingCycle, UsageStatus, FraudWarning, ProcessedStripeEvent
 from services.subscription.pricing_service import PricingService
 from datetime import datetime
 
@@ -309,23 +310,82 @@ class StripeService:
             logger.error(f"Invalid signature: {e}")
             raise HTTPException(status_code=400, detail="Invalid signature")
 
+        event_id = event.get("id")
         event_type = event["type"]
         data = event["data"]["object"]
 
+        if not event_id:
+            logger.error("Stripe webhook event missing id")
+            raise HTTPException(status_code=400, detail="Missing event id")
+
+        now = datetime.utcnow()
+        processed_event = self.db.query(ProcessedStripeEvent).filter(
+            ProcessedStripeEvent.event_id == event_id
+        ).first()
+
+        if processed_event and processed_event.status == "processed":
+            logger.info(f"Skipping already processed Stripe event {event_id}")
+            return {"status": "success"}
+
+        if processed_event:
+            processed_event.status = "processing"
+            processed_event.processing_started_at = now
+            processed_event.last_error = None
+            processed_event.attempt_count = (processed_event.attempt_count or 0) + 1
+        else:
+            processed_event = ProcessedStripeEvent(
+                event_id=event_id,
+                event_type=event_type,
+                status="processing",
+                received_at=now,
+                processing_started_at=now,
+                attempt_count=1,
+            )
+            self.db.add(processed_event)
+
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            existing_event = self.db.query(ProcessedStripeEvent).filter(
+                ProcessedStripeEvent.event_id == event_id
+            ).first()
+            if existing_event and existing_event.status == "processed":
+                logger.info(f"Skipping already processed Stripe event {event_id} after race")
+                return {"status": "success"}
+            raise
+
         logger.info(f"Received Stripe webhook: {event_type}")
-        
-        if event_type == "checkout.session.completed":
-            await self._handle_checkout_completed(data)
-        elif event_type == "invoice.payment_succeeded":
-            await self._handle_invoice_payment_succeeded(data)
-        elif event_type == "invoice.payment_failed":
-            await self._handle_invoice_payment_failed(data)
-        elif event_type == "customer.subscription.updated":
-            await self._handle_subscription_updated(data)
-        elif event_type == "customer.subscription.deleted":
-            await self._handle_subscription_deleted(data)
-        elif event_type.startswith("radar.early_fraud_warning."):
-            await self._handle_early_fraud_warning(data)
+
+        try:
+            if event_type == "checkout.session.completed":
+                await self._handle_checkout_completed(data)
+            elif event_type == "invoice.payment_succeeded":
+                await self._handle_invoice_payment_succeeded(data)
+            elif event_type == "invoice.payment_failed":
+                await self._handle_invoice_payment_failed(data)
+            elif event_type == "customer.subscription.updated":
+                await self._handle_subscription_updated(data)
+            elif event_type == "customer.subscription.deleted":
+                await self._handle_subscription_deleted(data)
+            elif event_type.startswith("radar.early_fraud_warning."):
+                await self._handle_early_fraud_warning(data)
+
+            processed_event.status = "processed"
+            processed_event.processed_at = datetime.utcnow()
+            processed_event.last_error = None
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            failed_event = self.db.query(ProcessedStripeEvent).filter(
+                ProcessedStripeEvent.event_id == event_id
+            ).first()
+            if failed_event:
+                failed_event.status = "failed"
+                failed_event.last_error = str(e)[:2000]
+                failed_event.processed_at = datetime.utcnow()
+                self.db.commit()
+            raise
 
         return {"status": "success"}
 
