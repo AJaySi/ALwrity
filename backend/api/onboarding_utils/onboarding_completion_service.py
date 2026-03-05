@@ -234,6 +234,10 @@ class OnboardingCompletionService:
                         try:
                             research_prefs = integrated_data.get("research_preferences", {}) if isinstance(integrated_data, dict) else {}
                             competitors = research_prefs.get("competitors") if isinstance(research_prefs, dict) else None
+                            
+                            # Fallback: Check competitor_analysis (Step 3 persistence) if not in preferences
+                            if not competitors or not isinstance(competitors, list) or len(competitors) == 0:
+                                competitors = integrated_data.get("competitor_analysis") if isinstance(integrated_data, dict) else None
 
                             if isinstance(competitors, list) and len(competitors) > 0:
                                 existing_deep = db.query(DeepCompetitorAnalysisTask).filter(
