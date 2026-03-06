@@ -128,7 +128,7 @@ class SocialAmplificationAgent(BaseALwrityAgent):
         proposals.append(TaskProposal(
             title="Create LinkedIn Thread",
             description="Summarize your latest blog post into a 5-tweet thread.",
-            pillar_id="distribute",
+            pillar_id="engage",
             priority="medium",
             estimated_time=20,
             source_agent="SocialAmplificationAgent",

@@ -47,7 +47,7 @@ class LinkGraphAgent(SIFBaseAgent):
         proposals.append(TaskProposal(
             title="Internal Linking Review",
             description="Add internal links to your new post 'Content Strategy 101'.",
-            pillar_id="create",
+            pillar_id="analyze",
             priority="medium",
             estimated_time=15,
             source_agent="LinkGraphAgent",

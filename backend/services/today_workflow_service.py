@@ -120,11 +120,19 @@ def _is_coverage_guardrail_enabled(grounding: Dict[str, Any]) -> bool:
 
 def _sanitize_task(task: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not isinstance(task, dict):
+        logger.warning(f"Dropping workflow task proposal: expected dict, got {type(task).__name__}")
         return None
 
     pillar_id = str(task.get("pillarId") or "").lower().strip()
     title = str(task.get("title") or "").strip()
-    if pillar_id not in PILLAR_IDS or not title:
+    if pillar_id not in PILLAR_IDS:
+        logger.warning(
+            f"Dropping workflow task proposal with invalid pillarId='{pillar_id}' "
+            f"(allowed={PILLAR_IDS}): {task}"
+        )
+        return None
+    if not title:
+        logger.warning(f"Dropping workflow task proposal with empty title: {task}")
         return None
 
     sanitized = dict(task)
@@ -511,6 +519,10 @@ async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Opt
         for t in tasks:
             pillar_id = str(t.get("pillarId") or "").lower().strip()
             if pillar_id not in PILLAR_IDS:
+                logger.warning(
+                    f"Skipping persistence for task with invalid pillarId='{pillar_id}' "
+                    f"(allowed={PILLAR_IDS}): {t}"
+                )
                 continue
             task = DailyWorkflowTask(
                 plan_id=plan.id,

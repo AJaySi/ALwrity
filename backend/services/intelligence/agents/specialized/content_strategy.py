@@ -296,7 +296,7 @@ class ContentStrategyAgent(BaseALwrityAgent):
         proposals.append(TaskProposal(
             title="Refresh 'SEO Basics'",
             description="Update your SEO basics guide with 2024 trends.",
-            pillar_id="create",
+            pillar_id="generate",
             priority="high",
             estimated_time=45,
             source_agent="ContentStrategyAgent",

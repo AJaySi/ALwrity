@@ -86,7 +86,7 @@ class CompetitorResponseAgent(BaseALwrityAgent):
         proposals.append(TaskProposal(
             title="Cover 'AI Agent Frameworks'",
             description="Competitor X just published a guide on this. Create a better version.",
-            pillar_id="create",
+            pillar_id="analyze",
             priority="high",
             estimated_time=60,
             source_agent="CompetitorResponseAgent",

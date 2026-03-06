@@ -32,7 +32,7 @@ class CitationExpert(SIFBaseAgent):
         proposals.append(TaskProposal(
             title="Verify Sources for 'AI Trends 2025'",
             description="Double-check statistical claims in your latest draft.",
-            pillar_id="create",
+            pillar_id="analyze",
             priority="medium",
             estimated_time=20,
             source_agent="CitationExpert",

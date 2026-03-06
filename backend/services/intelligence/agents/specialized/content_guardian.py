@@ -54,7 +54,7 @@ class ContentGuardianAgent(SIFBaseAgent):
         proposals.append(TaskProposal(
             title="Audit Old Content",
             description="Review top performing posts from >6 months ago for updates.",
-            pillar_id="create",
+            pillar_id="analyze",
             priority="low",
             estimated_time=30,
             source_agent="ContentGuardianAgent",

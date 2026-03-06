@@ -116,7 +116,7 @@ class SEOOptimizationAgent(BaseALwrityAgent):
         proposals.append(TaskProposal(
             title="Fix Broken Links",
             description="3 internal links on 'About Us' page are broken.",
-            pillar_id="distribute",
+            pillar_id="analyze",
             priority="high",
             estimated_time=10,
             source_agent="SEOOptimizationAgent",
