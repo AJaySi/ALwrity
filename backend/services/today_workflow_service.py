@@ -29,6 +29,25 @@ def _coerce_status(value: Any) -> str:
     return "pending"
 
 
+def coerce_dependencies(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(dep).strip() for dep in value if str(dep).strip()]
+
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(dep).strip() for dep in parsed if str(dep).strip()]
+        except Exception:
+            pass
+        return [raw]
+
+    return []
+
+
 def _proposal_priority_rank(priority: str) -> int:
     return {"low": 0, "medium": 1, "high": 2}.get(str(priority or "").lower(), 1)
 
@@ -523,7 +542,7 @@ async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Opt
                 estimated_time=int(t.get("estimatedTime") or 15),
                 action_type=str(t.get("actionType") or "navigate").strip()[:20],
                 action_url=str(t.get("actionUrl") or "").strip(),
-                dependencies=json.dumps(t.get("dependencies") or []),
+                dependencies=coerce_dependencies(t.get("dependencies")),
                 metadata_json=t.get("metadata") or {},
                 enabled=bool(t.get("enabled", True)),
                 created_at=datetime.utcnow(),
