@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Any, Dict, Optional
 from datetime import datetime
+from enum import Enum
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,23 @@ from services.intelligence.txtai_service import TxtaiIntelligenceService
 
 
 router = APIRouter(prefix="/api/today-workflow", tags=["Today Workflow"])
+
+
+class TaskStatusEnum(str, Enum):
+    pending = "pending"
+    in_progress = "in_progress"
+    completed = "completed"
+    skipped = "skipped"
+    dismissed = "dismissed"
+
+
+class TaskStatusUpdateRequest(BaseModel):
+    status: TaskStatusEnum = Field(..., description="New task status")
+    completion_notes: Optional[str] = Field(
+        None,
+        max_length=4000,
+        description="Optional notes about task completion or outcome",
+    )
 
 async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label: str):
     svc = TxtaiIntelligenceService(user_id)
@@ -172,15 +191,13 @@ from services.task_memory_service import TaskMemoryService
 @router.post("/tasks/{task_id}/status")
 async def set_task_status(
     task_id: int,
-    body: Dict[str, Any],
+    body: TaskStatusUpdateRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     user_id = str(current_user.get("id"))
-    status = body.get("status")
-    if not status:
-        raise HTTPException(status_code=400, detail="status is required")
-    completion_notes = body.get("completion_notes")
+    status = body.status.value
+    completion_notes = body.completion_notes
 
     task = update_task_status(db, user_id, task_id, status=status, completion_notes=completion_notes)
     if not task:
