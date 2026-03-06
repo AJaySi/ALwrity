@@ -17,6 +17,10 @@ router = APIRouter(prefix="/api/today-workflow", tags=["Today Workflow"])
 
 async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label: str):
     svc = TxtaiIntelligenceService(user_id)
+    task_count = len(tasks)
+    indexing_attempts = 1
+    indexing_successes = 0
+    indexing_failures = 0
     items = []
     for t in tasks:
         task_id = t.get("id")
@@ -36,9 +40,44 @@ async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label:
             "task_id": task_id,
         }
         items.append((f"{label}_task:{user_id}:{date}:{task_id}", text, metadata))
+    logger.info(
+        "Daily workflow indexing attempt user_id={} date={} label={} task_count={} indexing_attempts={} indexing_successes={} indexing_failures={}",
+        user_id,
+        date,
+        label,
+        task_count,
+        indexing_attempts,
+        indexing_successes,
+        indexing_failures,
+    )
+
     try:
         await svc.index_content(items)
-    except Exception:
+        indexing_successes += 1
+        logger.info(
+            "Daily workflow indexing success user_id={} date={} label={} task_count={} indexing_attempts={} indexing_successes={} indexing_failures={}",
+            user_id,
+            date,
+            label,
+            task_count,
+            indexing_attempts,
+            indexing_successes,
+            indexing_failures,
+        )
+    except Exception as exc:
+        indexing_failures += 1
+        logger.error(
+            "Daily workflow indexing failed user_id={} date={} label={} task_count={} indexing_attempts={} indexing_successes={} indexing_failures={} error_class={} error_message={}",
+            user_id,
+            date,
+            label,
+            task_count,
+            indexing_attempts,
+            indexing_successes,
+            indexing_failures,
+            type(exc).__name__,
+            str(exc),
+        )
         return
 
 
@@ -99,7 +138,22 @@ async def get_today_workflow(
     total_estimated = int(sum(int(t.get("estimatedTime") or 0) for t in response_tasks))
 
     if created:
+        created_task_count = len(response_tasks)
+        created_indexing_attempts = 1
+        created_indexing_successes = 0
+        created_indexing_failures = 0
         asyncio.create_task(_index_tasks_to_sif(user_id, plan.date, response_tasks, label="today"))
+        created_indexing_successes += 1
+        logger.info(
+            "Scheduled daily workflow indexing user_id={} date={} label={} task_count={} indexing_attempts={} indexing_successes={} indexing_failures={}",
+            user_id,
+            plan.date,
+            "today",
+            created_task_count,
+            created_indexing_attempts,
+            created_indexing_successes,
+            created_indexing_failures,
+        )
         try:
             from datetime import date as date_type, timedelta
 
@@ -135,9 +189,46 @@ async def get_today_workflow(
                             "status": "skipped" if t.status == "dismissed" else t.status,
                         }
                     )
+                yesterday_task_count = len(y_response)
+                yesterday_indexing_attempts = 1
+                yesterday_indexing_successes = 0
+                yesterday_indexing_failures = 0
                 asyncio.create_task(_index_tasks_to_sif(user_id, y_str, y_response, label="yesterday"))
-        except Exception:
-            pass
+                yesterday_indexing_successes += 1
+                logger.info(
+                    "Scheduled daily workflow indexing user_id={} date={} label={} task_count={} indexing_attempts={} indexing_successes={} indexing_failures={}",
+                    user_id,
+                    y_str,
+                    "yesterday",
+                    yesterday_task_count,
+                    yesterday_indexing_attempts,
+                    yesterday_indexing_successes,
+                    yesterday_indexing_failures,
+                )
+            else:
+                logger.info(
+                    "No yesterday tasks to index user_id={} date={} label={} task_count={} indexing_attempts={} indexing_successes={} indexing_failures={}",
+                    user_id,
+                    y_str,
+                    "yesterday",
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+        except Exception as exc:
+            logger.error(
+                "Daily workflow yesterday indexing preparation failed user_id={} date={} label={} task_count={} indexing_attempts={} indexing_successes={} indexing_failures={} error_class={} error_message={}",
+                user_id,
+                plan.date,
+                "yesterday",
+                0,
+                1,
+                0,
+                1,
+                type(exc).__name__,
+                str(exc),
+            )
 
     return {
         "success": True,
