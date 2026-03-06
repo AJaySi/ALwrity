@@ -79,6 +79,15 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
     return 'Ready to Start';
   };
 
+  const getProvenanceLabel = () => {
+    const summary = currentWorkflow?.provenanceSummary;
+    if (!summary) return 'Daily Workflow';
+    if (summary.generationMode === 'agent_committee') return 'Personalized by Agents';
+    if (summary.generationMode === 'llm_generation' && !summary.fallbackUsed) return 'AI Personalized Guide';
+    if (summary.fallbackUsed || summary.generationMode === 'controlled_fallback') return 'Baseline Daily Guide';
+    return 'Daily Workflow';
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -20 }}
@@ -122,6 +131,16 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
                 background: `${getStatusColor()}20`,
                 color: getStatusColor(),
                 border: `1px solid ${getStatusColor()}40`,
+                fontWeight: 600
+              }}
+            />
+            <Chip
+              label={getProvenanceLabel()}
+              size="small"
+              sx={{
+                background: 'rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.9)',
+                border: '1px solid rgba(255,255,255,0.2)',
                 fontWeight: 600
               }}
             />

@@ -117,7 +117,11 @@ export const useWorkflowStore = create<WorkflowState>()(
           try {
             const resp = await apiClient.get('/api/today-workflow', { params: date ? { date } : {} });
             const serverWorkflow = resp?.data?.data?.workflow as DailyWorkflow | undefined;
+            const planSummary = resp?.data?.data?.plan?.provenance_summary;
             if (serverWorkflow && Array.isArray(serverWorkflow.tasks)) {
+              if (planSummary && !serverWorkflow.provenanceSummary) {
+                serverWorkflow.provenanceSummary = planSummary;
+              }
               const derived = computeProgressAndNavigation(serverWorkflow);
               set({
                 currentWorkflow: serverWorkflow,
