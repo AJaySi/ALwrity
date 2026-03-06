@@ -11,6 +11,8 @@ from services.llm_providers.main_text_generation import llm_text_gen
 from loguru import logger
 
 PILLAR_IDS = ["plan", "generate", "publish", "analyze", "engage", "remarket"]
+MIN_TASK_EVIDENCE_LINKS = 1
+PLAN_CONTEXT_THRESHOLD = 0.65
 
 
 def _today_date_str() -> str:
@@ -139,6 +141,116 @@ def _sanitize_task(task: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return sanitized
 
 
+def _derive_onboarding_evidence_links(onboarding_data: Dict[str, Any], limit: int = 2) -> List[str]:
+    if not isinstance(onboarding_data, dict):
+        return []
+
+    links: List[str] = []
+    for key, value in onboarding_data.items():
+        if key == "workflow_config":
+            continue
+        if value in (None, "", [], {}):
+            continue
+        links.append(f"onboarding:{key}")
+        if len(links) >= limit:
+            break
+    return links
+
+
+def _valid_evidence_links(evidence_links: Any, grounding: Dict[str, Any]) -> List[str]:
+    if not isinstance(evidence_links, list):
+        return []
+
+    onboarding_data = grounding.get("onboarding_data", {}) if isinstance(grounding, dict) else {}
+    if not isinstance(onboarding_data, dict):
+        onboarding_data = {}
+    valid_onboarding_keys = {str(k) for k in onboarding_data.keys()}
+
+    recent_alerts = grounding.get("recent_agent_alerts", []) if isinstance(grounding, dict) else []
+    valid_alert_ids = {
+        str(a.get("alert_id"))
+        for a in recent_alerts
+        if isinstance(a, dict) and a.get("alert_id") is not None
+    }
+
+    valid_links: List[str] = []
+    for raw in evidence_links:
+        link = str(raw or "").strip()
+        if not link:
+            continue
+
+        if link.startswith("onboarding:"):
+            key = link.split(":", 1)[1].strip()
+            if key and key in valid_onboarding_keys:
+                valid_links.append(link)
+        elif link.startswith("alert:"):
+            alert_id = link.split(":", 1)[1].strip()
+            if alert_id and alert_id in valid_alert_ids:
+                valid_links.append(link)
+
+    return valid_links
+
+
+def validate_plan_contextuality(plan: Dict[str, Any], grounding: Dict[str, Any]) -> Dict[str, Any]:
+    tasks = plan.get("tasks") if isinstance(plan, dict) else None
+    if not isinstance(tasks, list) or not tasks:
+        return {
+            "score": 0.0,
+            "threshold": PLAN_CONTEXT_THRESHOLD,
+            "is_contextual": False,
+            "task_scores": [],
+            "tasks_below_min_evidence": 0,
+            "min_evidence_links": MIN_TASK_EVIDENCE_LINKS,
+        }
+
+    task_scores = []
+    below_min_evidence = 0
+
+    for idx, task in enumerate(tasks):
+        metadata = task.get("metadata") if isinstance(task, dict) else {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        evidence_links = _valid_evidence_links(metadata.get("evidence_links"), grounding)
+        has_min_evidence = len(evidence_links) >= MIN_TASK_EVIDENCE_LINKS
+        if not has_min_evidence:
+            below_min_evidence += 1
+
+        reasoning_text = str(metadata.get("reasoning") or task.get("description") or "").lower()
+        onboarding_hits = sum(1 for l in evidence_links if l.startswith("onboarding:"))
+        alert_hits = sum(1 for l in evidence_links if l.startswith("alert:"))
+
+        score = 0.0
+        if has_min_evidence:
+            score += 0.6
+        if onboarding_hits > 0:
+            score += 0.2
+        if alert_hits > 0:
+            score += 0.2
+        elif "alert" in reasoning_text:
+            score += 0.1
+
+        task_scores.append(
+            {
+                "task_index": idx,
+                "pillarId": task.get("pillarId"),
+                "title": task.get("title"),
+                "score": min(score, 1.0),
+                "evidence_links": evidence_links,
+                "has_min_evidence": has_min_evidence,
+            }
+        )
+
+    plan_score = sum(t["score"] for t in task_scores) / len(task_scores)
+    is_contextual = plan_score >= PLAN_CONTEXT_THRESHOLD and below_min_evidence == 0
+    return {
+        "score": round(plan_score, 3),
+        "threshold": PLAN_CONTEXT_THRESHOLD,
+        "is_contextual": is_contextual,
+        "task_scores": task_scores,
+        "tasks_below_min_evidence": below_min_evidence,
+        "min_evidence_links": MIN_TASK_EVIDENCE_LINKS,
+    }
+
+
 def _build_single_task_for_missing_pillar(
     user_id: str,
     date: str,
@@ -253,6 +365,7 @@ def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, A
     return {
         "recent_agent_alerts": [
             {
+                "alert_id": a.id,
                 "title": a.title,
                 "message": a.message,
                 "created_at": a.created_at.isoformat(),
@@ -272,9 +385,15 @@ from services.task_memory_service import TaskMemoryService
 # Initialize orchestration service (singleton)
 orchestration_service = AgentOrchestrationService()
 
-async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> Dict[str, Any]:
+async def generate_agent_enhanced_plan(
+    db: Session,
+    user_id: str,
+    date: str,
+    grounding: Optional[Dict[str, Any]] = None,
+    strict_contextuality: bool = False,
+) -> Dict[str, Any]:
     activity = AgentActivityService(db, user_id)
-    grounding = build_grounding_context(db, user_id, date)
+    grounding = grounding or build_grounding_context(db, user_id, date)
     memory_service = TaskMemoryService(user_id, db)
 
     # 1. Get Orchestrator
@@ -351,7 +470,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
 
     # 4. Final Selection
     # If we have agent tasks, use them. Otherwise fall back to LLM generation.
-    if agent_tasks:
+    if agent_tasks and not strict_contextuality:
         logger.info(f"Generated {len(agent_tasks)} tasks via Agent Committee")
         
         # Convert TaskProposal objects to dicts for frontend
@@ -369,7 +488,8 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
                 "metadata": {
                     "source_agent": prop.source_agent,
                     "reasoning": prop.reasoning,
-                    "context_data": prop.context_data
+                    "context_data": prop.context_data,
+                    "evidence_links": _derive_onboarding_evidence_links(grounding.get("onboarding_data", {}), limit=2),
                 }
             })
             
@@ -424,6 +544,15 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
         "- Keep descriptions concise.\n\n"
         f"Grounding context (Alerts):\n{json.dumps(grounding.get('recent_agent_alerts', []), indent=2)}\n"
     )
+
+    if strict_contextuality:
+        prompt += (
+            "\nStrict contextuality mode (must follow):\n"
+            f"- Every task.metadata must include evidence_links with at least {MIN_TASK_EVIDENCE_LINKS} entries.\n"
+            "- evidence_links entries must use either 'onboarding:<field_name>' or 'alert:<alert_id>' format.\n"
+            "- Include metadata.reasoning that explains how the evidence applies to the task.\n"
+            "- Reject generic tasks without explicit ties to onboarding data or active alerts.\n"
+        )
 
     run = activity.start_run(agent_type="TodayWorkflowGenerator", prompt=prompt[:4000])
     activity.log_event(
@@ -492,7 +621,25 @@ async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Opt
     if existing:
         return existing, False
 
-    plan_data = await generate_agent_enhanced_plan(db, user_id, date_str)
+    grounding = build_grounding_context(db, user_id, date_str)
+    plan_data = await generate_agent_enhanced_plan(db, user_id, date_str, grounding=grounding)
+    validation = validate_plan_contextuality(plan_data, grounding)
+
+    if not validation.get("is_contextual"):
+        logger.info("Plan contextuality below threshold for user {}. Running strict regeneration.", user_id)
+        regenerated_plan = await generate_agent_enhanced_plan(
+            db,
+            user_id,
+            date_str,
+            grounding=grounding,
+            strict_contextuality=True,
+        )
+        regenerated_validation = validate_plan_contextuality(regenerated_plan, grounding)
+        plan_data = regenerated_plan
+        validation = regenerated_validation
+
+    plan_data["quality_status"] = "contextual" if validation.get("is_contextual") else "low_context"
+    plan_data["contextuality_validation"] = validation
     tasks = plan_data.get("tasks", [])
 
     def _create_plan():

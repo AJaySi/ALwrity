@@ -158,6 +158,8 @@ async def get_today_workflow(
                 "id": plan.id,
                 "date": plan.date,
                 "source": plan.source,
+                "quality_status": (plan.plan_json or {}).get("quality_status", "contextual"),
+                "contextuality_validation": (plan.plan_json or {}).get("contextuality_validation"),
                 "created_at": plan.created_at.isoformat() if plan.created_at else None,
                 "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
             },
