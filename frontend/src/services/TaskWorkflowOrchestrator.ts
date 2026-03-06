@@ -311,18 +311,15 @@ class TaskWorkflowOrchestrator {
     date: string, 
     context?: TaskGenerationContext
   ): Promise<TodayTask[]> {
-    // This is a placeholder implementation
-    // In Phase 3, this will be replaced with AI-powered task generation
-    
     const defaultTasks: TodayTask[] = [
       {
-        id: `${userId}-${date}-plan-1`,
+        id: `${userId}-${date}-plan`,
         pillarId: 'plan',
-        title: 'Review content strategy',
-        description: 'Check and update your content strategy for the week',
+        title: 'Review today\'s plan',
+        description: 'Confirm priorities and schedule for today\'s content work.',
         status: 'pending',
         priority: 'high',
-        estimatedTime: 15,
+        estimatedTime: 10,
         actionType: 'navigate',
         actionUrl: '/content-planning-dashboard',
         enabled: true,
@@ -330,29 +327,14 @@ class TaskWorkflowOrchestrator {
         color: '#4CAF50'
       },
       {
-        id: `${userId}-${date}-plan-2`,
-        pillarId: 'plan',
-        title: 'Update content calendar',
-        description: 'Review and update your content calendar',
+        id: `${userId}-${date}-generate`,
+        pillarId: 'generate',
+        title: 'Generate a draft',
+        description: 'Create one content draft using the content writer.',
         status: 'pending',
         priority: 'medium',
-        estimatedTime: 10,
-        dependencies: [`${userId}-${date}-plan-1`],
-        actionType: 'navigate',
-        actionUrl: '/content-planning-dashboard',
-        enabled: true,
-        icon: 'CalendarMonth',
-        color: '#4CAF50'
-      },
-      {
-        id: `${userId}-${date}-generate-1`,
-        pillarId: 'generate',
-        title: 'Create social media content',
-        description: 'Generate content for your social media platforms',
-        status: 'pending',
-        priority: 'high',
-        estimatedTime: 30,
-        dependencies: [`${userId}-${date}-plan-1`, `${userId}-${date}-plan-2`],
+        estimatedTime: 20,
+        dependencies: [`${userId}-${date}-plan`],
         actionType: 'navigate',
         actionUrl: '/facebook-writer',
         enabled: true,
@@ -360,29 +342,14 @@ class TaskWorkflowOrchestrator {
         color: '#2196F3'
       },
       {
-        id: `${userId}-${date}-generate-2`,
-        pillarId: 'generate',
-        title: 'Create blog content',
-        description: 'Write blog posts for your website',
-        status: 'pending',
-        priority: 'medium',
-        estimatedTime: 45,
-        dependencies: [`${userId}-${date}-plan-1`],
-        actionType: 'navigate',
-        actionUrl: '/blog-writer',
-        enabled: true,
-        icon: 'Article',
-        color: '#2196F3'
-      },
-      {
-        id: `${userId}-${date}-publish-1`,
+        id: `${userId}-${date}-publish`,
         pillarId: 'publish',
-        title: 'Publish social media content',
-        description: 'Publish your created content to social media',
+        title: 'Publish approved content',
+        description: 'Open publishing tools and publish today\'s approved draft.',
         status: 'pending',
-        priority: 'medium',
+        priority: 'high',
         estimatedTime: 10,
-        dependencies: [`${userId}-${date}-generate-1`],
+        dependencies: [`${userId}-${date}-generate`],
         actionType: 'navigate',
         actionUrl: '/facebook-writer',
         enabled: true,
@@ -390,29 +357,14 @@ class TaskWorkflowOrchestrator {
         color: '#FF9800'
       },
       {
-        id: `${userId}-${date}-publish-2`,
-        pillarId: 'publish',
-        title: 'Publish blog content',
-        description: 'Publish blog posts to your website',
+        id: `${userId}-${date}-analyze`,
+        pillarId: 'analyze',
+        title: 'Check performance snapshot',
+        description: 'Review key analytics to assess today\'s published content.',
         status: 'pending',
         priority: 'medium',
-        estimatedTime: 15,
-        dependencies: [`${userId}-${date}-generate-2`],
-        actionType: 'navigate',
-        actionUrl: '/blog-writer',
-        enabled: true,
-        icon: 'Publish',
-        color: '#FF9800'
-      },
-      {
-        id: `${userId}-${date}-analyze-1`,
-        pillarId: 'analyze',
-        title: 'Review content performance',
-        description: 'Analyze performance of published content',
-        status: 'pending',
-        priority: 'low',
-        estimatedTime: 20,
-        dependencies: [`${userId}-${date}-publish-1`, `${userId}-${date}-publish-2`],
+        estimatedTime: 10,
+        dependencies: [`${userId}-${date}-publish`],
         actionType: 'navigate',
         actionUrl: '/analytics-dashboard',
         enabled: true,
@@ -420,95 +372,50 @@ class TaskWorkflowOrchestrator {
         color: '#9C27B0'
       },
       {
-        id: `${userId}-${date}-engage-1`,
+        id: `${userId}-${date}-engage`,
         pillarId: 'engage',
-        title: 'Respond to comments',
-        description: 'Engage with comments on your content',
+        title: 'Respond to audience activity',
+        description: 'Reply to new comments or mentions from today\'s posts.',
         status: 'pending',
         priority: 'low',
-        estimatedTime: 15,
-        dependencies: [`${userId}-${date}-publish-1`],
+        estimatedTime: 10,
+        dependencies: [`${userId}-${date}-publish`],
         actionType: 'navigate',
         actionUrl: '/engagement-dashboard',
         enabled: true,
         icon: 'ChatBubbleOutline',
         color: '#E91E63'
       },
-      // Engage pillar tasks
       {
-        id: `${userId}-${date}-engage-1`,
-        pillarId: 'engage',
-        title: 'Reply to blog comment',
-        description: 'Respond to comments on your latest blog post',
-        status: 'pending',
-        priority: 'high',
-        estimatedTime: 10,
-        dependencies: [`${userId}-${date}-analyze-1`],
-        actionType: 'navigate',
-        actionUrl: '/engagement-dashboard',
-        enabled: true,
-        icon: 'Comment',
-        color: '#E91E63'
-      },
-      {
-        id: `${userId}-${date}-engage-2`,
-        pillarId: 'engage',
-        title: 'Respond to Twitter mention',
-        description: 'Reply to Twitter mentions and engage with followers',
-        status: 'pending',
-        priority: 'medium',
-        estimatedTime: 5,
-        dependencies: [`${userId}-${date}-engage-1`],
-        actionType: 'navigate',
-        actionUrl: '/engagement-dashboard',
-        enabled: true,
-        icon: 'Twitter',
-        color: '#1DA1F2'
-      },
-      // Remarket pillar tasks
-      {
-        id: `${userId}-${date}-remarket-1`,
+        id: `${userId}-${date}-remarket`,
         pillarId: 'remarket',
-        title: 'Launch Retargeting Campaign',
-        description: 'Create and launch targeted remarketing campaigns',
+        title: 'Prepare remarketing audience',
+        description: 'Open remarketing tools to refresh your retargeting audience.',
         status: 'pending',
-        priority: 'high',
-        estimatedTime: 35,
-        dependencies: [`${userId}-${date}-engage-2`],
+        priority: 'low',
+        estimatedTime: 15,
+        dependencies: [`${userId}-${date}-analyze`],
         actionType: 'navigate',
         actionUrl: '/remarketing-dashboard',
         enabled: true,
         icon: 'Psychology',
         color: '#00695C'
-      },
-      {
-        id: `${userId}-${date}-remarket-2`,
-        pillarId: 'remarket',
-        title: 'Lead Nurturing Sequence',
-        description: 'Set up automated lead nurturing workflows',
-        status: 'pending',
-        priority: 'medium',
-        estimatedTime: 30,
-        dependencies: [`${userId}-${date}-remarket-1`],
-        actionType: 'navigate',
-        actionUrl: '/lead-nurturing',
-        enabled: true,
-        icon: 'Refresh',
-        color: '#4CAF50'
       }
     ];
+
+    const uniqueTasks = this.ensureUniqueTaskIds(defaultTasks);
 
     // Validate dependencies and get optimal execution order
     const tempWorkflow: DailyWorkflow = {
       id: `${userId}-${date}`,
       date,
       userId,
-      tasks: defaultTasks,
+      tasks: uniqueTasks,
       currentTaskIndex: 0,
       completedTasks: 0,
-      totalTasks: defaultTasks.length,
+      totalTasks: uniqueTasks.length,
       workflowStatus: 'not_started',
-      totalEstimatedTime: defaultTasks.reduce((sum, task) => sum + task.estimatedTime, 0),
+      totalEstimatedTime: uniqueTasks.reduce((sum, task) => sum + task.estimatedTime, 0),
       actualTimeSpent: 0
     };
 
@@ -517,13 +424,46 @@ class TaskWorkflowOrchestrator {
     if (!validation.isValid) {
       console.warn('Dependency validation failed:', validation.errors);
       // Return tasks without dependencies if validation fails
-      return defaultTasks.map(task => ({ ...task, dependencies: [] }));
+      return uniqueTasks.map(task => ({ ...task, dependencies: [] }));
     }
 
     // Get optimal execution order
     const orderedTasks = taskDependencyManager.getOptimalExecutionOrder(tempWorkflow);
     
-    return orderedTasks;
+    return this.ensureUniqueTaskIds(orderedTasks);
+  }
+
+  private ensureUniqueTaskIds(tasks: TodayTask[]): TodayTask[] {
+    const idOccurrences = new Map<string, number>();
+    const oldToNew = new Map<string, string>();
+
+    const withUniqueIds = tasks.map(task => {
+      const count = idOccurrences.get(task.id) ?? 0;
+      idOccurrences.set(task.id, count + 1);
+
+      if (count === 0) {
+        oldToNew.set(task.id, task.id);
+        return { ...task };
+      }
+
+      const uniqueId = `${task.id}-${count + 1}`;
+      oldToNew.set(`${task.id}#${count + 1}`, uniqueId);
+      return { ...task, id: uniqueId };
+    });
+
+    const allTaskIds = new Set(withUniqueIds.map(task => task.id));
+
+    return withUniqueIds.map(task => {
+      const dependencies = (task.dependencies ?? [])
+        .map(dep => oldToNew.get(dep) || dep)
+        .filter((dep, index, arr) => arr.indexOf(dep) === index)
+        .filter(dep => allTaskIds.has(dep));
+
+      return {
+        ...task,
+        dependencies: dependencies.length > 0 ? dependencies : undefined
+      };
+    });
   }
 
   /**

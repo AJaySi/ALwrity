@@ -14,7 +14,8 @@ import {
   Pause, 
   CheckCircle, 
   Schedule,
-  TrendingUp
+  TrendingUp,
+  CloudOff
 } from '@mui/icons-material';
 import { useWorkflowStore } from '../../../stores/workflowStore';
 
@@ -42,7 +43,9 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
     startWorkflow,
     isWorkflowComplete,
     getCompletionPercentage,
-    generateDailyWorkflow
+    generateDailyWorkflow,
+    isDegradedMode,
+    degradedModeReason
   } = useWorkflowStore();
 
   const completionPercentage = getCompletionPercentage();
@@ -168,6 +171,30 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
             </Box>
           )}
         </Box>
+
+
+        {isDegradedMode && (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              mb: 2,
+              p: 1.5,
+              borderRadius: 1,
+              border: `1px solid ${theme.palette.warning.main}55`,
+              bgcolor: `${theme.palette.warning.main}18`,
+            }}
+          >
+            <CloudOff sx={{ color: theme.palette.warning.light, fontSize: 18 }} />
+            <Typography variant="body2" sx={{ color: theme.palette.warning.light, fontWeight: 600 }}>
+              Degraded mode
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
+              {degradedModeReason || 'Server workflow is unavailable; local fallback is active.'}
+            </Typography>
+          </Box>
+        )}
 
         {/* Progress Bar */}
         <Box sx={{ mb: 2 }}>
