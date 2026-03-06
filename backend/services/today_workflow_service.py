@@ -23,9 +23,15 @@ def _coerce_priority(value: Any) -> str:
 
 
 def _coerce_status(value: Any) -> str:
+    """Normalize task status into canonical outcome model used by frontend/API/memory."""
     v = str(value or "pending").lower().strip()
-    if v in {"pending", "in_progress", "completed", "skipped", "dismissed"}:
-        return "skipped" if v == "dismissed" else v
+    aliases = {
+        "skipped": "skipped_not_today",
+        "dismissed": "dismissed_dont_show",
+    }
+    normalized = aliases.get(v, v)
+    if normalized in {"pending", "in_progress", "completed", "skipped_not_today", "dismissed_dont_show", "rejected"}:
+        return normalized
     return "pending"
 
 

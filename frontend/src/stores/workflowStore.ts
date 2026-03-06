@@ -285,7 +285,7 @@ export const useWorkflowStore = create<WorkflowState>()(
         
         try {
           if (isServerWorkflowId(currentWorkflow.id)) {
-            await apiClient.post(`/api/today-workflow/tasks/${taskId}/status`, { status: 'skipped' });
+            await apiClient.post(`/api/today-workflow/tasks/${taskId}/status`, { status: 'skipped_not_today' });
             const tasks = currentWorkflow.tasks.map(t => (t.id === taskId ? { ...t, status: 'skipped' as const, completedAt: new Date() } : t));
             const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'skipped').length;
             const totalTasks = tasks.length;

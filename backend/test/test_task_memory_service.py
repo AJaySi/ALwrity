@@ -52,6 +52,33 @@ async def test_filter_redundant_proposals_suppresses_exact_hash_duplicates(db_se
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "indexed_status,expected_filtered",
+    [
+        ("completed", False),
+        ("skipped_not_today", False),
+        ("dismissed_dont_show", True),
+        ("rejected", True),
+    ],
+)
+async def test_filter_redundant_proposals_semantic_behavior_for_each_outcome_status(
+    db_session, indexed_status, expected_filtered
+):
+    service = TaskMemoryService(user_id="user-semantic", db=db_session)
+    service.intelligence = SimpleNamespace(
+        search=AsyncMock(return_value=[{"status": indexed_status, "score": 0.93}])
+    )
+
+    proposal = SimpleNamespace(
+        title="Plan daily content topics",
+        description="Choose 3 content ideas for this week",
+    )
+    filtered = await service.filter_redundant_proposals([proposal])
+
+    assert (filtered == []) is expected_filtered
+
+
+@pytest.mark.asyncio
 async def test_filter_redundant_proposals_suppresses_semantic_dismissed_by_vector_id_lookup(db_session):
     service = TaskMemoryService(user_id="user-2", db=db_session)
     service.intelligence = SimpleNamespace(
@@ -65,7 +92,7 @@ async def test_filter_redundant_proposals_suppresses_semantic_dismissed_by_vecto
             title="Old task",
             description="Old description",
             pillar_id="plan",
-            status="dismissed",
+            status="dismissed_dont_show",
             created_at=datetime.utcnow(),
             vector_id="vec-dismissed",
         )

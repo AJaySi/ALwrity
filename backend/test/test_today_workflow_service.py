@@ -174,3 +174,13 @@ async def test_generate_agent_enhanced_plan_dedupes_plan_tasks_with_priority_and
     # The order depends on the dict iteration order of unique_map.
     # We just want to ensure it picked one of the high priority ones, not the medium one.
     assert task["metadata"]["source_agent"] in ["StrategyArchitectAgent", "BetaAgent"]
+
+
+def test_coerce_status_uses_canonical_outcomes():
+    assert workflow._coerce_status("completed") == "completed"
+    assert workflow._coerce_status("skipped") == "skipped_not_today"
+    assert workflow._coerce_status("skipped_not_today") == "skipped_not_today"
+    assert workflow._coerce_status("dismissed") == "dismissed_dont_show"
+    assert workflow._coerce_status("dismissed_dont_show") == "dismissed_dont_show"
+    assert workflow._coerce_status("rejected") == "rejected"
+    assert workflow._coerce_status("unknown") == "pending"

@@ -15,7 +15,7 @@ from services.intelligence.txtai_service import TxtaiIntelligenceService
 
 EXACT_DUPLICATE_LOOKBACK_DAYS = 7
 SEMANTIC_SUPPRESSION_SCORE_THRESHOLD = 0.85
-SUPPRESSED_STATUSES = {"dismissed", "rejected"}
+SUPPRESSED_STATUSES = {"dismissed_dont_show", "rejected"}
 
 class TaskMemoryService:
     """
@@ -49,10 +49,15 @@ class TaskMemoryService:
 
     async def record_task_outcome(self, task: DailyWorkflowTask, feedback_score: int = 0, feedback_text: str = None):
         """
-        Record a task's final status (completed, dismissed, rejected) into memory.
+        Record a task's final status (completed, skipped_not_today, dismissed_dont_show, rejected) into memory.
         """
         try:
             task_hash = self._compute_hash(task.title, task.description)
+            aliases = {
+                "skipped": "skipped_not_today",
+                "dismissed": "dismissed_dont_show",
+            }
+            status = aliases.get(str(task.status or "").lower().strip(), str(task.status or "").lower().strip())
             
             # 1. Update/Create DB Record
             history = TaskHistory(
@@ -61,7 +66,7 @@ class TaskMemoryService:
                 title=task.title,
                 description=task.description,
                 pillar_id=task.pillar_id,
-                status=task.status,
+                status=status,
                 source_agent=task.metadata_json.get("source_agent") if task.metadata_json else None,
                 feedback_score=feedback_score,
                 feedback_text=feedback_text,
@@ -72,14 +77,20 @@ class TaskMemoryService:
             self.db.commit()
             
             # 2. Index into txtai (if status is meaningful)
-            if task.status in ["completed", "dismissed", "rejected"]:
+            indexable_statuses = {"completed", "skipped_not_today", "dismissed_dont_show", "rejected"}
+            if status in indexable_statuses:
+                is_suppressed = status in SUPPRESSED_STATUSES
                 # We index the task text with metadata about its outcome
-                # This allows us to search: "Has the user rejected similar tasks?"
+                # This allows us to search: "Has the user rejected/suppressed similar tasks?"
                 doc = {
                     "id": history.vector_id,
                     "text": f"{task.title}. {task.description}",
-                    "tags": f"task_memory {task.status} {task.pillar_id}",
-                    "status": task.status,
+                    "tags": f"task_memory outcome:{status} pillar:{task.pillar_id} suppression:{'true' if is_suppressed else 'false'}",
+                    "status": status,
+                    "outcome": status,
+                    "suppression": is_suppressed,
+                    "pillar_id": task.pillar_id,
+                    "task_hash": task_hash,
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 
@@ -95,7 +106,7 @@ class TaskMemoryService:
                      index_path = getattr(self.intelligence, "index_path", None)
                      if index_path:
                         self.intelligence.embeddings.save(index_path)
-                        logger.info(f"Indexed task outcome: {task.title} -> {task.status}")
+                        logger.info(f"Indexed task outcome: {task.title} -> {status}")
                      else:
                         logger.warning("Could not save embeddings: index_path not found on service")
 
@@ -182,14 +193,17 @@ class TaskMemoryService:
         return filtered
 
     def _extract_indexed_status(self, search_result: Dict[str, Any]) -> Optional[str]:
-        """Extract indexed status from txtai result metadata if available."""
-        status = search_result.get("status")
-        if status:
-            return str(status).lower()
+        """Extract indexed status/outcome from txtai result metadata if available."""
+        for key in ("status", "outcome"):
+            value = search_result.get(key)
+            if value:
+                return str(value).lower()
 
         obj = search_result.get("object")
         if isinstance(obj, dict):
-            obj_status = obj.get("status")
-            return str(obj_status).lower() if obj_status else None
+            for key in ("status", "outcome"):
+                obj_value = obj.get(key)
+                if obj_value:
+                    return str(obj_value).lower()
 
         return None

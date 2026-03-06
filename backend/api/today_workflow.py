@@ -32,7 +32,7 @@ async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label:
             "pillar_id": pillar_id,
             "status": status,
             "implemented": status == "completed",
-            "dismissed": status == "skipped",
+            "suppression": status in {"dismissed_dont_show", "rejected"},
             "task_id": task_id,
         }
         items.append((f"{label}_task:{user_id}:{date}:{task_id}", text, metadata))
@@ -70,7 +70,7 @@ async def get_today_workflow(
                 "pillarId": t.pillar_id,
                 "title": t.title,
                 "description": t.description,
-                "status": "skipped" if t.status == "dismissed" else t.status,
+                "status": ("skipped_not_today" if t.status == "skipped" else "dismissed_dont_show" if t.status == "dismissed" else t.status),
                 "priority": t.priority,
                 "estimatedTime": t.estimated_time,
                 "dependencies": t.dependencies or [],
@@ -82,10 +82,10 @@ async def get_today_workflow(
         )
 
     total = len(response_tasks)
-    completed = len([t for t in response_tasks if t["status"] in ("completed", "skipped")])
+    completed = len([t for t in response_tasks if t["status"] in ("completed", "skipped_not_today")])
     current_index = 0
     for i, task in enumerate(response_tasks):
-        if task["status"] not in ("completed", "skipped"):
+        if task["status"] not in ("completed", "skipped_not_today"):
             current_index = i
             break
         current_index = i
@@ -132,7 +132,7 @@ async def get_today_workflow(
                             "pillarId": t.pillar_id,
                             "title": t.title,
                             "description": t.description,
-                            "status": "skipped" if t.status == "dismissed" else t.status,
+                            "status": ("skipped_not_today" if t.status == "skipped" else "dismissed_dont_show" if t.status == "dismissed" else t.status),
                         }
                     )
                 asyncio.create_task(_index_tasks_to_sif(user_id, y_str, y_response, label="yesterday"))
@@ -191,7 +191,7 @@ async def set_task_status(
         memory = TaskMemoryService(user_id, db)
         await memory.record_task_outcome(
             task, 
-            feedback_score=1 if status == "completed" else -1 if status == "dismissed" else 0,
+            feedback_score=1 if status == "completed" else -1 if status in {"dismissed_dont_show", "rejected"} else 0,
             feedback_text=completion_notes
         )
     except Exception as e:
@@ -210,7 +210,7 @@ async def set_task_status(
         "pillarId": task.pillar_id,
         "title": task.title,
         "description": task.description,
-        "status": "skipped" if task.status == "dismissed" else task.status,
+        "status": task.status,
     }
     asyncio.create_task(_index_tasks_to_sif(user_id, plan_date, [task_payload], label="today"))
 
@@ -220,7 +220,7 @@ async def set_task_status(
             "task": {
                 "id": str(task.id),
                 "pillarId": task.pillar_id,
-                "status": "skipped" if task.status == "dismissed" else task.status,
+                "status": task.status,
                 "decided_at": task.decided_at.isoformat() if task.decided_at else None,
             }
         },
