@@ -139,6 +139,9 @@ async def get_today_workflow(
         except Exception:
             pass
 
+    plan_json = plan.plan_json if isinstance(plan.plan_json, dict) else {}
+    quality = plan_json.get("quality") if isinstance(plan_json.get("quality"), dict) else None
+
     return {
         "success": True,
         "data": {
@@ -158,6 +161,7 @@ async def get_today_workflow(
                 "id": plan.id,
                 "date": plan.date,
                 "source": plan.source,
+                "quality": quality,
                 "created_at": plan.created_at.isoformat() if plan.created_at else None,
                 "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
             },
