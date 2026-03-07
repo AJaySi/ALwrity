@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from middleware.auth_middleware import get_current_user
 from services.database import get_db
-from services.today_workflow_service import get_or_create_daily_workflow_plan, update_task_status
+from services.today_workflow_service import coerce_dependencies, get_or_create_daily_workflow_plan, update_task_status
 from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 import asyncio
 from services.intelligence.txtai_service import TxtaiIntelligenceService
@@ -62,6 +62,19 @@ async def get_today_workflow(
 
     tasks = await run_in_threadpool(_fetch_tasks)
 
+    def _normalize_legacy_dependencies(task_rows):
+        rows_updated = False
+        for row in task_rows:
+            normalized_dependencies = coerce_dependencies(row.dependencies)
+            if row.dependencies != normalized_dependencies:
+                row.dependencies = normalized_dependencies
+                db.add(row)
+                rows_updated = True
+        if rows_updated:
+            db.commit()
+
+    await run_in_threadpool(_normalize_legacy_dependencies, tasks)
+
     response_tasks = []
     for t in tasks:
         response_tasks.append(
@@ -73,7 +86,7 @@ async def get_today_workflow(
                 "status": "skipped" if t.status == "dismissed" else t.status,
                 "priority": t.priority,
                 "estimatedTime": t.estimated_time,
-                "dependencies": t.dependencies or [],
+                "dependencies": coerce_dependencies(t.dependencies),
                 "actionUrl": t.action_url,
                 "actionType": t.action_type,
                 "metadata": t.metadata_json or {},

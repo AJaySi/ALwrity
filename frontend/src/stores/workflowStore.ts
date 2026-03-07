@@ -14,6 +14,39 @@ import { apiClient } from '../api/client';
 
 const isServerWorkflowId = (workflowId: string) => workflowId.startsWith('daily-');
 
+
+const normalizeDependencies = (dependencies: unknown): string[] => {
+  if (Array.isArray(dependencies)) {
+    return dependencies.map(dep => String(dep).trim()).filter(Boolean);
+  }
+
+  if (typeof dependencies === 'string') {
+    const raw = dependencies.trim();
+    if (!raw) return [];
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(dep => String(dep).trim()).filter(Boolean);
+      }
+    } catch {}
+
+    return [raw];
+  }
+
+  return [];
+};
+
+const normalizeServerWorkflow = (workflow: DailyWorkflow): DailyWorkflow => ({
+  ...workflow,
+  tasks: Array.isArray(workflow.tasks)
+    ? workflow.tasks.map(task => ({
+        ...task,
+        dependencies: normalizeDependencies(task.dependencies),
+      }))
+    : [],
+});
+
 const computeProgressAndNavigation = (workflow: DailyWorkflow): { progress: WorkflowProgress; navigation: NavigationState } => {
   const tasks = Array.isArray(workflow.tasks) ? workflow.tasks : [];
   const totalTasks = tasks.length;
@@ -118,9 +151,10 @@ export const useWorkflowStore = create<WorkflowState>()(
             const resp = await apiClient.get('/api/today-workflow', { params: date ? { date } : {} });
             const serverWorkflow = resp?.data?.data?.workflow as DailyWorkflow | undefined;
             if (serverWorkflow && Array.isArray(serverWorkflow.tasks)) {
-              const derived = computeProgressAndNavigation(serverWorkflow);
+              const normalizedWorkflow = normalizeServerWorkflow(serverWorkflow);
+              const derived = computeProgressAndNavigation(normalizedWorkflow);
               set({
-                currentWorkflow: serverWorkflow,
+                currentWorkflow: normalizedWorkflow,
                 workflowProgress: derived.progress,
                 navigationState: derived.navigation,
                 isLoading: false
