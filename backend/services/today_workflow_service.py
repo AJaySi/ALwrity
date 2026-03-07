@@ -311,7 +311,14 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
         raw_proposals = []
         for res in results:
             if isinstance(res, list):
-                raw_proposals.extend(res)
+                # Normalize pillar IDs and filter invalid proposals
+                for proposal in res:
+                    pillar_id = str(proposal.get("pillarId") or "").lower().strip()
+                    if pillar_id not in PILLAR_IDS:
+                        logger.warning(f"Skipping proposal with invalid pillarId: {pillar_id}. Proposal: {proposal}")
+                        continue
+                    proposal["pillarId"] = pillar_id
+                    raw_proposals.append(proposal)
             elif isinstance(res, Exception):
                 logger.warning(f"Agent proposal failed: {res}")
 
