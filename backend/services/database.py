@@ -76,22 +76,59 @@ def get_user_db_path(user_id: str) -> str:
 def get_all_user_ids() -> List[str]:
     """
     Discover all user IDs by scanning workspace directories.
-    Returns a list of user_ids (e.g., 'user_2p...', 'user_123').
+
+    IMPORTANT:
+    Workspace folder names are filesystem-safe IDs (sanitized). In some deployments,
+    the canonical auth user ID stored in DB can contain characters that are removed
+    during sanitization. To avoid downstream lookup mismatches (e.g. onboarding status
+    checks), we resolve the canonical `user_id` from DB when possible.
+
+    Returns:
+        List of canonical user IDs when discoverable, otherwise workspace IDs.
     """
-    user_ids = []
+    user_ids: List[str] = []
     if not os.path.exists(WORKSPACE_DIR):
         return []
-    
+
     try:
+        workspace_ids: List[str] = []
         for item in os.listdir(WORKSPACE_DIR):
             if item.startswith("workspace_") and os.path.isdir(os.path.join(WORKSPACE_DIR, item)):
-                # Extract user_id from workspace_{user_id}
-                user_id = item[len("workspace_"):]
-                if user_id:
-                    user_ids.append(user_id)
+                workspace_id = item[len("workspace_"):]
+                if workspace_id:
+                    workspace_ids.append(workspace_id)
+
+        # Resolve canonical IDs from DB rows when available.
+        # Falls back to workspace ID for empty/new workspaces.
+        from models.onboarding import OnboardingSession
+
+        for workspace_id in workspace_ids:
+            canonical_user_id = workspace_id
+            db = None
+            try:
+                db = get_session_for_user(workspace_id)
+                if db:
+                    onboarding_row = (
+                        db.query(OnboardingSession.user_id)
+                        .order_by(OnboardingSession.updated_at.desc())
+                        .first()
+                    )
+                    if onboarding_row and onboarding_row[0]:
+                        canonical_user_id = str(onboarding_row[0])
+            except Exception as resolve_error:
+                logger.debug(
+                    f"Could not resolve canonical user_id from DB for workspace {workspace_id}: {resolve_error}"
+                )
+            finally:
+                if db:
+                    db.close()
+
+            if canonical_user_id not in user_ids:
+                user_ids.append(canonical_user_id)
+
     except Exception as e:
         logger.error(f"Error discovering user workspaces: {e}")
-        
+
     return user_ids
 
 def get_engine_for_user(user_id: str):

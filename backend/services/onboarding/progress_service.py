@@ -50,7 +50,21 @@ class OnboardingProgressService:
             try:
                 # Direct DB access to SSOT session
                 session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
-                
+
+                # Fallback for sanitized/derived IDs (e.g., workspace-safe IDs)
+                # by comparing normalized IDs from existing onboarding rows.
+                if not session:
+                    normalized_requested = ''.join(c for c in str(user_id) if c.isalnum() or c in ('-', '_'))
+                    candidate_sessions = db.query(OnboardingSession).all()
+                    for candidate in candidate_sessions:
+                        candidate_user_id = str(candidate.user_id or '')
+                        normalized_candidate = ''.join(
+                            c for c in candidate_user_id if c.isalnum() or c in ('-', '_')
+                        )
+                        if normalized_candidate == normalized_requested:
+                            session = candidate
+                            break
+
                 if not session:
                     return {
                         "is_completed": False,
