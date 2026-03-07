@@ -544,6 +544,7 @@ const App: React.FC = () => {
 
   // Get environment variables with fallbacks
   const clerkPublishableKey = process.env.REACT_APP_CLERK_PUBLISHABLE_KEY || '';
+  const clerkJSUrl = process.env.REACT_APP_CLERK_JS_URL;
 
   // Show error if required keys are missing
   if (!clerkPublishableKey) {
@@ -654,7 +655,7 @@ const App: React.FC = () => {
         // TODO: Send to error tracking service (Sentry, LogRocket, etc.)
       }}
     >
-      <ClerkProvider publishableKey={clerkPublishableKey}>
+      <ClerkProvider publishableKey={clerkPublishableKey} clerkJSUrl={clerkJSUrl}>
         <SubscriptionProvider>
           <OnboardingProvider>
             {renderApp()}

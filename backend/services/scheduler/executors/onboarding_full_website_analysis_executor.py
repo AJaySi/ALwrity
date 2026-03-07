@@ -81,7 +81,7 @@ class OnboardingFullWebsiteAnalysisExecutor(TaskExecutor):
 
             task.last_executed = datetime.utcnow()
             task.last_success = datetime.utcnow()
-            task.status = 'paused'
+            task.status = 'completed'  # Explicitly mark as completed instead of paused
             task.next_execution = None
             task.consecutive_failures = 0
             task.failure_pattern = None
