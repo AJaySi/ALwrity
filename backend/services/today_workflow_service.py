@@ -25,6 +25,7 @@ def _coerce_priority(value: Any) -> str:
 def _coerce_status(value: Any) -> str:
     v = str(value or "pending").lower().strip()
     if v in {"pending", "in_progress", "completed", "skipped", "dismissed"}:
+        # Canonicalize 'dismissed' to 'skipped' for consistency
         return "skipped" if v == "dismissed" else v
     return "pending"
 

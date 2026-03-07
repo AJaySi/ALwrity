@@ -15,7 +15,7 @@ from services.intelligence.txtai_service import TxtaiIntelligenceService
 
 EXACT_DUPLICATE_LOOKBACK_DAYS = 7
 SEMANTIC_SUPPRESSION_SCORE_THRESHOLD = 0.85
-SUPPRESSED_STATUSES = {"dismissed", "rejected"}
+SUPPRESSED_STATUSES = {"dismissed", "rejected", "skipped"}
 
 class TaskMemoryService:
     """
@@ -72,7 +72,7 @@ class TaskMemoryService:
             self.db.commit()
             
             # 2. Index into txtai (if status is meaningful)
-            if task.status in ["completed", "dismissed", "rejected"]:
+            if task.status in ["completed", "dismissed", "rejected", "skipped"]:
                 # We index the task text with metadata about its outcome
                 # This allows us to search: "Has the user rejected similar tasks?"
                 doc = {

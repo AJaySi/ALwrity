@@ -191,7 +191,7 @@ async def set_task_status(
         memory = TaskMemoryService(user_id, db)
         await memory.record_task_outcome(
             task, 
-            feedback_score=1 if status == "completed" else -1 if status == "dismissed" else 0,
+            feedback_score=1 if status == "completed" else -1 if status in ("dismissed", "skipped") else 0,
             feedback_text=completion_notes
         )
     except Exception as e:
@@ -210,7 +210,7 @@ async def set_task_status(
         "pillarId": task.pillar_id,
         "title": task.title,
         "description": task.description,
-        "status": "skipped" if task.status == "dismissed" else task.status,
+        "status": "skipped" if task.status in ("dismissed", "skipped") else task.status,
     }
     asyncio.create_task(_index_tasks_to_sif(user_id, plan_date, [task_payload], label="today"))
 
@@ -220,7 +220,7 @@ async def set_task_status(
             "task": {
                 "id": str(task.id),
                 "pillarId": task.pillar_id,
-                "status": "skipped" if task.status == "dismissed" else task.status,
+                "status": "skipped" if task.status in ("dismissed", "skipped") else task.status,
                 "decided_at": task.decided_at.isoformat() if task.decided_at else None,
             }
         },
