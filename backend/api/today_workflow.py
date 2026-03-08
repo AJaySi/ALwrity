@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Any, Dict, Optional
 from datetime import datetime
+import json
 from loguru import logger
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,20 @@ from services.intelligence.txtai_service import TxtaiIntelligenceService
 
 
 router = APIRouter(prefix="/api/today-workflow", tags=["Today Workflow"])
+
+
+def _normalize_dependencies(dependencies: Any) -> list:
+    if dependencies is None:
+        return []
+    if isinstance(dependencies, list):
+        return dependencies
+    if isinstance(dependencies, str):
+        try:
+            parsed = json.loads(dependencies)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+    return []
 
 async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label: str):
     svc = TxtaiIntelligenceService(user_id)
@@ -73,7 +88,7 @@ async def get_today_workflow(
                 "status": "skipped" if t.status == "dismissed" else t.status,
                 "priority": t.priority,
                 "estimatedTime": t.estimated_time,
-                "dependencies": t.dependencies or [],
+                "dependencies": _normalize_dependencies(t.dependencies),
                 "actionUrl": t.action_url,
                 "actionType": t.action_type,
                 "metadata": t.metadata_json or {},
@@ -133,6 +148,7 @@ async def get_today_workflow(
                             "title": t.title,
                             "description": t.description,
                             "status": "skipped" if t.status == "dismissed" else t.status,
+                            "dependencies": _normalize_dependencies(t.dependencies),
                         }
                     )
                 asyncio.create_task(_index_tasks_to_sif(user_id, y_str, y_response, label="yesterday"))
