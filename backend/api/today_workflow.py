@@ -191,10 +191,18 @@ async def set_task_status(
     # Record outcome in memory for self-learning
     try:
         memory = TaskMemoryService(user_id, db)
+        normalized_status = (task.status or "").lower()
+        if normalized_status == "completed":
+            feedback_score = 1
+        elif normalized_status in {"skipped", "dismissed", "rejected"}:
+            feedback_score = -1
+        else:
+            feedback_score = 0
+
         await memory.record_task_outcome(
-            task, 
-            feedback_score=1 if status == "completed" else -1 if status == "dismissed" else 0,
-            feedback_text=completion_notes
+            task,
+            feedback_score=feedback_score,
+            feedback_text=completion_notes,
         )
     except Exception as e:
         logger.warning(
