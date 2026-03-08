@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor, SemanticHealthMetric
-from services.today_workflow_service import _ensure_pillar_coverage, PILLAR_IDS
+from services.today_workflow_service import _ensure_pillar_coverage, PILLAR_IDS, validate_plan_contextuality
 from services.intelligence.sif_agents import ContentGuardianAgent as SifGuardian
 from services.intelligence.agents.specialized_agents import ContentGuardianAgent as SpecializedGuardian
 
@@ -73,6 +73,52 @@ class SIFReleaseReadinessTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(result["originality_score"], 1.0)
         self.assertIn("warning", result)
         self.assertEqual(result["method"], "competitor_index_search")
+
+
+    def test_validate_plan_contextuality_passes_with_evidence_links(self):
+        plan = {
+            "tasks": [
+                {
+                    "pillarId": "plan",
+                    "title": "Review strategy",
+                    "description": "Use onboarding goals",
+                    "metadata": {
+                        "evidence_links": ["onboarding:business_goals", "alert:101"],
+                        "reasoning": "Based on onboarding and alert",
+                    },
+                }
+            ]
+        }
+        grounding = {
+            "onboarding_data": {"business_goals": ["awareness"]},
+            "recent_agent_alerts": [{"alert_id": 101, "title": "Drop in traffic"}],
+        }
+
+        validation = validate_plan_contextuality(plan, grounding)
+
+        self.assertTrue(validation["is_contextual"])
+        self.assertEqual(validation["tasks_below_min_evidence"], 0)
+
+    def test_validate_plan_contextuality_flags_missing_evidence_links(self):
+        plan = {
+            "tasks": [
+                {
+                    "pillarId": "generate",
+                    "title": "Write generic post",
+                    "description": "Create a post",
+                    "metadata": {"reasoning": "General best practice"},
+                }
+            ]
+        }
+        grounding = {
+            "onboarding_data": {"business_goals": ["awareness"]},
+            "recent_agent_alerts": [{"alert_id": 101, "title": "Drop in traffic"}],
+        }
+
+        validation = validate_plan_contextuality(plan, grounding)
+
+        self.assertFalse(validation["is_contextual"])
+        self.assertEqual(validation["tasks_below_min_evidence"], 1)
 
     def test_pillar_coverage_guardrail_backfills_missing(self):
         tasks = [{"pillarId": "plan", "title": "Plan", "description": "d", "priority": "high", "estimatedTime": 10, "actionType": "navigate", "enabled": True}]
