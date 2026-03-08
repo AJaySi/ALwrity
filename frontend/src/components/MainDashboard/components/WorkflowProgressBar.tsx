@@ -14,7 +14,8 @@ import {
   Pause, 
   CheckCircle, 
   Schedule,
-  TrendingUp
+  TrendingUp,
+  CloudOff
 } from '@mui/icons-material';
 import { useWorkflowStore } from '../../../stores/workflowStore';
 
@@ -42,7 +43,9 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
     startWorkflow,
     isWorkflowComplete,
     getCompletionPercentage,
-    generateDailyWorkflow
+    generateDailyWorkflow,
+    isDegradedMode,
+    degradedModeReason
   } = useWorkflowStore();
 
   const completionPercentage = getCompletionPercentage();
@@ -77,6 +80,15 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
     if (currentWorkflow?.workflowStatus === 'in_progress') return 'In Progress';
     if (!currentWorkflow) return 'No Workflow Generated';
     return 'Ready to Start';
+  };
+
+  const getProvenanceLabel = () => {
+    const summary = currentWorkflow?.provenanceSummary;
+    if (!summary) return 'Daily Workflow';
+    if (summary.generationMode === 'agent_committee') return 'Personalized by Agents';
+    if (summary.generationMode === 'llm_generation' && !summary.fallbackUsed) return 'AI Personalized Guide';
+    if (summary.fallbackUsed || summary.generationMode === 'controlled_fallback') return 'Baseline Daily Guide';
+    return 'Daily Workflow';
   };
 
   return (
@@ -125,6 +137,16 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
                 fontWeight: 600
               }}
             />
+            <Chip
+              label={getProvenanceLabel()}
+              size="small"
+              sx={{
+                background: 'rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.9)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                fontWeight: 600
+              }}
+            />
           </Box>
 
           {/* Controls */}
@@ -168,6 +190,30 @@ const WorkflowProgressBar: React.FC<WorkflowProgressBarProps> = ({
             </Box>
           )}
         </Box>
+
+
+        {isDegradedMode && (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              mb: 2,
+              p: 1.5,
+              borderRadius: 1,
+              border: `1px solid ${theme.palette.warning.main}55`,
+              bgcolor: `${theme.palette.warning.main}18`,
+            }}
+          >
+            <CloudOff sx={{ color: theme.palette.warning.light, fontSize: 18 }} />
+            <Typography variant="body2" sx={{ color: theme.palette.warning.light, fontWeight: 600 }}>
+              Degraded mode
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
+              {degradedModeReason || 'Server workflow is unavailable; local fallback is active.'}
+            </Typography>
+          </Box>
+        )}
 
         {/* Progress Bar */}
         <Box sx={{ mb: 2 }}>

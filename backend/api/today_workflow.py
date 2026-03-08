@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Any, Dict, Optional
 from datetime import datetime
+import json
+from enum import Enum
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from middleware.auth_middleware import get_current_user
 from services.database import get_db
@@ -14,6 +18,37 @@ from services.intelligence.txtai_service import TxtaiIntelligenceService
 
 
 router = APIRouter(prefix="/api/today-workflow", tags=["Today Workflow"])
+
+
+def _normalize_dependencies(dependencies: Any) -> list:
+    if dependencies is None:
+        return []
+    if isinstance(dependencies, list):
+        return dependencies
+    if isinstance(dependencies, str):
+        try:
+            parsed = json.loads(dependencies)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+class TaskStatusEnum(str, Enum):
+    pending = "pending"
+    in_progress = "in_progress"
+    completed = "completed"
+    skipped = "skipped"
+    dismissed = "dismissed"
+
+
+class TaskStatusUpdateRequest(BaseModel):
+    status: TaskStatusEnum = Field(..., description="New task status")
+    completion_notes: Optional[str] = Field(
+        None,
+        max_length=4000,
+        description="Optional notes about task completion or outcome",
+    )
 
 async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label: str):
     svc = TxtaiIntelligenceService(user_id)
@@ -73,7 +108,7 @@ async def get_today_workflow(
                 "status": "skipped" if t.status == "dismissed" else t.status,
                 "priority": t.priority,
                 "estimatedTime": t.estimated_time,
-                "dependencies": t.dependencies or [],
+                "dependencies": _normalize_dependencies(t.dependencies),
                 "actionUrl": t.action_url,
                 "actionType": t.action_type,
                 "metadata": t.metadata_json or {},
@@ -100,11 +135,21 @@ async def get_today_workflow(
 
     if created:
         asyncio.create_task(_index_tasks_to_sif(user_id, plan.date, response_tasks, label="today"))
-        try:
-            from datetime import date as date_type, timedelta
+        from datetime import date as date_type, timedelta
 
-            y_str = (date_type.fromisoformat(plan.date) - timedelta(days=1)).isoformat()
-            
+        try:
+            parsed_plan_date = date_type.fromisoformat(plan.date)
+        except ValueError:
+            logger.warning(
+                "Invalid plan.date format; skipping yesterday indexing plan_id={} user_id={} plan_date={} reason={}",
+                plan.id,
+                user_id,
+                plan.date,
+                "plan.date is not in ISO format YYYY-MM-DD",
+            )
+        else:
+            y_str = (parsed_plan_date - timedelta(days=1)).isoformat()
+
             def _fetch_yesterday():
                 y_plan = (
                     db.query(DailyWorkflowPlan)
@@ -121,23 +166,33 @@ async def get_today_workflow(
                     return y_tasks
                 return []
 
-            y_tasks = await run_in_threadpool(_fetch_yesterday)
-            
-            if y_tasks:
-                y_response = []
-                for t in y_tasks:
-                    y_response.append(
-                        {
-                            "id": str(t.id),
-                            "pillarId": t.pillar_id,
-                            "title": t.title,
-                            "description": t.description,
-                            "status": "skipped" if t.status == "dismissed" else t.status,
-                        }
-                    )
-                asyncio.create_task(_index_tasks_to_sif(user_id, y_str, y_response, label="yesterday"))
-        except Exception:
-            pass
+            try:
+                y_tasks = await run_in_threadpool(_fetch_yesterday)
+            except SQLAlchemyError as db_error:
+                logger.warning(
+                    "Failed to fetch yesterday tasks; skipping yesterday indexing plan_id={} user_id={} plan_date={} yesterday_date={} error_class={} error_message={}",
+                    plan.id,
+                    user_id,
+                    plan.date,
+                    y_str,
+                    type(db_error).__name__,
+                    str(db_error),
+                )
+            else:
+                if y_tasks:
+                    y_response = []
+                    for t in y_tasks:
+                        y_response.append(
+                            {
+                                "id": str(t.id),
+                                "pillarId": t.pillar_id,
+                                "title": t.title,
+                                "description": t.description,
+                                "status": "skipped" if t.status == "dismissed" else t.status,
+                                "dependencies": _normalize_dependencies(t.dependencies),
+                            }
+                        )
+                    asyncio.create_task(_index_tasks_to_sif(user_id, y_str, y_response, label="yesterday"))
 
     return {
         "success": True,
@@ -158,6 +213,8 @@ async def get_today_workflow(
                 "id": plan.id,
                 "date": plan.date,
                 "source": plan.source,
+                "quality_status": (plan.plan_json or {}).get("quality_status", "contextual"),
+                "contextuality_validation": (plan.plan_json or {}).get("contextuality_validation"),
                 "created_at": plan.created_at.isoformat() if plan.created_at else None,
                 "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
             },
@@ -172,15 +229,13 @@ from services.task_memory_service import TaskMemoryService
 @router.post("/tasks/{task_id}/status")
 async def set_task_status(
     task_id: int,
-    body: Dict[str, Any],
+    body: TaskStatusUpdateRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     user_id = str(current_user.get("id"))
-    status = body.get("status")
-    if not status:
-        raise HTTPException(status_code=400, detail="status is required")
-    completion_notes = body.get("completion_notes")
+    status = body.status.value
+    completion_notes = body.completion_notes
 
     task = update_task_status(db, user_id, task_id, status=status, completion_notes=completion_notes)
     if not task:
@@ -189,10 +244,18 @@ async def set_task_status(
     # Record outcome in memory for self-learning
     try:
         memory = TaskMemoryService(user_id, db)
+        normalized_status = (task.status or "").lower()
+        if normalized_status == "completed":
+            feedback_score = 1
+        elif normalized_status in {"skipped", "dismissed", "rejected"}:
+            feedback_score = -1
+        else:
+            feedback_score = 0
+
         await memory.record_task_outcome(
-            task, 
-            feedback_score=1 if status == "completed" else -1 if status == "dismissed" else 0,
-            feedback_text=completion_notes
+            task,
+            feedback_score=feedback_score,
+            feedback_text=completion_notes,
         )
     except Exception as e:
         logger.warning(

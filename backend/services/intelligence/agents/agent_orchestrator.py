@@ -464,6 +464,7 @@ class AgentOrchestrationService:
     
     async def get_or_create_orchestrator(self, user_id: str) -> ALwrityAgentOrchestrator:
         """Get or create an orchestrator for a user"""
+        onboarding_gated_initialization = False
         if user_id not in self.orchestrators:
             config = AgentTeamConfiguration(user_id=user_id)
             self.orchestrators[user_id] = ALwrityAgentOrchestrator(config)
@@ -474,6 +475,25 @@ class AgentOrchestrationService:
         if not orchestrator.agents and not orchestrator.execution_history:
              logger.info(f"Orchestrator for {user_id} has no agents. Attempting re-initialization.")
              orchestrator._create_specialized_agents()
+
+        last_system_check = next(
+            (
+                entry
+                for entry in reversed(orchestrator.execution_history)
+                if entry.get("action") == "system_check"
+            ),
+            None,
+        )
+        if last_system_check and last_system_check.get("status") == "pending":
+            details = str(last_system_check.get("details") or "").lower()
+            onboarding_gated_initialization = "onboarding" in details
+
+        orchestrator.onboarding_gated_initialization = onboarding_gated_initialization
+        orchestrator.initialization_state = {
+            "onboarding_gated_initialization": onboarding_gated_initialization,
+            "active_agent_count": len(orchestrator.agents),
+            "active_agent_keys": sorted(orchestrator.agents.keys()),
+        }
              
         return orchestrator
     

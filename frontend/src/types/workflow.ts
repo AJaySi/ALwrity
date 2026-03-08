@@ -5,6 +5,14 @@ export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'skipped';
 export type TaskPriority = 'high' | 'medium' | 'low';
 export type ActionType = 'navigate' | 'modal' | 'external';
 export type WorkflowStatus = 'not_started' | 'in_progress' | 'completed' | 'paused' | 'stopped';
+export type WorkflowGenerationMode = 'agent_committee' | 'llm_generation' | 'llm_pillar_backfill' | 'controlled_fallback';
+
+export interface WorkflowProvenanceSummary {
+  generationMode: WorkflowGenerationMode;
+  committeeAgentCount: number;
+  fallbackUsed: boolean;
+  taskSourceBreakdown: Partial<Record<WorkflowGenerationMode, number>>;
+}
 
 export interface TodayTask {
   id: string;
@@ -44,6 +52,7 @@ export interface DailyWorkflow {
   completedAt?: Date;
   totalEstimatedTime: number; // in minutes
   actualTimeSpent: number; // in minutes
+  provenanceSummary?: WorkflowProvenanceSummary;
 }
 
 export interface WorkflowProgress {
@@ -54,6 +63,7 @@ export interface WorkflowProgress {
   nextTask?: TodayTask;
   estimatedTimeRemaining: number; // in minutes
   actualTimeSpent: number; // in minutes
+  provenanceSummary?: WorkflowProvenanceSummary;
 }
 
 export interface TaskCompletionData {
