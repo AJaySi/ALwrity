@@ -6,7 +6,7 @@ and other analytics sources for the SEO dashboard. Leverages existing
 OAuth connections from onboarding step 5.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Type
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -21,7 +21,16 @@ from api.content_planning.services.content_strategy.onboarding.data_integration 
 from .analytics_aggregator import AnalyticsAggregator
 from .competitive_analyzer import CompetitiveAnalyzer
 from models.onboarding import SEOPageAudit, WebsiteAnalysis, OnboardingSession
-from models.website_analysis_monitoring_models import OnboardingFullWebsiteAnalysisTask
+from models.website_analysis_monitoring_models import (
+    OnboardingFullWebsiteAnalysisTask,
+    OnboardingFullWebsiteAnalysisExecutionLog,
+    DeepCompetitorAnalysisTask,
+    DeepCompetitorAnalysisExecutionLog,
+    SIFIndexingTask,
+    SIFIndexingExecutionLog,
+    MarketTrendsTask,
+    MarketTrendsExecutionLog,
+)
 from models.advertools_monitoring_models import AdvertoolsTask
 
 logger = get_service_logger("seo_dashboard")
@@ -209,6 +218,118 @@ class SEODashboardService:
                 "fix_scheduled_pages": 0,
                 "worst_pages": []
             }
+
+    async def get_onboarding_scheduled_task_health(
+        self,
+        user_id: str,
+        site_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return consolidated health for all onboarding scheduled SEO jobs."""
+        site_key = (site_url or "").rstrip("/")
+
+        task_matrix = {
+            "OnboardingFullWebsiteAnalysisTask": {
+                "label": "Onboarding Full Website Analysis",
+                "task_model": OnboardingFullWebsiteAnalysisTask,
+                "log_model": OnboardingFullWebsiteAnalysisExecutionLog,
+            },
+            "DeepCompetitorAnalysisTask": {
+                "label": "Deep Competitor Analysis",
+                "task_model": DeepCompetitorAnalysisTask,
+                "log_model": DeepCompetitorAnalysisExecutionLog,
+            },
+            "SIFIndexingTask": {
+                "label": "SIF Indexing",
+                "task_model": SIFIndexingTask,
+                "log_model": SIFIndexingExecutionLog,
+            },
+            "MarketTrendsTask": {
+                "label": "Market Trends",
+                "task_model": MarketTrendsTask,
+                "log_model": MarketTrendsExecutionLog,
+            },
+        }
+
+        task_health: Dict[str, Any] = {}
+        for task_name, config in task_matrix.items():
+            task_health[task_name] = self._get_single_task_health(
+                user_id=user_id,
+                task_model=config["task_model"],
+                log_model=config["log_model"],
+                label=config["label"],
+                site_key=site_key,
+            )
+
+        return {
+            "status": "ok",
+            "website_url": site_key or None,
+            "tasks": task_health,
+            "last_updated": datetime.utcnow().isoformat(),
+        }
+
+    def _get_single_task_health(
+        self,
+        user_id: str,
+        task_model: Type[Any],
+        log_model: Type[Any],
+        label: str,
+        site_key: str,
+    ) -> Dict[str, Any]:
+        query = self.db.query(task_model).filter(task_model.user_id == str(user_id))
+        if site_key:
+            query = query.filter(task_model.website_url.like(f"{site_key}%"))
+
+        task = query.order_by(task_model.updated_at.desc()).first()
+        if not task:
+            return {
+                "label": label,
+                "status": "not_scheduled",
+                "next_execution": None,
+                "last_success": None,
+                "last_failure": None,
+                "consecutive_failures": 0,
+                "latest_execution": None,
+            }
+
+        latest_log = (
+            self.db.query(log_model)
+            .filter(log_model.task_id == task.id)
+            .order_by(log_model.execution_date.desc())
+            .first()
+        )
+
+        log_summary = None
+        if latest_log:
+            log_summary = {
+                "status": latest_log.status,
+                "execution_date": latest_log.execution_date.isoformat() if latest_log.execution_date else None,
+                "execution_time_ms": latest_log.execution_time_ms,
+                "error_message": (latest_log.error_message or "")[:500] if latest_log.error_message else None,
+                "result_summary": self._summarize_execution_result(latest_log.result_data),
+            }
+
+        return {
+            "label": label,
+            "status": task.status or "not_scheduled",
+            "next_execution": task.next_execution.isoformat() if task.next_execution else None,
+            "last_success": task.last_success.isoformat() if task.last_success else None,
+            "last_failure": task.last_failure.isoformat() if task.last_failure else None,
+            "consecutive_failures": task.consecutive_failures or 0,
+            "latest_execution": log_summary,
+        }
+
+    def _summarize_execution_result(self, result_data: Any) -> Optional[str]:
+        if not isinstance(result_data, dict):
+            return None
+
+        for key in ("summary", "message", "status_message", "note"):
+            value = result_data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value[:300]
+
+        if result_data:
+            return f"Result keys: {', '.join(sorted(result_data.keys())[:6])}"
+        return None
     
     async def get_gsc_data(self, user_id: str, site_url: Optional[str] = None) -> Dict[str, Any]:
         """Get GSC data for the specified site."""

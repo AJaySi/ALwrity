@@ -529,76 +529,75 @@ async def get_semantic_cache_stats(current_user: dict = Depends(get_current_user
 
 async def get_sif_indexing_health(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     try:
-        from models.website_analysis_monitoring_models import SIFIndexingTask, SIFIndexingExecutionLog
-
         user_id = str(current_user.get("id"))
-        db = get_session_for_user(user_id)
-        if not db:
+        db_session = get_session_for_user(user_id)
+        if not db_session:
             raise HTTPException(status_code=500, detail="Database connection unavailable")
 
         try:
-            tasks = (
-                db.query(SIFIndexingTask)
-                .filter(SIFIndexingTask.user_id == user_id)
-                .order_by(SIFIndexingTask.created_at.desc())
-                .all()
-            )
+            dashboard_service = SEODashboardService(db_session)
+            onboarding_task_health = await dashboard_service.get_onboarding_scheduled_task_health(user_id)
+            sif_health = onboarding_task_health.get("tasks", {}).get("SIFIndexingTask", {})
 
-            if not tasks:
+            if sif_health.get("status") == "not_scheduled":
                 return {
                     "has_task": False,
                     "status": "not_scheduled",
                     "message": "SIF indexing task not yet scheduled for this website.",
                 }
 
-            latest = tasks[0]
-            latest_log = (
-                db.query(SIFIndexingExecutionLog)
-                .filter(SIFIndexingExecutionLog.task_id == latest.id)
-                .order_by(SIFIndexingExecutionLog.execution_date.desc())
-                .first()
-            )
-
-            last_run_status = latest_log.status if latest_log else None
-            last_run_time = (
-                latest_log.execution_date.isoformat() if latest_log and latest_log.execution_date else None
-            )
-            last_error = (
-                (latest_log.error_message or "")[:500] if latest_log and latest_log.error_message else None
-            )
-
             overall_status = "healthy"
-            if latest.consecutive_failures and latest.consecutive_failures > 0:
+            if (sif_health.get("consecutive_failures") or 0) > 0:
                 overall_status = "warning"
-            if latest.status in {"needs_intervention"}:
+            if sif_health.get("status") in {"failed", "needs_intervention"}:
                 overall_status = "critical"
 
             return {
                 "has_task": True,
                 "status": overall_status,
                 "task": {
-                    "id": latest.id,
-                    "website_url": latest.website_url,
-                    "raw_status": latest.status,
-                    "next_execution": latest.next_execution.isoformat() if latest.next_execution else None,
-                    "last_success": latest.last_success.isoformat() if latest.last_success else None,
-                    "last_failure": latest.last_failure.isoformat() if latest.last_failure else None,
-                    "consecutive_failures": latest.consecutive_failures or 0,
-                    "failure_pattern": latest.failure_pattern,
+                    "raw_status": sif_health.get("status"),
+                    "next_execution": sif_health.get("next_execution"),
+                    "last_success": sif_health.get("last_success"),
+                    "last_failure": sif_health.get("last_failure"),
+                    "consecutive_failures": sif_health.get("consecutive_failures") or 0,
                 },
                 "last_run": {
-                    "status": last_run_status,
-                    "time": last_run_time,
-                    "error_message": last_error,
+                    "status": sif_health.get("latest_execution", {}).get("status"),
+                    "time": sif_health.get("latest_execution", {}).get("execution_date"),
+                    "error_message": sif_health.get("latest_execution", {}).get("error_message"),
                 },
             }
         finally:
-            db.close()
+            db_session.close()
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get SIF indexing health: {e}")
         raise HTTPException(status_code=500, detail="Failed to get SIF indexing health")
+
+
+async def get_onboarding_task_health(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get consolidated onboarding scheduled SEO task health."""
+    try:
+        user_id = str(current_user.get("id"))
+        db_session = get_session_for_user(user_id)
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+
+        try:
+            dashboard_service = SEODashboardService(db_session)
+            return await dashboard_service.get_onboarding_scheduled_task_health(user_id, site_url)
+        finally:
+            db_session.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get onboarding task health: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get onboarding scheduled task health")
 
 # New comprehensive SEO analysis endpoints
 async def analyze_seo_comprehensive(request: SEOAnalysisRequest) -> SEOAnalysisResponse:

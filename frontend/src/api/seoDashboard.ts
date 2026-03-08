@@ -56,6 +56,33 @@ export interface SIFIndexingHealth {
   };
 }
 
+
+
+export type OnboardingTaskStatus = 'active' | 'failed' | 'paused' | 'needs_intervention' | 'not_scheduled';
+
+export interface OnboardingScheduledTaskHealthItem {
+  label: string;
+  status: OnboardingTaskStatus;
+  next_execution: string | null;
+  last_success: string | null;
+  last_failure: string | null;
+  consecutive_failures: number;
+  latest_execution: {
+    status: string | null;
+    execution_date: string | null;
+    execution_time_ms: number | null;
+    error_message: string | null;
+    result_summary: string | null;
+  } | null;
+}
+
+export interface OnboardingScheduledTaskHealthResponse {
+  status: string;
+  website_url?: string | null;
+  tasks: Record<string, OnboardingScheduledTaskHealthItem>;
+  last_updated: string;
+}
+
 export interface SEODashboardData {
   health_score: SEOHealthScore;
   key_insight: string;
@@ -172,5 +199,18 @@ export const seoDashboardAPI = {
       console.error('Error fetching SIF indexing health:', error);
       throw error;
     }
+  },
+
+  async getOnboardingTaskHealth(siteUrl?: string): Promise<OnboardingScheduledTaskHealthResponse> {
+    try {
+      const response = await apiClient.get('/api/seo-dashboard/onboarding-task-health', {
+        params: siteUrl ? { site_url: siteUrl } : undefined
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching onboarding task health:', error);
+      throw error;
+    }
   }
+
 }; 
