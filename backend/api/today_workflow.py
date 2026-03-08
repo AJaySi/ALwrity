@@ -1,19 +1,41 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+from collections import defaultdict, deque
 from loguru import logger
 
 from sqlalchemy.orm import Session
 
 from middleware.auth_middleware import get_current_user
 from services.database import get_db
-from services.today_workflow_service import coerce_dependencies, get_or_create_daily_workflow_plan, update_task_status
+from services.today_workflow_service import get_or_create_daily_workflow_plan, regenerate_daily_workflow_plan, update_task_status
 from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 import asyncio
 from services.intelligence.txtai_service import TxtaiIntelligenceService
 
 
 router = APIRouter(prefix="/api/today-workflow", tags=["Today Workflow"])
+
+REGENERATE_WINDOW_SECONDS = 60
+REGENERATE_MAX_REQUESTS_PER_WINDOW = 3
+_regen_request_log: dict[str, deque[float]] = defaultdict(deque)
+
+
+def _check_regenerate_rate_limit(user_id: str) -> None:
+    import time
+
+    now = time.time()
+    window_start = now - REGENERATE_WINDOW_SECONDS
+    history = _regen_request_log[user_id]
+
+    while history and history[0] < window_start:
+        history.popleft()
+
+    if len(history) >= REGENERATE_MAX_REQUESTS_PER_WINDOW:
+        raise HTTPException(status_code=429, detail="Regeneration rate limit exceeded")
+
+    history.append(now)
+
 
 async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label: str):
     svc = TxtaiIntelligenceService(user_id)
@@ -42,22 +64,6 @@ async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label:
         return
 
 
-def _build_provenance_summary(plan: DailyWorkflowPlan, tasks: list[DailyWorkflowTask]) -> Dict[str, Any]:
-    source_counts: Dict[str, int] = {}
-    for task in tasks:
-        metadata = task.metadata_json if isinstance(task.metadata_json, dict) else {}
-        source = metadata.get("source") if metadata.get("source") in {"agent_committee", "llm_generation", "llm_pillar_backfill", "controlled_fallback"} else "llm_generation"
-        source_counts[source] = source_counts.get(source, 0) + 1
-
-    generation_mode = plan.generation_mode if plan.generation_mode in {"agent_committee", "llm_generation", "llm_pillar_backfill", "controlled_fallback"} else "llm_generation"
-
-    return {
-        "generationMode": generation_mode,
-        "committeeAgentCount": int(plan.committee_agent_count or 0),
-        "fallbackUsed": bool(plan.fallback_used),
-        "taskSourceBreakdown": source_counts,
-    }
-
 @router.get("")
 async def get_today_workflow(
     date: Optional[str] = None,
@@ -77,20 +83,6 @@ async def get_today_workflow(
         )
 
     tasks = await run_in_threadpool(_fetch_tasks)
-    provenance_summary = _build_provenance_summary(plan, tasks)
-
-    def _normalize_legacy_dependencies(task_rows):
-        rows_updated = False
-        for row in task_rows:
-            normalized_dependencies = coerce_dependencies(row.dependencies)
-            if row.dependencies != normalized_dependencies:
-                row.dependencies = normalized_dependencies
-                db.add(row)
-                rows_updated = True
-        if rows_updated:
-            db.commit()
-
-    await run_in_threadpool(_normalize_legacy_dependencies, tasks)
 
     response_tasks = []
     for t in tasks:
@@ -103,7 +95,7 @@ async def get_today_workflow(
                 "status": "skipped" if t.status == "dismissed" else t.status,
                 "priority": t.priority,
                 "estimatedTime": t.estimated_time,
-                "dependencies": coerce_dependencies(t.dependencies),
+                "dependencies": t.dependencies or [],
                 "actionUrl": t.action_url,
                 "actionType": t.action_type,
                 "metadata": t.metadata_json or {},
@@ -183,7 +175,6 @@ async def get_today_workflow(
                 "workflowStatus": workflow_status,
                 "totalEstimatedTime": total_estimated,
                 "actualTimeSpent": 0,
-                "provenanceSummary": provenance_summary,
             },
             "plan": {
                 "id": plan.id,
@@ -191,11 +182,71 @@ async def get_today_workflow(
                 "source": plan.source,
                 "created_at": plan.created_at.isoformat() if plan.created_at else None,
                 "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
-                "generation_mode": plan.generation_mode,
-                "committee_agent_count": plan.committee_agent_count,
-                "fallback_used": plan.fallback_used,
-                "provenance_summary": provenance_summary,
+                "generation_mode": (plan.plan_json or {}).get("generation_mode"),
+                "quality_score": (plan.plan_json or {}).get("quality_score"),
+                "generated_with_agents": (plan.plan_json or {}).get("generated_with_agents"),
             },
+        },
+        "timestamp": datetime.utcnow().isoformat(),
+        "user_id": user_id,
+    }
+
+
+@router.post("/regenerate")
+async def regenerate_today_workflow(
+    date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    from starlette.concurrency import run_in_threadpool
+
+    user_id = str(current_user.get("id"))
+    _check_regenerate_rate_limit(user_id)
+
+    plan = await regenerate_daily_workflow_plan(db, user_id, date=date)
+
+    tasks = await run_in_threadpool(
+        lambda: (
+            db.query(DailyWorkflowTask)
+            .filter(DailyWorkflowTask.plan_id == plan.id, DailyWorkflowTask.user_id == user_id)
+            .order_by(DailyWorkflowTask.created_at.asc())
+            .all()
+        )
+    )
+
+    response_tasks = [
+        {
+            "id": str(t.id),
+            "pillarId": t.pillar_id,
+            "title": t.title,
+            "description": t.description,
+            "status": "skipped" if t.status == "dismissed" else t.status,
+            "priority": t.priority,
+            "estimatedTime": t.estimated_time,
+            "dependencies": t.dependencies or [],
+            "actionUrl": t.action_url,
+            "actionType": t.action_type,
+            "metadata": t.metadata_json or {},
+            "enabled": bool(t.enabled),
+        }
+        for t in tasks
+    ]
+
+    asyncio.create_task(_index_tasks_to_sif(user_id, plan.date, response_tasks, label="today_regenerated"))
+
+    return {
+        "success": True,
+        "data": {
+            "plan": {
+                "id": plan.id,
+                "date": plan.date,
+                "source": plan.source,
+                "generation_mode": (plan.plan_json or {}).get("generation_mode"),
+                "quality_score": (plan.plan_json or {}).get("quality_score"),
+                "generated_with_agents": (plan.plan_json or {}).get("generated_with_agents"),
+                "regenerated_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "tasks": response_tasks,
         },
         "timestamp": datetime.utcnow().isoformat(),
         "user_id": user_id,
@@ -226,7 +277,7 @@ async def set_task_status(
         memory = TaskMemoryService(user_id, db)
         await memory.record_task_outcome(
             task, 
-            feedback_score=1 if status == "completed" else -1 if status in ("dismissed", "skipped") else 0,
+            feedback_score=1 if status == "completed" else -1 if status == "dismissed" else 0,
             feedback_text=completion_notes
         )
     except Exception as e:
@@ -245,7 +296,7 @@ async def set_task_status(
         "pillarId": task.pillar_id,
         "title": task.title,
         "description": task.description,
-        "status": "skipped" if task.status in ("dismissed", "skipped") else task.status,
+        "status": "skipped" if task.status == "dismissed" else task.status,
     }
     asyncio.create_task(_index_tasks_to_sif(user_id, plan_date, [task_payload], label="today"))
 
@@ -255,7 +306,7 @@ async def set_task_status(
             "task": {
                 "id": str(task.id),
                 "pillarId": task.pillar_id,
-                "status": "skipped" if task.status in ("dismissed", "skipped") else task.status,
+                "status": "skipped" if task.status == "dismissed" else task.status,
                 "decided_at": task.decided_at.isoformat() if task.decided_at else None,
             }
         },
