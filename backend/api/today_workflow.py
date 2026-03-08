@@ -5,6 +5,7 @@ import json
 from loguru import logger
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from middleware.auth_middleware import get_current_user
 from services.database import get_db
@@ -115,11 +116,21 @@ async def get_today_workflow(
 
     if created:
         asyncio.create_task(_index_tasks_to_sif(user_id, plan.date, response_tasks, label="today"))
-        try:
-            from datetime import date as date_type, timedelta
+        from datetime import date as date_type, timedelta
 
-            y_str = (date_type.fromisoformat(plan.date) - timedelta(days=1)).isoformat()
-            
+        try:
+            parsed_plan_date = date_type.fromisoformat(plan.date)
+        except ValueError:
+            logger.warning(
+                "Invalid plan.date format; skipping yesterday indexing plan_id={} user_id={} plan_date={} reason={}",
+                plan.id,
+                user_id,
+                plan.date,
+                "plan.date is not in ISO format YYYY-MM-DD",
+            )
+        else:
+            y_str = (parsed_plan_date - timedelta(days=1)).isoformat()
+
             def _fetch_yesterday():
                 y_plan = (
                     db.query(DailyWorkflowPlan)
@@ -136,24 +147,33 @@ async def get_today_workflow(
                     return y_tasks
                 return []
 
-            y_tasks = await run_in_threadpool(_fetch_yesterday)
-            
-            if y_tasks:
-                y_response = []
-                for t in y_tasks:
-                    y_response.append(
-                        {
-                            "id": str(t.id),
-                            "pillarId": t.pillar_id,
-                            "title": t.title,
-                            "description": t.description,
-                            "status": "skipped" if t.status == "dismissed" else t.status,
-                            "dependencies": _normalize_dependencies(t.dependencies),
-                        }
-                    )
-                asyncio.create_task(_index_tasks_to_sif(user_id, y_str, y_response, label="yesterday"))
-        except Exception:
-            pass
+            try:
+                y_tasks = await run_in_threadpool(_fetch_yesterday)
+            except SQLAlchemyError as db_error:
+                logger.warning(
+                    "Failed to fetch yesterday tasks; skipping yesterday indexing plan_id={} user_id={} plan_date={} yesterday_date={} error_class={} error_message={}",
+                    plan.id,
+                    user_id,
+                    plan.date,
+                    y_str,
+                    type(db_error).__name__,
+                    str(db_error),
+                )
+            else:
+                if y_tasks:
+                    y_response = []
+                    for t in y_tasks:
+                        y_response.append(
+                            {
+                                "id": str(t.id),
+                                "pillarId": t.pillar_id,
+                                "title": t.title,
+                                "description": t.description,
+                                "status": "skipped" if t.status == "dismissed" else t.status,
+                                "dependencies": _normalize_dependencies(t.dependencies),
+                            }
+                        )
+                    asyncio.create_task(_index_tasks_to_sif(user_id, y_str, y_response, label="yesterday"))
 
     return {
         "success": True,
