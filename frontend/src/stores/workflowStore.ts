@@ -164,32 +164,36 @@ export const useWorkflowStore = create<WorkflowState>()(
       // Generate daily workflow
       generateDailyWorkflow: async (userId: string, date?: string) => {
         set({ isLoading: true, error: null });
-
+        
         try {
           const resp = await apiClient.get('/api/today-workflow', { params: date ? { date } : {} });
           const serverWorkflow = resp?.data?.data?.workflow as DailyWorkflow | undefined;
-
-          if (!serverWorkflow || !Array.isArray(serverWorkflow.tasks)) {
-            throw new WorkflowError({
-              code: 'WORKFLOW_SCHEMA_INVALID',
-              message: 'Server workflow response is missing a valid tasks array.',
-              timestamp: new Date(),
-              recoverable: false,
-              suggestedAction: 'Refresh and try again. If this persists, contact support.'
+          const planSummary = resp?.data?.data?.plan?.provenance_summary;
+          
+          if (serverWorkflow && Array.isArray(serverWorkflow.tasks)) {
+            if (planSummary && !serverWorkflow.provenanceSummary) {
+              serverWorkflow.provenanceSummary = planSummary;
+            }
+            const normalizedWorkflow = normalizeServerWorkflow(serverWorkflow);
+            const derived = computeProgressAndNavigation(normalizedWorkflow);
+            set({
+              currentWorkflow: normalizedWorkflow,
+              workflowProgress: derived.progress,
+              navigationState: derived.navigation,
+              isLoading: false,
+              isDegradedMode: false,
+              degradedModeReason: null,
             });
+            return;
           }
 
-          const normalizedWorkflow = normalizeServerWorkflow(serverWorkflow);
-          const derived = computeProgressAndNavigation(normalizedWorkflow);
-          set({
-            currentWorkflow: normalizedWorkflow,
-            workflowProgress: derived.progress,
-            navigationState: derived.navigation,
-            isLoading: false,
-            isDegradedMode: false,
-            degradedModeReason: null,
+          throw new WorkflowError({
+            code: 'WORKFLOW_SCHEMA_INVALID',
+            message: 'Server workflow response is missing a valid tasks array.',
+            timestamp: new Date(),
+            recoverable: false,
+            suggestedAction: 'Refresh and try again. If this persists, contact support.'
           });
-          return;
         } catch (error) {
           if (!isServerUnavailableError(error)) {
             set({

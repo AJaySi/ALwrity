@@ -42,6 +42,22 @@ async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label:
         return
 
 
+def _build_provenance_summary(plan: DailyWorkflowPlan, tasks: list[DailyWorkflowTask]) -> Dict[str, Any]:
+    source_counts: Dict[str, int] = {}
+    for task in tasks:
+        metadata = task.metadata_json if isinstance(task.metadata_json, dict) else {}
+        source = metadata.get("source") if metadata.get("source") in {"agent_committee", "llm_generation", "llm_pillar_backfill", "controlled_fallback"} else "llm_generation"
+        source_counts[source] = source_counts.get(source, 0) + 1
+
+    generation_mode = plan.generation_mode if plan.generation_mode in {"agent_committee", "llm_generation", "llm_pillar_backfill", "controlled_fallback"} else "llm_generation"
+
+    return {
+        "generationMode": generation_mode,
+        "committeeAgentCount": int(plan.committee_agent_count or 0),
+        "fallbackUsed": bool(plan.fallback_used),
+        "taskSourceBreakdown": source_counts,
+    }
+
 @router.get("")
 async def get_today_workflow(
     date: Optional[str] = None,
@@ -61,6 +77,7 @@ async def get_today_workflow(
         )
 
     tasks = await run_in_threadpool(_fetch_tasks)
+    provenance_summary = _build_provenance_summary(plan, tasks)
 
     def _normalize_legacy_dependencies(task_rows):
         rows_updated = False
@@ -166,6 +183,7 @@ async def get_today_workflow(
                 "workflowStatus": workflow_status,
                 "totalEstimatedTime": total_estimated,
                 "actualTimeSpent": 0,
+                "provenanceSummary": provenance_summary,
             },
             "plan": {
                 "id": plan.id,
@@ -173,6 +191,10 @@ async def get_today_workflow(
                 "source": plan.source,
                 "created_at": plan.created_at.isoformat() if plan.created_at else None,
                 "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+                "generation_mode": plan.generation_mode,
+                "committee_agent_count": plan.committee_agent_count,
+                "fallback_used": plan.fallback_used,
+                "provenance_summary": provenance_summary,
             },
         },
         "timestamp": datetime.utcnow().isoformat(),

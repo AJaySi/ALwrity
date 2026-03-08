@@ -11,6 +11,15 @@ from services.llm_providers.main_text_generation import llm_text_gen
 from loguru import logger
 
 PILLAR_IDS = ["plan", "generate", "publish", "analyze", "engage", "remarket"]
+TASK_SOURCE_ENUM = {"agent_committee", "llm_generation", "llm_pillar_backfill", "controlled_fallback"}
+
+
+def _normalize_task_metadata(task: Dict[str, Any], default_source: str) -> Dict[str, Any]:
+    metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+    source = metadata.get("source")
+    if source not in TASK_SOURCE_ENUM:
+        metadata["source"] = default_source
+    return metadata
 
 
 def _today_date_str() -> str:
@@ -177,6 +186,7 @@ def _sanitize_task(task: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     sanitized["actionType"] = str(task.get("actionType") or "navigate").strip() or "navigate"
     sanitized["actionUrl"] = str(task.get("actionUrl") or "").strip() or None
     sanitized["enabled"] = bool(task.get("enabled", True))
+    sanitized["metadata"] = _normalize_task_metadata(task, default_source="llm_generation")
     return sanitized
 
 
@@ -323,7 +333,11 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
         orchestrator = await orchestration_service.get_or_create_orchestrator(user_id)
     except Exception as e:
         logger.error(f"Failed to get orchestrator: {e}")
-        return {"date": date, "tasks": _fallback_tasks(date)}
+        return {
+            "date": date,
+            "tasks": _fallback_tasks(date),
+            "provenance": {"generation_mode": "controlled_fallback", "committee_agent_count": 0, "fallback_used": True},
+        }
 
     # 2. Parallel "Committee" Proposal Gathering
     logger.info(f"Gathering daily task proposals from agent committee for user {user_id}")
@@ -468,6 +482,7 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
                     "actionUrl": prop.get("actionUrl"),
                     "enabled": True,
                     "metadata": {
+                        "source": "agent_committee",
                         "source_agent": prop.get("source_agent"),
                         "reasoning": prop.get("reasoning"),
                         "context_data": prop.get("context_data")
@@ -484,16 +499,17 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
                     "actionUrl": prop.action_url,
                     "enabled": True,
                     "metadata": {
+                        "source": "agent_committee",
                         "source_agent": prop.source_agent,
                         "reasoning": prop.reasoning,
                         "context_data": prop.context_data
                     }
                 })
-
         final_tasks = _ensure_pillar_coverage(final_tasks, user_id, date, grounding)
         return {
             "date": date,
-            "tasks": final_tasks
+            "tasks": final_tasks,
+            "provenance": {"generation_mode": "agent_committee", "committee_agent_count": len(active_agents), "fallback_used": any((t.get("metadata") or {}).get("source") in {"llm_pillar_backfill", "controlled_fallback"} for t in final_tasks)},
         }
 
     # Fallback to original LLM generation if agents returned nothing
@@ -575,9 +591,11 @@ async def generate_agent_enhanced_plan(db: Session, user_id: str, date: str) -> 
     tasks = result.get("tasks") if isinstance(result, dict) else None
     if not isinstance(tasks, list) or not tasks:
         tasks = _fallback_tasks(date)
+    enriched_tasks = _ensure_pillar_coverage(tasks, user_id, date, grounding)
     result = {
         "date": date,
-        "tasks": _ensure_pillar_coverage(tasks, user_id, date, grounding),
+        "tasks": enriched_tasks,
+        "provenance": {"generation_mode": "llm_generation", "committee_agent_count": len(active_agents) if "active_agents" in locals() else 0, "fallback_used": any((t.get("metadata") or {}).get("source") in {"llm_pillar_backfill", "controlled_fallback"} for t in enriched_tasks)},
     }
 
     activity.log_event(
@@ -611,12 +629,19 @@ async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Opt
 
     plan_data = await generate_agent_enhanced_plan(db, user_id, date_str)
     tasks = plan_data.get("tasks", [])
+    provenance = plan_data.get("provenance") if isinstance(plan_data.get("provenance"), dict) else {}
 
     def _create_plan():
+        generation_mode = provenance.get("generation_mode") if provenance.get("generation_mode") in TASK_SOURCE_ENUM else "llm_generation"
+        committee_agent_count = int(provenance.get("committee_agent_count") or 0)
+        fallback_used = bool(provenance.get("fallback_used", False))
         plan = DailyWorkflowPlan(
             user_id=user_id,
             date=date_str,
             source="agent",
+            generation_mode=generation_mode,
+            committee_agent_count=max(0, committee_agent_count),
+            fallback_used=fallback_used,
             plan_json=plan_data,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -641,7 +666,7 @@ async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Opt
                 action_type=str(t.get("actionType") or "navigate").strip()[:20],
                 action_url=str(t.get("actionUrl") or "").strip(),
                 dependencies=coerce_dependencies(t.get("dependencies")),
-                metadata_json=t.get("metadata") or {},
+                metadata_json=_normalize_task_metadata(t, default_source=generation_mode),
                 enabled=bool(t.get("enabled", True)),
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
