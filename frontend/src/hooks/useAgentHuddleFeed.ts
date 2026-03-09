@@ -126,7 +126,11 @@ export const useAgentHuddleFeed = (options?: { detailTier?: 'summary' | 'detaile
         const token = tokenGetter ? await tokenGetter() : null;
         if (!token) throw new Error('No auth token available for SSE stream');
 
-        const streamUrl = `${getApiUrl()}/api/agents/huddle/stream?detail_tier=${detailTier}`;
+        const query = new URLSearchParams({ detail_tier: detailTier });
+        if (token) {
+          query.set('token', token);
+        }
+        const streamUrl = `${getApiUrl()}/api/agents/huddle/stream?${query.toString()}`;
         const response = await fetch(streamUrl, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
         });
