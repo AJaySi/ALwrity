@@ -224,24 +224,27 @@ class OnboardingProgress:
     def _save_api_key_to_db(self, db, provider: str, key: str):
         """Save API key to database."""
         try:
+            session = db.query(OnboardingSession).filter(OnboardingSession.user_id == self.user_id).first()
+            if not session:
+                logger.warning(f"No session found for user {self.user_id} when saving API key")
+                return
+
             api_key_record = db.query(APIKey).filter(
-                APIKey.user_id == self.user_id,
+                APIKey.session_id == session.id,
                 APIKey.provider == provider
             ).first()
-            
+
             if not api_key_record:
                 api_key_record = APIKey(
-                    user_id=self.user_id, 
-                    provider=provider, 
-                    api_key=key,
-                    is_active=True,
-                    created_at=datetime.utcnow()
+                    session_id=session.id,
+                    provider=provider,
+                    key=key,
                 )
                 db.add(api_key_record)
             else:
-                api_key_record.api_key = key
+                api_key_record.key = key
                 api_key_record.updated_at = datetime.utcnow()
-            
+
             db.commit()
         except Exception as e:
             logger.error(f"Error saving API key to DB: {e}")
