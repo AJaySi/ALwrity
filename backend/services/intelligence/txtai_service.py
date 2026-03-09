@@ -250,7 +250,6 @@ class TxtaiIntelligenceService:
             logger.error(message)
             if self.fail_fast:
                 raise RuntimeError(message)
->>>>>>> 8b0547c (Make SIF fail fast and add low-cost remote LLM fallback)
             return
 
         try:
