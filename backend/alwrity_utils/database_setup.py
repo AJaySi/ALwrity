@@ -36,6 +36,7 @@ class DatabaseSetup:
             self._create_subscription_tables()
             self._create_persona_tables()
             self._create_onboarding_tables()
+            self._create_daily_workflow_tables()
             
             if verbose:
                 print("✅ Essential database tables created")
@@ -112,6 +113,22 @@ class DatabaseSetup:
         except Exception as e:
             if verbose:
                 print(f"   ⚠️  Onboarding tables failed: {e}")
+            return True  # Non-critical
+    
+    def _create_daily_workflow_tables(self) -> bool:
+        """Create daily workflow tables."""
+        import os
+        verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+        
+        try:
+            from models.enhanced_strategy_models import Base as StrategyBase
+            StrategyBase.metadata.create_all(bind=engine)
+            if verbose:
+                print("   ✅ Daily workflow tables created")
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"   ⚠️  Daily workflow tables failed: {e}")
             return True  # Non-critical
     
     def verify_tables(self) -> bool:

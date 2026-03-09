@@ -22,6 +22,8 @@ from models.persona_models import Base as PersonaBase
 from models.subscription_models import Base as SubscriptionBase
 from models.user_business_info import Base as UserBusinessInfoBase
 from models.content_asset_models import Base as ContentAssetBase
+# Import daily workflow models to ensure they are registered with EnhancedStrategyBase
+from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask, TaskHistory
 # Product Marketing models use SubscriptionBase, but import to ensure models are registered
 from models.product_marketing_models import Campaign, CampaignProposal, CampaignAsset
 # Product Asset models (Product Marketing Suite - product assets, not campaigns)
