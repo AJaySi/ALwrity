@@ -130,7 +130,8 @@ from api.seo_dashboard import (
     AnalyzeURLsRequest,
     get_analyzed_pages,
     get_semantic_health,
-    get_sif_indexing_health
+    get_semantic_cache_stats,
+    get_sif_indexing_health,
 )
 
 # Initialize FastAPI app
