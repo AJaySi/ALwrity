@@ -6,7 +6,7 @@ migrated from the legacy lib/gpt_providers/text_generation/main_text_generation.
 
 import os
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from loguru import logger
 from fastapi import HTTPException
@@ -16,7 +16,13 @@ from .gemini_provider import gemini_text_response, gemini_structured_json_respon
 from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
 
 
-def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: Optional[Dict[str, Any]] = None, user_id: str = None) -> str:
+def llm_text_gen(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    json_struct: Optional[Dict[str, Any]] = None,
+    user_id: str = None,
+    preferred_hf_models: Optional[List[str]] = None,
+) -> str:
     """
     Generate text using Language Model (LLM) based on the provided prompt.
     
@@ -54,7 +60,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
             model = "gemini-2.0-flash-001"
         elif env_provider in ['hf_response_api', 'huggingface', 'hf']:
             gpt_provider = "huggingface"
-            model = "mistralai/Mistral-7B-Instruct-v0.3"
+            model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
         
         # Default blog characteristics
         blog_tone = "Professional"
@@ -80,7 +86,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                 model = "gemini-2.0-flash-001"
             elif "huggingface" in available_providers:
                 gpt_provider = "huggingface"
-                model = "mistralai/Mistral-7B-Instruct-v0.3"
+                model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
             else:
                 logger.error("[llm_text_gen] No API keys found for supported providers.")
                 raise RuntimeError("No LLM API keys configured. Configure GEMINI_API_KEY or HF_TOKEN to enable AI responses.")
@@ -93,9 +99,13 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                     model = "gemini-2.0-flash-001"
                 elif "huggingface" in available_providers:
                     gpt_provider = "huggingface"
-                    model = "mistralai/Mistral-7B-Instruct-v0.3"
+                    model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
                 else:
                     raise RuntimeError("No supported providers available.")
+
+        if gpt_provider == "huggingface" and preferred_hf_models:
+            model = preferred_hf_models[0]
+            logger.info(f"[llm_text_gen] Using preferred low-cost HF model: {model}")
             
         logger.debug(f"[llm_text_gen] Using provider: {gpt_provider}, model: {model}")
 
@@ -303,7 +313,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                     elif fallback_provider == "huggingface":
                         provider_enum = APIProvider.MISTRAL
                         actual_provider_name = "huggingface"
-                        fallback_model = "mistralai/Mistral-7B-Instruct-v0.3"
+                        fallback_model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
                     
                     if fallback_provider == "google":
                         if json_struct:
@@ -330,7 +340,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                             response_text = huggingface_structured_json_response(
                                 prompt=prompt,
                                 schema=json_struct,
-                                model="mistralai/Mistral-7B-Instruct-v0.3",
+                                model="mistralai/Mistral-7B-Instruct-v0.3:groq",
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 system_prompt=system_instructions
@@ -338,7 +348,7 @@ def llm_text_gen(prompt: str, system_prompt: Optional[str] = None, json_struct: 
                         else:
                             response_text = huggingface_text_response(
                                 prompt=prompt,
-                                model="mistralai/Mistral-7B-Instruct-v0.3",
+                                model="mistralai/Mistral-7B-Instruct-v0.3:groq",
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 top_p=top_p,

@@ -45,6 +45,7 @@ class TxtaiIntelligenceService:
         self.enable_caching = enable_caching
         self.cache_manager = semantic_cache_manager if enable_caching else None
         self._backend = "faiss"  # Default backend
+        self.fail_fast = str(os.getenv("SIF_FAIL_FAST", "true")).lower() in {"1", "true", "yes", "on"}
         
         # Mark as initialized for singleton pattern
         self._singleton_initialized = True
@@ -143,7 +144,10 @@ class TxtaiIntelligenceService:
         """
         self._ensure_initialized()
         if not self._initialized or not self.embeddings:
-            logger.error(f"Cannot index content - service not initialized for user {self.user_id}")
+            message = f"Cannot index content - service not initialized for user {self.user_id}"
+            logger.error(message)
+            if self.fail_fast:
+                raise RuntimeError(message)
             return
 
         try:
@@ -190,7 +194,10 @@ class TxtaiIntelligenceService:
         """Perform semantic search with intelligent caching."""
         self._ensure_initialized()
         if not self._initialized or not self.embeddings:
-            logger.error(f"Cannot perform search - service not initialized for user {self.user_id}")
+            message = f"Cannot perform search - service not initialized for user {self.user_id}"
+            logger.error(message)
+            if self.fail_fast:
+                raise RuntimeError(message)
             return []
 
         try:
@@ -238,6 +245,8 @@ class TxtaiIntelligenceService:
             return results
         except Exception as e:
             logger.error(f"Search failed for user {self.user_id}: {e}")
+            if self.fail_fast:
+                raise
             logger.error(f"Query: '{query}'")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return []

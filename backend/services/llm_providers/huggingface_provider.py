@@ -82,10 +82,28 @@ from tenacity import (
 
 try:
     from openai import OpenAI
+    from openai import NotFoundError
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
+    NotFoundError = Exception
     logger.warn("OpenAI library not available. Install with: pip install openai")
+
+HF_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b:groq",
+    "moonshotai/Kimi-K2-Instruct-0905:groq",
+    "meta-llama/Llama-3.1-8B-Instruct:groq",
+    "mistralai/Mistral-7B-Instruct-v0.3:groq",
+]
+
+
+def _fallback_model_sequence(model: str):
+    sequence = [model] + HF_FALLBACK_MODELS
+    seen = set()
+    for candidate in sequence:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            yield candidate
 
 def get_huggingface_api_key() -> str:
     """Get Hugging Face API key with proper error handling."""
@@ -197,14 +215,27 @@ def huggingface_text_response(
         import time
         time.sleep(1)  # 1 second delay between API calls
         
-        # Make the API call using Chat Completions
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens
-        )
+        response = None
+        last_error = None
+        for candidate_model in _fallback_model_sequence(model):
+            try:
+                response = client.chat.completions.create(
+                    model=candidate_model,
+                    messages=messages,
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_tokens=max_tokens
+                )
+                if candidate_model != model:
+                    logger.warning("HF text generation switched to fallback model: %s", candidate_model)
+                break
+            except NotFoundError as nf_err:
+                last_error = nf_err
+                logger.warning("HF model not found: %s. Trying fallback model.", candidate_model)
+                continue
+
+        if response is None:
+            raise last_error or Exception("Hugging Face text generation failed: all fallback models failed")
         
         # Extract text from response
         generated_text = response.choices[0].message.content
@@ -338,13 +369,27 @@ def huggingface_structured_json_response(
         time.sleep(1)  # 1 second delay between API calls
         
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"} # Try to enforce JSON mode if supported
-            )
+            response = None
+            last_error = None
+            for candidate_model in _fallback_model_sequence(model):
+                try:
+                    response = client.chat.completions.create(
+                        model=candidate_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        response_format={"type": "json_object"} # Try to enforce JSON mode if supported
+                    )
+                    if candidate_model != model:
+                        logger.warning("HF structured generation switched to fallback model: %s", candidate_model)
+                    break
+                except NotFoundError as nf_err:
+                    last_error = nf_err
+                    logger.warning("HF structured model not found: %s. Trying fallback model.", candidate_model)
+                    continue
+
+            if response is None:
+                raise last_error or Exception("Hugging Face structured generation failed: all fallback models failed")
             
             response_text = response.choices[0].message.content
             
@@ -379,14 +424,28 @@ def huggingface_structured_json_response(
         except Exception as e:
             logger.error(f"❌ Hugging Face API call failed: {e}")
             # If 422 Unprocessable Entity (often due to response_format not supported), retry without it
-            if "422" in str(e) or "not supported" in str(e).lower():
+            if "422" in str(e) or "not supported" in str(e).lower() or isinstance(e, NotFoundError):
                 logger.info("Retrying without response_format...")
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
+                response = None
+                last_error = None
+                for candidate_model in _fallback_model_sequence(model):
+                    try:
+                        response = client.chat.completions.create(
+                            model=candidate_model,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens
+                        )
+                        if candidate_model != model:
+                            logger.warning("HF structured no-response_format fallback model: %s", candidate_model)
+                        break
+                    except NotFoundError as nf_err:
+                        last_error = nf_err
+                        logger.warning("HF structured model not found (no response_format path): %s", candidate_model)
+                        continue
+
+                if response is None:
+                    raise last_error or e
                 response_text = response.choices[0].message.content
                 # ... (same parsing logic would apply, simplified here for brevity)
                 try:

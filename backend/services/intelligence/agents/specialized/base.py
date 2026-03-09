@@ -29,7 +29,7 @@ except ImportError:
         logger.warning("txtai not available, using fallback implementation")
 
 class SIFBaseAgent(BaseALwrityAgent):
-    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, agent_type: str = "sif_agent", model_name: str = "Qwen/Qwen2.5-3B-Instruct", llm: Any = None, **kwargs):
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, agent_type: str = "sif_agent", model_name: str = "Qwen/Qwen2.5-1.5B-Instruct", llm: Any = None, **kwargs):
         # Hybrid LLM Strategy:
         # 1. Shared LLM for external/high-quality generation
         self.shared_llm = SharedLLMWrapper(user_id)

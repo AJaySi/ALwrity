@@ -40,9 +40,16 @@ from services.intelligence.monitoring.semantic_dashboard import RealTimeSemantic
 from services.intelligence.agents.safety_framework import get_safety_framework
 from services.agent_activity_service import AgentActivityService, build_agent_event_payload
 from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
+from services.llm_providers.main_text_generation import llm_text_gen
 import time
 
 logger = get_service_logger(__name__)
+
+LOW_COST_REMOTE_MODELS = [
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+]
 
 class TrackingLLMWrapper:
     """
@@ -169,7 +176,7 @@ class BaseALwrityAgent(ABC):
     _prompt_context_cache: Dict[str, Dict[str, Any]] = {}
     _profile_cache: Dict[str, Dict[str, Any]] = {}
     
-    def __init__(self, user_id: str, agent_type: str, model_name: str = "Qwen/Qwen3-4B-Instruct-2507", llm: Any = None, enable_tracing: bool = True, **kwargs):
+    def __init__(self, user_id: str, agent_type: str, model_name: str = "Qwen/Qwen2.5-1.5B-Instruct", llm: Any = None, enable_tracing: bool = True, **kwargs):
         self.user_id = user_id
         self.agent_type = agent_type
         self.model_name = model_name
@@ -295,7 +302,8 @@ class BaseALwrityAgent(ABC):
         Centralized method for all agents inheriting from BaseALwrityAgent.
         """
         if not self.llm:
-            return "[LLM Unavailable]"
+            logger.error("LLM unavailable for agent %s (%s)", self.agent_type, self.agent_id)
+            raise RuntimeError(f"LLM unavailable for agent {self.agent_type}")
             
         try:
             # Run in executor to avoid blocking if LLM is synchronous
@@ -319,7 +327,37 @@ class BaseALwrityAgent(ABC):
             
         except Exception as e:
             logger.error(f"LLM generation failed in agent {self.agent_type}: {e}")
-            return "[Generation Failed]"
+            logger.warning(
+                "Attempting remote low-cost fallback via llm_text_gen for agent %s (user=%s)",
+                self.agent_type,
+                self.user_id,
+            )
+            try:
+                loop = asyncio.get_event_loop()
+                fallback_response = await loop.run_in_executor(
+                    None,
+                    lambda: llm_text_gen(
+                        prompt=prompt,
+                        user_id=self.user_id,
+                        preferred_hf_models=LOW_COST_REMOTE_MODELS,
+                    ),
+                )
+                logger.warning(
+                    "Remote low-cost fallback succeeded for agent %s (user=%s)",
+                    self.agent_type,
+                    self.user_id,
+                )
+                return fallback_response
+            except Exception as remote_e:
+                logger.error(
+                    "Remote fallback failed for agent %s (user=%s): %s",
+                    self.agent_type,
+                    self.user_id,
+                    remote_e,
+                )
+                raise RuntimeError(
+                    f"Local and remote LLM generation failed for agent {self.agent_type}: {remote_e}"
+                ) from remote_e
 
     def _resolve_agent_key(self, agent_type: str) -> str:
         value = str(agent_type or "").strip()
@@ -524,7 +562,7 @@ class BaseALwrityAgent(ABC):
                     result = await loop.run_in_executor(None, self.txtai_agent, prompt)
             
             if not self.txtai_agent:
-                result = "Agent not initialized"
+                raise RuntimeError(f"Agent {self.agent_id} not initialized (txtai_agent missing)")
 
             if activity and run_record:
                 activity.log_event(
@@ -848,19 +886,15 @@ class BaseALwrityAgent(ABC):
             raise e
     
     async def _execute_fallback(self, action: AgentAction) -> str:
-        """Execute fallback action when txtai is not available"""
-        # Simulate agent processing for development
-        logger.info(f"Executing fallback action: {action.action_type}")
-        
-        # Return simulated result based on action type
-        if action.action_type == "analyze_competitor":
-            return "Competitor analysis completed (fallback mode)"
-        elif action.action_type == "optimize_content":
-            return "Content optimization completed (fallback mode)"
-        elif action.action_type == "fix_seo_issue":
-            return "SEO issue fixed (fallback mode)"
-        else:
-            return f"Action {action.action_type} completed (fallback mode)"
+        """Fail-fast instead of returning mock fallback output."""
+        logger.error(
+            "Fallback execution requested for action '%s' on agent %s. Failing fast to avoid mock output.",
+            action.action_type,
+            self.agent_id,
+        )
+        raise RuntimeError(
+            f"Fallback execution is disabled for SIF reliability. Agent={self.agent_id}, action={action.action_type}"
+        )
     
     def _prepare_agent_prompt(self, action: AgentAction) -> str:
         """Prepare prompt for txtai agent"""
