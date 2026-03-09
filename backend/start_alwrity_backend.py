@@ -308,7 +308,7 @@ def main():
     # Set global verbose flag for utilities
     os.environ["ALWRITY_VERBOSE"] = "true" if verbose_mode else "false"
     
-    print("🚀 ALwrity Backend Server")
+    print("[*] ALwrity Backend Server")
     print("=" * 40)
     print(f"Mode: {'PRODUCTION' if production_mode else 'DEVELOPMENT'}")
     print(f"Auto-reload: {'ENABLED' if enable_reload else 'DISABLED'}")
