@@ -51,30 +51,34 @@ class TaskStatusUpdateRequest(BaseModel):
     )
 
 async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label: str):
-    svc = TxtaiIntelligenceService(user_id)
-    items = []
-    for t in tasks:
-        task_id = t.get("id")
-        pillar_id = t.get("pillarId")
-        status = t.get("status")
-        title = t.get("title")
-        description = t.get("description")
-        text = f"[{pillar_id}] {title}\n{description}\nstatus={status}"
-        metadata = {
-            "type": "daily_workflow_task",
-            "date": date,
-            "label": label,
-            "pillar_id": pillar_id,
-            "status": status,
-            "implemented": status == "completed",
-            "dismissed": status == "skipped",
-            "task_id": task_id,
-        }
-        items.append((f"{label}_task:{user_id}:{date}:{task_id}", text, metadata))
+    """Index tasks to SIF in background without blocking the main API response."""
     try:
+        svc = TxtaiIntelligenceService(user_id)
+        items = []
+        for t in tasks:
+            task_id = t.get("id")
+            pillar_id = t.get("pillarId")
+            status = t.get("status")
+            title = t.get("title")
+            description = t.get("description")
+            text = f"[{pillar_id}] {title}\n{description}\nstatus={status}"
+            metadata = {
+                "type": "daily_workflow_task",
+                "date": date,
+                "label": label,
+                "pillar_id": pillar_id,
+                "status": status,
+                "implemented": status == "completed",
+                "dismissed": status == "skipped",
+                "task_id": task_id,
+            }
+            items.append((f"{label}_task:{user_id}:{date}:{task_id}", text, metadata))
+        
+        # Index content without blocking - service will initialize in background if needed
         await svc.index_content(items)
-    except Exception:
-        return
+    except Exception as e:
+        # Log but don't raise - indexing failures shouldn't crash the API
+        logger.debug(f"Background indexing failed for user {user_id}: {e}")
 
 
 @router.get("")
