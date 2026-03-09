@@ -700,7 +700,15 @@ class TaskScheduler:
             return summary
 
         try:
-            tasks = task_loader(db)
+            # Pass user_id for strict user isolation where loaders support it.
+            # Keep backward compatibility with legacy loaders that only accept db.
+            import inspect
+            loader_signature = inspect.signature(task_loader)
+            if "user_id" in loader_signature.parameters:
+                tasks = task_loader(db, user_id=user_id)
+            else:
+                tasks = task_loader(db)
+
             if not tasks:
                 return summary
 
@@ -748,6 +756,8 @@ class TaskScheduler:
                 cycle_summary["tasks_failed_by_type"].get(task_type, 0)
                 + summary["failed"]
             )
+
+            self.stats["tasks_found"] += summary["found"]
 
             return summary
         except Exception as e:

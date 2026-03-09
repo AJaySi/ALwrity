@@ -62,19 +62,19 @@ async def check_and_execute_due_tasks(scheduler: 'TaskScheduler'):
             onboarding_service = OnboardingProgressService()
             status = onboarding_service.get_onboarding_status(user_id)
             
-            if not status.get("is_completed", False):
-                # Skip logging for inactive users to reduce noise, unless debugging
-                # logger.debug(f"[Scheduler Check] Skipping user {user_id} - Onboarding incomplete")
-                continue
+            onboarding_completed = status.get("is_completed", False)
 
-            # Check active strategies for this user (for interval adjustment)
-            try:
-                from services.active_strategy_service import ActiveStrategyService
-                active_strategy_service = ActiveStrategyService(db_session=db)
-                user_active_strategies = active_strategy_service.count_active_strategies_with_tasks()
-                total_active_strategies += user_active_strategies
-            except Exception as e:
-                logger.warning(f"Error counting active strategies for user {user_id}: {e}")
+            # Check active strategies only after onboarding completion.
+            # Task execution below is not hard-gated by onboarding state so recurring
+            # system tasks (e.g., token monitoring) still run and surface correctly.
+            if onboarding_completed:
+                try:
+                    from services.active_strategy_service import ActiveStrategyService
+                    active_strategy_service = ActiveStrategyService(db_session=db)
+                    user_active_strategies = active_strategy_service.count_active_strategies_with_tasks()
+                    total_active_strategies += user_active_strategies
+                except Exception as e:
+                    logger.warning(f"Error counting active strategies for user {user_id}: {e}")
 
             # Phase 2B: Real-time semantic health monitoring (runs every 24 hours)
             # Check if 24 hours have passed since last check
@@ -106,11 +106,7 @@ async def check_and_execute_due_tasks(scheduler: 'TaskScheduler'):
             registered_types = scheduler.registry.get_registered_types()
             for task_type in registered_types:
                 # Pass the user-specific session
-                type_summary = await scheduler._process_task_type(task_type, db, cycle_summary, user_id=user_id)
-                if type_summary:
-                    cycle_summary['tasks_found_by_type'][task_type] = cycle_summary['tasks_found_by_type'].get(task_type, 0) + type_summary.get('found', 0)
-                    cycle_summary['tasks_executed_by_type'][task_type] = cycle_summary['tasks_executed_by_type'].get(task_type, 0) + type_summary.get('executed', 0)
-                    cycle_summary['tasks_failed_by_type'][task_type] = cycle_summary['tasks_failed_by_type'].get(task_type, 0) + type_summary.get('failed', 0)
+                await scheduler._process_task_type(task_type, db, cycle_summary, user_id=user_id)
         
         except Exception as e:
             logger.error(f"[Scheduler Check] Error processing user {user_id}: {e}")
