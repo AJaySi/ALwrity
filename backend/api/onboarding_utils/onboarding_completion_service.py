@@ -6,6 +6,7 @@ Handles the complex logic for completing the onboarding process.
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import os
+from urllib.parse import urlparse
 from fastapi import HTTPException
 from loguru import logger
 
@@ -21,6 +22,84 @@ class OnboardingCompletionService:
     def __init__(self):
         # Pre-requisite steps; step 6 is the finalization itself
         self.required_steps = [1, 2, 3, 4, 5]
+
+    def _normalize_competitor_analysis_for_deep_task(self, competitors: Any) -> List[Dict[str, Any]]:
+        """Normalize Step 3 competitor analysis records to deep-task competitor schema."""
+        if not isinstance(competitors, list):
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        seen_domains = set()
+
+        for competitor in competitors:
+            if isinstance(competitor, str):
+                raw_url = competitor
+                raw_domain = ""
+                name = ""
+                summary = ""
+            elif isinstance(competitor, dict):
+                raw_url = (
+                    competitor.get("competitor_url")
+                    or competitor.get("url")
+                    or competitor.get("website_url")
+                    or competitor.get("competitor_domain")
+                    or competitor.get("domain")
+                    or ""
+                )
+                raw_domain = competitor.get("competitor_domain") or competitor.get("domain") or ""
+                name = competitor.get("name") or competitor.get("title") or ""
+                summary = competitor.get("summary") or competitor.get("description") or ""
+
+                analysis_data = competitor.get("analysis_data")
+                if isinstance(analysis_data, dict):
+                    name = name or analysis_data.get("name") or analysis_data.get("title") or ""
+                    summary = summary or analysis_data.get("summary") or analysis_data.get("description") or ""
+            else:
+                continue
+
+            url = self._normalize_competitor_url(raw_url)
+            if not url:
+                url = self._normalize_competitor_url(raw_domain)
+            if not url:
+                continue
+
+            domain = self._extract_domain_from_url(url)
+            if not domain or domain in seen_domains:
+                continue
+
+            seen_domains.add(domain)
+            normalized.append({
+                "url": url,
+                "domain": domain,
+                "name": name or domain,
+                "summary": summary,
+            })
+
+        return normalized
+
+    def _normalize_competitor_url(self, raw: Any) -> str:
+        if not isinstance(raw, str):
+            return ""
+
+        value = raw.strip()
+        if not value:
+            return ""
+
+        if not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+
+        parsed = urlparse(value)
+        if not parsed.scheme or not parsed.netloc:
+            return ""
+
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def _extract_domain_from_url(self, url: str) -> str:
+        parsed = urlparse(url)
+        domain = (parsed.netloc or "").lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain
     
     async def complete_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Complete the onboarding process with full validation."""
@@ -233,11 +312,22 @@ class OnboardingCompletionService:
 
                         try:
                             research_prefs = integrated_data.get("research_preferences", {}) if isinstance(integrated_data, dict) else {}
-                            competitors = research_prefs.get("competitors") if isinstance(research_prefs, dict) else None
-                            
-                            # Fallback: Check competitor_analysis (Step 3 persistence) if not in preferences
-                            if not competitors or not isinstance(competitors, list) or len(competitors) == 0:
-                                competitors = integrated_data.get("competitor_analysis") if isinstance(integrated_data, dict) else None
+                            research_competitors = research_prefs.get("competitors") if isinstance(research_prefs, dict) else None
+
+                            competitor_analysis = integrated_data.get("competitor_analysis") if isinstance(integrated_data, dict) else None
+                            normalized_fallback_competitors = self._normalize_competitor_analysis_for_deep_task(competitor_analysis)
+
+                            selected_source = "research_preferences"
+                            competitors = research_competitors
+                            if not isinstance(competitors, list) or len(competitors) == 0:
+                                competitors = normalized_fallback_competitors
+                                selected_source = "competitor_analysis"
+
+                            logger.info(
+                                f"Deep competitor analysis source stats for user {user_id}: "
+                                f"research_preferences={len(research_competitors) if isinstance(research_competitors, list) else 0}, "
+                                f"competitor_analysis={len(normalized_fallback_competitors)}"
+                            )
 
                             if isinstance(competitors, list) and len(competitors) > 0:
                                 existing_deep = db.query(DeepCompetitorAnalysisTask).filter(
@@ -272,12 +362,13 @@ class OnboardingCompletionService:
                                 db.commit()
                                 logger.info(
                                     f"Scheduled deep competitor analysis for user {user_id} "
-                                    f"({website_url}) at {next_execution.isoformat()} with {len(competitors)} competitors"
+                                    f"({website_url}) at {next_execution.isoformat()} with {len(competitors)} competitors "
+                                    f"from source={selected_source}"
                                 )
                             else:
                                 logger.warning(
                                     f"Deep competitor analysis not scheduled for user {user_id}: "
-                                    f"no Step 3 competitors available"
+                                    f"no competitors available from research_preferences or competitor_analysis"
                                 )
                         except Exception as e:
                             logger.warning(f"Failed to schedule deep competitor analysis for user {user_id}: {e}")
