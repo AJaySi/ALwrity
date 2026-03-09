@@ -130,7 +130,8 @@ from api.seo_dashboard import (
     analyze_urls_ai,
     AnalyzeURLsRequest,
     get_analyzed_pages,
-    get_semantic_health  # Phase 2B: Semantic health monitoring
+    get_semantic_health,  # Phase 2B: Semantic health monitoring
+    get_onboarding_task_health,
 )
 
 
@@ -315,6 +316,13 @@ async def get_strategic_insights_history_endpoint(current_user: dict = Depends(g
 async def refresh_analytics_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
     """Refresh analytics data by invalidating cache and fetching fresh data."""
     return await refresh_analytics_data(current_user, site_url)
+
+
+
+@app.get("/api/seo-dashboard/onboarding-task-health")
+async def onboarding_task_health_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+    """Get consolidated health for onboarding-scheduled SEO tasks."""
+    return await get_onboarding_task_health(current_user, site_url)
 
 @app.get("/api/seo-dashboard/health")
 async def seo_dashboard_health():

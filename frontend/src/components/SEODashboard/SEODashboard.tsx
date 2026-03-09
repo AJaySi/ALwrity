@@ -18,7 +18,6 @@ import {
   AccordionSummary,
   AccordionDetails,
   CircularProgress,
-  Drawer
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth, useUser, SignOutButton, useClerk } from '@clerk/clerk-react';
@@ -33,7 +32,6 @@ import {
   Schedule as ScheduleIcon,
   Info as InfoIcon,
   ExpandMore as ExpandMoreIcon,
-  Close as CloseIcon,
   AutoAwesome as AIIcon
 } from '@mui/icons-material';
 
@@ -50,8 +48,7 @@ import { useSEODashboardStore } from '../../stores/seoDashboardStore';
 
 // API
 import { userDataAPI } from '../../api/userData';
-import { SIFIndexingHealth } from '../../api/seoDashboard';
-import { getSchedulerDashboard, SchedulerJob } from '../../api/schedulerDashboard';
+import { OnboardingScheduledTaskHealthResponse, OnboardingTaskStatus } from '../../api/seoDashboard';
 
 // Shared components
 import PlatformAnalytics from '../shared/PlatformAnalytics';
@@ -121,11 +118,7 @@ const SEODashboard: React.FC = () => {
   const [competitiveSitemapBenchmarkingReport, setCompetitiveSitemapBenchmarkingReport] = useState<any>(null);
   const [competitiveSitemapBenchmarkingLoading, setCompetitiveSitemapBenchmarkingLoading] = useState(false);
   const [competitiveSitemapBenchmarkingError, setCompetitiveSitemapBenchmarkingError] = useState<string | null>(null);
-  const [sifHealth, setSifHealth] = useState<SIFIndexingHealth | null>(null);
-  const [sifDetailsOpen, setSifDetailsOpen] = useState(false);
-  const [schedulerJobs, setSchedulerJobs] = useState<SchedulerJob[] | null>(null);
-  const [schedulerJobsLoading, setSchedulerJobsLoading] = useState(false);
-  const [schedulerJobsError, setSchedulerJobsError] = useState<string | null>(null);
+  const [onboardingTaskHealth, setOnboardingTaskHealth] = useState<OnboardingScheduledTaskHealthResponse | null>(null);
 
   // PlatformAnalytics refresh handle
   const platformRefreshRef = useRef<(() => Promise<void>) | null>(null);
@@ -147,26 +140,6 @@ const SEODashboard: React.FC = () => {
     fetchStrategicInsightsHistory();
   }, []);
 
-  useEffect(() => {
-    if (!sifDetailsOpen || schedulerJobs || schedulerJobsLoading) return;
-    setSchedulerJobsLoading(true);
-    (async () => {
-      try {
-        const dashboard = await getSchedulerDashboard();
-        const currentUserId = dashboard.user_isolation?.current_user_id || null;
-        const filtered = dashboard.jobs.filter((job) =>
-          currentUserId ? job.user_id === currentUserId : Boolean(job.user_id)
-        );
-        setSchedulerJobs(filtered);
-        setSchedulerJobsError(null);
-      } catch (e) {
-        console.error('Failed to load scheduler jobs for SEO dashboard:', e);
-        setSchedulerJobsError('Failed to load scheduler jobs');
-      } finally {
-        setSchedulerJobsLoading(false);
-      }
-    })();
-  }, [sifDetailsOpen, schedulerJobs, schedulerJobsLoading]);
 
   const fetchStrategicInsightsHistory = async () => {
     setStrategicInsightsLoading(true);
@@ -260,16 +233,16 @@ const SEODashboard: React.FC = () => {
         setLoading(true);
         
         // Fetch platform status and user data in parallel
-        const [platformResponse, userData, sifHealthResponse] = await Promise.all([
+        const [platformResponse, userData, onboardingTaskHealthResponse] = await Promise.all([
           apiClient.get('/api/seo-dashboard/platforms'),
           userDataAPI.getUserData(),
-          apiClient.get('/api/seo-dashboard/sif-health')
+          apiClient.get('/api/seo-dashboard/onboarding-task-health')
         ]);
         
         console.log('Platform status response:', platformResponse.status, platformResponse.statusText);
         console.log('Platform status data:', platformResponse.data);
         setPlatformStatus(platformResponse.data);
-        setSifHealth(sifHealthResponse.data);
+        setOnboardingTaskHealth(onboardingTaskHealthResponse.data);
         
         websiteUrl = userData?.website_url || 'https://alwrity.com';
         
@@ -499,6 +472,23 @@ const SEODashboard: React.FC = () => {
   }
 
   // Show sign-in prompt if not authenticated
+
+
+  const statusUiMap: Record<OnboardingTaskStatus, { label: string; color: string; bg: string; border: string; action: string }> = {
+    active: { label: 'Active', color: '#22c55e', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.4)', action: 'No action needed. Monitor next execution to confirm regular runs.' },
+    failed: { label: 'Failed', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.4)', action: 'Review the latest error and rerun after fixing data/source issues.' },
+    paused: { label: 'Paused', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', action: 'Resume this task from scheduler controls when ready.' },
+    needs_intervention: { label: 'Needs intervention', color: '#f97316', bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.4)', action: 'Immediate action required. Inspect failures and reconfigure before retrying.' },
+    not_scheduled: { label: 'Not scheduled', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.4)', action: 'Complete onboarding scheduling or create the task in scheduler.' }
+  };
+
+  const orderedTaskKeys = [
+    'OnboardingFullWebsiteAnalysisTask',
+    'DeepCompetitorAnalysisTask',
+    'SIFIndexingTask',
+    'MarketTrendsTask'
+  ];
+
   if (!isLoaded) {
     return <Skeleton variant="rectangular" height={200} />;
   }
@@ -622,67 +612,18 @@ const SEODashboard: React.FC = () => {
                       }}
                     />
                   </Tooltip>
-
-                  {sifHealth && (
-                    <Tooltip title="Semantic Indexing Status (SIF)">
-                      <Box
-                        onClick={() => setSifDetailsOpen(true)}
+                  {onboardingTaskHealth && (
+                    <Tooltip title="Onboarding Scheduled SEO Tasks">
+                      <Chip
+                        label={`Onboarding Tasks: ${Object.values(onboardingTaskHealth.tasks || {}).filter((task: any) => task?.status === 'active').length} active`}
+                        size="small"
                         sx={{
                           ml: 2,
-                          px: 2,
-                          py: 0.75,
-                          borderRadius: 999,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 1,
-                          cursor: 'pointer',
-                          bgcolor:
-                            sifHealth.status === 'healthy'
-                              ? 'rgba(76, 175, 80, 0.15)'
-                              : sifHealth.status === 'warning'
-                              ? 'rgba(255, 152, 0, 0.15)'
-                              : sifHealth.status === 'critical'
-                              ? 'rgba(244, 67, 54, 0.15)'
-                              : 'rgba(255, 255, 255, 0.05)',
-                          border:
-                            sifHealth.status === 'healthy'
-                              ? '1px solid rgba(76, 175, 80, 0.5)'
-                              : sifHealth.status === 'warning'
-                              ? '1px solid rgba(255, 152, 0, 0.5)'
-                              : sifHealth.status === 'critical'
-                              ? '1px solid rgba(244, 67, 54, 0.5)'
-                              : '1px solid rgba(255, 255, 255, 0.15)',
+                          bgcolor: 'rgba(255, 255, 255, 0.1)',
+                          color: 'white',
+                          border: '1px solid rgba(255, 255, 255, 0.2)'
                         }}
-                      >
-                        <Box
-                          sx={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            bgcolor:
-                              sifHealth.status === 'healthy'
-                                ? '#4CAF50'
-                                : sifHealth.status === 'warning'
-                                ? '#FF9800'
-                                : sifHealth.status === 'critical'
-                                ? '#F44336'
-                                : 'rgba(255, 255, 255, 0.5)',
-                          }}
-                        />
-                        <Typography
-                          variant="body2"
-                          sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 500 }}
-                        >
-                          Semantic Indexing:{' '}
-                          {sifHealth.status === 'not_scheduled'
-                            ? 'Not scheduled yet'
-                            : sifHealth.status === 'healthy'
-                            ? 'Up to date'
-                            : sifHealth.status === 'warning'
-                            ? 'Issues detected'
-                            : 'Needs intervention'}
-                        </Typography>
-                      </Box>
+                      />
                     </Tooltip>
                   )}
                 </Box>
@@ -1524,6 +1465,61 @@ const SEODashboard: React.FC = () => {
                 </Box>
               )}
 
+
+
+              {onboardingTaskHealth && (
+                <Box sx={{ mt: 4 }}>
+                  <GlassCard>
+                    <Box sx={{ p: 3 }}>
+                      <Typography variant="h6" sx={{ color: 'white', fontWeight: 700, mb: 0.5 }}>
+                        Onboarding Scheduled SEO Tasks
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
+                        Unified health view for onboarding automation jobs.
+                      </Typography>
+
+                      <Grid container spacing={2}>
+                        {orderedTaskKeys.map((taskKey) => {
+                          const task = onboardingTaskHealth.tasks?.[taskKey];
+                          if (!task) return null;
+                          const status = (task.status || 'not_scheduled') as OnboardingTaskStatus;
+                          const ui = statusUiMap[status] || statusUiMap.not_scheduled;
+
+                          return (
+                            <Grid item xs={12} md={6} key={taskKey}>
+                              <Box sx={{ p: 2, borderRadius: 2, border: `1px solid ${ui.border}`, bgcolor: 'rgba(15,23,42,0.5)' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                  <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600 }}>
+                                    {task.label || taskKey}
+                                  </Typography>
+                                  <Chip size="small" label={ui.label} sx={{ color: ui.color, bgcolor: ui.bg, border: `1px solid ${ui.border}` }} />
+                                </Box>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)', display: 'block' }}>
+                                  Next: {task.next_execution ? new Date(task.next_execution).toLocaleString() : 'Not scheduled'}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)', display: 'block' }}>
+                                  Last success: {task.last_success ? new Date(task.last_success).toLocaleString() : 'No successful runs yet'}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)', display: 'block' }}>
+                                  Last failure: {task.last_failure ? new Date(task.last_failure).toLocaleString() : 'No failure recorded'}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)', display: 'block', mb: 1 }}>
+                                  Consecutive failures: {task.consecutive_failures ?? 0}
+                                </Typography>
+                                <Alert severity={status === 'active' ? 'success' : status === 'not_scheduled' ? 'info' : 'warning'} sx={{ bgcolor: 'rgba(15,23,42,0.65)', color: 'white', border: `1px solid ${ui.border}` }}>
+                                  {ui.action}
+                                  {task.latest_execution?.error_message ? ` Latest error: ${task.latest_execution.error_message}` : ''}
+                                </Alert>
+                              </Box>
+                            </Grid>
+                          );
+                        })}
+                      </Grid>
+                    </Box>
+                  </GlassCard>
+                </Box>
+              )}
+
               {/* SEO Analyzer Panel */}
               <SEOAnalyzerPanel
                 analysisData={analysisData}
@@ -1543,236 +1539,7 @@ const SEODashboard: React.FC = () => {
           </AnimatePresence>
         </Container>
 
-        <Drawer
-          anchor="right"
-          open={sifDetailsOpen}
-          onClose={() => setSifDetailsOpen(false)}
-          PaperProps={{
-            sx: {
-              width: { xs: '100%', sm: 360 },
-              maxWidth: '100vw',
-              bgcolor: 'rgba(15, 23, 42, 0.98)',
-              color: 'white'
-            }
-          }}
-        >
-          <Box
-            sx={{
-              p: 2,
-              borderBottom: 1,
-              borderColor: 'rgba(148, 163, 184, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}
-          >
-            <Typography variant="h6">Semantic Indexing Details</Typography>
-            <IconButton onClick={() => setSifDetailsOpen(false)} sx={{ color: 'rgba(148,163,184,0.9)' }}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
 
-          <Box sx={{ p: 2 }}>
-            {sifHealth ? (
-              <>
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
-                    Overall Status
-                  </Typography>
-                  <Typography variant="body1">
-                    {sifHealth.status === 'not_scheduled'
-                      ? 'Not scheduled'
-                      : sifHealth.status === 'healthy'
-                      ? 'Healthy'
-                      : sifHealth.status === 'warning'
-                      ? 'Warning'
-                      : 'Critical'}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
-                    Next Scheduled Run
-                  </Typography>
-                  <Typography variant="body1">
-                    {sifHealth.task?.next_execution
-                      ? new Date(sifHealth.task.next_execution).toLocaleString()
-                      : 'Not scheduled'}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
-                    Last Success
-                  </Typography>
-                  <Typography variant="body1">
-                    {sifHealth.task?.last_success
-                      ? new Date(sifHealth.task.last_success).toLocaleString()
-                      : 'No successful runs yet'}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
-                    Last Failure
-                  </Typography>
-                  <Typography variant="body1">
-                    {sifHealth.task?.last_failure
-                      ? new Date(sifHealth.task.last_failure).toLocaleString()
-                      : 'No failures recorded'}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
-                    Consecutive Failures
-                  </Typography>
-                  <Typography variant="body1">
-                    {sifHealth.task?.consecutive_failures ?? 0}
-                  </Typography>
-                </Box>
-
-                {sifHealth.last_run?.status && (
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)', mb: 0.5 }}>
-                      Last Run Status
-                    </Typography>
-                    <Typography variant="body1">
-                      {sifHealth.last_run.status}
-                      {sifHealth.last_run.time
-                        ? ` • ${new Date(sifHealth.last_run.time).toLocaleString()}`
-                        : ''}
-                    </Typography>
-                  </Box>
-                )}
-
-                {sifHealth.last_run?.error_message && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="body2" sx={{ color: 'rgba(248,113,113,0.9)', mb: 0.5 }}>
-                      Last Error (snippet)
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        whiteSpace: 'pre-wrap',
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        bgcolor: 'rgba(15,23,42,0.9)',
-                        borderRadius: 1,
-                        p: 1.5,
-                        border: '1px solid rgba(148,163,184,0.3)'
-                      }}
-                    >
-                      {sifHealth.last_run.error_message}
-                    </Typography>
-                  </Box>
-                )}
-
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
-                    Scheduled Jobs For Your Account
-                  </Typography>
-
-                  {schedulerJobsLoading && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CircularProgress size={16} sx={{ color: 'rgba(148,163,184,0.9)' }} />
-                      <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)' }}>
-                        Loading scheduler jobs…
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {schedulerJobsError && !schedulerJobsLoading && (
-                    <Typography variant="body2" sx={{ color: 'rgba(248,113,113,0.9)' }}>
-                      {schedulerJobsError}
-                    </Typography>
-                  )}
-
-                  {!schedulerJobsLoading && !schedulerJobsError && schedulerJobs && schedulerJobs.length === 0 && (
-                    <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)' }}>
-                      No scheduled jobs found for this account.
-                    </Typography>
-                  )}
-
-                  {!schedulerJobsLoading && !schedulerJobsError && schedulerJobs && schedulerJobs.length > 0 && (
-                    <Box
-                      sx={{
-                        mt: 1,
-                        maxHeight: 220,
-                        overflowY: 'auto',
-                        borderRadius: 1,
-                        border: '1px solid rgba(51,65,85,0.9)',
-                        bgcolor: 'rgba(15,23,42,0.9)'
-                      }}
-                    >
-                      {schedulerJobs
-                        .slice()
-                        .sort((a, b) => {
-                          const aTime = a.next_run_time ? new Date(a.next_run_time).getTime() : Number.MAX_SAFE_INTEGER;
-                          const bTime = b.next_run_time ? new Date(b.next_run_time).getTime() : Number.MAX_SAFE_INTEGER;
-                          return aTime - bTime;
-                        })
-                        .map((job) => {
-                          const label =
-                            job.task_category === 'website_analysis'
-                              ? 'Website Analysis'
-                              : job.task_category === 'platform_insights'
-                              ? 'Platform Insights'
-                              : job.task_category === 'deep_website_crawl'
-                              ? 'Deep Website Crawl'
-                              : job.function_name || job.id;
-
-                          const subtitle =
-                            job.website_url ||
-                            (job.platform ? `${job.platform.toUpperCase()} insights` : job.job_store);
-
-                          const nextRun = job.next_run_time
-                            ? new Date(job.next_run_time).toLocaleString()
-                            : 'Not scheduled';
-
-                          return (
-                            <Box
-                              key={job.id}
-                              sx={{
-                                px: 1.5,
-                                py: 1,
-                                borderBottom: '1px solid rgba(30,41,59,0.9)',
-                                '&:last-of-type': { borderBottom: 'none' }
-                              }}
-                            >
-                              <Typography
-                                variant="body2"
-                                sx={{ color: 'rgba(248,250,252,0.95)', fontWeight: 500 }}
-                              >
-                                {label}
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                sx={{ display: 'block', color: 'rgba(148,163,184,0.9)' }}
-                              >
-                                {subtitle}
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', mt: 0.25 }}
-                              >
-                                Next run: {nextRun}
-                                {job.frequency ? ` • ${job.frequency}` : ''}
-                              </Typography>
-                            </Box>
-                          );
-                        })}
-                    </Box>
-                  )}
-                </Box>
-              </>
-            ) : (
-              <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.9)' }}>
-                No semantic indexing information available.
-              </Typography>
-            )}
-          </Box>
-        </Drawer>
       </DashboardContainer>
   );
 };
