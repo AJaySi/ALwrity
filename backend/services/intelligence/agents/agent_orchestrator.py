@@ -47,7 +47,7 @@ logger = get_service_logger(__name__)
 class AgentTeamConfiguration:
     """Configuration for the complete agent team"""
     user_id: str
-    shared_llm: str = "Qwen/Qwen2.5-3B-Instruct"  # Updated to a stable model known for text-generation
+    shared_llm: str = "Qwen/Qwen2.5-1.5B-Instruct"  # Reduced default memory footprint for local environments
     max_iterations: int = 15
     enable_safety: bool = True
     enable_performance_monitoring: bool = True

@@ -44,6 +44,12 @@ class SharedLLMWrapper:
 
 _local_llm_cache = {}
 
+LOCAL_LLM_FALLBACKS = [
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+]
+
 class LocalLLMWrapper:
     """
     Lazily loads a local LLM via txtai and caches it globally.
@@ -72,22 +78,56 @@ class LocalLLMWrapper:
         if task_to_use == "text-generation":
             task_to_use = "language-generation"
             
-        logger.info(f"Loading local LLM (singleton): {self.model_path} (task={task_to_use})")
-        try:
-            _local_llm_cache[cache_key] = LLM(path=self.model_path, task=task_to_use)
-        except Exception as e:
+        candidate_models = []
+        for candidate in [self.model_path, *LOCAL_LLM_FALLBACKS]:
+            if candidate not in candidate_models:
+                candidate_models.append(candidate)
+
+        last_error = None
+        for candidate_model in candidate_models:
+            candidate_key = f"{candidate_model}:{self.task}"
+            if candidate_key in _local_llm_cache:
+                if candidate_model != self.model_path:
+                    logger.warning(f"Using cached fallback local LLM model: {candidate_model}")
+                return _local_llm_cache[candidate_key]
+
+            logger.info(f"Loading local LLM (singleton): {candidate_model} (task={task_to_use})")
             try:
-                import transformers
-                from transformers.pipelines import SUPPORTED_TASKS
-                logger.error(
-                    f"LocalLLMWrapper init failed (model={self.model_path}, requested_task={task_to_use}, "
-                    f"transformers={getattr(transformers, '__version__', 'unknown')}, "
-                    f"supported_tasks={sorted(list(SUPPORTED_TASKS.keys()))[:50]})"
+                _local_llm_cache[candidate_key] = LLM(path=candidate_model, task=task_to_use)
+                if candidate_model != self.model_path:
+                    logger.warning(
+                        f"Loaded fallback local LLM model '{candidate_model}' after failure on '{self.model_path}'"
+                    )
+                return _local_llm_cache[candidate_key]
+            except Exception as e:
+                last_error = e
+                message = str(e).lower()
+                is_memory_issue = (
+                    "paging file is too small" in message
+                    or "os error 1455" in message
+                    or "out of memory" in message
+                    or "not enough memory" in message
                 )
-            except Exception:
-                pass
-            logger.error(f"Failed to initialize LocalLLMWrapper: {e}")
-            raise e
+                if is_memory_issue:
+                    logger.warning(
+                        f"Local LLM memory load failure for '{candidate_model}', trying smaller fallback. Error: {e}"
+                    )
+                    continue
+                logger.warning(f"Local LLM load failed for '{candidate_model}', trying next fallback. Error: {e}")
+                continue
+
+        try:
+            import transformers
+            from transformers.pipelines import SUPPORTED_TASKS
+            logger.error(
+                f"LocalLLMWrapper init failed (model={self.model_path}, requested_task={task_to_use}, "
+                f"transformers={getattr(transformers, '__version__', 'unknown')}, "
+                f"supported_tasks={sorted(list(SUPPORTED_TASKS.keys()))[:50]})"
+            )
+        except Exception:
+            pass
+        logger.error(f"Failed to initialize LocalLLMWrapper after fallback attempts: {last_error}")
+        raise last_error
             
         return _local_llm_cache[cache_key]
         
@@ -98,7 +138,7 @@ class LocalLLMWrapper:
         return self.llm(prompt, **kwargs)
 
 class SIFBaseAgent(BaseALwrityAgent):
-    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, agent_type: str = "sif_agent", model_name: str = "Qwen/Qwen2.5-3B-Instruct", llm: Any = None):
+    def __init__(self, intelligence_service: TxtaiIntelligenceService, user_id: str, agent_type: str = "sif_agent", model_name: str = "Qwen/Qwen2.5-1.5B-Instruct", llm: Any = None):
         # Hybrid LLM Strategy:
         # 1. Shared LLM for external/high-quality generation (available to all agents)
         self.shared_llm = SharedLLMWrapper(user_id)
