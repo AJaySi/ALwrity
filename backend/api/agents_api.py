@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 import json
 
-from middleware.auth_middleware import get_current_user
+from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from utils.logger_utils import get_service_logger
 from services.intelligence.agents.agent_orchestrator import (
     execute_marketing_strategy, get_agent_system_status, process_market_signals_for_user
@@ -715,7 +715,7 @@ async def get_agent_huddle_feed_endpoint(
 @router.get("/huddle/stream")
 async def stream_agent_huddle_endpoint(
     detail_tier: str = DETAIL_TIER_SUMMARY,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user_with_query_token),
 ):
     user_id = str(current_user.get("id"))
     resolved_tier = _resolve_detail_tier(detail_tier, current_user)
