@@ -106,15 +106,22 @@ def get_all_user_ids() -> List[str]:
             canonical_user_id = workspace_id
             db = None
             try:
-                db = get_session_for_user(workspace_id)
-                if db:
-                    onboarding_row = (
-                        db.query(OnboardingSession.user_id)
-                        .order_by(OnboardingSession.updated_at.desc())
-                        .first()
-                    )
-                    if onboarding_row and onboarding_row[0]:
-                        canonical_user_id = str(onboarding_row[0])
+                # Check if DB file exists before opening session to avoid creating/initializing DBs
+                db_path = get_user_db_path(workspace_id)
+                if not os.path.exists(db_path):
+                    # No DB file exists, use workspace ID as fallback
+                    canonical_user_id = workspace_id
+                else:
+                    # DB file exists, try to resolve canonical user_id from DB
+                    db = get_session_for_user(workspace_id)
+                    if db:
+                        onboarding_row = (
+                            db.query(OnboardingSession.user_id)
+                            .order_by(OnboardingSession.updated_at.desc())
+                            .first()
+                        )
+                        if onboarding_row and onboarding_row[0]:
+                            canonical_user_id = str(onboarding_row[0])
             except Exception as resolve_error:
                 logger.debug(
                     f"Could not resolve canonical user_id from DB for workspace {workspace_id}: {resolve_error}"
