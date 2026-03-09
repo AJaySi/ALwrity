@@ -54,12 +54,12 @@ const toWorkflowError = (error: unknown, fallbackMessage: string): WorkflowError
   if (error instanceof WorkflowError) return error;
 
   const message = error instanceof Error ? error.message : fallbackMessage;
-  return {
+  return new WorkflowError({
     code: 'WORKFLOW_ERROR',
     message,
     timestamp: new Date(),
     recoverable: false,
-  };
+  });
 };
 
 const computeProgressAndNavigation = (workflow: DailyWorkflow): { progress: WorkflowProgress; navigation: NavigationState } => {

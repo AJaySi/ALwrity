@@ -18,7 +18,7 @@ async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_curre
             logger.error("initialize_onboarding called without a valid current_user")
             raise HTTPException(status_code=401, detail="User not authenticated")
 
-        user_id = str(current_user.get('id'))
+        user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
         progress_service = OnboardingProgressService()
         status = progress_service.get_onboarding_status(user_id)
 
@@ -96,7 +96,7 @@ async def initialize_onboarding(current_user: Dict[str, Any] = Depends(get_curre
                 "email": current_user.get('email'),
                 "first_name": current_user.get('first_name'),
                 "last_name": current_user.get('last_name'),
-                "clerk_user_id": user_id,
+                "clerk_user_id": str(current_user.get('clerk_user_id') or user_id),
             },
             "onboarding": {
                 "is_completed": status['is_completed'],

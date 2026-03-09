@@ -22,7 +22,7 @@ class OnboardingControlService:
         db_gen = get_db()
         db = next(db_gen)
         try:
-            user_id = str(current_user.get('id'))
+            user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
             
             # Ensure user workspace exists when starting onboarding
             try:
@@ -53,7 +53,7 @@ class OnboardingControlService:
         """Reset the onboarding progress for a specific user."""
         try:
             from services.onboarding.progress_service import OnboardingProgressService
-            user_id = str(current_user.get('id'))
+            user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
             progress_service = OnboardingProgressService()
             success = progress_service.reset_onboarding(user_id)
 

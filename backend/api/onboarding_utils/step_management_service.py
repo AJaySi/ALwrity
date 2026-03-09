@@ -416,7 +416,7 @@ class StepManagementService:
     async def get_step_data(self, step_number: int, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Get data for a specific step."""
         try:
-            user_id = str(current_user.get('id'))
+            user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
             db = next(get_db(current_user))
             
             # Use SSOT for reading step data
@@ -492,7 +492,7 @@ class StepManagementService:
         """Mark a step as completed."""
         try:
             logger.info(f"[complete_step] Completing step {step_number}")
-            user_id = str(current_user.get('id'))
+            user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
 
             # Optional validation
             try:
@@ -672,7 +672,7 @@ class StepManagementService:
         """Skip a step (for optional steps)."""
         try:
             from services.onboarding.api_key_manager import get_onboarding_progress_for_user
-            user_id = str(current_user.get('id'))
+            user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
             progress = get_onboarding_progress_for_user(user_id)
             step = progress.get_step_data(step_number)
             
@@ -695,7 +695,7 @@ class StepManagementService:
     async def validate_step_access(self, step_number: int, current_user: Dict[str, Any]) -> Dict[str, Any]:
         """Validate if user can access a specific step."""
         try:
-            user_id = str(current_user.get('id'))
+            user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
             progress = get_onboarding_progress_for_user(user_id)
             
             if not progress.can_proceed_to_step(step_number):

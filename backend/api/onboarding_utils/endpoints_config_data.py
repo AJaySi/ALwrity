@@ -222,6 +222,94 @@ async def update_business_info(business_info_id: int, business_info: dict):
         raise HTTPException(status_code=500, detail=f"Failed to update business info: {str(e)}")
 
 
+async def generate_website_preview(intake: Dict[str, Any], current_user: Dict[str, Any]):
+    try:
+        user_id = current_user.get("id")
+        from services.onboarding.website_intake_service import website_intake_service
+        from services.onboarding.website_style_service import website_style_service
+        from api.onboarding_utils.website_automation_service import website_automation_service
+        from services.user_website_service import user_website_service
+        from models.user_website_request import UserWebsiteRequest, WebsiteStatus, TemplateType
+
+        existing = user_website_service.get_user_website_by_user(user_id)
+        if not existing:
+            user_website_service.create_user_website(
+                UserWebsiteRequest(
+                    user_id=user_id,
+                    template_type=TemplateType(intake.get("template_type", "blog")),
+                    status=WebsiteStatus.PREVIEWING,
+                    business_name=intake.get("business_name"),
+                    business_description=intake.get("business_summary")
+                )
+            )
+
+        site_brief = website_intake_service.generate_site_brief(intake, user_id=str(user_id))
+        if existing and existing.netlify_site_url:
+            site_brief.setdefault("site_brief", {})
+            site_brief["site_brief"]["canonical_url"] = existing.netlify_site_url
+        tokens = website_style_service.generate_theme_tokens(site_brief, user_id=str(user_id))
+        css = website_style_service.render_css(tokens) if tokens and not tokens.get("error") else ""
+        preview = await website_automation_service.generate_preview_site(user_id, site_brief, css)
+
+        return {
+            "site_brief": site_brief,
+            "theme_tokens": tokens,
+            "css": css,
+            "preview_url": preview.get("preview_url"),
+            "preview_root": preview.get("preview_root"),
+            "preview_files": preview.get("preview_files"),
+            "preview_html": preview.get("preview_html"),
+        }
+    except Exception as e:
+        logger.error(f"Error generating website preview: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate website preview")
+
+
+async def deploy_website(intake: Dict[str, Any], current_user: Dict[str, Any]):
+    try:
+        user_id = current_user.get("id")
+        from api.onboarding_utils.website_automation_service import WebsiteAutomationService
+        from services.user_website_service import user_website_service
+        from services.onboarding.website_intake_service import website_intake_service
+        from services.onboarding.website_style_service import website_style_service
+        from models.user_website_request import WebsiteStatusUpdate
+
+        template = intake.get("template_type", "blog")
+        business_name = intake.get("business_name") or intake.get("business_summary") or f"ALwrity Site {user_id}"
+        business_info = {"name": business_name}
+        site_brief = website_intake_service.generate_site_brief(intake, user_id=str(user_id))
+        tokens = website_style_service.generate_theme_tokens(site_brief, user_id=str(user_id))
+        css = website_style_service.render_css(tokens) if tokens and not tokens.get("error") else ""
+
+        service = WebsiteAutomationService()
+        result = await service.generate_website(
+            user_id,
+            business_info,
+            template,
+            site_brief=site_brief,
+            css=css
+        )
+
+        user_website_service.update_user_website_status(
+            user_id=user_id,
+            status_update=WebsiteStatusUpdate(
+                status=WebsiteStatus.DEPLOYED,
+                github_repo_url=result.get("repo_url"),
+                netlify_site_url=result.get("live_url"),
+                netlify_admin_url=result.get("admin_url")
+            )
+        )
+        return {
+            **result,
+            "site_brief": site_brief,
+            "theme_tokens": tokens,
+            "css": css
+        }
+    except Exception as e:
+        logger.error(f"Error deploying website: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to deploy website")
+
+
 __all__ = [name for name in globals().keys() if not name.startswith('_')]
 
 
