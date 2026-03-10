@@ -158,6 +158,16 @@ class SIFBaseAgent(BaseALwrityAgent):
         if kwargs:
             logger.debug(f"[{self.__class__.__name__}] Parameters: {kwargs}")
 
+    async def _ensure_intelligence_ready(self) -> bool:
+        """Ensure txtai intelligence service is initialized without blocking the event loop."""
+        try:
+            await self.intelligence._ensure_initialized_async()
+        except Exception as init_err:
+            logger.warning(f"[{self.__class__.__name__}] Intelligence initialization failed: {init_err}")
+            return False
+
+        return bool(getattr(self.intelligence, "_initialized", False) and self.intelligence.embeddings)
+
     def _create_txtai_agent(self):
         """
         SIF agents primarily use the intelligence service directly, but we can expose
@@ -186,11 +196,7 @@ class StrategyArchitectAgent(SIFBaseAgent):
         self._log_agent_operation("Discovering content pillars")
         
         try:
-            # Check if intelligence service is initialized
-            if not self.intelligence.is_initialized():
-                logger.error(f"[{self.__class__.__name__}] Intelligence service not initialized")
-                return []
-            
+            # Let intelligence service perform lazy async initialization internally.
             clusters = await self.intelligence.cluster(min_score=0.6)
             
             if not clusters:
@@ -370,14 +376,14 @@ class StrategyArchitectAgent(SIFBaseAgent):
 
     async def _fetch_index_documents(self) -> List[Dict[str, Any]]:
         """Fetch indexed documents and normalize metadata from txtai result objects."""
-        if not self.intelligence.is_initialized() or not self.intelligence.embeddings:
+        if not await self._ensure_intelligence_ready():
             return []
 
         embeddings = self.intelligence.embeddings
         limit = 0
         if hasattr(embeddings, "count"):
             try:
-                limit = int(embeddings.count())
+                limit = int(await asyncio.to_thread(embeddings.count))
             except Exception:
                 limit = 0
 
@@ -394,7 +400,7 @@ class StrategyArchitectAgent(SIFBaseAgent):
         for query in candidate_queries:
             try:
                 query_limit = limit if query.startswith("select") and limit > 0 else max(10, limit or 50)
-                rows = embeddings.search(query, limit=query_limit)
+                rows = await asyncio.to_thread(lambda: embeddings.search(query, limit=query_limit))
             except Exception:
                 continue
 
@@ -565,7 +571,7 @@ class ContentGuardianAgent(SIFBaseAgent):
         self._log_agent_operation("Checking for semantic cannibalization", draft_length=len(new_draft))
         
         try:
-            if not self.intelligence.is_initialized():
+            if not await self._ensure_intelligence_ready():
                 logger.error(f"[{self.__class__.__name__}] Intelligence service not initialized")
                 return {"warning": False, "error": "Service not initialized"}
             
@@ -796,7 +802,7 @@ class LinkGraphAgent(SIFBaseAgent):
         self._log_agent_operation("Suggesting internal links", draft_length=len(draft))
         
         try:
-            if not self.intelligence.is_initialized():
+            if not await self._ensure_intelligence_ready():
                 logger.error(f"[{self.__class__.__name__}] Intelligence service not initialized")
                 return []
             
@@ -876,7 +882,7 @@ class LinkGraphAgent(SIFBaseAgent):
         self._log_agent_operation("Building semantic link graph")
         
         try:
-            if not self.intelligence.is_initialized():
+            if not await self._ensure_intelligence_ready():
                 return {"error": "Intelligence service not initialized"}
                 
             # This is a resource-intensive operation in a real vector DB.
@@ -1002,7 +1008,7 @@ class CitationExpert(SIFBaseAgent):
         self._log_agent_operation("Finding citations", topic=topic)
         
         try:
-            if not self.intelligence.is_initialized():
+            if not await self._ensure_intelligence_ready():
                 return []
             
             # Search for highly relevant content
