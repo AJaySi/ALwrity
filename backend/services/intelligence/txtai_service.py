@@ -222,32 +222,15 @@ class TxtaiIntelligenceService:
 
     async def index_content(self, items: List[Tuple[str, str, Dict[str, Any]]]):
         """
-        Index content for semantic search and clustering (non-blocking).
-        
+        Index content for semantic search and clustering.
+
         Args:
             items: List of (id, text, metadata) tuples.
         """
-<<<<<<< HEAD
-        # Check if already initialized
-        if not self._initialized and not self._initialization_in_progress:
-            # Trigger initialization in background (non-blocking)
-            self._ensure_initialized()
-            # Don't wait for initialization - let it happen in background
-            logger.debug(f"Indexing triggered for user {self.user_id}, initialization will happen in background")
-            return
-        
-        # If initialization is still in progress, log and return without blocking
-        if not self._initialized:
-            logger.warning(f"Service not yet initialized for user {self.user_id}, indexing will retry later")
-            return
-        
-        if not self.embeddings:
-            logger.error(f"Cannot index content - embeddings not available for user {self.user_id}")
-=======
-        self._ensure_initialized()
+        await self._ensure_initialized_async()
         if not self._initialized or not self.embeddings:
             message = f"Cannot index content - service not initialized for user {self.user_id}"
-            logger.error(message)
+            logger.warning(message)
             if self.fail_fast:
                 raise RuntimeError(message)
             return
@@ -255,12 +238,12 @@ class TxtaiIntelligenceService:
         try:
             logger.info(f"Starting content indexing for user {self.user_id}")
             logger.debug(f"Indexing {len(items)} items")
-            
+
             # Validate input items
             if not items:
                 logger.warning("No items provided for indexing")
                 return
-                
+
             # Index items: [(id, text, metadata)] - metadata needs to be JSON string for txtai
             import json
             processed_items = []
@@ -269,19 +252,19 @@ class TxtaiIntelligenceService:
                 # Convert metadata dict to JSON string
                 metadata_json = json.dumps(metadata) if metadata else "{}"
                 processed_items.append((id_val, text, metadata_json))
-            
+
             self.embeddings.index(processed_items)
-            
+
             # Save the index
             self.embeddings.save(self.index_path)
             logger.info(f"Successfully indexed {len(items)} items for user {self.user_id}")
             logger.debug(f"Index saved to: {self.index_path}")
-            
+
         except Exception as e:
             logger.error(f"Error indexing content for user {self.user_id}: {e}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             logger.error(f"Items count: {len(items) if items else 0}")
-            
+
             message = str(e)
             is_windows_lock_error = isinstance(e, PermissionError) or "WinError 32" in message
             if is_windows_lock_error:
@@ -294,7 +277,7 @@ class TxtaiIntelligenceService:
 
     async def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Perform semantic search with intelligent caching."""
-        self._ensure_initialized()
+        await self._ensure_initialized_async()
         if not self._initialized or not self.embeddings:
             message = f"Cannot perform search - service not initialized for user {self.user_id}"
             logger.error(message)
@@ -341,7 +324,7 @@ class TxtaiIntelligenceService:
 
     async def get_similarity(self, text1: str, text2: str) -> float:
         """Get semantic similarity between two texts with caching."""
-        self._ensure_initialized()
+        await self._ensure_initialized_async()
         if not self._initialized or not self.embeddings:
             logger.error(f"Cannot calculate similarity - service not initialized for user {self.user_id}")
             return 0.0
@@ -410,7 +393,7 @@ class TxtaiIntelligenceService:
 
     async def cluster(self, min_score: float = 0.5) -> List[List[int]]:
         """Cluster indexed content to find semantic pillars using graph-based clustering with caching."""
-        self._ensure_initialized()
+        await self._ensure_initialized_async()
         if not self._initialized or not self.embeddings:
             logger.error(f"Cannot cluster content - service not initialized for user {self.user_id}")
             return []
@@ -536,7 +519,7 @@ class TxtaiIntelligenceService:
 
     async def classify(self, text: str, labels: List[str]) -> List[Tuple[str, float]]:
         """Classify text using zero-shot classification."""
-        self._ensure_initialized()
+        await self._ensure_initialized_async()
         if not self._initialized or not Labels:
             logger.error(f"Cannot classify text - service not initialized or Labels not available for user {self.user_id}")
             return []
