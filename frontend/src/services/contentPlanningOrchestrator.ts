@@ -231,6 +231,22 @@ export class ContentPlanningOrchestrator {
 
       // New approach: stream strategic intelligence data and show status from AI generation SSE
       return await new Promise<{ aiInsights: any[]; aiRecommendations: any[] }>(async (resolve) => {
+        let finished = false;
+        const complete = (payload: { aiInsights: any[]; aiRecommendations: any[] }) => {
+          if (finished) return;
+          finished = true;
+          resolve(payload);
+        };
+
+        // Hard timeout so the orchestrator never hangs if SSE never emits terminal events.
+        const hardTimeout = window.setTimeout(() => {
+          this.updateServiceStatus('aiAnalytics', {
+            status: 'error',
+            progress: 0,
+            message: 'Strategic intelligence timed out'
+          });
+          complete({ aiInsights: [], aiRecommendations: [] });
+        }, 45000);
         // 1) Execution status stream (best-effort; ignore if no active strategy)
         try {
           const currentStrategyId = this.latestDashboardData?.strategies?.[0]?.id;
@@ -280,18 +296,21 @@ export class ContentPlanningOrchestrator {
                 });
                 // Map to orchestrator fields if needed
                 this.notifyDataUpdate({ aiInsights: data.data?.recommendations || [], aiRecommendations: [] });
-                resolve({ aiInsights: data.data?.recommendations || [], aiRecommendations: [] });
+                window.clearTimeout(hardTimeout);
+                complete({ aiInsights: data.data?.recommendations || [], aiRecommendations: [] });
               } else if (data.type === 'error') {
                 this.updateServiceStatus('aiAnalytics', {
                   status: 'error',
                   progress: 0,
                   message: data.message || 'Failed to load strategic intelligence'
                 });
-                resolve({ aiInsights: [], aiRecommendations: [] });
+                window.clearTimeout(hardTimeout);
+                complete({ aiInsights: [], aiRecommendations: [] });
               }
             },
             () => {
-              resolve({ aiInsights: [], aiRecommendations: [] });
+              window.clearTimeout(hardTimeout);
+                complete({ aiInsights: [], aiRecommendations: [] });
             }
           );
       });

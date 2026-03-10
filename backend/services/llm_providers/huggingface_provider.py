@@ -97,13 +97,29 @@ HF_FALLBACK_MODELS = [
 ]
 
 
+def _candidate_model_variants(model: str):
+    """Yield model ids to try for a single logical model preference."""
+    if not model:
+        return
+
+    # Try configured model first (supports provider suffixes like ":groq")
+    yield model
+
+    # Fallback to base repo id when provider suffix is not recognized by the router
+    if ":" in model:
+        base_model = model.split(":", 1)[0]
+        if base_model:
+            yield base_model
+
+
 def _fallback_model_sequence(model: str):
     sequence = [model] + HF_FALLBACK_MODELS
     seen = set()
-    for candidate in sequence:
-        if candidate and candidate not in seen:
-            seen.add(candidate)
-            yield candidate
+    for preferred_model in sequence:
+        for candidate in _candidate_model_variants(preferred_model):
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                yield candidate
 
 def get_huggingface_api_key() -> str:
     """Get Hugging Face API key with proper error handling."""
@@ -201,7 +217,7 @@ def huggingface_text_response(
 
         # Add debugging for API call
         logger.info(
-            "Hugging Face text call | model=%s | prompt_len=%s | temp=%s | top_p=%s | max_tokens=%s",
+            "Hugging Face text call | model={} | prompt_len={} | temp={} | top_p={} | max_tokens={}",
             model,
             len(prompt) if isinstance(prompt, str) else '<non-str>',
             temperature,
@@ -227,11 +243,11 @@ def huggingface_text_response(
                     max_tokens=max_tokens
                 )
                 if candidate_model != model:
-                    logger.warning("HF text generation switched to fallback model: %s", candidate_model)
+                    logger.warning("HF text generation switched to fallback model: {}", candidate_model)
                 break
             except NotFoundError as nf_err:
                 last_error = nf_err
-                logger.warning("HF model not found: %s. Trying fallback model.", candidate_model)
+                logger.warning("HF model not found: {}. Trying fallback model.", candidate_model)
                 continue
 
         if response is None:
@@ -347,7 +363,7 @@ def huggingface_structured_json_response(
 
         # Add debugging for API call
         logger.info(
-            "Hugging Face structured call | model=%s | prompt_len=%s | schema_kind=%s | temp=%s | max_tokens=%s",
+            "Hugging Face structured call | model={} | prompt_len={} | schema_kind={} | temp={} | max_tokens={}",
             model,
             len(prompt) if isinstance(prompt, str) else '<non-str>',
             type(schema).__name__,
@@ -381,11 +397,11 @@ def huggingface_structured_json_response(
                         response_format={"type": "json_object"} # Try to enforce JSON mode if supported
                     )
                     if candidate_model != model:
-                        logger.warning("HF structured generation switched to fallback model: %s", candidate_model)
+                        logger.warning("HF structured generation switched to fallback model: {}", candidate_model)
                     break
                 except NotFoundError as nf_err:
                     last_error = nf_err
-                    logger.warning("HF structured model not found: %s. Trying fallback model.", candidate_model)
+                    logger.warning("HF structured model not found: {}. Trying fallback model.", candidate_model)
                     continue
 
             if response is None:
@@ -437,11 +453,11 @@ def huggingface_structured_json_response(
                             max_tokens=max_tokens
                         )
                         if candidate_model != model:
-                            logger.warning("HF structured no-response_format fallback model: %s", candidate_model)
+                            logger.warning("HF structured no-response_format fallback model: {}", candidate_model)
                         break
                     except NotFoundError as nf_err:
                         last_error = nf_err
-                        logger.warning("HF structured model not found (no response_format path): %s", candidate_model)
+                        logger.warning("HF structured model not found (no response_format path): {}", candidate_model)
                         continue
 
                 if response is None:
