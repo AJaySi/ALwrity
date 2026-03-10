@@ -227,7 +227,9 @@ class TxtaiIntelligenceService:
         Args:
             items: List of (id, text, metadata) tuples.
         """
-        await self._ensure_initialized_async()
+        self._ensure_initialized()
+        if not self._initialized:
+            await self._ensure_initialized_async()
         if not self._initialized or not self.embeddings:
             message = f"Cannot index content - service not initialized for user {self.user_id}"
             logger.warning(message)
