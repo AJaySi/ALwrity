@@ -76,6 +76,10 @@ class TaskManager:
         
         if task["status"] == "failed" and task.get("error"):
             response["error"] = task["error"]
+            if task.get("error_status") is not None:
+                response["error_status"] = task["error_status"]
+            if task.get("error_data") is not None:
+                response["error_data"] = task["error_data"]
         
         return response
     
@@ -86,7 +90,9 @@ class TaskManager:
         progress: Optional[float] = None,
         message: Optional[str] = None,
         result: Optional[Dict[str, Any]] = None,
-        error: Optional[str] = None
+        error: Optional[str] = None,
+        error_status: Optional[int] = None,
+        error_data: Optional[Dict[str, Any]] = None,
     ):
         """Update the status of a task."""
         if task_id not in self.task_storage:
@@ -112,6 +118,10 @@ class TaskManager:
         if error is not None:
             task["error"] = error
             logger.error(f"[StoryWriter] Task {task_id} error: {error}")
+        if error_status is not None:
+            task["error_status"] = error_status
+        if error_data is not None:
+            task["error_data"] = error_data
     
     async def execute_story_generation_task(
         self,

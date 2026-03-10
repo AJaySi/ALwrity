@@ -8,6 +8,7 @@ from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 from models.agent_activity_models import AgentAlert
 from services.agent_activity_service import AgentActivityService, build_agent_event_payload
 from services.llm_providers.main_text_generation import llm_text_gen
+from services.database import get_all_user_ids, get_session_for_user
 from loguru import logger
 
 PILLAR_IDS = ["plan", "generate", "publish", "analyze", "engage", "remarket"]
@@ -604,7 +605,12 @@ async def generate_agent_enhanced_plan(
     return result
 
 
-async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Optional[str] = None) -> tuple[DailyWorkflowPlan, bool]:
+async def get_or_create_daily_workflow_plan(
+    db: Session,
+    user_id: str,
+    date: Optional[str] = None,
+    creation_source: str = "manual",
+) -> tuple[DailyWorkflowPlan, bool]:
     from starlette.concurrency import run_in_threadpool
     
     date_str = date or _today_date_str()
@@ -646,7 +652,10 @@ async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Opt
         plan = DailyWorkflowPlan(
             user_id=user_id,
             date=date_str,
-            source="agent",
+            source=creation_source,
+            generation_mode=_derive_generation_mode(plan_data),
+            committee_agent_count=_count_committee_agents(tasks),
+            fallback_used=_plan_uses_fallback(tasks),
             plan_json=plan_data,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -683,6 +692,80 @@ async def get_or_create_daily_workflow_plan(db: Session, user_id: str, date: Opt
 
     plan = await run_in_threadpool(_create_plan)
     return plan, True
+
+
+def _derive_generation_mode(plan_data: Dict[str, Any]) -> str:
+    tasks = plan_data.get("tasks", []) if isinstance(plan_data, dict) else []
+    source_modes = set()
+    for task in tasks:
+        metadata = task.get("metadata") if isinstance(task, dict) else {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        source_agent = str(metadata.get("source_agent") or "").strip()
+        source = str(metadata.get("source") or "").strip()
+        if source_agent:
+            source_modes.add("agent_committee")
+        elif source in {"controlled_fallback", "llm_pillar_backfill"}:
+            source_modes.add(source)
+
+    if "agent_committee" in source_modes:
+        return "agent_committee"
+    if "controlled_fallback" in source_modes:
+        return "controlled_fallback"
+    if "llm_pillar_backfill" in source_modes:
+        return "llm_pillar_backfill"
+    return "llm_generation"
+
+
+def _count_committee_agents(tasks: List[Dict[str, Any]]) -> int:
+    agents = set()
+    for task in tasks:
+        metadata = task.get("metadata") if isinstance(task, dict) else {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        source_agent = str(metadata.get("source_agent") or "").strip()
+        if source_agent:
+            agents.add(source_agent)
+    return len(agents)
+
+
+def _plan_uses_fallback(tasks: List[Dict[str, Any]]) -> bool:
+    for task in tasks:
+        metadata = task.get("metadata") if isinstance(task, dict) else {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        source = str(metadata.get("source") or "").strip()
+        if source in {"controlled_fallback", "llm_pillar_backfill"}:
+            return True
+    return False
+
+
+async def generate_scheduled_daily_workflows() -> Dict[str, int]:
+    user_ids = get_all_user_ids()
+    stats = {"users_seen": 0, "created": 0, "existing": 0, "failed": 0}
+
+    for user_id in user_ids:
+        stats["users_seen"] += 1
+        db = None
+        try:
+            db = get_session_for_user(user_id)
+            plan, created = await get_or_create_daily_workflow_plan(
+                db,
+                user_id,
+                creation_source="scheduled",
+            )
+            if created:
+                stats["created"] += 1
+                logger.info("Scheduled daily workflow created for user {} date {}", user_id, plan.date)
+            else:
+                stats["existing"] += 1
+                logger.info("Scheduled daily workflow already exists for user {} date {}", user_id, plan.date)
+        except Exception as e:
+            stats["failed"] += 1
+            logger.error("Scheduled daily workflow generation failed for user {}: {}", user_id, e)
+        finally:
+            if db:
+                db.close()
+
+    logger.info("Scheduled daily workflow run complete: {}", stats)
+    return stats
 
 
 def update_task_status(

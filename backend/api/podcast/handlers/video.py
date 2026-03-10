@@ -45,11 +45,17 @@ def _extract_error_message(exc: Exception) -> str:
     """
     Extract user-friendly error message from exception.
     Handles HTTPException with nested error details from WaveSpeed API.
+    Preserves subscription modal flags for frontend.
     """
     if isinstance(exc, HTTPException):
         detail = exc.detail
         # If detail is a dict (from WaveSpeed client)
         if isinstance(detail, dict):
+            # Check if this is a subscription/credit error
+            if detail.get("error_type") == "insufficient_credits" or detail.get("show_subscription_modal"):
+                # Return the error message with subscription modal flag
+                return detail.get("message", "Insufficient credits. Please top up your account.")
+            
             # Try to extract message from nested response JSON
             response_str = detail.get("response", "")
             if response_str:
@@ -84,6 +90,27 @@ def _extract_error_message(exc: Exception) -> str:
         pass
     
     return error_str
+
+
+def _extract_error_metadata(exc: Exception) -> Dict[str, Any]:
+    """Extract structured error metadata for task polling clients."""
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            return {
+                "error_status": exc.status_code,
+                "error_data": detail,
+            }
+        if isinstance(detail, str):
+            return {
+                "error_status": exc.status_code,
+                "error_data": {
+                    "error": detail,
+                    "message": detail,
+                },
+            }
+
+    return {}
 
 
 def _execute_podcast_video_task(
@@ -229,9 +256,15 @@ def _execute_podcast_video_task(
         
         # Extract user-friendly error message from exception
         error_msg = _extract_error_message(exc)
+        error_meta = _extract_error_metadata(exc)
         
         task_manager.update_task_status(
-            task_id, "failed", error=error_msg, message=f"Video generation failed: {error_msg}"
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"Video generation failed: {error_msg}",
+            error_status=error_meta.get("error_status"),
+            error_data=error_meta.get("error_data"),
         )
 
 
@@ -257,7 +290,7 @@ async def generate_podcast_video(
         try:
             if hasattr(request, 'headers') and hasattr(request.headers, 'get'):
                  auth_header = request.headers.get("Authorization")
-        except:
+        except Exception:
             pass
             
         if auth_header and auth_header.startswith("Bearer "):

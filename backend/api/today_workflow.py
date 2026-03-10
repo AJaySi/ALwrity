@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from middleware.auth_middleware import get_current_user
 from services.database import get_db
-from services.today_workflow_service import get_or_create_daily_workflow_plan, update_task_status
+from services.today_workflow_service import get_or_create_daily_workflow_plan, update_task_status, _today_date_str
 from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 import asyncio
 from services.intelligence.txtai_service import TxtaiIntelligenceService
@@ -81,26 +81,7 @@ async def _index_tasks_to_sif(user_id: str, date: str, tasks: list[dict], label:
         logger.debug(f"Background indexing failed for user {user_id}: {e}")
 
 
-@router.get("")
-async def get_today_workflow(
-    date: Optional[str] = None,
-    current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
-    from starlette.concurrency import run_in_threadpool
-    user_id = str(current_user.get("id"))
-    plan, created = await get_or_create_daily_workflow_plan(db, user_id, date=date)
-
-    def _fetch_tasks():
-        return (
-            db.query(DailyWorkflowTask)
-            .filter(DailyWorkflowTask.plan_id == plan.id, DailyWorkflowTask.user_id == user_id)
-            .order_by(DailyWorkflowTask.created_at.asc())
-            .all()
-        )
-
-    tasks = await run_in_threadpool(_fetch_tasks)
-
+def _build_workflow_payload(user_id: str, plan: DailyWorkflowPlan, tasks: list[DailyWorkflowTask]) -> Dict[str, Any]:
     response_tasks = []
     for t in tasks:
         response_tasks.append(
@@ -136,8 +117,156 @@ async def get_today_workflow(
         workflow_status = "completed"
 
     total_estimated = int(sum(int(t.get("estimatedTime") or 0) for t in response_tasks))
+    plan_json = plan.plan_json or {}
+
+    return {
+        "workflow": {
+            "id": f"daily-{user_id}-{plan.date}",
+            "date": plan.date,
+            "userId": user_id,
+            "tasks": response_tasks,
+            "currentTaskIndex": current_index,
+            "completedTasks": completed,
+            "totalTasks": total,
+            "workflowStatus": workflow_status,
+            "totalEstimatedTime": total_estimated,
+            "actualTimeSpent": 0,
+        },
+        "plan": {
+            "id": plan.id,
+            "date": plan.date,
+            "source": plan.source,
+            "generation_mode": plan.generation_mode,
+            "committee_agent_count": plan.committee_agent_count,
+            "fallback_used": bool(plan.fallback_used),
+            "quality_status": plan_json.get("quality_status", "contextual"),
+            "contextuality_validation": plan_json.get("contextuality_validation"),
+            "provenance_summary": {
+                "generationMode": plan.generation_mode,
+                "committeeAgentCount": plan.committee_agent_count,
+                "fallbackUsed": bool(plan.fallback_used),
+                "taskSourceBreakdown": {},
+            },
+            "created_at": plan.created_at.isoformat() if plan.created_at else None,
+            "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+        },
+        "schedule_status": {
+            "date": plan.date,
+            "generated": True,
+            "scheduled_run_completed": plan.source == "scheduled",
+            "source": plan.source,
+            "created_at": plan.created_at.isoformat() if plan.created_at else None,
+        },
+    }
+
+
+@router.get("")
+async def get_today_workflow(
+    date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get existing daily workflow for the specified date.
+    Returns 404 if no workflow exists for the date.
+    Workflow should only be created via explicit user action or scheduled job.
+    """
+    from starlette.concurrency import run_in_threadpool
+    user_id = str(current_user.get("id"))
+    date_str = date or _today_date_str()
+    
+    def _get_existing():
+        return (
+            db.query(DailyWorkflowPlan)
+            .filter(DailyWorkflowPlan.user_id == user_id, DailyWorkflowPlan.date == date_str)
+            .first()
+        )
+    
+    plan = await run_in_threadpool(_get_existing)
+    
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No workflow found for date {date_str}. Workflow should be generated via explicit user action or scheduled job."
+        )
+
+    def _fetch_tasks():
+        return (
+            db.query(DailyWorkflowTask)
+            .filter(DailyWorkflowTask.plan_id == plan.id, DailyWorkflowTask.user_id == user_id)
+            .order_by(DailyWorkflowTask.created_at.asc())
+            .all()
+        )
+
+    tasks = await run_in_threadpool(_fetch_tasks)
+
+    return {
+        "success": True,
+        "data": _build_workflow_payload(user_id, plan, tasks),
+        "timestamp": datetime.utcnow().isoformat(),
+        "user_id": user_id,
+    }
+
+
+@router.get("/status")
+async def get_today_workflow_status(
+    date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    from starlette.concurrency import run_in_threadpool
+
+    user_id = str(current_user.get("id"))
+    date_str = date or _today_date_str()
+
+    def _get_existing():
+        return (
+            db.query(DailyWorkflowPlan)
+            .filter(DailyWorkflowPlan.user_id == user_id, DailyWorkflowPlan.date == date_str)
+            .first()
+        )
+
+    plan = await run_in_threadpool(_get_existing)
+
+    return {
+        "success": True,
+        "data": {
+            "date": date_str,
+            "generated": plan is not None,
+            "scheduled_run_completed": bool(plan and plan.source == "scheduled"),
+            "source": plan.source if plan else None,
+            "created_at": plan.created_at.isoformat() if plan and plan.created_at else None,
+        },
+        "timestamp": datetime.utcnow().isoformat(),
+        "user_id": user_id,
+    }
+
+
+@router.post("/generate")
+async def generate_workflow(
+    date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Explicitly generate a new daily workflow for the specified date.
+    This should only be called when the user explicitly requests workflow generation
+    or via a scheduled job at night.
+    """
+    from starlette.concurrency import run_in_threadpool
+    user_id = str(current_user.get("id"))
+    plan, created = await get_or_create_daily_workflow_plan(db, user_id, date=date, creation_source="manual")
+
+    def _fetch_tasks():
+        return (
+            db.query(DailyWorkflowTask)
+            .filter(DailyWorkflowTask.plan_id == plan.id, DailyWorkflowTask.user_id == user_id)
+            .order_by(DailyWorkflowTask.created_at.asc())
+            .all()
+        )
+
+    tasks = await run_in_threadpool(_fetch_tasks)
 
     if created:
+        response_tasks = _build_workflow_payload(user_id, plan, tasks)["workflow"]["tasks"]
         asyncio.create_task(_index_tasks_to_sif(user_id, plan.date, response_tasks, label="today"))
         from datetime import date as date_type, timedelta
 
@@ -200,29 +329,7 @@ async def get_today_workflow(
 
     return {
         "success": True,
-        "data": {
-            "workflow": {
-                "id": f"daily-{user_id}-{plan.date}",
-                "date": plan.date,
-                "userId": user_id,
-                "tasks": response_tasks,
-                "currentTaskIndex": current_index,
-                "completedTasks": completed,
-                "totalTasks": total,
-                "workflowStatus": workflow_status,
-                "totalEstimatedTime": total_estimated,
-                "actualTimeSpent": 0,
-            },
-            "plan": {
-                "id": plan.id,
-                "date": plan.date,
-                "source": plan.source,
-                "quality_status": (plan.plan_json or {}).get("quality_status", "contextual"),
-                "contextuality_validation": (plan.plan_json or {}).get("contextuality_validation"),
-                "created_at": plan.created_at.isoformat() if plan.created_at else None,
-                "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
-            },
-        },
+        "data": _build_workflow_payload(user_id, plan, tasks),
         "timestamp": datetime.utcnow().isoformat(),
         "user_id": user_id,
     }

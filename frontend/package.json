@@ -36,9 +36,9 @@
     "zustand": "^5.0.7"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "node --max_old_space_size=8192 node_modules/react-scripts/scripts/build.js",
-    "build:nomap": "node --max_old_space_size=8192 -e \"process.env.GENERATE_SOURCEMAP='false'; require('./node_modules/react-scripts/scripts/build');\"",
+    "start": "node --max_old_space_size=12288 node_modules/react-scripts/scripts/start.js",
+    "build": "node --max_old_space_size=12288 node_modules/react-scripts/scripts/build.js",
+    "build:nomap": "node --max_old_space_size=12288 -e \"process.env.GENERATE_SOURCEMAP='false'; require('./node_modules/react-scripts/scripts/build');\"",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "analyze": "npm run build && npx source-map-explorer 'build/static/js/*.js' --html bundle-report.html",

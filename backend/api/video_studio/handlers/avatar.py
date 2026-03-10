@@ -18,6 +18,26 @@ router = APIRouter()
 UPLOAD_DIR = Path("backend/data/video_studio/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def _extract_error_metadata(exc: Exception) -> Dict[str, Any]:
+    """Extract structured HTTP error metadata for polling clients."""
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            return {
+                "error_status": exc.status_code,
+                "error_data": detail,
+            }
+        if isinstance(detail, str):
+            return {
+                "error_status": exc.status_code,
+                "error_data": {
+                    "error": detail,
+                    "message": detail,
+                },
+            }
+    return {}
+
 def _process_avatar_generation(task_id: str, image_path: Path, audio_path: Path, user_id: str, resolution: str, model: str):
     """
     Background task to process avatar generation using shared InfiniteTalk service.
@@ -94,7 +114,15 @@ def _process_avatar_generation(task_id: str, image_path: Path, audio_path: Path,
         
     except Exception as e:
         logger.error(f"[VideoStudio] Avatar generation failed for task {task_id}: {e}", exc_info=True)
-        task_manager.update_task(task_id, "failed", error=str(e), user_id=user_id)
+        error_meta = _extract_error_metadata(e)
+        task_manager.update_task(
+            task_id,
+            "failed",
+            error=str(e),
+            user_id=user_id,
+            error_status=error_meta.get("error_status"),
+            error_data=error_meta.get("error_data"),
+        )
     finally:
         # Cleanup temp upload files
         try:

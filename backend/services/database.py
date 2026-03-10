@@ -53,6 +53,39 @@ WORKSPACE_DIR = os.path.join(ROOT_DIR, 'workspace')
 # Engine cache for multi-tenant support
 _user_engines = {}
 
+
+def _ensure_daily_workflow_schema(engine, user_id: str) -> None:
+    """Backfill required daily_workflow_plans columns for legacy tenant DBs."""
+    required_columns = {
+        "generation_mode": "VARCHAR(30) NOT NULL DEFAULT 'llm_generation'",
+        "committee_agent_count": "INTEGER NOT NULL DEFAULT 0",
+        "fallback_used": "BOOLEAN NOT NULL DEFAULT 0",
+        "generation_run_id": "INTEGER",
+    }
+
+    try:
+        with engine.begin() as conn:
+            table_check = conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_workflow_plans'"
+            ).fetchone()
+            if not table_check:
+                return
+
+            existing_cols = {
+                row[1] for row in conn.exec_driver_sql("PRAGMA table_info(daily_workflow_plans)").fetchall()
+            }
+
+            for col_name, col_def in required_columns.items():
+                if col_name not in existing_cols:
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE daily_workflow_plans ADD COLUMN {col_name} {col_def}"
+                    )
+                    logger.warning(
+                        f"Auto-migrated daily_workflow_plans column '{col_name}' for user {user_id}"
+                    )
+    except Exception as e:
+        logger.error(f"Failed daily_workflow_plans schema compatibility check for user {user_id}: {e}")
+
 def get_user_db_path(user_id: str) -> str:
     """Get the database path for a specific user."""
     # Sanitize user_id to be safe for filesystem
@@ -192,6 +225,7 @@ def init_user_database(user_id: str):
         UserBusinessInfoBase.metadata.create_all(bind=engine)
         ContentAssetBase.metadata.create_all(bind=engine)
         BingAnalyticsBase.metadata.create_all(bind=engine)
+        _ensure_daily_workflow_schema(engine, user_id)
         
         # Initialize default data for new databases
         try:

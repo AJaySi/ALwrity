@@ -24,7 +24,7 @@
       "./node_modules/@types",
       "./src/types"
     ],
-    "types": ["jest", "node"]
+    "types": ["node"]
   },
   "include": [
     "src"

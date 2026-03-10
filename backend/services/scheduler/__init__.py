@@ -3,7 +3,10 @@ Task Scheduler Package
 Modular, pluggable scheduler for ALwrity tasks.
 """
 
+import os
+
 from sqlalchemy.orm import Session
+from apscheduler.triggers.cron import CronTrigger
 
 from .core.scheduler import TaskScheduler
 from .core.executor_interface import TaskExecutor, TaskExecutionResult
@@ -32,6 +35,7 @@ from .utils.platform_insights_task_loader import load_due_platform_insights_task
 from .utils.advertools_task_loader import load_due_advertools_tasks
 from .utils.sif_indexing_task_loader import load_due_sif_indexing_tasks
 from .utils.market_trends_task_loader import load_due_market_trends_tasks
+from services.today_workflow_service import generate_scheduled_daily_workflows
 
 # Global scheduler instance (initialized on first access)
 _scheduler_instance: TaskScheduler = None
@@ -142,6 +146,18 @@ def get_scheduler() -> TaskScheduler:
             'market_trends',
             market_trends_executor,
             load_due_market_trends_tasks
+        )
+
+        today_workflow_hour_utc = int(os.getenv('TODAY_WORKFLOW_SCHEDULE_HOUR_UTC', '2'))
+        today_workflow_minute_utc = int(os.getenv('TODAY_WORKFLOW_SCHEDULE_MINUTE_UTC', '0'))
+        _scheduler_instance.scheduler.add_job(
+            generate_scheduled_daily_workflows,
+            trigger=CronTrigger(hour=today_workflow_hour_utc, minute=today_workflow_minute_utc, timezone='UTC'),
+            id='generate_daily_workflows',
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
         )
     
     return _scheduler_instance

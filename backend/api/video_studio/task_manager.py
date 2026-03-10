@@ -39,7 +39,18 @@ class TaskManager:
             logger.error(f"[VideoStudio] Failed to create task: {e}")
             raise
 
-    def update_task(self, task_id: str, status: str, result: Optional[Dict] = None, error: Optional[str] = None, user_id: str = None, progress: float = None, message: str = None):
+    def update_task(
+        self,
+        task_id: str,
+        status: str,
+        result: Optional[Dict] = None,
+        error: Optional[str] = None,
+        user_id: str = None,
+        progress: float = None,
+        message: str = None,
+        error_status: Optional[int] = None,
+        error_data: Optional[Dict[str, Any]] = None,
+    ):
         """Update an existing task."""
         if not user_id:
             logger.error(f"[VideoStudio] Cannot update task {task_id} without user_id")
@@ -74,6 +85,13 @@ class TaskManager:
                     task.result = result
                 if error:
                     task.error = error
+                if error_status is not None or error_data is not None:
+                    result_payload = task.result if isinstance(task.result, dict) else {}
+                    if error_status is not None:
+                        result_payload["error_status"] = error_status
+                    if error_data is not None:
+                        result_payload["error_data"] = error_data
+                    task.result = result_payload
                 if progress is not None:
                     task.progress = progress
                 if message:
@@ -107,7 +125,7 @@ class TaskManager:
                 if status_val == "processing":
                     status_val = "running"
 
-                return {
+                response = {
                     "task_id": task.task_id,
                     "status": status_val,
                     "result": task.result,
@@ -117,6 +135,12 @@ class TaskManager:
                     "created_at": task.created_at,
                     "updated_at": task.updated_at
                 }
+                if isinstance(task.result, dict):
+                    if task.result.get("error_status") is not None:
+                        response["error_status"] = task.result.get("error_status")
+                    if task.result.get("error_data") is not None:
+                        response["error_data"] = task.result.get("error_data")
+                return response
             finally:
                 db.close()
         except Exception as e:

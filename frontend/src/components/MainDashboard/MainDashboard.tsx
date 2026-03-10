@@ -6,6 +6,7 @@ import {
   Snackbar,
   useTheme
 } from '@mui/material';
+import { Lightbulb } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
@@ -63,7 +64,9 @@ const MainDashboard: React.FC = () => {
   const {
     currentWorkflow,
     workflowProgress,
+    scheduleStatus,
     isLoading: workflowLoading,
+    loadTodayWorkflow,
     generateDailyWorkflow,
     startWorkflow,
     pauseWorkflow,
@@ -71,19 +74,18 @@ const MainDashboard: React.FC = () => {
   } = useWorkflowStore();
   const { userId } = useAuth();
 
-  // Initialize workflow on component mount
   React.useEffect(() => {
     const initializeWorkflow = async () => {
       try {
         if (!userId) return;
-        await generateDailyWorkflow(userId);
+        await loadTodayWorkflow();
       } catch (error) {
-        console.warn('Failed to initialize workflow:', error);
+        console.warn('Failed to load today workflow:', error);
       }
     };
 
     initializeWorkflow();
-  }, [generateDailyWorkflow, userId]);
+  }, [loadTodayWorkflow, userId]);
 
   // Debug logging for workflow state (only in development)
   React.useEffect(() => {
@@ -238,6 +240,17 @@ const MainDashboard: React.FC = () => {
 
   // Note: filteredCategories removed as it's not used in the current implementation
 
+  const statusChips = React.useMemo(() => {
+    const scheduled = !!scheduleStatus?.scheduled_run_completed;
+    return [
+      {
+        label: scheduled ? 'Scheduled workflow ready' : 'Scheduled workflow pending',
+        color: scheduled ? '#22c55e' : '#ef4444',
+        icon: <Lightbulb sx={{ color: scheduled ? '#22c55e' : '#ef4444' }} />,
+      },
+    ];
+  }, [scheduleStatus]);
+
   if (loading) {
     return <LoadingSkeleton />;
   }
@@ -297,7 +310,7 @@ const MainDashboard: React.FC = () => {
             <DashboardHeader
               title="Alwrity Content Hub"
               subtitle=""
-              statusChips={[]}
+              statusChips={statusChips}
               customIcon={AskAlwrityIcon}
               workflowControls={{
                 onStartWorkflow: handleStartWorkflow,

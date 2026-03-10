@@ -14,6 +14,14 @@ export interface WorkflowProvenanceSummary {
   taskSourceBreakdown: Partial<Record<WorkflowGenerationMode, number>>;
 }
 
+export interface TodayWorkflowScheduleStatus {
+  date: string;
+  generated: boolean;
+  scheduled_run_completed: boolean;
+  source: string | null;
+  created_at?: string | null;
+}
+
 export interface TodayTask {
   id: string;
   pillarId: string;

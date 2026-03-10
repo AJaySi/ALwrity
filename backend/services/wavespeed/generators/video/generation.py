@@ -3,6 +3,7 @@ Video generation operations (text-to-video and image-to-video).
 """
 
 import requests
+import json
 from typing import Any, Dict, Optional
 from fastapi import HTTPException
 
@@ -10,6 +11,19 @@ from utils.logger_utils import get_service_logger
 from .base import VideoBase
 
 logger = get_service_logger("wavespeed.generators.video.generation")
+
+
+def _extract_wavespeed_message(response_text: str) -> str:
+    """Best-effort extraction of WaveSpeed error message from response payload."""
+    if not response_text:
+        return ""
+    try:
+        parsed = json.loads(response_text)
+        if isinstance(parsed, dict):
+            return str(parsed.get("message") or parsed.get("error") or "")
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return ""
+    return ""
 
 
 class VideoGeneration(VideoBase):
@@ -31,6 +45,25 @@ class VideoGeneration(VideoBase):
         response = requests.post(url, headers=self._get_headers(), json=payload, timeout=timeout)
         if response.status_code != 200:
             logger.error(f"[WaveSpeed] Submission failed: {response.status_code} {response.text}")
+
+            error_message = _extract_wavespeed_message(response.text)
+            if "insufficient credits" in error_message.lower() or "credit" in error_message.lower():
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Insufficient WaveSpeed credits",
+                        "message": "Insufficient credits. Please top up to continue video generation.",
+                        "provider": "wavespeed",
+                        "usage_info": {
+                            "provider": "wavespeed",
+                            "type": "credits",
+                            "limit_type": "provider_credits",
+                            "operation_type": "scene_animation",
+                            "action_required": "top_up",
+                        },
+                    },
+                )
+
             raise HTTPException(
                 status_code=502,
                 detail={
@@ -75,6 +108,25 @@ class VideoGeneration(VideoBase):
         
         if response.status_code != 200:
             logger.error(f"[WaveSpeed] Text-to-video submission failed: {response.status_code} {response.text}")
+
+            error_message = _extract_wavespeed_message(response.text)
+            if "insufficient credits" in error_message.lower() or "credit" in error_message.lower():
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Insufficient WaveSpeed credits",
+                        "message": "Insufficient credits. Please top up to continue video generation.",
+                        "provider": "wavespeed",
+                        "usage_info": {
+                            "provider": "wavespeed",
+                            "type": "credits",
+                            "limit_type": "provider_credits",
+                            "operation_type": "video_generation",
+                            "action_required": "top_up",
+                        },
+                    },
+                )
+
             raise HTTPException(
                 status_code=502,
                 detail={
@@ -174,6 +226,25 @@ class VideoGeneration(VideoBase):
             
             if response.status_code != 200:
                 logger.error(f"[WaveSpeed] Text-to-video submission failed: {response.status_code} {response.text}")
+
+                error_message = _extract_wavespeed_message(response.text)
+                if "insufficient credits" in error_message.lower() or "credit" in error_message.lower():
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            "error": "Insufficient WaveSpeed credits",
+                            "message": "Insufficient credits. Please top up to continue video generation.",
+                            "provider": "wavespeed",
+                            "usage_info": {
+                                "provider": "wavespeed",
+                                "type": "credits",
+                                "limit_type": "provider_credits",
+                                "operation_type": "video_generation",
+                                "action_required": "top_up",
+                            },
+                        },
+                    )
+
                 raise HTTPException(
                     status_code=502,
                     detail={

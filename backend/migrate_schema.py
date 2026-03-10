@@ -4,6 +4,10 @@ import sqlite3
 import os
 from pathlib import Path
 
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+WORKSPACE_DIR = ROOT_DIR / "workspace"
+
 def migrate_database(db_path):
     """Add missing columns to daily_workflow_plans table."""
     if not os.path.exists(db_path):
@@ -46,14 +50,14 @@ def migrate_database(db_path):
 
 def find_and_migrate_databases():
     """Find all databases and apply migrations."""
-    workspace_dir = r'c:\Users\diksha rawat\Desktop\ALwrity\workspace'
+    workspace_dir = WORKSPACE_DIR
     
-    if not os.path.exists(workspace_dir):
+    if not workspace_dir.exists():
         print(f"Workspace directory not found: {workspace_dir}")
         return
     
     # Find all .db files
-    db_files = list(Path(workspace_dir).glob('**/db/*.db'))
+    db_files = list(workspace_dir.glob('**/db/*.db'))
     
     if not db_files:
         print("No databases found to migrate")

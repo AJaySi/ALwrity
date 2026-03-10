@@ -7,10 +7,11 @@ import {
   UserWorkflowPreferences,
   NavigationState,
   WorkflowStatus,
-  WorkflowError
+  WorkflowError,
+  TodayWorkflowScheduleStatus
 } from '../types/workflow';
 import { taskWorkflowOrchestrator } from '../services/TaskWorkflowOrchestrator';
-import { apiClient, ConnectionError, NetworkError } from '../api/client';
+import { apiClient } from '../api/client';
 
 const isServerWorkflowId = (workflowId: string) => workflowId.startsWith('daily-');
 
@@ -46,9 +47,6 @@ const normalizeServerWorkflow = (workflow: DailyWorkflow): DailyWorkflow => ({
       }))
     : [],
 });
-
-const isServerUnavailableError = (error: unknown): boolean =>
-  error instanceof ConnectionError || error instanceof NetworkError;
 
 const toWorkflowError = (error: unknown, fallbackMessage: string): WorkflowError => {
   if (error instanceof WorkflowError) return error;
@@ -109,6 +107,7 @@ interface WorkflowState {
   currentWorkflow: DailyWorkflow | null;
   workflowProgress: WorkflowProgress | null;
   navigationState: NavigationState | null;
+  scheduleStatus: TodayWorkflowScheduleStatus | null;
   
   // User preferences
   userPreferences: UserWorkflowPreferences | null;
@@ -121,6 +120,8 @@ interface WorkflowState {
   degradedModeReason: string | null;
   
   // Actions
+  loadTodayWorkflow: (date?: string) => Promise<void>;
+  refreshScheduleStatus: (date?: string) => Promise<void>;
   generateDailyWorkflow: (userId: string, date?: string) => Promise<void>;
   startWorkflow: (workflowId: string) => Promise<void>;
   pauseWorkflow: (workflowId: string) => Promise<void>;
@@ -154,6 +155,7 @@ export const useWorkflowStore = create<WorkflowState>()(
       currentWorkflow: null,
       workflowProgress: null,
       navigationState: null,
+      scheduleStatus: null,
       userPreferences: null,
       isWorkflowModalOpen: false,
       isLoading: false,
@@ -161,14 +163,82 @@ export const useWorkflowStore = create<WorkflowState>()(
       isDegradedMode: false,
       degradedModeReason: null,
 
+      loadTodayWorkflow: async (date?: string) => {
+        set({ isLoading: true, error: null });
+
+        try {
+          const resp = await apiClient.get('/api/today-workflow', { params: date ? { date } : {} });
+          const serverWorkflow = resp?.data?.data?.workflow as DailyWorkflow | undefined;
+          const planSummary = resp?.data?.data?.plan?.provenance_summary;
+          const scheduleStatus = resp?.data?.data?.schedule_status as TodayWorkflowScheduleStatus | undefined;
+
+          if (serverWorkflow && Array.isArray(serverWorkflow.tasks)) {
+            if (planSummary && !serverWorkflow.provenanceSummary) {
+              serverWorkflow.provenanceSummary = planSummary;
+            }
+            const normalizedWorkflow = normalizeServerWorkflow(serverWorkflow);
+            const derived = computeProgressAndNavigation(normalizedWorkflow);
+            set({
+              currentWorkflow: normalizedWorkflow,
+              workflowProgress: derived.progress,
+              navigationState: derived.navigation,
+              scheduleStatus: scheduleStatus || null,
+              isLoading: false,
+              isDegradedMode: false,
+              degradedModeReason: null,
+            });
+            return;
+          }
+
+          throw new WorkflowError({
+            code: 'WORKFLOW_SCHEMA_INVALID',
+            message: 'Server workflow response is missing a valid tasks array.',
+            timestamp: new Date(),
+            recoverable: false,
+            suggestedAction: 'Refresh and try again. If this persists, contact support.'
+          });
+        } catch (error: any) {
+          if (error?.response?.status === 404) {
+            set({
+              currentWorkflow: null,
+              workflowProgress: null,
+              navigationState: null,
+              isLoading: false,
+              isDegradedMode: false,
+              degradedModeReason: null,
+            });
+            await get().refreshScheduleStatus(date);
+            return;
+          }
+
+          set({
+            error: toWorkflowError(error, 'Failed to load workflow from server.'),
+            isLoading: false,
+            isDegradedMode: false,
+            degradedModeReason: null,
+          });
+        }
+      },
+
+      refreshScheduleStatus: async (date?: string) => {
+        try {
+          const resp = await apiClient.get('/api/today-workflow/status', { params: date ? { date } : {} });
+          const scheduleStatus = resp?.data?.data as TodayWorkflowScheduleStatus | undefined;
+          set({ scheduleStatus: scheduleStatus || null });
+        } catch {
+          set({ scheduleStatus: null });
+        }
+      },
+
       // Generate daily workflow
       generateDailyWorkflow: async (userId: string, date?: string) => {
         set({ isLoading: true, error: null });
         
         try {
-          const resp = await apiClient.get('/api/today-workflow', { params: date ? { date } : {} });
+          const resp = await apiClient.post('/api/today-workflow/generate', null, { params: date ? { date } : {} });
           const serverWorkflow = resp?.data?.data?.workflow as DailyWorkflow | undefined;
           const planSummary = resp?.data?.data?.plan?.provenance_summary;
+          const scheduleStatus = resp?.data?.data?.schedule_status as TodayWorkflowScheduleStatus | undefined;
           
           if (serverWorkflow && Array.isArray(serverWorkflow.tasks)) {
             if (planSummary && !serverWorkflow.provenanceSummary) {
@@ -180,6 +250,7 @@ export const useWorkflowStore = create<WorkflowState>()(
               currentWorkflow: normalizedWorkflow,
               workflowProgress: derived.progress,
               navigationState: derived.navigation,
+              scheduleStatus: scheduleStatus || null,
               isLoading: false,
               isDegradedMode: false,
               degradedModeReason: null,
@@ -195,34 +266,11 @@ export const useWorkflowStore = create<WorkflowState>()(
             suggestedAction: 'Refresh and try again. If this persists, contact support.'
           });
         } catch (error) {
-          if (!isServerUnavailableError(error)) {
-            set({
-              error: toWorkflowError(error, 'Failed to load workflow from server.'),
-              isLoading: false,
-              isDegradedMode: false,
-              degradedModeReason: null,
-            });
-            return;
-          }
-        }
-
-        try {
-          const workflow = await taskWorkflowOrchestrator.generateDailyWorkflow(userId, date);
-          const progress = taskWorkflowOrchestrator.getWorkflowProgress(workflow.id);
-          const navigation = taskWorkflowOrchestrator.getNavigationState(workflow.id);
           set({
-            currentWorkflow: workflow,
-            workflowProgress: progress,
-            navigationState: navigation,
+            error: toWorkflowError(error, 'Failed to generate workflow from server.'),
             isLoading: false,
-            isDegradedMode: true,
-            degradedModeReason: 'Server workflow unavailable. Using local fallback workflow.',
-            error: null,
-          });
-        } catch (error) {
-          set({
-            error: toWorkflowError(error, 'Failed to generate local fallback workflow.'),
-            isLoading: false,
+            isDegradedMode: false,
+            degradedModeReason: null,
           });
         }
       },
