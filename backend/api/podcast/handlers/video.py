@@ -18,6 +18,7 @@ from services.database import get_session_for_user
 from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from api.story_writer.utils.auth import require_authenticated_user
 from services.wavespeed.infinitetalk import animate_scene_with_voiceover
+from utils.error_normalization import extract_error_metadata
 from services.podcast.video_combination_service import PodcastVideoCombinationService
 from services.llm_providers.main_video_generation import track_video_usage
 from services.subscription import PricingService
@@ -90,27 +91,6 @@ def _extract_error_message(exc: Exception) -> str:
         pass
     
     return error_str
-
-
-def _extract_error_metadata(exc: Exception) -> Dict[str, Any]:
-    """Extract structured error metadata for task polling clients."""
-    if isinstance(exc, HTTPException):
-        detail = exc.detail
-        if isinstance(detail, dict):
-            return {
-                "error_status": exc.status_code,
-                "error_data": detail,
-            }
-        if isinstance(detail, str):
-            return {
-                "error_status": exc.status_code,
-                "error_data": {
-                    "error": detail,
-                    "message": detail,
-                },
-            }
-
-    return {}
 
 
 def _execute_podcast_video_task(
@@ -256,7 +236,7 @@ def _execute_podcast_video_task(
         
         # Extract user-friendly error message from exception
         error_msg = _extract_error_message(exc)
-        error_meta = _extract_error_metadata(exc)
+        error_meta = extract_error_metadata(exc)
         
         task_manager.update_task_status(
             task_id,

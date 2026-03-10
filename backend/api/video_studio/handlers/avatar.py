@@ -11,6 +11,7 @@ from loguru import logger
 from services.database import get_engine_for_user
 from sqlalchemy.orm import sessionmaker
 from utils.asset_tracker import save_asset_to_library
+from utils.error_normalization import extract_error_metadata
 
 router = APIRouter()
 
@@ -18,25 +19,6 @@ router = APIRouter()
 UPLOAD_DIR = Path("backend/data/video_studio/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-
-def _extract_error_metadata(exc: Exception) -> Dict[str, Any]:
-    """Extract structured HTTP error metadata for polling clients."""
-    if isinstance(exc, HTTPException):
-        detail = exc.detail
-        if isinstance(detail, dict):
-            return {
-                "error_status": exc.status_code,
-                "error_data": detail,
-            }
-        if isinstance(detail, str):
-            return {
-                "error_status": exc.status_code,
-                "error_data": {
-                    "error": detail,
-                    "message": detail,
-                },
-            }
-    return {}
 
 def _process_avatar_generation(task_id: str, image_path: Path, audio_path: Path, user_id: str, resolution: str, model: str):
     """
@@ -114,7 +96,7 @@ def _process_avatar_generation(task_id: str, image_path: Path, audio_path: Path,
         
     except Exception as e:
         logger.error(f"[VideoStudio] Avatar generation failed for task {task_id}: {e}", exc_info=True)
-        error_meta = _extract_error_metadata(e)
+        error_meta = extract_error_metadata(e)
         task_manager.update_task(
             task_id,
             "failed",
