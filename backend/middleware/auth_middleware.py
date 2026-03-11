@@ -38,7 +38,14 @@ class ClerkAuthMiddleware:
         )
         self.clerk_publishable_key = publishable_key.strip() if publishable_key else None
         self.disable_auth = os.getenv('DISABLE_AUTH', 'false').lower() == 'true'
-        self.allow_unverified_dev = os.getenv('ALLOW_UNVERIFIED_JWT_DEV', 'false').lower() == 'true'
+        self.environment = (os.getenv('ENVIRONMENT') or os.getenv('APP_ENV') or 'development').strip().lower()
+        self.is_production = self.environment in {'prod', 'production'}
+        allow_unverified_raw = os.getenv('ALLOW_UNVERIFIED_JWT_DEV')
+        if allow_unverified_raw is None:
+            # Safe default: allow unverified fallback only outside production unless explicitly overridden.
+            self.allow_unverified_dev = not self.is_production
+        else:
+            self.allow_unverified_dev = allow_unverified_raw.lower() == 'true'
         
         # Cache for PyJWKClient to avoid repeated JWKS fetches
         self._jwks_client_cache = {}
@@ -81,7 +88,11 @@ class ClerkAuthMiddleware:
         else:
             self.clerk_bearer = None
 
-        logger.info(f"ClerkAuthMiddleware initialized - Auth disabled: {self.disable_auth}, fastapi-clerk-auth: {CLERK_AUTH_AVAILABLE}")
+        logger.info(
+            f"ClerkAuthMiddleware initialized - env={self.environment}, "
+            f"auth_disabled={self.disable_auth}, allow_unverified_dev={self.allow_unverified_dev}, "
+            f"fastapi-clerk-auth={CLERK_AUTH_AVAILABLE}"
+        )
 
     async def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify Clerk JWT using fastapi-clerk-auth or custom implementation."""
@@ -188,7 +199,7 @@ class ClerkAuthMiddleware:
                                 'clerk_user_id': user_id
                             }
                         elif user_id and not self.allow_unverified_dev:
-                            logger.error("Unverified token rejected (production).")
+                            logger.error(f"Unverified token rejected (env={self.environment}).")
                             return None
                     except Exception as fallback_e:
                         logger.warning(f"Fallback decoding failed: {fallback_e}")

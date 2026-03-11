@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import select, desc
 import json
 
-from services.database import get_session_for_user
+from services.database import get_session_for_user, has_onboarding_session
 from models.onboarding import WebsiteAnalysis, OnboardingSession, CompetitorAnalysis
 
 # Import existing SIF components
@@ -1081,8 +1081,14 @@ class SIFIntegrationAPI:
     def __init__(self):
         self.services: Dict[str, SIFIntegrationService] = {}
     
-    def get_service(self, user_id: str) -> SIFIntegrationService:
+    def get_service(self, user_id: str) -> Optional[SIFIntegrationService]:
         """Get or create SIF service for a user."""
+        if not has_onboarding_session(user_id):
+            logger.debug(
+                "Skipping SIF service creation for user {} via SIFIntegrationAPI: no onboarding session",
+                user_id,
+            )
+            return None
         if user_id not in self.services:
             self.services[user_id] = SIFIntegrationService(user_id)
         return self.services[user_id]
@@ -1090,11 +1096,25 @@ class SIFIntegrationAPI:
     async def get_semantic_insights_with_cache(self, user_id: str, website_data: Dict[str, Any]) -> Dict[str, Any]:
         """Get semantic insights with caching metadata."""
         service = self.get_service(user_id)
+        if not service:
+            return {
+                "source": "skipped",
+                "reason": "no_onboarding_session",
+                "insights": {},
+            }
         return await service.get_semantic_insights(website_data)
     
     async def get_cache_performance(self, user_id: str) -> Dict[str, Any]:
         """Get cache performance metrics for a user."""
         service = self.get_service(user_id)
+        if not service:
+            return {
+                "user_id": user_id,
+                "cache_enabled": False,
+                "performance": {},
+                "reason": "no_onboarding_session",
+                "timestamp": datetime.now().isoformat(),
+            }
         stats = service.get_cache_performance_stats()
         
         return {
@@ -1107,6 +1127,13 @@ class SIFIntegrationAPI:
     async def invalidate_user_cache(self, user_id: str, reason: str = "api_request") -> Dict[str, Any]:
         """Invalidate cache for a specific user."""
         service = self.get_service(user_id)
+        if not service:
+            return {
+                "user_id": user_id,
+                "success": False,
+                "reason": "no_onboarding_session",
+                "timestamp": datetime.now().isoformat(),
+            }
         success = await service.invalidate_user_cache(reason)
         
         return {

@@ -230,14 +230,33 @@ def _execute_podcast_video_task(
             f"[Podcast] Video generation completed for project {request.project_id}, scene {request.scene_id}"
         )
 
-    except Exception as exc:
-        # Use logger.exception to avoid KeyError when exception message contains curly braces
-        logger.exception(f"[Podcast] Video generation failed for project {request.project_id}, scene {request.scene_id}")
-        
-        # Extract user-friendly error message from exception
+    except HTTPException as exc:
         error_msg = _extract_error_message(exc)
         error_meta = extract_error_metadata(exc)
-        
+        logger.warning(
+            "[Podcast] Video generation failed (HTTP %s) for project %s, scene %s: %s",
+            exc.status_code,
+            request.project_id,
+            request.scene_id,
+            error_msg,
+        )
+
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=error_msg,
+            message=f"Video generation failed: {error_msg}",
+            error_status=error_meta.get("error_status"),
+            error_data=error_meta.get("error_data"),
+        )
+    except Exception as exc:
+        logger.exception(
+            f"[Podcast] Video generation failed for project {request.project_id}, scene {request.scene_id}"
+        )
+
+        error_msg = _extract_error_message(exc)
+        error_meta = extract_error_metadata(exc)
+
         task_manager.update_task_status(
             task_id,
             "failed",

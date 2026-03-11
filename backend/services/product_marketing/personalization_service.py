@@ -6,7 +6,7 @@ Extracts ALL onboarding data and provides personalized defaults for forms and re
 from typing import Dict, Any, Optional, List
 from loguru import logger
 
-from services.database import SessionLocal
+from services.database import get_session_for_user
 from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 
@@ -20,6 +20,14 @@ class PersonalizationService:
         """Initialize Personalization Service."""
         self.logger = logger
         logger.info("[Personalization Service] Initialized")
+
+    @staticmethod
+    def _as_dict(value: Any) -> Dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _as_list(value: Any) -> List[Any]:
+        return value if isinstance(value, list) else []
     
     def get_user_preferences(self, user_id: str) -> Dict[str, Any]:
         """
@@ -36,20 +44,36 @@ class PersonalizationService:
             - templates: Recommended templates for user's industry
             - channels: Recommended channels based on platform personas
         """
-        db = SessionLocal()
+        db = None
         try:
+            db = get_session_for_user(user_id)
+            if not db:
+                logger.warning(f"[Personalization] No DB session available for user {user_id}; using default preferences")
+                return self._get_default_preferences()
+
             integration_service = OnboardingDataIntegrationService()
             integrated_data = integration_service.get_integrated_data_sync(user_id, db)
+            if not isinstance(integrated_data, dict):
+                logger.warning(
+                    f"[Personalization] Integrated onboarding payload is non-dict for user {user_id}; using defaults"
+                )
+                integrated_data = {}
+
             canonical_profile = integrated_data.get('canonical_profile', {})
+            if not isinstance(canonical_profile, dict):
+                logger.warning(
+                    f"[Personalization] Canonical profile is non-dict for user {user_id}; using defaults"
+                )
+                canonical_profile = {}
             
             # Map strictly from Canonical Profile
             preferences = {
                 "industry": canonical_profile.get("industry"),
-                "target_audience": canonical_profile.get("target_audience", {}),
-                "platform_preferences": canonical_profile.get("platform_preferences", []),
-                "content_preferences": canonical_profile.get("content_types", []),
-                "style_preferences": canonical_profile.get("visual_style", {}),
-                "brand_colors": canonical_profile.get("brand_colors", []),
+                "target_audience": self._as_dict(canonical_profile.get("target_audience", {})),
+                "platform_preferences": self._as_list(canonical_profile.get("platform_preferences", [])),
+                "content_preferences": self._as_list(canonical_profile.get("content_types", [])),
+                "style_preferences": self._as_dict(canonical_profile.get("visual_style", {})),
+                "brand_colors": self._as_list(canonical_profile.get("brand_colors", [])),
                 "recommended_templates": [],
                 "recommended_channels": [],
                 "writing_style": {
@@ -58,7 +82,7 @@ class PersonalizationService:
                     "complexity": canonical_profile.get("writing_complexity", "intermediate"),
                     "engagement_level": canonical_profile.get("writing_engagement", "moderate"),
                 },
-                "brand_values": canonical_profile.get("brand_values", []),
+                "brand_values": self._as_list(canonical_profile.get("brand_values", [])),
             }
             
             # Ensure target_audience structure
@@ -104,7 +128,8 @@ class PersonalizationService:
             logger.error(f"[Personalization] Error getting user preferences: {str(e)}", exc_info=True)
             return self._get_default_preferences()
         finally:
-            db.close()
+            if db:
+                db.close()
     
     def get_personalized_defaults(
         self,

@@ -83,6 +83,7 @@ from utils.logger_utils import get_service_logger
 logger = get_service_logger("gemini_provider")
 from tenacity import (
     retry,
+    retry_if_exception,
     stop_after_attempt,
     wait_random_exponential,
 )
@@ -114,7 +115,27 @@ def get_gemini_api_key() -> str:
     
     return api_key
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+def _is_non_retryable_gemini_error(exc: Exception) -> bool:
+    """Skip retries for deterministic quota exhaustion and auth errors."""
+    msg = str(exc).lower()
+    return (
+        "resource_exhausted" in msg
+        or "quota exceeded" in msg
+        or "free_tier" in msg
+        or "requestsperday" in msg
+        or "authentication" in msg
+        or "permission denied" in msg
+        or "invalid api key" in msg
+    )
+
+def _should_retry_gemini_error(exc: Exception) -> bool:
+    return not _is_non_retryable_gemini_error(exc)
+
+@retry(
+    retry=retry_if_exception(_should_retry_gemini_error),
+    wait=wait_random_exponential(min=1, max=60),
+    stop=stop_after_attempt(6),
+)
 def gemini_text_response(prompt, temperature, top_p, n, max_tokens, system_prompt):
     """
     Generate text response using Google's Gemini Pro model.
@@ -182,7 +203,7 @@ def gemini_text_response(prompt, temperature, top_p, n, max_tokens, system_promp
         #logger.info(f"Number of Token in Prompt Sent: {model.count_tokens(prompt)}")
         return response.text
     except Exception as err:
-        logger.error(f"Failed to get response from Gemini: {err}. Retrying.")
+        logger.error(f"Failed to get response from Gemini: {err}")
         raise
 
 

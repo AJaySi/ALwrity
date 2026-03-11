@@ -126,7 +126,13 @@ Guidelines:
 """
 
     try:
-        raw = llm_text_gen(prompt=prompt, user_id=user_id, json_struct=None)
+        raw = llm_text_gen(
+            prompt=prompt,
+            user_id=user_id,
+            json_struct=None,
+            preferred_provider="huggingface",
+            flow_type="premium_tool",
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Script generation failed: {exc}")
 

@@ -68,30 +68,72 @@ class SpeechGenerator:
         model_path = "minimax/speech-02-hd"
         url = f"{self.base_url}/{model_path}"
         
-        payload = {
-            "text": text,
-            "voice_id": voice_id,
-            "speed": speed,
-            "volume": volume,
-            "pitch": pitch,
-            "emotion": emotion,
-            "enable_sync_mode": enable_sync_mode,
+        # Sanitize and validate parameters
+        sanitized_text = str(text).strip()
+        if not sanitized_text:
+            raise ValueError("Text cannot be empty after sanitization")
+            
+        sanitized_voice_id = str(voice_id).strip()
+        if not sanitized_voice_id:
+            raise ValueError("Voice ID cannot be empty after sanitization")
+        
+        # Ensure numeric parameters are proper floats and within valid ranges
+        sanitized_speed = max(0.5, min(2.0, float(speed))) if speed is not None else 1.0
+        sanitized_volume = max(0.1, min(10.0, float(volume))) if volume is not None else 1.0
+        sanitized_pitch = max(-12.0, min(12.0, float(pitch))) if pitch is not None else 0.0
+        
+        # Sanitize emotion parameter - remove newlines and extra whitespace
+        sanitized_emotion = str(emotion).strip().replace('\n', '').replace('\r', '')
+        
+        # Map common emotions to minimax valid values
+        emotion_mapping = {
+            'neutral': 'neutral',
+            'happy': 'happy', 
+            'sad': 'sad',
+            'angry': 'angry',
+            'excited': 'happy',
+            'calm': 'neutral',
+            'friendly': 'happy',
+            'professional': 'neutral',
+            'warm': 'happy',
+            'serious': 'neutral'
         }
         
-        # Add optional parameters
+        # Use mapped emotion or default to 'happy'
+        mapped_emotion = emotion_mapping.get(sanitized_emotion.lower(), 'happy')
+        
+        payload = {
+            "text": sanitized_text,
+            "voice_id": sanitized_voice_id,
+            "speed": sanitized_speed,
+            "volume": sanitized_volume,
+            "pitch": sanitized_pitch,
+            "emotion": mapped_emotion,
+            "enable_sync_mode": bool(enable_sync_mode),
+        }
+        
+        # Add optional parameters with proper type validation
         optional_params = [
             "english_normalization",
-            "sample_rate",
+            "sample_rate", 
             "bitrate",
             "channel",
             "format",
             "language_boost",
         ]
         for param in optional_params:
-            if param in kwargs:
-                payload[param] = kwargs[param]
+            if param in kwargs and kwargs[param] is not None:
+                value = kwargs[param]
+                # Convert to appropriate type based on parameter
+                if param == "english_normalization":
+                    payload[param] = bool(value)
+                elif param in ["sample_rate", "bitrate"]:
+                    payload[param] = int(value) if value is not None else None
+                else:
+                    payload[param] = str(value).strip() if value is not None else None
         
         logger.info(f"[WaveSpeed] Generating speech via {url} (voice={voice_id}, text_length={len(text)})")
+        logger.debug(f"[WaveSpeed] Payload being sent: {payload}")
 
         # Retry on transient connection issues
         max_retries = 2

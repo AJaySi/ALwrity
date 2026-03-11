@@ -1,49 +1,39 @@
 """
-Hugging Face Provider Module for ALwrity
+WaveSpeed LLM Provider Module for ALwrity
 
-This module provides functions for interacting with Hugging Face's Inference Providers API
-using the Responses API (beta) which provides a unified interface for model interactions.
+This module provides functions for interacting with WaveSpeed's LLM API
+using the OpenAI-compatible interface for text generation.
 
 Key Features:
 - Text response generation with retry logic
-- Structured JSON response generation with schema validation
 - Comprehensive error handling and logging
 - Automatic API key management
-- Support for various Hugging Face models via Inference Providers
+- Support for gpt-oss and other WaveSpeed models
+- Integration with subscription/preflight checks
 
 Best Practices:
-1. Use structured output for complex, multi-field responses
-2. Keep schemas simple and flat to avoid truncation
-3. Set appropriate token limits (8192 for complex outputs)
-4. Use low temperature (0.1-0.3) for consistent structured output
-5. Implement proper error handling in calling functions
-6. Use the Responses API for better compatibility
+1. Use appropriate temperature for your use case (0.7 for creative, 0.1-0.3 for factual)
+2. Set max_tokens based on expected response length
+3. Use system_prompt to guide model behavior
+4. Handle errors gracefully in calling functions
 
 Usage Examples:
     # Text response
-    result = huggingface_text_response(prompt, temperature=0.7, max_tokens=2048)
+    result = wavespeed_text_response(prompt, temperature=0.7, max_tokens=2048)
     
     # Structured JSON response
-    schema = {
-        "type": "object",
-        "properties": {
-            "tasks": {
-                "type": "array",
-                "items": {"type": "object", "properties": {...}}
-            }
-        }
-    }
-    result = huggingface_structured_json_response(prompt, schema, temperature=0.2, max_tokens=8192)
+    schema = {"type": "object", "properties": {"title": {"type": "string"}}}
+    result = wavespeed_structured_json_response(prompt, schema, temperature=0.2, max_tokens=8192)
 
 Dependencies:
-- openai (for Hugging Face Responses API)
+- openai (for WaveSpeed OpenAI-compatible API)
 - tenacity (for retry logic)
 - logging (for debugging)
 - json (for fallback parsing)
 
 Author: ALwrity Team
 Version: 1.0
-Last Updated: January 2025
+Last Updated: March 2026
 """
 
 import os
@@ -72,7 +62,7 @@ from loguru import logger
 from utils.logger_utils import get_service_logger
 
 # Use service-specific logger to avoid conflicts
-logger = get_service_logger("huggingface_provider")
+logger = get_service_logger("wavespeed_provider")
 
 from tenacity import (
     retry,
@@ -90,20 +80,20 @@ except ImportError:
     NotFoundError = Exception
     logger.warn("OpenAI library not available. Install with: pip install openai")
 
-HF_FALLBACK_MODELS = [
-    "openai/gpt-oss-120b:cerebras",
-    "moonshotai/Kimi-K2-Instruct-0905:cerebras",
-    "meta-llama/Llama-3.1-8B-Instruct:cerebras",
-    "mistralai/Mistral-7B-Instruct-v0.3:cerebras",
+# Default WaveSpeed models for fallback
+WAVESPEED_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "mistralai/Mistral-7B-Instruct-v0.3",
+    "google/gemma-7b-it",
 ]
-
 
 def _candidate_model_variants(model: str):
     """Yield model ids to try for a single logical model preference."""
     if not model:
         return
 
-    # Try configured model first (supports provider suffixes like ":cerebras")
+    # Try configured model first
     yield model
 
     # Fallback to base repo id when provider suffix is not recognized by the router
@@ -111,7 +101,6 @@ def _candidate_model_variants(model: str):
         base_model = model.split(":", 1)[0]
         if base_model:
             yield base_model
-
 
 def _fallback_model_sequence(model: str, fallback_models: Optional[List[str]] = None):
     # IMPORTANT: Do not apply implicit global fallback chains.
@@ -127,9 +116,8 @@ def _fallback_model_sequence(model: str, fallback_models: Optional[List[str]] = 
                 seen.add(candidate)
                 yield candidate
 
-
-def _is_non_retryable_hf_error(exc: Exception) -> bool:
-    """Skip retries for deterministic HF failures (e.g., unknown model ids, billing)."""
+def _is_non_retryable_wavespeed_error(exc: Exception) -> bool:
+    """Skip retries for deterministic WaveSpeed failures (e.g., unknown model ids, billing)."""
     msg = str(exc).lower()
     status = getattr(exc, "status_code", None)
     
@@ -145,13 +133,11 @@ def _is_non_retryable_hf_error(exc: Exception) -> bool:
     
     return False
 
+def _should_retry_wavespeed_error(exc: Exception) -> bool:
+    return not _is_non_retryable_wavespeed_error(exc)
 
-def _should_retry_hf_error(exc: Exception) -> bool:
-    return not _is_non_retryable_hf_error(exc)
-
-
-def _classify_hf_error(exc: Exception) -> str:
-    """Classify HF failures for actionable logs."""
+def _classify_wavespeed_error(exc: Exception) -> str:
+    """Classify WaveSpeed failures for actionable logs."""
     msg = str(exc).lower()
     if any(token in msg for token in ["insufficient", "balance", "quota", "billing", "payment", "402"]):
         return "billing_or_quota"
@@ -161,8 +147,7 @@ def _classify_hf_error(exc: Exception) -> str:
         return "model_not_found"
     return "unknown"
 
-
-def _hf_error_details(exc: Exception) -> str:
+def _wavespeed_error_details(exc: Exception) -> str:
     """Return compact, actionable exception details for logs."""
     status = getattr(exc, "status_code", None)
     err_type = type(exc).__name__
@@ -178,30 +163,30 @@ def _hf_error_details(exc: Exception) -> str:
     details += f", repr={repr(exc)}"
     return details
 
-def get_huggingface_api_key() -> str:
-    """Get Hugging Face API key with proper error handling."""
-    api_key = os.getenv('HF_TOKEN')
+def get_wavespeed_api_key() -> str:
+    """Get WaveSpeed API key with proper error handling."""
+    api_key = os.getenv('WAVESPEED_API_KEY')
     if not api_key:
-        error_msg = "HF_TOKEN environment variable is not set. Please set it in your .env file."
+        error_msg = "WAVESPEED_API_KEY environment variable is not set. Please set it in your .env file."
         logger.error(error_msg)
         raise ValueError(error_msg)
     
     # Validate API key format (basic check)
-    if not api_key.startswith('hf_'):
-        error_msg = "HF_TOKEN appears to be invalid. It should start with 'hf_'."
+    if not api_key or len(api_key) < 10:
+        error_msg = "WAVESPEED_API_KEY appears to be invalid."
         logger.error(error_msg)
         raise ValueError(error_msg)
     
     return api_key
 
 @retry(
-    retry=retry_if_exception(_should_retry_hf_error),
+    retry=retry_if_exception(_should_retry_wavespeed_error),
     wait=wait_random_exponential(min=1, max=60),
     stop=stop_after_attempt(6),
 )
-def huggingface_text_response(
+def wavespeed_text_response(
     prompt: str,
-    model: str = "openai/gpt-oss-120b:cerebras",
+    model: str = "openai/gpt-oss-120b",
     fallback_models: Optional[List[str]] = None,
     temperature: float = 0.7,
     max_tokens: int = 2048,
@@ -209,14 +194,14 @@ def huggingface_text_response(
     system_prompt: Optional[str] = None
 ) -> str:
     """
-    Generate text response using Hugging Face Inference Providers API.
+    Generate text response using WaveSpeed LLM API.
     
-    This function uses the Hugging Face Responses API which provides a unified interface
-    for model interactions with built-in retry logic and error handling.
+    This function uses the WaveSpeed OpenAI-compatible API for text generation
+    with built-in retry logic and error handling.
     
     Args:
         prompt (str): The input prompt for the AI model
-        model (str): Hugging Face model identifier (default: "openai/gpt-oss-120b:groq")
+        model (str): WaveSpeed model identifier (default: "openai/gpt-oss-120b")
         temperature (float): Controls randomness (0.0-1.0)
         max_tokens (int): Maximum tokens in response
         top_p (float): Nucleus sampling parameter (0.0-1.0)
@@ -235,9 +220,9 @@ def huggingface_text_response(
         - Handle errors gracefully in calling functions
         
     Example:
-        result = huggingface_text_response(
+        result = wavespeed_text_response(
             prompt="Write a blog post about AI",
-            model="openai/gpt-oss-120b:cerebras",
+            model="openai/gpt-oss-120b",
             temperature=0.7,
             max_tokens=2048,
             system_prompt="You are a professional content writer."
@@ -248,18 +233,18 @@ def huggingface_text_response(
             raise ImportError("OpenAI library not available. Install with: pip install openai")
         
         # Get API key with proper error handling
-        api_key = get_huggingface_api_key()
-        logger.info(f"🔑 Hugging Face API key loaded: {bool(api_key)} (length: {len(api_key) if api_key else 0})")
+        api_key = get_wavespeed_api_key()
+        logger.info(f"🔑 WaveSpeed API key loaded: {bool(api_key)} (length: {len(api_key) if api_key else 0})")
         
         if not api_key:
-            raise Exception("HF_TOKEN not found in environment variables")
+            raise Exception("WAVESPEED_API_KEY not found in environment variables")
             
-        # Initialize Hugging Face client
+        # Initialize WaveSpeed client
         client = OpenAI(
-            base_url="https://router.huggingface.co/v1",
+            base_url="https://llm.wavespeed.ai/v1",
             api_key=api_key,
         )
-        logger.info("✅ Hugging Face client initialized for text response")
+        logger.info("✅ WaveSpeed client initialized for text response")
 
         # Prepare input for the API
         messages = []
@@ -279,7 +264,7 @@ def huggingface_text_response(
 
         # Add debugging for API call
         logger.info(
-            "Hugging Face text call | model={} | prompt_len={} | temp={} | top_p={} | max_tokens={}",
+            "WaveSpeed text call | model={} | prompt_len={} | temp={} | top_p={} | max_tokens={}",
             model,
             len(prompt) if isinstance(prompt, str) else '<non-str>',
             temperature,
@@ -287,7 +272,7 @@ def huggingface_text_response(
             max_tokens,
         )
         
-        logger.info("🚀 Making Hugging Face API call (chat completion)...")
+        logger.info("🚀 Making WaveSpeed API call (chat completion)...")
         
         # Add rate limiting to prevent expensive API calls
         import time
@@ -312,17 +297,17 @@ def huggingface_text_response(
             generated_text = re.sub(r'```\n?', '', generated_text)
             generated_text = generated_text.strip()
         
-        logger.info(f"✅ Hugging Face text response generated successfully (length: {len(generated_text)})")
+        logger.info(f"✅ WaveSpeed text response generated successfully (length: {len(generated_text)})")
         return generated_text
         
     except Exception as e:
-        error_class = _classify_hf_error(e)
-        error_details = _hf_error_details(e)
-        logger.error(f"❌ Hugging Face text generation failed: {error_details}")
+        error_class = _classify_wavespeed_error(e)
+        error_details = _wavespeed_error_details(e)
+        logger.error(f"❌ WaveSpeed text generation failed: {error_details}")
         
         # Extra diagnostics: try to capture raw response if available
         if hasattr(e, 'response') and e.response is not None:
-            logger.error(f"🔍 HF Error Diagnostics:")
+            logger.error(f"🔍 WaveSpeed Error Diagnostics:")
             logger.error(f"  - Status: {e.response.status_code}")
             logger.error(f"  - Headers: {dict(e.response.headers)}")
             try:
@@ -333,28 +318,28 @@ def huggingface_text_response(
         else:
             logger.error(f"🔍 No HTTP response attached to exception object.")
         
-        raise Exception(f"Hugging Face text generation failed: {str(e)}")
+        raise Exception(f"WaveSpeed text generation failed: {str(e)}")
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
-def huggingface_structured_json_response(
+def wavespeed_structured_json_response(
     prompt: str,
     schema: Dict[str, Any],
-    model: str = "openai/gpt-oss-120b:cerebras",
+    model: str = "openai/gpt-oss-120b",
     fallback_models: Optional[List[str]] = None,
     temperature: float = 0.7,
     max_tokens: int = 8192,
     system_prompt: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Generate structured JSON response using Hugging Face Inference Providers API.
+    Generate structured JSON response using WaveSpeed LLM API.
     
-    This function uses the Hugging Face Responses API with structured output support
+    This function uses the WaveSpeed OpenAI-compatible API with structured output support
     to generate JSON responses that match a provided schema.
     
     Args:
         prompt (str): The input prompt for the AI model
         schema (dict): JSON schema defining the expected output structure
-        model (str): Hugging Face model identifier (default: "openai/gpt-oss-120b:groq")
+        model (str): WaveSpeed model identifier (default: "openai/gpt-oss-120b")
         temperature (float): Controls randomness (0.0-1.0). Use 0.1-0.3 for structured output
         max_tokens (int): Maximum tokens in response. Use 8192 for complex outputs
         system_prompt (str, optional): System instruction for the model
@@ -388,26 +373,25 @@ def huggingface_structured_json_response(
                 }
             }
         }
-        result = huggingface_structured_json_response(prompt, schema, temperature=0.2, max_tokens=8192)
+        result = wavespeed_structured_json_response(prompt, schema, temperature=0.2, max_tokens=8192)
     """
     try:
         if not OPENAI_AVAILABLE:
             raise ImportError("OpenAI library not available. Install with: pip install openai")
         
         # Get API key with proper error handling
-        api_key = get_huggingface_api_key()
-        logger.info(f"🔑 Hugging Face API key loaded: {bool(api_key)} (length: {len(api_key) if api_key else 0})")
+        api_key = get_wavespeed_api_key()
+        logger.info(f"🔑 WaveSpeed API key loaded: {bool(api_key)} (length: {len(api_key) if api_key else 0})")
         
         if not api_key:
-            raise Exception("HF_TOKEN not found in environment variables")
+            raise Exception("WAVESPEED_API_KEY not found in environment variables")
             
-        # Initialize OpenAI client with Hugging Face base URL
-        # Use standard Inference API endpoint
+        # Initialize OpenAI client with WaveSpeed base URL
         client = OpenAI(
-            base_url="https://router.huggingface.co/v1",
+            base_url="https://llm.wavespeed.ai/v1",
             api_key=api_key,
         )
-        logger.info("✅ Hugging Face client initialized for structured JSON response")
+        logger.info("✅ WaveSpeed client initialized for structured JSON response")
 
         # Prepare input for the API
         messages = []
@@ -420,7 +404,6 @@ def huggingface_structured_json_response(
             })
         
         # Add user prompt with JSON instruction
-        # For HF models, explicit JSON instruction in prompt is often better than response_format
         json_instruction = "Please respond with valid JSON that matches the provided schema."
         messages.append({
             "role": "user", 
@@ -429,7 +412,7 @@ def huggingface_structured_json_response(
 
         # Add debugging for API call
         logger.info(
-            "Hugging Face structured call | model={} | prompt_len={} | schema_kind={} | temp={} | max_tokens={}",
+            "WaveSpeed structured call | model={} | prompt_len={} | schema_kind={} | temp={} | max_tokens={}",
             model,
             len(prompt) if isinstance(prompt, str) else '<non-str>',
             type(schema).__name__,
@@ -437,10 +420,7 @@ def huggingface_structured_json_response(
             max_tokens,
         )
         
-        logger.info("🚀 Making Hugging Face structured API call...")
-        
-        # Make the API call using standard Chat Completions
-        logger.info("🚀 Making Hugging Face API call (chat completion)...")
+        logger.info("🚀 Making WaveSpeed structured API call...")
         
         # Add JSON schema to prompt for guidance
         json_schema_str = json.dumps(schema, indent=2)
@@ -463,15 +443,15 @@ def huggingface_structured_json_response(
                         response_format={"type": "json_object"} # Try to enforce JSON mode if supported
                     )
                     if candidate_model != model:
-                        logger.warning("HF structured generation switched to fallback model: {}", candidate_model)
+                        logger.warning("WaveSpeed structured generation switched to fallback model: {}", candidate_model)
                     break
                 except NotFoundError as nf_err:
                     last_error = nf_err
-                    logger.warning("HF structured model not found: {}. Trying fallback model.", candidate_model)
+                    logger.warning("WaveSpeed structured model not found: {}. Trying fallback model.", candidate_model)
                     continue
 
             if response is None:
-                raise last_error or Exception("Hugging Face structured generation failed: all fallback models failed")
+                raise last_error or Exception("WaveSpeed structured generation failed: all fallback models failed")
             
             response_text = response.choices[0].message.content
             
@@ -485,7 +465,7 @@ def huggingface_structured_json_response(
             
             try:
                 parsed_json = json.loads(response_text)
-                logger.info("✅ Hugging Face structured JSON response parsed successfully")
+                logger.info("✅ WaveSpeed structured JSON response parsed successfully")
                 return parsed_json
             except json.JSONDecodeError as json_err:
                 logger.error(f"❌ JSON parsing failed: {json_err}")
@@ -504,7 +484,7 @@ def huggingface_structured_json_response(
                 return {"error": "Failed to parse JSON response", "raw_response": response_text}
                 
         except Exception as e:
-            logger.error(f"❌ Hugging Face API call failed: {e}")
+            logger.error(f"❌ WaveSpeed API call failed: {e}")
             # If 422 Unprocessable Entity (often due to response_format not supported), retry without it
             if "422" in str(e) or "not supported" in str(e).lower() or isinstance(e, NotFoundError):
                 logger.info("Retrying without response_format...")
@@ -519,11 +499,11 @@ def huggingface_structured_json_response(
                             max_tokens=max_tokens
                         )
                         if candidate_model != model:
-                            logger.warning("HF structured no-response_format fallback model: {}", candidate_model)
+                            logger.warning("WaveSpeed structured no-response-format fallback model: {}", candidate_model)
                         break
                     except NotFoundError as nf_err:
                         last_error = nf_err
-                        logger.warning("HF structured model not found (no response_format path): {}", candidate_model)
+                        logger.warning("WaveSpeed structured model not found (no response_format path): {}", candidate_model)
                         continue
 
                 if response is None:
@@ -543,37 +523,5 @@ def huggingface_structured_json_response(
     except Exception as e:
         error_msg = str(e) if str(e) else repr(e)
         error_type = type(e).__name__
-        logger.error(f"❌ Hugging Face structured JSON generation failed: {error_type}: {error_msg}")
-        logger.error(f"❌ Full exception details: {repr(e)}")
-        import traceback
-        logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise Exception(f"Hugging Face structured JSON generation failed: {error_type}: {error_msg}")
-
-def get_available_models() -> list:
-    """
-    Get list of available Hugging Face models for text generation.
-    
-    Returns:
-        list: List of available model identifiers
-    """
-    return [
-        "openai/gpt-oss-120b:groq",
-        "moonshotai/Kimi-K2-Instruct-0905:groq",
-        "Qwen/Qwen2.5-VL-7B-Instruct",
-        "meta-llama/Llama-3.1-8B-Instruct:groq",
-        "microsoft/Phi-3-medium-4k-instruct:groq",
-        "mistralai/Mistral-7B-Instruct-v0.3:groq"
-    ]
-
-def validate_model(model: str) -> bool:
-    """
-    Validate if a model identifier is supported.
-    
-    Args:
-        model (str): Model identifier to validate
-        
-    Returns:
-        bool: True if model is supported, False otherwise
-    """
-    available_models = get_available_models()
-    return model in available_models
+        logger.error(f"❌ WaveSpeed structured JSON generation failed [{error_type}]: {error_msg}")
+        raise Exception(f"WaveSpeed structured JSON generation failed: {error_msg}")

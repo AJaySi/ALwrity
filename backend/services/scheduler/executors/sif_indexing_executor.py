@@ -13,6 +13,7 @@ from models.website_analysis_monitoring_models import (
     SIFIndexingTask,
     SIFIndexingExecutionLog
 )
+from models.onboarding import OnboardingSession
 from services.scheduler.core.executor_interface import TaskExecutor, TaskExecutionResult
 from services.scheduler.core.failure_detection_service import FailureDetectionService
 from services.intelligence.sif_integration import SIFIntegrationService
@@ -57,6 +58,36 @@ class SIFIndexingExecutor(TaskExecutor):
 
         try:
             logger.info(f"Executing SIF indexing for user {user_id} ({website_url})")
+
+            onboarding_session = (
+                db.query(OnboardingSession)
+                .filter(OnboardingSession.user_id == user_id)
+                .order_by(OnboardingSession.updated_at.desc())
+                .first()
+            )
+            if not onboarding_session:
+                logger.info(
+                    f"Skipping SIF indexing for user {user_id}: no onboarding session found. "
+                    "Pausing task until onboarding completes."
+                )
+                task.last_executed = datetime.utcnow()
+                task.status = "paused"
+                task.next_execution = None
+
+                task_log.status = "skipped"
+                task_log.result_data = {
+                    "reason": "no_onboarding_session",
+                    "website_url": website_url,
+                }
+                task_log.execution_time_ms = int((time.time() - start_time) * 1000)
+                db.commit()
+
+                return TaskExecutionResult(
+                    success=False,
+                    result_data=task_log.result_data,
+                    execution_time_ms=task_log.execution_time_ms,
+                    retryable=False,
+                )
             
             # Initialize SIF Service
             sif_service = SIFIntegrationService(user_id)

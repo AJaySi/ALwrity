@@ -262,7 +262,7 @@ export const podcastApi = {
     };
   },
 
-  async enhanceIdea(params: { idea: string; bible?: any }): Promise<{ enhanced_idea: string; rationale: string }> {
+  async enhanceIdea(params: { idea: string; bible?: any }): Promise<{ enhanced_ideas: string[]; rationales: string[] }> {
     const response = await aiApiClient.post("/api/podcast/idea/enhance", params);
     return response.data;
   },

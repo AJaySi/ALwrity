@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { apiClient, setGlobalSubscriptionErrorHandler } from '../api/client';
+import {
+  apiClient,
+  isBackendCooldownActive,
+  logBackendCooldownSkipOnce,
+  setGlobalSubscriptionErrorHandler,
+} from '../api/client';
 import SubscriptionExpiredModal from '../components/SubscriptionExpiredModal';
 import { saveNavigationState, getCurrentPhaseForTool } from '../utils/navigationState';
 import { showSubscriptionExpiredToast, showUsageLimitToast, showSubscriptionToast } from '../utils/toastNotifications';
@@ -78,6 +83,11 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     
     if (now - lastCheckTime < THROTTLE_MS) {
       console.log('SubscriptionContext: Check throttled (5s)');
+      return;
+    }
+
+    if (isBackendCooldownActive()) {
+      logBackendCooldownSkipOnce('SubscriptionContext');
       return;
     }
     

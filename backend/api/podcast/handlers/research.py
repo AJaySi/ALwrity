@@ -144,7 +144,13 @@ Requirements:
 - Avoid generic filler.
 """
         try:
-            llm_response = llm_text_gen(prompt=prompt, user_id=user_id, json_struct=None)
+            llm_response = llm_text_gen(
+                prompt=prompt,
+                user_id=user_id,
+                json_struct=None,
+                preferred_provider="huggingface",
+                flow_type="premium_tool",
+            )
             
             # Normalize response
             if isinstance(llm_response, str):

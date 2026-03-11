@@ -6,6 +6,7 @@ from datetime import datetime
 from loguru import logger
 from .base import SIFBaseAgent, TXTAI_AVAILABLE, Agent
 from services.intelligence.agents.core_agent_framework import BaseALwrityAgent, TaskProposal
+from services.database import has_onboarding_session
 
 try:
     from services.intelligence.sif_integration import SIFIntegrationService
@@ -22,11 +23,16 @@ class SEOOptimizationAgent(BaseALwrityAgent):
         super().__init__(user_id, "seo_specialist", shared_llm_name, llm, **kwargs)
         
         self.sif_service = None
-        if SIF_AVAILABLE:
+        if SIF_AVAILABLE and has_onboarding_session(user_id):
             try:
                 self.sif_service = SIFIntegrationService(user_id)
             except Exception as e:
                 logger.warning(f"Failed to initialize SIF service for SEOOptimizationAgent: {e}")
+        elif SIF_AVAILABLE:
+            logger.debug(
+                "Skipping SIF service initialization for SEOOptimizationAgent user {}: no onboarding session",
+                user_id,
+            )
 
     def _create_txtai_agent(self):
         """Create a specialized txtai Agent for SEO optimization."""

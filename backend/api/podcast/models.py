@@ -77,8 +77,8 @@ class PodcastEnhanceIdeaRequest(BaseModel):
 
 class PodcastEnhanceIdeaResponse(BaseModel):
     """Response model for enhanced podcast idea."""
-    enhanced_idea: str
-    rationale: str
+    enhanced_ideas: List[str] = Field(..., description="3 AI-enhanced topic choices")
+    rationales: List[str] = Field(..., description="Rationale for each enhanced idea")
 
 
 class PodcastScriptRequest(BaseModel):

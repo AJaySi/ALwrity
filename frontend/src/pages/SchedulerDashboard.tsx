@@ -28,6 +28,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { styled } from '@mui/material/styles';
 
 import { getSchedulerDashboard, SchedulerDashboardData } from '../api/schedulerDashboard';
+import { isBackendCooldownActive, logBackendCooldownSkipOnce } from '../api/client';
 // Removed SchedulerStatsCards - metrics moved to header
 import SchedulerJobsTree from '../components/SchedulerDashboard/SchedulerJobsTree';
 import ExecutionLogsTable from '../components/SchedulerDashboard/ExecutionLogsTable';
@@ -213,6 +214,11 @@ const SchedulerDashboard: React.FC = () => {
   const fetchDashboardData = useCallback(async (isManualRefresh = false) => {
     // Prevent multiple simultaneous fetches using refs
     if (loadingRef.current || refreshingRef.current) {
+      return;
+    }
+
+    if (isBackendCooldownActive()) {
+      logBackendCooldownSkipOnce('SchedulerDashboard');
       return;
     }
 

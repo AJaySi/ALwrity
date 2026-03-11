@@ -34,7 +34,12 @@ class SharedLLMWrapper:
         try:
             # We ignore kwargs like 'max_tokens' as llm_text_gen handles defaults,
             # but we could map them if needed.
-            return llm_text_gen(prompt, user_id=self.user_id)
+            return llm_text_gen(
+                prompt,
+                user_id=self.user_id,
+                preferred_hf_models=LOW_COST_SHARED_REMOTE_MODELS,
+                flow_type="sif_agent",
+            )
         except Exception as e:
             logger.error(f"SharedLLMWrapper failed to generate text: {e}")
             return f"[ERROR: Shared LLM generation failed for user {self.user_id}]"
@@ -43,6 +48,12 @@ class SharedLLMWrapper:
         return self.generate(prompt, **kwargs)
 
 _local_llm_cache = {}
+
+LOW_COST_SHARED_REMOTE_MODELS = [
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+]
 
 LOCAL_LLM_FALLBACKS = [
     "Qwen/Qwen2.5-1.5B-Instruct",

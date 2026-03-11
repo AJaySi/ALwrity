@@ -4,7 +4,11 @@ import { useUser, useClerk } from '@clerk/clerk-react';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import SystemStatusIndicator from '../ContentPlanningDashboard/components/SystemStatusIndicator';
 import UsageDashboard from './UsageDashboard';
-import { apiClient } from '../../api/client';
+import {
+  apiClient,
+  isBackendCooldownActive,
+  logBackendCooldownSkipOnce,
+} from '../../api/client';
 
 interface UserBadgeProps {
   colorMode?: 'light' | 'dark';
@@ -27,6 +31,11 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
   // Fetch system status for status bulb
   useEffect(() => {
     const fetchSystemStatus = async () => {
+      if (isBackendCooldownActive()) {
+        logBackendCooldownSkipOnce('UserBadge');
+        return;
+      }
+
       try {
         const response = await apiClient.get('/api/content-planning/monitoring/lightweight-stats');
         const result = response.data;

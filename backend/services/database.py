@@ -108,6 +108,46 @@ def get_user_db_path(user_id: str) -> str:
     # Default to specific for new databases
     return specific_db_path
 
+
+def has_onboarding_session(user_id: str, db: Optional[Session] = None) -> bool:
+    """Return True when at least one onboarding session exists for the given user."""
+    if not user_id:
+        return False
+
+    db_session = db
+    close_db = False
+
+    try:
+        if db_session is None:
+            # Avoid opening/creating a DB for non-existent user workspace.
+            db_path = get_user_db_path(user_id)
+            if not os.path.exists(db_path):
+                return False
+            db_session = get_session_for_user(user_id)
+            close_db = True
+
+        if not db_session:
+            return False
+
+        from models.onboarding import OnboardingSession
+
+        onboarding_row = (
+            db_session.query(OnboardingSession.id)
+            .filter(OnboardingSession.user_id == user_id)
+            .first()
+        )
+        return onboarding_row is not None
+
+    except Exception as e:
+        logger.debug(f"Failed onboarding session existence check for user {user_id}: {e}")
+        return False
+    finally:
+        if close_db and db_session:
+            try:
+                db_session.close()
+            except Exception:
+                pass
+
 def get_all_user_ids() -> List[str]:
     """
     Discover all user IDs by scanning workspace directories.

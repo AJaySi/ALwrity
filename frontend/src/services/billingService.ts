@@ -1,6 +1,11 @@
 import axios, { AxiosResponse } from 'axios';
 import { emitApiEvent } from '../utils/apiEvents';
-import { getApiUrl } from '../api/client';
+import {
+  getApiUrl,
+  isBackendCooldownActive,
+  noteBackendRecovered,
+  noteBackendUnavailable,
+} from '../api/client';
 import {
   DashboardData,
   UsageStats,
@@ -51,6 +56,12 @@ export const setBillingAuthTokenGetter = (getter: (() => Promise<string | null>)
 // Request interceptor for authentication - uses Clerk token getter
 billingAPI.interceptors.request.use(
   async (config) => {
+    if (isBackendCooldownActive()) {
+      return Promise.reject(
+        new Error('Backend is temporarily unavailable. Skipping billing request during cooldown window.')
+      );
+    }
+
     // Use Clerk token getter if available (same pattern as apiClient)
     if (authTokenGetter) {
       try {
@@ -76,6 +87,7 @@ billingAPI.interceptors.request.use(
 // Response interceptor for error handling - similar to apiClient pattern
 billingAPI.interceptors.response.use(
   (response: AxiosResponse) => {
+    noteBackendRecovered();
     return response;
   },
   async (error) => {
@@ -83,8 +95,13 @@ billingAPI.interceptors.response.use(
     
     // Handle network errors
     if (!error.response) {
+      noteBackendUnavailable(error?.message || 'billing_network_error');
       console.error('Billing API Network Error:', error.message);
       return Promise.reject(error);
+    }
+
+    if (error.response.status >= 500) {
+      noteBackendUnavailable(`billing_http_${error.response.status}`);
     }
     
     // Handle 401 errors - try to refresh token if possible

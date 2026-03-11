@@ -34,6 +34,7 @@ class APIProvider(enum.Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     MISTRAL = "mistral"
+    WAVESPEED = "wavespeed"
     TAVILY = "tavily"
     SERPER = "serper"
     METAPHOR = "metaphor"
@@ -213,6 +214,7 @@ class UsageSummary(Base):
     openai_calls = Column(Integer, default=0)
     anthropic_calls = Column(Integer, default=0)
     mistral_calls = Column(Integer, default=0)
+    wavespeed_calls = Column(Integer, default=0)
     tavily_calls = Column(Integer, default=0)
     serper_calls = Column(Integer, default=0)
     metaphor_calls = Column(Integer, default=0)
@@ -228,12 +230,14 @@ class UsageSummary(Base):
     openai_tokens = Column(Integer, default=0)
     anthropic_tokens = Column(Integer, default=0)
     mistral_tokens = Column(Integer, default=0)
+    wavespeed_tokens = Column(Integer, default=0)
     
     # Cost Tracking
     gemini_cost = Column(Float, default=0.0)
     openai_cost = Column(Float, default=0.0)
     anthropic_cost = Column(Float, default=0.0)
     mistral_cost = Column(Float, default=0.0)
+    wavespeed_cost = Column(Float, default=0.0)
     tavily_cost = Column(Float, default=0.0)
     serper_cost = Column(Float, default=0.0)
     metaphor_cost = Column(Float, default=0.0)

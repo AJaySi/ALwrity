@@ -79,10 +79,11 @@ class UsageTrackingService:
             # Calculate costs
             # Use specific model names instead of generic defaults
             default_models = {
-                "gemini": "gemini-2.5-flash",  # Use Flash as default (cost-effective)
-                "openai": "gpt-4o-mini",       # Use Mini as default (cost-effective)
-                "anthropic": "claude-3.5-sonnet",  # Use Sonnet as default
-                "mistral": "openai/gpt-oss-120b:groq"  # HuggingFace default model
+                APIProvider.GEMINI: "gemini-2.5-flash",  # Use Flash as default (cost-effective)
+                APIProvider.OPENAI: "gpt-4o-mini",       # Use Mini as default (cost-effective)
+                APIProvider.ANTHROPIC: "claude-3.5-sonnet",  # Use Sonnet as default
+                APIProvider.MISTRAL: "openai/gpt-oss-120b:groq",  # HuggingFace default model
+                APIProvider.WAVESPEED: "openai/gpt-oss-120b"  # WaveSpeed default model
             }
             
             # For HuggingFace (stored as MISTRAL), use the actual model name or default
@@ -91,9 +92,9 @@ class UsageTrackingService:
                 if model_used:
                     model_name = model_used
                 else:
-                    model_name = default_models.get("mistral", "openai/gpt-oss-120b:groq")
+                    model_name = default_models.get(APIProvider.MISTRAL, "openai/gpt-oss-120b:groq")
             else:
-                model_name = model_used or default_models.get(provider.value, f"{provider.value}-default")
+                model_name = model_used or default_models.get(provider, f"{provider.value}-default")
             
             cost_data = self.pricing_service.calculate_api_cost(
                 provider=provider,
@@ -199,7 +200,7 @@ class UsageTrackingService:
         setattr(summary, f"{provider_name}_calls", current_calls + 1)
         
         # Update token usage for LLM providers
-        if provider in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL]:
+        if provider in [APIProvider.GEMINI, APIProvider.OPENAI, APIProvider.ANTHROPIC, APIProvider.MISTRAL, APIProvider.WAVESPEED]:
             current_tokens = getattr(summary, f"{provider_name}_tokens", 0)
             setattr(summary, f"{provider_name}_tokens", current_tokens + tokens_used)
         
@@ -901,12 +902,14 @@ class UsageTrackingService:
             summary.openai_calls = 0
             summary.anthropic_calls = 0
             summary.mistral_calls = 0
+            summary.wavespeed_calls = 0
             
             # Reset all LLM provider token counters
             summary.gemini_tokens = 0
             summary.openai_tokens = 0
             summary.anthropic_tokens = 0
             summary.mistral_tokens = 0
+            summary.wavespeed_tokens = 0
             
             # Reset search/research provider counters
             summary.tavily_calls = 0
@@ -932,6 +935,7 @@ class UsageTrackingService:
             summary.openai_cost = 0.0
             summary.anthropic_cost = 0.0
             summary.mistral_cost = 0.0
+            summary.wavespeed_cost = 0.0
             summary.tavily_cost = 0.0
             summary.serper_cost = 0.0
             summary.metaphor_cost = 0.0

@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Typography, TextField, Tooltip, Button, alpha } from "@mui/material";
+import { Box, Typography, TextField, Tooltip, Button, CircularProgress, alpha } from "@mui/material";
 import { AutoAwesome as AutoAwesomeIcon } from "@mui/icons-material";
 
 export const TOPIC_PLACEHOLDERS = [
@@ -19,6 +19,7 @@ interface TopicUrlInputProps {
   onAIDetailsClick?: () => void;
   placeholderIndex: number;
   loading?: boolean;
+  loadingMessage?: string;
 }
 
 export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
@@ -29,6 +30,7 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
   onAIDetailsClick,
   placeholderIndex,
   loading = false,
+  loadingMessage,
 }) => {
   return (
     <Box
@@ -110,31 +112,51 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
           />
         </Tooltip>
         
-        {/* Add details with AI button - appears when user types (and not a URL) */}
+        {/* Enhance topic with AI button - appears when user types (and not a URL) */}
         {showAIDetailsButton && !isUrl && (
-          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1, flexDirection: "column", alignItems: "flex-end", gap: 0.6 }}>
             <Button
               size="small"
-              variant="outlined"
-              startIcon={<AutoAwesomeIcon />}
+              variant="contained"
+              startIcon={
+                loading ? (
+                  <CircularProgress size={14} thickness={5} sx={{ color: "rgba(255,255,255,0.92)" }} />
+                ) : (
+                  <AutoAwesomeIcon />
+                )
+              }
               onClick={onAIDetailsClick}
               disabled={loading}
               sx={{
                 textTransform: "none",
                 fontSize: "0.875rem",
                 fontWeight: 600,
-                borderColor: "#667eea",
-                borderWidth: 1.5,
-                color: "#667eea",
-                borderRadius: 2,
+                borderRadius: 2.5,
+                color: "#f8fbff",
+                px: 1.8,
+                border: "1px solid rgba(148, 211, 255, 0.6)",
+                background: "linear-gradient(120deg, #0ea5e9 0%, #2563eb 55%, #1d4ed8 100%)",
+                boxShadow: "0 8px 18px rgba(37, 99, 235, 0.28), inset 0 1px 0 rgba(255,255,255,0.22)",
                 "&:hover": {
-                  borderColor: "#5568d3",
-                  backgroundColor: alpha("#667eea", 0.08),
+                  background: "linear-gradient(120deg, #38bdf8 0%, #2563eb 50%, #1e40af 100%)",
+                  boxShadow: "0 12px 24px rgba(29, 78, 216, 0.35), inset 0 1px 0 rgba(255,255,255,0.26)",
+                  transform: "translateY(-1px)",
+                },
+                "&.Mui-disabled": {
+                  color: "#e2e8f0",
+                  borderColor: "rgba(186, 230, 253, 0.7)",
+                  background: "linear-gradient(120deg, #0ea5e9 0%, #2563eb 55%, #1d4ed8 100%)",
+                  opacity: 0.78,
                 },
               }}
             >
-              {loading ? "Enhancing..." : "Add details with AI"}
+              {loading ? "Enhancing Topic With AI..." : "Enhance Topic With AI"}
             </Button>
+            {loading && (
+              <Typography sx={{ fontSize: "0.75rem", color: "#1d4ed8", fontWeight: 600 }}>
+                {loadingMessage || "Analyzing your topic and improving clarity..."}
+              </Typography>
+            )}
           </Box>
         )}
       </Box>

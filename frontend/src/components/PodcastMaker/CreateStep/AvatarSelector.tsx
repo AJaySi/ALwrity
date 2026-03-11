@@ -9,8 +9,10 @@ import {
   Delete as DeleteIcon,
   AutoAwesome as AutoAwesomeIcon,
   CloudUpload as CloudUploadIcon,
+  PhotoCamera as PhotoCameraIcon,
 } from "@mui/icons-material";
 import { AvatarAssetBrowser } from "../AvatarAssetBrowser";
+import { CameraSelfie } from "../CameraSelfie";
 import { SecondaryButton } from "../ui";
 
 interface AvatarSelectorProps {
@@ -23,12 +25,15 @@ interface AvatarSelectorProps {
   handleUseBrandAvatar: () => void;
   handleAvatarSelectFromLibrary: (url: string) => void;
   handleAvatarChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  handleCameraSelfie: (imageDataUrl: string) => void;
   handleRemoveAvatar: () => void;
   handleMakePresentable: () => void;
   makingPresentable: boolean;
   avatarPreviewBlobUrl: string | null;
   brandAvatarFromDb?: string | null;
   brandAvatarBlobUrl?: string | null;
+  cameraSelfieOpen: boolean;
+  setCameraSelfieOpen: (open: boolean) => void;
 }
 
 export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
@@ -41,21 +46,16 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
   handleUseBrandAvatar,
   handleAvatarSelectFromLibrary,
   handleAvatarChange,
+  handleCameraSelfie,
   handleRemoveAvatar,
   handleMakePresentable,
   makingPresentable,
   avatarPreviewBlobUrl,
   brandAvatarFromDb,
   brandAvatarBlobUrl,
+  cameraSelfieOpen,
+  setCameraSelfieOpen,
 }) => {
-  const isAuthenticatedUrl = React.useCallback((url: string | null): boolean => {
-    if (!url) return false;
-    return url.includes('/api/podcast/') || 
-           url.includes('/api/youtube/') || 
-           url.includes('/api/story/') ||
-           (url.startsWith('/') && !url.startsWith('//'));
-  }, []);
-
   return (
     <Box
       sx={{
@@ -92,9 +92,10 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                 Avatar Options:
               </Typography>
               <Typography variant="body2" component="div" sx={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-                <strong>Upload your photo:</strong> We'll enhance it into a professional podcast presenter using AI.<br/><br/>
                 <strong>Brand Avatar:</strong> Use your configured brand avatar for consistency.<br/><br/>
-                <strong>Asset Library:</strong> Choose from your previously uploaded images.
+                <strong>Asset Library:</strong> Choose from your previously uploaded images.<br/><br/>
+                <strong>Take a Selfie:</strong> Use your camera to capture a photo instantly for your podcast presenter.<br/><br/>
+                <strong>Upload your photo:</strong> We'll enhance it into a professional podcast presenter using AI.
               </Typography>
             </Box>
           }
@@ -149,6 +150,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           >
             <Tab label="Use Brand Avatar" />
             <Tab label="Asset Library" />
+            <Tab label="Take Selfie" />
             <Tab label="Upload Your Photo" />
           </Tabs>
 
@@ -319,6 +321,154 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                       <Box
                         component="img"
                         src={avatarPreviewBlobUrl || (avatarPreview.startsWith("data:") ? avatarPreview : "")}
+                        alt="Selfie preview"
+                        sx={{
+                          width: 160,
+                          height: 160,
+                          objectFit: "cover",
+                          borderRadius: 2.5,
+                          border: "2px solid #e2e8f0",
+                          boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
+                        }}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={handleRemoveAvatar}
+                        sx={{
+                          position: "absolute",
+                          top: -8,
+                          right: -8,
+                          bgcolor: "white",
+                          border: "1.5px solid #e2e8f0",
+                          boxShadow: "0 2px 4px rgba(15, 23, 42, 0.1)",
+                          "&:hover": {
+                            bgcolor: "#f8fafc",
+                            borderColor: "#dc2626",
+                            color: "#dc2626",
+                          },
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+
+                    {avatarUrl && (
+                      <Tooltip
+                        title="Transform your selfie into a professional podcast presenter."
+                        arrow
+                        placement="top"
+                      >
+                        <Box>
+                          <Button
+                            onClick={handleMakePresentable}
+                            disabled={makingPresentable}
+                            variant="contained"
+                            startIcon={!makingPresentable ? <AutoAwesomeIcon fontSize="small" /> : <CircularProgress size={14} thickness={5} sx={{ color: "rgba(255,255,255,0.92)" }} />}
+                            sx={{
+                              width: "100%",
+                              textTransform: "none",
+                              fontSize: "0.875rem",
+                              fontWeight: 600,
+                              borderRadius: 2.5,
+                              color: "#f8fbff",
+                              px: 1.8,
+                              border: "1px solid rgba(148, 211, 255, 0.6)",
+                              background: "linear-gradient(120deg, #0ea5e9 0%, #2563eb 55%, #1d4ed8 100%)",
+                              boxShadow: "0 8px 18px rgba(37, 99, 235, 0.28), inset 0 1px 0 rgba(255,255,255,0.22)",
+                              "&:hover": {
+                                background: "linear-gradient(120deg, #38bdf8 0%, #2563eb 50%, #1e40af 100%)",
+                                boxShadow: "0 12px 24px rgba(29, 78, 216, 0.35), inset 0 1px 0 rgba(255,255,255,0.26)",
+                                transform: "translateY(-1px)",
+                              },
+                              "&.Mui-disabled": {
+                                color: "#e2e8f0",
+                                borderColor: "rgba(186, 230, 253, 0.7)",
+                                background: "linear-gradient(120deg, #0ea5e9 0%, #2563eb 55%, #1d4ed8 100%)",
+                                opacity: 0.78,
+                              },
+                            }}
+                          >
+                            {makingPresentable ? "Transforming..." : "Make Presentable"}
+                          </Button>
+                        </Box>
+                      </Tooltip>
+                    )}
+                  </Stack>
+                ) : (
+                  <Box
+                    component="button"
+                    onClick={() => setCameraSelfieOpen(true)}
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "100%",
+                      minHeight: 200,
+                      border: "2px dashed #cbd5e1",
+                      borderRadius: 2.5,
+                      bgcolor: "#f8fafc",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      "&:hover": {
+                        borderColor: "#667eea",
+                        bgcolor: "#f1f5f9",
+                        borderWidth: "2.5px",
+                        boxShadow: "0 0 0 3px rgba(102, 126, 234, 0.08)",
+                      },
+                    }}
+                  >
+                    <PhotoCameraIcon sx={{ color: "#94a3b8", fontSize: 36, mb: 1.5 }} />
+                    <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 600, mb: 0.5 }}>
+                      Take a Selfie
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#94a3b8", textAlign: "center", px: 2, lineHeight: 1.5 }}>
+                      Use your camera to capture a photo instantly
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1.5,
+                  background: alpha("#f8fafc", 0.8),
+                  border: "1px solid rgba(15, 23, 42, 0.1)",
+                }}
+              >
+                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.875rem", fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <PhotoCameraIcon fontSize="small" sx={{ color: "#64748b" }} />
+                  Take a Selfie
+                </Typography>
+                <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                  Capture a photo using your device camera and use <strong>"Make Presentable"</strong> to enhance it into a professional presenter using AI.
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1.5,
+                  background: alpha("#f0f4ff", 0.5),
+                  border: "1px solid rgba(99, 102, 241, 0.15)",
+                }}
+              >
+                <Typography variant="caption" sx={{ color: "#6366f1", fontSize: "0.8125rem", fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <InfoIcon fontSize="inherit" />
+                  Camera access required for selfie capture
+                </Typography>
+              </Box>
+            </Stack>
+          )}
+
+          {avatarTab === 3 && (
+            <Stack spacing={2}>
+              <Box>
+                {avatarFile && avatarPreview ? (
+                  <Stack spacing={2} alignItems="center" sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: 2 }}>
+                    <Box sx={{ position: "relative", display: "inline-block" }}>
+                      <Box
+                        component="img"
+                        src={avatarPreviewBlobUrl || (avatarPreview.startsWith("data:") ? avatarPreview : "")}
                         alt="Avatar preview"
                         sx={{
                           width: 160,
@@ -442,6 +592,13 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           )}
         </Box>
       </Stack>
+
+      {/* Camera Selfie Dialog */}
+      <CameraSelfie
+        open={cameraSelfieOpen}
+        onClose={() => setCameraSelfieOpen(false)}
+        onCapture={handleCameraSelfie}
+      />
     </Box>
   );
 };

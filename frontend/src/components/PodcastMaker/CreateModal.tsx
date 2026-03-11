@@ -3,7 +3,7 @@ import { Stack, Paper, Box } from "@mui/material";
 import { CreateProjectPayload, Knobs } from "./types";
 import { useSubscription } from "../../contexts/SubscriptionContext";
 import { podcastApi } from "../../services/podcastApi";
-import { fetchMediaBlobUrl } from "../../utils/fetchMediaBlobUrl";
+import { fetchMediaBlobUrl, clearMediaCache } from "../../utils/fetchMediaBlobUrl";
 import { getLatestBrandAvatar } from "../../api/brandAssets";
 
 // Imported Components
@@ -12,6 +12,13 @@ import { TopicUrlInput, TOPIC_PLACEHOLDERS } from "./CreateStep/TopicUrlInput";
 import { PodcastConfiguration } from "./CreateStep/PodcastConfiguration";
 import { AvatarSelector } from "./CreateStep/AvatarSelector";
 import { CreateActions } from "./CreateStep/CreateActions";
+import { EnhancedTopicChoicesModal } from "./EnhancedTopicChoicesModal";
+
+const ENHANCE_TOPIC_PROGRESS_MESSAGES = [
+  "Analyzing your topic idea...",
+  "Enhancing clarity and hook...",
+  "Aligning language for podcast listeners...",
+];
 
 interface CreateModalProps {
   onCreate: (payload: CreateProjectPayload) => void;
@@ -33,11 +40,20 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreviewBlobUrl, setAvatarPreviewBlobUrl] = useState<string | null>(null);
   const [makingPresentable, setMakingPresentable] = useState(false);
+  const [enhancingTopic, setEnhancingTopic] = useState(false);
+  const [enhanceTopicProgressIndex, setEnhanceTopicProgressIndex] = useState(0);
   const [knobs, setKnobs] = useState<Knobs>({ ...defaultKnobs });
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [avatarTab, setAvatarTab] = useState(0);
   const [loadingBrandAvatar, setLoadingBrandAvatar] = useState(false);
   const [brandAvatarFromDb, setBrandAvatarFromDb] = useState<string | null>(null);
+  const [cameraSelfieOpen, setCameraSelfieOpen] = useState(false);
+  
+  // Enhanced topic choices state
+  const [enhancedChoices, setEnhancedChoices] = useState<string[]>([]);
+  const [enhancedRationales, setEnhancedRationales] = useState<string[]>([]);
+  const [choicesModalOpen, setChoicesModalOpen] = useState(false);
+  const [editedChoices, setEditedChoices] = useState<string[]>([]);
 
   // Rotate placeholder every 3 seconds
   useEffect(() => {
@@ -140,6 +156,11 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     let isMounted = true;
     const loadBrandBlob = async () => {
       try {
+        // Clear cache for this URL to ensure fresh data
+        if (brandAvatarFromDb) {
+          clearMediaCache(brandAvatarFromDb);
+        }
+        
         const blobUrl = await fetchMediaBlobUrl(brandAvatarFromDb);
         if (isMounted) setBrandAvatarBlobUrl(blobUrl);
       } catch (err) {
@@ -172,27 +193,55 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   };
 
   const isUrl = useMemo(() => detectUrl(topicInput), [topicInput]);
+  const enhanceTopicMessage = enhancingTopic ? ENHANCE_TOPIC_PROGRESS_MESSAGES[enhanceTopicProgressIndex] : undefined;
+
+  useEffect(() => {
+    if (!enhancingTopic) {
+      setEnhanceTopicProgressIndex(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setEnhanceTopicProgressIndex((prev) => (prev + 1) % ENHANCE_TOPIC_PROGRESS_MESSAGES.length);
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [enhancingTopic]);
 
   // Handle AI Details button click
   const handleAIDetailsClick = async () => {
-    if (!topicInput.trim() || makingPresentable) return;
+    if (!topicInput.trim() || enhancingTopic) return;
     
     try {
-      setMakingPresentable(true);
+      setEnhancingTopic(true);
       // We pass the current Bible context if we have it (unlikely here as it's generated in analysis)
       // But the backend will generate it from onboarding data if missing
       const result = await podcastApi.enhanceIdea({
         idea: topicInput,
       });
       
-      if (result.enhanced_idea) {
-        setTopicInput(result.enhanced_idea);
+      if (result.enhanced_ideas && result.enhanced_ideas.length === 3) {
+        setEnhancedChoices(result.enhanced_ideas);
+        setEnhancedRationales(result.rationales || []);
+        setEditedChoices(result.enhanced_ideas); // Initialize editable versions
+        setChoicesModalOpen(true);
       }
     } catch (error) {
       console.error("Failed to enhance idea with AI:", error);
     } finally {
-      setMakingPresentable(false);
+      setEnhancingTopic(false);
     }
+  };
+
+  // Handle enhanced topic choice selection
+  const handleChoiceSelection = (selectedIndex: number, editedChoice: string) => {
+    const selectedTopic = editedChoice;
+    setTopicInput(selectedTopic);
+    setChoicesModalOpen(false);
+    // Reset choices state
+    setEnhancedChoices([]);
+    setEnhancedRationales([]);
+    setEditedChoices([]);
   };
 
   // Show AI details button when user starts typing (and it's not a URL)
@@ -203,7 +252,6 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   // Calculate estimated cost
   const estimatedCost = useMemo(() => {
     const chars = Math.max(1000, duration * 900); // ~900 chars per minute
-    const scenes = Math.ceil((duration * 60) / (knobs.scene_length_target || 45));
     const secs = duration * 60;
     
     const ttsCost = (chars / 1000) * 0.05;
@@ -282,6 +330,8 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     setAvatarPreview(null);
     setAvatarUrl(null);
     setMakingPresentable(false);
+    setEnhancingTopic(false);
+    setEnhanceTopicProgressIndex(0);
     setKnobs({ ...defaultKnobs });
     setPlaceholderIndex(0);
   };
@@ -322,6 +372,34 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
         console.error('Avatar upload failed:', error);
         // Continue with local preview - upload will happen on submit
       }
+    }
+  };
+
+  const handleCameraSelfie = async (imageDataUrl: string) => {
+    try {
+      // Convert dataURL to File object
+      const response = await fetch(imageDataUrl);
+      const blob = await response.blob();
+      const file = new File([blob], 'selfie.jpg', { type: 'image/jpeg' });
+      
+      // Set the file and preview
+      setAvatarFile(file);
+      setAvatarPreview(imageDataUrl);
+      
+      // Upload image immediately to get URL (for "Make Presentable" feature)
+      try {
+        const { podcastApi } = await import("../../services/podcastApi");
+        const uploadResult = await podcastApi.uploadAvatar(file);
+        setAvatarUrl(uploadResult.avatar_url);
+      } catch (error) {
+        console.error('Avatar upload failed:', error);
+        // Continue with local preview - upload will happen on submit
+      }
+      
+      // Close camera dialog
+      setCameraSelfieOpen(false);
+    } catch (error) {
+      console.error('Failed to process selfie:', error);
     }
   };
 
@@ -442,7 +520,8 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
               showAIDetailsButton={showAIDetailsButton}
               onAIDetailsClick={handleAIDetailsClick}
               placeholderIndex={placeholderIndex}
-              loading={makingPresentable}
+              loading={enhancingTopic}
+              loadingMessage={enhanceTopicMessage}
             />
           </Box>
 
@@ -466,12 +545,15 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
           handleUseBrandAvatar={handleUseBrandAvatar}
           handleAvatarSelectFromLibrary={handleAvatarSelectFromLibrary}
           handleAvatarChange={handleAvatarChange}
+          handleCameraSelfie={handleCameraSelfie}
           handleRemoveAvatar={handleRemoveAvatar}
           handleMakePresentable={handleMakePresentable}
           makingPresentable={makingPresentable}
           avatarPreviewBlobUrl={avatarPreviewBlobUrl}
           brandAvatarFromDb={brandAvatarFromDb}
           brandAvatarBlobUrl={brandAvatarBlobUrl}
+          cameraSelfieOpen={cameraSelfieOpen}
+          setCameraSelfieOpen={setCameraSelfieOpen}
         />
 
         <CreateActions
@@ -479,6 +561,16 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
           submit={submit}
           canSubmit={canSubmit}
           isSubmitting={isSubmitting}
+        />
+
+        {/* Enhanced Topic Choices Modal */}
+        <EnhancedTopicChoicesModal
+          open={choicesModalOpen}
+          onClose={() => setChoicesModalOpen(false)}
+          enhancedChoices={enhancedChoices}
+          enhancedRationales={enhancedRationales}
+          onSelectChoice={handleChoiceSelection}
+          loading={enhancingTopic}
         />
       </Stack>
     </Paper>

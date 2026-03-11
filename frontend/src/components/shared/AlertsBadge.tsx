@@ -5,7 +5,11 @@ import { Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, CheckCirc
 import { billingService } from '../../services/billingService';
 import { useAuth } from '@clerk/clerk-react';
 import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../../api/schedulerDashboard';
-import { apiClient } from '../../api/client';
+import {
+  apiClient,
+  isBackendCooldownActive,
+  logBackendCooldownSkipOnce,
+} from '../../api/client';
 
 interface Alert {
   id: string;
@@ -101,6 +105,11 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
 
   const fetchAlerts = async () => {
     if (!userId || isPollingRef.current) return;
+
+    if (isBackendCooldownActive()) {
+      logBackendCooldownSkipOnce('AlertsBadge');
+      return;
+    }
 
     try {
       isPollingRef.current = true;
@@ -213,10 +222,10 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
       fetchAlerts();
     }, 1000);
 
-    // Poll every 60 seconds
+    // Poll every 5 minutes (300 seconds) instead of 1 minute to reduce API call frequency
     intervalRef.current = setInterval(() => {
       fetchAlerts();
-    }, 60000);
+    }, 300000);
 
     return () => {
       clearTimeout(timeoutId);

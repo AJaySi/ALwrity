@@ -8,6 +8,7 @@ from .base import SIFBaseAgent, TXTAI_AVAILABLE, Agent
 from services.intelligence.agents.core_agent_framework import BaseALwrityAgent, TaskProposal
 from services.seo_tools.content_strategy_service import ContentStrategyService
 from services.analytics import PlatformAnalyticsService
+from services.database import has_onboarding_session
 
 try:
     from services.intelligence.sif_integration import SIFIntegrationService
@@ -26,11 +27,16 @@ class ContentStrategyAgent(BaseALwrityAgent):
         
         self.sif_service = None
         self.content_strategy_service = ContentStrategyService()
-        if SIF_AVAILABLE:
+        if SIF_AVAILABLE and has_onboarding_session(user_id):
             try:
                 self.sif_service = SIFIntegrationService(user_id)
             except Exception as e:
                 logger.warning(f"Failed to initialize SIF service for ContentStrategyAgent: {e}")
+        elif SIF_AVAILABLE:
+            logger.debug(
+                "Skipping SIF service initialization for ContentStrategyAgent user {}: no onboarding session",
+                user_id,
+            )
 
     def _create_txtai_agent(self):
         """Create a specialized txtai Agent for content strategy with tools."""

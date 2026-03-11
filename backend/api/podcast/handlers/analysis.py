@@ -56,26 +56,33 @@ async def enhance_podcast_idea(
         logger.warning(f"[Podcast Enhance] Failed to parse or generate bible context: {exc}")
 
     prompt = f"""
-You are a creative podcast producer. Your goal is to take a simple podcast idea or keywords
-and transform it into a compelling, professional, and detailed episode concept.
+You are a creative podcast producer. Generate 3 distinct, compelling podcast episode concepts from the raw idea.
 
 {f"USER PERSONALIZATION CONTEXT (Podcast Bible):\n{bible_context}\n" if bible_context else ""}
 
 RAW IDEA/KEYWORDS: "{request.idea}"
 
 TASK:
-1. Rewrite the idea into a professional, presentable 2-3 sentence episode pitch.
-2. Focus on making it sound expert-led and audience-focused.
-3. Ensure it aligns with the host's persona and target audience interests if context was provided.
-4. Keep it concise but information-rich.
+Generate 3 different enhanced versions, each with a unique angle:
+1. Professional & Expert-led angle (focus on authority, insights, and expertise)
+2. Storytelling & Human interest angle (focus on narratives, emotions, and personal connections)
+3. Trendy & Contemporary angle (focus on current trends, modern perspectives, and relevance)
+
+Each version should be 2-3 sentences, audience-focused, and align with host persona if provided.
 
 Return JSON with:
-- enhanced_idea: the rewritten, professional episode pitch
-- rationale: 1 sentence explaining why this version works better for the target audience
+- enhanced_ideas: array of 3 enhanced episode pitches (in order: Professional, Storytelling, Trendy)
+- rationales: array of 3 rationales explaining the approach for each version
 """
 
     try:
-        raw = llm_text_gen(prompt=prompt, user_id=user_id, json_struct=None)
+        raw = llm_text_gen(
+            prompt=prompt,
+            user_id=user_id,
+            json_struct=None,
+            preferred_provider="huggingface",
+            flow_type="premium_tool",
+        )
         
         # Normalize response
         if isinstance(raw, str):
@@ -83,15 +90,52 @@ Return JSON with:
         else:
             data = raw
             
+        # Extract enhanced ideas and rationales with fallbacks
+        enhanced_ideas = data.get("enhanced_ideas", [])
+        rationales = data.get("rationales", [])
+        
+        # Ensure we have exactly 3 ideas, fallback to original if needed
+        if not isinstance(enhanced_ideas, list) or len(enhanced_ideas) != 3:
+            # Fallback: create 3 variations of the original idea
+            base_idea = request.idea
+            enhanced_ideas = [
+                f"Expert insights on {base_idea}: A deep dive into industry trends and best practices.",
+                f"The human side of {base_idea}: Personal stories and real-world experiences that resonate.",
+                f"Modern perspectives on {base_idea}: Current trends and forward-thinking approaches."
+            ]
+            rationales = [
+                "Professional approach focusing on expertise and authority",
+                "Storytelling approach emphasizing human connection",
+                "Contemporary approach highlighting current relevance"
+            ]
+        
+        # Ensure rationales match the number of ideas
+        if not isinstance(rationales, list) or len(rationales) != 3:
+            rationales = [
+                "Professional angle with expert insights",
+                "Storytelling angle with human interest", 
+                "Trendy angle with contemporary relevance"
+            ]
+            
         return PodcastEnhanceIdeaResponse(
-            enhanced_idea=data.get("enhanced_idea", request.idea),
-            rationale=data.get("rationale", "Made it more professional and listener-focused.")
+            enhanced_ideas=enhanced_ideas[:3],  # Ensure exactly 3
+            rationales=rationales[:3]  # Ensure exactly 3
         )
     except Exception as exc:
         logger.error(f"[Podcast Enhance] Failed for user {user_id}: {exc}")
+        # Fallback to basic variations of original idea
+        base_idea = request.idea
         return PodcastEnhanceIdeaResponse(
-            enhanced_idea=request.idea,
-            rationale="Failed to enhance idea with AI, using original."
+            enhanced_ideas=[
+                f"Expert insights on {base_idea}: A deep dive into industry trends and best practices.",
+                f"The human side of {base_idea}: Personal stories and real-world experiences that resonate.",
+                f"Modern perspectives on {base_idea}: Current trends and forward-thinking approaches."
+            ],
+            rationales=[
+                "Professional approach focusing on expertise and authority",
+                "Storytelling approach emphasizing human connection",
+                "Contemporary approach highlighting current relevance"
+            ]
         )
 
 
@@ -242,7 +286,13 @@ Requirements:
 """
 
     try:
-        raw = llm_text_gen(prompt=prompt, user_id=user_id, json_struct=None)
+        raw = llm_text_gen(
+            prompt=prompt,
+            user_id=user_id,
+            json_struct=None,
+            preferred_provider="huggingface",
+            flow_type="premium_tool",
+        )
     except HTTPException:
         # Re-raise HTTPExceptions (e.g., 429 subscription limit) - preserve error details
         raise

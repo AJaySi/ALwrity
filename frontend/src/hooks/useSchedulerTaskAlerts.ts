@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { showToastNotification } from '../utils/toastNotifications';
 import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../api/schedulerDashboard';
+import { isBackendCooldownActive, logBackendCooldownSkipOnce } from '../api/client';
 
 /**
  * Hook to poll for tasks needing intervention and show toast notifications
@@ -24,6 +25,11 @@ export function useSchedulerTaskAlerts(options: {
 
     const pollAlerts = async () => {
       if (isPollingRef.current) {
+        return;
+      }
+
+      if (isBackendCooldownActive()) {
+        logBackendCooldownSkipOnce('useSchedulerTaskAlerts');
         return;
       }
 

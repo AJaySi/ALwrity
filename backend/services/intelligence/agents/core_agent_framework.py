@@ -340,6 +340,7 @@ class BaseALwrityAgent(ABC):
                         prompt=prompt,
                         user_id=self.user_id,
                         preferred_hf_models=LOW_COST_REMOTE_MODELS,
+                        flow_type="sif_agent",
                     ),
                 )
                 logger.warning(

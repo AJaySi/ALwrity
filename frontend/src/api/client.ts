@@ -121,11 +121,87 @@ export const pollingApiClient = axios.create({
   },
 });
 
+// Backend availability circuit-breaker to prevent runaway polling loops.
+let backendFailureCount = 0;
+let backendUnavailableUntil = 0;
+const BACKEND_COOLDOWN_BASE_MS = 5000;
+const BACKEND_COOLDOWN_MAX_MS = 60000;
+const cooldownSkipLoggedBySource = new Map<string, number>();
+
+const isBackendTemporarilyUnavailable = () => Date.now() < backendUnavailableUntil;
+
+const openBackendCooldown = (reason: string) => {
+  backendFailureCount = Math.min(6, backendFailureCount + 1);
+  const cooldownMs = Math.min(
+    BACKEND_COOLDOWN_MAX_MS,
+    BACKEND_COOLDOWN_BASE_MS * (2 ** (backendFailureCount - 1))
+  );
+  backendUnavailableUntil = Date.now() + cooldownMs;
+  console.warn(
+    `[apiClient] Backend unavailable (${reason}). Cooling down requests for ${Math.ceil(cooldownMs / 1000)}s.`
+  );
+};
+
+const clearBackendCooldown = () => {
+  if (backendFailureCount > 0 || backendUnavailableUntil > 0) {
+    console.info('[apiClient] Backend connectivity restored. Clearing cooldown state.');
+  }
+  backendFailureCount = 0;
+  backendUnavailableUntil = 0;
+  cooldownSkipLoggedBySource.clear();
+};
+
+const buildCooldownError = () => {
+  const secondsRemaining = Math.max(1, Math.ceil((backendUnavailableUntil - Date.now()) / 1000));
+  return new Error(
+    `Backend is temporarily unavailable. Retrying in ${secondsRemaining}s to avoid request storms.`
+  );
+};
+
+export const isBackendCooldownActive = (): boolean => isBackendTemporarilyUnavailable();
+
+export const getBackendCooldownSecondsRemaining = (): number => {
+  if (!isBackendTemporarilyUnavailable()) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil((backendUnavailableUntil - Date.now()) / 1000));
+};
+
+export const logBackendCooldownSkipOnce = (source: string): void => {
+  if (!isBackendTemporarilyUnavailable()) {
+    return;
+  }
+
+  const lastLoggedWindow = cooldownSkipLoggedBySource.get(source);
+  if (lastLoggedWindow === backendUnavailableUntil) {
+    return;
+  }
+
+  cooldownSkipLoggedBySource.set(source, backendUnavailableUntil);
+  const secondsRemaining = getBackendCooldownSecondsRemaining();
+  console.debug(
+    `[${source}] Skipping request while backend cooldown is active (${secondsRemaining}s remaining).`
+  );
+};
+
+export const noteBackendUnavailable = (reason: string): void => {
+  openBackendCooldown(reason || 'external_network_error');
+};
+
+export const noteBackendRecovered = (): void => {
+  clearBackendCooldown();
+};
+
 // Add request interceptor for logging and authentication
 apiClient.interceptors.request.use(
   async (config) => {
     const safeUrl = sanitizeUrlForLogging(config.url);
     console.log(`Making ${config.method?.toUpperCase()} request to ${safeUrl}`);
+
+    if (isBackendTemporarilyUnavailable()) {
+      return Promise.reject(buildCooldownError());
+    }
+
     try {
       if (!authTokenGetter) {
         // If authTokenGetter is not set, reject the request to prevent 401 errors
@@ -191,6 +267,7 @@ export class NetworkError extends Error {
 // Add response interceptor with automatic token refresh on 401
 apiClient.interceptors.response.use(
   (response) => {
+    clearBackendCooldown();
     return response;
   },
   async (error) => {
@@ -199,6 +276,7 @@ apiClient.interceptors.response.use(
     // Handle network errors and timeouts (backend not available)
     if (!error.response) {
       // Network error, timeout, or backend not reachable
+      openBackendCooldown(error?.message || 'network_error');
       const connectionError = new NetworkError(
         'Unable to connect to the backend server. Please check if the server is running.'
       );
@@ -208,6 +286,7 @@ apiClient.interceptors.response.use(
 
     // Handle server errors (5xx)
     if (error.response.status >= 500) {
+      openBackendCooldown(`http_${error.response.status}`);
       const connectionError = new ConnectionError(
         'Backend server is experiencing issues. Please try again later.'
       );
@@ -318,7 +397,15 @@ apiClient.interceptors.response.use(
 aiApiClient.interceptors.request.use(
   async (config) => {
     const safeUrl = sanitizeUrlForLogging(config.url);
-    console.log(`Making AI ${config.method?.toUpperCase()} request to ${safeUrl}`);
+    // Reduced logging frequency - only log in development or for errors
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Making AI ${config.method?.toUpperCase()} request to ${safeUrl}`);
+    }
+
+    if (isBackendTemporarilyUnavailable()) {
+      return Promise.reject(buildCooldownError());
+    }
+
     try {
       if (!authTokenGetter) {
         console.warn(`[aiApiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
@@ -328,8 +415,11 @@ aiApiClient.interceptors.request.use(
       if (token) {
         config.headers = config.headers || {};
         (config.headers as any)['Authorization'] = `Bearer ${token}`;
-            const safeUrlWithToken = sanitizeUrlForLogging(config.url);
-            console.log(`[aiApiClient] ✅ Auth token attached for request to ${safeUrlWithToken}`);
+            // Only log auth token attachment in development for debugging
+            if (process.env.NODE_ENV === 'development') {
+              const safeUrlWithToken = sanitizeUrlForLogging(config.url);
+              console.log(`[aiApiClient] ✅ Auth token attached for request to ${safeUrlWithToken}`);
+            }
           } else {
             console.warn(`[aiApiClient] ⚠️ authTokenGetter returned null for ${config.url} - user may not be signed in`);
           }
@@ -349,10 +439,25 @@ aiApiClient.interceptors.request.use(
 
 aiApiClient.interceptors.response.use(
   (response) => {
+    clearBackendCooldown();
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
+
+    if (!error.response) {
+      openBackendCooldown(error?.message || 'network_error');
+      return Promise.reject(
+        new NetworkError('Unable to connect to the backend server. Please check if the server is running.')
+      );
+    }
+
+    if (error.response.status >= 500) {
+      openBackendCooldown(`http_${error.response.status}`);
+      return Promise.reject(
+        new ConnectionError('Backend server is experiencing issues. Please try again later.')
+      );
+    }
     
     // If 401 and we haven't retried yet, try to refresh token and retry
     if (error?.response?.status === 401 && !originalRequest._retry && authTokenGetter) {
@@ -411,6 +516,11 @@ aiApiClient.interceptors.response.use(
 longRunningApiClient.interceptors.request.use(
   async (config) => {
     console.log(`Making long-running ${config.method?.toUpperCase()} request to ${config.url}`);
+
+    if (isBackendTemporarilyUnavailable()) {
+      return Promise.reject(buildCooldownError());
+    }
+
     try {
       if (!authTokenGetter) {
         console.warn(`[longRunningApiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
@@ -450,10 +560,25 @@ longRunningApiClient.interceptors.request.use(
 
 longRunningApiClient.interceptors.response.use(
   (response) => {
+    clearBackendCooldown();
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
+
+    if (!error.response) {
+      openBackendCooldown(error?.message || 'network_error');
+      return Promise.reject(
+        new NetworkError('Unable to connect to the backend server. Please check if the server is running.')
+      );
+    }
+
+    if (error.response.status >= 500) {
+      openBackendCooldown(`http_${error.response.status}`);
+      return Promise.reject(
+        new ConnectionError('Backend server is experiencing issues. Please try again later.')
+      );
+    }
 
     // If 401 and we haven't retried yet, try to refresh token and retry
     if (error?.response?.status === 401 && !originalRequest._retry && authTokenGetter) {
@@ -503,6 +628,11 @@ longRunningApiClient.interceptors.response.use(
 pollingApiClient.interceptors.request.use(
   async (config) => {
     console.log(`Making polling ${config.method?.toUpperCase()} request to ${config.url}`);
+
+    if (isBackendTemporarilyUnavailable()) {
+      return Promise.reject(buildCooldownError());
+    }
+
     try {
       if (!authTokenGetter) {
         console.warn(`[pollingApiClient] ⚠️ authTokenGetter not set for ${config.url} - request may fail authentication`);
@@ -542,10 +672,25 @@ pollingApiClient.interceptors.request.use(
 
 pollingApiClient.interceptors.response.use(
   (response) => {
+    clearBackendCooldown();
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
+
+    if (!error.response) {
+      openBackendCooldown(error?.message || 'network_error');
+      return Promise.reject(
+        new NetworkError('Unable to connect to the backend server. Please check if the server is running.')
+      );
+    }
+
+    if (error.response.status >= 500) {
+      openBackendCooldown(`http_${error.response.status}`);
+      return Promise.reject(
+        new ConnectionError('Backend server is experiencing issues. Please try again later.')
+      );
+    }
 
     // If 401 and we haven't retried yet, try to refresh token and retry
     if (error?.response?.status === 401 && !originalRequest._retry && authTokenGetter) {

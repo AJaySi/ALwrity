@@ -23,9 +23,15 @@ def track_agent_usage_sync(user_id: str, model_name: str, prompt: str, response_
             provider_enum = APIProvider.GEMINI
             actual_provider_name = "gemini"
         elif "gpt" in model_lower or "openai" in model_lower or "mistral" in model_lower:
-            # HuggingFace/Mistral often mapped to gpt-oss or mistral
-            provider_enum = APIProvider.MISTRAL
-            actual_provider_name = "huggingface"
+            # Check if it's WaveSpeed vs HuggingFace based on context or model naming
+            # WaveSpeed models don't have :cerebras suffix, HF models do
+            if ":cerebras" in model_name.lower() or "huggingface" in model_name.lower():
+                provider_enum = APIProvider.MISTRAL
+                actual_provider_name = "huggingface"
+            else:
+                # Assume WaveSpeed for gpt models without provider suffix
+                provider_enum = APIProvider.WAVESPEED
+                actual_provider_name = "wavespeed"
         elif "claude" in model_lower or "anthropic" in model_lower:
             provider_enum = APIProvider.ANTHROPIC
             actual_provider_name = "anthropic"

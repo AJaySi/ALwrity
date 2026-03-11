@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
 from loguru import logger
 
+from services.database import has_onboarding_session
 from ..txtai_service import TxtaiIntelligenceService
 from ..semantic_cache import semantic_cache_manager
 from ..sif_integration import SIFIntegrationService
@@ -74,9 +75,15 @@ class RealTimeSemanticMonitor:
     
     def __init__(self, user_id: str):
         self.user_id = user_id
-        self.intelligence_service = TxtaiIntelligenceService(user_id)
         self.cache_manager = semantic_cache_manager
-        self.sif_service = SIFIntegrationService(user_id)
+        self.sif_enabled = has_onboarding_session(user_id)
+        self.intelligence_service = TxtaiIntelligenceService(user_id) if self.sif_enabled else None
+        self.sif_service = SIFIntegrationService(user_id) if self.sif_enabled else None
+        if not self.sif_enabled:
+            logger.info(
+                "Skipping semantic monitor SIF initialization for user {}: no onboarding session found",
+                user_id,
+            )
         
         # Initialize monitoring agents (lazy initialization to avoid circular imports)
         self.strategy_agent = None
@@ -239,6 +246,9 @@ class RealTimeSemanticMonitor:
     async def _check_semantic_health(self) -> List[SemanticHealthMetric]:
         """Check overall semantic health of user's content."""
         metrics = []
+
+        if not self.sif_enabled or not self.sif_service:
+            return metrics
         
         try:
             # Get current semantic insights
@@ -301,6 +311,8 @@ class RealTimeSemanticMonitor:
     async def _monitor_competitors(self) -> List[CompetitorSemanticSnapshot]:
         """Monitor competitor semantic positioning."""
         snapshots = []
+        if not self.sif_enabled or not self.intelligence_service:
+            return snapshots
         try:
             # 1. Get competitors from SIF integration
             # We assume SIFIntegrationService has methods to get competitor data or we query index
@@ -370,6 +382,9 @@ class RealTimeSemanticMonitor:
     async def _analyze_content_performance(self) -> List[ContentSemanticInsight]:
         """Analyze content performance and identify insights using SIF Agents."""
         insights = []
+
+        if not self.sif_enabled or not self.sif_service:
+            return insights
         
         try:
             current_time = datetime.now()
