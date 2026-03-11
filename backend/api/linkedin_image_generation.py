@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
-import logging
 
 # Import our LinkedIn image generation services
 from services.linkedin.image_generation import LinkedInImageGenerator, LinkedInImageStorage
@@ -11,8 +10,7 @@ from services.onboarding.api_key_manager import APIKeyManager
 from middleware.auth_middleware import get_current_user
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # Initialize router
 router = APIRouter(prefix="/api/linkedin", tags=["linkedin-image-generation"])
