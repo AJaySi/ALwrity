@@ -189,3 +189,20 @@ All orchestration updates are emitted as typed records under a shared schema:
 *   **Inter-Agent Chat**: Allow agents to debate strategy (e.g., SEO Agent vs. Creative Agent).
 *   **Auto-Execution**: Allow agents to *perform* tasks (e.g., fix a broken link) with user approval.
 *   **Voice Interface**: Daily standup meeting via voice.
+
+
+## ⚡ Agent Fast-Context Layer (Onboarding Step 2)
+
+To reduce latency for repetitive agent reads, Step 2 website analysis is now persisted to a per-user flat file in workspace:
+
+- `workspace/workspace_<safe_user_id>/agent_context/step2_website_analysis.json`
+
+**Read order for agents:**
+1. Flat-file context (agent-only, fastest)
+2. Relational database (`website_analyses`)
+3. SIF semantic index retrieval
+
+This preserves SIF intelligence workflows while giving agents deterministic, low-latency access to core onboarding context.
+It also stores agent-optimized `quick_facts`, `retrieval_hints`, and full-fidelity raw payload blocks so both fast inference and deep-dive reasoning are supported.
+
+Reference design docs: `docs/flat_file_context/STEP2_FLAT_FILE_CONTEXT_DESIGN.md`, `docs/flat_file_context/STEP3_FLAT_FILE_CONTEXT_DESIGN.md`, `docs/flat_file_context/STEP4_FLAT_FILE_CONTEXT_DESIGN.md`, `docs/flat_file_context/STEP5_FLAT_FILE_CONTEXT_DESIGN.md`, `docs/flat_file_context/FLAT_FILE_CONTEXT_FRAMEWORK_DESIGN.md`, `docs/flat_file_context/FLAT_FILE_CONTEXT_SECURITY_AND_ISOLATION.md`, and `docs/flat_file_context/FLAT_FILE_CONTEXT_PROGRESS_AND_QUICK_WINS.md`.

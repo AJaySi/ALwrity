@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from services.database import get_db
 from models.onboarding import OnboardingSession, APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
+from services.intelligence.agent_flat_context import AgentFlatContextStore
 
 class StepManagementService:
     """Service for handling onboarding step management."""
@@ -62,6 +63,7 @@ class StepManagementService:
                 db.add(new_key)
             
             db.commit()
+
             return True
         except Exception as e:
             logger.error(f"Error saving API key for user {user_id}: {e}")
@@ -139,6 +141,39 @@ class StepManagementService:
                 db.add(new_analysis)
             
             db.commit()
+
+            # Persist Step 2 snapshot to agent flat-file context for ultra-fast reads
+            try:
+                flat_store = AgentFlatContextStore(user_id)
+                canonical_payload = {
+                    "website_url": filtered_data.get("website_url") or incoming.get("website") or incoming.get("website_url"),
+                    "analysis_date": datetime.utcnow().isoformat(),
+                    "status": (nested or incoming).get("status") or "completed",
+                    "error_message": (nested or incoming).get("error_message"),
+                    "warning_message": (nested or incoming).get("warning_message"),
+                    "writing_style": filtered_data.get("writing_style"),
+                    "content_characteristics": filtered_data.get("content_characteristics"),
+                    "target_audience": filtered_data.get("target_audience"),
+                    "content_type": filtered_data.get("content_type"),
+                    "recommended_settings": filtered_data.get("recommended_settings"),
+                    "brand_analysis": filtered_data.get("brand_analysis"),
+                    "content_strategy_insights": filtered_data.get("content_strategy_insights"),
+                    "social_media_presence": filtered_data.get("social_media_presence"),
+                    "style_patterns": filtered_data.get("style_patterns"),
+                    "style_guidelines": filtered_data.get("style_guidelines"),
+                    "seo_audit": filtered_data.get("seo_audit"),
+                    "strategic_insights_history": (nested or incoming).get("strategic_insights_history"),
+                    "crawl_result": filtered_data.get("crawl_result"),
+                    "meta_info": meta_info,
+                    "sitemap_analysis": sitemap_analysis,
+                    "raw_step2_payload": incoming,
+                    "raw_analysis_payload": nested or incoming,
+                    "saved_at": datetime.utcnow().isoformat(),
+                }
+                flat_store.save_step2_website_analysis(canonical_payload, source="onboarding_step2")
+            except Exception as flat_err:
+                logger.warning(f"Failed to persist step 2 flat context for user {user_id}: {flat_err}")
+
             return True
         except Exception as e:
             logger.error(f"Error saving website analysis for user {user_id}: {e}")
@@ -193,6 +228,28 @@ class StepManagementService:
                 db.add(new_prefs)
             
             db.commit()
+
+            # Persist Step 3 snapshot to agent flat-file context
+            try:
+                flat_store = AgentFlatContextStore(user_id)
+                canonical_payload = {
+                    "research_depth": research_data.get("research_depth"),
+                    "content_types": research_data.get("content_types") or [],
+                    "auto_research": research_data.get("auto_research", True),
+                    "factual_content": research_data.get("factual_content", True),
+                    "writing_style": research_data.get("writing_style") or {},
+                    "content_characteristics": research_data.get("content_characteristics") or {},
+                    "target_audience": research_data.get("target_audience") or {},
+                    "recommended_settings": research_data.get("recommended_settings") or {},
+                    "industry_context": research_data.get("industry_context") or research_data.get("industryContext"),
+                    "competitors": research_data.get("competitors") if isinstance(research_data.get("competitors"), list) else [],
+                    "saved_at": datetime.utcnow().isoformat(),
+                    "source_payload": research_data,
+                }
+                flat_store.save_step3_research_preferences(canonical_payload, source="onboarding_step3")
+            except Exception as flat_err:
+                logger.warning(f"Failed to persist step 3 flat context for user {user_id}: {flat_err}")
+
             return True
         except Exception as e:
             logger.error(f"Error saving research preferences for user {user_id}: {e}")
@@ -268,12 +325,47 @@ class StepManagementService:
             
             db.commit()
             logger.info(f"✅ Saved {saved_count} competitors ({failed_count} failed)")
+
+            # Refresh Step 3 flat context with competitor details saved by this flow
+            try:
+                flat_store = AgentFlatContextStore(user_id)
+                existing_doc = flat_store.load_step3_context_document() or {}
+                existing_data = existing_doc.get("data") if isinstance(existing_doc, dict) and isinstance(existing_doc.get("data"), dict) else {}
+                merged_payload = {
+                    **existing_data,
+                    "competitors": competitors,
+                    "industry_context": industry_context or existing_data.get("industry_context"),
+                    "competitors_saved_at": datetime.utcnow().isoformat(),
+                }
+                flat_store.save_step3_research_preferences(merged_payload, source="onboarding_step3_competitors")
+            except Exception as flat_err:
+                logger.warning(f"Failed to refresh step 3 competitor flat context for user {user_id}: {flat_err}")
+
             return True
         except Exception as e:
             logger.error(f"Error saving competitor analysis for user {user_id}: {e}")
             db.rollback()
             raise e
 
+
+
+    def _save_step5_integrations_context(self, user_id: str, step5_data: Dict[str, Any]) -> bool:
+        """Persist Step 5 integrations context to flat-file store."""
+        try:
+            flat_store = AgentFlatContextStore(user_id)
+            canonical_payload = {
+                "integrations": step5_data.get("integrations") if isinstance(step5_data.get("integrations"), dict) else {},
+                "providers": step5_data.get("providers") if isinstance(step5_data.get("providers"), list) else [],
+                "connected_accounts": step5_data.get("connectedAccounts") if isinstance(step5_data.get("connectedAccounts"), list) else [],
+                "integration_status": step5_data.get("status") or step5_data.get("integrationStatus"),
+                "notes": step5_data.get("notes") or step5_data.get("integrationNotes"),
+                "saved_at": datetime.utcnow().isoformat(),
+                "source_payload": step5_data,
+            }
+            return flat_store.save_step5_integrations(canonical_payload, source="onboarding_step5")
+        except Exception as e:
+            logger.warning(f"Failed to save Step 5 integrations context for user {user_id}: {e}")
+            return False
 
     def _save_persona_data(self, user_id: str, persona_data: Dict[str, Any], db: Session) -> bool:
         """Save persona data directly to database."""
@@ -301,6 +393,24 @@ class StepManagementService:
                 db.add(persona)
             
             db.commit()
+
+            # Persist Step 4 snapshot to agent flat-file context
+            try:
+                flat_store = AgentFlatContextStore(user_id)
+                canonical_payload = {
+                    "core_persona": persona_data.get("corePersona") or {},
+                    "platform_personas": persona_data.get("platformPersonas") or {},
+                    "quality_metrics": persona_data.get("qualityMetrics") or {},
+                    "selected_platforms": persona_data.get("selectedPlatforms", []),
+                    "research_persona": persona_data.get("researchPersona") or persona_data.get("research_persona"),
+                    "persona_generation_notes": persona_data.get("personaGenerationNotes") or persona_data.get("persona_generation_notes"),
+                    "saved_at": datetime.utcnow().isoformat(),
+                    "source_payload": persona_data,
+                }
+                flat_store.save_step4_persona_data(canonical_payload, source="onboarding_step4")
+            except Exception as flat_err:
+                logger.warning(f"Failed to persist step 4 flat context for user {user_id}: {flat_err}")
+
             return True
         except Exception as e:
             logger.error(f"Error saving persona data for user {user_id}: {e}")
@@ -634,6 +744,19 @@ class StepManagementService:
                             status_code=500,
                             detail="Failed to save persona data. Onboarding cannot proceed until this is resolved."
                         ) from e
+
+
+            # Step 5: Save integrations data to flat context
+            elif step_number == 5 and request_data:
+                step5_data = request_data.get('data') or request_data
+                logger.info(f"🔍 Step 5: Raw request_data keys: {list(request_data.keys()) if request_data else 'None'}")
+                logger.info(f"🔍 Step 5: Extracted step5_data keys: {list(step5_data.keys()) if step5_data else 'None'}")
+                if step5_data:
+                    saved = self._save_step5_integrations_context(user_id, step5_data)
+                    if saved:
+                        logger.info(f"✅ Saved Step 5 integrations context for user {user_id}")
+                    else:
+                        logger.warning(f"⚠️ Step 5 integrations context not persisted for user {user_id}")
 
             # Persist current step and progress in DB
             from services.onboarding.progress_service import OnboardingProgressService
