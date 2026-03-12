@@ -56,7 +56,10 @@ from typing import Optional, Dict, Any, List
 
 from loguru import logger
 from utils.logger_utils import get_service_logger, emit_routing_event
+<<<<<<< HEAD
 from .routing_policy import PREMIUM_DEFAULT_MODEL, SIF_LOW_COST_MODEL_DEFAULTS
+=======
+>>>>>>> pr-421
 
 # Use service-specific logger to avoid conflicts
 logger = get_service_logger("huggingface_provider")
@@ -191,8 +194,12 @@ def huggingface_text_response(
     max_tokens: int = 2048,
     top_p: float = 0.9,
     system_prompt: Optional[str] = None,
+<<<<<<< HEAD
     api_key: Optional[str] = None,
     tenant_user_id: Optional[str] = None,
+=======
+    tenant_user_id: Optional[str] = None
+>>>>>>> pr-421
 ) -> str:
     """
     Generate text response using Hugging Face Inference Providers API.
@@ -264,6 +271,7 @@ def huggingface_text_response(
         
         response = None
         last_error = None
+<<<<<<< HEAD
         for candidate_model in _fallback_model_sequence(model, fallback_models):
             # Emit routing event for each model attempt
             route_intent = "primary" if candidate_model == model else "fallback"
@@ -277,6 +285,25 @@ def huggingface_text_response(
                 extra={"original_model": model, "api_call": True}
             )
             
+=======
+        fallback_models_tried = []
+        fallback_count = 0
+        for candidate_model in _fallback_model_sequence(model):
+            fallback_models_tried.append(candidate_model)
+            route_intent = "primary" if fallback_count == 0 else "fallback"
+            emit_routing_event(
+                logger,
+                flow_type="text_generation",
+                route_intent=route_intent,
+                provider_selected="huggingface",
+                model_selected=candidate_model,
+                preferred_provider="huggingface",
+                fallback_count=fallback_count,
+                fallback_models_tried=fallback_models_tried,
+                tenant_user_id=tenant_user_id,
+                extra={"hf_request_type": "text"},
+            )
+>>>>>>> pr-421
             try:
                 response = client.chat.completions.create(
                     model=candidate_model,
@@ -290,11 +317,16 @@ def huggingface_text_response(
                 break
             except NotFoundError as nf_err:
                 last_error = nf_err
+<<<<<<< HEAD
                 logger.warning("HF text model not found: {}", candidate_model)
                 continue
             except Exception as call_err:
                 last_error = call_err
                 logger.warning("HF text call failed for model {}: {}", candidate_model, _error_details(call_err))
+=======
+                fallback_count += 1
+                logger.warning("HF model not found: {}. Trying fallback model.", candidate_model)
+>>>>>>> pr-421
                 continue
 
         if response is None:
@@ -336,8 +368,12 @@ def huggingface_structured_json_response(
     temperature: float = 0.7,
     max_tokens: int = 8192,
     system_prompt: Optional[str] = None,
+<<<<<<< HEAD
     api_key: Optional[str] = None,
     tenant_user_id: Optional[str] = None,
+=======
+    tenant_user_id: Optional[str] = None
+>>>>>>> pr-421
 ) -> Dict[str, Any]:
     """
     Generate structured JSON response using Hugging Face Inference Providers API.
@@ -413,8 +449,51 @@ def huggingface_structured_json_response(
         json_schema_str = json.dumps(schema, indent=2)
         messages[-1]["content"] += f"\n\nJSON Schema:\n{json_schema_str}"
         
+<<<<<<< HEAD
         response = None
         last_error = None
+=======
+        # Add rate limiting to prevent expensive API calls
+        import time
+        time.sleep(1)  # 1 second delay between API calls
+        
+        try:
+            response = None
+            last_error = None
+            fallback_models_tried = []
+            fallback_count = 0
+            for candidate_model in _fallback_model_sequence(model):
+                fallback_models_tried.append(candidate_model)
+                route_intent = "primary" if fallback_count == 0 else "fallback"
+                emit_routing_event(
+                    logger,
+                    flow_type="text_generation",
+                    route_intent=route_intent,
+                    provider_selected="huggingface",
+                    model_selected=candidate_model,
+                    preferred_provider="huggingface",
+                    fallback_count=fallback_count,
+                    fallback_models_tried=fallback_models_tried,
+                    tenant_user_id=tenant_user_id,
+                    extra={"hf_request_type": "structured_json"},
+                )
+                try:
+                    response = client.chat.completions.create(
+                        model=candidate_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        response_format={"type": "json_object"} # Try to enforce JSON mode if supported
+                    )
+                    if candidate_model != model:
+                        logger.warning("HF structured generation switched to fallback model: {}", candidate_model)
+                    break
+                except NotFoundError as nf_err:
+                    last_error = nf_err
+                    fallback_count += 1
+                    logger.warning("HF structured model not found: {}. Trying fallback model.", candidate_model)
+                    continue
+>>>>>>> pr-421
 
         for candidate_model in _fallback_model_sequence(model, fallback_models):
             # Emit routing event for each model attempt
@@ -430,6 +509,7 @@ def huggingface_structured_json_response(
             )
             
             try:
+<<<<<<< HEAD
                 response = client.chat.completions.create(
                     model=candidate_model,
                     messages=messages,
@@ -448,6 +528,49 @@ def huggingface_structured_json_response(
 
                 msg = str(err).lower()
                 if "422" in msg or "not supported" in msg:
+=======
+                parsed_json = json.loads(response_text)
+                logger.info("✅ Hugging Face structured JSON response parsed successfully")
+                return parsed_json
+            except json.JSONDecodeError as json_err:
+                logger.error(f"❌ JSON parsing failed: {json_err}")
+                logger.error(f"Raw response: {response_text}")
+                
+                # Try to extract JSON from the response using regex
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    try:
+                        extracted_json = json.loads(json_match.group())
+                        logger.info("✅ JSON extracted using regex fallback")
+                        return extracted_json
+                    except json.JSONDecodeError:
+                        pass
+                
+                return {"error": "Failed to parse JSON response", "raw_response": response_text}
+                
+        except Exception as e:
+            logger.error(f"❌ Hugging Face API call failed: {e}")
+            # If 422 Unprocessable Entity (often due to response_format not supported), retry without it
+            if "422" in str(e) or "not supported" in str(e).lower() or isinstance(e, NotFoundError):
+                logger.info("Retrying without response_format...")
+                response = None
+                last_error = None
+                for candidate_model in _fallback_model_sequence(model):
+                    fallback_models_tried.append(candidate_model)
+                    route_intent = "primary" if fallback_count == 0 else "fallback"
+                    emit_routing_event(
+                        logger,
+                        flow_type="text_generation",
+                        route_intent=route_intent,
+                        provider_selected="huggingface",
+                        model_selected=candidate_model,
+                        preferred_provider="huggingface",
+                        fallback_count=fallback_count,
+                        fallback_models_tried=fallback_models_tried,
+                        tenant_user_id=tenant_user_id,
+                        extra={"hf_request_type": "structured_json_no_response_format"},
+                    )
+>>>>>>> pr-421
                     try:
                         response = client.chat.completions.create(
                             model=candidate_model,
@@ -458,8 +581,15 @@ def huggingface_structured_json_response(
                         if candidate_model != model:
                             logger.warning("HF structured fallback(no response_format) model: {}", candidate_model)
                         break
+<<<<<<< HEAD
                     except Exception as second_err:
                         last_error = second_err
+=======
+                    except NotFoundError as nf_err:
+                        last_error = nf_err
+                        fallback_count += 1
+                        logger.warning("HF structured model not found (no response_format path): {}", candidate_model)
+>>>>>>> pr-421
                         continue
 
         if response is None:
