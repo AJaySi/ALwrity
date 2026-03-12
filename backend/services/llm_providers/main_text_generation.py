@@ -10,10 +10,124 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from loguru import logger
 from fastapi import HTTPException
-from ..onboarding.api_key_manager import APIKeyManager
-
 from .gemini_provider import gemini_text_response, gemini_structured_json_response
 from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
+from .tenant_provider_config import get_available_text_providers, get_tenant_api_key
+from .routing_observability import emit_routing_event
+
+
+def _normalize_provider(provider: Optional[str]) -> Optional[str]:
+    if not provider:
+        return None
+    provider_aliases = {
+        "gemini": "google",
+        "google": "google",
+        "hf": "huggingface",
+        "hf_response_api": "huggingface",
+        "huggingface": "huggingface",
+        "wavespeed": "huggingface",
+    }
+    value = str(provider).strip().lower()
+    return provider_aliases.get(value, value)
+
+
+
+
+def _parse_csv_env(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    return [v.strip() for v in str(value).split(",") if v.strip()]
+
+
+def _resolve_provider_sequence(
+    preferred_provider: Optional[str],
+    env_provider_raw: str,
+    available_providers: List[str],
+) -> List[str]:
+    configured = _parse_csv_env(preferred_provider) if preferred_provider else _parse_csv_env(env_provider_raw)
+    normalized = [_normalize_provider(p) for p in configured if _normalize_provider(p)]
+
+    if not normalized:
+        if "google" in available_providers:
+            return ["google"]
+        if "huggingface" in available_providers:
+            return ["huggingface"]
+        return []
+
+    # preserve order and keep only available providers
+    sequence = []
+    for provider in normalized:
+        if provider in available_providers:
+            sequence.append(provider)
+
+    # strict mode for single configured provider: no silent remap
+    if len(normalized) == 1:
+        return sequence
+
+    # multi-provider mode: append any other available providers as tail only if none configured are available
+    if not sequence:
+        return [p for p in ["huggingface", "google"] if p in available_providers]
+
+    return sequence
+
+
+
+
+def _map_logical_model_to_provider_model(provider: str, model_name: str) -> str:
+    """Map logical model aliases/full names to provider-specific model IDs."""
+    raw = (model_name or "").strip()
+    if not raw:
+        return raw
+
+    # Full provider path supplied explicitly; use as-is.
+    if "/" in raw:
+        return raw
+
+    key = raw.lower()
+
+    hf_map = {
+        "gpt-oss": "openai/gpt-oss-120b:cerebras",
+        "gpt-oss-120b": "openai/gpt-oss-120b:cerebras",
+        "gpt-oss-20b": "openai/gpt-oss-20b:cerebras",
+        "mistral": "mistralai/Mistral-7B-Instruct-v0.3:cerebras",
+        "mistral-7b": "mistralai/Mistral-7B-Instruct-v0.3:cerebras",
+        "llama": "meta-llama/Llama-3.1-8B-Instruct:groq",
+        "llama-8b": "meta-llama/Llama-3.1-8B-Instruct:groq",
+        "llama-70b": "meta-llama/Llama-3.1-70B-Instruct:groq",
+    }
+
+    wavespeed_map = {
+        "gpt-oss": "openai/gpt-oss-120b",
+        "gpt-oss-120b": "openai/gpt-oss-120b",
+        "gpt-oss-20b": "openai/gpt-oss-20b",
+        "mistral": "mistralai/Mistral-7B-Instruct-v0.3",
+        "mistral-7b": "mistralai/Mistral-7B-Instruct-v0.3",
+        "llama": "meta-llama/Llama-3.1-8B-Instruct",
+        "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
+        "llama-70b": "meta-llama/Llama-3.1-70B-Instruct",
+    }
+
+    if provider in {"huggingface", "hf", "hf_response_api"}:
+        return hf_map.get(key, raw)
+    if provider == "wavespeed":
+        return wavespeed_map.get(key, raw)
+
+    return raw
+
+def _resolve_model_sequence(provider: str, preferred_hf_models: Optional[List[str]] = None) -> List[str]:
+    models_env = _parse_csv_env(os.getenv("TEXTGEN_AI_MODELS", ""))
+
+    if provider == "google":
+        return ["gemini-2.0-flash-001"]
+
+    if preferred_hf_models:
+        return [_map_logical_model_to_provider_model(provider, m) for m in preferred_hf_models if m]
+
+    if not models_env:
+        return ["openai/gpt-oss-120b:groq"]
+
+    resolved = [_map_logical_model_to_provider_model(provider, m) for m in models_env if m.strip()]
+    return resolved or ["openai/gpt-oss-120b:groq"]
 
 
 def llm_text_gen(
@@ -22,6 +136,8 @@ def llm_text_gen(
     json_struct: Optional[Dict[str, Any]] = None,
     user_id: str = None,
     preferred_hf_models: Optional[List[str]] = None,
+    preferred_provider: Optional[str] = None,
+    flow_type: str = "default",
 ) -> str:
     """
     Generate text using Language Model (LLM) based on the provided prompt.
@@ -43,25 +159,17 @@ def llm_text_gen(
         logger.debug(f"[llm_text_gen] Prompt length: {len(prompt)} characters")
         
         # Set default values for LLM parameters
-        gpt_provider = "google"  # Default to Google Gemini
+        gpt_provider = "google"
         model = "gemini-2.0-flash-001"
         temperature = 0.7
         max_tokens = 4000
         top_p = 0.9
         n = 1
-        fp = 16
-        frequency_penalty = 0.0
-        presence_penalty = 0.0
-        
-        # Check for GPT_PROVIDER environment variable
-        env_provider = os.getenv('GPT_PROVIDER', '').lower()
-        if env_provider in ['gemini', 'google']:
-            gpt_provider = "google"
-            model = "gemini-2.0-flash-001"
-        elif env_provider in ['hf_response_api', 'huggingface', 'hf']:
-            gpt_provider = "huggingface"
-            model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
-        
+
+        env_provider_raw = os.getenv('GPT_PROVIDER', '').lower()
+        env_provider = _normalize_provider(env_provider_raw)
+        preferred_provider_normalized = _normalize_provider(preferred_provider)
+
         # Default blog characteristics
         blog_tone = "Professional"
         blog_demographic = "Professional"
@@ -70,44 +178,41 @@ def llm_text_gen(
         blog_output_format = "markdown"
         blog_length = 2000
         
-        # Check which providers have API keys available using APIKeyManager
-        api_key_manager = APIKeyManager()
-        available_providers = []
-        if api_key_manager.get_api_key("gemini"):
-            available_providers.append("google")
-        if api_key_manager.get_api_key("hf_token"):
-            available_providers.append("huggingface")
-        
-        # If no environment variable set, auto-detect based on available keys
-        if not env_provider:
-            # Prefer Google Gemini if available, otherwise use Hugging Face
-            if "google" in available_providers:
-                gpt_provider = "google"
-                model = "gemini-2.0-flash-001"
-            elif "huggingface" in available_providers:
-                gpt_provider = "huggingface"
-                model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
-            else:
-                logger.error("[llm_text_gen] No API keys found for supported providers.")
-                raise RuntimeError("No LLM API keys configured. Configure GEMINI_API_KEY or HF_TOKEN to enable AI responses.")
-        else:
-            # Environment variable was set, validate it's supported
-            if gpt_provider not in available_providers:
-                logger.warning(f"[llm_text_gen] Provider {gpt_provider} not available, falling back to available providers")
-                if "google" in available_providers:
-                    gpt_provider = "google"
-                    model = "gemini-2.0-flash-001"
-                elif "huggingface" in available_providers:
-                    gpt_provider = "huggingface"
-                    model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
-                else:
-                    raise RuntimeError("No supported providers available.")
+        available_providers = get_available_text_providers(user_id)
+        provider_sequence = _resolve_provider_sequence(preferred_provider, env_provider_raw, available_providers)
 
-        if gpt_provider == "huggingface" and preferred_hf_models:
-            model = preferred_hf_models[0]
-            logger.info(f"[llm_text_gen] Using preferred low-cost HF model: {model}")
+        if not provider_sequence:
+            logger.error("[llm_text_gen] No configured providers available for tenant.")
+            raise RuntimeError("No LLM providers available for tenant.")
+
+        # strict mode if single configured provider; multi-provider fallback if comma-separated providers
+        pinned_provider = len(_parse_csv_env(preferred_provider or env_provider_raw)) == 1 and bool(preferred_provider or env_provider_raw)
+        gpt_provider = provider_sequence[0]
+        model_sequence = _resolve_model_sequence(gpt_provider, preferred_hf_models)
+        model = model_sequence[0]
+
+        hf_api_key = get_tenant_api_key(user_id, "huggingface") if gpt_provider == "huggingface" else None
+
+        logger.info(
+            "[llm_text_gen] Mode | providers={} | models={} | env_models={} | strict_provider={} | strict_model={}",
+            provider_sequence,
+            model_sequence,
+            _parse_csv_env(os.getenv("TEXTGEN_AI_MODELS", "")),
+            pinned_provider,
+            len(model_sequence) == 1,
+        )
             
         logger.debug(f"[llm_text_gen] Using provider: {gpt_provider}, model: {model}")
+        emit_routing_event(
+            logger,
+            "text_route_selected",
+            user_id=user_id,
+            flow_type=flow_type,
+            provider_selected=gpt_provider,
+            model_selected=model,
+            env_provider=env_provider_raw or "auto",
+            fallback_count=0,
+        )
 
         # Map provider name to APIProvider enum (define at function scope for usage tracking)
         from models.subscription_models import APIProvider
@@ -155,6 +260,13 @@ def llm_text_gen(
                     estimated_output_tokens = int(input_tokens * 1.5)
                 estimated_total_tokens = input_tokens + estimated_output_tokens
                 
+                logger.info(
+                    "[llm_text_gen][subscription_preflight] start | user_id={} | provider={} | tokens_requested={}",
+                    user_id,
+                    actual_provider_name or provider_enum.value,
+                    estimated_total_tokens,
+                )
+
                 # Check limits using sync method from pricing service (strict enforcement)
                 can_proceed, message, usage_info = pricing_service.check_usage_limits(
                     user_id=user_id,
@@ -173,7 +285,14 @@ def llm_text_gen(
                         'usage_info': usage_info if usage_info else {}
                     }
                     raise HTTPException(status_code=429, detail=error_detail)
-                
+
+                logger.info(
+                    "[llm_text_gen][subscription_preflight] pass | user_id={} | provider={} | tokens_requested={}",
+                    user_id,
+                    actual_provider_name or provider_enum.value,
+                    estimated_total_tokens,
+                )
+
                 # Get current usage for limit checking only
                 current_period = pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
                 usage = db.query(UsageSummary).filter(
@@ -219,103 +338,26 @@ def llm_text_gen(
         else:
             system_instructions = system_prompt
 
-        # Generate response based on provider
+        # Generate response based on provider/model sequence
         response_text = None
-        actual_provider_used = gpt_provider
-        try:
-            if gpt_provider == "google":
-                if json_struct:
-                    response_text = gemini_structured_json_response(
-                        prompt=prompt,
-                        schema=json_struct,
-                        temperature=temperature,
-                        top_p=top_p,
-                        top_k=n,
-                        max_tokens=max_tokens,
-                        system_prompt=system_instructions
-                    )
-                else:
-                    response_text = gemini_text_response(
-                        prompt=prompt,
-                        temperature=temperature,
-                        top_p=top_p,
-                        n=n,
-                        max_tokens=max_tokens,
-                        system_prompt=system_instructions
-                    )
-            elif gpt_provider == "huggingface":
-                if json_struct:
-                    response_text = huggingface_structured_json_response(
-                        prompt=prompt,
-                        schema=json_struct,
-                        model=model,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        system_prompt=system_instructions
-                    )
-                else:
-                    response_text = huggingface_text_response(
-                        prompt=prompt,
-                        model=model,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        top_p=top_p,
-                        system_prompt=system_instructions
-                    )
-            else:
-                logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")
-                raise RuntimeError("Unknown LLM provider. Supported providers: google, huggingface")
-            
-            # TRACK USAGE after successful API call
-            if response_text:
-                logger.info(f"[llm_text_gen] ✅ API call successful, tracking usage for user {user_id}, provider {provider_enum.value}")
+        errors: List[str] = []
+
+        for provider_idx, provider_name in enumerate(provider_sequence):
+            candidate_models = _resolve_model_sequence(provider_name, preferred_hf_models)
+            for model_idx, candidate_model in enumerate(candidate_models):
                 try:
-                    from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
-                    
-                    # Estimate tokens
-                    tokens_input = int(len(prompt.split()) * 1.3)
-                    
-                    # Calculate duration (mocking it since we didn't track start time explicitly in this function)
-                    # Ideally we should track start_time at beginning of function
-                    duration = 0.5 
-                    
-                    track_agent_usage_sync(
+                    emit_routing_event(
+                        logger,
+                        "text_route_attempt",
                         user_id=user_id,
-                        model_name=model,
-                        prompt=prompt,
-                        response_text=response_text,
-                        duration=duration
+                        flow_type=flow_type,
+                        provider_selected=provider_name,
+                        model_selected=candidate_model,
+                        provider_attempt=provider_idx + 1,
+                        model_attempt=model_idx + 1,
                     )
-                    
-                except Exception as usage_error:
-                    # Non-blocking: log error but don't fail the request
-                    logger.error(f"[llm_text_gen] ❌ Failed to track usage: {usage_error}", exc_info=True)
-            
-            return response_text
-        except Exception as provider_error:
-            logger.error(f"[llm_text_gen] Provider {gpt_provider} failed: {str(provider_error)}")
-            
-            # CIRCUIT BREAKER: Only try ONE fallback to prevent expensive API calls
-            fallback_providers = ["google", "huggingface"]
-            fallback_providers = [p for p in fallback_providers if p in available_providers and p != gpt_provider]
-            
-            if fallback_providers:
-                fallback_provider = fallback_providers[0]  # Only try the first available
-                try:
-                    logger.info(f"[llm_text_gen] Trying SINGLE fallback provider: {fallback_provider}")
-                    actual_provider_used = fallback_provider
-                    
-                    # Update provider enum for fallback
-                    if fallback_provider == "google":
-                        provider_enum = APIProvider.GEMINI
-                        actual_provider_name = "gemini"
-                        fallback_model = "gemini-2.0-flash-lite"
-                    elif fallback_provider == "huggingface":
-                        provider_enum = APIProvider.MISTRAL
-                        actual_provider_name = "huggingface"
-                        fallback_model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
-                    
-                    if fallback_provider == "google":
+
+                    if provider_name == "google":
                         if json_struct:
                             response_text = gemini_structured_json_response(
                                 prompt=prompt,
@@ -324,7 +366,7 @@ def llm_text_gen(
                                 top_p=top_p,
                                 top_k=n,
                                 max_tokens=max_tokens,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
                             )
                         else:
                             response_text = gemini_text_response(
@@ -333,54 +375,59 @@ def llm_text_gen(
                                 top_p=top_p,
                                 n=n,
                                 max_tokens=max_tokens,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
                             )
-                    elif fallback_provider == "huggingface":
+                    elif provider_name == "huggingface":
+                        hf_api_key_current = get_tenant_api_key(user_id, "huggingface")
                         if json_struct:
                             response_text = huggingface_structured_json_response(
                                 prompt=prompt,
                                 schema=json_struct,
-                                model="mistralai/Mistral-7B-Instruct-v0.3:groq",
+                                model=candidate_model,
                                 temperature=temperature,
                                 max_tokens=max_tokens,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
+                                api_key=hf_api_key_current,
                             )
                         else:
                             response_text = huggingface_text_response(
                                 prompt=prompt,
-                                model="mistralai/Mistral-7B-Instruct-v0.3:groq",
+                                model=candidate_model,
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 top_p=top_p,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
+                                api_key=hf_api_key_current,
                             )
-                    
-                    # TRACK USAGE after successful fallback call
+                    else:
+                        raise RuntimeError(f"Unknown provider {provider_name}")
+
                     if response_text:
-                        logger.info(f"[llm_text_gen] ✅ Fallback API call successful, tracking usage for user {user_id}, provider {provider_enum.value}")
+                        logger.info(f"[llm_text_gen] ✅ API call successful, tracking usage for user {user_id}, provider {provider_enum.value}")
                         try:
                             from services.intelligence.agents.agent_usage_tracking import track_agent_usage_sync
-                            
-                            # Estimate tokens
-                            tokens_input = int(len(prompt.split()) * 1.3)
-                            
                             track_agent_usage_sync(
                                 user_id=user_id,
-                                model_name=fallback_model,
+                                model_name=candidate_model,
                                 prompt=prompt,
                                 response_text=response_text,
-                                duration=0.5 # Approximate duration
+                                duration=0.5,
                             )
                         except Exception as usage_error:
-                            logger.error(f"[llm_text_gen] ❌ Failed to track fallback usage: {usage_error}", exc_info=True)
-                    
-                    return response_text
-                except Exception as fallback_error:
-                    logger.error(f"[llm_text_gen] Fallback provider {fallback_provider} also failed: {str(fallback_error)}")
-            
-            # CIRCUIT BREAKER: Stop immediately to prevent expensive API calls
-            logger.error("[llm_text_gen] CIRCUIT BREAKER: Stopping to prevent expensive API calls.")
-            raise RuntimeError("All LLM providers failed to generate a response.")
+                            logger.error(f"[llm_text_gen] ❌ Failed to track usage: {usage_error}", exc_info=True)
+                        return response_text
+                except Exception as provider_error:
+                    err = f"provider={provider_name},model={candidate_model},error={provider_error}"
+                    errors.append(err)
+                    logger.error("[llm_text_gen] Attempt failed: {}", err)
+                    continue
+
+            # strict provider mode: single configured provider should not switch
+            if pinned_provider and len(provider_sequence) == 1:
+                break
+
+        logger.error("[llm_text_gen] CIRCUIT BREAKER: All configured provider/model attempts failed. {}", errors)
+        raise RuntimeError("All configured LLM provider/model attempts failed.")
 
     except Exception as e:
         logger.error(f"[llm_text_gen] Error during text generation: {str(e)}")
@@ -388,20 +435,17 @@ def llm_text_gen(
 
 def check_gpt_provider(gpt_provider: str) -> bool:
     """Check if the specified GPT provider is supported."""
-    supported_providers = ["google", "huggingface"]
-    return gpt_provider in supported_providers
+    providers = [_normalize_provider(p) for p in _parse_csv_env(gpt_provider)]
+    if not providers:
+        providers = [_normalize_provider(gpt_provider)]
+    supported_providers = {"google", "huggingface"}
+    return all(p in supported_providers for p in providers if p)
 
-def get_api_key(gpt_provider: str) -> Optional[str]:
-    """Get API key for the specified provider."""
+def get_api_key(gpt_provider: str, user_id: Optional[str] = None) -> Optional[str]:
+    """Get API key for the specified provider, preferring tenant-scoped keys."""
     try:
-        api_key_manager = APIKeyManager()
-        provider_mapping = {
-            "google": "gemini",
-            "huggingface": "hf_token"
-        }
-        
-        mapped_provider = provider_mapping.get(gpt_provider, gpt_provider)
-        return api_key_manager.get_api_key(mapped_provider)
+        return get_tenant_api_key(user_id, gpt_provider)
     except Exception as e:
         logger.error(f"[get_api_key] Error getting API key for {gpt_provider}: {str(e)}")
-        return None 
+        return None
+

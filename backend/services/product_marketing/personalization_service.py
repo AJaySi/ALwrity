@@ -10,6 +10,20 @@ from services.database import SessionLocal
 from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 
 
+def _ensure_dict(value: Any) -> Dict[str, Any]:
+    """Safely coerce arbitrary payload shape into a dictionary."""
+    return value if isinstance(value, dict) else {}
+
+
+def _ensure_list(value: Any) -> List[Any]:
+    """Safely coerce arbitrary payload shape into a list."""
+    if isinstance(value, list):
+        return value
+    if value is None:
+        return []
+    return [value]
+
+
 class PersonalizationService:
     """
     Service for extracting user preferences from onboarding data
@@ -39,17 +53,18 @@ class PersonalizationService:
         db = SessionLocal()
         try:
             integration_service = OnboardingDataIntegrationService()
-            integrated_data = integration_service.get_integrated_data_sync(user_id, db)
-            canonical_profile = integrated_data.get('canonical_profile', {})
+            integrated_data_raw = integration_service.get_integrated_data_sync(user_id, db)
+            integrated_data = _ensure_dict(integrated_data_raw)
+            canonical_profile = _ensure_dict(integrated_data.get('canonical_profile'))
             
             # Map strictly from Canonical Profile
             preferences = {
                 "industry": canonical_profile.get("industry"),
-                "target_audience": canonical_profile.get("target_audience", {}),
-                "platform_preferences": canonical_profile.get("platform_preferences", []),
-                "content_preferences": canonical_profile.get("content_types", []),
-                "style_preferences": canonical_profile.get("visual_style", {}),
-                "brand_colors": canonical_profile.get("brand_colors", []),
+                "target_audience": _ensure_dict(canonical_profile.get("target_audience")),
+                "platform_preferences": _ensure_list(canonical_profile.get("platform_preferences")),
+                "content_preferences": _ensure_list(canonical_profile.get("content_types")),
+                "style_preferences": _ensure_dict(canonical_profile.get("visual_style")),
+                "brand_colors": _ensure_list(canonical_profile.get("brand_colors")),
                 "recommended_templates": [],
                 "recommended_channels": [],
                 "writing_style": {
@@ -58,7 +73,7 @@ class PersonalizationService:
                     "complexity": canonical_profile.get("writing_complexity", "intermediate"),
                     "engagement_level": canonical_profile.get("writing_engagement", "moderate"),
                 },
-                "brand_values": canonical_profile.get("brand_values", []),
+                "brand_values": _ensure_list(canonical_profile.get("brand_values")),
             }
             
             # Ensure target_audience structure
@@ -94,7 +109,7 @@ class PersonalizationService:
             if not preferences["recommended_channels"]:
                 preferences["recommended_channels"] = self._get_recommended_channels(
                     preferences.get("industry"),
-                    preferences.get("target_audience", {}).get("demographics", [])
+                    _ensure_list(_ensure_dict(preferences.get("target_audience")).get("demographics"))
                 )
             
             logger.info(f"[Personalization] Extracted preferences for user {user_id}: industry={preferences.get('industry')}")

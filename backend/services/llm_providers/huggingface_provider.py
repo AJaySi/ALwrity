@@ -47,26 +47,10 @@ Last Updated: January 2025
 """
 
 import os
-import sys
-from pathlib import Path
 import json
 import re
+from functools import lru_cache
 from typing import Optional, Dict, Any
-
-from dotenv import load_dotenv
-
-# Fix the environment loading path - load from backend directory
-current_dir = Path(__file__).parent.parent  # services directory
-backend_dir = current_dir.parent  # backend directory
-env_path = backend_dir / '.env'
-
-if env_path.exists():
-    load_dotenv(env_path)
-    print(f"Loaded .env from: {env_path}")
-else:
-    # Fallback to current directory
-    load_dotenv()
-    print(f"No .env found at {env_path}, using current directory")
 
 from loguru import logger
 from utils.logger_utils import get_service_logger
@@ -74,56 +58,38 @@ from utils.logger_utils import get_service_logger
 # Use service-specific logger to avoid conflicts
 logger = get_service_logger("huggingface_provider")
 
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
 try:
     from openai import OpenAI
-    from openai import NotFoundError
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    NotFoundError = Exception
     logger.warn("OpenAI library not available. Install with: pip install openai")
 
-HF_FALLBACK_MODELS = [
-    "openai/gpt-oss-120b:groq",
-    "moonshotai/Kimi-K2-Instruct-0905:groq",
-    "meta-llama/Llama-3.1-8B-Instruct:groq",
-    "mistralai/Mistral-7B-Instruct-v0.3:groq",
-]
 
 
-def _candidate_model_variants(model: str):
-    """Yield model ids to try for a single logical model preference."""
-    if not model:
-        return
-
-    # Try configured model first (supports provider suffixes like ":groq")
-    yield model
-
-    # Fallback to base repo id when provider suffix is not recognized by the router
-    if ":" in model:
-        base_model = model.split(":", 1)[0]
-        if base_model:
-            yield base_model
+def _classify_hf_error(error: Exception) -> str:
+    message = str(error or "").lower()
+    if any(x in message for x in ["insufficient", "quota", "billing", "payment", "credits", "balance"]):
+        return "billing_or_quota"
+    if any(x in message for x in ["unauthorized", "forbidden", "permission", "invalid api key", "authentication"]):
+        return "auth_or_permission"
+    if ("not found" in message) or ("404" in message):
+        return "model_not_found"
+    return "other"
 
 
-def _fallback_model_sequence(model: str):
-    sequence = [model] + HF_FALLBACK_MODELS
-    seen = set()
-    for preferred_model in sequence:
-        for candidate in _candidate_model_variants(preferred_model):
-            if candidate and candidate not in seen:
-                seen.add(candidate)
-                yield candidate
+def _error_details(error: Exception) -> Dict[str, str]:
+    return {
+        "type": type(error).__name__,
+        "message": str(error),
+        "repr": repr(error),
+    }
 
-def get_huggingface_api_key() -> str:
+
+def get_huggingface_api_key(explicit_api_key: Optional[str] = None) -> str:
     """Get Hugging Face API key with proper error handling."""
-    api_key = os.getenv('HF_TOKEN')
+    api_key = explicit_api_key or os.getenv('HF_TOKEN')
     if not api_key:
         error_msg = "HF_TOKEN environment variable is not set. Please set it in your .env file."
         logger.error(error_msg)
@@ -137,14 +103,19 @@ def get_huggingface_api_key() -> str:
     
     return api_key
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+@lru_cache(maxsize=16)
+def _get_hf_client(api_key: str):
+    return OpenAI(base_url="https://router.huggingface.co/v1", api_key=api_key)
+
+
 def huggingface_text_response(
     prompt: str,
     model: str = "openai/gpt-oss-120b:groq",
     temperature: float = 0.7,
     max_tokens: int = 2048,
     top_p: float = 0.9,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> str:
     """
     Generate text response using Hugging Face Inference Providers API.
@@ -186,17 +157,14 @@ def huggingface_text_response(
             raise ImportError("OpenAI library not available. Install with: pip install openai")
         
         # Get API key with proper error handling
-        api_key = get_huggingface_api_key()
+        api_key = get_huggingface_api_key(api_key)
         logger.info(f"🔑 Hugging Face API key loaded: {bool(api_key)} (length: {len(api_key) if api_key else 0})")
         
         if not api_key:
             raise Exception("HF_TOKEN not found in environment variables")
             
         # Initialize Hugging Face client
-        client = OpenAI(
-            base_url=f"https://router.huggingface.co/hf/v1",
-            api_key=api_key,
-        )
+        client = _get_hf_client(api_key)
         logger.info("✅ Hugging Face client initialized for text response")
 
         # Prepare input for the API
@@ -227,31 +195,13 @@ def huggingface_text_response(
         
         logger.info("🚀 Making Hugging Face API call (chat completion)...")
         
-        # Add rate limiting to prevent expensive API calls
-        import time
-        time.sleep(1)  # 1 second delay between API calls
-        
-        response = None
-        last_error = None
-        for candidate_model in _fallback_model_sequence(model):
-            try:
-                response = client.chat.completions.create(
-                    model=candidate_model,
-                    messages=messages,
-                    temperature=temperature,
-                    top_p=top_p,
-                    max_tokens=max_tokens
-                )
-                if candidate_model != model:
-                    logger.warning("HF text generation switched to fallback model: {}", candidate_model)
-                break
-            except NotFoundError as nf_err:
-                last_error = nf_err
-                logger.warning("HF model not found: {}. Trying fallback model.", candidate_model)
-                continue
-
-        if response is None:
-            raise last_error or Exception("Hugging Face text generation failed: all fallback models failed")
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens
+        )
         
         # Extract text from response
         generated_text = response.choices[0].message.content
@@ -263,21 +213,23 @@ def huggingface_text_response(
             generated_text = re.sub(r'```\n?', '', generated_text)
             generated_text = generated_text.strip()
         
-        logger.info(f"✅ Hugging Face text response generated successfully (length: {len(generated_text)})")
+        logger.info("✅ Hugging Face text response generated successfully (length: {})", len(generated_text))
         return generated_text
         
     except Exception as e:
-        logger.error(f"❌ Hugging Face text generation failed: {str(e)}")
+        error_class = _classify_hf_error(e)
+        details = _error_details(e)
+        logger.error("❌ Hugging Face text generation failed | error_class={} | type={} | message={} | repr={}", error_class, details["type"], details["message"], details["repr"])
         raise Exception(f"Hugging Face text generation failed: {str(e)}")
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
 def huggingface_structured_json_response(
     prompt: str,
     schema: Dict[str, Any],
     model: str = "openai/gpt-oss-120b:groq",
     temperature: float = 0.7,
     max_tokens: int = 8192,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate structured JSON response using Hugging Face Inference Providers API.
@@ -329,7 +281,7 @@ def huggingface_structured_json_response(
             raise ImportError("OpenAI library not available. Install with: pip install openai")
         
         # Get API key with proper error handling
-        api_key = get_huggingface_api_key()
+        api_key = get_huggingface_api_key(api_key)
         logger.info(f"🔑 Hugging Face API key loaded: {bool(api_key)} (length: {len(api_key) if api_key else 0})")
         
         if not api_key:
@@ -337,10 +289,7 @@ def huggingface_structured_json_response(
             
         # Initialize OpenAI client with Hugging Face base URL
         # Use standard Inference API endpoint
-        client = OpenAI(
-            base_url=f"https://router.huggingface.co/hf/v1",
-            api_key=api_key,
-        )
+        client = _get_hf_client(api_key)
         logger.info("✅ Hugging Face client initialized for structured JSON response")
 
         # Prepare input for the API
@@ -380,104 +329,51 @@ def huggingface_structured_json_response(
         json_schema_str = json.dumps(schema, indent=2)
         messages[-1]["content"] += f"\n\nJSON Schema:\n{json_schema_str}"
         
-        # Add rate limiting to prevent expensive API calls
-        import time
-        time.sleep(1)  # 1 second delay between API calls
-        
         try:
-            response = None
-            last_error = None
-            for candidate_model in _fallback_model_sequence(model):
-                try:
-                    response = client.chat.completions.create(
-                        model=candidate_model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        response_format={"type": "json_object"} # Try to enforce JSON mode if supported
-                    )
-                    if candidate_model != model:
-                        logger.warning("HF structured generation switched to fallback model: {}", candidate_model)
-                    break
-                except NotFoundError as nf_err:
-                    last_error = nf_err
-                    logger.warning("HF structured model not found: {}. Trying fallback model.", candidate_model)
-                    continue
-
-            if response is None:
-                raise last_error or Exception("Hugging Face structured generation failed: all fallback models failed")
-            
-            response_text = response.choices[0].message.content
-            
-            # Clean up response text if needed
-            response_text = response_text.strip()
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-            response_text = response_text.strip()
-            
-            try:
-                parsed_json = json.loads(response_text)
-                logger.info("✅ Hugging Face structured JSON response parsed successfully")
-                return parsed_json
-            except json.JSONDecodeError as json_err:
-                logger.error(f"❌ JSON parsing failed: {json_err}")
-                logger.error(f"Raw response: {response_text}")
-                
-                # Try to extract JSON from the response using regex
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    try:
-                        extracted_json = json.loads(json_match.group())
-                        logger.info("✅ JSON extracted using regex fallback")
-                        return extracted_json
-                    except json.JSONDecodeError:
-                        pass
-                
-                return {"error": "Failed to parse JSON response", "raw_response": response_text}
-                
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"}
+            )
         except Exception as e:
-            logger.error(f"❌ Hugging Face API call failed: {e}")
-            # If 422 Unprocessable Entity (often due to response_format not supported), retry without it
-            if "422" in str(e) or "not supported" in str(e).lower() or isinstance(e, NotFoundError):
-                logger.info("Retrying without response_format...")
-                response = None
-                last_error = None
-                for candidate_model in _fallback_model_sequence(model):
-                    try:
-                        response = client.chat.completions.create(
-                            model=candidate_model,
-                            messages=messages,
-                            temperature=temperature,
-                            max_tokens=max_tokens
-                        )
-                        if candidate_model != model:
-                            logger.warning("HF structured no-response_format fallback model: {}", candidate_model)
-                        break
-                    except NotFoundError as nf_err:
-                        last_error = nf_err
-                        logger.warning("HF structured model not found (no response_format path): {}", candidate_model)
-                        continue
+            details = _error_details(e)
+            logger.error("❌ Hugging Face API call failed | error_class={} | type={} | message={} | repr={}", _classify_hf_error(e), details["type"], details["message"], details["repr"])
+            raise
 
-                if response is None:
-                    raise last_error or e
-                response_text = response.choices[0].message.content
-                # ... (same parsing logic would apply, simplified here for brevity)
+        response_text = response.choices[0].message.content
+
+        # Clean up response text if needed
+        response_text = response_text.strip()
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+
+        try:
+            parsed_json = json.loads(response_text)
+            logger.info("✅ Hugging Face structured JSON response parsed successfully")
+            return parsed_json
+        except json.JSONDecodeError as json_err:
+            logger.error(f"❌ JSON parsing failed: {json_err}")
+            logger.error(f"Raw response: {response_text}")
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
                 try:
-                    return json.loads(response_text)
-                except:
-                     # Regex fallback
-                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                    if json_match:
-                         return json.loads(json_match.group())
-                    return {"error": "Failed to parse JSON response", "raw_response": response_text}
-            raise e
+                    extracted_json = json.loads(json_match.group())
+                    logger.info("✅ JSON extracted using regex fallback")
+                    return extracted_json
+                except json.JSONDecodeError:
+                    pass
+            return {"error": "Failed to parse JSON response", "raw_response": response_text}
         
     except Exception as e:
         error_msg = str(e) if str(e) else repr(e)
         error_type = type(e).__name__
-        logger.error(f"❌ Hugging Face structured JSON generation failed: {error_type}: {error_msg}")
+        details = _error_details(e)
+        logger.error("❌ Hugging Face structured JSON generation failed | error_class={} | type={} | message={} | repr={}", _classify_hf_error(e), error_type, details["message"], details["repr"])
         logger.error(f"❌ Full exception details: {repr(e)}")
         import traceback
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
