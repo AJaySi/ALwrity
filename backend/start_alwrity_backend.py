@@ -228,7 +228,11 @@ def start_backend(enable_reload=False, production_mode=False):
             log_video_stack_diagnostics = None
             assert_supported_moviepy = None
         
+<<<<<<< HEAD
         verbose_mode = configure_logging(verbose_mode=verbose_mode, bootstrap_source="start_alwrity_backend")
+=======
+        verbose_mode = configure_logging(mode="default", app_name="ALwrity")
+>>>>>>> pr-422
         uvicorn_log_level = get_uvicorn_log_level()
 
         # Log diagnostics and assert versions (fail fast if misconfigured)

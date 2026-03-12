@@ -50,7 +50,11 @@ load_dotenv()  # CWD .env (fallback)
 
 # Set up clean logging for end users
 from logging_config import configure_logging
+<<<<<<< HEAD
 configure_logging(bootstrap_source="asgi-import")
+=======
+configure_logging(mode="default", app_name="ALwrity")
+>>>>>>> pr-422
 
 # Import middleware
 from middleware.auth_middleware import get_current_user
