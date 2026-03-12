@@ -102,3 +102,43 @@ class PlatformInsightsExecutionLog(Base):
     def __repr__(self):
         return f"<PlatformInsightsExecutionLog(id={self.id}, task_id={self.task_id}, status={self.status}, execution_date={self.execution_date})>"
 
+
+class PlatformInsightDeltaEvent(Base):
+    """Persisted delta events generated from comparable platform-insights windows."""
+    __tablename__ = "platform_insight_delta_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Ownership and source
+    user_id = Column(String(255), nullable=False, index=True)
+    platform = Column(String(50), nullable=False, index=True)  # 'gsc' / 'bing'
+    site_url = Column(String(500), nullable=True, index=True)
+    task_id = Column(Integer, ForeignKey("platform_insights_tasks.id"), nullable=True, index=True)
+
+    # Event classification
+    event_type = Column(String(50), nullable=False, index=True)  # 'decline' | 'rise' | 'opportunity'
+    entity_type = Column(String(50), nullable=False, index=True)  # 'page' | 'query'
+    entity_key = Column(Text, nullable=False, index=True)  # URL for page, text for query
+
+    # Comparable windows
+    current_start_date = Column(String(20), nullable=False)
+    current_end_date = Column(String(20), nullable=False)
+    prior_start_date = Column(String(20), nullable=False)
+    prior_end_date = Column(String(20), nullable=False)
+
+    # Delta payload and metadata
+    details = Column(JSON, nullable=False)  # metric deltas + labels + thresholds used
+    severity = Column(String(20), nullable=True, index=True)  # low | medium | high
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index('idx_platform_delta_events_user_platform_created', 'user_id', 'platform', 'created_at'),
+        Index('idx_platform_delta_events_user_type_created', 'user_id', 'event_type', 'created_at'),
+    )
+
+    def __repr__(self):
+        return (
+            f"<PlatformInsightDeltaEvent(id={self.id}, user_id={self.user_id}, platform={self.platform}, "
+            f"event_type={self.event_type}, entity_type={self.entity_type})>"
+        )

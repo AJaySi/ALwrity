@@ -18,6 +18,7 @@ from .handlers import (
 from .connection_manager import PlatformConnectionManager
 from .summary_generator import AnalyticsSummaryGenerator
 from .cache_manager import AnalyticsCacheManager
+from .opportunity_alerts_service import OpportunityAlertsService
 
 
 class PlatformAnalyticsService:
@@ -41,6 +42,7 @@ class PlatformAnalyticsService:
         self.connection_manager = PlatformConnectionManager()
         self.summary_generator = AnalyticsSummaryGenerator()
         self.cache_manager = AnalyticsCacheManager()
+        self.opportunity_alerts_service = OpportunityAlertsService()
     
     async def get_comprehensive_analytics(self, user_id: str, platforms: List[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, AnalyticsData]:
         """
@@ -118,6 +120,28 @@ class PlatformAnalyticsService:
         
         return analytics_data
     
+    def get_latest_opportunities_alerts(
+        self,
+        user_id: str,
+        platform: str = 'gsc',
+        site_url: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+        limit: int = 25
+    ) -> Dict[str, Any]:
+        """Return latest persisted opportunities/alerts without recomputing deltas."""
+        events = self.opportunity_alerts_service.get_latest_events(
+            user_id=user_id,
+            platform=platform,
+            site_url=site_url,
+            event_types=event_types or ['opportunity', 'decline', 'rise'],
+            limit=limit,
+        )
+        return {
+            'platform': platform,
+            'count': len(events),
+            'events': events,
+        }
+
     async def get_platform_connection_status(self, user_id: str) -> Dict[str, Dict[str, Any]]:
         """
         Check connection status for all platforms
