@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from services.database import init_user_database, ensure_user_workspace_db_directory
+from services.workspace_dirs import ensure_user_workspace_dirs
 
 class UserWorkspaceManager:
     """Manages user-specific workspaces and progressive setup."""
@@ -68,27 +69,11 @@ class UserWorkspaceManager:
             # Ensure canonical DB directory and migrate legacy layout if needed
             self._ensure_workspace_db_directory(user_id)
             
-            # Create subdirectories
-            subdirs = [
-                "content",
-                "content/images",
-                "content/videos",
-                "content/audio",
-                "content/text",
-                "content/youtube", # Consolidated
-                "content/story",   # Consolidated
-                "research", 
-                "config",
-                "cache",
-                "exports",
-                "templates",
-                "db",              # Official database folder
-                "media",           # Requested 'media' folder
-                "data"             # User specific data folder
-            ]
-            
-            for subdir in subdirs:
-                (user_dir / subdir).mkdir(parents=True, exist_ok=True)
+            # Create user-specific directories lazily via centralized helper
+            user_dir = ensure_user_workspace_dirs(
+                user_id,
+                capabilities={"core", "content", "research", "media", "assets"},
+            )
             
             # Create user-specific configuration
             config = self._create_user_config(user_id)
@@ -280,9 +265,8 @@ class UserWorkspaceManager:
     
     def _setup_ai_services(self, user_id: str):
         """Set up AI services for the user."""
-        safe_user_id = self._sanitize_user_id(user_id)
         # Create user-specific AI service configuration
-        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+        user_dir = ensure_user_workspace_dirs(user_id, capabilities={"ai_services"})
         ai_config = user_dir / "config" / "ai_services.json"
         
         ai_services = {
@@ -290,9 +274,6 @@ class UserWorkspaceManager:
             "exa": {"enabled": True, "search_depth": "standard"},
             "copilotkit": {"enabled": True, "assistant_type": "content"}
         }
-        
-        # Ensure config directory exists
-        ai_config.parent.mkdir(parents=True, exist_ok=True)
         
         with open(ai_config, 'w') as f:
             json.dump(ai_services, f, indent=2)
@@ -314,9 +295,8 @@ class UserWorkspaceManager:
     
     def _setup_integrations(self, user_id: str):
         """Set up external integrations."""
-        safe_user_id = self._sanitize_user_id(user_id)
         # Create integrations configuration
-        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+        user_dir = ensure_user_workspace_dirs(user_id, capabilities={"integrations"})
         integrations_config = user_dir / "config" / "integrations.json"
         
         integrations = {
@@ -325,28 +305,18 @@ class UserWorkspaceManager:
             "wordpress": {"enabled": False, "connected": False}
         }
         
-        # Ensure config directory exists
-        integrations_config.parent.mkdir(parents=True, exist_ok=True)
-        
         with open(integrations_config, 'w') as f:
             json.dump(integrations, f, indent=2)
     
     def _setup_complete_features(self, user_id: str):
         """Set up complete feature set."""
-        safe_user_id = self._sanitize_user_id(user_id)
         # Create comprehensive workspace
-        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
-        
+        user_dir = ensure_user_workspace_dirs(user_id, capabilities={"core", "content", "research", "media", "assets"})
+
         # Create additional directories for complete setup
-        complete_dirs = [
-            "ai_models",
-            "content_templates", 
-            "export_templates",
-            "backup"
-        ]
-        
+        complete_dirs = ["ai_models", "content_templates", "export_templates", "backup"]
         for dir_name in complete_dirs:
-            (user_dir / dir_name).mkdir(exist_ok=True)
+            (user_dir / dir_name).mkdir(parents=True, exist_ok=True)
         
         # Create final configuration
         final_config = {

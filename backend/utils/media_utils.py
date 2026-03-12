@@ -27,9 +27,10 @@ YOUTUBE_IMAGES_DIR = DATA_MEDIA_DIR / "youtube_images"
 PODCAST_IMAGES_DIR = DATA_MEDIA_DIR / "podcast_images"
 PODCAST_AVATARS_DIR = PODCAST_IMAGES_DIR / "avatars"
 
-# Ensure directories exist
-for directory in [YOUTUBE_AVATARS_DIR, YOUTUBE_IMAGES_DIR, PODCAST_IMAGES_DIR, PODCAST_AVATARS_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+def ensure_media_dirs() -> None:
+    """Create shared media directories at runtime."""
+    for directory in [YOUTUBE_AVATARS_DIR, YOUTUBE_IMAGES_DIR, PODCAST_IMAGES_DIR, PODCAST_AVATARS_DIR]:
+        directory.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
@@ -46,6 +47,8 @@ def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
     """
     if not media_url_or_path:
         return None
+
+    ensure_media_dirs()
         
     try:
         # Extract filename from URL/path

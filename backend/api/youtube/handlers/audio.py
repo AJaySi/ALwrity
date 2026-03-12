@@ -12,17 +12,13 @@ from api.story_writer.utils.auth import require_authenticated_user
 from utils.asset_tracker import save_asset_to_library
 from models.story_models import StoryAudioResult
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
-from pathlib import Path
 from utils.logger_utils import get_service_logger
 
 router = APIRouter(tags=["youtube-audio"])
 logger = get_service_logger("api.youtube.audio")
 
 # Audio output directory
-# api/youtube/handlers/audio.py -> handlers -> youtube -> api -> backend -> root
-base_dir = Path(__file__).resolve().parents[4]
-YOUTUBE_AUDIO_DIR = base_dir / "workspace" / "media" / "youtube_audio"
-YOUTUBE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+from ..paths import YOUTUBE_AUDIO_DIR, ensure_youtube_media_dirs
 
 # Initialize audio service
 audio_service = StoryAudioGenerationService(output_dir=str(YOUTUBE_AUDIO_DIR))
@@ -266,6 +262,7 @@ async def generate_youtube_scene_audio(
     Similar to Podcast's audio generation endpoint.
     """
     user_id = require_authenticated_user(current_user)
+    ensure_youtube_media_dirs(user_id)
 
     if not request.text or not request.text.strip():
         raise HTTPException(status_code=400, detail="Text is required")

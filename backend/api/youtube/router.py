@@ -34,17 +34,12 @@ from .handlers import audio as audio_handlers
 router = APIRouter(prefix="/youtube", tags=["youtube"])
 logger = get_service_logger("api.youtube")
 
-# Video output and image directories
-# api/youtube/router.py -> youtube -> api -> backend -> root
-base_dir = Path(__file__).resolve().parents[3]
-DATA_MEDIA_DIR = base_dir / "workspace" / "media"
-YOUTUBE_VIDEO_DIR = DATA_MEDIA_DIR / "youtube_videos"
-YOUTUBE_AVATARS_DIR = DATA_MEDIA_DIR / "youtube_avatars"
-YOUTUBE_IMAGES_DIR = DATA_MEDIA_DIR / "youtube_images"
-
-# Ensure directories exist
-for directory in [YOUTUBE_VIDEO_DIR, YOUTUBE_AVATARS_DIR, YOUTUBE_IMAGES_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+from .paths import (
+    YOUTUBE_VIDEO_DIR,
+    YOUTUBE_AVATARS_DIR,
+    YOUTUBE_IMAGES_DIR,
+    ensure_youtube_media_dirs,
+)
 
 # Include sub-routers for avatar, images, and audio
 router.include_router(avatar_handlers.router)

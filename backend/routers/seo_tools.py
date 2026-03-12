@@ -17,6 +17,8 @@ import os
 import tempfile
 import asyncio
 
+from services.workspace_dirs import ensure_global_operational_dirs
+
 # Import services
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.seo_tools.meta_description_service import MetaDescriptionService
@@ -37,7 +39,13 @@ router = APIRouter(prefix="/api/seo", tags=["AI SEO Tools"])
 
 # Configuration for intelligent logging
 LOG_DIR = "logs/seo_tools"
-os.makedirs(LOG_DIR, exist_ok=True)
+
+
+def ensure_seo_logging_dir() -> str:
+    """Create SEO log directory at runtime (no import-time writes)."""
+    ensure_global_operational_dirs({"logs"})
+    os.makedirs(LOG_DIR, exist_ok=True)
+    return LOG_DIR
 
 # Request/Response Models
 class BaseResponse(BaseModel):
