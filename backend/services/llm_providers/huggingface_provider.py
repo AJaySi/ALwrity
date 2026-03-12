@@ -54,6 +54,7 @@ from typing import Optional, Dict, Any
 
 from loguru import logger
 from utils.logger_utils import get_service_logger
+from .routing_policy import PREMIUM_DEFAULT_MODEL, SIF_LOW_COST_MODEL_DEFAULTS
 
 # Use service-specific logger to avoid conflicts
 logger = get_service_logger("huggingface_provider")
@@ -77,10 +78,17 @@ except ImportError:
 
 <<<<<<< HEAD
 HF_FALLBACK_MODELS = [
+<<<<<<< HEAD
     "openai/gpt-oss-120b:cerebras",
     "moonshotai/Kimi-K2-Instruct-0905:cerebras",
     "meta-llama/Llama-3.1-8B-Instruct:cerebras",
     "mistralai/Mistral-7B-Instruct-v0.3:cerebras",
+=======
+    PREMIUM_DEFAULT_MODEL,
+    "moonshotai/Kimi-K2-Instruct-0905:groq",
+    "meta-llama/Llama-3.1-8B-Instruct:groq",
+    SIF_LOW_COST_MODEL_DEFAULTS[0],
+>>>>>>> pr-417
 ]
 
 
@@ -219,8 +227,12 @@ def _get_hf_client(api_key: str):
 >>>>>>> pr-416
 def huggingface_text_response(
     prompt: str,
+<<<<<<< HEAD
     model: str = "openai/gpt-oss-120b:cerebras",
     fallback_models: Optional[List[str]] = None,
+=======
+    model: str = PREMIUM_DEFAULT_MODEL,
+>>>>>>> pr-417
     temperature: float = 0.7,
     max_tokens: int = 2048,
     top_p: float = 0.9,
@@ -256,7 +268,11 @@ def huggingface_text_response(
     Example:
         result = huggingface_text_response(
             prompt="Write a blog post about AI",
+<<<<<<< HEAD
             model="openai/gpt-oss-120b:cerebras",
+=======
+            model=PREMIUM_DEFAULT_MODEL,
+>>>>>>> pr-417
             temperature=0.7,
             max_tokens=2048,
             system_prompt="You are a professional content writer."
@@ -369,8 +385,12 @@ def huggingface_text_response(
 def huggingface_structured_json_response(
     prompt: str,
     schema: Dict[str, Any],
+<<<<<<< HEAD
     model: str = "openai/gpt-oss-120b:cerebras",
     fallback_models: Optional[List[str]] = None,
+=======
+    model: str = PREMIUM_DEFAULT_MODEL,
+>>>>>>> pr-417
     temperature: float = 0.7,
     max_tokens: int = 8192,
     system_prompt: Optional[str] = None,
@@ -616,12 +636,12 @@ def get_available_models() -> list:
         list: List of available model identifiers
     """
     return [
-        "openai/gpt-oss-120b:groq",
+        PREMIUM_DEFAULT_MODEL,
         "moonshotai/Kimi-K2-Instruct-0905:groq",
         "Qwen/Qwen2.5-VL-7B-Instruct",
         "meta-llama/Llama-3.1-8B-Instruct:groq",
         "microsoft/Phi-3-medium-4k-instruct:groq",
-        "mistralai/Mistral-7B-Instruct-v0.3:groq"
+        SIF_LOW_COST_MODEL_DEFAULTS[0]
     ]
 
 def validate_model(model: str) -> bool:
