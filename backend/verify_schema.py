@@ -1,6 +1,9 @@
 import sqlite3
 
-db_path = r'c:\Users\diksha rawat\Desktop\ALwrity\workspace\workspace_alwrity\db\alwrity_alwrity.db'
+from services.database import get_user_db_path
+
+USER_ID = "alwrity"
+db_path = get_user_db_path(USER_ID)
 
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
@@ -15,7 +18,7 @@ if tables:
     cols = cursor.fetchall()
     col_names = [c[1] for c in cols]
     print(f"\nColumns in daily_workflow_plans: {col_names}")
-    
+
     required = ['generation_mode', 'committee_agent_count', 'fallback_used']
     for col in required:
         if col in col_names:

@@ -1,13 +1,14 @@
-
 import os
 import sys
 import sqlite3
 
+# Add backend to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from services.database import get_user_db_path
+
 user_id = "user_33Gz1FPI86VDXhRY8QN4ragRFGN"
-base_path = os.getcwd()
-safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
-user_workspace = os.path.join(base_path, "workspace", f"workspace_{safe_user_id}")
-db_path = os.path.join(user_workspace, "db", f"alwrity_{safe_user_id}.db")
+db_path = get_user_db_path(user_id)
 
 print(f"Reading from: {db_path}")
 

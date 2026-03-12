@@ -19,18 +19,8 @@ from services.subscription import UsageTrackingService, PricingService
 USER_ID = "user_33Gz1FPI86VDXhRY8QN4ragRFGN"
 
 def get_db_path(user_id):
-    # Logic from database.py to resolve path
-    base_path = os.getcwd()
-    # Sanitize user_id
-    safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
-    user_workspace = os.path.join(base_path, "workspace", f"workspace_{safe_user_id}")
-    # Try both naming conventions
-    db_path_v1 = os.path.join(user_workspace, "db", "alwrity.db")
-    db_path_v2 = os.path.join(user_workspace, "db", f"alwrity_{safe_user_id}.db")
-    
-    if os.path.exists(db_path_v2):
-        return db_path_v2
-    return db_path_v1
+    from services.database import get_user_db_path
+    return get_user_db_path(user_id)
 
 def check_user_data():
     db_path = get_db_path(USER_ID)

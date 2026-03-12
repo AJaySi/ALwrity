@@ -100,7 +100,7 @@ class DeepCrawlService:
             # Note: Path logic should be consistent with project structure
             # Assuming workspace path is available via env or config, or constructing it.
             # Using relative path for now, adjusted to project root.
-            # The memory says: workspace/workspace_{user_id}/db/alwrity.db
+            # Database files are stored under workspace/workspace_{user_id}/db/.
             # So workspace root is workspace/workspace_{user_id}/
             workspace_dir = f"workspace/workspace_{user_id}/crawled_content"
             os.makedirs(workspace_dir, exist_ok=True)

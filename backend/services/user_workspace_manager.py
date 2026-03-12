@@ -13,7 +13,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from services.database import init_user_database
+from services.database import init_user_database, ensure_user_workspace_db_directory
 
 class UserWorkspaceManager:
     """Manages user-specific workspaces and progressive setup."""
@@ -35,6 +35,11 @@ class UserWorkspaceManager:
     def _sanitize_user_id(self, user_id: str) -> str:
         """Sanitize user_id to be safe for filesystem (matches database.py logic)."""
         return "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
+
+    def _ensure_workspace_db_directory(self, user_id: str) -> None:
+        """Ensure workspace uses canonical `db/` layout via database service authority."""
+        ensure_user_workspace_db_directory(user_id)
+
 
     def create_user_workspace(self, user_id: str) -> Dict[str, Any]:
         """Create a complete user workspace with progressive setup."""
@@ -59,6 +64,9 @@ class UserWorkspaceManager:
             # Format: workspaces/workspace_{user_id}
             user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
             user_dir.mkdir(parents=True, exist_ok=True)
+
+            # Ensure canonical DB directory and migrate legacy layout if needed
+            self._ensure_workspace_db_directory(user_id)
             
             # Create subdirectories
             subdirs = [
@@ -74,8 +82,7 @@ class UserWorkspaceManager:
                 "cache",
                 "exports",
                 "templates",
-                "database",
-                "db",              # Requested 'db' folder
+                "db",              # Official database folder
                 "media",           # Requested 'media' folder
                 "data"             # User specific data folder
             ]
@@ -358,8 +365,8 @@ class UserWorkspaceManager:
             if user_dir.exists():
                 shutil.rmtree(user_dir)
             
-            # Note: We do not drop tables here because each user has their own DB file 
-            # (alwrity.db) inside their workspace. Deleting the workspace folder 
+            # Note: We do not drop tables here because each user has their own DB file
+            # inside workspace/workspace_{id}/db/. Deleting the workspace folder
             # deletes the DB file as well.
             
             logger.info(f"✅ User workspace cleaned up for user {user_id}")
