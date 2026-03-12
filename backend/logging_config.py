@@ -9,13 +9,40 @@ import sys
 from loguru import logger
 
 
-def setup_clean_logging():
-    """Set up clean logging for end users."""
-    verbose_mode = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
-    
-    # Always remove all existing handlers first to prevent conflicts
+_LOGGING_CONFIGURED = False
+
+
+class LoguruInterceptHandler(logging.Handler):
+    """Forward stdlib logging records to Loguru."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+
+def configure_logging(mode: str = "default", verbose: bool | None = None, app_name: str = "alwrity") -> bool:
+    """Configure Loguru and stdlib logging into one shared pipeline."""
+    global _LOGGING_CONFIGURED
+
+    if verbose is None:
+        verbose_mode = mode == "verbose" or os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+    else:
+        verbose_mode = verbose
+
+    if _LOGGING_CONFIGURED:
+        return verbose_mode
+
     logger.remove()
-    
+
     if not verbose_mode:
         # Suppress verbose logging for end users - be more aggressive
         logging.getLogger('sqlalchemy.engine').setLevel(logging.CRITICAL)
@@ -90,7 +117,7 @@ def setup_clean_logging():
         logger.add(
             sys.stdout.write,
             level="WARNING",
-            format="{time:HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}\n",
+            format=f"{app_name} | {{time:HH:mm:ss}} | {{level: <8}} | {{name}}:{{function}}:{{line}} - {{message}}\n",
             filter=warning_only_filter
         )
         # Add a focused sink to surface Story Video Generation INFO logs in console
@@ -108,7 +135,7 @@ def setup_clean_logging():
         logger.add(
             sys.stdout.write,
             level="INFO",
-            format="{time:HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}\n",
+            format=f"{app_name} | {{time:HH:mm:ss}} | {{level: <8}} | {{name}}:{{function}}:{{line}} - {{message}}\n",
             filter=video_generation_filter
         )
     else:
@@ -116,10 +143,31 @@ def setup_clean_logging():
         logger.add(
             sys.stdout.write,
             level="DEBUG",
-            format="{time:HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}\n"
+            format=f"{app_name} | {{time:HH:mm:ss}} | {{level: <8}} | {{name}}:{{function}}:{{line}} - {{message}}\n"
         )
-    
+
+    intercept_handler = LoguruInterceptHandler()
+    root_logger = logging.getLogger()
+    root_logger.handlers = [intercept_handler]
+    root_logger.setLevel(logging.DEBUG if verbose_mode else logging.WARNING)
+
+    logging.captureWarnings(True)
+    warnings_logger = logging.getLogger("py.warnings")
+    warnings_logger.handlers = [intercept_handler]
+    warnings_logger.propagate = True
+
+    for existing_logger in logging.root.manager.loggerDict.values():
+        if isinstance(existing_logger, logging.Logger):
+            existing_logger.handlers = []
+            existing_logger.propagate = True
+
+    _LOGGING_CONFIGURED = True
     return verbose_mode
+
+
+def setup_clean_logging():
+    """Backward-compatible wrapper for existing startup files."""
+    return configure_logging(mode="default")
 
 
 def get_uvicorn_log_level():
