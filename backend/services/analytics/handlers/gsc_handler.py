@@ -286,6 +286,40 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             except Exception as e:
                 logger.warning(f"Failed processing top_pages: {e}")
 
+            # Prepare query-page opportunities for refresh-vs-new decisions
+            query_page_opportunities = []
+            try:
+                qp_rows = search_analytics.get('query_page_data', {}).get('rows', [])
+                if qp_rows:
+                    sorted_qp_rows = sorted(
+                        qp_rows,
+                        key=lambda x: (x.get('impressions', 0) or 0, x.get('clicks', 0) or 0),
+                        reverse=True,
+                    )[:100]
+                    for row in sorted_qp_rows:
+                        keys = row.get('keys', [])
+                        if not keys or len(keys) < 2:
+                            continue
+                        query_key = keys[0]['keys'][0] if isinstance(keys[0], dict) else str(keys[0])
+                        page_key = keys[1]['keys'][0] if isinstance(keys[1], dict) else str(keys[1])
+                        clicks_val = row.get('clicks', 0) or 0
+                        impr_val = row.get('impressions', 0) or 0
+                        raw_ctr = row.get('ctr', None)
+                        if raw_ctr is not None:
+                            ctr_percent = round(float(raw_ctr) * 100, 2)
+                        else:
+                            ctr_percent = round(((clicks_val / impr_val) * 100), 2) if impr_val > 0 else 0.0
+                        query_page_opportunities.append({
+                            'query': query_key,
+                            'page': page_key,
+                            'clicks': clicks_val,
+                            'impressions': impr_val,
+                            'ctr': ctr_percent,
+                            'position': round(row.get('position', 0) or 0, 2),
+                        })
+            except Exception as e:
+                logger.warning(f"Failed processing query_page_opportunities: {e}")
+
             # Detect Cannibalization (query mapping to multiple pages)
             cannibalization = []
             try:
@@ -382,6 +416,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 'total_queries': len(top_queries_source) if top_queries_source else 0,
                 'top_queries': top_queries,
                 'top_pages': top_pages,
+                'query_page_opportunities': query_page_opportunities,
                 'cannibalization': cannibalization
             }
             
@@ -397,6 +432,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 'total_queries': 0,
                 'top_queries': [],
                 'top_pages': [],
+                'query_page_opportunities': [],
                 'error': str(e)
             }
     

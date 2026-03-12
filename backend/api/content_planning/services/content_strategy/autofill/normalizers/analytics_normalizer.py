@@ -21,6 +21,7 @@ async def normalize_gsc_analytics(gsc_data: Dict[str, Any]) -> Dict[str, Any]:
     # Extract metrics from GSC data
     metrics = gsc_data.get('metrics', {})
     data = gsc_data.get('data', {})
+    query_page_opportunities = data.get('query_page_opportunities', []) or metrics.get('query_page_opportunities', [])
     
     normalized = {
         'traffic_metrics': {
@@ -31,6 +32,7 @@ async def normalize_gsc_analytics(gsc_data: Dict[str, Any]) -> Dict[str, Any]:
         },
         'top_queries': data.get('top_queries', []) or metrics.get('top_queries', []),
         'top_pages': data.get('top_pages', []) or metrics.get('top_pages', []),
+        'query_page_opportunities': query_page_opportunities,
         'traffic_sources': {
             'organic_search': {
                 'clicks': metrics.get('total_clicks', 0) or data.get('clicks', 0),
