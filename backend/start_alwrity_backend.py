@@ -278,7 +278,8 @@ def start_backend(enable_reload=False, production_mode=False):
                 "scripts/*",
                 "alwrity_utils/*"
             ],
-            log_level=uvicorn_log_level
+            log_level=uvicorn_log_level,
+            log_config=None
         )
         
     except KeyboardInterrupt:
