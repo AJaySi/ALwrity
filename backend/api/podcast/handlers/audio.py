@@ -20,7 +20,8 @@ from api.story_writer.utils.auth import require_authenticated_user
 from utils.asset_tracker import save_asset_to_library
 from models.story_models import StoryAudioResult
 from loguru import logger
-from ..constants import PODCAST_AUDIO_DIR, audio_service
+from ..constants import get_podcast_audio_service, get_podcast_media_dir
+from ..utils import _resolve_podcast_media_file
 from ..models import (
     PodcastAudioRequest,
     PodcastAudioResponse,
@@ -62,7 +63,8 @@ async def upload_podcast_audio(
         file_ext = Path(file.filename).suffix or '.mp3'
         unique_id = str(uuid.uuid4())[:8]
         audio_filename = f"audio_{project_id or 'temp'}_{unique_id}{file_ext}"
-        audio_path = PODCAST_AUDIO_DIR / audio_filename
+        audio_base_dir = get_podcast_media_dir("audio", user_id, ensure_exists=True)
+        audio_path = audio_base_dir / audio_filename
         
         # Save file
         with open(audio_path, "wb") as f:
@@ -123,6 +125,7 @@ async def generate_podcast_audio(
         raise HTTPException(status_code=400, detail="Text is required")
 
     try:
+        audio_service = get_podcast_audio_service(user_id)
         result: StoryAudioResult = audio_service.generate_ai_audio(
             scene_number=0,
             scene_title=request.scene_title,
@@ -267,12 +270,7 @@ async def combine_podcast_audio(
                             continue
                         
                         # Podcast audio files are stored in podcast_audio directory
-                        audio_path = (PODCAST_AUDIO_DIR / filename).resolve()
-                        
-                        # Security check: ensure path is within PODCAST_AUDIO_DIR
-                        if not str(audio_path).startswith(str(PODCAST_AUDIO_DIR)):
-                            logger.error(f"[Podcast] Attempted path traversal when resolving audio: {audio_url}")
-                            continue
+                        audio_path = _resolve_podcast_media_file(filename, "audio", user_id)
                     else:
                         logger.warning(f"[Podcast] Non-API URL format, treating as direct path: {audio_url}")
                         audio_path = Path(audio_url)
@@ -303,7 +301,8 @@ async def combine_podcast_audio(
             
             # Generate output filename
             output_filename = f"podcast_combined_{request.project_id}_{uuid.uuid4().hex[:8]}.mp3"
-            output_path = PODCAST_AUDIO_DIR / output_filename
+            audio_base_dir = get_podcast_media_dir("audio", user_id, ensure_exists=True)
+            output_path = audio_base_dir / output_filename
             
             # Write combined audio file
             combined_audio.write_audiofile(
@@ -382,20 +381,13 @@ async def serve_podcast_audio(
     Supports authentication via Authorization header or token query parameter.
     Query parameter is useful for HTML elements like <audio> that cannot send custom headers.
     """
-    require_authenticated_user(current_user)
     
     # Security check: ensure filename doesn't contain path traversal
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     
-    audio_path = (PODCAST_AUDIO_DIR / filename).resolve()
-    
-    # Security check: ensure path is within PODCAST_AUDIO_DIR
-    if not str(audio_path).startswith(str(PODCAST_AUDIO_DIR)):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    if not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file not found")
+    user_id = require_authenticated_user(current_user)
+    audio_path = _resolve_podcast_media_file(filename, "audio", user_id)
     
     return FileResponse(audio_path, media_type="audio/mpeg")
 
