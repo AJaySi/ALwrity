@@ -25,8 +25,8 @@ from services.subscription import PricingService
 from services.subscription.preflight_validator import validate_scene_animation_operation
 from api.story_writer.task_manager import task_manager
 from loguru import logger
-from ..constants import AI_VIDEO_SUBDIR, PODCAST_VIDEOS_DIR
-from ..utils import load_podcast_audio_bytes, load_podcast_image_bytes
+from ..constants import AI_VIDEO_SUBDIR, get_podcast_media_dir, get_podcast_media_read_dirs
+from ..utils import _resolve_podcast_media_file, load_podcast_audio_bytes, load_podcast_image_bytes
 from services.podcast_service import PodcastService
 from ..models import (
     PodcastVideoGenerationRequest,
@@ -171,10 +171,11 @@ def _execute_podcast_video_task(
             task_id, "processing", progress=80.0, message="Saving video file..."
         )
 
-        # Use podcast-specific video directory
-        ai_video_dir = PODCAST_VIDEOS_DIR / AI_VIDEO_SUBDIR
+        # Use podcast-specific tenant workspace video directory
+        videos_base_dir = get_podcast_media_dir("video", user_id, ensure_exists=True)
+        ai_video_dir = videos_base_dir / AI_VIDEO_SUBDIR
         ai_video_dir.mkdir(parents=True, exist_ok=True)
-        video_service = PodcastVideoCombinationService(output_dir=str(PODCAST_VIDEOS_DIR / "Final_Videos"))
+        video_service = PodcastVideoCombinationService(output_dir=str(videos_base_dir / "Final_Videos"))
 
         save_result = video_service.save_scene_video(
             video_bytes=animation_result["video_bytes"],
@@ -309,7 +310,7 @@ async def generate_podcast_video(
     )
 
     # Load audio bytes
-    audio_bytes = load_podcast_audio_bytes(body.audio_url)
+    audio_bytes = load_podcast_audio_bytes(body.audio_url, user_id)
 
     # Validate resolution
     if body.resolution not in {"480p", "720p"}:
@@ -386,24 +387,25 @@ async def serve_podcast_video(
     Supports authentication via Authorization header or token query parameter.
     Query parameter is useful for HTML elements like <video> that cannot send custom headers.
     """
-    require_authenticated_user(current_user)
-    
     # Security check: ensure filename doesn't contain path traversal
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     
-    # Look for video in podcast_videos directory (including AI_Videos subdirectory)
+    user_id = require_authenticated_user(current_user)
+
+    # Look for video in tenant workspace first, then legacy podcast_videos directory
     video_path = None
-    possible_paths = [
-        PODCAST_VIDEOS_DIR / filename,
-        PODCAST_VIDEOS_DIR / AI_VIDEO_SUBDIR / filename,
-    ]
-    
-    for path in possible_paths:
-        resolved_path = path.resolve()
-        # Security check: ensure path is within PODCAST_VIDEOS_DIR
-        if str(resolved_path).startswith(str(PODCAST_VIDEOS_DIR)) and resolved_path.exists():
-            video_path = resolved_path
+    for base_dir in get_podcast_media_read_dirs("video", user_id):
+        possible_paths = [
+            base_dir / filename,
+            base_dir / AI_VIDEO_SUBDIR / filename,
+        ]
+        for path in possible_paths:
+            resolved_path = path.resolve()
+            if str(resolved_path).startswith(str(base_dir.resolve())) and resolved_path.exists():
+                video_path = resolved_path
+                break
+        if video_path:
             break
     
     if not video_path:
@@ -426,39 +428,29 @@ async def list_podcast_videos(
         
         logger.info(f"[Podcast] Listing videos for user_id={user_id}, project_id={project_id}")
         
-        # Look in podcast_videos/AI_Videos directory
-        ai_video_dir = PODCAST_VIDEOS_DIR / AI_VIDEO_SUBDIR
-        ai_video_dir.mkdir(parents=True, exist_ok=True)
-        
         videos = []
-        if ai_video_dir.exists():
-            # Pattern: scene_{scene_number}_{user_id}_{timestamp}.mp4
-            # Extract user_id from current user (same logic as save_scene_video)
-            clean_user_id = "".join(c if c.isalnum() or c in ('-', '_') else '_' for c in user_id[:16])
-            
+        # Pattern: scene_{scene_number}_{user_id}_{timestamp}.mp4
+        clean_user_id = "".join(c if c.isalnum() or c in ('-', '_') else '_' for c in user_id[:16])
+        scene_video_map: Dict[int, Dict[str, Any]] = {}
+
+        for base_dir in get_podcast_media_read_dirs("video", user_id):
+            ai_video_dir = base_dir / AI_VIDEO_SUBDIR
+            if not ai_video_dir.exists():
+                continue
+
             logger.info(f"[Podcast] Looking for videos with clean_user_id={clean_user_id} in {ai_video_dir}")
-            
-            # Map scene_number -> (most recent video info)
-            scene_video_map: Dict[int, Dict[str, Any]] = {}
-            
             all_files = list(ai_video_dir.glob("*.mp4"))
             logger.info(f"[Podcast] Found {len(all_files)} MP4 files in directory")
-            
+
             for video_file in all_files:
                 filename = video_file.name
-                # Match pattern: scene_{number}_{user_id}_{hash}.mp4
-                # Use greedy match for user_id and match hash as "anything except underscore before .mp4"
                 match = re.match(r"scene_(\d+)_(.+)_([^_]+)\.mp4", filename)
                 if match:
                     scene_number = int(match.group(1))
                     file_user_id = match.group(2)
-                    hash_part = match.group(3)
-                    # Only include videos for this user
                     if file_user_id == clean_user_id:
                         video_url = f"/api/podcast/videos/{filename}"
                         file_mtime = video_file.stat().st_mtime
-                        
-                        # Keep the most recent video for each scene
                         if scene_number not in scene_video_map or file_mtime > scene_video_map[scene_number]["mtime"]:
                             scene_video_map[scene_number] = {
                                 "scene_number": scene_number,
@@ -467,15 +459,10 @@ async def list_podcast_videos(
                                 "file_size": video_file.stat().st_size,
                                 "mtime": file_mtime,
                             }
-            
-            # Convert map to list and sort by scene number
-            videos = list(scene_video_map.values())
-            videos.sort(key=lambda v: v["scene_number"])
-            
-            logger.info(f"[Podcast] Returning {len(videos)} videos for user: {[v['scene_number'] for v in videos]}")
-        else:
-            logger.warning(f"[Podcast] Video directory does not exist: {ai_video_dir}")
-        
+
+        videos = list(scene_video_map.values())
+        videos.sort(key=lambda v: v["scene_number"])
+        logger.info(f"[Podcast] Returning {len(videos)} videos for user: {[v['scene_number'] for v in videos]}")
         return {"videos": videos}
     
     except Exception as e:
@@ -558,10 +545,10 @@ def _execute_combine_videos_task(
         for video_url in scene_video_urls:
             # Extract filename from URL (e.g., /api/podcast/videos/scene_1_user_xxx.mp4)
             filename = video_url.split("/")[-1].split("?")[0]  # Remove query params
-            video_path = PODCAST_VIDEOS_DIR / AI_VIDEO_SUBDIR / filename
-            
-            if not video_path.exists():
-                logger.warning(f"[Podcast] Scene video not found: {video_path}")
+            try:
+                video_path = _resolve_podcast_media_file(filename, "video", user_id, subdir=AI_VIDEO_SUBDIR)
+            except HTTPException:
+                logger.warning(f"[Podcast] Scene video not found: {filename}")
                 continue
                 
             scene_video_paths.append(str(video_path))
@@ -576,7 +563,8 @@ def _execute_combine_videos_task(
         )
         
         # Use dedicated PodcastVideoCombinationService
-        final_videos_dir = PODCAST_VIDEOS_DIR / "Final_Videos"
+        videos_base_dir = get_podcast_media_dir("video", user_id, ensure_exists=True)
+        final_videos_dir = videos_base_dir / "Final_Videos"
         final_videos_dir.mkdir(parents=True, exist_ok=True)
         
         video_service = PodcastVideoCombinationService(output_dir=str(final_videos_dir))
@@ -659,11 +647,15 @@ async def serve_final_podcast_video(
 ):
     """Serve the final combined podcast video with authentication."""
     user_id = require_authenticated_user(current_user)
-    
-    final_videos_dir = PODCAST_VIDEOS_DIR / "Final_Videos"
-    video_path = final_videos_dir / filename
-    
-    if not video_path.exists():
+
+    video_path = None
+    for base_dir in get_podcast_media_read_dirs("video", user_id):
+        candidate = (base_dir / "Final_Videos" / filename).resolve()
+        if str(candidate).startswith(str(base_dir.resolve())) and candidate.exists():
+            video_path = candidate
+            break
+
+    if not video_path:
         raise HTTPException(status_code=404, detail="Video not found")
     
     # Basic security: ensure filename doesn't contain path traversal

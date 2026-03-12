@@ -9,11 +9,35 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 from loguru import logger
 
-from .constants import PODCAST_AUDIO_DIR, PODCAST_IMAGES_DIR
+from .constants import get_podcast_media_read_dirs
 from utils.media_utils import load_media_bytes
 
 
-def load_podcast_audio_bytes(audio_url: str) -> bytes:
+def _resolve_podcast_media_file(
+    filename: str,
+    media_type: str,
+    user_id: str | None = None,
+    *,
+    subdir: Path | None = None,
+) -> Path:
+    """Resolve podcast media file path from tenant workspace first, then legacy global dir."""
+    clean_filename = filename.split("?", 1)[0].strip()
+    if not clean_filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    for base_dir in get_podcast_media_read_dirs(media_type, user_id):
+        target_dir = (base_dir / subdir).resolve() if subdir else base_dir.resolve()
+        candidate = (target_dir / clean_filename).resolve()
+        if not str(candidate).startswith(str(target_dir)):
+            logger.error(f"[Podcast] Attempted path traversal for {media_type}: {filename}")
+            raise HTTPException(status_code=403, detail="Invalid media path")
+        if candidate.exists():
+            return candidate
+
+    raise HTTPException(status_code=404, detail=f"{media_type.capitalize()} file not found: {clean_filename}")
+
+
+def load_podcast_audio_bytes(audio_url: str, user_id: str | None = None) -> bytes:
     """Load podcast audio bytes from URL. Only handles /api/podcast/audio/ URLs."""
     if not audio_url:
         raise HTTPException(status_code=400, detail="Audio URL is required")
@@ -33,19 +57,8 @@ def load_podcast_audio_bytes(audio_url: str) -> bytes:
         filename = path.split(prefix, 1)[1].split("?", 1)[0].strip()
         if not filename:
             raise HTTPException(status_code=400, detail=f"Could not extract filename from URL: {audio_url}")
-        
-        # Podcast audio files are stored in podcast_audio directory
-        audio_path = (PODCAST_AUDIO_DIR / filename).resolve()
-        
-        # Security check: ensure path is within PODCAST_AUDIO_DIR
-        if not str(audio_path).startswith(str(PODCAST_AUDIO_DIR)):
-            logger.error(f"[Podcast] Attempted path traversal when resolving audio: {audio_url}")
-            raise HTTPException(status_code=403, detail="Invalid audio path")
-        
-        if not audio_path.exists():
-            logger.warning(f"[Podcast] Audio file not found: {audio_path}")
-            raise HTTPException(status_code=404, detail=f"Audio file not found: {filename}")
-        
+
+        audio_path = _resolve_podcast_media_file(filename, "audio", user_id)
         return audio_path.read_bytes()
     except HTTPException:
         raise
@@ -77,4 +90,3 @@ def load_podcast_image_bytes(image_url: str) -> bytes:
     except Exception as exc:
         logger.error(f"[Podcast] Failed to load image: {exc}")
         raise HTTPException(status_code=500, detail=f"Failed to load image: {str(exc)}")
-
