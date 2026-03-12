@@ -25,10 +25,10 @@ except ImportError:
     HF_HUB_AVAILABLE = False
     InferenceClient = None
 
-from ..onboarding.api_key_manager import APIKeyManager
 from services.subscription import PricingService
 from services.subscription.provider_detection import detect_actual_provider
 from utils.logger_utils import get_service_logger
+from .tenant_provider_config import tenant_provider_config_resolver
 
 logger = get_service_logger("video_generation_service")
 
@@ -202,16 +202,10 @@ def _track_video_operation_usage(
         return {}
 
 
-def _get_api_key(provider: str) -> Optional[str]:
+def _get_api_key(provider: str, user_id: Optional[str] = None) -> Optional[str]:
     try:
-        manager = APIKeyManager()
-        mapping = {
-            "huggingface": "hf_token",
-            "wavespeed": "wavespeed",     # WaveSpeed API key
-            "gemini": "gemini",          # placeholder for Veo 3
-            "openai": "openai_api_key",  # placeholder for Sora
-        }
-        return manager.get_api_key(mapping.get(provider, provider))
+        key, _source = tenant_provider_config_resolver.resolve_provider_key(provider, user_id=user_id)
+        return key
     except Exception as e:
         logger.error(f"[video_gen] Failed to read API key for {provider}: {e}")
         return None
@@ -297,6 +291,7 @@ def _coerce_video_bytes(output: Any) -> bytes:
 
 
 def _generate_with_huggingface(
+    user_id: Optional[str],
     prompt: str,
     num_frames: int = 24 * 4,
     guidance_scale: float = 7.5,
@@ -311,7 +306,7 @@ def _generate_with_huggingface(
     if not HF_HUB_AVAILABLE:
         raise RuntimeError("huggingface_hub is not installed. Install with: pip install huggingface_hub")
 
-    token = _get_api_key("huggingface")
+    token = _get_api_key("huggingface", user_id=user_id)
     if not token:
         raise RuntimeError("HF token not configured. Set an hf_token in APIKeyManager.")
 
@@ -618,7 +613,13 @@ async def ai_video_generate(
         - height: Video height in pixels (for image-to-video)
         - metadata: Additional metadata dict
     """
-    logger.info(f"[video_gen] operation={operation_type}, provider={provider}")
+    cfg = tenant_provider_config_resolver.resolve(
+        modality="video",
+        user_id=user_id,
+        explicit_provider=provider,
+    )
+    provider = (cfg.selected_providers or [provider])[0]
+    logger.info(f"[video_gen] operation={operation_type}, provider={provider}, credential_source={cfg.credential_source.get(provider)}")
 
     # Enforce authentication usage like text gen does
     if not user_id:
@@ -679,7 +680,7 @@ async def ai_video_generate(
     try:
         if operation_type == "text-to-video":
             if provider == "huggingface":
-                video_bytes = _generate_with_huggingface(prompt=prompt, **kwargs)
+                video_bytes = _generate_with_huggingface(user_id=user_id, prompt=prompt, **kwargs)
                 result = {
                     "video_bytes": video_bytes,
                     "model_name": kwargs.get("model", "tencent/HunyuanVideo"),
