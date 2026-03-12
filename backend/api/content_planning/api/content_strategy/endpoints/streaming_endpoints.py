@@ -16,7 +16,7 @@ from collections import defaultdict
 import time
 
 # Import database
-from services.database import get_db_session
+from services.database import get_db
 
 # Import authentication middleware
 from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
@@ -50,14 +50,6 @@ def set_cached_data(cache_key: str, data: Dict[str, Any]):
         "data": data,
         "timestamp": time.time()
     }
-
-# Helper function to get database session
-def get_db():
-    db = get_db_session()
-    try:
-        yield db
-    finally:
-        db.close()
 
 async def stream_data(data_generator):
     """Helper function to stream data as Server-Sent Events"""

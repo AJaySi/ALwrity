@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 # Import database
-from services.database import get_db_session
+from services.database import get_db
 
 # Import services
 from ....services.enhanced_strategy_service import EnhancedStrategyService
@@ -24,14 +24,6 @@ from ....utils.response_builders import ResponseBuilder
 from ....utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 router = APIRouter(tags=["Strategy Utilities"])
-
-# Helper function to get database session
-def get_db():
-    db = get_db_session()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("/onboarding-data")
 async def get_onboarding_data(

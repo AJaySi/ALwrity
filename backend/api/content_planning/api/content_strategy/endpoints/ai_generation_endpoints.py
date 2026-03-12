@@ -10,7 +10,10 @@ from loguru import logger
 from datetime import datetime
 
 # Import database
-from services.database import get_db_session
+from services.database import get_db
+
+# Import authentication middleware
+from middleware.auth_middleware import get_current_user
 
 # Import services
 from ....services.content_strategy.ai_generation import AIStrategyGenerator, StrategyGenerationConfig
@@ -27,14 +30,6 @@ from ....utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 router = APIRouter(tags=["AI Strategy Generation"])
 
-# Helper function to get database session
-def get_db():
-    db = get_db_session()
-    try:
-        yield db
-    finally:
-        db.close()
-
 # Global storage for latest strategies (more persistent than task status)
 _latest_strategies = {}
 
@@ -43,6 +38,7 @@ async def generate_comprehensive_strategy(
     user_id: int,
     strategy_name: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a comprehensive AI-powered content strategy."""
@@ -107,6 +103,7 @@ async def generate_strategy_component(
     component_type: str,
     base_strategy: Optional[Dict[str, Any]] = None,
     context: Optional[Dict[str, Any]] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a specific strategy component using AI."""
@@ -188,6 +185,7 @@ async def generate_strategy_component(
 @router.get("/strategy-generation-status")
 async def get_strategy_generation_status(
     user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get the status of strategy generation for a user."""
