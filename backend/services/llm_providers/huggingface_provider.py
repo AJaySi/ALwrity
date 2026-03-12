@@ -55,7 +55,7 @@ from functools import lru_cache
 from typing import Optional, Dict, Any, List
 
 from loguru import logger
-from utils.logger_utils import get_service_logger
+from utils.logger_utils import get_service_logger, emit_routing_event
 from .routing_policy import PREMIUM_DEFAULT_MODEL, SIF_LOW_COST_MODEL_DEFAULTS
 
 # Use service-specific logger to avoid conflicts
@@ -192,6 +192,7 @@ def huggingface_text_response(
     top_p: float = 0.9,
     system_prompt: Optional[str] = None,
     api_key: Optional[str] = None,
+    tenant_user_id: Optional[str] = None,
 ) -> str:
     """
     Generate text response using Hugging Face Inference Providers API.
@@ -264,6 +265,18 @@ def huggingface_text_response(
         response = None
         last_error = None
         for candidate_model in _fallback_model_sequence(model, fallback_models):
+            # Emit routing event for each model attempt
+            route_intent = "primary" if candidate_model == model else "fallback"
+            emit_routing_event(
+                logger,
+                flow_type="huggingface_text",
+                route_intent=route_intent,
+                provider_selected="huggingface",
+                model_selected=candidate_model,
+                tenant_user_id=tenant_user_id,
+                extra={"original_model": model, "api_call": True}
+            )
+            
             try:
                 response = client.chat.completions.create(
                     model=candidate_model,
@@ -324,6 +337,7 @@ def huggingface_structured_json_response(
     max_tokens: int = 8192,
     system_prompt: Optional[str] = None,
     api_key: Optional[str] = None,
+    tenant_user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate structured JSON response using Hugging Face Inference Providers API.
@@ -403,6 +417,18 @@ def huggingface_structured_json_response(
         last_error = None
 
         for candidate_model in _fallback_model_sequence(model, fallback_models):
+            # Emit routing event for each model attempt
+            route_intent = "primary" if candidate_model == model else "fallback"
+            emit_routing_event(
+                logger,
+                flow_type="huggingface_structured",
+                route_intent=route_intent,
+                provider_selected="huggingface",
+                model_selected=candidate_model,
+                tenant_user_id=tenant_user_id,
+                extra={"original_model": model, "api_call": True, "response_format": "json_object"}
+            )
+            
             try:
                 response = client.chat.completions.create(
                     model=candidate_model,

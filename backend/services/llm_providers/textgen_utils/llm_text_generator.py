@@ -19,6 +19,7 @@ from ..routing_policy import (
     SIF_LOW_COST_MODEL_DEFAULTS,
     resolve_text_provider_alias,
 )
+from ...utils.logger_utils import emit_routing_event
 
 
 PREMIUM_HF_MINIMAL_FALLBACK_MODELS = [
@@ -58,6 +59,10 @@ def llm_text_gen(
         resolved_flow_type = flow_type or ("sif_agent" if preferred_hf_models else "premium_tool")
         flow_tag = f"flow_type={resolved_flow_type}"
         subscription_preflight_completed = False
+        
+        # Initialize routing state for structured logging
+        fallback_count = 0
+        fallback_models_tried = []
 
         logger.info(f"[llm_text_gen][{flow_tag}] Starting text generation")
         logger.debug(f"[llm_text_gen] Prompt length: {len(prompt)} characters")
@@ -138,6 +143,20 @@ def llm_text_gen(
             os.environ["HF_TOKEN"] = resolved_key
 
         logger.debug(f"[llm_text_gen] Using provider: {gpt_provider}, model: {model}")
+        
+        # Emit routing event for primary selection
+        emit_routing_event(
+            logger,
+            flow_type=resolved_flow_type,
+            route_intent="primary",
+            provider_selected=gpt_provider,
+            model_selected=model,
+            preferred_provider=preferred_provider,
+            fallback_count=fallback_count,
+            fallback_models_tried=fallback_models_tried,
+            tenant_user_id=user_id,
+            extra={"available_providers": available_providers}
+        )
 
         # Map provider name to APIProvider enum (define at function scope for usage tracking)
         from models.subscription_models import APIProvider
@@ -303,6 +322,7 @@ def llm_text_gen(
                         max_tokens=max_tokens,
                         system_prompt=system_instructions,
                         allow_model_variant_fallback=hf_allow_model_variant_fallback,
+                        tenant_user_id=user_id
                     )
                 else:
                     response_text = huggingface_text_response(
@@ -312,7 +332,8 @@ def llm_text_gen(
                         temperature=temperature,
                         max_tokens=max_tokens,
                         top_p=top_p,
-                        system_prompt=system_instructions
+                        system_prompt=system_instructions,
+                        tenant_user_id=user_id
                     )
             else:
                 logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")
@@ -360,16 +381,34 @@ def llm_text_gen(
                 try:
                     logger.info(f"[llm_text_gen][{flow_tag}] Trying SINGLE fallback provider: {fallback_provider}")
                     actual_provider_used = fallback_provider
+                    fallback_count += 1
+                    route_intent = "fallback"
                     
                     # Update provider enum for fallback
                     if fallback_provider == "google":
                         provider_enum = APIProvider.GEMINI
                         actual_provider_name = "gemini"
                         fallback_model = "gemini-2.0-flash-lite"
+                        fallback_models_tried.append(fallback_model)
                     elif fallback_provider == "huggingface":
                         provider_enum = APIProvider.MISTRAL
                         actual_provider_name = "huggingface"
                         fallback_model = preferred_hf_models[0] if preferred_hf_models else PREMIUM_DEFAULT_MODEL
+                        fallback_models_tried.append(fallback_model)
+                    
+                    # Emit routing event for fallback attempt
+                    emit_routing_event(
+                        logger,
+                        flow_type=resolved_flow_type,
+                        route_intent=route_intent,
+                        provider_selected=fallback_provider,
+                        model_selected=fallback_model,
+                        preferred_provider=preferred_provider,
+                        fallback_count=fallback_count,
+                        fallback_models_tried=fallback_models_tried,
+                        tenant_user_id=user_id,
+                        extra={"available_providers": available_providers}
+                    )
                     
                     if fallback_provider == "google":
                         if json_struct:
@@ -402,6 +441,7 @@ def llm_text_gen(
                                 system_prompt=system_instructions,
                                 fallback_models=PREMIUM_HF_MINIMAL_FALLBACK_MODELS,
                                 allow_model_variant_fallback=True,
+                                tenant_user_id=user_id
                             )
                         else:
                             response_text = huggingface_text_response(
@@ -413,6 +453,7 @@ def llm_text_gen(
                                 system_prompt=system_instructions,
                                 fallback_models=PREMIUM_HF_MINIMAL_FALLBACK_MODELS,
                                 allow_model_variant_fallback=True,
+                                tenant_user_id=user_id
                             )
                     
                     # TRACK USAGE after successful fallback call
