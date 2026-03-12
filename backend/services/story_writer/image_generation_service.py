@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from services.llm_providers.main_image_generation import generate_image
 from services.llm_providers.image_generation import ImageGenerationResult
 from utils.logger_utils import get_service_logger
-from services.user_workspace_manager import UserWorkspaceManager
+from api.story_writer.utils.media_utils import get_story_media_write_dir
 
 logger = get_service_logger("story_writer.image_generation")
 
@@ -29,17 +29,13 @@ class StoryImageGenerationService:
         
         Parameters:
             output_dir (str, optional): Directory to save generated images.
-                                      Defaults to 'backend/story_images' if not provided.
+                                      Defaults to canonical workspace media path if not provided.
         """
         if output_dir:
             self.output_dir = Path(output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
         else:
-            # Default to root/data/media/story_images directory
-            base_dir = Path(__file__).resolve().parents[3]
-            self.output_dir = base_dir / "data" / "media" / "story_images"
-        
-        # Create output directory if it doesn't exist
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.output_dir = get_story_media_write_dir("image")
         logger.info(f"[StoryImageGeneration] Initialized with output directory: {self.output_dir}")
     
     def _get_user_image_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
@@ -47,19 +43,11 @@ class StoryImageGenerationService:
         Get the image directory for a specific user.
         Falls back to default output_dir if workspace not found.
         """
-        if db and user_id:
-            try:
-                workspace_manager = UserWorkspaceManager(db)
-                workspace = workspace_manager.get_user_workspace(user_id)
-                if workspace:
-                    # Use media/story_images inside user workspace
-                    user_image_dir = Path(workspace['workspace_path']) / "media" / "story_images"
-                    user_image_dir.mkdir(parents=True, exist_ok=True)
-                    return user_image_dir
-            except Exception as e:
-                logger.warning(f"[StoryImageGeneration] Failed to resolve user workspace path for {user_id}: {e}")
-        
-        return self.output_dir
+        try:
+            return get_story_media_write_dir("image", user_id=user_id, db=db)
+        except Exception as e:
+            logger.warning(f"[StoryImageGeneration] Failed to resolve user workspace path for {user_id}: {e}")
+            return self.output_dir
 
     def _generate_image_filename(self, scene_number: int, scene_title: str) -> str:
         """Generate a unique filename for a scene image."""

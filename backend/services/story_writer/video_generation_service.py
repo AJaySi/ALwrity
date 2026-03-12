@@ -11,7 +11,7 @@ from pathlib import Path
 from loguru import logger
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from services.user_workspace_manager import UserWorkspaceManager
+from api.story_writer.utils.media_utils import get_story_media_write_dir
 
 
 class StoryVideoGenerationService:
@@ -23,18 +23,13 @@ class StoryVideoGenerationService:
         
         Parameters:
             output_dir (str, optional): Directory to save generated videos.
-                                      Defaults to 'backend/story_videos' if not provided.
+                                      Defaults to canonical workspace media path if not provided.
         """
         if output_dir:
             self.output_dir = Path(output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
         else:
-            # Default to root/workspace/media/story_videos directory
-            # services/story_writer/video_generation_service.py -> services -> backend -> root
-            root_dir = Path(__file__).parent.parent.parent.parent
-            self.output_dir = root_dir / "workspace" / "media" / "story_videos"
-        
-        # Create output directory if it doesn't exist
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.output_dir = get_story_media_write_dir("video")
         logger.info(f"[StoryVideoGeneration] Initialized with output directory: {self.output_dir}")
     
     def _get_user_video_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
@@ -42,19 +37,11 @@ class StoryVideoGenerationService:
         Get the video directory for a specific user.
         Falls back to default output_dir if workspace not found.
         """
-        if db and user_id:
-            try:
-                workspace_manager = UserWorkspaceManager(db)
-                workspace = workspace_manager.get_user_workspace(user_id)
-                if workspace:
-                    # Use media/story_videos inside user workspace
-                    user_video_dir = Path(workspace['workspace_path']) / "media" / "story_videos"
-                    user_video_dir.mkdir(parents=True, exist_ok=True)
-                    return user_video_dir
-            except Exception as e:
-                logger.warning(f"[StoryVideoGeneration] Failed to resolve user workspace path for {user_id}: {e}")
-        
-        return self.output_dir
+        try:
+            return get_story_media_write_dir("video", user_id=user_id, db=db)
+        except Exception as e:
+            logger.warning(f"[StoryVideoGeneration] Failed to resolve user workspace path for {user_id}: {e}")
+            return self.output_dir
 
     def _generate_video_filename(self, story_title: str = "story") -> str:
         """Generate a unique filename for a story video."""
