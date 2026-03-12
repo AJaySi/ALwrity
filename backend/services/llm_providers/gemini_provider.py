@@ -76,7 +76,6 @@ else:
     load_dotenv()
     print(f"No .env found at {env_path}, using current directory")
 
-from loguru import logger
 from utils.logger_utils import get_service_logger
 
 # Use service-specific logger to avoid conflicts
@@ -93,11 +92,6 @@ import json
 import re
 
 from typing import Optional, Dict, Any
-
-# Configure standard logging
-import logging
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s-%(levelname)s-%(module)s-%(lineno)d]- %(message)s')
-logger = logging.getLogger(__name__)
 
 def get_gemini_api_key() -> str:
     """Get Gemini API key with proper error handling."""

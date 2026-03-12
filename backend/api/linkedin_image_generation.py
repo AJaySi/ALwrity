@@ -11,7 +11,6 @@ from services.onboarding.api_key_manager import APIKeyManager
 from middleware.auth_middleware import get_current_user
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize router
