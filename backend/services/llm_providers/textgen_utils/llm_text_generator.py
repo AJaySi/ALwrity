@@ -56,10 +56,6 @@ def llm_text_gen(
         HTTPException: For subscription limit errors (429 status).
     """
     try:
-        resolved_flow_type = flow_type or ("sif_agent" if preferred_hf_models else "premium_tool")
-        flow_tag = f"flow_type={resolved_flow_type}"
-        subscription_preflight_completed = False
-        
         # Initialize routing state for structured logging
         fallback_count = 0
         fallback_models_tried = []
