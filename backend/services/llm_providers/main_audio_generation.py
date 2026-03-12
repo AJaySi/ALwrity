@@ -13,11 +13,15 @@ from loguru import logger
 from fastapi import HTTPException
 
 from services.wavespeed.client import WaveSpeedClient
-from services.onboarding.api_key_manager import APIKeyManager
 from utils.logger_utils import get_service_logger
+from .tenant_provider_config import tenant_provider_config_resolver
 
 logger = get_service_logger("audio_generation")
 
+
+def _get_wavespeed_client(user_id: Optional[str]) -> WaveSpeedClient:
+    key, _source = tenant_provider_config_resolver.resolve_provider_key("wavespeed", user_id=user_id)
+    return WaveSpeedClient(api_key=key)
 
 class AudioGenerationResult:
     """Result of audio generation."""
@@ -165,7 +169,7 @@ def generate_audio(
             # Track response time
             import time
             start_time = time.time()
-            client = WaveSpeedClient()
+            client = _get_wavespeed_client(user_id)
             audio_bytes = client.generate_speech(
                 text=text,
                 voice_id=voice_id,
@@ -424,7 +428,7 @@ def clone_voice(
 
         import time
         start_time = time.time()
-        client = WaveSpeedClient()
+        client = _get_wavespeed_client(user_id)
         preview_audio_bytes = client.voice_clone(
             audio_bytes=bytes(audio_bytes),
             custom_voice_id=custom_voice_id,
@@ -617,7 +621,7 @@ def qwen3_voice_clone(
 
         import time
         start_time = time.time()
-        client = WaveSpeedClient()
+        client = _get_wavespeed_client(user_id)
         preview_audio_bytes = client.qwen3_voice_clone(
             audio_bytes=bytes(audio_bytes),
             text=text,
@@ -802,7 +806,7 @@ def qwen3_voice_design(
 
         import time
         start_time = time.time()
-        client = WaveSpeedClient()
+        client = _get_wavespeed_client(user_id)
         preview_audio_bytes = client.voice_design(
             text=text,
             voice_description=voice_description,
@@ -989,7 +993,7 @@ def cosyvoice_voice_clone(
 
         import time
         start_time = time.time()
-        client = WaveSpeedClient()
+        client = _get_wavespeed_client(user_id)
         preview_audio_bytes = client.cosyvoice_voice_clone(
             audio_bytes=bytes(audio_bytes),
             text=text,

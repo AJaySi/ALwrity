@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from loguru import logger
 from fastapi import HTTPException
+<<<<<<< HEAD
 from .gemini_provider import gemini_text_response, gemini_structured_json_response
 from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
 <<<<<<< HEAD
@@ -140,6 +141,12 @@ from .routing_policy import (
 PREMIUM_HF_MINIMAL_FALLBACK_MODELS = [
     "openai/gpt-oss-120b:groq",
 ]
+=======
+
+from .gemini_provider import gemini_text_response, gemini_structured_json_response
+from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
+from .tenant_provider_config import tenant_provider_config_resolver
+>>>>>>> pr-420
 
 
 def llm_text_gen(
@@ -199,6 +206,7 @@ def llm_text_gen(
         frequency_penalty = 0.0
         presence_penalty = 0.0
         
+<<<<<<< HEAD
         # Check for GPT_PROVIDER environment variable
         env_provider = os.getenv('GPT_PROVIDER', '').lower()
 <<<<<<< HEAD
@@ -212,6 +220,19 @@ def llm_text_gen(
             gpt_provider = "huggingface"
             model = PREMIUM_DEFAULT_MODEL
 >>>>>>> pr-417
+=======
+        provider_cfg = tenant_provider_config_resolver.resolve(
+            modality="text",
+            user_id=user_id,
+        )
+        selected_provider = (provider_cfg.selected_providers or [None])[0]
+        if selected_provider in ["gemini", "google"]:
+            gpt_provider = "google"
+            model = provider_cfg.model_policy.get("default_model") or "gemini-2.0-flash-001"
+        elif selected_provider == "huggingface":
+            gpt_provider = "huggingface"
+            model = provider_cfg.model_policy.get("default_model") or "mistralai/Mistral-7B-Instruct-v0.3:groq"
+>>>>>>> pr-420
         
         # Determine if we're in strict mode (single provider) or fallback mode (multiple providers)
         strict_provider_mode = len(provider_list) == 1
@@ -308,6 +329,7 @@ def llm_text_gen(
         blog_output_format = "markdown"
         blog_length = 2000
         
+<<<<<<< HEAD
 <<<<<<< HEAD
         # Check which providers have API keys available using APIKeyManager
         api_key_manager = APIKeyManager()
@@ -406,6 +428,28 @@ def llm_text_gen(
         available_providers = get_available_text_providers(user_id)
         provider_sequence = _resolve_provider_sequence(preferred_provider, env_provider_raw, available_providers)
 >>>>>>> pr-416
+=======
+        available_providers = []
+        for provider in ("google", "huggingface"):
+            if get_api_key(provider, user_id=user_id):
+                available_providers.append(provider)
+
+        if gpt_provider not in available_providers:
+            logger.warning(f"[llm_text_gen] Provider {gpt_provider} unavailable for user {user_id}, falling back.")
+            if available_providers:
+                gpt_provider = available_providers[0]
+            else:
+                logger.error("[llm_text_gen] No API keys found for supported providers.")
+                raise RuntimeError("No LLM API keys configured for tenant or environment defaults.")
+
+        # Ensure downstream provider clients (currently env-based) receive resolved key
+        resolved_key = get_api_key(gpt_provider, user_id=user_id)
+        if gpt_provider == "google" and resolved_key:
+            os.environ["GEMINI_API_KEY"] = resolved_key
+            os.environ.setdefault("GOOGLE_API_KEY", resolved_key)
+        elif gpt_provider == "huggingface" and resolved_key:
+            os.environ["HF_TOKEN"] = resolved_key
+>>>>>>> pr-420
 
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -958,6 +1002,7 @@ def check_gpt_provider(gpt_provider: str) -> bool:
 >>>>>>> pr-417
 
 def get_api_key(gpt_provider: str, user_id: Optional[str] = None) -> Optional[str]:
+<<<<<<< HEAD
     """Get API key for the specified provider, preferring tenant-scoped keys."""
     try:
 <<<<<<< HEAD
@@ -978,6 +1023,17 @@ def get_api_key(gpt_provider: str, user_id: Optional[str] = None) -> Optional[st
 =======
         return get_tenant_api_key(user_id, gpt_provider)
 >>>>>>> pr-416
+=======
+    """Get API key for the specified provider."""
+    try:
+        provider_mapping = {
+            "google": "gemini",
+            "huggingface": "huggingface"
+        }
+        mapped_provider = provider_mapping.get(gpt_provider, gpt_provider)
+        key, _source = tenant_provider_config_resolver.resolve_provider_key(mapped_provider, user_id=user_id)
+        return key
+>>>>>>> pr-420
     except Exception as e:
         logger.error(f"[get_api_key] Error getting API key for {gpt_provider}: {str(e)}")
         return None
