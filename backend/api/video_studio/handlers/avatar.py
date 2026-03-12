@@ -1,8 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import FileResponse
-from typing import Optional, Dict, Any
 import shutil
-import os
 from pathlib import Path
 from services.wavespeed.infinitetalk import animate_scene_with_voiceover
 from ..task_manager import task_manager
@@ -11,12 +9,9 @@ from loguru import logger
 from services.database import get_engine_for_user
 from sqlalchemy.orm import sessionmaker
 from utils.asset_tracker import save_asset_to_library
+from utils.storage_paths import resolve_user_media_path, get_workspace_root, get_legacy_video_studio_upload_dirs
 
 router = APIRouter()
-
-# Define storage directory
-UPLOAD_DIR = Path("backend/data/video_studio/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def _process_avatar_generation(task_id: str, image_path: Path, audio_path: Path, user_id: str, resolution: str, model: str):
     """
@@ -51,7 +46,8 @@ def _process_avatar_generation(task_id: str, image_path: Path, audio_path: Path,
         
         # Save the resulting video bytes to a file
         video_filename = f"video_{task_id}.mp4"
-        video_path = UPLOAD_DIR / video_filename
+        output_dir = resolve_user_media_path(user_id, "video_studio", "videos", create=True)
+        video_path = output_dir / video_filename
         with open(video_path, "wb") as f:
             f.write(result["video_bytes"])
             
@@ -127,8 +123,9 @@ async def create_avatar_video(
     # Generate temp paths
     image_ext = Path(image.filename).suffix or ".png"
     audio_ext = Path(audio.filename).suffix or ".mp3"
-    image_path = UPLOAD_DIR / f"img_{task_id}{image_ext}"
-    audio_path = UPLOAD_DIR / f"aud_{task_id}{audio_ext}"
+    upload_dir = resolve_user_media_path(user_id, "video_studio", "uploads", create=True)
+    image_path = upload_dir / f"img_{task_id}{image_ext}"
+    audio_path = upload_dir / f"aud_{task_id}{audio_ext}"
     
     try:
         # Save uploaded files
@@ -167,7 +164,23 @@ async def get_task_status(task_id: str, current_user: dict = Depends(get_current
 
 @router.get("/download/{filename}")
 async def download_video(filename: str):
-    file_path = UPLOAD_DIR / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path)
+    candidate_paths = []
+
+    workspace_root = get_workspace_root()
+    candidate_paths.extend([
+        workspace_root / f"workspace_*" / "media" / "video_studio" / "videos" / filename,
+        workspace_root / f"workspace_*" / "media" / "video_studio" / "uploads" / filename,
+    ])
+
+    for legacy_dir in get_legacy_video_studio_upload_dirs():
+        candidate_paths.append(legacy_dir / filename)
+
+    for candidate in candidate_paths:
+        if "*" in str(candidate):
+            for matched in workspace_root.glob(str(candidate.relative_to(workspace_root))):
+                if matched.exists() and matched.is_file():
+                    return FileResponse(matched)
+        elif candidate.exists() and candidate.is_file():
+            return FileResponse(candidate)
+
+    raise HTTPException(status_code=404, detail="File not found")
