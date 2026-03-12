@@ -46,27 +46,13 @@ Version: 1.0
 Last Updated: January 2025
 """
 
-import os
-import sys
-from pathlib import Path
+import hashlib
 import json
+import os
 import re
+import time
+from threading import Lock
 from typing import Optional, Dict, Any
-
-from dotenv import load_dotenv
-
-# Fix the environment loading path - load from backend directory
-current_dir = Path(__file__).parent.parent  # services directory
-backend_dir = current_dir.parent  # backend directory
-env_path = backend_dir / '.env'
-
-if env_path.exists():
-    load_dotenv(env_path)
-    print(f"Loaded .env from: {env_path}")
-else:
-    # Fallback to current directory
-    load_dotenv()
-    print(f"No .env found at {env_path}, using current directory")
 
 from loguru import logger
 from utils.logger_utils import get_service_logger
@@ -95,6 +81,31 @@ HF_FALLBACK_MODELS = [
     "meta-llama/Llama-3.1-8B-Instruct:groq",
     "mistralai/Mistral-7B-Instruct-v0.3:groq",
 ]
+
+_HF_CLIENT_CACHE: Dict[str, Any] = {}
+_HF_CLIENT_CACHE_LOCK = Lock()
+
+
+def _masked_key_id(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12]
+
+
+def get_huggingface_client(api_key: str):
+    """Get or create a cached Hugging Face/OpenAI-compatible client for the API key."""
+    key_id = _masked_key_id(api_key)
+    with _HF_CLIENT_CACHE_LOCK:
+        cached_client = _HF_CLIENT_CACHE.get(key_id)
+        if cached_client is not None:
+            logger.debug("Reusing cached Hugging Face client for key_id={}", key_id)
+            return cached_client
+
+        client = OpenAI(
+            base_url="https://router.huggingface.co/hf/v1",
+            api_key=api_key,
+        )
+        _HF_CLIENT_CACHE[key_id] = client
+        logger.debug("Created new Hugging Face client for key_id={}", key_id)
+        return client
 
 
 def _candidate_model_variants(model: str):
@@ -137,7 +148,11 @@ def get_huggingface_api_key() -> str:
     
     return api_key
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+@retry(
+    wait=wait_random_exponential(min=0.5, max=8),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
 def huggingface_text_response(
     prompt: str,
     model: str = "openai/gpt-oss-120b:groq",
@@ -192,11 +207,8 @@ def huggingface_text_response(
         if not api_key:
             raise Exception("HF_TOKEN not found in environment variables")
             
-        # Initialize Hugging Face client
-        client = OpenAI(
-            base_url=f"https://router.huggingface.co/hf/v1",
-            api_key=api_key,
-        )
+        # Initialize/reuse Hugging Face client
+        client = get_huggingface_client(api_key)
         logger.info("✅ Hugging Face client initialized for text response")
 
         # Prepare input for the API
@@ -227,13 +239,12 @@ def huggingface_text_response(
         
         logger.info("🚀 Making Hugging Face API call (chat completion)...")
         
-        # Add rate limiting to prevent expensive API calls
-        import time
-        time.sleep(1)  # 1 second delay between API calls
-        
         response = None
         last_error = None
+        fallback_attempt = 0
         for candidate_model in _fallback_model_sequence(model):
+            fallback_attempt += 1
+            started_at = time.perf_counter()
             try:
                 response = client.chat.completions.create(
                     model=candidate_model,
@@ -242,11 +253,25 @@ def huggingface_text_response(
                     top_p=top_p,
                     max_tokens=max_tokens
                 )
+                elapsed_ms = (time.perf_counter() - started_at) * 1000
+                logger.debug(
+                    "HF text attempt={} model={} elapsed_ms={:.2f}",
+                    fallback_attempt,
+                    candidate_model,
+                    elapsed_ms,
+                )
                 if candidate_model != model:
                     logger.warning("HF text generation switched to fallback model: {}", candidate_model)
                 break
             except NotFoundError as nf_err:
                 last_error = nf_err
+                elapsed_ms = (time.perf_counter() - started_at) * 1000
+                logger.debug(
+                    "HF text attempt={} model={} elapsed_ms={:.2f} status=model_not_found",
+                    fallback_attempt,
+                    candidate_model,
+                    elapsed_ms,
+                )
                 logger.warning("HF model not found: {}. Trying fallback model.", candidate_model)
                 continue
 
@@ -270,7 +295,11 @@ def huggingface_text_response(
         logger.error(f"❌ Hugging Face text generation failed: {str(e)}")
         raise Exception(f"Hugging Face text generation failed: {str(e)}")
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+@retry(
+    wait=wait_random_exponential(min=0.5, max=8),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
 def huggingface_structured_json_response(
     prompt: str,
     schema: Dict[str, Any],
@@ -335,12 +364,8 @@ def huggingface_structured_json_response(
         if not api_key:
             raise Exception("HF_TOKEN not found in environment variables")
             
-        # Initialize OpenAI client with Hugging Face base URL
-        # Use standard Inference API endpoint
-        client = OpenAI(
-            base_url=f"https://router.huggingface.co/hf/v1",
-            api_key=api_key,
-        )
+        # Initialize/reuse OpenAI client with Hugging Face base URL
+        client = get_huggingface_client(api_key)
         logger.info("✅ Hugging Face client initialized for structured JSON response")
 
         # Prepare input for the API
@@ -380,14 +405,13 @@ def huggingface_structured_json_response(
         json_schema_str = json.dumps(schema, indent=2)
         messages[-1]["content"] += f"\n\nJSON Schema:\n{json_schema_str}"
         
-        # Add rate limiting to prevent expensive API calls
-        import time
-        time.sleep(1)  # 1 second delay between API calls
-        
         try:
             response = None
             last_error = None
+            fallback_attempt = 0
             for candidate_model in _fallback_model_sequence(model):
+                fallback_attempt += 1
+                started_at = time.perf_counter()
                 try:
                     response = client.chat.completions.create(
                         model=candidate_model,
@@ -396,11 +420,25 @@ def huggingface_structured_json_response(
                         max_tokens=max_tokens,
                         response_format={"type": "json_object"} # Try to enforce JSON mode if supported
                     )
+                    elapsed_ms = (time.perf_counter() - started_at) * 1000
+                    logger.debug(
+                        "HF structured attempt={} model={} elapsed_ms={:.2f} response_format=json_object",
+                        fallback_attempt,
+                        candidate_model,
+                        elapsed_ms,
+                    )
                     if candidate_model != model:
                         logger.warning("HF structured generation switched to fallback model: {}", candidate_model)
                     break
                 except NotFoundError as nf_err:
                     last_error = nf_err
+                    elapsed_ms = (time.perf_counter() - started_at) * 1000
+                    logger.debug(
+                        "HF structured attempt={} model={} elapsed_ms={:.2f} status=model_not_found response_format=json_object",
+                        fallback_attempt,
+                        candidate_model,
+                        elapsed_ms,
+                    )
                     logger.warning("HF structured model not found: {}. Trying fallback model.", candidate_model)
                     continue
 
@@ -444,7 +482,10 @@ def huggingface_structured_json_response(
                 logger.info("Retrying without response_format...")
                 response = None
                 last_error = None
+                fallback_attempt = 0
                 for candidate_model in _fallback_model_sequence(model):
+                    fallback_attempt += 1
+                    started_at = time.perf_counter()
                     try:
                         response = client.chat.completions.create(
                             model=candidate_model,
@@ -452,11 +493,25 @@ def huggingface_structured_json_response(
                             temperature=temperature,
                             max_tokens=max_tokens
                         )
+                        elapsed_ms = (time.perf_counter() - started_at) * 1000
+                        logger.debug(
+                            "HF structured attempt={} model={} elapsed_ms={:.2f} response_format=none",
+                            fallback_attempt,
+                            candidate_model,
+                            elapsed_ms,
+                        )
                         if candidate_model != model:
                             logger.warning("HF structured no-response_format fallback model: {}", candidate_model)
                         break
                     except NotFoundError as nf_err:
                         last_error = nf_err
+                        elapsed_ms = (time.perf_counter() - started_at) * 1000
+                        logger.debug(
+                            "HF structured attempt={} model={} elapsed_ms={:.2f} status=model_not_found response_format=none",
+                            fallback_attempt,
+                            candidate_model,
+                            elapsed_ms,
+                        )
                         logger.warning("HF structured model not found (no response_format path): {}", candidate_model)
                         continue
 
