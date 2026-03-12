@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -27,7 +26,7 @@ from ..utils.hd_video import (
     generate_hd_video_payload,
     generate_hd_video_scene_payload,
 )
-from ..utils.media_utils import resolve_media_file
+from ..utils.media_utils import resolve_story_media_path
 
 
 router = APIRouter()
@@ -88,10 +87,6 @@ async def generate_story_video(
         audio_paths: List[str] = []
         valid_scenes: List[Dict[str, Any]] = []
 
-        # Resolve video/audio directories
-        base_dir = Path(__file__).resolve().parents[4]
-        ai_video_dir = (base_dir / "data" / "media" / "story_videos" / "AI_Videos").resolve()
-
         video_urls = request.video_urls or [None] * len(request.scenes)
         ai_audio_urls = request.ai_audio_urls or [None] * len(request.scenes)
 
@@ -104,8 +99,11 @@ async def generate_story_video(
             if video_url:
                 # Extract filename from animated video URL (e.g., /api/story/videos/ai/filename.mp4)
                 video_filename = video_url.split("/")[-1].split("?")[0]
-                video_path = ai_video_dir / video_filename
-                if video_path.exists():
+                try:
+                    video_path = resolve_story_media_path(video_filename, "video", user_id, extra_subdir="AI_Videos")
+                except HTTPException:
+                    video_path = None
+                if video_path:
                     logger.info(f"[StoryWriter] Using animated video for scene {scene.get('scene_number', idx+1)}: {video_filename}")
                     video_paths.append(str(video_path))
                     image_paths.append(None)
@@ -117,8 +115,11 @@ async def generate_story_video(
             # Fall back to image if no animated video
             if not video_path:
                 image_filename = image_url.split("/")[-1].split("?")[0]
-                image_path = image_service.output_dir / image_filename
-                if image_path.exists():
+                try:
+                    image_path = resolve_story_media_path(image_filename, "image", user_id)
+                except HTTPException:
+                    image_path = None
+                if image_path:
                     video_paths.append(None)
                     image_paths.append(str(image_path))
                 else:
@@ -132,8 +133,11 @@ async def generate_story_video(
 
             if ai_audio_url:
                 audio_filename = ai_audio_url.split("/")[-1].split("?")[0]
-                audio_path = audio_service.output_dir / audio_filename
-                if audio_path.exists():
+                try:
+                    audio_path = resolve_story_media_path(audio_filename, "audio", user_id)
+                except HTTPException:
+                    audio_path = None
+                if audio_path:
                     logger.info(f"[StoryWriter] Using AI audio for scene {scene.get('scene_number', idx+1)}: {audio_filename}")
                 else:
                     logger.warning(f"[StoryWriter] AI audio not found: {audio_path}, falling back to free audio")
@@ -142,8 +146,11 @@ async def generate_story_video(
             # Fall back to free audio if no AI audio
             if not audio_path:
                 audio_filename = audio_url.split("/")[-1].split("?")[0]
-                audio_path = audio_service.output_dir / audio_filename
-                if not audio_path.exists():
+                try:
+                    audio_path = resolve_story_media_path(audio_filename, "audio", user_id)
+                except HTTPException:
+                    audio_path = None
+                if not audio_path:
                     logger.warning(f"[StoryWriter] Audio not found: {audio_path} (from URL: {audio_url})")
                     continue
 
@@ -237,12 +244,18 @@ def _execute_video_generation_task(task_id: str, request: StoryVideoGenerationRe
         for scene, image_url, audio_url in zip(scenes_data, request.image_urls, request.audio_urls):
             image_filename = image_url.split("/")[-1].split("?")[0]
             audio_filename = audio_url.split("/")[-1].split("?")[0]
-            image_path = image_service.output_dir / image_filename
-            audio_path = audio_service.output_dir / audio_filename
-            if not image_path.exists():
+            try:
+                image_path = resolve_story_media_path(image_filename, "image", user_id)
+            except HTTPException:
+                image_path = None
+            try:
+                audio_path = resolve_story_media_path(audio_filename, "audio", user_id)
+            except HTTPException:
+                audio_path = None
+            if not image_path:
                 logger.warning(f"[StoryWriter] Image not found: {image_path} (from URL: {image_url})")
                 continue
-            if not audio_path.exists():
+            if not audio_path:
                 logger.warning(f"[StoryWriter] Audio not found: {audio_path} (from URL: {audio_url})")
                 continue
             image_paths.append(str(image_path))
@@ -519,8 +532,8 @@ async def serve_story_video(
 ):
     """Serve a generated story video file."""
     try:
-        require_authenticated_user(current_user)
-        video_path = resolve_media_file(video_service.output_dir, video_filename)
+        user_id = require_authenticated_user(current_user)
+        video_path = resolve_story_media_path(video_filename, "video", user_id)
         return FileResponse(path=str(video_path), media_type="video/mp4", filename=video_filename)
     except HTTPException:
         raise
@@ -536,12 +549,9 @@ async def serve_ai_story_video(
 ):
     """Serve a generated AI scene animation video."""
     try:
-        require_authenticated_user(current_user)
+        user_id = require_authenticated_user(current_user)
 
-        base_dir = Path(__file__).parent.parent.parent.parent
-        ai_video_dir = (base_dir / "story_videos" / "AI_Videos").resolve()
-        video_service_ai = StoryVideoGenerationService(output_dir=str(ai_video_dir))
-        video_path = resolve_media_file(video_service_ai.output_dir, video_filename)
+        video_path = resolve_story_media_path(video_filename, "video", user_id, extra_subdir="AI_Videos")
 
         return FileResponse(
             path=str(video_path),

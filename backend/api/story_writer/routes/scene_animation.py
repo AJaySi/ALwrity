@@ -5,7 +5,6 @@ Handles scene animation endpoints using WaveSpeed Kling and InfiniteTalk.
 """
 
 import mimetypes
-from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote
 
@@ -32,7 +31,7 @@ from utils.logger_utils import get_service_logger
 
 from ..task_manager import task_manager
 from ..utils.auth import require_authenticated_user
-from ..utils.media_utils import load_story_audio_bytes, load_story_image_bytes
+from ..utils.media_utils import get_story_media_write_dir, load_story_audio_bytes, load_story_image_bytes
 
 router = APIRouter()
 scene_logger = get_service_logger("api.story_writer.scene_animation")
@@ -114,10 +113,13 @@ async def animate_scene_preview(
         duration=duration,
     )
 
+    ai_video_dir = get_story_media_write_dir("video", user_id=user_id)
+    (ai_video_dir / AI_VIDEO_SUBDIR).mkdir(parents=True, exist_ok=True)
+
     # Save video asset to library
     db = next(get_db())
     try:
-        video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
+        video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir / AI_VIDEO_SUBDIR))
     
         save_result = video_service.save_scene_video(
             video_bytes=animation_result["video_bytes"],
@@ -173,7 +175,7 @@ async def animate_scene_preview(
             source_module="story_writer",
             filename=video_filename,
             file_url=video_url,
-            file_path=str(ai_video_dir / video_filename),
+            file_path=str(ai_video_dir / AI_VIDEO_SUBDIR / video_filename),
             file_size=len(animation_result["video_bytes"]),
             mime_type="video/mp4",
             title=f"Scene {request.scene_number} Animation",
@@ -230,10 +232,9 @@ async def resume_scene_animation_endpoint(
         user_id=user_id,
     )
 
-    base_dir = Path(__file__).parent.parent.parent.parent
-    ai_video_dir = base_dir / "story_videos" / AI_VIDEO_SUBDIR
-    ai_video_dir.mkdir(parents=True, exist_ok=True)
-    video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
+    ai_video_dir = get_story_media_write_dir("video", user_id=user_id)
+    (ai_video_dir / AI_VIDEO_SUBDIR).mkdir(parents=True, exist_ok=True)
+    video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir / AI_VIDEO_SUBDIR))
 
     save_result = video_service.save_scene_video(
         video_bytes=animation_result["video_bytes"],
@@ -380,10 +381,9 @@ def _execute_voiceover_animation_task(
             task_id, "processing", progress=80.0, message="Saving video file..."
         )
 
-        base_dir = Path(__file__).parent.parent.parent.parent
-        ai_video_dir = base_dir / "story_videos" / AI_VIDEO_SUBDIR
-        ai_video_dir.mkdir(parents=True, exist_ok=True)
-        video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir))
+        ai_video_dir = get_story_media_write_dir("video", user_id=user_id)
+        (ai_video_dir / AI_VIDEO_SUBDIR).mkdir(parents=True, exist_ok=True)
+        video_service = StoryVideoGenerationService(output_dir=str(ai_video_dir / AI_VIDEO_SUBDIR))
 
         save_result = video_service.save_scene_video(
             video_bytes=animation_result["video_bytes"],
@@ -433,7 +433,7 @@ def _execute_voiceover_animation_task(
                 source_module="story_writer",
                 filename=video_filename,
                 file_url=video_url,
-                file_path=str(ai_video_dir / video_filename),
+                file_path=str(ai_video_dir / AI_VIDEO_SUBDIR / video_filename),
                 file_size=len(animation_result["video_bytes"]),
                 mime_type="video/mp4",
                 title=f"Scene {request.scene_number} Animation (Voiceover)",
