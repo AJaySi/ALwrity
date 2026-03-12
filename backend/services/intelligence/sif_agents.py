@@ -38,8 +38,12 @@ class SharedLLMWrapper:
             return llm_text_gen(
                 prompt,
                 user_id=self.user_id,
+<<<<<<< HEAD
                 preferred_hf_models=LOW_COST_SHARED_REMOTE_MODELS,
                 flow_type="sif_agent",
+=======
+                preferred_hf_models=REMOTE_LOW_COST_HF_MODELS,
+>>>>>>> pr-418
             )
         except Exception as e:
             logger.error(f"SharedLLMWrapper failed to generate text: {e}")
@@ -50,7 +54,12 @@ class SharedLLMWrapper:
 
 _local_llm_cache = {}
 
+<<<<<<< HEAD
 LOW_COST_SHARED_REMOTE_MODELS = [
+=======
+
+REMOTE_LOW_COST_HF_MODELS = [
+>>>>>>> pr-418
     "Qwen/Qwen2.5-1.5B-Instruct",
     "Qwen/Qwen2.5-0.5B-Instruct",
     "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
