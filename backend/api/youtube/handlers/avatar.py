@@ -1,6 +1,5 @@
 """YouTube Creator avatar upload and AI optimization handlers."""
 
-from pathlib import Path
 import uuid
 from typing import Dict, Any, Optional
 
@@ -18,12 +17,7 @@ from utils.logger_utils import get_service_logger
 router = APIRouter(prefix="/avatar", tags=["youtube-avatar"])
 logger = get_service_logger("api.youtube.avatar")
 
-# Directories
-# api/youtube/handlers/avatar.py -> handlers -> youtube -> api -> backend -> root
-base_dir = Path(__file__).parent.parent.parent.parent.parent
-DATA_MEDIA_DIR = base_dir / "data" / "media"
-YOUTUBE_AVATARS_DIR = DATA_MEDIA_DIR / "youtube_avatars"
-YOUTUBE_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+from ..paths import YOUTUBE_AVATARS_DIR, ensure_youtube_media_dirs
 
 
 def require_authenticated_user(current_user: Dict[str, Any]) -> str:
@@ -256,6 +250,7 @@ async def upload_youtube_avatar(
 ):
     """Upload a YouTube creator avatar image."""
     user_id = require_authenticated_user(current_user)
+    ensure_youtube_media_dirs(user_id)
 
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
@@ -328,6 +323,7 @@ async def make_avatar_presentable(
     Uses AI image editing with enhanced prompts to optimize the uploaded photo.
     """
     user_id = require_authenticated_user(current_user)
+    ensure_youtube_media_dirs(user_id)
 
     try:
         avatar_bytes = _load_youtube_image_bytes(avatar_url)
@@ -488,6 +484,7 @@ async def generate_creator_avatar(
     the video type, audience, tone, and brand style.
     """
     user_id = require_authenticated_user(current_user)
+    ensure_youtube_media_dirs(user_id)
     
     try:
         return await _generate_avatar_from_context(
@@ -518,6 +515,7 @@ async def regenerate_creator_avatar(
     to provide variation while maintaining the same optimization based on plan data.
     """
     user_id = require_authenticated_user(current_user)
+    ensure_youtube_media_dirs(user_id)
 
     try:
         # Parse video plan to extract context

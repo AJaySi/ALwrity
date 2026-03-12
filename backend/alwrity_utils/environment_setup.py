@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any
 
+from services.workspace_dirs import ensure_global_operational_dirs
+
 
 class EnvironmentSetup:
     """Manages environment setup for ALwrity backend."""
@@ -15,16 +17,11 @@ class EnvironmentSetup:
         self.production_mode = production_mode
         # Use safer directory paths that don't conflict with deployment platforms
         if production_mode:
-            # In production, use temp directories or skip directory creation
-            self.required_directories = []
+            # In production, only create operational directories
+            self.required_directories = ["logs", "temp"]
         else:
-            # In development, use local directories
-            self.required_directories = [
-                "lib/workspace/alwrity_content",
-                "lib/workspace/alwrity_web_research", 
-                "lib/workspace/alwrity_prompts",
-                "lib/workspace/alwrity_config"
-            ]
+            # In development, only create operational directories
+            self.required_directories = ["logs", "temp"]
     
     def setup_directories(self) -> bool:
         """Create necessary directories for ALwrity."""
@@ -39,15 +36,15 @@ class EnvironmentSetup:
                 print("   ⚠️  Skipping directory creation in production mode")
             return True
         
-        for directory in self.required_directories:
-            try:
-                Path(directory).mkdir(parents=True, exist_ok=True)
-                if verbose:
+        try:
+            ensure_global_operational_dirs(self.required_directories)
+            if verbose:
+                for directory in self.required_directories:
                     print(f"   ✅ Created: {directory}")
-            except Exception as e:
-                if verbose:
-                    print(f"   ❌ Failed to create {directory}: {e}")
-                return False
+        except Exception as e:
+            if verbose:
+                print(f"   ❌ Failed to create operational directories: {e}")
+            return False
         
         if verbose:
             print("✅ All directories created successfully")

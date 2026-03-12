@@ -16,15 +16,20 @@ from loguru import logger
 import os
 import time
 
+from services.workspace_dirs import ensure_global_operational_dirs
+
 # Logging configuration - Store in root workspace to avoid uvicorn reloads
 # backend/middleware/logging_middleware.py -> middleware -> backend -> root
 ROOT_DIR = Path(__file__).parent.parent.parent
 LOG_BASE_DIR = ROOT_DIR / "workspace" / "logs"
-os.makedirs(LOG_BASE_DIR, exist_ok=True)
 
-# Ensure subdirectories exist
-for subdir in ["seo_tools", "api_calls", "errors", "performance"]:
-    os.makedirs(f"{LOG_BASE_DIR}/{subdir}", exist_ok=True)
+
+def ensure_logging_dirs() -> None:
+    """Create log directories lazily at runtime."""
+    ensure_global_operational_dirs({"logs"})
+    LOG_BASE_DIR.mkdir(parents=True, exist_ok=True)
+    for subdir in ["seo_tools", "api_calls", "errors", "performance"]:
+        (LOG_BASE_DIR / subdir).mkdir(parents=True, exist_ok=True)
 
 class PerformanceLogger:
     """Performance monitoring and logging for SEO operations"""
@@ -41,6 +46,7 @@ class PerformanceLogger:
             "metadata": metadata or {}
         }
         
+        ensure_logging_dirs()
         await save_to_file(f"{LOG_BASE_DIR}/performance/metrics.jsonl", performance_log)
         
         # Log performance warnings for slow operations
@@ -61,6 +67,7 @@ async def save_to_file(filepath: str, data: Dict[str, Any]) -> None:
     """
     try:
         # Ensure directory exists
+        ensure_logging_dirs()
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         
         # Convert data to JSON string

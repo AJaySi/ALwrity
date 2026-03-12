@@ -1,6 +1,6 @@
+from pathlib import Path
 """YouTube Creator scene image generation handlers."""
 
-from pathlib import Path
 from typing import Dict, Any, Optional
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -23,13 +23,7 @@ from ..task_manager import task_manager
 router = APIRouter(tags=["youtube-image"])
 logger = get_service_logger("api.youtube.image")
 
-# Directories
-# api/youtube/handlers/images.py -> handlers -> youtube -> api -> backend -> root
-base_dir = Path(__file__).parent.parent.parent.parent.parent
-DATA_MEDIA_DIR = base_dir / "data" / "media"
-YOUTUBE_IMAGES_DIR = DATA_MEDIA_DIR / "youtube_images"
-YOUTUBE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-YOUTUBE_AVATARS_DIR = DATA_MEDIA_DIR / "youtube_avatars"
+from ..paths import YOUTUBE_IMAGES_DIR, YOUTUBE_AVATARS_DIR, ensure_youtube_media_dirs
 
 # Thread pool for background image generation
 _image_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="youtube_image")
@@ -102,6 +96,7 @@ async def generate_youtube_scene_image(
     """Generate a YouTube scene image with background task processing."""
     logger.info(f"[YouTube] Image generation request received: scene='{request.scene_title}', user={current_user.get('id')}")
     user_id = require_authenticated_user(current_user)
+    ensure_youtube_media_dirs(user_id)
     logger.info(f"[YouTube] User authenticated: {user_id}")
 
     if not request.scene_title:
@@ -312,7 +307,6 @@ def _execute_image_generation_task(task_id: str, request_data: dict, user_id: st
             image_metadata = _save_scene_image(image_bytes, request.scene_id)
             
             # Verify file was saved correctly
-            from pathlib import Path
             saved_path = Path(image_metadata["image_path"])
             if not saved_path.exists() or saved_path.stat().st_size == 0:
                 raise IOError(f"Image file was not saved correctly: {saved_path}")
