@@ -12,6 +12,7 @@ workspace/*
 
 .opencode
 
+data/
 
 .trae/
 /backend/database/migrations/*
