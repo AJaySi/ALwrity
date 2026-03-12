@@ -49,8 +49,8 @@ load_dotenv(project_root / '.env')  # root .env (fallback)
 load_dotenv()  # CWD .env (fallback)
 
 # Set up clean logging for end users
-from logging_config import setup_clean_logging
-setup_clean_logging()
+from logging_config import configure_logging
+configure_logging(bootstrap_source="asgi-import")
 
 # Import middleware
 from middleware.auth_middleware import get_current_user
