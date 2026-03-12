@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Stack, Typography, Alert, Paper, Chip, Divider, LinearProgress, CircularProgress, alpha, Modal, IconButton } from "@mui/material";
+import { Box, Stack, Typography, Alert, Paper, Chip, Divider, LinearProgress, CircularProgress, alpha, Modal, IconButton, Tooltip, Button } from "@mui/material";
 import {
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
@@ -13,8 +13,9 @@ import { Scene, Job, VideoGenerationSettings } from "../types";
 import { GlassyCard, glassyCardSx } from "../ui";
 import { InlineAudioPlayer } from "../InlineAudioPlayer";
 import { SceneActionButtons } from "./SceneActionButtons";
-import { aiApiClient } from "../../../api/client";
+import { aiApiClient, getAuthTokenGetter } from "../../../api/client";
 import { fetchMediaBlobUrl } from "../../../utils/fetchMediaBlobUrl";
+import { mediaCache, getCachedMedia, setCachedMedia, hasCachedMedia } from "../../../utils/mediaCache";
 import { VideoRegenerateModal } from "./VideoRegenerateModal";
 
 interface SceneCardProps {
@@ -23,6 +24,7 @@ interface SceneCardProps {
   rendering: string | null;
   generatingImage: string | null;
   isBusy: boolean;
+  totalScenes?: number;
   avatarImageUrl?: string | null;
   bible?: any;
   analysis?: any;
@@ -32,6 +34,7 @@ interface SceneCardProps {
   onDownloadAudio: (audioUrl: string, title: string) => void;
   onDownloadVideo: (videoUrl: string, title: string) => void;
   onShare: (audioUrl: string, title: string) => void;
+  onDelete: (sceneId: string) => void;
   onError: (message: string) => void;
 }
 
@@ -78,6 +81,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   rendering,
   generatingImage,
   isBusy,
+  totalScenes,
   avatarImageUrl,
   bible,
   analysis,
@@ -87,6 +91,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   onDownloadAudio,
   onDownloadVideo,
   onShare,
+  onDelete,
   onError,
 }) => {
   const hasAudio = Boolean(scene.audioUrl || job?.finalUrl || job?.previewUrl);
@@ -104,6 +109,10 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [initialVideoPrompt, setInitialVideoPrompt] = useState<string>("");
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   // Prepare a simple default prompt based on the scene title/description
   useEffect(() => {
@@ -123,6 +132,18 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   useEffect(() => {
     if (!imageUrl) {
       setImageBlobUrl(null);
+      setImageLoading(false);
+      setImageError(null);
+      return;
+    }
+
+    // Check cache first with scene context
+    const cachedUrl = getCachedMedia(imageUrl, scene.id);
+    if (cachedUrl) {
+      console.log('[SceneCard] Using cached image:', imageUrl, `(scene: ${scene.id})`);
+      setImageBlobUrl(cachedUrl);
+      setImageLoading(false);
+      setImageError(null);
       return;
     }
 
@@ -130,8 +151,11 @@ export const SceneCard: React.FC<SceneCardProps> = ({
     const isPodcastImage = imageUrl.includes('/api/podcast/images/') || imageUrl.includes('/api/story/images/');
     
     if (!isPodcastImage) {
-      // Regular URL (external), use directly
+      // Regular URL (external), use directly and cache it with scene context
       setImageBlobUrl(imageUrl);
+      setCachedMedia(imageUrl, imageUrl, 'image', undefined, scene.id);
+      setImageLoading(false);
+      setImageError(null);
       return;
     }
 
@@ -141,6 +165,21 @@ export const SceneCard: React.FC<SceneCardProps> = ({
 
     const loadImageBlob = async () => {
       try {
+        setImageLoading(true);
+        setImageError(null);
+        console.log('[SceneCard] Loading image blob for:', currentImageUrl);
+        
+        // Check cache again in case it was loaded while we were waiting
+        const cachedUrl = getCachedMedia(currentImageUrl, scene.id);
+        if (cachedUrl) {
+          if (isMounted) {
+            setImageBlobUrl(cachedUrl);
+            setImageLoading(false);
+            setImageError(null);
+          }
+          return;
+        }
+        
         // Normalize path
         let imagePath = currentImageUrl.startsWith('/') ? currentImageUrl : `/${currentImageUrl}`;
         
@@ -170,6 +209,9 @@ export const SceneCard: React.FC<SceneCardProps> = ({
         const blob = response.data;
         const newBlobUrl = URL.createObjectURL(blob);
         
+        // Cache the blob URL with scene context
+        setCachedMedia(currentImageUrl, newBlobUrl, 'image', blob.size, scene.id);
+        
         setImageBlobUrl((prevBlobUrl) => {
           // Clean up previous blob URL if exists
           if (prevBlobUrl && prevBlobUrl !== newBlobUrl && prevBlobUrl.startsWith('blob:')) {
@@ -177,6 +219,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           }
           return newBlobUrl;
         });
+        console.log('[SceneCard] Image blob loaded and cached successfully:', currentImageUrl);
       } catch (err) {
         console.error('[SceneCard] Failed to load image blob:', err);
         if (isMounted && imageUrl === currentImageUrl) {
@@ -205,14 +248,21 @@ export const SceneCard: React.FC<SceneCardProps> = ({
             if (token) {
               const urlWithToken = `${fallbackPath}?token=${encodeURIComponent(token)}`;
               setImageBlobUrl(urlWithToken);
+              setCachedMedia(currentImageUrl, urlWithToken, 'image', undefined, scene.id);
             } else {
               // Fallback to original URL
               setImageBlobUrl(imageUrl);
+              setCachedMedia(currentImageUrl, imageUrl, 'image', undefined, scene.id);
             }
           } catch (fallbackErr) {
-            console.error('[SceneCard] Fallback also failed:', fallbackErr);
-            setImageBlobUrl(imageUrl);
+            console.error('[SceneCard] Image fallback failed:', fallbackErr);
+            setImageBlobUrl(null);
+            setImageError('Failed to load image');
           }
+        }
+      } finally {
+        if (isMounted) {
+          setImageLoading(false);
         }
       }
     };
@@ -221,13 +271,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
 
     return () => {
       isMounted = false;
-      // Cleanup blob URL when component unmounts or URL changes
-      setImageBlobUrl((prevBlobUrl) => {
-        if (prevBlobUrl && prevBlobUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(prevBlobUrl);
-        }
-        return null;
-      });
+      // Don't cleanup blob URL here - let the cache handle it
     };
   }, [imageUrl, hasImage, scene.id]);
 
@@ -235,30 +279,142 @@ export const SceneCard: React.FC<SceneCardProps> = ({
   useEffect(() => {
     if (!job?.videoUrl) {
       setVideoBlobUrl(null);
+      setVideoLoading(false);
+      setVideoError(null);
+      return;
+    }
+
+    // Check cache first with scene context
+    const cachedUrl = getCachedMedia(job.videoUrl, scene.id);
+    if (cachedUrl) {
+      console.log('[SceneCard] Using cached video:', job.videoUrl, `(scene: ${scene.id})`);
+      setVideoBlobUrl(cachedUrl);
+      setVideoLoading(false);
+      setVideoError(null);
       return;
     }
 
     let currentBlobUrl: string | null = null;
+    let retryCount = 0;
+    const maxRetries = 3;
 
-    fetchMediaBlobUrl(job.videoUrl)
-      .then((blobUrl) => {
+    const loadVideoBlob = async () => {
+      try {
+        setVideoLoading(true);
+        setVideoError(null);
+        
+        // Check cache again in case it was loaded while we were waiting
+        const cachedUrl = getCachedMedia(job.videoUrl!, scene.id);
+        if (cachedUrl) {
+          setVideoBlobUrl(cachedUrl);
+          setVideoLoading(false);
+          setVideoError(null);
+          return;
+        }
+        
+        console.log('[SceneCard] Loading video blob for:', job.videoUrl);
+        const blobUrl = await fetchMediaBlobUrl(job.videoUrl!);
+        
         if (blobUrl) {
-          currentBlobUrl = blobUrl;
-          setVideoBlobUrl(blobUrl);
+          // Validate the blob URL by checking if it's a valid blob
+          if (blobUrl.startsWith('blob:')) {
+            // Test the blob by trying to load it as a video
+            const testVideo = document.createElement('video');
+            testVideo.src = blobUrl;
+            
+            // Wait for metadata to load to validate the blob
+            await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                testVideo.onerror = null;
+                testVideo.onloadedmetadata = null;
+                reject(new Error('Video validation timeout'));
+              }, 5000);
+              
+              testVideo.onloadedmetadata = () => {
+                clearTimeout(timeout);
+                console.log('[SceneCard] Video blob validation successful:', {
+                  duration: testVideo.duration,
+                  videoWidth: testVideo.videoWidth,
+                  videoHeight: testVideo.videoHeight,
+                });
+                resolve(true);
+              };
+              
+              testVideo.onerror = (e) => {
+                clearTimeout(timeout);
+                reject(new Error('Video blob validation failed'));
+              };
+            });
+            
+            // If we get here, the blob is valid
+            currentBlobUrl = blobUrl;
+            setVideoBlobUrl(blobUrl);
+            
+            // Cache the validated blob URL with scene context
+            setCachedMedia(job.videoUrl!, blobUrl, 'video', undefined, scene.id);
+            
+            console.log('[SceneCard] Video blob loaded, validated, and cached successfully:', job.videoUrl);
+          } else {
+            // Direct URL fallback
+            setVideoBlobUrl(blobUrl);
+            setCachedMedia(job.videoUrl!, blobUrl, 'video', undefined, scene.id);
+            console.log('[SceneCard] Using direct URL fallback and caching:', blobUrl);
+          }
         } else {
           // File not found (404) - clear the blob URL
           console.warn('[SceneCard] Video file not found (404):', job.videoUrl);
           setVideoBlobUrl(null);
+          setVideoError('Video file not found on server');
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error('[SceneCard] Failed to load video blob:', err);
         setVideoBlobUrl(null);
-      });
+        
+        // Retry if we haven't exceeded max retries
+        if (retryCount < maxRetries) {
+          retryCount++;
+          console.log(`[SceneCard] Retrying video blob load (${retryCount}/${maxRetries})`);
+          setTimeout(loadVideoBlob, 1000 * retryCount); // Exponential backoff
+        } else {
+          console.error('[SceneCard] Max retries reached, trying authenticated direct URL');
+          // Fallback to authenticated direct URL
+          try {
+            // Get auth token using the same method as aiApiClient
+            const authTokenGetter = getAuthTokenGetter();
+            if (authTokenGetter && job.videoUrl) {
+              const token = await authTokenGetter();
+              if (token) {
+                const separator = job.videoUrl.includes('?') ? '&' : '?';
+                const authenticatedUrl = `${job.videoUrl}${separator}token=${encodeURIComponent(token)}`;
+                setVideoBlobUrl(authenticatedUrl);
+                setCachedMedia(job.videoUrl!, authenticatedUrl, 'video', undefined, scene.id);
+                console.log('[SceneCard] Using authenticated direct URL fallback and caching');
+              } else {
+                setVideoBlobUrl(job.videoUrl || null);
+                setCachedMedia(job.videoUrl!, job.videoUrl || '', 'video', undefined, scene.id);
+                setVideoError('Failed to load video after multiple attempts');
+              }
+            } else {
+              setVideoBlobUrl(job.videoUrl || null);
+              setCachedMedia(job.videoUrl!, job.videoUrl || '', 'video', undefined, scene.id);
+              setVideoError('Failed to load video after multiple attempts');
+            }
+          } catch (fallbackErr) {
+            console.error('[SceneCard] Fallback authentication failed:', fallbackErr);
+            setVideoBlobUrl(null);
+            setVideoError('Failed to load video. Please try refreshing the page.');
+          }
+        }
+      } finally {
+        setVideoLoading(false);
+      }
+    };
+
+    loadVideoBlob();
 
     return () => {
       // Cleanup blob URL when component unmounts or URL changes
-      if (currentBlobUrl) {
+      if (currentBlobUrl && currentBlobUrl.startsWith('blob:')) {
         URL.revokeObjectURL(currentBlobUrl);
       }
     };
@@ -442,90 +598,262 @@ export const SceneCard: React.FC<SceneCardProps> = ({
         <Divider sx={{ borderColor: "rgba(15, 23, 42, 0.08)" }} />
 
         {/* Video Preview - Show video if available, otherwise show image */}
-        {hasVideo && videoBlobUrl ? (
+        {hasVideo ? (
           <Box
             sx={{
               width: "100%",
               borderRadius: 2,
               overflow: "hidden",
-              border: "2px solid rgba(56,189,248,0.5)",
+              border: videoError ? "2px solid rgba(239, 68, 68, 0.5)" : "2px solid rgba(56,189,248,0.5)",
               background: alpha("#0f172a", 0.85),
               position: "relative",
             }}
           >
-            <Box
-              component="video"
-              src={videoBlobUrl}
-              controls
-              preload="metadata"
-              sx={{
-                width: "100%",
-                height: "auto",
-                display: "block",
-                maxHeight: 420,
-                objectFit: "contain",
-                backgroundColor: "black",
-              }}
-              onError={(e) => {
-                const videoElement = e.currentTarget as HTMLVideoElement;
-                console.error("[SceneCard] Video failed to load:", {
-                  originalUrl: job?.videoUrl,
-                  networkState: videoElement.networkState,
-                });
-              }}
-            />
-            <Box
-              sx={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                bgcolor: "rgba(56,189,248,0.9)",
-                color: "white",
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                fontSize: "0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              VIDEO
-            </Box>
+            {videoLoading && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(0,0,0,0.7)",
+                  zIndex: 1,
+                }}
+              >
+                <CircularProgress size={40} sx={{ color: "#38bdf8" }} />
+              </Box>
+            )}
+            
+            {videoError && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(0,0,0,0.8)",
+                  zIndex: 1,
+                  p: 2,
+                }}
+              >
+                <Typography variant="body2" sx={{ color: "#ef4444", textAlign: "center", mb: 1 }}>
+                  {videoError}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setVideoError(null);
+                    // Retry loading
+                    if (job?.videoUrl) {
+                      setVideoBlobUrl(null);
+                      // This will trigger the useEffect to reload
+                      setTimeout(() => {
+                        if (job.videoUrl) {
+                          setVideoBlobUrl(job.videoUrl);
+                        }
+                      }, 100);
+                    }
+                  }}
+                  sx={{ color: "#38bdf8", borderColor: "#38bdf8" }}
+                >
+                  Retry
+                </Button>
+              </Box>
+            )}
+
+            {videoBlobUrl && !videoLoading && !videoError && (
+              <Box
+                component="video"
+                src={videoBlobUrl}
+                controls
+                preload="metadata"
+                sx={{
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                  maxHeight: 420,
+                  objectFit: "contain",
+                  backgroundColor: "black",
+                }}
+                onError={async (e) => {
+                  const videoElement = e.currentTarget as HTMLVideoElement;
+                  console.error("[SceneCard] Video failed to load:", {
+                    originalUrl: job?.videoUrl,
+                    blobUrl: videoBlobUrl,
+                    networkState: videoElement.networkState,
+                    errorCode: videoElement.error?.code,
+                    errorMessage: videoElement.error?.message,
+                  });
+
+                  // If blob URL failed, try fallback to authenticated direct URL
+                  if (videoBlobUrl && videoBlobUrl.startsWith('blob:')) {
+                    console.log('[SceneCard] Blob URL failed, trying authenticated direct URL fallback');
+                    try {
+                      const authTokenGetter = getAuthTokenGetter();
+                      if (authTokenGetter && job?.videoUrl) {
+                        const token = await authTokenGetter();
+                        if (token) {
+                          const separator = job.videoUrl.includes('?') ? '&' : '?';
+                          const authenticatedUrl = `${job.videoUrl}${separator}token=${encodeURIComponent(token)}`;
+                          setVideoBlobUrl(authenticatedUrl);
+                        } else {
+                          setVideoBlobUrl(null);
+                          setVideoError('Failed to load video. Authentication required.');
+                        }
+                      } else {
+                        setVideoBlobUrl(null);
+                        setVideoError('Failed to load video. Authentication required.');
+                      }
+                    } catch (fallbackErr) {
+                      console.error('[SceneCard] Auth fallback failed:', fallbackErr);
+                      setVideoBlobUrl(null);
+                      setVideoError('Failed to load video. Please try refreshing the page.');
+                    }
+                  } else if (videoBlobUrl && videoBlobUrl.includes('token=')) {
+                    // If authenticated URL also failed, show error to user
+                    console.error('[SceneCard] Both blob and authenticated URL failed');
+                    setVideoError('Video file could not be loaded. The file may be corrupted or access was denied.');
+                  } else {
+                    // If direct URL failed, try authenticated version
+                    if (job?.videoUrl) {
+                      try {
+                        const authTokenGetter = getAuthTokenGetter();
+                        if (authTokenGetter) {
+                          const token = await authTokenGetter();
+                          if (token) {
+                            const separator = job.videoUrl.includes('?') ? '&' : '?';
+                            const authenticatedUrl = `${job.videoUrl}${separator}token=${encodeURIComponent(token)}`;
+                            setVideoBlobUrl(authenticatedUrl);
+                            console.log('[SceneCard] Trying authenticated URL as fallback');
+                          } else {
+                            setVideoBlobUrl(null);
+                            setVideoError('Failed to load video. Authentication required.');
+                          }
+                        } else {
+                          setVideoBlobUrl(null);
+                          setVideoError('Failed to load video. Authentication required.');
+                        }
+                      } catch (fallbackErr) {
+                        console.error('[SceneCard] Final fallback failed:', fallbackErr);
+                        setVideoBlobUrl(null);
+                        setVideoError('Failed to load video. Please try refreshing the page.');
+                      }
+                    } else {
+                      setVideoError('Failed to load video. No video URL available.');
+                    }
+                  }
+                }}
+              />
+            )}
           </Box>
-        ) : hasImage && (imageBlobUrl || (imageUrl && !imageUrl.includes('/api/'))) ? (
+        ) : hasImage ? (
           <Box sx={{ position: "relative", width: "100%" }}>
             <Box
               sx={{
                 width: "100%",
                 borderRadius: 2,
                 overflow: "hidden",
-                border: "1px solid rgba(102,126,234,0.2)",
+                border: imageError ? "2px solid rgba(239, 68, 68, 0.5)" : "1px solid rgba(102,126,234,0.2)",
                 background: alpha("#667eea", 0.05),
                 cursor: "pointer",
                 "&:hover .zoom-icon": {
                   opacity: 1,
                 }
               }}
-              onClick={() => setShowImageModal(true)}
+              onClick={() => !imageLoading && !imageError && setShowImageModal(true)}
             >
-              <Box
-                component="img"
-                src={imageBlobUrl || imageUrl}
-                alt={scene.title}
-                sx={{
-                  width: "100%",
-                  height: "auto",
-                  display: "block",
-                  maxHeight: 400,
-                  objectFit: "contain",
-                  background: "#000",
-                }}
-                onError={(e) => {
-                  console.error("[SceneCard] Image failed to load:", {
-                    src: e.currentTarget.src,
-                    imageUrl,
-                  });
-                }}
-              />
+              {imageLoading && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(0,0,0,0.7)",
+                    zIndex: 1,
+                    minHeight: 200,
+                  }}
+                >
+                  <CircularProgress size={40} sx={{ color: "#38bdf8" }} />
+                </Box>
+              )}
+              
+              {imageError && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(0,0,0,0.8)",
+                    zIndex: 1,
+                    p: 2,
+                    minHeight: 200,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ color: "#ef4444", textAlign: "center", mb: 1 }}>
+                    {imageError}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      setImageError(null);
+                      // Retry loading
+                      if (imageUrl) {
+                        setImageBlobUrl(null);
+                        setTimeout(() => setImageBlobUrl(imageUrl), 100);
+                      }
+                    }}
+                    sx={{ color: "#38bdf8", borderColor: "#38bdf8" }}
+                  >
+                    Retry
+                  </Button>
+                </Box>
+              )}
+
+              {imageBlobUrl && !imageLoading && !imageError && (
+                <Box
+                  component="img"
+                  src={imageBlobUrl}
+                  alt={scene.title}
+                  sx={{
+                    width: "100%",
+                    height: "auto",
+                    display: "block",
+                    maxHeight: 400,
+                    objectFit: "contain",
+                    background: "#000",
+                  }}
+                  onError={(e) => {
+                    console.error("[SceneCard] Image failed to load:", {
+                      src: e.currentTarget.src,
+                      imageUrl,
+                    });
+                    setImageError('Failed to load image');
+                  }}
+                />
+              )}
+              
               <Box
                 className="zoom-icon"
                 sx={{
@@ -561,12 +889,14 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           rendering={rendering}
           generatingImage={generatingImage}
           isBusy={isBusy}
+          totalScenes={totalScenes}
           onRender={onRender}
           onImageGenerate={onImageGenerate}
           onVideoRender={() => setShowVideoModal(true)}
           onDownloadAudio={onDownloadAudio}
           onDownloadVideo={onDownloadVideo}
           onShare={onShare}
+          onDelete={onDelete}
           onError={onError}
         />
 

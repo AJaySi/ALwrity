@@ -151,6 +151,36 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     }
   };
 
+  const deleteScene = useCallback((sceneId: string) => {
+    if (!script) return;
+
+    // Prevent deleting if it's the last scene
+    if (script.scenes.length <= 1) {
+      onError("Cannot delete the last scene. At least one scene is required.");
+      return;
+    }
+
+    // Add confirmation dialog
+    const sceneToDelete = script.scenes.find(s => s.id === sceneId);
+    if (!sceneToDelete) return;
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${sceneToDelete.title}"? This action cannot be undone.`
+    );
+
+    if (!confirmDelete) return;
+
+    // Remove the scene from the script
+    const updatedScenes = script.scenes.filter(s => s.id !== sceneId);
+    const updatedScript = { ...script, scenes: updatedScenes };
+    
+    emitScriptChange(updatedScript);
+    setScript(updatedScript);
+    
+    // Show success message
+    console.log(`[ScriptEditor] Scene "${sceneToDelete.title}" deleted successfully`);
+  }, [script, emitScriptChange, onError]);
+
   const allApproved = script && script.scenes.every((s) => s.approved);
   const approvedCount = script ? script.scenes.filter((s) => s.approved).length : 0;
   const totalScenes = script ? script.scenes.length : 0;
@@ -568,9 +598,11 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
                   scene={scene}
                   onUpdateScene={updateScene}
                   onApprove={approveScene}
+                  onDelete={deleteScene}
                   knobs={knobs}
                   approvingSceneId={approvingSceneId}
                   generatingAudioId={generatingAudioId}
+                  totalScenes={script.scenes.length}
                   onAudioGenerationStart={(sceneId) => {
                     setGeneratingAudioId(sceneId);
                   }}

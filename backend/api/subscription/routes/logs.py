@@ -64,16 +64,44 @@ async def get_usage_logs(
                 provider_enum = APIProvider.MISTRAL
             else:
                 try:
+                    # Refresh enum to ensure latest values
+                    from models.subscription_models import APIProvider
+                    _ = list(APIProvider)  # Force enum refresh
                     provider_enum = APIProvider(provider_lower)
                 except ValueError:
-                    # Invalid provider, return empty results
-                    return {
-                        "logs": [],
-                        "total_count": 0,
-                        "limit": limit,
-                        "offset": offset,
-                        "has_more": False
-                    }
+                    # Fallback: try to find matching provider or use default
+                    try:
+                        # Check if it's a known provider that might not be in enum
+                        known_providers = ['gemini', 'openai', 'anthropic', 'mistral', 'wavespeed', 'tavily', 'serper', 'metaphor', 'firecrawl', 'stability', 'exa', 'video', 'image_edit', 'audio']
+                        if provider_lower in known_providers:
+                            # Map to existing enum values or skip
+                            provider_mapping = {
+                                'mistral': 'MISTRAL',
+                                'wavespeed': 'WAVESPEED',
+                                'video': 'VIDEO',
+                                'image_edit': 'IMAGE_EDIT',
+                                'audio': 'AUDIO'
+                            }
+                            mapped_provider = provider_mapping.get(provider_lower, provider_lower.upper())
+                            provider_enum = APIProvider(mapped_provider)
+                        else:
+                            # Invalid provider, return empty results
+                            return {
+                                "logs": [],
+                                "total_count": 0,
+                                "limit": limit,
+                                "offset": offset,
+                                "has_more": False
+                            }
+                    except (ValueError, AttributeError):
+                        # If all else fails, return empty results
+                        return {
+                            "logs": [],
+                            "total_count": 0,
+                            "limit": limit,
+                            "offset": offset,
+                            "has_more": False
+                        }
             query = query.filter(APIUsageLog.provider == provider_enum)
         
         if status_code is not None:
@@ -98,15 +126,44 @@ async def get_usage_logs(
                     provider_enum = APIProvider.MISTRAL
                 else:
                     try:
+                        # Refresh enum to ensure latest values
+                        from models.subscription_models import APIProvider
+                        _ = list(APIProvider)  # Force enum refresh
                         provider_enum = APIProvider(provider_lower)
                     except ValueError:
-                        return {
-                            "logs": [],
-                            "total_count": 0,
-                            "limit": limit,
-                            "offset": offset,
-                            "has_more": False
-                        }
+                        # Fallback: try to find matching provider or use default
+                        try:
+                            # Check if it's a known provider that might not be in enum
+                            known_providers = ['gemini', 'openai', 'anthropic', 'mistral', 'wavespeed', 'tavily', 'serper', 'metaphor', 'firecrawl', 'stability', 'exa', 'video', 'image_edit', 'audio']
+                            if provider_lower in known_providers:
+                                # Map to existing enum values or skip
+                                provider_mapping = {
+                                    'mistral': 'MISTRAL',
+                                    'wavespeed': 'WAVESPEED',
+                                    'video': 'VIDEO',
+                                    'image_edit': 'IMAGE_EDIT',
+                                    'audio': 'AUDIO'
+                                }
+                                mapped_provider = provider_mapping.get(provider_lower, provider_lower.upper())
+                                provider_enum = APIProvider(mapped_provider)
+                            else:
+                                # Invalid provider, return empty results
+                                return {
+                                    "logs": [],
+                                    "total_count": 0,
+                                    "limit": limit,
+                                    "offset": offset,
+                                    "has_more": False
+                                }
+                        except (ValueError, AttributeError):
+                            # If all else fails, return empty results
+                            return {
+                                "logs": [],
+                                "total_count": 0,
+                                "limit": limit,
+                                "offset": offset,
+                                "has_more": False
+                            }
                 query = query.filter(APIUsageLog.provider == provider_enum)
             if status_code is not None:
                 query = query.filter(APIUsageLog.status_code == status_code)

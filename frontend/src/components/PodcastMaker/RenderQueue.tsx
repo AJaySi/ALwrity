@@ -56,6 +56,7 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
     combiningProgress,
     finalVideoUrl,
     combineFinalVideo,
+    deleteScene,
   } = useRenderQueue({
     script,
     jobs,
@@ -303,6 +304,7 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
               rendering={rendering}
               generatingImage={generatingImage}
               isBusy={isBusy}
+              totalScenes={script.scenes.length}
               avatarImageUrl={avatarImageUrl}
               bible={bible}
               analysis={analysis}
@@ -312,6 +314,7 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
               onDownloadAudio={handleDownloadAudio}
               onDownloadVideo={handleDownloadVideo}
               onShare={handleShare}
+              onDelete={deleteScene}
               onError={onError}
             />
           );

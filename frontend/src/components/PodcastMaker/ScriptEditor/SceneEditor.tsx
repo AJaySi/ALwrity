@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Stack, Box, Typography, Divider, Chip, alpha, CircularProgress, LinearProgress } from "@mui/material";
+import { Stack, Box, Typography, Divider, Chip, alpha, CircularProgress, LinearProgress, IconButton, Tooltip } from "@mui/material";
 import {
   EditNote as EditNoteIcon,
   CheckCircle as CheckCircleIcon,
@@ -7,6 +7,7 @@ import {
   VolumeUp as VolumeUpIcon,
   PlayArrow as PlayArrowIcon,
   Image as ImageIcon,
+  Delete as DeleteIcon,
 } from "@mui/icons-material";
 import { Scene, Line, Knobs } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
@@ -15,11 +16,13 @@ import { ImageRegenerateModal, ImageGenerationSettings } from "./ImageRegenerate
 import { AudioRegenerateModal, AudioGenerationSettings } from "./AudioRegenerateModal";
 import { podcastApi } from "../../../services/podcastApi";
 import { aiApiClient } from "../../../api/client";
+import { getCachedMedia, setCachedMedia } from "../../../utils/mediaCache";
 
 interface SceneEditorProps {
   scene: Scene;
   onUpdateScene: (s: Scene) => void;
   onApprove: (id: string) => Promise<void>;
+  onDelete: (sceneId: string) => void;
   knobs: Knobs;
   approvingSceneId?: string | null;
   generatingAudioId?: string | null;
@@ -27,12 +30,14 @@ interface SceneEditorProps {
   onAudioGenerated?: (sceneId: string, audioUrl: string) => void;
   idea?: string; // Podcast idea for image generation context
   avatarUrl?: string | null; // Base avatar URL for consistent scene image generation
+  totalScenes?: number; // Total number of scenes in the script
 }
 
 export const SceneEditor: React.FC<SceneEditorProps> = ({
   scene,
   onUpdateScene,
   onApprove,
+  onDelete,
   knobs,
   approvingSceneId,
   generatingAudioId,
@@ -40,6 +45,7 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   onAudioGenerated,
   idea,
   avatarUrl,
+  totalScenes,
 }) => {
   const [localGenerating, setLocalGenerating] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -152,12 +158,34 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
       return;
     }
 
+    // Check cache first with scene context
+    const cachedUrl = getCachedMedia(scene.imageUrl, scene.id);
+    if (cachedUrl) {
+      console.log('[SceneEditor] Using cached image:', scene.imageUrl, `(scene: ${scene.id})`);
+      setImageBlobUrl(cachedUrl);
+      setImageLoading(false);
+      return;
+    }
+
     let isMounted = true;
     const currentImageUrl = scene.imageUrl; // Capture current value
 
     const loadImageBlob = async () => {
       try {
         setImageLoading(true);
+        
+        // Check cache again in case it was loaded while we were waiting
+        const cachedUrl = getCachedMedia(currentImageUrl, scene.id);
+        if (cachedUrl) {
+          if (isMounted) {
+            setImageBlobUrl(cachedUrl);
+            setImageLoading(false);
+          }
+          return;
+        }
+        
+        console.log('[SceneEditor] Loading image blob for:', currentImageUrl);
+        
         // Normalize path
         let imagePath = currentImageUrl.startsWith('/') ? currentImageUrl : `/${currentImageUrl}`;
         
@@ -192,6 +220,9 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
         const blob = response.data;
         const blobUrl = URL.createObjectURL(blob);
         
+        // Cache the blob URL with scene context
+        setCachedMedia(currentImageUrl, blobUrl, 'image', blob.size, scene.id);
+        
         setImageBlobUrl((prevBlobUrl) => {
           // Clean up previous blob URL if exists
           if (prevBlobUrl && prevBlobUrl !== blobUrl && prevBlobUrl.startsWith('blob:')) {
@@ -199,17 +230,21 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
           }
           return blobUrl;
         });
+        console.log('[SceneEditor] Image blob loaded and cached successfully:', currentImageUrl);
       } catch (error) {
         console.error('[SceneEditor] Failed to load image blob:', error);
-        // Fallback: try with query token
-        try {
-          const token = localStorage.getItem('clerk_dashboard_token') || '';
-          if (token) {
-            const urlWithToken = `${currentImageUrl}?token=${encodeURIComponent(token)}`;
-            setImageBlobUrl(urlWithToken);
+        if (isMounted) {
+          // Try adding query token as fallback
+          try {
+            const token = localStorage.getItem('clerk_dashboard_token') || '';
+            if (token) {
+              const urlWithToken = `${currentImageUrl}?token=${encodeURIComponent(token)}`;
+              setImageBlobUrl(urlWithToken);
+              setCachedMedia(currentImageUrl, urlWithToken, 'image', undefined, scene.id);
+            }
+          } catch (fallbackError) {
+            console.error('[SceneEditor] Fallback image loading failed:', fallbackError);
           }
-        } catch (fallbackError) {
-          console.error('[SceneEditor] Fallback image loading failed:', fallbackError);
         }
       } finally {
         if (isMounted) {
@@ -222,13 +257,7 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
 
     return () => {
       isMounted = false;
-      // Cleanup blob URL on unmount or when imageUrl changes
-      setImageBlobUrl((prevBlobUrl) => {
-        if (prevBlobUrl && prevBlobUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(prevBlobUrl);
-        }
-        return null;
-      });
+      // Don't cleanup blob URL here - let the cache handle it
     };
   }, [scene.imageUrl]);
 
@@ -555,6 +584,31 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
                 ? "Generating Image..."
                 : "Generate Image"}
             </PrimaryButton>
+            
+            <Tooltip title={totalScenes && totalScenes <= 1 ? "Cannot delete the last scene" : "Delete this scene"}>
+              <IconButton
+                onClick={() => onDelete(scene.id)}
+                disabled={approving || generating || (totalScenes !== undefined && totalScenes <= 1)}
+                sx={{
+                  color: "#ef4444",
+                  backgroundColor: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.2)",
+                  borderRadius: 2,
+                  padding: 1.5,
+                  "&:hover": {
+                    backgroundColor: "rgba(239, 68, 68, 0.15)",
+                    borderColor: "rgba(239, 68, 68, 0.3)",
+                  },
+                  "&:disabled": {
+                    backgroundColor: "rgba(156, 163, 175, 0.1)",
+                    borderColor: "rgba(156, 163, 175, 0.2)",
+                    color: "#9ca3af",
+                  },
+                }}
+              >
+                <DeleteIcon sx={{ fontSize: "1.25rem" }} />
+              </IconButton>
+            </Tooltip>
           </Stack>
         </Stack>
 

@@ -173,12 +173,32 @@ class LimitValidator:
                 if not usage:
                     # First usage this period, create summary
                     try:
-                        usage = UsageSummary(
-                            user_id=user_id,
-                            billing_period=current_period
-                        )
-                        self.db.add(usage)
-                        self.db.commit()
+                        # Try to create with minimal fields first to avoid missing column errors
+                        from sqlalchemy import text
+                        try:
+                            # Insert with only essential fields
+                            insert_sql = text("""
+                                INSERT INTO usage_summaries (user_id, billing_period, created_at, updated_at)
+                                VALUES (:user_id, :period, datetime('now'), datetime('now'))
+                            """)
+                            self.db.execute(insert_sql, {'user_id': user_id, 'period': current_period})
+                            self.db.commit()
+                            
+                            # Now fetch the created record
+                            usage = self.db.query(UsageSummary).filter(
+                                UsageSummary.user_id == user_id,
+                                UsageSummary.billing_period == current_period
+                            ).first()
+                            
+                        except Exception as sql_error:
+                            logger.debug(f"[Subscription Check] Direct SQL insert failed, trying ORM: {sql_error}")
+                            # Fallback to ORM creation
+                            usage = UsageSummary(
+                                user_id=user_id,
+                                billing_period=current_period
+                            )
+                            self.db.add(usage)
+                            self.db.commit()
                     except Exception as create_error:
                         logger.error(f"Error creating usage summary: {create_error}")
                         self.db.rollback()

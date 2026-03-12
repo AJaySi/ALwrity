@@ -10,6 +10,9 @@ __pycache__/
 workspace/ 
 workspace/*
 
+.opencode
+
+
 .trae/
 /backend/database/migrations/*
 /backend/.db

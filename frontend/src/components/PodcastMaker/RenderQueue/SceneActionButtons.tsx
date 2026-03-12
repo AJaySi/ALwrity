@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack, alpha } from "@mui/material";
+import { Stack, alpha, Tooltip, IconButton } from "@mui/material";
 import {
   VolumeUp as VolumeUpIcon,
   Image as ImageIcon,
@@ -8,6 +8,7 @@ import {
   Share as ShareIcon,
   PlayArrow as PlayArrowIcon,
   Refresh as RefreshIcon,
+  Delete as DeleteIcon,
 } from "@mui/icons-material";
 import { Scene, Job } from "../types";
 import { PrimaryButton, SecondaryButton } from "../ui";
@@ -23,12 +24,14 @@ interface SceneActionButtonsProps {
   rendering: string | null;
   generatingImage: string | null;
   isBusy: boolean;
+  totalScenes?: number;
   onRender: (sceneId: string, mode: "preview" | "full") => void;
   onImageGenerate: (sceneId: string) => void;
   onVideoRender: (sceneId: string) => void;
   onDownloadAudio: (audioUrl: string, title: string) => void;
   onDownloadVideo: (videoUrl: string, title: string) => void;
   onShare: (audioUrl: string, title: string) => void;
+  onDelete: (sceneId: string) => void;
   onError: (message: string) => void;
 }
 
@@ -42,12 +45,14 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
   rendering,
   generatingImage,
   isBusy,
+  totalScenes,
   onRender,
   onImageGenerate,
   onVideoRender,
   onDownloadAudio,
   onDownloadVideo,
   onShare,
+  onDelete,
   onError,
 }) => {
   const isGeneratingImage = generatingImage === scene.id;
@@ -57,6 +62,30 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
   if (needsAudio) {
     return (
       <Stack direction="row" spacing={1} justifyContent="flex-end">
+        <Tooltip title={totalScenes && totalScenes <= 1 ? "Cannot delete the last scene" : "Delete this scene"}>
+          <IconButton
+            onClick={() => onDelete(scene.id)}
+            disabled={isBusy || (totalScenes !== undefined && totalScenes <= 1)}
+            sx={{
+              color: "#ef4444",
+              backgroundColor: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              borderRadius: 2,
+              padding: 1.5,
+              "&:hover": {
+                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                borderColor: "rgba(239, 68, 68, 0.3)",
+              },
+              "&:disabled": {
+                backgroundColor: "rgba(156, 163, 175, 0.1)",
+                borderColor: "rgba(156, 163, 175, 0.2)",
+                color: "#9ca3af",
+              },
+            }}
+          >
+            <DeleteIcon sx={{ fontSize: "1.25rem" }} />
+          </IconButton>
+        </Tooltip>
         <SecondaryButton
           onClick={() => onRender(scene.id, "preview")}
           disabled={isBusy}
@@ -81,6 +110,30 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
   if (job?.status === "failed" && !needsAudio && hasAudio) {
     return (
       <Stack direction="row" spacing={1} justifyContent="flex-end">
+        <Tooltip title={totalScenes && totalScenes <= 1 ? "Cannot delete the last scene" : "Delete this scene"}>
+          <IconButton
+            onClick={() => onDelete(scene.id)}
+            disabled={isBusy || (totalScenes !== undefined && totalScenes <= 1)}
+            sx={{
+              color: "#ef4444",
+              backgroundColor: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              borderRadius: 2,
+              padding: 1.5,
+              "&:hover": {
+                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                borderColor: "rgba(239, 68, 68, 0.3)",
+              },
+              "&:disabled": {
+                backgroundColor: "rgba(156, 163, 175, 0.1)",
+                borderColor: "rgba(156, 163, 175, 0.2)",
+                color: "#9ca3af",
+              },
+            }}
+          >
+            <DeleteIcon sx={{ fontSize: "1.25rem" }} />
+          </IconButton>
+        </Tooltip>
         <Typography variant="caption" color="error" sx={{ alignSelf: "center", mr: 1 }}>
           Video Generation Failed
         </Typography>
@@ -100,6 +153,30 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
   if (job?.status === "failed") {
     return (
       <Stack direction="row" spacing={1} justifyContent="flex-end">
+        <Tooltip title={totalScenes && totalScenes <= 1 ? "Cannot delete the last scene" : "Delete this scene"}>
+          <IconButton
+            onClick={() => onDelete(scene.id)}
+            disabled={isBusy || (totalScenes !== undefined && totalScenes <= 1)}
+            sx={{
+              color: "#ef4444",
+              backgroundColor: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              borderRadius: 2,
+              padding: 1.5,
+              "&:hover": {
+                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                borderColor: "rgba(239, 68, 68, 0.3)",
+              },
+              "&:disabled": {
+                backgroundColor: "rgba(156, 163, 175, 0.1)",
+                borderColor: "rgba(156, 163, 175, 0.2)",
+                color: "#9ca3af",
+              },
+            }}
+          >
+            <DeleteIcon sx={{ fontSize: "1.25rem" }} />
+          </IconButton>
+        </Tooltip>
         <SecondaryButton
           onClick={() => onRender(scene.id, "full")}
           startIcon={<RefreshIcon />}
@@ -117,6 +194,32 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
 
   return (
     <Stack direction="row" spacing={1.5} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
+      {/* Delete Scene Button */}
+      <Tooltip title={totalScenes && totalScenes <= 1 ? "Cannot delete the last scene" : "Delete this scene"}>
+        <IconButton
+          onClick={() => onDelete(scene.id)}
+          disabled={isBusy || (totalScenes !== undefined && totalScenes <= 1)}
+          sx={{
+            color: "#ef4444",
+            backgroundColor: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+            borderRadius: 2,
+            padding: 1.5,
+            "&:hover": {
+              backgroundColor: "rgba(239, 68, 68, 0.15)",
+              borderColor: "rgba(239, 68, 68, 0.3)",
+            },
+            "&:disabled": {
+              backgroundColor: "rgba(156, 163, 175, 0.1)",
+              borderColor: "rgba(156, 163, 175, 0.2)",
+              color: "#9ca3af",
+            },
+          }}
+        >
+          <DeleteIcon sx={{ fontSize: "1.25rem" }} />
+        </IconButton>
+      </Tooltip>
+      
       {/* Generate/Regenerate Image - ALWAYS visible if we have audio */}
       <PrimaryButton
         onClick={() => onImageGenerate(scene.id)}

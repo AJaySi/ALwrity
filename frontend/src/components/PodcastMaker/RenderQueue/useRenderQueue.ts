@@ -229,56 +229,77 @@ export const useRenderQueue = ({
       // Check for completion - handle both "completed" and "processing" with 100% progress
       const isCompleted = status.status === "completed" || (status.status === "processing" && status.progress === 100);
       
-      if (isCompleted && status.result) {
-        const result = status.result;
-        console.log("[useRenderQueue] Task completed, extracting video URL", {
-          result,
-          video_url: result.video_url,
+      if (isCompleted) {
+        console.log("[useRenderQueue] Task completed, checking for video URL", {
           status: status.status,
           progress: status.progress,
-        });
-        
-        let videoUrl = result.video_url;
-        if (!videoUrl) {
-          console.error("[useRenderQueue] No video_url in result! Attempting to rescue from file system...", { result });
-          // Try to rescue: check if video exists for this scene
-          const sceneNumberMatch = getScene(sceneId)?.id.match(/\d+/);
-          const sceneNumber = sceneNumberMatch ? parseInt(sceneNumberMatch[0], 10) : null;
-          if (sceneNumber !== null) {
-            podcastApi
-              .listVideos(projectId)
-              .then((videoList) => {
-                const sceneVideo = videoList.videos.find((v) => v.scene_number === sceneNumber);
-                if (sceneVideo) {
-                  // Store the raw video URL - SceneCard will handle authentication via blob loading
-                  onUpdateJob(sceneId, {
-                    status: "completed",
-                    progress: 100,
-                    videoUrl: sceneVideo.video_url,
-                    cost: result.cost || 0,
-                  });
-                }
-              })
-              .catch((err) => console.error("[useRenderQueue] Failed to rescue video:", err));
-          }
-          return true; // Stop polling
-        }
-        
-        // Store the raw video URL - SceneCard will handle authentication via blob loading
-        onUpdateJob(sceneId, {
-          status: "completed",
-          progress: 100,
-          videoUrl,
-          cost: result.cost,
+          hasResult: !!status.result,
+          result: status.result,
         });
 
-        const interval = pollingIntervals.current.get(sceneId);
-        if (interval) {
-          clearInterval(interval);
-          pollingIntervals.current.delete(sceneId);
+        let videoUrl = null;
+        let cost = 0;
+
+        // Try to get video URL from result
+        if (status.result) {
+          const result = status.result;
+          videoUrl = result.video_url;
+          cost = result.cost || 0;
         }
-        setRendering(null);
-        return true; // Stop polling
+
+        // If no video URL in result, try to rescue from video list
+        if (!videoUrl) {
+          console.log("[useRenderQueue] No video_url in result! Attempting to rescue from file system...");
+          const sceneNumberMatch = getScene(sceneId)?.id.match(/\d+/);
+          const sceneNumber = sceneNumberMatch ? parseInt(sceneNumberMatch[0], 10) : null;
+          
+          if (sceneNumber !== null) {
+            try {
+              const videoList = await podcastApi.listVideos(projectId);
+              const sceneVideo = videoList.videos.find((v) => v.scene_number === sceneNumber);
+              if (sceneVideo) {
+                videoUrl = sceneVideo.video_url;
+                console.log("[useRenderQueue] Successfully rescued video from file system", { sceneNumber, videoUrl });
+              }
+            } catch (err) {
+              console.error("[useRenderQueue] Failed to rescue video:", err);
+            }
+          }
+        }
+
+        // If we have a video URL, mark as completed
+        if (videoUrl) {
+          console.log("[useRenderQueue] Video generation completed successfully", { videoUrl, cost });
+          
+          // Store the raw video URL - SceneCard will handle authentication via blob loading
+          onUpdateJob(sceneId, {
+            status: "completed",
+            progress: 100,
+            videoUrl,
+            cost,
+          });
+
+          const interval = pollingIntervals.current.get(sceneId);
+          if (interval) {
+            clearInterval(interval);
+            pollingIntervals.current.delete(sceneId);
+          }
+          setRendering(null);
+          return true; // Stop polling
+        } else {
+          // Mark as failed if we can't find the video URL
+          console.error("[useRenderQueue] Task completed but no video URL found");
+          onUpdateJob(sceneId, { status: "failed", progress: 0 });
+          const interval = pollingIntervals.current.get(sceneId);
+          if (interval) {
+            clearInterval(interval);
+            pollingIntervals.current.delete(sceneId);
+          }
+          pollingErrorCounts.current.delete(sceneId);
+          setRendering(null);
+          onError("Video generation completed but no video URL was found. Please try generating again.");
+          return true; // Stop polling
+        }
       } else if (status.status === "failed") {
         // Extract user-friendly error message
         let errorMessage = "Video generation failed";
@@ -764,6 +785,56 @@ export const useRenderQueue = ({
     }
   }, [script.scenes, jobs, projectId, onError]);
 
+  // Delete scene functionality
+  const deleteScene = useCallback(async (sceneId: string) => {
+    if (!script) return;
+
+    // Prevent deleting if it's the last scene
+    if (script.scenes.length <= 1) {
+      onError("Cannot delete the last scene. At least one scene is required.");
+      return;
+    }
+
+    // Find the scene to delete
+    const sceneToDelete = script.scenes.find(s => s.id === sceneId);
+    if (!sceneToDelete) {
+      onError("Scene not found.");
+      return;
+    }
+
+    try {
+      // Stop any ongoing polling for this scene
+      const interval = pollingIntervals.current.get(sceneId);
+      if (interval) {
+        clearInterval(interval);
+        pollingIntervals.current.delete(sceneId);
+      }
+      pollingErrorCounts.current.delete(sceneId);
+
+      // If this scene is currently being rendered, stop it
+      if (rendering === sceneId) {
+        setRendering(null);
+      }
+      if (generatingImage === sceneId) {
+        setGeneratingImage(null);
+      }
+
+      // Remove the scene from the script
+      const updatedScenes = script.scenes.filter(scene => scene.id !== sceneId);
+      const updatedScript = { ...script, scenes: updatedScenes };
+
+      // Update the script state
+      if (onUpdateScript) {
+        onUpdateScript(updatedScript);
+      }
+
+      console.log(`[useRenderQueue] Deleted scene: ${sceneToDelete.title}`);
+    } catch (error) {
+      console.error("[useRenderQueue] Failed to delete scene:", error);
+      onError("Failed to delete scene. Please try again.");
+    }
+  }, [script, rendering, generatingImage, onUpdateScript, onError]);
+
   return {
     rendering,
     generatingImage,
@@ -778,6 +849,7 @@ export const useRenderQueue = ({
     runVideoRender,
     combineAudio,
     combineFinalVideo,
+    deleteScene,
   };
 };
 
