@@ -4,7 +4,7 @@ Handles AI-powered strategy generation endpoints.
 """
 
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from loguru import logger
 from datetime import datetime
@@ -24,6 +24,7 @@ from .content_strategy.educational_content import EducationalContentManager
 from ....utils.error_handlers import ContentPlanningErrorHandler
 from ....utils.response_builders import ResponseBuilder
 from ....utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
+from middleware.auth_middleware import get_current_user
 
 router = APIRouter(tags=["AI Strategy Generation"])
 
@@ -38,15 +39,24 @@ def get_db():
 # Global storage for latest strategies (more persistent than task status)
 _latest_strategies = {}
 
+
+def _get_authenticated_user_id(current_user: Dict[str, Any]) -> str:
+    """Extract authenticated user id from token claims."""
+    user_id = str((current_user or {}).get("id") or (current_user or {}).get("clerk_user_id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authenticated user ID is required")
+    return user_id
+
 @router.post("/generate-comprehensive-strategy")
 async def generate_comprehensive_strategy(
-    user_id: int,
     strategy_name: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a comprehensive AI-powered content strategy."""
     try:
+        user_id = _get_authenticated_user_id(current_user)
         logger.info(f"🚀 Generating comprehensive AI strategy for user: {user_id}")
         
         # Get user context and onboarding data
@@ -103,14 +113,15 @@ async def generate_comprehensive_strategy(
 
 @router.post("/generate-strategy-component")
 async def generate_strategy_component(
-    user_id: int,
     component_type: str,
     base_strategy: Optional[Dict[str, Any]] = None,
     context: Optional[Dict[str, Any]] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a specific strategy component using AI."""
     try:
+        user_id = _get_authenticated_user_id(current_user)
         logger.info(f"🚀 Generating strategy component '{component_type}' for user: {user_id}")
         
         # Validate component type
@@ -187,11 +198,12 @@ async def generate_strategy_component(
 
 @router.get("/strategy-generation-status")
 async def get_strategy_generation_status(
-    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get the status of strategy generation for a user."""
     try:
+        user_id = _get_authenticated_user_id(current_user)
         logger.info(f"Getting strategy generation status for user: {user_id}")
         
         # Get user's strategies
@@ -247,10 +259,12 @@ async def get_strategy_generation_status(
 async def optimize_existing_strategy(
     strategy_id: int,
     optimization_type: str = "comprehensive",
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Optimize an existing strategy using AI."""
     try:
+        user_id = _get_authenticated_user_id(current_user)
         logger.info(f"🚀 Optimizing existing strategy {strategy_id} with type: {optimization_type}")
         
         # Get existing strategy
@@ -266,7 +280,13 @@ async def optimize_existing_strategy(
             )
         
         existing_strategy = strategies_data["strategies"][0]
-        user_id = existing_strategy.get("user_id")
+        strategy_owner_id = str(existing_strategy.get("user_id", ""))
+
+        if strategy_owner_id != user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to optimize this strategy"
+            )
         
         # Get user context
         onboarding_data = await enhanced_service._get_onboarding_data(user_id)
@@ -309,12 +329,13 @@ async def optimize_existing_strategy(
 @router.post("/generate-comprehensive-strategy-polling")
 async def generate_comprehensive_strategy_polling(
     request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a comprehensive AI-powered content strategy using polling approach."""
     try:
         # Extract parameters from request body
-        user_id = request.get("user_id", 1)
+        user_id = _get_authenticated_user_id(current_user)
         strategy_name = request.get("strategy_name")
         config = request.get("config", {})
         
@@ -611,10 +632,12 @@ async def generate_comprehensive_strategy_polling(
 @router.get("/strategy-generation-status/{task_id}")
 async def get_strategy_generation_status_by_task(
     task_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get the status of strategy generation for a specific task."""
     try:
+        user_id = _get_authenticated_user_id(current_user)
         logger.info(f"Getting strategy generation status for task: {task_id}")
         
         # Check if task status exists
@@ -630,6 +653,12 @@ async def get_strategy_generation_status_by_task(
             raise HTTPException(
                 status_code=404,
                 detail=f"Task {task_id} not found. It may have expired or never existed."
+            )
+
+        if str(task_status.get("user_id")) != user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to access this task status"
             )
         
         logger.info(f"✅ Strategy generation status retrieved for task: {task_id}")
@@ -647,11 +676,12 @@ async def get_strategy_generation_status_by_task(
 
 @router.get("/latest-strategy")
 async def get_latest_generated_strategy(
-    user_id: int = Query(1, description="User ID"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get the latest generated strategy from the polling system or database."""
     try:
+        user_id = _get_authenticated_user_id(current_user)
         logger.info(f"🔍 Getting latest generated strategy for user: {user_id}")
         
         # First, try to get from database (most reliable)
