@@ -149,66 +149,35 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             logger.info(f"GSC Raw search analytics structure: {search_analytics}")
             logger.info(f"GSC Raw search analytics keys: {list(search_analytics.keys())}")
             
-            # Handle new data structure with overall_metrics and query_data
-            if 'overall_metrics' in search_analytics:
-                # New structure from updated GSC service
-                overall_rows = search_analytics.get('overall_metrics', {}).get('rows', [])
-                query_rows = search_analytics.get('query_data', {}).get('rows', [])
-                
-                # Calculate totals from overall_rows (most accurate as it includes anonymized queries)
-                total_clicks = 0
-                total_impressions = 0
-                total_position = 0
-                valid_position_rows = 0
-                
-                # Use overall_rows for totals if available, otherwise fallback to query_rows
-                calc_rows = overall_rows if overall_rows else query_rows
-                
-                for row in calc_rows:
-                    clicks = row.get('clicks', 0)
-                    impressions = row.get('impressions', 0)
-                    position = row.get('position', 0)
-                    
-                    total_clicks += clicks
-                    total_impressions += impressions
-                    
-                    if position and position > 0:
-                        total_position += position * impressions  # Weighted average
-                
-                # Calculate weighted average position
-                avg_position = total_position / total_impressions if total_impressions > 0 else 0
-                avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
-                
-                # Use query_rows for top queries list
-                top_queries_source = query_rows
-                
-            else:
-                # Legacy structure
-                rows = search_analytics.get('rows', [])
-                # ... existing legacy logic ...
-                calc_rows = rows
-                top_queries_source = rows
-                
-                total_clicks = 0
-                total_impressions = 0
-                total_position = 0
-                valid_position_rows = 0
-                
-                for row in calc_rows:
-                    clicks = row.get('clicks', 0)
-                    impressions = row.get('impressions', 0)
-                    position = row.get('position', 0)
-                    
-                    total_clicks += clicks
-                    total_impressions += impressions
-                    
-                    if position and position > 0:
-                         # Simple average for legacy/unknown structure if we can't do weighted
-                        total_position += position
-                        valid_position_rows += 1
-                
-                avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
-                avg_position = total_position / valid_position_rows if valid_position_rows > 0 else 0
+            status = search_analytics.get('status', 'success')
+            overall_rows = search_analytics.get('overall_metrics', {}).get('rows', [])
+            query_rows = search_analytics.get('query_data', {}).get('rows', [])
+
+            # Calculate totals from overall_rows (most accurate as it includes anonymized queries)
+            total_clicks = 0
+            total_impressions = 0
+            total_position = 0
+
+            # Use overall_rows for totals if available, otherwise fallback to query_rows
+            calc_rows = overall_rows if overall_rows else query_rows
+
+            for row in calc_rows:
+                clicks = row.get('clicks', 0)
+                impressions = row.get('impressions', 0)
+                position = row.get('position', 0)
+
+                total_clicks += clicks
+                total_impressions += impressions
+
+                if position and position > 0:
+                    total_position += position * impressions  # Weighted average
+
+            # Calculate weighted average position
+            avg_position = total_position / total_impressions if total_impressions > 0 else 0
+            avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+
+            # Use query_rows for top queries list
+            top_queries_source = query_rows
 
             
             # Get top performing queries
@@ -373,7 +342,7 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 logger.warning(f"Failed computing cannibalization: {e}")
             
             return {
-                'connection_status': 'connected',
+                'connection_status': 'connected' if status in ('success', 'partial_success', 'no_data') else 'error',
                 'connected_sites': 1,
                 'total_clicks': total_clicks,
                 'total_impressions': total_impressions,

@@ -299,20 +299,20 @@ class GSCInsightsExecutor(TaskExecutor):
                 end_date=end_date
             )
             
-            if 'error' in search_analytics:
+            if search_analytics.get('status') not in ('success', 'partial_success'):
                 return TaskExecutionResult(
                     success=False,
-                    error_message=search_analytics.get('error', 'Unknown error'),
+                    error_message=search_analytics.get('error', f"GSC analytics unavailable: {search_analytics.get('status', 'unknown')}"),
                     result_data=search_analytics
                 )
             
             # Format insights data
             insights_data = {
-                'site_url': site_url,
-                'date_range': {
+                'site_url': search_analytics.get('site_url', site_url),
+                'date_range': search_analytics.get('date_range', {
                     'start': start_date,
                     'end': end_date
-                },
+                }),
                 'overall_metrics': search_analytics.get('overall_metrics', {}),
                 'query_data': search_analytics.get('query_data', {}),
                 'fetched_at': datetime.utcnow().isoformat()
