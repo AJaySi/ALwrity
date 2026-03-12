@@ -9,16 +9,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.database import get_user_db_path
 
 user_id = "user_33Gz1FPI86VDXhRY8QN4ragRFGN"
-base_path = os.getcwd()
-safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
-user_workspace = os.path.join(base_path, "workspace", f"workspace_{safe_user_id}")
-
-path1 = os.path.join(user_workspace, "db", "alwrity.db")
-path2 = os.path.join(user_workspace, "db", f"alwrity_{safe_user_id}.db")
-
-print(f"Checking paths for user {user_id}:")
-print(f"Legacy: {path1}")
-print(f"Specific: {path2}")
+resolved = get_user_db_path(user_id)
+legacy_filename = "alwrity.db"
+print(f"Resolved active DB path for user {user_id}: {resolved}")
+print(f"Legacy filename still supported in db/: {legacy_filename}")
 
 def check_db(path):
     if not os.path.exists(path):
@@ -35,9 +29,7 @@ def check_db(path):
     except Exception as e:
         print(f"  [EXISTS] {path} - Error reading: {e}")
 
-check_db(path1)
-check_db(path2)
+check_db(resolved)
 
 print("-" * 30)
-resolved = get_user_db_path(user_id)
 print(f"Application resolves to: {resolved}")

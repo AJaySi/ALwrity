@@ -1,7 +1,10 @@
-import sqlite3
 import os
+import sqlite3
 
-db_path = r'workspace/workspace_user_33Gz1FPI86VDXhRY8QN4ragRFGN/db/alwrity_user_33Gz1FPI86VDXhRY8QN4ragRFGN.db'
+from services.database import get_user_db_path
+
+USER_ID = "user_33Gz1FPI86VDXhRY8QN4ragRFGN"
+db_path = get_user_db_path(USER_ID)
 
 if os.path.exists(db_path):
     conn = sqlite3.connect(db_path)
