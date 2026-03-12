@@ -14,6 +14,7 @@ from ..onboarding.api_key_manager import APIKeyManager
 
 from .gemini_provider import gemini_text_response, gemini_structured_json_response
 from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
+from ...utils.logger_utils import emit_routing_event
 
 
 def llm_text_gen(
@@ -77,6 +78,12 @@ def llm_text_gen(
             available_providers.append("google")
         if api_key_manager.get_api_key("hf_token"):
             available_providers.append("huggingface")
+
+        preferred_provider = env_provider or None
+        flow_type = "text_generation"
+        route_intent = "primary"
+        fallback_count = 0
+        fallback_models_tried = []
         
         # If no environment variable set, auto-detect based on available keys
         if not env_provider:
@@ -106,8 +113,22 @@ def llm_text_gen(
         if gpt_provider == "huggingface" and preferred_hf_models:
             model = preferred_hf_models[0]
             logger.info(f"[llm_text_gen] Using preferred low-cost HF model: {model}")
+
+        fallback_models_tried.append(model)
             
         logger.debug(f"[llm_text_gen] Using provider: {gpt_provider}, model: {model}")
+        emit_routing_event(
+            logger,
+            flow_type=flow_type,
+            route_intent=route_intent,
+            provider_selected=gpt_provider,
+            model_selected=model,
+            preferred_provider=preferred_provider,
+            fallback_count=fallback_count,
+            fallback_models_tried=fallback_models_tried,
+            tenant_user_id=user_id,
+            extra={"available_providers": available_providers},
+        )
 
         # Map provider name to APIProvider enum (define at function scope for usage tracking)
         from models.subscription_models import APIProvider
@@ -251,7 +272,8 @@ def llm_text_gen(
                         model=model,
                         temperature=temperature,
                         max_tokens=max_tokens,
-                        system_prompt=system_instructions
+                        system_prompt=system_instructions,
+                        tenant_user_id=user_id
                     )
                 else:
                     response_text = huggingface_text_response(
@@ -260,7 +282,8 @@ def llm_text_gen(
                         temperature=temperature,
                         max_tokens=max_tokens,
                         top_p=top_p,
-                        system_prompt=system_instructions
+                        system_prompt=system_instructions,
+                        tenant_user_id=user_id
                     )
             else:
                 logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")
@@ -304,17 +327,34 @@ def llm_text_gen(
                 try:
                     logger.info(f"[llm_text_gen] Trying SINGLE fallback provider: {fallback_provider}")
                     actual_provider_used = fallback_provider
+                    fallback_count += 1
+                    route_intent = "fallback"
                     
                     # Update provider enum for fallback
                     if fallback_provider == "google":
                         provider_enum = APIProvider.GEMINI
                         actual_provider_name = "gemini"
                         fallback_model = "gemini-2.0-flash-lite"
+                        fallback_models_tried.append(fallback_model)
                     elif fallback_provider == "huggingface":
                         provider_enum = APIProvider.MISTRAL
                         actual_provider_name = "huggingface"
                         fallback_model = "mistralai/Mistral-7B-Instruct-v0.3:groq"
+                        fallback_models_tried.append(fallback_model)
                     
+                    emit_routing_event(
+                        logger,
+                        flow_type=flow_type,
+                        route_intent=route_intent,
+                        provider_selected=fallback_provider,
+                        model_selected=fallback_model,
+                        preferred_provider=preferred_provider,
+                        fallback_count=fallback_count,
+                        fallback_models_tried=fallback_models_tried,
+                        tenant_user_id=user_id,
+                        extra={"available_providers": available_providers},
+                    )
+
                     if fallback_provider == "google":
                         if json_struct:
                             response_text = gemini_structured_json_response(
@@ -343,7 +383,8 @@ def llm_text_gen(
                                 model="mistralai/Mistral-7B-Instruct-v0.3:groq",
                                 temperature=temperature,
                                 max_tokens=max_tokens,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
+                                tenant_user_id=user_id
                             )
                         else:
                             response_text = huggingface_text_response(
@@ -352,7 +393,8 @@ def llm_text_gen(
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 top_p=top_p,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
+                                tenant_user_id=user_id
                             )
                     
                     # TRACK USAGE after successful fallback call

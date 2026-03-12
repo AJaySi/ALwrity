@@ -2,8 +2,11 @@
 Logger utilities to prevent conflicts between different logging configurations.
 """
 
+import hashlib
+import json
 from loguru import logger
 import sys
+from typing import Any, Dict, List, Optional
 
 
 def safe_logger_config(format_string: str, level: str = "INFO"):
@@ -51,3 +54,46 @@ def get_service_logger(service_name: str, format_string: str = None):
         safe_logger_config(format_string)
     
     return logger.bind(service=service_name)
+
+
+def _mask_tenant_user_id(tenant_user_id: Optional[str]) -> Optional[str]:
+    """Return a stable hash for a tenant user id so logs avoid exposing raw IDs."""
+    if not tenant_user_id:
+        return None
+    return hashlib.sha256(tenant_user_id.encode("utf-8")).hexdigest()[:12]
+
+
+def emit_routing_event(
+    service_logger,
+    *,
+    flow_type: str,
+    route_intent: str,
+    provider_selected: Optional[str],
+    model_selected: Optional[str],
+    preferred_provider: Optional[str],
+    fallback_count: int = 0,
+    fallback_models_tried: Optional[List[str]] = None,
+    tenant_user_id: Optional[str] = None,
+    event_name: str = "llm_routing_event",
+    level: str = "INFO",
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Emit a standardized structured model-routing event for AI facades."""
+    payload: Dict[str, Any] = {
+        "event_name": event_name,
+        "flow_type": flow_type,
+        "route_intent": route_intent,
+        "flow_type/route_intent": f"{flow_type}/{route_intent}",
+        "provider_selected": provider_selected,
+        "model_selected": model_selected,
+        "preferred_provider": preferred_provider,
+        "fallback_count": fallback_count,
+        "fallback_models_tried": fallback_models_tried or [],
+        "tenant_user_id": _mask_tenant_user_id(tenant_user_id),
+    }
+    if extra:
+        payload.update(extra)
+
+    log_method = getattr(service_logger, level.lower(), service_logger.info)
+    log_method("{}", json.dumps(payload, sort_keys=True))
+    return payload
