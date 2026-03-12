@@ -51,7 +51,7 @@ import sys
 from pathlib import Path
 import json
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Iterable
 
 from dotenv import load_dotenv
 
@@ -97,7 +97,7 @@ HF_FALLBACK_MODELS = [
 ]
 
 
-def _candidate_model_variants(model: str):
+def _candidate_model_variants(model: str, allow_model_variant_fallback: bool = True):
     """Yield model ids to try for a single logical model preference."""
     if not model:
         return
@@ -106,17 +106,31 @@ def _candidate_model_variants(model: str):
     yield model
 
     # Fallback to base repo id when provider suffix is not recognized by the router
-    if ":" in model:
+    if allow_model_variant_fallback and ":" in model:
         base_model = model.split(":", 1)[0]
         if base_model:
             yield base_model
 
 
-def _fallback_model_sequence(model: str):
-    sequence = [model] + HF_FALLBACK_MODELS
+def _fallback_model_sequence(
+    model: str,
+    fallback_models: Optional[List[str]] = None,
+    allow_model_variant_fallback: bool = True,
+):
+    sequence: Iterable[str]
+    if fallback_models is None:
+        # Safe default only when caller doesn't provide explicit policy.
+        sequence = [model] + HF_FALLBACK_MODELS
+    else:
+        # Caller owns fallback policy fully. Empty list means only requested model.
+        sequence = [model] + list(fallback_models)
+
     seen = set()
     for preferred_model in sequence:
-        for candidate in _candidate_model_variants(preferred_model):
+        for candidate in _candidate_model_variants(
+            preferred_model,
+            allow_model_variant_fallback=allow_model_variant_fallback,
+        ):
             if candidate and candidate not in seen:
                 seen.add(candidate)
                 yield candidate
@@ -144,7 +158,9 @@ def huggingface_text_response(
     temperature: float = 0.7,
     max_tokens: int = 2048,
     top_p: float = 0.9,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    fallback_models: Optional[List[str]] = None,
+    allow_model_variant_fallback: bool = True,
 ) -> str:
     """
     Generate text response using Hugging Face Inference Providers API.
@@ -233,7 +249,11 @@ def huggingface_text_response(
         
         response = None
         last_error = None
-        for candidate_model in _fallback_model_sequence(model):
+        for candidate_model in _fallback_model_sequence(
+            model=model,
+            fallback_models=fallback_models,
+            allow_model_variant_fallback=allow_model_variant_fallback,
+        ):
             try:
                 response = client.chat.completions.create(
                     model=candidate_model,
@@ -277,7 +297,9 @@ def huggingface_structured_json_response(
     model: str = "openai/gpt-oss-120b:groq",
     temperature: float = 0.7,
     max_tokens: int = 8192,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    fallback_models: Optional[List[str]] = None,
+    allow_model_variant_fallback: bool = True,
 ) -> Dict[str, Any]:
     """
     Generate structured JSON response using Hugging Face Inference Providers API.
@@ -387,7 +409,11 @@ def huggingface_structured_json_response(
         try:
             response = None
             last_error = None
-            for candidate_model in _fallback_model_sequence(model):
+            for candidate_model in _fallback_model_sequence(
+                model=model,
+                fallback_models=fallback_models,
+                allow_model_variant_fallback=allow_model_variant_fallback,
+            ):
                 try:
                     response = client.chat.completions.create(
                         model=candidate_model,
@@ -444,7 +470,11 @@ def huggingface_structured_json_response(
                 logger.info("Retrying without response_format...")
                 response = None
                 last_error = None
-                for candidate_model in _fallback_model_sequence(model):
+                for candidate_model in _fallback_model_sequence(
+                    model=model,
+                    fallback_models=fallback_models,
+                    allow_model_variant_fallback=allow_model_variant_fallback,
+                ):
                     try:
                         response = client.chat.completions.create(
                             model=candidate_model,

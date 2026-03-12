@@ -15,6 +15,10 @@ from ..onboarding.api_key_manager import APIKeyManager
 from .gemini_provider import gemini_text_response, gemini_structured_json_response
 from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
 
+PREMIUM_HF_MINIMAL_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b:groq",
+]
+
 
 def llm_text_gen(
     prompt: str,
@@ -103,10 +107,22 @@ def llm_text_gen(
                 else:
                     raise RuntimeError("No supported providers available.")
 
-        if gpt_provider == "huggingface" and preferred_hf_models:
-            model = preferred_hf_models[0]
-            logger.info(f"[llm_text_gen] Using preferred low-cost HF model: {model}")
-            
+        hf_fallback_models: Optional[List[str]] = None
+        hf_allow_model_variant_fallback = True
+        if gpt_provider == "huggingface":
+            if preferred_hf_models is not None:
+                if preferred_hf_models:
+                    model = preferred_hf_models[0]
+                    hf_fallback_models = preferred_hf_models[1:]
+                    logger.info(f"[llm_text_gen] Using caller-provided HF policy starting model: {model}")
+                else:
+                    # Explicit empty policy: only requested model (plus optional variant handling).
+                    hf_fallback_models = []
+                    logger.info("[llm_text_gen] Using caller-provided HF policy with no fallback models")
+            else:
+                # Premium/default path: minimal safe fallback chain to avoid excessive model hopping.
+                hf_fallback_models = PREMIUM_HF_MINIMAL_FALLBACK_MODELS
+
         logger.debug(f"[llm_text_gen] Using provider: {gpt_provider}, model: {model}")
 
         # Map provider name to APIProvider enum (define at function scope for usage tracking)
@@ -251,7 +267,9 @@ def llm_text_gen(
                         model=model,
                         temperature=temperature,
                         max_tokens=max_tokens,
-                        system_prompt=system_instructions
+                        system_prompt=system_instructions,
+                        fallback_models=hf_fallback_models,
+                        allow_model_variant_fallback=hf_allow_model_variant_fallback,
                     )
                 else:
                     response_text = huggingface_text_response(
@@ -260,7 +278,9 @@ def llm_text_gen(
                         temperature=temperature,
                         max_tokens=max_tokens,
                         top_p=top_p,
-                        system_prompt=system_instructions
+                        system_prompt=system_instructions,
+                        fallback_models=hf_fallback_models,
+                        allow_model_variant_fallback=hf_allow_model_variant_fallback,
                     )
             else:
                 logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")
@@ -343,7 +363,9 @@ def llm_text_gen(
                                 model="mistralai/Mistral-7B-Instruct-v0.3:groq",
                                 temperature=temperature,
                                 max_tokens=max_tokens,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
+                                fallback_models=PREMIUM_HF_MINIMAL_FALLBACK_MODELS,
+                                allow_model_variant_fallback=True,
                             )
                         else:
                             response_text = huggingface_text_response(
@@ -352,7 +374,9 @@ def llm_text_gen(
                                 temperature=temperature,
                                 max_tokens=max_tokens,
                                 top_p=top_p,
-                                system_prompt=system_instructions
+                                system_prompt=system_instructions,
+                                fallback_models=PREMIUM_HF_MINIMAL_FALLBACK_MODELS,
+                                allow_model_variant_fallback=True,
                             )
                     
                     # TRACK USAGE after successful fallback call
