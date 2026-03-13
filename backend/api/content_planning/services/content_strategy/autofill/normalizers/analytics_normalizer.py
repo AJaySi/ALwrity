@@ -15,9 +15,14 @@ async def normalize_gsc_analytics(gsc_data: Dict[str, Any]) -> Dict[str, Any]:
     if not gsc_data:
         logger.warning("⚠️ normalize_gsc_analytics: Empty gsc_data received")
         return {}
-    
+
+    status = gsc_data.get('status', 'success')
+    if status not in ('success', 'partial_success', 'no_data'):
+        logger.warning(f"⚠️ normalize_gsc_analytics: Skipping due to status={status}, error={gsc_data.get('error')}")
+        return {}
+
     logger.warning(f"🔍 normalize_gsc_analytics received keys: {list(gsc_data.keys())}")
-    
+
     # Extract metrics from GSC data
     metrics = gsc_data.get('metrics', {})
     data = gsc_data.get('data', {})
