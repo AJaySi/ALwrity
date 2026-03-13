@@ -10,7 +10,7 @@ from loguru import logger
 from datetime import datetime
 
 # Import database
-from services.database import get_db_session
+from services.database import get_db
 
 # Import services
 from ....services.enhanced_strategy_service import EnhancedStrategyService
@@ -25,14 +25,6 @@ from ....utils.response_builders import ResponseBuilder
 from ....utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 router = APIRouter(tags=["Strategy Analytics"])
-
-# Helper function to get database session
-def get_db():
-    db = get_db_session()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("/{strategy_id}/analytics")
 async def get_enhanced_strategy_analytics(

@@ -14,7 +14,10 @@ import asyncio
 from datetime import datetime
 
 # Import database
-from services.database import get_db_session
+from services.database import get_db
+
+# Import authentication middleware
+from middleware.auth_middleware import get_current_user
 
 # Import services
 from ....services.enhanced_strategy_service import EnhancedStrategyService
@@ -27,14 +30,6 @@ from ....utils.response_builders import ResponseBuilder
 from ....utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 router = APIRouter(tags=["Strategy Autofill"])
-
-# Helper function to get database session
-def get_db():
-    db = get_db_session()
-    try:
-        yield db
-    finally:
-        db.close()
 
 async def stream_data(data_generator):
     """Helper function to stream data as Server-Sent Events"""
@@ -49,6 +44,7 @@ async def stream_data(data_generator):
 async def accept_autofill_inputs(
     strategy_id: int,
     payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Persist end-user accepted auto-fill inputs and associate with the strategy."""
@@ -102,6 +98,7 @@ async def stream_autofill_refresh(
     user_id: Optional[int] = Query(None, description="User ID to build auto-fill for"),
     use_ai: bool = Query(True, description="Use AI augmentation during refresh"),
     ai_only: bool = Query(False, description="AI-first refresh: return AI overrides when available"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """SSE endpoint to stream steps while generating a fresh auto-fill payload (no DB writes)."""
@@ -206,6 +203,7 @@ async def refresh_autofill(
     user_id: Optional[int] = Query(None, description="User ID to build auto-fill for"),
     use_ai: bool = Query(True, description="Use AI augmentation during refresh"),
     ai_only: bool = Query(False, description="AI-first refresh: return AI overrides when available"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Non-stream endpoint to return a fresh auto-fill payload (no DB writes)."""
