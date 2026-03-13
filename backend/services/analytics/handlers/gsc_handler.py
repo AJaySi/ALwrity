@@ -13,6 +13,7 @@ from ...analytics_cache_service import analytics_cache
 from ..models.analytics_data import AnalyticsData
 from ..models.platform_types import PlatformType
 from .base_handler import BaseAnalyticsHandler
+from ..opportunity_scorer import categorize_opportunities
 
 
 class GSCAnalyticsHandler(BaseAnalyticsHandler):
@@ -372,6 +373,15 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
             except Exception as e:
                 logger.warning(f"Failed computing cannibalization: {e}")
             
+            current_query_rows = self._extract_period_rows(search_analytics, 'query', 'current')
+            previous_query_rows = self._extract_period_rows(search_analytics, 'query', 'previous')
+            current_page_rows = self._extract_period_rows(search_analytics, 'page', 'current')
+            previous_page_rows = self._extract_period_rows(search_analytics, 'page', 'previous')
+
+            query_rows_for_scoring = self._build_opportunity_rows(current_query_rows, previous_query_rows, 'query')
+            page_rows_for_scoring = self._build_opportunity_rows(current_page_rows, previous_page_rows, 'page')
+            opportunities = categorize_opportunities(query_rows_for_scoring, page_rows_for_scoring)
+
             return {
                 'connection_status': 'connected',
                 'connected_sites': 1,
@@ -382,7 +392,8 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 'total_queries': len(top_queries_source) if top_queries_source else 0,
                 'top_queries': top_queries,
                 'top_pages': top_pages,
-                'cannibalization': cannibalization
+                'cannibalization': cannibalization,
+                'opportunities': opportunities
             }
             
         except Exception as e:
@@ -397,9 +408,84 @@ class GSCAnalyticsHandler(BaseAnalyticsHandler):
                 'total_queries': 0,
                 'top_queries': [],
                 'top_pages': [],
+                'opportunities': [],
                 'error': str(e)
             }
     
+
+    def _safe_ctr_percent(self, row: Dict[str, Any]) -> float:
+        """Return CTR as percentage from row data."""
+        clicks_val = row.get('clicks', 0) or 0
+        impr_val = row.get('impressions', 0) or 0
+        raw_ctr = row.get('ctr', None)
+        if raw_ctr is not None:
+            return round(float(raw_ctr) * 100, 2)
+        return round(((clicks_val / impr_val) * 100), 2) if impr_val > 0 else 0.0
+
+    def _build_period_rows(self, rows: list, dimension: str, prefix: str = "") -> Dict[str, Dict[str, Any]]:
+        """Normalize GSC rows into scorer-ready metrics keyed by query/page URL."""
+        normalized: Dict[str, Dict[str, Any]] = {}
+        for row in rows or []:
+            if dimension == 'query':
+                key = self._extract_query_from_row(row)
+                id_value = f"q:{key}"
+                query = key
+                page_url = None
+            else:
+                key = self._extract_page_from_row(row)
+                id_value = f"p:{key}"
+                query = None
+                page_url = key
+
+            if not key:
+                continue
+
+            normalized[key] = {
+                'id': id_value,
+                'query': query,
+                'page_url': page_url,
+                'current_metrics': {
+                    'clicks': float(row.get('clicks', 0) or 0),
+                    'impressions': float(row.get('impressions', 0) or 0),
+                    'ctr': self._safe_ctr_percent(row),
+                    'position': round(float(row.get('position', 0) or 0), 2),
+                },
+                'previous_metrics': {}
+            }
+
+        return normalized
+
+    def _build_opportunity_rows(self, current_rows: list, previous_rows: list, dimension: str) -> list:
+        """Merge current/previous GSC rows into stable scorer rows."""
+        current_map = self._build_period_rows(current_rows, dimension)
+        previous_map = self._build_period_rows(previous_rows, dimension, prefix='prev_')
+
+        merged = []
+        for key in set(current_map.keys()) | set(previous_map.keys()):
+            current_entry = current_map.get(key, {})
+            previous_entry = previous_map.get(key, {})
+
+            merged.append({
+                'id': current_entry.get('id') or previous_entry.get('id') or (f"q:{key}" if dimension == 'query' else f"p:{key}"),
+                'query': current_entry.get('query') or previous_entry.get('query'),
+                'page_url': current_entry.get('page_url') or previous_entry.get('page_url'),
+                'current_metrics': current_entry.get('current_metrics', {
+                    'clicks': 0.0, 'impressions': 0.0, 'ctr': 0.0, 'position': 0.0
+                }),
+                'previous_metrics': previous_entry.get('current_metrics', {
+                    'clicks': 0.0, 'impressions': 0.0, 'ctr': 0.0, 'position': 0.0
+                })
+            })
+
+        return merged
+
+    def _extract_period_rows(self, search_analytics: Dict[str, Any], dimension: str, period_key: str) -> list:
+        """Extract rows for a dimension from either the current or previous period payload."""
+        source = search_analytics if period_key == 'current' else search_analytics.get('previous_period', {})
+        if dimension == 'query':
+            return source.get('query_data', {}).get('rows', [])
+        return source.get('page_data', {}).get('rows', [])
+
     def _extract_query_from_row(self, row: Dict[str, Any]) -> str:
         """Extract query text from GSC API row data"""
         try:

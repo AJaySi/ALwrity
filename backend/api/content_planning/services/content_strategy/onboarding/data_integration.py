@@ -27,6 +27,7 @@ from models.website_analysis_monitoring_models import (
     DeepCompetitorAnalysisExecutionLog
 )
 import os
+from services.analytics.opportunity_scorer import categorize_opportunities
 
 logger = get_service_logger("onboarding.data_integration")
 
@@ -1035,6 +1036,77 @@ class OnboardingDataIntegrationService:
             logger.error(f"Error getting deep competitor analysis for user {user_id}: {str(e)}")
             return {}
 
+
+    def _normalize_gsc_rows_for_opportunities(self, rows: List[Dict[str, Any]], dimension: str) -> Dict[str, Dict[str, Any]]:
+        """Normalize query/page rows to scorer schema."""
+        normalized: Dict[str, Dict[str, Any]] = {}
+        for row in rows or []:
+            keys = row.get('keys', [])
+            raw_key = str(keys[0]) if keys else ''
+            if not raw_key:
+                continue
+
+            if dimension == 'query':
+                entry_id = f"q:{raw_key}"
+                query = raw_key
+                page_url = None
+            else:
+                entry_id = f"p:{raw_key}"
+                query = None
+                page_url = raw_key
+
+            clicks = float(row.get('clicks', 0) or 0)
+            impressions = float(row.get('impressions', 0) or 0)
+            raw_ctr = row.get('ctr')
+            ctr = round(float(raw_ctr) * 100, 2) if raw_ctr is not None else (round((clicks / impressions) * 100, 2) if impressions > 0 else 0.0)
+
+            normalized[raw_key] = {
+                'id': entry_id,
+                'query': query,
+                'page_url': page_url,
+                'current_metrics': {
+                    'clicks': clicks,
+                    'impressions': impressions,
+                    'ctr': ctr,
+                    'position': round(float(row.get('position', 0) or 0), 2),
+                },
+            }
+
+        return normalized
+
+    def _merge_current_previous_rows(self, current_rows: List[Dict[str, Any]], previous_rows: List[Dict[str, Any]], dimension: str) -> List[Dict[str, Any]]:
+        """Merge current and previous metrics into stable row format."""
+        current_map = self._normalize_gsc_rows_for_opportunities(current_rows, dimension)
+        previous_map = self._normalize_gsc_rows_for_opportunities(previous_rows, dimension)
+
+        merged_rows: List[Dict[str, Any]] = []
+        for key in set(current_map.keys()) | set(previous_map.keys()):
+            current_entry = current_map.get(key, {})
+            previous_entry = previous_map.get(key, {})
+            merged_rows.append({
+                'id': current_entry.get('id') or previous_entry.get('id') or (f"q:{key}" if dimension == 'query' else f"p:{key}"),
+                'query': current_entry.get('query') or previous_entry.get('query'),
+                'page_url': current_entry.get('page_url') or previous_entry.get('page_url'),
+                'current_metrics': current_entry.get('current_metrics', {'clicks': 0.0, 'impressions': 0.0, 'ctr': 0.0, 'position': 0.0}),
+                'previous_metrics': previous_entry.get('current_metrics', {'clicks': 0.0, 'impressions': 0.0, 'ctr': 0.0, 'position': 0.0}),
+            })
+        return merged_rows
+
+    def _extract_gsc_opportunities(self, gsc_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Build scorer opportunities from raw GSC analytics payload."""
+        if not isinstance(gsc_data, dict):
+            return []
+
+        current_query_rows = gsc_data.get('query_data', {}).get('rows', [])
+        current_page_rows = gsc_data.get('page_data', {}).get('rows', [])
+        previous = gsc_data.get('previous_period', {}) if isinstance(gsc_data.get('previous_period'), dict) else {}
+        previous_query_rows = previous.get('query_data', {}).get('rows', [])
+        previous_page_rows = previous.get('page_data', {}).get('rows', [])
+
+        query_rows = self._merge_current_previous_rows(current_query_rows, previous_query_rows, 'query')
+        page_rows = self._merge_current_previous_rows(current_page_rows, previous_page_rows, 'page')
+        return categorize_opportunities(query_rows, page_rows)
+
     async def _get_gsc_analytics(self, user_id: str) -> Dict[str, Any]:
         """Get Google Search Console analytics data for the user."""
         try:
@@ -1050,10 +1122,12 @@ class OnboardingDataIntegrationService:
             
             if gsc_data and gsc_data.get('status') != 'disconnected' and not gsc_data.get('error'):
                 logger.info(f"Retrieved GSC analytics for user {user_id}")
+                opportunities = self._extract_gsc_opportunities(gsc_data)
                 return {
                     'data': gsc_data.get('data', {}),
                     'metrics': gsc_data.get('metrics', {}),
                     'date_range': gsc_data.get('date_range', {}),
+                    'opportunities': opportunities,
                     'data_freshness': 1.0,  # GSC data is typically fresh
                     'confidence_level': 0.9
                 }
