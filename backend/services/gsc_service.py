@@ -16,6 +16,9 @@ from services.database import get_user_db_path
 
 from dotenv import load_dotenv
 
+QUERY_PAGE_OPPORTUNITIES_ROW_LIMIT = 2500
+QUERY_PAGE_OPPORTUNITIES_MAX_WINDOW_DAYS = 90
+
 class GSCService:
     """Service for Google Search Console integration."""
     
@@ -514,15 +517,18 @@ class GSCService:
                     page_rows = []
                     page_row_count = 0
 
-                # Step 5: Get query+page combined data for mapping queries to pages
+                # Step 5: Get query+page combined data for mapping queries to pages.
+                # Keep this request bounded because query-page combinations can grow quickly
+                # for larger date windows/sites.
                 qp_rows = []
                 qp_row_count = 0
                 try:
+                    qp_start_date, qp_end_date = self._get_query_page_opportunity_window(start_date, end_date)
                     qp_request = {
-                        'startDate': start_date,
-                        'endDate': end_date,
+                        'startDate': qp_start_date,
+                        'endDate': qp_end_date,
                         'dimensions': ['query', 'page'],
-                        'rowLimit': 1000
+                        'rowLimit': QUERY_PAGE_OPPORTUNITIES_ROW_LIMIT
                     }
                     logger.info(f"GSC Query+Page request for user {user_id}: {qp_request}")
                     qp_response = service.searchanalytics().query(
@@ -553,7 +559,12 @@ class GSCService:
                     },
                     'query_page_data': {
                         'rows': qp_rows,
-                        'rowCount': qp_row_count
+                        'rowCount': qp_row_count,
+                        'requested_window': {
+                            'startDate': qp_start_date,
+                            'endDate': qp_end_date,
+                            'rowLimit': QUERY_PAGE_OPPORTUNITIES_ROW_LIMIT,
+                        },
                     },
                     'verification_data': {
                         'rows': verification_rows,
@@ -596,6 +607,20 @@ class GSCService:
         except Exception as e:
             logger.error(f"Error getting search analytics for user {user_id}: {e}")
             raise
+
+    def _get_query_page_opportunity_window(self, start_date: str, end_date: str) -> tuple[str, str]:
+        """Build a bounded query-page window to prevent oversized opportunity payloads."""
+        try:
+            parsed_end = datetime.strptime(end_date, '%Y-%m-%d')
+            parsed_start = datetime.strptime(start_date, '%Y-%m-%d')
+        except Exception:
+            parsed_end = datetime.now()
+            parsed_start = parsed_end - timedelta(days=30)
+
+        max_window_start = parsed_end - timedelta(days=QUERY_PAGE_OPPORTUNITIES_MAX_WINDOW_DAYS - 1)
+        bounded_start = max(parsed_start, max_window_start)
+
+        return bounded_start.strftime('%Y-%m-%d'), parsed_end.strftime('%Y-%m-%d')
     
     def get_sitemaps(self, user_id: str, site_url: str) -> List[Dict[str, Any]]:
         """Get sitemaps from GSC."""
