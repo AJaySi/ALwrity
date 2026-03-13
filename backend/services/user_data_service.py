@@ -17,19 +17,19 @@ class UserDataService:
         self.db = db_session
         self.integration_service = OnboardingDataIntegrationService()
     
-    def get_user_website_url(self, user_id: int = 1) -> Optional[str]:
+    def get_user_website_url(self, user_id: str) -> Optional[str]:
         """
         Get the website URL for a user from their onboarding data.
         
         Args:
-            user_id: The user ID (defaults to 1 for single-user setup)
+            user_id: The user ID
             
         Returns:
             Website URL or None if not found
         """
         try:
             # Use SSOT integration service
-            integrated_data = self.integration_service.get_integrated_data_sync(str(user_id), self.db)
+            integrated_data = self.integration_service.get_integrated_data_sync(user_id, self.db)
             website_analysis = integrated_data.get('website_analysis', {})
             
             if not website_analysis:
@@ -52,7 +52,7 @@ class UserDataService:
         Get comprehensive onboarding data for a user.
         
         Args:
-            user_id: The user ID (defaults to 1 for single-user setup)
+            user_id: The user ID
             
         Returns:
             Dictionary with onboarding data or None if not found
@@ -81,7 +81,7 @@ class UserDataService:
         Get website analysis data for a user.
         
         Args:
-            user_id: The user ID (defaults to 1 for single-user setup)
+            user_id: The user ID
             
         Returns:
             Website analysis data or None if not found
