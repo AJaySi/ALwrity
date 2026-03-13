@@ -12,8 +12,6 @@ from loguru import logger
 import json
 import asyncio
 from datetime import datetime
-from collections import defaultdict
-import time
 
 # Import database
 from services.database import get_db_session
@@ -24,6 +22,7 @@ from middleware.auth_middleware import get_current_user, get_current_user_with_q
 # Import services
 from ....services.enhanced_strategy_service import EnhancedStrategyService
 from ....services.enhanced_strategy_db_service import EnhancedStrategyDBService
+from services.shared_state_backend import SharedStateBackend
 
 # Import utilities
 from ....utils.error_handlers import ContentPlanningErrorHandler
@@ -31,25 +30,6 @@ from ....utils.response_builders import ResponseBuilder
 from ....utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 router = APIRouter(tags=["Strategy Streaming"])
-
-# Cache for streaming endpoints (5 minutes cache)
-streaming_cache = defaultdict(dict)
-CACHE_DURATION = 300  # 5 minutes
-
-def get_cached_data(cache_key: str) -> Optional[Dict[str, Any]]:
-    """Get cached data if it exists and is not expired."""
-    if cache_key in streaming_cache:
-        cached_data = streaming_cache[cache_key]
-        if time.time() - cached_data.get("timestamp", 0) < CACHE_DURATION:
-            return cached_data.get("data")
-    return None
-
-def set_cached_data(cache_key: str, data: Dict[str, Any]):
-    """Set cached data with timestamp."""
-    streaming_cache[cache_key] = {
-        "data": data,
-        "timestamp": time.time()
-    }
 
 # Helper function to get database session
 def get_db():
@@ -150,9 +130,11 @@ async def stream_strategic_intelligence(
             
             logger.info(f"🚀 Starting strategic intelligence stream for authenticated user: {authenticated_user_id}")
             
-            # Check cache first
-            cache_key = f"strategic_intelligence_{authenticated_user_id}"
-            cached_data = get_cached_data(cache_key)
+            # Check shared cache first
+            cache_key = "strategic_intelligence"
+            state_backend = SharedStateBackend(db)
+            state_backend.cleanup_expired()
+            cached_data = state_backend.get_streaming_cache(authenticated_user_id, cache_key)
             if cached_data:
                 logger.info(f"✅ Returning cached strategic intelligence data for user: {authenticated_user_id}")
                 yield {"type": "result", "status": "success", "data": cached_data, "progress": 100}
@@ -241,7 +223,7 @@ async def stream_strategic_intelligence(
             }
             
             # Cache the strategic intelligence data
-            set_cached_data(cache_key, strategic_intelligence)
+            state_backend.set_streaming_cache(authenticated_user_id, cache_key, strategic_intelligence)
             
             # Send progress update
             yield {"type": "progress", "message": "Finalizing strategic intelligence...", "progress": 80}
@@ -287,9 +269,11 @@ async def stream_keyword_research(
             
             logger.info(f"🚀 Starting keyword research stream for authenticated user: {authenticated_user_id}")
             
-            # Check cache first
-            cache_key = f"keyword_research_{authenticated_user_id}"
-            cached_data = get_cached_data(cache_key)
+            # Check shared cache first
+            cache_key = "keyword_research"
+            state_backend = SharedStateBackend(db)
+            state_backend.cleanup_expired()
+            cached_data = state_backend.get_streaming_cache(authenticated_user_id, cache_key)
             if cached_data:
                 logger.info(f"✅ Returning cached keyword research data for user: {authenticated_user_id}")
                 yield {"type": "result", "status": "success", "data": cached_data, "progress": 100}
@@ -359,7 +343,7 @@ async def stream_keyword_research(
             }
             
             # Cache the keyword data
-            set_cached_data(cache_key, keyword_data)
+            state_backend.set_streaming_cache(authenticated_user_id, cache_key, keyword_data)
             
             # Send progress update
             yield {"type": "progress", "message": "Finalizing keyword research...", "progress": 80}
