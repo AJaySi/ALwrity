@@ -119,6 +119,7 @@ const SEODashboard: React.FC = () => {
   const [competitiveSitemapBenchmarkingLoading, setCompetitiveSitemapBenchmarkingLoading] = useState(false);
   const [competitiveSitemapBenchmarkingError, setCompetitiveSitemapBenchmarkingError] = useState<string | null>(null);
   const [onboardingTaskHealth, setOnboardingTaskHealth] = useState<OnboardingScheduledTaskHealthResponse | null>(null);
+  const [selectedSiteUrl] = useState<string | null>(null);
 
   // PlatformAnalytics refresh handle
   const platformRefreshRef = useRef<(() => Promise<void>) | null>(null);
@@ -227,15 +228,14 @@ const SEODashboard: React.FC = () => {
     dataFetchedRef.current = true;
 
     const fetchAllData = async () => {
-      let websiteUrl = 'https://alwrity.com'; // Default fallback
+      let websiteUrl: string | null = null;
       
       try {
         setLoading(true);
         
-        // Fetch platform status and user data in parallel
-        const [platformResponse, userData, onboardingTaskHealthResponse] = await Promise.all([
+        // Fetch platform status and onboarding task health in parallel
+        const [platformResponse, onboardingTaskHealthResponse] = await Promise.all([
           apiClient.get('/api/seo-dashboard/platforms'),
-          userDataAPI.getUserData(),
           apiClient.get('/api/seo-dashboard/onboarding-task-health')
         ]);
         
@@ -244,25 +244,43 @@ const SEODashboard: React.FC = () => {
         setPlatformStatus(platformResponse.data);
         setOnboardingTaskHealth(onboardingTaskHealthResponse.data);
         
-        websiteUrl = userData?.website_url || 'https://alwrity.com';
-        
-        // Fetch real data from backend using authenticated API client
+        // Fetch overview without site_url first so backend can derive onboarding SSOT
         console.log('Fetching SEO dashboard overview...');
-        const response = await apiClient.get('/api/seo-dashboard/overview', {
-          params: { site_url: websiteUrl }
-        });
+        let response = selectedSiteUrl
+          ? await apiClient.get('/api/seo-dashboard/overview', { params: { site_url: selectedSiteUrl } })
+          : await apiClient.get('/api/seo-dashboard/overview');
+
+        websiteUrl = response.data?.website_url || selectedSiteUrl || null;
+
+        // Fallback: if overview cannot resolve URL, use authenticated user website URL
+        if (!websiteUrl && !selectedSiteUrl) {
+          const authenticatedWebsiteUrl = await userDataAPI.getWebsiteURL();
+          if (authenticatedWebsiteUrl) {
+            websiteUrl = authenticatedWebsiteUrl;
+            response = await apiClient.get('/api/seo-dashboard/overview', {
+              params: { site_url: authenticatedWebsiteUrl }
+            });
+          }
+        }
         
         console.log('SEO overview response:', response.status, response.statusText);
         console.log('Real SEO data received:', response.data);
-        setData(response.data);
+        setData({
+          ...response.data,
+          website_url: response.data?.website_url || websiteUrl || undefined
+        });
 
-        try {
-          const deepResponse = await apiClient.get('/api/seo-dashboard/deep-competitor-analysis', {
-            params: { site_url: websiteUrl }
-          });
-          setDeepCompetitorAnalysisData(deepResponse.data);
-        } catch (e) {
-          console.warn('Deep competitor analysis not available yet:', e);
+        if (websiteUrl) {
+          try {
+            const deepResponse = await apiClient.get('/api/seo-dashboard/deep-competitor-analysis', {
+              params: { site_url: websiteUrl }
+            });
+            setDeepCompetitorAnalysisData(deepResponse.data);
+          } catch (e) {
+            console.warn('Deep competitor analysis not available yet:', e);
+            setDeepCompetitorAnalysisData(null);
+          }
+        } else {
           setDeepCompetitorAnalysisData(null);
         }
 
@@ -341,7 +359,7 @@ const SEODashboard: React.FC = () => {
     };
 
     fetchAllData();
-  }, [isSignedIn, setLoading, setData]);
+  }, [isSignedIn, selectedSiteUrl, setLoading, setData]);
 
   useEffect(() => {
     // Run initial SEO analysis if no data exists
@@ -492,6 +510,10 @@ const SEODashboard: React.FC = () => {
   if (!isLoaded) {
     return <Skeleton variant="rectangular" height={200} />;
   }
+
+  const technicalAuditStatus = data.technical_seo_audit?.status;
+  const hasWebsiteConfigured = Boolean(data.website_url);
+  const hasAuditedPages = (data.technical_seo_audit?.pages_audited || 0) > 0;
 
   if (!isSignedIn) {
     return (
@@ -920,9 +942,21 @@ const SEODashboard: React.FC = () => {
                     )}
                   </Box>
 
-                  {data.technical_seo_audit.status === 'scheduled' && (
+                  {technicalAuditStatus === 'scheduled' && (
                     <Alert severity="info" sx={{ mb: 2 }}>
-                      Full-site audit runs automatically after onboarding. This may take a few minutes depending on how many pages we discover.
+                      Audit scheduled. Full-site audit runs automatically after onboarding.
+                    </Alert>
+                  )}
+
+                  {!hasWebsiteConfigured && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      Site not configured. Complete onboarding website setup to start technical auditing.
+                    </Alert>
+                  )}
+
+                  {hasWebsiteConfigured && technicalAuditStatus !== 'scheduled' && !hasAuditedPages && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      No pages audited yet.
                     </Alert>
                   )}
 
