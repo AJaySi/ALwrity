@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from loguru import logger
 from fastapi import HTTPException
+from ..onboarding.api_key_manager import APIKeyManager
 
 from .gemini_provider import gemini_text_response, gemini_structured_json_response
 from .huggingface_provider import huggingface_text_response, huggingface_structured_json_response
@@ -133,15 +134,30 @@ def llm_text_gen(
         blog_output_format = "markdown"
         blog_length = 2000
         
+        # Check which providers have API keys available using APIKeyManager
+        api_key_manager = APIKeyManager()
         available_providers = []
-        for provider in ("google", "huggingface"):
-            if get_api_key(provider, user_id=user_id):
-                available_providers.append(provider)
+        if api_key_manager.get_api_key("gemini"):
+            available_providers.append("google")
+        if api_key_manager.get_api_key("hf_token"):
+            available_providers.append("huggingface")
+        if api_key_manager.get_api_key("wavespeed"):
+            available_providers.append("wavespeed")
+        
+        logger.info(
+            f"[llm_text_gen][{flow_tag}] Provider preflight: env_provider='{env_provider or 'auto'}', "
+            f"provider_list={provider_list}, strict_provider_mode={strict_provider_mode}, "
+            f"available_providers={available_providers}, preferred_provider={preferred_provider or 'none'}"
+        )
 
         if gpt_provider not in available_providers:
             logger.warning(f"[llm_text_gen] Provider {gpt_provider} unavailable for user {user_id}, falling back.")
-            if available_providers:
-                gpt_provider = available_providers[0]
+            if "huggingface" in available_providers:
+                gpt_provider = "huggingface"
+                model = "openai/gpt-oss-120b:cerebras"
+            elif "google" in available_providers:
+                gpt_provider = "google"
+                model = "gemini-2.0-flash-001"
             else:
                 logger.error("[llm_text_gen] No API keys found for supported providers.")
                 raise RuntimeError("No LLM API keys configured for tenant or environment defaults.")
