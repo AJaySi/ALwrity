@@ -7,21 +7,21 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any
 
-from services.workspace_dirs import ensure_global_operational_dirs
-
 
 class EnvironmentSetup:
     """Manages environment setup for ALwrity backend."""
     
     def __init__(self, production_mode: bool = False):
         self.production_mode = production_mode
-        # Use safer directory paths that don't conflict with deployment platforms
         if production_mode:
-            # In production, only create operational directories
-            self.required_directories = ["logs", "temp"]
+            self.required_directories = []
         else:
-            # In development, only create operational directories
-            self.required_directories = ["logs", "temp"]
+            self.required_directories = [
+                "lib/workspace/alwrity_content",
+                "lib/workspace/alwrity_web_research", 
+                "lib/workspace/alwrity_prompts",
+                "lib/workspace/alwrity_config"
+            ]
     
     def setup_directories(self) -> bool:
         """Create necessary directories for ALwrity."""
@@ -36,15 +36,15 @@ class EnvironmentSetup:
                 print("   ⚠️  Skipping directory creation in production mode")
             return True
         
-        try:
-            ensure_global_operational_dirs(self.required_directories)
-            if verbose:
-                for directory in self.required_directories:
+        for directory in self.required_directories:
+            try:
+                Path(directory).mkdir(parents=True, exist_ok=True)
+                if verbose:
                     print(f"   ✅ Created: {directory}")
-        except Exception as e:
-            if verbose:
-                print(f"   ❌ Failed to create operational directories: {e}")
-            return False
+            except Exception as e:
+                if verbose:
+                    print(f"   ❌ Failed to create {directory}: {e}")
+                return False
         
         if verbose:
             print("✅ All directories created successfully")
