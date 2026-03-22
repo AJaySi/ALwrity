@@ -98,7 +98,12 @@ from api.user_environment import router as user_environment_router
 from api.content_planning.strategy_copilot import router as strategy_copilot_router
 
 # Import database service
-from services.database import init_database, close_database
+from services.database import close_database
+from services.startup_health import (
+    get_startup_status,
+    readiness_under_auth_context,
+    run_startup_health_routine,
+)
 
 # Trigger reload for monitoring fix
 
@@ -212,6 +217,14 @@ async def database_health():
 async def comprehensive_health():
     """Comprehensive health check endpoint."""
     return health_checker.comprehensive_health_check()
+
+@app.get("/health/readiness")
+async def readiness(current_user: dict = Depends(get_current_user)):
+    """Readiness check that validates tenant DB resolution/session under auth context."""
+    return {
+        "startup": get_startup_status(),
+        "tenant": readiness_under_auth_context(current_user),
+    }
 
 # Rate limiting management endpoints
 @app.get("/api/rate-limit/status")
@@ -449,23 +462,25 @@ async def serve_frontend():
 async def startup_event():
     """Initialize services on startup."""
     try:
-        # Initialize database
-        init_database()
-        
+        startup_report = run_startup_health_routine()
+        if startup_report.get("status") != "healthy":
+            logger.error(f"Startup readiness finished with failures: {startup_report.get('errors', [])}")
+
         # Start task scheduler
         from services.scheduler import get_scheduler
         await get_scheduler().start()
-        
+
         # Check Wix API key configuration
         wix_api_key = os.getenv('WIX_API_KEY')
         if wix_api_key:
             logger.warning(f"✅ WIX_API_KEY loaded ({len(wix_api_key)} chars, starts with '{wix_api_key[:10]}...')")
         else:
             logger.warning("⚠️ WIX_API_KEY not found in environment - Wix publishing may fail")
-        
+
         logger.info("ALwrity backend started successfully")
     except Exception as e:
         logger.error(f"Error during startup: {e}")
+        raise
 
 # Shutdown event
 @app.on_event("shutdown")
