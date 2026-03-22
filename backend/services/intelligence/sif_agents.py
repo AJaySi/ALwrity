@@ -15,7 +15,6 @@ from loguru import logger
 from .txtai_service import TxtaiIntelligenceService, TXTAI_AVAILABLE
 from services.intelligence.agents.core_agent_framework import BaseALwrityAgent
 from services.llm_providers.main_text_generation import llm_text_gen
-from services.intelligence.agent_flat_context import AgentFlatContextStore
 
 # Optional txtai imports (align with core agent framework)
 try:
@@ -35,16 +34,7 @@ class SharedLLMWrapper:
         try:
             # We ignore kwargs like 'max_tokens' as llm_text_gen handles defaults,
             # but we could map them if needed.
-            return llm_text_gen(
-                prompt,
-                user_id=self.user_id,
-<<<<<<< HEAD
-                preferred_hf_models=LOW_COST_SHARED_REMOTE_MODELS,
-                flow_type="sif_agent",
-=======
-                preferred_hf_models=REMOTE_LOW_COST_HF_MODELS,
->>>>>>> pr-418
-            )
+            return llm_text_gen(prompt, user_id=self.user_id)
         except Exception as e:
             logger.error(f"SharedLLMWrapper failed to generate text: {e}")
             return f"[ERROR: Shared LLM generation failed for user {self.user_id}]"
@@ -53,17 +43,6 @@ class SharedLLMWrapper:
         return self.generate(prompt, **kwargs)
 
 _local_llm_cache = {}
-
-<<<<<<< HEAD
-LOW_COST_SHARED_REMOTE_MODELS = [
-=======
-
-REMOTE_LOW_COST_HF_MODELS = [
->>>>>>> pr-418
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-0.5B-Instruct",
-    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-]
 
 LOCAL_LLM_FALLBACKS = [
     "Qwen/Qwen2.5-1.5B-Instruct",
@@ -191,8 +170,8 @@ class SIFBaseAgent(BaseALwrityAgent):
 
     def _create_txtai_agent(self):
         """
-        Expose a txtai Agent interface with flat-file context tools.
-        Tools are scoped to the current user workspace via AgentFlatContextStore.
+        SIF agents primarily use the intelligence service directly, but we can expose
+        capabilities via a standard agent interface if available.
         """
         if not TXTAI_AVAILABLE or Agent is None:
             raise RuntimeError(f"[{self.__class__.__name__}] txtai Agent not available")
@@ -201,102 +180,10 @@ class SIFBaseAgent(BaseALwrityAgent):
             _llm_for_agent = self.llm
             for _ in range(3):
                 _llm_for_agent = getattr(_llm_for_agent, "llm", _llm_for_agent)
-
-            return Agent(
-                llm=_llm_for_agent,
-                tools=[
-                    {
-                        "name": "flat_context_manifest",
-                        "description": "Returns manifest of available onboarding flat-context documents for this user",
-                        "target": self._tool_flat_context_manifest,
-                    },
-                    {
-                        "name": "flat_context_read",
-                        "description": "Read a flat-context document by logical name: step2|step3|step4|step5|manifest",
-                        "target": self._tool_flat_context_read,
-                    },
-                    {
-                        "name": "flat_context_write_note",
-                        "description": "Write lightweight agent notes/updates to a specific flat-context document",
-                        "target": self._tool_flat_context_write_note,
-                    },
-                ],
-            )
+            return Agent(llm=_llm_for_agent, tools=[])
         except Exception as e:
             logger.error(f"[{self.__class__.__name__}] Failed to create txtai Agent: {e}")
             raise
-
-    def _tool_flat_context_manifest(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Tool: list available flat-context docs and links."""
-        try:
-            store = AgentFlatContextStore(self.user_id)
-            manifest = store.load_context_manifest() or {"documents": []}
-            return {"ok": True, "manifest": manifest}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def _tool_flat_context_read(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Tool: read one user-scoped context doc."""
-        try:
-            key = str((context or {}).get("document") or "").strip().lower()
-            store = AgentFlatContextStore(self.user_id)
-            mapping = {
-                "step2": store.load_step2_context_document,
-                "step3": store.load_step3_context_document,
-                "step4": store.load_step4_context_document,
-                "step5": store.load_step5_context_document,
-                "manifest": store.load_context_manifest,
-            }
-            if key not in mapping:
-                return {"ok": False, "error": "Invalid document. Use step2|step3|step4|step5|manifest"}
-            data = mapping[key]()
-            return {"ok": True, "document": key, "data": data or {}}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def _tool_flat_context_write_note(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Tool: append agent note/update to step context by re-saving payload."""
-        try:
-            key = str((context or {}).get("document") or "").strip().lower()
-            note = str((context or {}).get("note") or "").strip()
-            if not note:
-                return {"ok": False, "error": "note is required"}
-
-            store = AgentFlatContextStore(self.user_id)
-            if key == "step2":
-                doc = store.load_step2_context_document() or {}
-                payload = doc.get("data") if isinstance(doc.get("data"), dict) else {}
-                notes = payload.get("agent_notes") if isinstance(payload.get("agent_notes"), list) else []
-                notes.append({"note": note, "agent": self.agent_type, "ts": datetime.utcnow().isoformat()})
-                payload["agent_notes"] = notes[-50:]
-                ok = store.save_step2_website_analysis(payload, source="agent_note")
-            elif key == "step3":
-                doc = store.load_step3_context_document() or {}
-                payload = doc.get("data") if isinstance(doc.get("data"), dict) else {}
-                notes = payload.get("agent_notes") if isinstance(payload.get("agent_notes"), list) else []
-                notes.append({"note": note, "agent": self.agent_type, "ts": datetime.utcnow().isoformat()})
-                payload["agent_notes"] = notes[-50:]
-                ok = store.save_step3_research_preferences(payload, source="agent_note")
-            elif key == "step4":
-                doc = store.load_step4_context_document() or {}
-                payload = doc.get("data") if isinstance(doc.get("data"), dict) else {}
-                notes = payload.get("agent_notes") if isinstance(payload.get("agent_notes"), list) else []
-                notes.append({"note": note, "agent": self.agent_type, "ts": datetime.utcnow().isoformat()})
-                payload["agent_notes"] = notes[-50:]
-                ok = store.save_step4_persona_data(payload, source="agent_note")
-            elif key == "step5":
-                doc = store.load_step5_context_document() or {}
-                payload = doc.get("data") if isinstance(doc.get("data"), dict) else {}
-                notes = payload.get("agent_notes") if isinstance(payload.get("agent_notes"), list) else []
-                notes.append({"note": note, "agent": self.agent_type, "ts": datetime.utcnow().isoformat()})
-                payload["agent_notes"] = notes[-50:]
-                ok = store.save_step5_integrations(payload, source="agent_note")
-            else:
-                return {"ok": False, "error": "Invalid document. Use step2|step3|step4|step5"}
-
-            return {"ok": bool(ok), "document": key}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
 
 class StrategyArchitectAgent(SIFBaseAgent):
     """Agent for discovering content pillars and identifying strategic gaps."""
@@ -799,25 +686,7 @@ class ContentGuardianAgent(SIFBaseAgent):
             if not text:
                 return {"compliance_score": 0.0, "issues": ["No text provided"]}
 
-            guidelines_source = "provided" if style_guidelines else "none"
-
-            # 1. Fetch Style Guidelines from flat-file context first, then SIF fallback
-            if not style_guidelines:
-                try:
-                    flat_doc = AgentFlatContextStore(self.user_id).load_step2_context_document()
-                    flat_data = (flat_doc or {}).get("data") if isinstance(flat_doc, dict) else None
-                    if isinstance(flat_data, dict):
-                        style_guidelines = {
-                            "tone": (flat_data.get("brand_analysis") or {}).get("brand_voice", "neutral"),
-                            "style_patterns": flat_data.get("style_patterns", {}),
-                            "writing_style": flat_data.get("writing_style", {}),
-                            "style_guidelines": flat_data.get("style_guidelines", {}),
-                        }
-                        guidelines_source = "flat_file"
-                        logger.info(f"[{self.__class__.__name__}] Retrieved style guidelines from flat context")
-                except Exception as e:
-                    logger.warning(f"[{self.__class__.__name__}] Failed to retrieve style guidelines from flat context: {e}")
-
+            # 1. Fetch Style Guidelines from SIF if not provided
             if not style_guidelines and self.sif_service:
                 try:
                     # Search for website analysis to get brand voice/style
@@ -828,7 +697,7 @@ class ContentGuardianAgent(SIFBaseAgent):
                         res = results[0]
                         metadata_str = res.get('object')
                         metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else (metadata_str or res)
-
+                        
                         if metadata.get('type') == 'website_analysis':
                             report = metadata.get('full_report', {})
                             style_guidelines = {
@@ -836,7 +705,6 @@ class ContentGuardianAgent(SIFBaseAgent):
                                 "style_patterns": report.get('style_patterns', {}),
                                 "writing_style": report.get('writing_style', {})
                             }
-                            guidelines_source = "sif_index"
                             logger.info(f"[{self.__class__.__name__}] Retrieved style guidelines from SIF: {style_guidelines.get('tone')}")
                 except Exception as e:
                     logger.warning(f"[{self.__class__.__name__}] Failed to retrieve style guidelines from SIF: {e}")
@@ -867,7 +735,7 @@ class ContentGuardianAgent(SIFBaseAgent):
                 "compliance_score": max(0.0, score),
                 "issues": issues,
                 "is_compliant": score > 0.8,
-                "guidelines_source": guidelines_source
+                "guidelines_source": "sif_index" if not style_guidelines and self.sif_service else "provided"
             }
             
         except Exception as e:

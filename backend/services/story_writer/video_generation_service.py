@@ -11,7 +11,12 @@ from pathlib import Path
 from loguru import logger
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from api.story_writer.utils.media_utils import get_story_media_write_dir
+
+
+def _get_story_media_write_dir(media_type: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> Path:
+    """Lazy import wrapper to avoid circular imports."""
+    from api.story_writer.utils.media_utils import get_story_media_write_dir
+    return get_story_media_write_dir(media_type, user_id=user_id, db=db)
 
 
 class StoryVideoGenerationService:
@@ -29,7 +34,7 @@ class StoryVideoGenerationService:
             self.output_dir = Path(output_dir)
             self.output_dir.mkdir(parents=True, exist_ok=True)
         else:
-            self.output_dir = get_story_media_write_dir("video")
+            self.output_dir = _get_story_media_write_dir("video")
         logger.info(f"[StoryVideoGeneration] Initialized with output directory: {self.output_dir}")
     
     def _get_user_video_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
@@ -38,7 +43,7 @@ class StoryVideoGenerationService:
         Falls back to default output_dir if workspace not found.
         """
         try:
-            return get_story_media_write_dir("video", user_id=user_id, db=db)
+            return _get_story_media_write_dir("video", user_id=user_id, db=db)
         except Exception as e:
             logger.warning(f"[StoryVideoGeneration] Failed to resolve user workspace path for {user_id}: {e}")
             return self.output_dir

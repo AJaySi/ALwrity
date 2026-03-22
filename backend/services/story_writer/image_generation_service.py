@@ -15,9 +15,14 @@ from sqlalchemy.orm import Session
 from services.llm_providers.main_image_generation import generate_image
 from services.llm_providers.image_generation import ImageGenerationResult
 from utils.logger_utils import get_service_logger
-from api.story_writer.utils.media_utils import get_story_media_write_dir
 
 logger = get_service_logger("story_writer.image_generation")
+
+
+def _get_story_media_write_dir(media_type: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> Path:
+    """Lazy import wrapper to avoid circular imports."""
+    from api.story_writer.utils.media_utils import get_story_media_write_dir
+    return get_story_media_write_dir(media_type, user_id=user_id, db=db)
 
 
 class StoryImageGenerationService:
@@ -35,7 +40,7 @@ class StoryImageGenerationService:
             self.output_dir = Path(output_dir)
             self.output_dir.mkdir(parents=True, exist_ok=True)
         else:
-            self.output_dir = get_story_media_write_dir("image")
+            self.output_dir = _get_story_media_write_dir("image")
         logger.info(f"[StoryImageGeneration] Initialized with output directory: {self.output_dir}")
     
     def _get_user_image_dir(self, user_id: str, db: Optional[Session] = None) -> Path:
@@ -44,7 +49,7 @@ class StoryImageGenerationService:
         Falls back to default output_dir if workspace not found.
         """
         try:
-            return get_story_media_write_dir("image", user_id=user_id, db=db)
+            return _get_story_media_write_dir("image", user_id=user_id, db=db)
         except Exception as e:
             logger.warning(f"[StoryImageGeneration] Failed to resolve user workspace path for {user_id}: {e}")
             return self.output_dir

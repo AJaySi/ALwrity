@@ -6,22 +6,8 @@ Extracts ALL onboarding data and provides personalized defaults for forms and re
 from typing import Dict, Any, Optional, List
 from loguru import logger
 
-from services.database import get_session_for_user
+from services.database import SessionLocal
 from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
-
-
-def _ensure_dict(value: Any) -> Dict[str, Any]:
-    """Safely coerce arbitrary payload shape into a dictionary."""
-    return value if isinstance(value, dict) else {}
-
-
-def _ensure_list(value: Any) -> List[Any]:
-    """Safely coerce arbitrary payload shape into a list."""
-    if isinstance(value, list):
-        return value
-    if value is None:
-        return []
-    return [value]
 
 
 class PersonalizationService:
@@ -34,14 +20,6 @@ class PersonalizationService:
         """Initialize Personalization Service."""
         self.logger = logger
         logger.info("[Personalization Service] Initialized")
-
-    @staticmethod
-    def _as_dict(value: Any) -> Dict[str, Any]:
-        return value if isinstance(value, dict) else {}
-
-    @staticmethod
-    def _as_list(value: Any) -> List[Any]:
-        return value if isinstance(value, list) else []
     
     def get_user_preferences(self, user_id: str) -> Dict[str, Any]:
         """
@@ -58,50 +36,20 @@ class PersonalizationService:
             - templates: Recommended templates for user's industry
             - channels: Recommended channels based on platform personas
         """
-        db = None
+        db = SessionLocal()
         try:
-            db = get_session_for_user(user_id)
-            if not db:
-                logger.warning(f"[Personalization] No DB session available for user {user_id}; using default preferences")
-                return self._get_default_preferences()
-
             integration_service = OnboardingDataIntegrationService()
-<<<<<<< HEAD
             integrated_data = integration_service.get_integrated_data_sync(user_id, db)
-            if not isinstance(integrated_data, dict):
-                logger.warning(
-                    f"[Personalization] Integrated onboarding payload is non-dict for user {user_id}; using defaults"
-                )
-                integrated_data = {}
-
             canonical_profile = integrated_data.get('canonical_profile', {})
-            if not isinstance(canonical_profile, dict):
-                logger.warning(
-                    f"[Personalization] Canonical profile is non-dict for user {user_id}; using defaults"
-                )
-                canonical_profile = {}
-=======
-            integrated_data_raw = integration_service.get_integrated_data_sync(user_id, db)
-            integrated_data = _ensure_dict(integrated_data_raw)
-            canonical_profile = _ensure_dict(integrated_data.get('canonical_profile'))
->>>>>>> pr-416
             
             # Map strictly from Canonical Profile
             preferences = {
                 "industry": canonical_profile.get("industry"),
-<<<<<<< HEAD
-                "target_audience": self._as_dict(canonical_profile.get("target_audience", {})),
-                "platform_preferences": self._as_list(canonical_profile.get("platform_preferences", [])),
-                "content_preferences": self._as_list(canonical_profile.get("content_types", [])),
-                "style_preferences": self._as_dict(canonical_profile.get("visual_style", {})),
-                "brand_colors": self._as_list(canonical_profile.get("brand_colors", [])),
-=======
-                "target_audience": _ensure_dict(canonical_profile.get("target_audience")),
-                "platform_preferences": _ensure_list(canonical_profile.get("platform_preferences")),
-                "content_preferences": _ensure_list(canonical_profile.get("content_types")),
-                "style_preferences": _ensure_dict(canonical_profile.get("visual_style")),
-                "brand_colors": _ensure_list(canonical_profile.get("brand_colors")),
->>>>>>> pr-416
+                "target_audience": canonical_profile.get("target_audience", {}),
+                "platform_preferences": canonical_profile.get("platform_preferences", []),
+                "content_preferences": canonical_profile.get("content_types", []),
+                "style_preferences": canonical_profile.get("visual_style", {}),
+                "brand_colors": canonical_profile.get("brand_colors", []),
                 "recommended_templates": [],
                 "recommended_channels": [],
                 "writing_style": {
@@ -110,11 +58,7 @@ class PersonalizationService:
                     "complexity": canonical_profile.get("writing_complexity", "intermediate"),
                     "engagement_level": canonical_profile.get("writing_engagement", "moderate"),
                 },
-<<<<<<< HEAD
-                "brand_values": self._as_list(canonical_profile.get("brand_values", [])),
-=======
-                "brand_values": _ensure_list(canonical_profile.get("brand_values")),
->>>>>>> pr-416
+                "brand_values": canonical_profile.get("brand_values", []),
             }
             
             # Ensure target_audience structure
@@ -150,7 +94,7 @@ class PersonalizationService:
             if not preferences["recommended_channels"]:
                 preferences["recommended_channels"] = self._get_recommended_channels(
                     preferences.get("industry"),
-                    _ensure_list(_ensure_dict(preferences.get("target_audience")).get("demographics"))
+                    preferences.get("target_audience", {}).get("demographics", [])
                 )
             
             logger.info(f"[Personalization] Extracted preferences for user {user_id}: industry={preferences.get('industry')}")
@@ -160,8 +104,7 @@ class PersonalizationService:
             logger.error(f"[Personalization] Error getting user preferences: {str(e)}", exc_info=True)
             return self._get_default_preferences()
         finally:
-            if db:
-                db.close()
+            db.close()
     
     def get_personalized_defaults(
         self,

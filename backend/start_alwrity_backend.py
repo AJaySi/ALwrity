@@ -216,7 +216,7 @@ def start_backend(enable_reload=False, production_mode=False):
         print("=" * 50)
         
         # Set up clean logging for end users
-        from logging_config import configure_logging, get_uvicorn_log_level
+        from logging_config import setup_clean_logging, get_uvicorn_log_level
         # Video stack preflight (diagnostics + version assert)
         try:
             from services.story_writer.video_preflight import (
@@ -228,11 +228,7 @@ def start_backend(enable_reload=False, production_mode=False):
             log_video_stack_diagnostics = None
             assert_supported_moviepy = None
         
-<<<<<<< HEAD
-        verbose_mode = configure_logging(verbose_mode=verbose_mode, bootstrap_source="start_alwrity_backend")
-=======
-        verbose_mode = configure_logging(mode="default", app_name="ALwrity")
->>>>>>> pr-422
+        verbose_mode = setup_clean_logging()
         uvicorn_log_level = get_uvicorn_log_level()
 
         # Log diagnostics and assert versions (fail fast if misconfigured)
