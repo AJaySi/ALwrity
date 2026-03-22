@@ -393,6 +393,18 @@ class GSCService:
             # Return empty list instead of raising to prevent frontend 500s
             return []
     
+    def _calculate_previous_period(self, start_date: str, end_date: str):
+        """Calculate previous period date window matching current range length."""
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            window_days = max((end_dt - start_dt).days + 1, 1)
+            prev_end = start_dt - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=window_days - 1)
+            return prev_start.strftime("%Y-%m-%d"), prev_end.strftime("%Y-%m-%d")
+        except Exception:
+            return None, None
+
     def get_search_analytics(self, user_id: str, site_url: str, 
                            start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """Get search analytics data from GSC."""
@@ -537,6 +549,41 @@ class GSCService:
                     qp_rows = []
                     qp_row_count = 0
 
+                # Optional previous-period windows for opportunity trend detection
+                prev_query_rows = []
+                prev_page_rows = []
+                prev_start_date, prev_end_date = self._calculate_previous_period(start_date, end_date)
+                if prev_start_date and prev_end_date:
+                    try:
+                        prev_query_request = {
+                            'startDate': prev_start_date,
+                            'endDate': prev_end_date,
+                            'dimensions': ['query'],
+                            'rowLimit': 1000
+                        }
+                        prev_query_response = service.searchanalytics().query(
+                            siteUrl=site_url,
+                            body=prev_query_request
+                        ).execute()
+                        prev_query_rows = prev_query_response.get('rows', [])
+                    except Exception as prev_query_error:
+                        logger.warning(f"GSC previous query request failed for user {user_id}: {prev_query_error}")
+
+                    try:
+                        prev_page_request = {
+                            'startDate': prev_start_date,
+                            'endDate': prev_end_date,
+                            'dimensions': ['page'],
+                            'rowLimit': 1000
+                        }
+                        prev_page_response = service.searchanalytics().query(
+                            siteUrl=site_url,
+                            body=prev_page_request
+                        ).execute()
+                        prev_page_rows = prev_page_response.get('rows', [])
+                    except Exception as prev_page_error:
+                        logger.warning(f"GSC previous page request failed for user {user_id}: {prev_page_error}")
+
                 # Combine overall, query, page and query+page data
                 analytics_data = {
                     'overall_metrics': {
@@ -554,6 +601,12 @@ class GSCService:
                     'query_page_data': {
                         'rows': qp_rows,
                         'rowCount': qp_row_count
+                    },
+                    'previous_period': {
+                        'startDate': prev_start_date,
+                        'endDate': prev_end_date,
+                        'query_data': {'rows': prev_query_rows, 'rowCount': len(prev_query_rows)},
+                        'page_data': {'rows': prev_page_rows, 'rowCount': len(prev_page_rows)}
                     },
                     'verification_data': {
                         'rows': verification_rows,
@@ -580,6 +633,12 @@ class GSCService:
                     'query_data': {'rows': [], 'rowCount': 0},
                     'page_data': {'rows': [], 'rowCount': 0},
                     'query_page_data': {'rows': [], 'rowCount': 0},
+                    'previous_period': {
+                        'startDate': None,
+                        'endDate': None,
+                        'query_data': {'rows': [], 'rowCount': 0},
+                        'page_data': {'rows': [], 'rowCount': 0}
+                    },
                     'verification_data': {
                         'rows': verification_rows,
                         'rowCount': len(verification_rows)
