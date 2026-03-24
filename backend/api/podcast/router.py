@@ -12,7 +12,7 @@ from api.story_writer.utils.auth import require_authenticated_user
 from api.story_writer.task_manager import task_manager
 
 # Import all handler routers
-from .handlers import projects, analysis, research, script, audio, images, video, avatar
+from .handlers import projects, analysis, research, script, audio, images, video, avatar, dubbing
 
 # Create main router
 router = APIRouter(prefix="/api/podcast", tags=["Podcast Maker"])
@@ -26,6 +26,7 @@ router.include_router(audio.router)
 router.include_router(images.router)
 router.include_router(video.router)
 router.include_router(avatar.router)
+router.include_router(dubbing.router)
 
 
 @router.get("/task/{task_id}/status")

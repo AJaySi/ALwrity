@@ -5,6 +5,7 @@ Handles scene animation endpoints using WaveSpeed Kling and InfiniteTalk.
 """
 
 import mimetypes
+from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote
 

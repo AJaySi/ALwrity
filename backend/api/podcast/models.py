@@ -7,6 +7,7 @@ All Pydantic request/response models for podcast endpoints.
 from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from enum import Enum
 
 
 class PodcastProjectResponse(BaseModel):
@@ -319,4 +320,100 @@ class PodcastCombineVideosResponse(BaseModel):
     task_id: str
     status: str
     message: str
+
+
+class AudioDubbingQuality(str, Enum):
+    LOW = "low"
+    HIGH = "high"
+    
+    @classmethod
+    def from_string(cls, value: str) -> "AudioDubbingQuality":
+        if value.lower() == "high":
+            return cls.HIGH
+        return cls.LOW
+
+
+class PodcastAudioDubRequest(BaseModel):
+    """Request model for audio dubbing."""
+    source_audio_url: str = Field(..., description="URL or path to source audio file")
+    source_language: Optional[str] = Field(None, description="Source language code (auto-detected if None)")
+    target_language: str = Field(..., description="Target language for dubbing")
+    quality: str = Field(default="low", description="Translation quality: low (DeepL) or high (WaveSpeed)")
+    voice_id: Optional[str] = Field(default="Wise_Woman", description="Voice ID for TTS")
+    speed: Optional[float] = Field(default=1.0, ge=0.5, le=2.0, description="Speech speed (0.5-2.0)")
+    emotion: Optional[str] = Field(default="happy", description="Emotion for TTS voice")
+    preserve_emotion: Optional[bool] = Field(default=True, description="Preserve emotional tone in translation")
+    use_voice_clone: Optional[bool] = Field(default=False, description="Use voice cloning to preserve original speaker's voice")
+    custom_voice_id: Optional[str] = Field(None, description="Custom name for the cloned voice")
+    voice_clone_accuracy: Optional[float] = Field(default=0.7, ge=0.1, le=1.0, description="Voice cloning accuracy (0.1-1.0)")
+
+
+class PodcastAudioDubResponse(BaseModel):
+    """Response model for audio dubbing task creation."""
+    task_id: str
+    status: str = "pending"
+    message: str = "Audio dubbing task created"
+
+
+class PodcastAudioDubResult(BaseModel):
+    """Response model for completed audio dubbing."""
+    dubbed_audio_url: str
+    dubbed_audio_filename: str
+    original_transcript: str
+    translated_transcript: str
+    source_language: str
+    target_language: str
+    voice_id: str
+    quality: str
+    duration_seconds: int
+    file_size: int
+    cost: float
+    task_id: str
+    status: str = "completed"
+    voice_clone_used: Optional[bool] = Field(default=False, description="Whether voice cloning was used")
+    cloned_voice_id: Optional[str] = Field(None, description="ID of the cloned voice if voice_clone_used=True")
+
+
+class PodcastAudioDubEstimateRequest(BaseModel):
+    """Request model for dubbing cost estimation."""
+    audio_duration_seconds: float = Field(..., description="Duration of source audio in seconds")
+    target_language: str = Field(..., description="Target language")
+    quality: str = Field(default="low", description="Translation quality")
+    use_voice_clone: Optional[bool] = Field(default=False, description="Include voice cloning cost")
+
+
+class PodcastAudioDubEstimateResponse(BaseModel):
+    """Response model for dubbing cost estimation."""
+    estimated_characters: int
+    translation_cost: float
+    tts_cost: float
+    voice_clone_cost: float = 0.0
+    total_cost: float
+    currency: str = "USD"
+
+
+class VoiceCloneRequest(BaseModel):
+    """Request model for voice cloning."""
+    source_audio_url: str = Field(..., description="URL or path to source audio file (10-60 seconds recommended)")
+    custom_voice_id: Optional[str] = Field(None, description="Custom name for the cloned voice")
+    accuracy: Optional[float] = Field(default=0.7, ge=0.1, le=1.0, description="Cloning accuracy (0.1-1.0)")
+    language_boost: Optional[str] = Field(None, description="Language to optimize the voice for")
+
+
+class VoiceCloneResponse(BaseModel):
+    """Response model for voice cloning."""
+    task_id: str
+    status: str = "pending"
+    message: str = "Voice cloning task created"
+
+
+class VoiceCloneResult(BaseModel):
+    """Response model for completed voice cloning."""
+    voice_id: str
+    voice_url: str
+    source_language: str
+    accuracy: float
+    file_size: int
+    task_id: str
+    status: str = "completed"
 
