@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import uuid
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from pathlib import Path
 from sqlalchemy.orm import Session
@@ -15,6 +15,11 @@ from pydantic import BaseModel, Field
 from services.llm_providers.main_image_generation import generate_image
 from services.llm_providers.main_image_editing import edit_image
 from services.llm_providers.main_text_generation import llm_text_gen
+from services.image_generation import (
+    extract_visual_data as _extract_visual_data,
+    get_model_recommendation,
+    build_visual_summary,
+)
 from utils.logger_utils import get_service_logger
 from middleware.auth_middleware import get_current_user
 from services.database import get_db
@@ -291,8 +296,8 @@ class PromptSuggestion(BaseModel):
 
 class ImagePromptSuggestRequest(BaseModel):
     provider: Optional[str] = Field(None, pattern="^(gemini|huggingface|stability|wavespeed)$")
-    model: Optional[str] = None  # Specific model (e.g., "qwen-image", "ideogram-v3-turbo")
-    image_type: Optional[str] = Field(None, pattern="^(realistic|chart|conceptual|diagram|illustration|background)$")
+    model: Optional[str] = None  # Specific model (e.g., "qwen-image", "ideogram-v3-turbo", "flux-2-flex", "glm-image")
+    image_type: Optional[str] = Field(None, pattern="^(realistic|chart|conceptual|diagram|illustration|background|infographic)$")
     title: Optional[str] = None
     section: Optional[Dict[str, Any]] = None
     research: Optional[Dict[str, Any]] = None
@@ -459,6 +464,150 @@ MODEL_SPECIFIC_GUIDANCE = {
                 "High contrast areas for text placement"
             ]
         }
+    },
+    "flux-2-flex": {
+        "text_overlay": {
+            "guidance": "FLUX 2 Flex excels at typography control and text rendering. Excellent for posters, memes, and designs requiring precise text placement.",
+            "best_practices": [
+                "Best for images requiring clear, readable text with precise placement",
+                "Superior typography control compared to other models",
+                "Can handle various text styles and sizes",
+                "Ideal for poster-style blog images with embedded headlines",
+                "Great for quote images and text-heavy designs"
+            ],
+            "negative_prompt_additions": "blurry text, distorted letters, low quality typography"
+        },
+        "realistic": {
+            "guidance": "Photorealistic generation with excellent typography integration. Text appears naturally within scenes.",
+            "best_practices": [
+                "Include typography as a natural part of the scene",
+                "Specify text style, size, and placement clearly",
+                "Use for realistic scenes with signage, labels, or text elements",
+                "Professional quality with consistent text rendering"
+            ]
+        },
+        "chart": {
+            "guidance": "Can render charts with text labels. Use simple chart designs with clear typography.",
+            "best_practices": [
+                "Simple bar charts, pie charts, or line graphs",
+                "Clear typography for labels and legends",
+                "Clean data visualization design",
+                "Avoid overly complex infographic layouts"
+            ]
+        },
+        "infographic": {
+            "guidance": "Excellent for infographic-style images with clear sections and typography. Multi-panel layouts work well.",
+            "best_practices": [
+                "Use for multi-section infographics with distinct areas",
+                "Clear typography placement in designated zones",
+                "Clean, organized layout with visual hierarchy",
+                "Professional infographic design with text integration"
+            ]
+        },
+        "conceptual": {
+            "guidance": "Conceptual imagery with typography support. Text can be integrated naturally into abstract designs.",
+            "best_practices": [
+                "Integrate text into conceptual designs as a visual element",
+                "Use typography to enhance conceptual messaging",
+                "Clear, readable text in abstract compositions"
+            ]
+        }
+    },
+    "glm-image": {
+        "text_overlay": {
+            "guidance": "GLM-Image excels at infographics, educational diagrams, and professional poster designs. Strong text rendering capabilities.",
+            "best_practices": [
+                "Best for educational content, infographics, and diagrams",
+                "Excellent for multi-panel layouts and structured designs",
+                "Good text rendering with clear typography",
+                "Professional infographic aesthetics",
+                "Strong for academic or professional blog images"
+            ],
+            "negative_prompt_additions": "watermarks, distorted text, low quality diagrams"
+        },
+        "realistic": {
+            "guidance": "Photorealistic generation with good quality. Professional presentation style.",
+            "best_practices": [
+                "Include professional lighting and composition",
+                "Use for polished, professional imagery",
+                "Quality descriptors improve output consistency"
+            ]
+        },
+        "chart": {
+            "guidance": "Excellent for data visualizations. Can render charts with clear labels and professional styling.",
+            "best_practices": [
+                "Professional chart designs with clear typography",
+                "Data visualizations with embedded labels",
+                "Clean infographic-style charts",
+                "Good for statistical blog content"
+            ]
+        },
+        "infographic": {
+            "guidance": "Best model choice for complex infographics. Multi-section layouts with clear visual hierarchy.",
+            "best_practices": [
+                "Use for comprehensive infographics with multiple data points",
+                "Clear section boundaries and visual hierarchy",
+                "Professional infographic aesthetic",
+                "Excellent for educational or how-to content",
+                "Multi-panel designs with distinct information areas"
+            ]
+        },
+        "diagram": {
+            "guidance": "Excellent for technical diagrams and process illustrations. Clear visual representation of complex information.",
+            "best_practices": [
+                "Use for process flows, architectural diagrams, technical illustrations",
+                "Clear visual hierarchy and labeling",
+                "Professional diagram aesthetics",
+                "Educational content visualization"
+            ]
+        },
+        "conceptual": {
+            "guidance": "Professional conceptual imagery. Good for abstract representations with clear messaging.",
+            "best_practices": [
+                "Clear visual metaphors for abstract concepts",
+                "Professional presentation style",
+                "Good for educational or explanatory content"
+            ]
+        }
+    },
+    # Default guidance for unknown models
+    "_default": {
+        "text_overlay": {
+            "guidance": "Design for text overlay areas. Create clean backgrounds with high-contrast safe zones for text placement.",
+            "best_practices": [
+                "Use designated text areas (top 20% or bottom 20%)",
+                "Create clean, uncluttered backgrounds",
+                "Avoid embedding text directly in the image",
+                "Design for text to be added as overlay"
+            ],
+            "negative_prompt_additions": "text artifacts, unreadable text, embedded words"
+        },
+        "conceptual": {
+            "guidance": "Focus on visual metaphors and abstract representations of the topic.",
+            "best_practices": [
+                "Use visual metaphors relevant to the content",
+                "Create simple, clear compositions",
+                "Avoid busy or cluttered designs"
+            ]
+        },
+        "chart": {
+            "guidance": "Use abstract data representations. Avoid actual charts with embedded text.",
+            "best_practices": [
+                "Create visual metaphors for data",
+                "Use shapes, colors, and patterns to represent information",
+                "Design with text overlay zones for labels"
+            ],
+            "warnings": ["Do not request actual charts with text - use abstract representations"]
+        },
+        "infographic": {
+            "guidance": "Create multi-section infographic layouts with clear visual hierarchy. Use text overlay zones for information.",
+            "best_practices": [
+                "Multi-panel designs with distinct sections",
+                "Clear visual hierarchy and organization",
+                "Design with text overlay zones for each section",
+                "Professional infographic aesthetic"
+            ]
+        }
     }
 }
 
@@ -471,70 +620,13 @@ def get_model_specific_guidance(model: Optional[str], image_type: Optional[str])
     model_lower = model.lower()
     image_type_lower = (image_type or "conceptual").lower()
     
-    # Get model guidance
-    model_guidance = MODEL_SPECIFIC_GUIDANCE.get(model_lower, {})
+    # Get model guidance (use _default for unknown models)
+    model_guidance = MODEL_SPECIFIC_GUIDANCE.get(model_lower, MODEL_SPECIFIC_GUIDANCE.get("_default", {}))
     
     # Get image type specific guidance
     type_guidance = model_guidance.get(image_type_lower, model_guidance.get("text_overlay", {}))
     
     return type_guidance
-
-
-def extract_visual_data(section: Dict[str, Any], research: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Intelligently extract visual-relevant data from section and research."""
-    visual_data = {
-        "visual_keywords": [],
-        "data_points": [],
-        "concepts": [],
-        "statistics": []
-    }
-    
-    # Extract from section
-    if section:
-        # Key points that are visualizable
-        key_points = section.get("key_points", []) or []
-        for point in key_points[:5]:
-            if isinstance(point, str):
-                # Look for numbers, percentages, comparisons
-                if any(char.isdigit() for char in point):
-                    visual_data["statistics"].append(point)
-                # Look for visual concepts
-                elif any(word in point.lower() for word in ["increase", "decrease", "growth", "trend", "pattern", "comparison"]):
-                    visual_data["data_points"].append(point)
-                else:
-                    visual_data["concepts"].append(point)
-        
-        # Subheadings that suggest visuals
-        subheadings = section.get("subheadings", []) or []
-        for subhead in subheadings[:3]:
-            if isinstance(subhead, str):
-                visual_data["concepts"].append(subhead)
-        
-        # Keywords
-        keywords = section.get("keywords", []) or []
-        visual_data["visual_keywords"].extend([str(k) for k in keywords[:8] if k])
-    
-    # Extract from research
-    if research:
-        # Key facts that are visualizable
-        key_facts = research.get("key_facts", []) or research.get("highlights", []) or []
-        for fact in key_facts[:3]:
-            if isinstance(fact, str):
-                if any(char.isdigit() for char in fact):
-                    visual_data["statistics"].append(fact)
-                else:
-                    visual_data["data_points"].append(fact)
-        
-        # Research insights
-        insights = research.get("insights", []) or research.get("summary", "")
-        if isinstance(insights, str) and insights:
-            # Extract key phrases
-            sentences = insights.split('.')[:3]
-            visual_data["concepts"].extend([s.strip() for s in sentences if s.strip()])
-        elif isinstance(insights, list):
-            visual_data["concepts"].extend([str(i) for i in insights[:3]])
-    
-    return visual_data
 
 
 @router.post("/suggest-prompts", response_model=ImagePromptSuggestResponse)
@@ -564,8 +656,18 @@ def suggest_prompts(
         industry = persona.get("industry", req.research.get("domain") if req.research else "your industry")
         tone = persona.get("tone", "professional, trustworthy")
         
-        # Extract visual-relevant data intelligently
-        visual_data = extract_visual_data(section, req.research)
+        # Extract visual-relevant data intelligently using the new module
+        visual_data = _extract_visual_data(section, req.research)
+
+        # Get model recommendation based on content type
+        model_recommendation = get_model_recommendation(visual_data)
+
+        # Build visual summary from extracted data
+        visual_summary = build_visual_summary(visual_data)
+
+        # Add model recommendation to visual summary if available
+        if model_recommendation:
+            visual_summary += model_recommendation
 
         schema = {
             "type": "object",
@@ -620,19 +722,6 @@ def suggest_prompts(
             if model_warnings:
                 provider_guidance += f"\n⚠️ WARNINGS:\n" + "\n".join([f"- {w}" for w in model_warnings])
 
-        # Build visual data summary from extracted data
-        visual_summary_parts = []
-        if visual_data["statistics"]:
-            visual_summary_parts.append(f"Key Statistics: {', '.join(visual_data['statistics'][:3])}")
-        if visual_data["data_points"]:
-            visual_summary_parts.append(f"Data Points: {', '.join(visual_data['data_points'][:3])}")
-        if visual_data["concepts"]:
-            visual_summary_parts.append(f"Visual Concepts: {', '.join(visual_data['concepts'][:5])}")
-        if visual_data["visual_keywords"]:
-            visual_summary_parts.append(f"Keywords: {', '.join(visual_data['visual_keywords'][:8])}")
-        
-        visual_summary = "\n".join(visual_summary_parts) if visual_summary_parts else ""
-
         best_practices = (
             "BLOG IMAGE BEST PRACTICES: Create images optimized for blog content, not social media posters. "
             "Focus on: data visualization elements (charts, graphs, infographics), clean layouts with designated text overlay areas, "
@@ -654,14 +743,15 @@ def suggest_prompts(
             else "Do not include on-image text, but still design with text overlay areas in mind for blog use."
         )
         
-        # Image type specific guidance
+        # Image type specific guidance (enhanced with infographic type)
         image_type_guidance = {
             "realistic": "Photorealistic style with professional photography quality. Include camera settings and lighting details.",
             "chart": "⚠️ IMPORTANT: Complex infographics are too difficult for current AI models. Create simple visual representations with designated text overlay areas instead. Use abstract data visualization elements, not actual charts with embedded text.",
             "conceptual": "Abstract or conceptual imagery that represents the topic visually. Clean compositions with text overlay zones.",
             "diagram": "Technical diagrams with simple, clear visual elements. Design for text overlay areas, not embedded labels.",
             "illustration": "Stylized illustrations that support the content. Professional, clean aesthetic suitable for blog use.",
-            "background": "Background images optimized for text overlays. Clean, uncluttered compositions with high-contrast text zones."
+            "background": "Background images optimized for text overlays. Clean, uncluttered compositions with high-contrast text zones.",
+            "infographic": "Multi-section infographic designs with clear visual hierarchy. Use designated areas for each data point or concept. Design with text overlay zones for information labels. Professional infographic aesthetics with clean, organized layouts."
         }.get(image_type, "General blog image guidance.")
 
         # Build comprehensive prompt with visual data and model-specific guidance

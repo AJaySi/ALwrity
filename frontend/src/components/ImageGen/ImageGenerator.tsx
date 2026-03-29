@@ -9,7 +9,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import { useImageGeneration, ImageGenerationRequest, fetchPromptSuggestions } from './useImageGeneration';
 
 type Provider = 'huggingface' | 'stability' | 'wavespeed';
-type ImageType = 'realistic' | 'chart' | 'conceptual' | 'diagram' | 'illustration' | 'background';
+type ImageType = 'realistic' | 'chart' | 'conceptual' | 'diagram' | 'illustration' | 'background' | 'infographic';
 
 interface ImageGeneratorProps {
   defaultProvider?: Provider;
