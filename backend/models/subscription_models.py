@@ -155,7 +155,7 @@ class APIUsageLog(Base):
     user_id = Column(String(100), nullable=False)
     
     # API Details
-    provider = Column(Enum(APIProvider), nullable=False)
+    provider = Column(Enum(APIProvider, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
     endpoint = Column(String(200), nullable=False)
     method = Column(String(10), nullable=False)
     model_used = Column(String(100), nullable=True)  # e.g., "gemini-2.5-flash"

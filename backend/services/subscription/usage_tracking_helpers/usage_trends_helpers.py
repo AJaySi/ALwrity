@@ -11,6 +11,26 @@ from sqlalchemy import func
 from models.subscription_models import APIProvider, APIUsageLog, UsageStatus, UsageSummary
 
 
+def _normalize_provider_name(provider_input: Any) -> str | None:
+    """Safely extract provider name from enum or string, handling both name and value formats."""
+    valid_providers = {'gemini', 'openai', 'anthropic', 'mistral', 'wavespeed', 
+                      'tavily', 'serper', 'metaphor', 'firecrawl', 'stability', 
+                      'exa', 'video', 'image_edit', 'audio'}
+    
+    try:
+        if hasattr(provider_input, "value"):
+            return provider_input.value
+        elif isinstance(provider_input, str):
+            name = provider_input.lower()
+            if "." in name:
+                name = name.split(".")[-1].lower()
+            return name
+        else:
+            return str(provider_input).lower()
+    except Exception:
+        return None
+
+
 def build_billing_periods(months: int) -> List[str]:
     """Build billing period keys (YYYY-MM) from oldest to newest."""
     end_date = datetime.now()
@@ -35,27 +55,31 @@ def query_usage_summaries(db: Any, user_id: str, periods: List[str]) -> Dict[str
 def self_heal_summaries_from_logs(db: Any, user_id: str, periods: List[str], summary_dict: Dict[str, Any]) -> None:
     """Backfill/create usage summaries from aggregated API usage logs."""
     try:
+        from sqlalchemy import cast, String
+        
         log_stats = (
             db.query(
                 APIUsageLog.billing_period,
-                APIUsageLog.provider,
+                cast(APIUsageLog.provider, String).label("provider"),
                 func.count(APIUsageLog.id).label("calls"),
                 func.sum(APIUsageLog.cost_total).label("cost"),
                 func.sum(APIUsageLog.tokens_total).label("tokens"),
             )
             .filter(APIUsageLog.user_id == user_id, APIUsageLog.billing_period.in_(periods))
-            .group_by(APIUsageLog.billing_period, APIUsageLog.provider)
+            .group_by(APIUsageLog.billing_period, cast(APIUsageLog.provider, String))
             .all()
         )
 
         log_data_by_period: Dict[str, Dict[str, Dict[str, float | int]]] = {}
-        for period, provider_enum, calls, cost, tokens in log_stats:
+        
+        for period, provider_str, calls, cost, tokens in log_stats:
             if period not in log_data_by_period:
                 log_data_by_period[period] = {}
 
-            provider_name = provider_enum.value if hasattr(provider_enum, "value") else str(provider_enum).lower()
-            if "." in provider_name:
-                provider_name = provider_name.split(".")[-1].lower()
+            provider_name = _normalize_provider_name(provider_str)
+            if not provider_name:
+                logger.warning(f"[UsageStats] Could not normalize provider: '{provider_str}', skipping")
+                continue
 
             if provider_name not in log_data_by_period[period]:
                 log_data_by_period[period][provider_name] = {"calls": 0, "cost": 0.0, "tokens": 0}

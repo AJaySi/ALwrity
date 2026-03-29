@@ -170,7 +170,7 @@ async def get_subscription_status(
             if getattr(subscription, 'auto_renew', False):
                 # advance period
                 try:
-                    from services.pricing_service import PricingService
+                    from services.subscription.pricing_service import PricingService
                     pricing = PricingService(db)
                     # reuse helper to ensure current
                     pricing._ensure_subscription_current(subscription)
@@ -245,7 +245,7 @@ async def get_subscription_status(
                     if subscription.current_period_end < now:
                         if getattr(subscription, 'auto_renew', False):
                             try:
-                                from services.pricing_service import PricingService
+                                from services.subscription.pricing_service import PricingService
                                 pricing = PricingService(db)
                                 pricing._ensure_subscription_current(subscription)
                             except Exception as e2:
