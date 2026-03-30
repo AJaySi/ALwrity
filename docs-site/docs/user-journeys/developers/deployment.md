@@ -105,7 +105,20 @@ JWT_SECRET_KEY=your_jwt_secret_key
 
 # Monitoring
 SENTRY_DSN=your_sentry_dsn
+
+# Podcast demo-mode switch (temporary testing flag)
+# Enable demo-only podcast behavior:
+PODCAST_ONLY_DEMO_MODE=true
+# Full restore to normal behavior:
+# PODCAST_ONLY_DEMO_MODE=false
+# (or leave PODCAST_ONLY_DEMO_MODE unset)
 ```
+
+### Release Checklist (Demo-Mode Safety)
+
+Before finalizing a release after demo testing, confirm:
+
+- [ ] `PODCAST_ONLY_DEMO_MODE` is unset (or explicitly `false`) in production deployment config.
 
 **Security Best Practices**
 - **Use Environment Variables**: Never hardcode sensitive data
