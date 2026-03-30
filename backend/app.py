@@ -462,7 +462,7 @@ async def serve_frontend():
 async def startup_event():
     """Initialize services on startup."""
     try:
-        startup_report = run_startup_health_routine()
+        startup_report = run_startup_health_routine(app)
         if startup_report.get("status") != "healthy":
             logger.error(f"Startup readiness finished with failures: {startup_report.get('errors', [])}")
 
