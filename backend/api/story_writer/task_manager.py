@@ -34,9 +34,14 @@ class TaskManager:
             del self.task_storage[task_id]
             logger.debug(f"[StoryWriter] Cleaned up old task: {task_id}")
     
-    def create_task(self, task_type: str = "story_generation") -> str:
+    def create_task(
+        self,
+        task_type: str = "story_generation",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid.uuid4())
+        task_metadata = metadata or {}
         
         self.task_storage[task_id] = {
             "status": "pending",
@@ -45,13 +50,14 @@ class TaskManager:
             "error": None,
             "progress_messages": [],
             "task_type": task_type,
-            "progress": 0.0
+            "progress": 0.0,
+            "metadata": task_metadata,
         }
         
         logger.info(f"[StoryWriter] Created task: {task_id} (type: {task_type})")
         return task_id
     
-    def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def get_task_status(self, task_id: str, requester_user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get the status of a task."""
         self.cleanup_old_tasks()
         
@@ -62,6 +68,15 @@ class TaskManager:
             return None
         
         task = self.task_storage[task_id]
+        metadata = task.get("metadata", {}) or {}
+        owner_user_id = metadata.get("owner_user_id")
+
+        if requester_user_id is not None and owner_user_id is not None and requester_user_id != owner_user_id:
+            logger.warning(
+                f"[StoryWriter] Task access denied for task {task_id}: requester does not match owner"
+            )
+            return None
+
         response = {
             "task_id": task_id,
             "status": task["status"],

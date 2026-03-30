@@ -222,7 +222,7 @@ def _execute_podcast_video_task(
         )
 
         # Verify the task status was updated correctly
-        updated_status = task_manager.get_task_status(task_id)
+        updated_status = task_manager.get_task_status(task_id, requester_user_id=user_id)
         logger.info(
             f"[Podcast] Task status after update: task_id={task_id}, status={updated_status.get('status') if updated_status else 'None'}, has_result={bool(updated_status.get('result') if updated_status else False)}, video_url={updated_status.get('result', {}).get('video_url') if updated_status else 'N/A'}"
         )
@@ -358,7 +358,10 @@ async def generate_podcast_video(
         logger.warning(f"[Podcast] Failed to extract auth token from headers: {e}")
 
     # Create async task
-    task_id = task_manager.create_task("podcast_video_generation")
+    task_id = task_manager.create_task(
+        "podcast_video_generation",
+        metadata={"owner_user_id": user_id},
+    )
     background_tasks.add_task(
         _execute_podcast_video_task,
         task_id=task_id,
@@ -488,7 +491,10 @@ async def combine_podcast_videos(
         raise HTTPException(status_code=400, detail="No scene videos provided")
     
     # Create async task
-    task_id = task_manager.create_task("podcast_combine_videos")
+    task_id = task_manager.create_task(
+        "podcast_combine_videos",
+        metadata={"owner_user_id": user_id},
+    )
     
     # Extract token for authenticated URL building
     auth_token = None

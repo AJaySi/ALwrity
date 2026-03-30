@@ -4,7 +4,7 @@ Podcast Maker API Router
 Main router that imports and registers all handler modules.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 
 from middleware.auth_middleware import get_current_user
@@ -32,5 +32,8 @@ router.include_router(dubbing.router)
 @router.get("/task/{task_id}/status")
 async def podcast_task_status(task_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Expose task status under podcast namespace (reuses shared task manager)."""
-    require_authenticated_user(current_user)
-    return task_manager.get_task_status(task_id)
+    user_id = require_authenticated_user(current_user)
+    task_status = task_manager.get_task_status(task_id, requester_user_id=user_id)
+    if not task_status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task_status
