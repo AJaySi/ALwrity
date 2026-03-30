@@ -29,16 +29,45 @@ from ..models import (
     VoiceCloneResult,
 )
 from services.dubbing import AudioDubbingService
+from ..constants import get_podcast_media_read_dirs, get_podcast_media_dir
 
 router = APIRouter()
 
 _dubbing_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="podcast_dubbing")
 
-DUBBED_AUDIO_DIR = Path(__file__).resolve().parents[3] / "data" / "media" / "dubbed_audio"
+_DUBBED_AUDIO_SUBDIR = Path("dubbed_audio")
+_LEGACY_DUBBED_AUDIO_DIR = Path(__file__).resolve().parents[3] / "data" / "media" / "dubbed_audio"
 
 
-def _ensure_dubbed_audio_dir():
-    DUBBED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+def _get_dubbed_audio_dir(user_id: str, *, ensure_exists: bool = False) -> Path:
+    """Resolve tenant-scoped dubbed audio directory under podcast audio media."""
+    base_dir = get_podcast_media_dir("audio", user_id, ensure_exists=ensure_exists)
+    dubbed_dir = (base_dir / _DUBBED_AUDIO_SUBDIR).resolve()
+    if ensure_exists:
+        dubbed_dir.mkdir(parents=True, exist_ok=True)
+    return dubbed_dir
+
+
+def _resolve_dubbed_audio_file(filename: str, user_id: str) -> Path:
+    """Resolve dubbed audio with traversal-safe checks (tenant first, then legacy fallback)."""
+    clean_filename = filename.split("?", 1)[0].strip()
+    if not clean_filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    candidate_dirs: list[Path] = []
+    for base_dir in get_podcast_media_read_dirs("audio", user_id):
+        candidate_dirs.append((base_dir / _DUBBED_AUDIO_SUBDIR).resolve())
+    candidate_dirs.append(_LEGACY_DUBBED_AUDIO_DIR.resolve())
+
+    for target_dir in candidate_dirs:
+        candidate = (target_dir / clean_filename).resolve()
+        if not str(candidate).startswith(str(target_dir)):
+            logger.error(f"[Podcast][Dubbing] Attempted path traversal: {filename}")
+            raise HTTPException(status_code=403, detail="Invalid audio path")
+        if candidate.exists():
+            return candidate
+
+    raise HTTPException(status_code=404, detail="Audio file not found")
 
 
 def _execute_dubbing_task(
@@ -62,9 +91,8 @@ def _execute_dubbing_task(
             message="Starting audio dubbing..."
         )
         
-        _ensure_dubbed_audio_dir()
-        
-        service = AudioDubbingService(output_dir=DUBBED_AUDIO_DIR)
+        dubbed_audio_dir = _get_dubbed_audio_dir(user_id, ensure_exists=True)
+        service = AudioDubbingService(output_dir=dubbed_audio_dir)
         
         def progress_callback(progress: float, message: str):
             task_manager.update_task_status(
@@ -136,9 +164,8 @@ def _execute_voice_clone_task(
             message="Starting voice cloning..."
         )
         
-        _ensure_dubbed_audio_dir()
-        
-        service = AudioDubbingService(output_dir=DUBBED_AUDIO_DIR)
+        dubbed_audio_dir = _get_dubbed_audio_dir(user_id, ensure_exists=True)
+        service = AudioDubbingService(output_dir=dubbed_audio_dir)
         
         task_manager.update_task_status(
             task_id, "processing", progress=30.0,
@@ -304,12 +331,7 @@ async def serve_dubbed_audio(
     """
     user_id = require_authenticated_user(current_user)
     
-    _ensure_dubbed_audio_dir()
-    
-    audio_path = DUBBED_AUDIO_DIR / filename
-    
-    if not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file not found")
+    audio_path = _resolve_dubbed_audio_file(filename, user_id)
     
     return FileResponse(
         path=audio_path,
@@ -330,7 +352,8 @@ async def estimate_dubbing_cost(
     """
     user_id = require_authenticated_user(current_user)
     
-    service = AudioDubbingService(output_dir=DUBBED_AUDIO_DIR)
+    dubbed_audio_dir = _get_dubbed_audio_dir(user_id, ensure_exists=True)
+    service = AudioDubbingService(output_dir=dubbed_audio_dir)
     
     cost_estimate = service.estimate_cost(
         audio_duration_seconds=request.audio_duration_seconds,
@@ -485,12 +508,12 @@ async def serve_voice_audio(
     """
     user_id = require_authenticated_user(current_user)
     
-    _ensure_dubbed_audio_dir()
-    
-    audio_path = DUBBED_AUDIO_DIR / filename
-    
-    if not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Voice audio file not found")
+    try:
+        audio_path = _resolve_dubbed_audio_file(filename, user_id)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Voice audio file not found") from exc
+        raise
     
     return FileResponse(
         path=audio_path,
