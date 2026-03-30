@@ -71,10 +71,13 @@ class UserAPIKeyContext:
         """Load API keys from database for specific user."""
         try:
             from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
-            from services.database import SessionLocal
+            from services.database import get_session_for_user
             
             integration_service = OnboardingDataIntegrationService()
-            db = SessionLocal()
+            db = get_session_for_user(user_id)
+            if not db:
+                logger.error(f"Failed to create DB session for user {user_id}")
+                return {}
             try:
                 integrated_data = integration_service.get_integrated_data_sync(user_id, db)
                 keys = integrated_data.get('api_keys_data', {})
@@ -153,4 +156,3 @@ def get_tavily_key(user_id: Optional[str] = None) -> Optional[str]:
 def get_copilotkit_key(user_id: Optional[str] = None) -> Optional[str]:
     """Get CopilotKit API key for user."""
     return UserAPIKeyContext.get_user_key(user_id, 'copilotkit')
-

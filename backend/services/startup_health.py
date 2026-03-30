@@ -15,6 +15,7 @@ from services.database import (
     init_database,
     default_engine,
 )
+from services.user_api_key_context import get_user_api_keys
 
 _REQUIRED_SCHEMA: Dict[str, List[str]] = {
     "onboarding_sessions": ["id", "user_id", "updated_at"],
@@ -144,6 +145,62 @@ def _check_db_access(checks: List[Dict[str, Any]], errors: List[str], warnings: 
     return candidate_user
 
 
+def _check_production_api_key_loading(
+    checks: List[Dict[str, Any]],
+    errors: List[str],
+    warnings: List[str],
+) -> None:
+    deploy_env = os.getenv("DEPLOY_ENV", "local").strip().lower()
+    if deploy_env == "local":
+        _record_check(checks, "production_api_key_loading", True, "skipped in local deploy mode")
+        return
+
+    test_tenant_id = os.getenv("ALWRITY_STARTUP_TEST_TENANT_ID", "").strip()
+    if not test_tenant_id:
+        message = (
+            "Missing ALWRITY_STARTUP_TEST_TENANT_ID for production API key startup check."
+        )
+        errors.append(message)
+        _record_check(checks, "production_api_key_loading", False, message)
+        return
+
+    try:
+        keys = get_user_api_keys(test_tenant_id)
+    except Exception as exc:
+        errors.append(
+            f"Failed to load API keys for startup test tenant '{test_tenant_id}': {exc}"
+        )
+        _record_check(checks, "production_api_key_loading", False, str(exc))
+        return
+
+    if not isinstance(keys, dict):
+        errors.append(
+            f"API key loader returned invalid payload type for startup test tenant '{test_tenant_id}'."
+        )
+        _record_check(checks, "production_api_key_loading", False, "invalid payload type")
+        return
+
+    non_empty_keys = [provider for provider, value in keys.items() if value]
+    if not non_empty_keys:
+        errors.append(
+            f"No API keys could be loaded for startup test tenant '{test_tenant_id}'."
+        )
+        _record_check(checks, "production_api_key_loading", False, "no non-empty keys loaded")
+        return
+
+    warning = None
+    if len(non_empty_keys) < len(keys):
+        warning = (
+            f"Startup test tenant '{test_tenant_id}' has {len(non_empty_keys)}/{len(keys)} non-empty API keys."
+        )
+        warnings.append(warning)
+
+    detail = f"loaded {len(non_empty_keys)} non-empty keys for tenant {test_tenant_id}"
+    if warning:
+        detail = f"{detail}; {warning}"
+    _record_check(checks, "production_api_key_loading", True, detail)
+
+
 def run_startup_health_routine() -> Dict[str, Any]:
     checks: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -152,6 +209,8 @@ def run_startup_health_routine() -> Dict[str, Any]:
     _check_workspace_root(checks, errors)
     if not errors:
         _check_db_access(checks, errors, warnings)
+    if not errors:
+        _check_production_api_key_loading(checks, errors, warnings)
 
     status = "healthy" if not errors else "failed"
     report = {
