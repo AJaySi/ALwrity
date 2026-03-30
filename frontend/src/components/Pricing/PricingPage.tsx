@@ -52,6 +52,27 @@ export interface SubscriptionPlan {
 }
 
 const PricingPage: React.FC = () => {
+  const pricingMode = (process.env.REACT_APP_PRICING_MODE || 'alpha').toLowerCase();
+  const isAlphaMode = pricingMode === 'alpha';
+  const tierPolicyByMode: Record<string, { visible: string[]; selectable: string[]; unavailableLabels: Record<string, string> }> = {
+    alpha: {
+      visible: ['free', 'basic', 'pro', 'enterprise'],
+      selectable: ['free', 'basic'],
+      unavailableLabels: { pro: 'Coming Soon', enterprise: 'Contact Sales' },
+    },
+    demo: {
+      visible: ['free', 'basic', 'pro', 'enterprise'],
+      selectable: ['free', 'basic', 'pro'],
+      unavailableLabels: { enterprise: 'Contact Sales' },
+    },
+    production: {
+      visible: ['free', 'basic', 'pro', 'enterprise'],
+      selectable: ['free', 'basic', 'pro'],
+      unavailableLabels: { enterprise: 'Contact Sales' },
+    },
+  };
+  const activeTierPolicy = tierPolicyByMode[pricingMode] || tierPolicyByMode.alpha;
+
   const navigate = useNavigate();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,9 +130,11 @@ const PricingPage: React.FC = () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/api/subscription/plans');
-      // Filter out any alpha plans and ensure we only show the 4 main tiers
+      // Filter out legacy alpha-named plans and enforce tier visibility policy.
       const filteredPlans = response.data.data.plans.filter(
-        (plan: SubscriptionPlan) => !plan.name.toLowerCase().includes('alpha')
+        (plan: SubscriptionPlan) =>
+          !plan.name.toLowerCase().includes('alpha') &&
+          activeTierPolicy.visible.includes(plan.tier)
       );
       setPlans(filteredPlans);
     } catch (err) {
@@ -144,12 +167,13 @@ const PricingPage: React.FC = () => {
       return;
     }
 
-    // For alpha testing, only allow Free and Basic plans (Pro features not ready)
-    // Exception: In podcast-only demo mode, allow all plans
-    const demoModeEnabled = isPodcastOnlyDemoMode();
-    if (!demoModeEnabled && plan.tier !== 'free' && plan.tier !== 'basic') {
+    if (!activeTierPolicy.selectable.includes(plan.tier)) {
       console.error('[PricingPage] Plan tier not available:', plan.tier);
-      setError('This plan is not available for alpha testing');
+      setError(
+        isAlphaMode
+          ? 'This plan is not available during alpha testing'
+          : 'This plan is currently not available for self-serve checkout'
+      );
       return;
     }
 
@@ -389,6 +413,8 @@ const PricingPage: React.FC = () => {
               yearlyBilling={yearlyBilling}
               selectedPlanId={selectedPlan}
               subscribing={subscribing}
+              canSelectPlan={activeTierPolicy.selectable.includes(plan.tier)}
+              unavailableLabel={activeTierPolicy.unavailableLabels[plan.tier]}
               onSelectPlan={setSelectedPlan}
               onSubscribe={handleSubscribe}
               openKnowMoreModal={openKnowMoreModal}
@@ -430,42 +456,48 @@ const PricingPage: React.FC = () => {
           }}>
             <Typography variant="h6" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Warning sx={{ color: 'warning.main' }} />
-              Alpha Testing Subscription
+              {isAlphaMode ? 'Alpha Testing Subscription' : 'Confirm Subscription'}
             </Typography>
-            
-            {/* Alpha Testing Notice */}
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                ⚠️ Alpha Testing Mode - No Payment Required
+
+            {isAlphaMode ? (
+              <>
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    ⚠️ Alpha Testing Mode - No Payment Required
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block' }}>
+                    Payment integration is coming soon. For now, subscriptions are activated without charge.
+                  </Typography>
+                </Alert>
+
+                <Typography variant="body1" sx={{ mb: 2 }}>
+                  Thank you for participating in our alpha testing! We&apos;re crediting this plan to your account.
+                </Typography>
+
+                <Box sx={{
+                  p: 2,
+                  mb: 3,
+                  bgcolor: 'info.lighter',
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: 'info.light'
+                }}>
+                  <Typography variant="body2" color="info.dark">
+                    <strong>Coming in Production:</strong>
+                  </Typography>
+                  <Typography variant="caption" color="info.dark" sx={{ display: 'block', mt: 0.5 }}>
+                    • Secure Stripe/PayPal payment processing<br />
+                    • Automatic renewal management<br />
+                    • Payment verification & receipts<br />
+                    • Upgrade/downgrade options
+                  </Typography>
+                </Box>
+              </>
+            ) : (
+              <Typography variant="body1" sx={{ mb: 3 }}>
+                Please confirm to continue with your selected subscription plan.
               </Typography>
-              <Typography variant="caption" sx={{ display: 'block' }}>
-                Payment integration is coming soon. For now, subscriptions are activated without charge.
-              </Typography>
-            </Alert>
-            
-            <Typography variant="body1" sx={{ mb: 2 }}>
-              Thank you for participating in our alpha testing! We're crediting the Basic plan ($29 value) to your account.
-            </Typography>
-            
-            {/* TODO: Payment Integration Notice */}
-            <Box sx={{ 
-              p: 2, 
-              mb: 3, 
-              bgcolor: 'info.lighter', 
-              borderRadius: 1, 
-              border: '1px solid',
-              borderColor: 'info.light'
-            }}>
-              <Typography variant="body2" color="info.dark">
-                <strong>Coming in Production:</strong>
-              </Typography>
-              <Typography variant="caption" color="info.dark" sx={{ display: 'block', mt: 0.5 }}>
-                • Secure Stripe/PayPal payment processing<br />
-                • Automatic renewal management<br />
-                • Payment verification & receipts<br />
-                • Upgrade/downgrade options
-              </Typography>
-            </Box>
+            )}
             
             {/* Note: Current behavior allows renewal without payment verification */}
             {/* This is intentional for alpha testing but will be secured in production */}
