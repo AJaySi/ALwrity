@@ -571,9 +571,38 @@ async def startup_event():
             logger.warning("⚠️ WIX_API_KEY not found in environment - Wix publishing may fail")
 
         logger.info("ALwrity backend started successfully")
+        
+        # Critical router mount assertions for podcast-only demo mode
+        _assert_router_mounted("subscription")
+        _assert_router_mounted("podcast")
     except Exception as e:
         logger.error(f"Error during startup: {e}")
         raise
+
+
+def _assert_router_mounted(router_name: str) -> None:
+    """Assert that a critical router is mounted. Fails startup if not found."""
+    from fastapi import routing
+    mounted_routes = [route.path for route in app.routes]
+    
+    # Check for router-specific paths
+    router_path_indicators = {
+        "subscription": ["/api/subscription/plans", "/api/subscription/preflight"],
+        "podcast": ["/api/podcast/projects", "/api/podcast/"],
+    }
+    
+    expected_paths = router_path_indicators.get(router_name, [])
+    found = any(path in mounted_routes for path in expected_paths)
+    
+    if found:
+        logger.info(f"✅ Critical router '{router_name}' is mounted")
+    else:
+        error_msg = f"❌ CRITICAL: Router '{router_name}' is NOT mounted! Expected paths: {expected_paths}"
+        logger.error(error_msg)
+        if PODCAST_ONLY_DEMO_MODE:
+            # In demo mode, podcast router MUST be mounted
+            if router_name == "podcast":
+                raise RuntimeError(error_msg)
 
 # Shutdown event
 @app.on_event("shutdown")

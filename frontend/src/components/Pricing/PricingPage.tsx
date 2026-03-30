@@ -145,7 +145,9 @@ const PricingPage: React.FC = () => {
     }
 
     // For alpha testing, only allow Free and Basic plans (Pro features not ready)
-    if (plan.tier !== 'free' && plan.tier !== 'basic') {
+    // Exception: In podcast-only demo mode, allow all plans
+    const demoModeEnabled = isPodcastOnlyDemoMode();
+    if (!demoModeEnabled && plan.tier !== 'free' && plan.tier !== 'basic') {
       console.error('[PricingPage] Plan tier not available:', plan.tier);
       setError('This plan is not available for alpha testing');
       return;
@@ -212,6 +214,12 @@ const PricingPage: React.FC = () => {
         if (response.data.url) {
           window.location.href = response.data.url;
           return;
+        }
+      } else {
+        // Stripe not configured - warn in demo mode
+        if (isPodcastOnlyDemoMode()) {
+          console.warn('[PricingPage] ⚠️ DEMO MODE WARNING: Stripe is not configured. Using legacy subscription API.');
+          // In demo mode without Stripe, we may want to skip actual subscription for testing
         }
       }
 
