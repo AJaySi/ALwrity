@@ -4,6 +4,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import { CopilotKit } from "@copilotkit/react-core";
 import { ClerkProvider, useAuth } from '@clerk/clerk-react';
 import "@copilotkit/react-ui/styles.css";
+import { shouldSkipOnboarding } from './utils/demoMode';
 import Wizard from './components/OnboardingWizard/Wizard';
 import MainDashboard from './components/MainDashboard/MainDashboard';
 import SEODashboard from './components/SEODashboard/SEODashboard';
@@ -406,6 +407,11 @@ const InitialRouteHandler: React.FC = () => {
 
   // 4. Has active subscription, check onboarding status
   if (!isOnboardingComplete) {
+    // In demo mode, skip onboarding and go directly to podcast-maker
+    if (shouldSkipOnboarding()) {
+      console.log('InitialRouteHandler: Demo mode - skipping onboarding → Podcast Maker');
+      return <Navigate to="/podcast-maker" replace />;
+    }
     console.log('InitialRouteHandler: Subscription active but onboarding incomplete → Onboarding');
     return <Navigate to="/onboarding" replace />;
   }

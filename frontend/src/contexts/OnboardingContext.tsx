@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { apiClient } from '../api/client';
+import { shouldSkipOnboarding } from '../utils/demoMode';
 
 /**
  * Onboarding Context
@@ -102,6 +103,13 @@ export const OnboardingProvider: React.FC<OnboardingProviderProps> = ({ children
       setLoading(true);
       setError(null);
       
+      // Skip onboarding fetch in demo mode - onboarding is disabled
+      if (shouldSkipOnboarding()) {
+        console.log('OnboardingContext: Skipping onboarding fetch in demo mode');
+        setLoading(false);
+        return;
+      }
+      
       console.log('OnboardingContext: Fetching onboarding data for authenticated user...');
       
       // Call batch init endpoint
@@ -159,6 +167,12 @@ export const OnboardingProvider: React.FC<OnboardingProviderProps> = ({ children
   // Separate effect to fetch data when explicitly requested
   const initializeOnboarding = useCallback(() => {
     if (isSignedIn && clerkLoaded) {
+      // Skip onboarding initialization in demo mode
+      if (shouldSkipOnboarding()) {
+        console.log('OnboardingContext: Skipping onboarding init in demo mode');
+        setLoading(false);
+        return;
+      }
       console.log('OnboardingContext: Initializing onboarding data...');
       fetchOnboardingData();
     }
