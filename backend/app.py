@@ -48,6 +48,22 @@ load_dotenv(backend_dir / '.env')  # backend/.env
 load_dotenv(project_root / '.env')  # root .env (fallback)
 load_dotenv()  # CWD .env (fallback)
 
+
+def _env_flag_enabled(*env_names: str) -> bool:
+    """Return True when any provided env var is set to a truthy value."""
+    truthy_values = {"1", "true", "yes", "on"}
+    for env_name in env_names:
+        value = os.getenv(env_name)
+        if value and value.strip().lower() in truthy_values:
+            return True
+    return False
+
+
+PODCAST_ONLY_DEMO_MODE = _env_flag_enabled(
+    "ALWRITY_PODCAST_ONLY_DEMO_MODE",
+    "PODCAST_ONLY_DEMO_MODE",
+)
+
 # Set up clean logging for end users
 from logging_config import setup_clean_logging
 setup_clean_logging()
@@ -182,6 +198,7 @@ health_checker = HealthChecker()
 rate_limiter = RateLimiter(window_seconds=60, max_requests=200)
 frontend_serving = FrontendServing(app)
 router_manager = RouterManager(app)
+router_group_status: Dict[str, Dict[str, Any]] = {}
 
 onboarding_manager = OnboardingManager(app)
 
@@ -206,7 +223,9 @@ app.middleware("http")(api_key_injection_middleware)
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    return health_checker.basic_health_check()
+    health_data = health_checker.basic_health_check()
+    health_data["podcast_only_demo_mode"] = PODCAST_ONLY_DEMO_MODE
+    return health_data
 
 @app.get("/health/database")
 async def database_health():
@@ -222,6 +241,7 @@ async def comprehensive_health():
 async def readiness(current_user: dict = Depends(get_current_user)):
     """Readiness check that validates tenant DB resolution/session under auth context."""
     return {
+        "podcast_only_demo_mode": PODCAST_ONLY_DEMO_MODE,
         "startup": get_startup_status(),
         "tenant": readiness_under_auth_context(current_user),
     }
@@ -250,7 +270,14 @@ async def frontend_status():
 @app.get("/api/routers/status")
 async def router_status():
     """Get router inclusion status."""
-    return router_manager.get_router_status()
+    status = router_manager.get_router_status()
+    status.update(
+        {
+            "podcast_only_demo_mode": PODCAST_ONLY_DEMO_MODE,
+            "router_groups": router_group_status,
+        }
+    )
+    return status
 
 # Onboarding management endpoints
 @app.get("/api/onboarding/status")
@@ -259,11 +286,31 @@ async def onboarding_status():
     return onboarding_manager.get_onboarding_status()
 
 # Include routers using modular utilities
-router_manager.include_core_routers()
-router_manager.include_optional_routers()
+if PODCAST_ONLY_DEMO_MODE:
+    router_group_status["modular_core"] = {
+        "mounted": False,
+        "reason": "Skipped in podcast-only demo mode",
+    }
+    router_group_status["modular_optional"] = {
+        "mounted": False,
+        "reason": "Skipped in podcast-only demo mode",
+    }
+else:
+    router_group_status["modular_core"] = {
+        "mounted": router_manager.include_core_routers(),
+        "reason": "Full mode",
+    }
+    router_group_status["modular_optional"] = {
+        "mounted": router_manager.include_optional_routers(),
+        "reason": "Full mode",
+    }
 
 # Include assets serving router (must be mounted to serve generated images)
 app.include_router(assets_serving_router)
+router_group_status["assets_serving"] = {
+    "mounted": True,
+    "reason": "Required for podcast media assets",
+}
 
 # SEO Dashboard endpoints
 @app.get("/api/seo-dashboard/data")
@@ -406,47 +453,71 @@ async def analyze_urls_ai_endpoint(request: AnalyzeURLsRequest, current_user: di
     return await analyze_urls_ai(request, current_user)
 
 # Include platform analytics router
-from routers.platform_analytics import router as platform_analytics_router
-app.include_router(platform_analytics_router)
-# Include Bing Analytics Storage router to expose storage-backed endpoints
-from routers.bing_analytics_storage import router as bing_analytics_storage_router
-app.include_router(bing_analytics_storage_router)
-app.include_router(images_router)
-app.include_router(image_studio_router)
-app.include_router(product_marketing_router)
-app.include_router(campaign_creator_router)
+if not PODCAST_ONLY_DEMO_MODE:
+    from routers.platform_analytics import router as platform_analytics_router
+    app.include_router(platform_analytics_router)
+    # Include Bing Analytics Storage router to expose storage-backed endpoints
+    from routers.bing_analytics_storage import router as bing_analytics_storage_router
+    app.include_router(bing_analytics_storage_router)
+    app.include_router(images_router)
+    app.include_router(image_studio_router)
+    app.include_router(product_marketing_router)
+    app.include_router(campaign_creator_router)
 
-# Include content assets router
-from api.content_assets.router import router as content_assets_router
-app.include_router(content_assets_router)
+    # Include content assets router
+    from api.content_assets.router import router as content_assets_router
+    app.include_router(content_assets_router)
+    router_group_status["platform_extensions"] = {
+        "mounted": True,
+        "reason": "Full mode",
+    }
+else:
+    router_group_status["platform_extensions"] = {
+        "mounted": False,
+        "reason": "Skipped in podcast-only demo mode",
+    }
 
 # Include Podcast Maker router
 from api.podcast.router import router as podcast_router
 app.include_router(podcast_router)
+router_group_status["podcast_maker"] = {
+    "mounted": True,
+    "reason": "Always mounted",
+}
 
-# Include YouTube Creator Studio router
-from api.youtube.router import router as youtube_router
-app.include_router(youtube_router, prefix="/api")
+if not PODCAST_ONLY_DEMO_MODE:
+    # Include YouTube Creator Studio router
+    from api.youtube.router import router as youtube_router
+    app.include_router(youtube_router, prefix="/api")
 
-# Include research configuration router
-app.include_router(research_config_router, prefix="/api/research", tags=["research"])
+    # Include research configuration router
+    app.include_router(research_config_router, prefix="/api/research", tags=["research"])
 
-# Include Research Engine router (standalone AI research module)
-from api.research.router import router as research_engine_router
-app.include_router(research_engine_router, tags=["Research Engine"])
+    # Include Research Engine router (standalone AI research module)
+    from api.research.router import router as research_engine_router
+    app.include_router(research_engine_router, tags=["Research Engine"])
 
-# Scheduler dashboard routes
-from api.scheduler_dashboard import router as scheduler_dashboard_router
-app.include_router(scheduler_dashboard_router)
-app.include_router(oauth_token_monitoring_router)
+    # Scheduler dashboard routes
+    from api.scheduler_dashboard import router as scheduler_dashboard_router
+    app.include_router(scheduler_dashboard_router)
+    app.include_router(oauth_token_monitoring_router)
 
-# Autonomous Agents API routes (Phase 3A)
-from api.agents_api import router as agents_router
-app.include_router(agents_router)
+    # Autonomous Agents API routes (Phase 3A)
+    from api.agents_api import router as agents_router
+    app.include_router(agents_router)
 
-# Today workflow routes
-from api.today_workflow import router as today_workflow_router
-app.include_router(today_workflow_router)
+    # Today workflow routes
+    from api.today_workflow import router as today_workflow_router
+    app.include_router(today_workflow_router)
+    router_group_status["advanced_workflows"] = {
+        "mounted": True,
+        "reason": "Full mode",
+    }
+else:
+    router_group_status["advanced_workflows"] = {
+        "mounted": False,
+        "reason": "Skipped in podcast-only demo mode",
+    }
 
 # Setup frontend serving using modular utilities
 frontend_serving.setup_frontend_serving()

@@ -160,6 +160,13 @@ from alwrity_utils import (
 def start_backend(enable_reload=False, production_mode=False):
     """Start the backend server."""
     print("🚀 Starting ALwrity Backend...")
+    podcast_only_demo_mode = os.getenv("ALWRITY_PODCAST_ONLY_DEMO_MODE", os.getenv("PODCAST_ONLY_DEMO_MODE", "false")).lower() in {"1", "true", "yes", "on"}
+
+    if podcast_only_demo_mode:
+        print("\n" + "=" * 60)
+        print("🎙️  PODCAST-ONLY DEMO MODE ACTIVE")
+        print("   Non-podcast router groups are intentionally skipped.")
+        print("=" * 60)
     
     # Set host based on environment and mode
     # Use 127.0.0.1 for local production testing on Windows
@@ -191,7 +198,6 @@ def start_backend(enable_reload=False, production_mode=False):
     
     print(f"   📍 Host: {host}")
     print(f"   🔌 Port: {port}")
-    print(f"   🔄 Reload: {reload}")
     print(f"   🔄 Reload: {reload}")
     
     try:
