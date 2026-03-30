@@ -160,6 +160,13 @@ from alwrity_utils import (
 def start_backend(enable_reload=False, production_mode=False):
     """Start the backend server."""
     print("🚀 Starting ALwrity Backend...")
+    podcast_only_demo_mode = os.getenv("ALWRITY_PODCAST_ONLY_DEMO_MODE", os.getenv("PODCAST_ONLY_DEMO_MODE", "false")).lower() in {"1", "true", "yes", "on"}
+
+    if podcast_only_demo_mode:
+        print("\n" + "=" * 60)
+        print("🎙️  PODCAST-ONLY DEMO MODE ACTIVE")
+        print("   Non-podcast router groups are intentionally skipped.")
+        print("=" * 60)
     
     # Set host based on environment and mode
     # Use 127.0.0.1 for local production testing on Windows
@@ -191,7 +198,6 @@ def start_backend(enable_reload=False, production_mode=False):
     
     print(f"   📍 Host: {host}")
     print(f"   🔌 Port: {port}")
-    print(f"   🔄 Reload: {reload}")
     print(f"   🔄 Reload: {reload}")
     
     try:
@@ -298,11 +304,6 @@ def main():
     parser.add_argument("--dev", action="store_true", help="Enable development mode (auto-reload)")
     parser.add_argument("--production", action="store_true", help="Enable production mode (optimized for deployment)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging for debugging")
-    parser.add_argument(
-        "--podcast-only-demo",
-        action="store_true",
-        help="Enable podcast-only demo mode (sets PODCAST_ONLY_DEMO_MODE=true before app startup)",
-    )
     args = parser.parse_args()
     
     # Determine mode
@@ -312,8 +313,6 @@ def main():
     
     # Set global verbose flag for utilities
     os.environ["ALWRITY_VERBOSE"] = "true" if verbose_mode else "false"
-    if args.podcast_only_demo:
-        os.environ["PODCAST_ONLY_DEMO_MODE"] = "true"
     
     print("[*] ALwrity Backend Server")
     print("=" * 40)
@@ -321,8 +320,6 @@ def main():
     print(f"Auto-reload: {'ENABLED' if enable_reload else 'DISABLED'}")
     if verbose_mode:
         print("Verbose logging: ENABLED")
-    if args.podcast_only_demo:
-        print("Podcast-only demo mode: ENABLED")
     print("=" * 40)
     
     # Check if we're in the right directory
