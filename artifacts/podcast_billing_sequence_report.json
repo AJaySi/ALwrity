@@ -1,0 +1,43 @@
+{
+  "preflight": {
+    "success": true,
+    "can_proceed": true,
+    "estimated_cost": 0.3
+  },
+  "operations": {
+    "analysis_title_suggestions": [
+      "AI Agents in 2026",
+      "Ship Faster with AI",
+      "Startup AI Playbook"
+    ],
+    "research_provider": "exa",
+    "research_cost": 0.015,
+    "video_task_status": "completed"
+  },
+  "dashboard_deltas": {
+    "total_calls_before": 1,
+    "total_calls_after": 5,
+    "delta_calls": 4,
+    "total_cost_before": 0.09,
+    "total_cost_after": 0.488,
+    "delta_cost": 0.398,
+    "projected_monthly_cost_before": 0.09,
+    "projected_monthly_cost_after": 0.49,
+    "delta_projected_monthly_cost": 0.4
+  },
+  "provider_cost_deltas": {
+    "exa": 0.005,
+    "huggingface": 0.003,
+    "wavespeed": 0.39
+  },
+  "acceptance": {
+    "passed": true,
+    "criteria": {
+      "preflight_success": true,
+      "usage_cost_incremented": true,
+      "usage_call_incremented": true,
+      "projection_incremented": true,
+      "provider_delta_present": true
+    }
+  }
+}
