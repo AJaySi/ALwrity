@@ -8,6 +8,7 @@ import {
 import SubscriptionExpiredModal from '../components/SubscriptionExpiredModal';
 import { saveNavigationState, getCurrentPhaseForTool } from '../utils/navigationState';
 import { showSubscriptionExpiredToast, showUsageLimitToast, showSubscriptionToast } from '../utils/toastNotifications';
+import { shouldSkipOnboarding } from '../utils/demoMode';
 
 export interface SubscriptionLimits {
   gemini_calls: number;
@@ -546,6 +547,26 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
 
   useEffect(() => {
     // Check subscription on mount
+    // In demo mode, skip subscription check and allow access
+    if (shouldSkipOnboarding()) {
+      console.log('SubscriptionContext: Demo mode - skipping subscription check');
+      // Set a mock subscription to allow access in demo mode
+      setSubscription({
+        id: 'demo-subscription',
+        plan: 'demo',
+        tier: 'demo',
+        active: true,
+        billing_cycle: 'monthly',
+        api_calls_used: 0,
+        api_calls_limit: 999999,
+        current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        features: [],
+        status: 'active',
+      });
+      setLoading(false);
+      return;
+    }
+    
     checkSubscription();
 
     // Set up periodic refresh (every 5 minutes)
