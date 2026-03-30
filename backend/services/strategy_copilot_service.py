@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -21,7 +22,7 @@ class StrategyCopilotService:
         """Generate data for a specific category."""
         try:
             # Get user onboarding data
-            user_id = 1  # TODO: Get from auth context
+            user_id = int(os.getenv("ALWRITY_FALLBACK_USER_ID", "0"))
             integrated_data = await self.onboarding_integration_service.process_onboarding_data(str(user_id), self.db)
             onboarding_data = integrated_data.get('canonical_profile', {})
             
@@ -81,7 +82,7 @@ class StrategyCopilotService:
         """Analyze complete strategy for completeness and coherence."""
         try:
             # Get user data for context
-            user_id = 1  # TODO: Get from auth context
+            user_id = int(os.getenv("ALWRITY_FALLBACK_USER_ID", "0"))
             integrated_data = await self.onboarding_integration_service.process_onboarding_data(str(user_id), self.db)
             onboarding_data = integrated_data.get('canonical_profile', {})
             
@@ -118,7 +119,7 @@ class StrategyCopilotService:
             field_definition = self._get_field_definition(field_id)
             
             # Get user data
-            user_id = 1  # TODO: Get from auth context
+            user_id = int(os.getenv("ALWRITY_FALLBACK_USER_ID", "0"))
             # Use SSOT
             integrated_data = await self.onboarding_integration_service.process_onboarding_data(str(user_id), self.db)
             onboarding_data = integrated_data.get('canonical_profile', {})

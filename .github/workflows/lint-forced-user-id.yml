@@ -1,0 +1,23 @@
+name: Lint Forced User ID Patterns
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lint-forced-user-id:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check for forced/hardcoded user_id patterns
+        run: python backend/scripts/check_forced_user_id_patterns.py

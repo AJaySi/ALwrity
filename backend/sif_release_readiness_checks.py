@@ -120,6 +120,15 @@ class SIFReleaseReadinessTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(validation["is_contextual"])
         self.assertEqual(validation["tasks_below_min_evidence"], 1)
 
+
+    def test_demo_release_flag_guards_sensitive_routers(self):
+        source = Path("backend/alwrity_utils/router_manager.py").read_text()
+        self.assertIn("ALWRITY_DEMO_RELEASE", source)
+        self.assertIn("Skipping facebook_writer router in demo-release mode", source)
+        self.assertIn("Skipping linkedin router in demo-release mode", source)
+        self.assertIn("Skipping linkedin_image router in demo-release mode", source)
+        self.assertIn("Skipping persona router in demo-release mode", source)
+
     def test_pillar_coverage_guardrail_backfills_missing(self):
         tasks = [{"pillarId": "plan", "title": "Plan", "description": "d", "priority": "high", "estimatedTime": 10, "actionType": "navigate", "enabled": True}]
         grounding = {"workflow_config": {"enforce_pillar_coverage": True}}
