@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from loguru import logger
 from sqlalchemy import inspect, text
 
@@ -47,6 +49,60 @@ def should_fail_fast() -> bool:
 
 def _record_check(checks: List[Dict[str, Any]], name: str, ok: bool, detail: str) -> None:
     checks.append({"name": name, "ok": ok, "detail": detail})
+
+
+def _is_demo_mode() -> bool:
+    app_env = os.getenv("APP_ENV", os.getenv("ENV", os.getenv("DEPLOY_ENV", ""))).strip().lower()
+    if app_env == "demo":
+        return True
+    return _env_true("ALWRITY_DEMO_MODE", default=False)
+
+
+def _check_required_demo_routes(
+    app: Optional[FastAPI],
+    checks: List[Dict[str, Any]],
+    errors: List[str],
+) -> None:
+    if not _is_demo_mode():
+        _record_check(
+            checks,
+            "demo_required_routes",
+            True,
+            "Skipped (not in demo mode). Set APP_ENV=demo or ALWRITY_DEMO_MODE=true to enforce.",
+        )
+        return
+
+    if app is None:
+        errors.append(
+            "Demo startup route check could not run because FastAPI app context was not provided to startup health routine."
+        )
+        _record_check(checks, "demo_required_routes_context", False, "missing app context")
+        return
+
+    required_routes = {
+        "/api/subscription/plans": "GET",
+        "/api/podcast/projects": "GET",
+    }
+    available_routes = {
+        (route.path, method)
+        for route in app.router.routes
+        if isinstance(route, APIRoute)
+        for method in route.methods
+    }
+
+    missing: List[str] = []
+    for path, method in required_routes.items():
+        if (path, method) in available_routes:
+            _record_check(checks, f"demo_route_{path}_{method}", True, "route registered")
+        else:
+            missing.append(f"{method} {path}")
+            _record_check(checks, f"demo_route_{path}_{method}", False, "route missing")
+
+    if missing:
+        errors.append(
+            "Demo mode startup check failed. Missing required API endpoints: "
+            f"{', '.join(missing)}. Ensure subscription and podcast routers are imported and included during app setup."
+        )
 
 
 def _check_workspace_root(checks: List[Dict[str, Any]], errors: List[str]) -> None:
@@ -144,7 +200,7 @@ def _check_db_access(checks: List[Dict[str, Any]], errors: List[str], warnings: 
     return candidate_user
 
 
-def run_startup_health_routine() -> Dict[str, Any]:
+def run_startup_health_routine(app: Optional[FastAPI] = None) -> Dict[str, Any]:
     checks: List[Dict[str, Any]] = []
     errors: List[str] = []
     warnings: List[str] = []
@@ -152,6 +208,7 @@ def run_startup_health_routine() -> Dict[str, Any]:
     _check_workspace_root(checks, errors)
     if not errors:
         _check_db_access(checks, errors, warnings)
+    _check_required_demo_routes(app, checks, errors)
 
     status = "healthy" if not errors else "failed"
     report = {
