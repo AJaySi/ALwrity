@@ -289,7 +289,10 @@ if not PODCAST_ONLY_DEMO_MODE:
     router_manager.include_optional_routers()
 else:
     logger.info("PODCAST_ONLY_DEMO_MODE enabled: including only podcast and subscription feature routers.")
-    app.include_router(subscription_router)
+    router_manager.include_router_safely(subscription_router, "subscription")
+# Safety net: keep subscription routes available even if core inclusion flow changes
+# in special modes (e.g., demo mode). De-dup is handled by RouterManager.
+router_manager.include_router_safely(subscription_router, "subscription")
 
 # Include assets serving router (must be mounted to serve generated images)
 app.include_router(assets_serving_router)
