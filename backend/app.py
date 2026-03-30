@@ -48,6 +48,13 @@ load_dotenv(backend_dir / '.env')  # backend/.env
 load_dotenv(project_root / '.env')  # root .env (fallback)
 load_dotenv()  # CWD .env (fallback)
 
+PODCAST_ONLY_DEMO_MODE = os.getenv("PODCAST_ONLY_DEMO_MODE", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
 # Set up clean logging for end users
 from logging_config import setup_clean_logging
 setup_clean_logging()
@@ -183,7 +190,9 @@ rate_limiter = RateLimiter(window_seconds=60, max_requests=200)
 frontend_serving = FrontendServing(app)
 router_manager = RouterManager(app)
 
-onboarding_manager = OnboardingManager(app)
+onboarding_manager = None
+if not PODCAST_ONLY_DEMO_MODE:
+    onboarding_manager = OnboardingManager(app)
 
 # Middleware Order (FastAPI executes in REVERSE order of registration - LIFO):
 # Registration order:  1. Monitoring  2. Rate Limit  3. API Key Injection
@@ -255,7 +264,14 @@ async def router_status():
 # Onboarding management endpoints
 @app.get("/api/onboarding/status")
 async def onboarding_status():
-    """Get onboarding manager status."""
+    """Get onboarding manager status (or demo-mode disabled state)."""
+    if PODCAST_ONLY_DEMO_MODE:
+        return {
+            "enabled": False,
+            "status": "disabled",
+            "message": "Onboarding is disabled for podcast-only demo mode.",
+            "demo_mode": "podcast_only",
+        }
     return onboarding_manager.get_onboarding_status()
 
 # Include routers using modular utilities
