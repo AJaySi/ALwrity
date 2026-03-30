@@ -16,15 +16,22 @@ class RouterManager:
         self.app = app
         self.included_routers = []
         self.failed_routers = []
+        self._included_router_names = set()
     
     def include_router_safely(self, router, router_name: str = None) -> bool:
         """Include a router safely with error handling."""
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+        router_name = router_name or getattr(router, 'prefix', 'unknown')
+
+        if router_name in self._included_router_names:
+            if verbose:
+                logger.info(f"↩️ Router already included, skipping duplicate: {router_name}")
+            return True
 
         try:
             self.app.include_router(router)
-            router_name = router_name or getattr(router, 'prefix', 'unknown')
             self.included_routers.append(router_name)
+            self._included_router_names.add(router_name)
             if verbose:
                 logger.info(f"✅ Router included successfully: {router_name}")
             return True
@@ -40,18 +47,20 @@ class RouterManager:
         # Import os locally to avoid UnboundLocalError if it's shadowed
         import os
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+        demo_mode = os.getenv("ALWRITY_DEMO_MODE", "false").lower() == "true"
 
         try:
             if verbose:
-                logger.info("Including core routers...")
+                logger.info(f"Including core routers (demo_mode={demo_mode})...")
+
+            # Subscription router MUST always be included (including demo mode) so
+            # payment/preflight/subscription endpoints remain available.
+            from api.subscription import router as subscription_router
+            self.include_router_safely(subscription_router, "subscription")
 
             # Component logic router
             from api.component_logic import router as component_logic_router
             self.include_router_safely(component_logic_router, "component_logic")
-            
-            # Subscription router
-            from api.subscription import router as subscription_router
-            self.include_router_safely(subscription_router, "subscription")
             
             # Step 3 Research router (core onboarding functionality)
             from api.onboarding_utils.step3_routes import router as step3_research_router
