@@ -69,6 +69,8 @@ interface PlanCardProps {
   yearlyBilling: boolean;
   selectedPlanId: number | null;
   subscribing: boolean;
+  canSelectPlan: boolean;
+  unavailableLabel?: string;
   onSelectPlan: (planId: number) => void;
   onSubscribe: (planId: number) => void;
   openKnowMoreModal: (title: string, content: React.ReactNode) => void;
@@ -79,6 +81,8 @@ const PlanCard: React.FC<PlanCardProps> = ({
   yearlyBilling,
   selectedPlanId,
   subscribing,
+  canSelectPlan,
+  unavailableLabel,
   onSelectPlan,
   onSubscribe,
   openKnowMoreModal,
@@ -909,13 +913,9 @@ const PlanCard: React.FC<PlanCardProps> = ({
       </CardContent>
 
       <CardActions sx={{ justifyContent: 'center', pb: 3, flexDirection: 'column', gap: 1 }}>
-        {plan.tier === 'pro' ? (
+        {!canSelectPlan ? (
           <Button variant="outlined" size="large" fullWidth disabled sx={{ mb: 1 }}>
-            Coming Soon
-          </Button>
-        ) : plan.tier === 'enterprise' ? (
-          <Button variant="outlined" size="large" fullWidth disabled sx={{ mb: 1 }}>
-            Contact Sales
+            {unavailableLabel || 'Unavailable'}
           </Button>
         ) : (
           <>
@@ -951,4 +951,3 @@ const PlanCard: React.FC<PlanCardProps> = ({
 };
 
 export default PlanCard;
-
