@@ -16,6 +16,10 @@ REQUIRED_STRIPE_PLAN_KEYS = {
 }
 
 
+def _is_truthy_env(var_name: str) -> bool:
+    return os.getenv(var_name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _detect_stripe_mode() -> str:
     configured_mode = os.getenv("STRIPE_MODE", "").strip().lower()
     if configured_mode in {"test", "live"}:
@@ -98,7 +102,16 @@ class StripeService:
         self.db = db
         self.api_key = os.getenv("STRIPE_SECRET_KEY")
         self.webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+        self.require_stripe_checkout = _is_truthy_env("REQUIRE_STRIPE_CHECKOUT")
         if not self.api_key:
+            if self.require_stripe_checkout:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "REQUIRE_STRIPE_CHECKOUT=true but STRIPE_SECRET_KEY is missing. "
+                        "Configure STRIPE_SECRET_KEY to enable Stripe checkout."
+                    ),
+                )
             logger.warning("STRIPE_SECRET_KEY is not set. Stripe integration will not work.")
         else:
             stripe.api_key = self.api_key
