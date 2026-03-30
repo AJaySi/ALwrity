@@ -203,7 +203,10 @@ async def create_audio_dubbing_task(
     """
     user_id = require_authenticated_user(current_user)
     
-    task_id = task_manager.create_task("audio_dubbing")
+    task_id = task_manager.create_task(
+        "audio_dubbing",
+        metadata={"owner_user_id": user_id},
+    )
     
     background_tasks.add_task(
         _execute_dubbing_task,
@@ -240,7 +243,7 @@ async def get_dubbing_result(
     """
     user_id = require_authenticated_user(current_user)
     
-    task_status = task_manager.get_task_status(task_id)
+    task_status = task_manager.get_task_status(task_id, requester_user_id=user_id)
     
     if not task_status:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -403,7 +406,10 @@ async def create_voice_clone_task(
     """
     user_id = require_authenticated_user(current_user)
     
-    task_id = task_manager.create_task("voice_clone")
+    task_id = task_manager.create_task(
+        "voice_clone",
+        metadata={"owner_user_id": user_id},
+    )
     
     background_tasks.add_task(
         _execute_voice_clone_task,
@@ -434,7 +440,7 @@ async def get_voice_clone_result(
     """
     user_id = require_authenticated_user(current_user)
     
-    task_status = task_manager.get_task_status(task_id)
+    task_status = task_manager.get_task_status(task_id, requester_user_id=user_id)
     
     if not task_status:
         raise HTTPException(status_code=404, detail="Task not found")
