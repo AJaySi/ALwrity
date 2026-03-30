@@ -72,6 +72,39 @@ const PricingPage: React.FC = () => {
     fetchPlans();
   }, []);
 
+  const isPodcastOnlyDemoMode = () => {
+    const appMode = (localStorage.getItem('app_mode') || '').toLowerCase();
+    const demoMode = (localStorage.getItem('demo_mode') || '').toLowerCase();
+    const podcastOnlyDemoMode = (localStorage.getItem('podcast_only_demo_mode') || '').toLowerCase();
+    const envAppMode = (process.env.REACT_APP_APP_MODE || '').toLowerCase();
+    const envDemoMode = (process.env.REACT_APP_DEMO_MODE || '').toLowerCase();
+
+    return (
+      podcastOnlyDemoMode === 'true' ||
+      appMode === 'podcast-only' ||
+      demoMode === 'podcast-only' ||
+      envAppMode === 'podcast-only' ||
+      envDemoMode === 'podcast-only'
+    );
+  };
+
+  const redirectAfterSubscription = () => {
+    // In podcast-only demo mode, always force users into podcast flow.
+    // Never send demo users to onboarding.
+    if (isPodcastOnlyDemoMode()) {
+      navigate('/podcast-maker');
+      return;
+    }
+
+    // Full mode keeps existing onboarding redirect behavior.
+    const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
+    if (onboardingComplete) {
+      navigate('/dashboard');
+    } else {
+      navigate('/onboarding');
+    }
+  };
+
   const fetchPlans = async () => {
     try {
       setLoading(true);
@@ -133,14 +166,7 @@ const PricingPage: React.FC = () => {
         // Refresh subscription status
         window.dispatchEvent(new CustomEvent('subscription-updated'));
 
-        // After subscription, check if onboarding is complete
-        // If not complete, redirect to onboarding; otherwise to dashboard
-        const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
-        if (onboardingComplete) {
-          navigate('/dashboard');
-        } else {
-          navigate('/onboarding');
-        }
+        redirectAfterSubscription();
       } catch (err) {
         console.error('Error subscribing:', err);
         setError('Failed to process subscription');
@@ -240,10 +266,13 @@ const PricingPage: React.FC = () => {
       setTimeout(() => {
         clearInterval(countdownInterval);
         
-        // After subscription, check if onboarding is complete
-        // If not complete, redirect to onboarding; otherwise to dashboard
-        const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
-        if (onboardingComplete) {
+        // In podcast-only demo mode, always route users to podcast flow.
+        if (isPodcastOnlyDemoMode()) {
+          navigate('/podcast-maker');
+        } else {
+          const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
+
+          if (onboardingComplete) {
           // Restore navigation state (path, phase, tool) if available
           const navState = restoreNavigationState();
           
@@ -266,7 +295,8 @@ const PricingPage: React.FC = () => {
             }
           }
         } else {
-          navigate('/onboarding');
+            navigate('/onboarding');
+          }
         }
       }, 3000);
     } catch (err) {
