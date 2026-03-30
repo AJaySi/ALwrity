@@ -23,6 +23,11 @@ class MonitoringDataService:
     def __init__(self, db_session: Session):
         self.db = db_session
     
+
+    def _resolve_strategy_user_id(self, strategy_id: int) -> str:
+        strategy = self.db.query(EnhancedContentStrategy).filter(EnhancedContentStrategy.id == strategy_id).first()
+        return str(getattr(strategy, "user_id", "0") or "0")
+
     async def save_monitoring_data(self, strategy_id: int, monitoring_plan: Dict[str, Any]) -> bool:
         """Save monitoring plan and tasks to database."""
         try:
@@ -65,19 +70,22 @@ class MonitoringDataService:
                 
                 self.db.add(task)
             
+            strategy_user_id = self._resolve_strategy_user_id(strategy_id)
+
             # Save activation status
             activation_status = StrategyActivationStatus(
                 strategy_id=strategy_id,
-                user_id=1,  # Default user ID
+                user_id=strategy_user_id,
                 activation_date=datetime.utcnow(),
                 status='active'
             )
             self.db.add(activation_status)
             
             # Save initial performance metrics
+            strategy_user_id = self._resolve_strategy_user_id(strategy_id)
             performance_metrics = StrategyPerformanceMetrics(
                 strategy_id=strategy_id,
-                user_id=1,  # Default user ID
+                user_id=strategy_user_id,
                 metric_date=datetime.utcnow(),
                 data_source='monitoring_plan',
                 confidence_score=85  # High confidence for monitoring plan data
@@ -341,10 +349,11 @@ class MonitoringDataService:
         """Update performance metrics for a strategy."""
         try:
             logger.info(f"Updating performance metrics for strategy {strategy_id}")
+            strategy_user_id = self._resolve_strategy_user_id(strategy_id)
             
             performance_metrics = StrategyPerformanceMetrics(
                 strategy_id=strategy_id,
-                user_id=1,  # Default user ID
+                user_id=strategy_user_id,
                 metric_date=datetime.utcnow(),
                 traffic_growth_percentage=metrics.get('traffic_growth'),
                 engagement_rate_percentage=metrics.get('engagement_rate'),

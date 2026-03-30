@@ -1,3 +1,4 @@
+import os
 """Facebook Story generation service."""
 
 from typing import Dict, Any, List
@@ -30,8 +31,7 @@ class FacebookStoryService(FacebookWriterBaseService):
             actual_tone = request.custom_tone if request.story_tone.value == "Custom" else request.story_tone.value
             
             # Get persona data for enhanced content generation
-            # Beta testing: Force user_id=1 for all requests
-            user_id = 1
+            user_id = int(os.getenv("ALWRITY_FALLBACK_USER_ID", "0"))
             persona_data = self._get_persona_data(user_id)
             
             # Build the prompt

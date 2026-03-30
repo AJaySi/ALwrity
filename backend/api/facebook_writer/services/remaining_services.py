@@ -1,3 +1,4 @@
+import os
 """Remaining Facebook Writer services - placeholder implementations."""
 
 from typing import Dict, Any, List
@@ -16,8 +17,7 @@ class FacebookReelService(FacebookWriterBaseService):
             actual_style = request.custom_style if request.reel_style.value == "Custom" else request.reel_style.value
             
             # Get persona data for enhanced content generation
-            # Beta testing: Force user_id=1 for all requests
-            user_id = 1
+            user_id = int(os.getenv("ALWRITY_FALLBACK_USER_ID", "0"))
             persona_data = self._get_persona_data(user_id)
             
             base_prompt = f"""

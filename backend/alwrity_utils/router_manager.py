@@ -17,6 +17,11 @@ class RouterManager:
         self.included_routers = []
         self.failed_routers = []
         self._included_router_names = set()
+
+    @staticmethod
+    def _demo_release_mode_enabled() -> bool:
+        """Return True when demo-release safety mode is enabled."""
+        return os.getenv("ALWRITY_DEMO_RELEASE", "false").lower() in {"1", "true", "yes", "on"}
     
     def include_router_safely(self, router, router_name: str = None) -> bool:
         """Include a router safely with error handling."""
@@ -97,16 +102,27 @@ class RouterManager:
             from routers.seo_tools import router as seo_tools_router
             self.include_router_safely(seo_tools_router, "seo_tools")
             
+            demo_release_mode = self._demo_release_mode_enabled()
+
             # Facebook Writer router
-            from api.facebook_writer.routers import facebook_router
-            self.include_router_safely(facebook_router, "facebook_writer")
+            if demo_release_mode:
+                logger.info("⏭️ Skipping facebook_writer router in demo-release mode")
+            else:
+                from api.facebook_writer.routers import facebook_router
+                self.include_router_safely(facebook_router, "facebook_writer")
             
             # LinkedIn routers
-            from routers.linkedin import router as linkedin_router
-            self.include_router_safely(linkedin_router, "linkedin")
+            if demo_release_mode:
+                logger.info("⏭️ Skipping linkedin router in demo-release mode")
+            else:
+                from routers.linkedin import router as linkedin_router
+                self.include_router_safely(linkedin_router, "linkedin")
 
-            from api.linkedin_image_generation import router as linkedin_image_router
-            self.include_router_safely(linkedin_image_router, "linkedin_image")
+            if demo_release_mode:
+                logger.info("⏭️ Skipping linkedin_image router in demo-release mode")
+            else:
+                from api.linkedin_image_generation import router as linkedin_image_router
+                self.include_router_safely(linkedin_image_router, "linkedin_image")
             
             # Brainstorm router
             from api.brainstorm import router as brainstorm_router
@@ -210,8 +226,11 @@ class RouterManager:
             
             # Persona router
             try:
-                from api.persona_routes import router as persona_router
-                self.include_router_safely(persona_router, "persona")
+                if self._demo_release_mode_enabled():
+                    logger.info("⏭️ Skipping persona router in demo-release mode")
+                else:
+                    from api.persona_routes import router as persona_router
+                    self.include_router_safely(persona_router, "persona")
             except Exception as e:
                 logger.warning(f"Persona router not mounted: {e}")
             

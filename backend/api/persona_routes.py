@@ -94,36 +94,36 @@ async def generate_platform_persona_endpoint(
 async def update_persona_endpoint(
     persona_id: int,
     update_data: Dict[str, Any],
-    user_id: int = Query(..., description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Update an existing persona."""
-    # Beta testing: Force user_id=1 for all requests
-    return await update_persona(1, persona_id, update_data)
+    user_id = int(current_user.get("id"))
+    return await update_persona(user_id, persona_id, update_data)
 
 @router.delete("/{persona_id}")
 async def delete_persona_endpoint(
     persona_id: int,
-    user_id: int = Query(..., description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Delete a persona."""
-    # Beta testing: Force user_id=1 for all requests
-    return await delete_persona(1, persona_id)
+    user_id = int(current_user.get("id"))
+    return await delete_persona(user_id, persona_id)
 
 @router.get("/check/readiness")
 async def check_persona_readiness_endpoint(
-    user_id: int = Query(1, description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Check if user has sufficient data for persona generation."""
-    # Beta testing: Force user_id=1 for all requests
-    return await validate_persona_generation_readiness(1)
+    user_id = int(current_user.get("id"))
+    return await validate_persona_generation_readiness(user_id)
 
 @router.get("/preview/generate")
 async def generate_preview_endpoint(
-    user_id: int = Query(1, description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Generate a preview of the writing persona without saving."""
-    # Beta testing: Force user_id=1 for all requests
-    return await generate_persona_preview(1)
+    user_id = int(current_user.get("id"))
+    return await generate_persona_preview(user_id)
 
 @router.get("/platforms/supported")
 async def get_supported_platforms_endpoint():
@@ -160,12 +160,12 @@ async def optimize_facebook_persona_endpoint(
 
 @router.post("/generate-content")
 async def generate_content_with_persona_endpoint(
-    request: Dict[str, Any]
+    request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Generate content using persona replication engine."""
     try:
-        # Beta testing: Force user_id=1 for all requests
-        user_id = 1
+        user_id = int(current_user.get("id"))
         platform = request.get("platform")
         content_request = request.get("content_request")
         content_type = request.get("content_type", "post")
@@ -189,13 +189,13 @@ async def generate_content_with_persona_endpoint(
 @router.get("/export/{platform}")
 async def export_persona_prompt_endpoint(
     platform: str,
-    user_id: int = Query(1, description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Export hardened persona prompt for external use."""
     try:
         engine = PersonaReplicationEngine()
-        # Beta testing: Force user_id=1 for all requests
-        export_package = engine.export_persona_for_external_use(1, platform)
+        user_id = int(current_user.get("id"))
+        export_package = engine.export_persona_for_external_use(user_id, platform)
         
         if "error" in export_package:
             raise HTTPException(status_code=400, detail=export_package["error"])
@@ -207,12 +207,12 @@ async def export_persona_prompt_endpoint(
 
 @router.post("/validate-content")
 async def validate_content_endpoint(
-    request: Dict[str, Any]
+    request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Validate content against persona constraints."""
     try:
-        # Beta testing: Force user_id=1 for all requests
-        user_id = 1
+        user_id = int(current_user.get("id"))
         platform = request.get("platform")
         content = request.get("content")
         
@@ -242,14 +242,14 @@ async def validate_content_endpoint(
 async def update_platform_persona_endpoint(
     platform: str,
     update_data: Dict[str, Any],
-    user_id: int = Query(1, description="User ID")
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Update platform-specific persona fields for a user.
 
     Allows editing persona fields in the UI and saving them to the database.
     """
-    # Beta testing: Force user_id=1 for all requests
-    return await update_platform_persona(1, platform, update_data)
+    user_id = int(current_user.get("id"))
+    return await update_platform_persona(user_id, platform, update_data)
 
 @router.get("/facebook-persona/check/{user_id}")
 async def check_facebook_persona_endpoint(

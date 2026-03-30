@@ -410,8 +410,7 @@ class ContentGenerator:
                 raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
                 
             # Build the prompt for grounded generation using persona if available (DB vs session override)
-            # Beta testing: Force user_id=1 for all requests
-            user_id = 1
+            user_id = int(getattr(request, "user_id", 0) or 0)
             persona_data = self._get_cached_persona_data(user_id, 'linkedin')
             if getattr(request, 'persona_override', None):
                 try:
@@ -485,8 +484,7 @@ class ContentGenerator:
                 raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
                 
             # Build the prompt for grounded generation using persona if available (DB vs session override)
-            # Beta testing: Force user_id=1 for all requests
-            user_id = 1
+            user_id = int(getattr(request, "user_id", 0) or 0)
             persona_data = self._get_cached_persona_data(user_id, 'linkedin')
             if getattr(request, 'persona_override', None):
                 try:
