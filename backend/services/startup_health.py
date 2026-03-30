@@ -17,6 +17,7 @@ from services.database import (
     init_database,
     default_engine,
 )
+from services.user_api_key_context import get_user_api_keys
 
 _REQUIRED_SCHEMA: Dict[str, List[str]] = {
     "onboarding_sessions": ["id", "user_id", "updated_at"],
@@ -49,60 +50,6 @@ def should_fail_fast() -> bool:
 
 def _record_check(checks: List[Dict[str, Any]], name: str, ok: bool, detail: str) -> None:
     checks.append({"name": name, "ok": ok, "detail": detail})
-
-
-def _is_demo_mode() -> bool:
-    app_env = os.getenv("APP_ENV", os.getenv("ENV", os.getenv("DEPLOY_ENV", ""))).strip().lower()
-    if app_env == "demo":
-        return True
-    return _env_true("ALWRITY_DEMO_MODE", default=False)
-
-
-def _check_required_demo_routes(
-    app: Optional[FastAPI],
-    checks: List[Dict[str, Any]],
-    errors: List[str],
-) -> None:
-    if not _is_demo_mode():
-        _record_check(
-            checks,
-            "demo_required_routes",
-            True,
-            "Skipped (not in demo mode). Set APP_ENV=demo or ALWRITY_DEMO_MODE=true to enforce.",
-        )
-        return
-
-    if app is None:
-        errors.append(
-            "Demo startup route check could not run because FastAPI app context was not provided to startup health routine."
-        )
-        _record_check(checks, "demo_required_routes_context", False, "missing app context")
-        return
-
-    required_routes = {
-        "/api/subscription/plans": "GET",
-        "/api/podcast/projects": "GET",
-    }
-    available_routes = {
-        (route.path, method)
-        for route in app.router.routes
-        if isinstance(route, APIRoute)
-        for method in route.methods
-    }
-
-    missing: List[str] = []
-    for path, method in required_routes.items():
-        if (path, method) in available_routes:
-            _record_check(checks, f"demo_route_{path}_{method}", True, "route registered")
-        else:
-            missing.append(f"{method} {path}")
-            _record_check(checks, f"demo_route_{path}_{method}", False, "route missing")
-
-    if missing:
-        errors.append(
-            "Demo mode startup check failed. Missing required API endpoints: "
-            f"{', '.join(missing)}. Ensure subscription and podcast routers are imported and included during app setup."
-        )
 
 
 def _check_workspace_root(checks: List[Dict[str, Any]], errors: List[str]) -> None:
@@ -200,6 +147,116 @@ def _check_db_access(checks: List[Dict[str, Any]], errors: List[str], warnings: 
     return candidate_user
 
 
+def _check_production_api_key_loading(
+    checks: List[Dict[str, Any]],
+    errors: List[str],
+    warnings: List[str],
+) -> None:
+    deploy_env = os.getenv("DEPLOY_ENV", "local").strip().lower()
+    if deploy_env == "local":
+        _record_check(checks, "production_api_key_loading", True, "skipped in local deploy mode")
+        return
+
+    test_tenant_id = os.getenv("ALWRITY_STARTUP_TEST_TENANT_ID", "").strip()
+    if not test_tenant_id:
+        message = (
+            "Missing ALWRITY_STARTUP_TEST_TENANT_ID for production API key startup check."
+        )
+        errors.append(message)
+        _record_check(checks, "production_api_key_loading", False, message)
+        return
+
+    try:
+        keys = get_user_api_keys(test_tenant_id)
+    except Exception as exc:
+        errors.append(
+            f"Failed to load API keys for startup test tenant '{test_tenant_id}': {exc}"
+        )
+        _record_check(checks, "production_api_key_loading", False, str(exc))
+        return
+
+    if not isinstance(keys, dict):
+        errors.append(
+            f"API key loader returned invalid payload type for startup test tenant '{test_tenant_id}'."
+        )
+        _record_check(checks, "production_api_key_loading", False, "invalid payload type")
+        return
+
+    non_empty_keys = [provider for provider, value in keys.items() if value]
+    if not non_empty_keys:
+        errors.append(
+            f"No API keys could be loaded for startup test tenant '{test_tenant_id}'."
+        )
+        _record_check(checks, "production_api_key_loading", False, "no non-empty keys loaded")
+        return
+
+    warning = None
+    if len(non_empty_keys) < len(keys):
+        warning = (
+            f"Startup test tenant '{test_tenant_id}' has {len(non_empty_keys)}/{len(keys)} non-empty API keys."
+        )
+        warnings.append(warning)
+
+    detail = f"loaded {len(non_empty_keys)} non-empty keys for tenant {test_tenant_id}"
+    if warning:
+        detail = f"{detail}; {warning}"
+    _record_check(checks, "production_api_key_loading", True, detail)
+
+
+def _is_demo_mode() -> bool:
+    app_env = os.getenv("APP_ENV", os.getenv("ENV", os.getenv("DEPLOY_ENV", ""))).strip().lower()
+    if app_env == "demo":
+        return True
+    return _env_true("ALWRITY_DEMO_MODE", default=False)
+
+
+def _check_required_demo_routes(
+    app: Optional[FastAPI],
+    checks: List[Dict[str, Any]],
+    errors: List[str],
+) -> None:
+    if not _is_demo_mode():
+        _record_check(
+            checks,
+            "demo_required_routes",
+            True,
+            "Skipped (not in demo mode). Set APP_ENV=demo or ALWRITY_DEMO_MODE=true to enforce.",
+        )
+        return
+
+    if app is None:
+        errors.append(
+            "Demo startup route check could not run because FastAPI app context was not provided to startup health routine."
+        )
+        _record_check(checks, "demo_required_routes_context", False, "missing app context")
+        return
+
+    required_routes = {
+        "/api/subscription/plans": "GET",
+        "/api/podcast/projects": "GET",
+    }
+    available_routes = {
+        (route.path, method)
+        for route in app.router.routes
+        if isinstance(route, APIRoute)
+        for method in route.methods
+    }
+
+    missing: List[str] = []
+    for path, method in required_routes.items():
+        if (path, method) in available_routes:
+            _record_check(checks, f"demo_route_{path}_{method}", True, "route registered")
+        else:
+            missing.append(f"{method} {path}")
+            _record_check(checks, f"demo_route_{path}_{method}", False, "route missing")
+
+    if missing:
+        errors.append(
+            "Demo mode startup check failed. Missing required API endpoints: "
+            f"{', '.join(missing)}. Ensure subscription and podcast routers are imported and included during app setup."
+        )
+
+
 def run_startup_health_routine(app: Optional[FastAPI] = None) -> Dict[str, Any]:
     checks: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -209,6 +266,8 @@ def run_startup_health_routine(app: Optional[FastAPI] = None) -> Dict[str, Any]:
     if not errors:
         _check_db_access(checks, errors, warnings)
     _check_required_demo_routes(app, checks, errors)
+    if not errors:
+        _check_production_api_key_loading(checks, errors, warnings)
 
     status = "healthy" if not errors else "failed"
     report = {
