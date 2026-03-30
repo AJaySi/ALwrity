@@ -298,6 +298,11 @@ def main():
     parser.add_argument("--dev", action="store_true", help="Enable development mode (auto-reload)")
     parser.add_argument("--production", action="store_true", help="Enable production mode (optimized for deployment)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging for debugging")
+    parser.add_argument(
+        "--podcast-only-demo",
+        action="store_true",
+        help="Enable podcast-only demo mode (sets PODCAST_ONLY_DEMO_MODE=true before app startup)",
+    )
     args = parser.parse_args()
     
     # Determine mode
@@ -307,6 +312,8 @@ def main():
     
     # Set global verbose flag for utilities
     os.environ["ALWRITY_VERBOSE"] = "true" if verbose_mode else "false"
+    if args.podcast_only_demo:
+        os.environ["PODCAST_ONLY_DEMO_MODE"] = "true"
     
     print("[*] ALwrity Backend Server")
     print("=" * 40)
@@ -314,6 +321,8 @@ def main():
     print(f"Auto-reload: {'ENABLED' if enable_reload else 'DISABLED'}")
     if verbose_mode:
         print("Verbose logging: ENABLED")
+    if args.podcast_only_demo:
+        print("Podcast-only demo mode: ENABLED")
     print("=" * 40)
     
     # Check if we're in the right directory
