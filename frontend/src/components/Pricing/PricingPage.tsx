@@ -73,6 +73,10 @@ const PricingPage: React.FC = () => {
   };
   const activeTierPolicy = tierPolicyByMode[pricingMode] || tierPolicyByMode.alpha;
 
+  const requireStripeCheckout = ['1', 'true', 'yes', 'on'].includes(
+    (process.env.REACT_APP_REQUIRE_STRIPE_CHECKOUT || '').toLowerCase()
+  );
+  const stripePublishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
   const navigate = useNavigate();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,7 +229,7 @@ const PricingPage: React.FC = () => {
       const userId = localStorage.getItem('user_id') || 'anonymous';
 
       // Check if Stripe is configured
-      if (process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY) {
+      if (stripePublishableKey) {
         console.log('[PricingPage] Initiating Stripe Checkout');
 
         const response = await apiClient.post('/api/subscription/create-checkout-session', {
@@ -239,11 +243,18 @@ const PricingPage: React.FC = () => {
           window.location.href = response.data.url;
           return;
         }
+
+        if (requireStripeCheckout) {
+          throw new Error('Stripe checkout is required but checkout URL was not returned.');
+        }
+      } else if (requireStripeCheckout) {
+        throw new Error(
+          'Stripe checkout is required but REACT_APP_STRIPE_PUBLISHABLE_KEY is not configured.'
+        );
       } else {
         // Stripe not configured - warn in demo mode
         if (isPodcastOnlyDemoMode()) {
           console.warn('[PricingPage] ⚠️ DEMO MODE WARNING: Stripe is not configured. Using legacy subscription API.');
-          // In demo mode without Stripe, we may want to skip actual subscription for testing
         }
       }
 
@@ -333,7 +344,8 @@ const PricingPage: React.FC = () => {
       }, 3000);
     } catch (err) {
       console.error('Error subscribing:', err);
-      setError('Failed to process subscription');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to process subscription';
+      setError(errorMessage);
       setSuccessSnackbar({ open: false, message: '', countdown: 0 });
     } finally {
       setSubscribing(false);
