@@ -160,17 +160,18 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                 {loadingBrandAvatar ? (
                   <CircularProgress size={32} />
                 ) : avatarPreview && avatarPreview === brandAvatarFromDb ? (
-                  <Stack spacing={2} alignItems="center">
-                    <Box sx={{ position: "relative" }}>
+                  <Stack spacing={2} alignItems="center" sx={{ width: "100%", maxWidth: 280 }}>
+                    <Box sx={{ position: "relative", width: "100%" }}>
                       <Box
                         component="img"
                         src={avatarPreviewBlobUrl || ""}
                         alt="Selected Brand Avatar"
                         sx={{
-                          width: 160,
-                          height: 160,
-                          objectFit: "cover",
-                          borderRadius: 2.5,
+                          width: "100%",
+                          height: "auto",
+                          maxHeight: 200,
+                          objectFit: "contain",
+                          borderRadius: 2,
                           border: "2px solid #667eea",
                           boxShadow: "0 4px 12px rgba(102, 126, 234, 0.25)",
                         }}
@@ -203,16 +204,17 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                     </Stack>
                   </Stack>
                 ) : brandAvatarFromDb ? (
-                  <Stack spacing={2} alignItems="center">
+                  <Stack spacing={2} alignItems="center" sx={{ width: "100%", maxWidth: 280 }}>
                     <Box
                       component="img"
                       src={brandAvatarBlobUrl || ""}
                       alt="Available Brand Avatar"
                       sx={{
-                        width: 160,
-                        height: 160,
-                        objectFit: "cover",
-                        borderRadius: 2.5,
+                        width: "100%",
+                        height: "auto",
+                        maxHeight: 200,
+                        objectFit: "contain",
+                        borderRadius: 2,
                         border: "1.5px solid #e2e8f0",
                         opacity: 0.8,
                         filter: "grayscale(0.3)",
@@ -317,16 +319,17 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               <Box>
                 {avatarFile && avatarPreview ? (
                   <Stack spacing={2} alignItems="center" sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: 2 }}>
-                    <Box sx={{ position: "relative", display: "inline-block" }}>
+                    <Box sx={{ position: "relative", display: "inline-block", width: "100%", maxWidth: 280 }}>
                       <Box
                         component="img"
                         src={avatarPreviewBlobUrl || (avatarPreview.startsWith("data:") ? avatarPreview : "")}
                         alt="Selfie preview"
                         sx={{
-                          width: 160,
-                          height: 160,
-                          objectFit: "cover",
-                          borderRadius: 2.5,
+                          width: "100%",
+                          height: "auto",
+                          maxHeight: 200,
+                          objectFit: "contain",
+                          borderRadius: 2,
                           border: "2px solid #e2e8f0",
                           boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
                         }}
