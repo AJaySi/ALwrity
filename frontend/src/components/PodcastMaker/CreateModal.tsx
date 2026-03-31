@@ -269,7 +269,16 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     };
   }, [duration, speakers, knobs.bitrate, knobs.scene_length_target]);
 
-  const canSubmit = Boolean(topicInput.trim());
+  // Check if avatar is present (from any source: upload, brand avatar, or generated)
+  const hasAvatar = Boolean(
+    avatarFile ||                         // User uploaded an image
+    avatarUrl ||                         // Already processed avatar URL
+    avatarPreview ||                      // Avatar preview available
+    brandAvatarFromDb ||                  // Brand avatar from database
+    brandAvatarBlobUrl                    // Brand avatar blob URL
+  );
+
+  const canSubmit = Boolean(topicInput.trim() && hasAvatar);
 
   const submit = async () => {
     if (!canSubmit || isSubmitting) return;

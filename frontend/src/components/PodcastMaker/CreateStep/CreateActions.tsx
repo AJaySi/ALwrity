@@ -50,7 +50,7 @@ export const CreateActions: React.FC<CreateActionsProps> = ({
           disabled={!canSubmit || isSubmitting}
           loading={isSubmitting}
           startIcon={<AutoAwesomeIcon />}
-          tooltip={!canSubmit ? "Enter an idea or URL to continue" : "We’ll start AI analysis after this click"}
+          tooltip={!canSubmit ? "Enter an idea/URL and add a podcast avatar to continue" : "We'll start AI analysis after this click"}
         >
           {isSubmitting ? "Analyzing..." : "Analyze & Continue"}
         </PrimaryButton>
