@@ -79,6 +79,7 @@ class RouterManager:
         self.app = app
         self.included_routers = []
         self.failed_routers = []
+        self.skipped_routers = []
     
     def _is_verbose(self) -> bool:
         return os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
@@ -127,6 +128,10 @@ class RouterManager:
             
             for entry in registry:
                 if not self._should_include_router(entry, profile):
+                    reason = f"profile '{profile}' not in {entry.get('profiles', set())}"
+                    self.skipped_routers.append({"name": entry["name"], "reason": reason})
+                    if verbose:
+                        logger.info(f"⏭️  Skipping {entry['name']}: {reason}")
                     continue
                 
                 try:
@@ -156,9 +161,29 @@ class RouterManager:
             "active_profile": self._get_profile(),
             "included_routers": self.included_routers,
             "failed_routers": self.failed_routers,
+            "skipped_routers": self.skipped_routers,
             "total_included": len(self.included_routers),
-            "total_failed": len(self.failed_routers)
+            "total_failed": len(self.failed_routers),
+            "total_skipped": len(self.skipped_routers)
         }
+    
+    def log_startup_summary(self) -> None:
+        """Log startup summary including profile, enabled routers, and skipped items."""
+        profile = self._get_profile()
+        
+        logger.info("=" * 60)
+        logger.info("📋 STARTUP SUMMARY")
+        logger.info(f"   Active profile: {profile}")
+        logger.info(f"   Enabled routers ({len(self.included_routers)}): {', '.join(self.included_routers)}")
+        if self.skipped_routers:
+            logger.info(f"   Skipped routers ({len(self.skipped_routers)}):")
+            for s in self.skipped_routers:
+                logger.info(f"      - {s['name']}: {s['reason']}")
+        if self.failed_routers:
+            logger.warning(f"   Failed routers ({len(self.failed_routers)}):")
+            for f in self.failed_routers:
+                logger.warning(f"      - {f['name']}: {f['error']}")
+        logger.info("=" * 60)
     
     def get_feature_profile_status(self) -> Dict[str, Any]:
         """Get feature profile status and enabled modules."""

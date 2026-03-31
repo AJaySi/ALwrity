@@ -7,8 +7,20 @@ Run this from the backend directory to set up and start the FastAPI server.
 
 import os
 import sys
+import json
 import argparse
 from pathlib import Path
+from dataclasses import dataclass, asdict
+from typing import Optional
+
+
+@dataclass
+class BootstrapResult:
+    name: str
+    success: bool
+    skipped: bool
+    reason: Optional[str] = None
+    details: Optional[str] = None
 
 
 LINGUISTIC_REQUIRED_FEATURES = {"content_planning", "strategy_copilot", "facebook", "linkedin", "blog_writer", "persona"}
@@ -52,7 +64,7 @@ def should_bootstrap_local_llm_models() -> bool:
     return profile not in {"podcast", "youtube", "planning"}
 
 
-def bootstrap_linguistic_models():
+def bootstrap_linguistic_models() -> BootstrapResult:
     """
     Bootstrap spaCy and NLTK models BEFORE any imports.
     This prevents import-time failures when EnhancedLinguisticAnalyzer is loaded.
@@ -85,7 +97,7 @@ def bootstrap_linguistic_models():
                 if verbose:
                     print(f"   ❌ Failed to download spaCy model: {e}")
                     print("   Please run: python -m spacy download en_core_web_sm")
-                return False
+                return BootstrapResult(name="linguistic_models", success=False, skipped=False, reason="spacy_download_failed")
     except ImportError:
         if verbose:
             print("   ⚠️  spaCy not installed - skipping")
@@ -114,7 +126,6 @@ def bootstrap_linguistic_models():
                 except Exception as e:
                     if verbose:
                         print(f"   ⚠️  Failed to download {data_package}: {e}")
-                    # Try fallback
                     if data_package == 'punkt_tab':
                         try:
                             nltk.download('punkt', quiet=True)
@@ -128,10 +139,10 @@ def bootstrap_linguistic_models():
     
     if verbose:
         print("✅ Linguistic model bootstrap complete")
-    return True
+    return BootstrapResult(name="linguistic_models", success=True, skipped=False)
 
 
-def bootstrap_local_llm_models():
+def bootstrap_local_llm_models() -> BootstrapResult:
     """
     Bootstrap Local LLM models (Qwen) for SIF Agents.
     This ensures the model is cached locally before the server starts,
@@ -158,7 +169,7 @@ def bootstrap_local_llm_models():
     if os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT"):
         if verbose:
             print("   ⚠️  Cloud environment detected (Render/Railway). Skipping local LLM bootstrap to save RAM/Time.")
-        return True
+        return BootstrapResult(name="local_llm_models", success=True, skipped=True, reason="cloud_environment")
     
     target_model = "Qwen/Qwen2.5-3B-Instruct"
     
@@ -176,29 +187,52 @@ def bootstrap_local_llm_models():
             if verbose:
                 print(f"   ⚠️  Failed to download/check local LLM: {e}")
                 print("       SIF agents may try to download it at runtime.")
-            return False
+            return BootstrapResult(name="local_llm_models", success=False, skipped=False, reason=str(e))
     except ImportError:
         if verbose:
             print("   ⚠️  huggingface_hub not installed - skipping LLM bootstrap")
+        return BootstrapResult(name="local_llm_models", success=False, skipped=True, reason="huggingface_hub_not_installed")
     
-    return True
+    return BootstrapResult(name="local_llm_models", success=True, skipped=False)
 
 
 # Bootstrap linguistic models BEFORE any imports that might need them
+BOOTSTRAP_RESULTS = []
+
 if __name__ == "__main__":
+    profile = get_active_profile()
+    os.environ["ALWRITY_ACTIVE_PROFILE"] = profile
+    
+    print(f"\n📋 Active profile: {profile}")
+    
     if should_bootstrap_linguistic_models():
-        bootstrap_linguistic_models()
+        result = bootstrap_linguistic_models()
+        BOOTSTRAP_RESULTS.append(result)
     else:
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
         if verbose:
             print("⏭️  Skipping linguistic model bootstrap (profile-gated)")
+        BOOTSTRAP_RESULTS.append(BootstrapResult(name="linguistic_models", success=True, skipped=True, reason="profile_gated"))
     
     if should_bootstrap_local_llm_models():
-        bootstrap_local_llm_models()
+        result = bootstrap_local_llm_models()
+        BOOTSTRAP_RESULTS.append(result)
     else:
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
         if verbose:
             print("⏭️  Skipping local LLM model bootstrap (profile-gated)")
+        BOOTSTRAP_RESULTS.append(BootstrapResult(name="local_llm_models", success=True, skipped=True, reason="profile_gated"))
+    
+    summary = {
+        "active_profile": profile,
+        "bootstraps": [asdict(r) for r in BOOTSTRAP_RESULTS]
+    }
+    os.environ["ALWRITY_BOOTSTRAP_SUMMARY"] = json.dumps(summary)
+    
+    print(f"\n📋 Bootstrap Summary:")
+    for r in BOOTSTRAP_RESULTS:
+        status = "⏭️  Skipped" if r.skipped else ("✅ Enabled" if r.success else "❌ Failed")
+        print(f"   {r.name}: {status}" + (f" ({r.reason})" if r.reason else ""))
 
 # NOW import modular utilities (after bootstrap)
 from alwrity_utils import (

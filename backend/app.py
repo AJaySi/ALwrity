@@ -328,6 +328,9 @@ else:
         "reason": "Full mode",
     }
 
+# Log startup summary
+router_manager.log_startup_summary()
+
 # Safety net: keep subscription routes available even if core inclusion flow changes
 # in special modes (e.g., demo mode). De-dup is handled by RouterManager.
 router_manager.include_router_safely(subscription_router, "subscription")
