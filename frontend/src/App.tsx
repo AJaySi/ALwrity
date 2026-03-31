@@ -230,6 +230,10 @@ const InitialRouteHandler: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, []); // Remove checkSubscription dependency to prevent loop
 
+  // Handle post-Stripe-checkout redirect in demo mode
+  const urlParams = new URLSearchParams(location.search);
+  const isCheckoutSuccess = urlParams.get('subscription') === 'success';
+  
   // Initialize onboarding only after subscription is confirmed
   useEffect(() => {
     if (subscription && !subscriptionLoading) {
@@ -247,8 +251,7 @@ const InitialRouteHandler: React.FC = () => {
         console.log('InitialRouteHandler: Subscription confirmed, initializing onboarding...');
         
         // Handle post-Stripe-checkout redirect in demo mode
-        const urlParams = new URLSearchParams(location.search);
-        if (urlParams.get('subscription') === 'success' && shouldSkipOnboarding()) {
+        if (isCheckoutSuccess && shouldSkipOnboarding()) {
           console.log('InitialRouteHandler: Stripe checkout success in demo mode → Podcast Maker');
           return <Navigate to="/podcast-maker" replace />;
         }
@@ -256,7 +259,13 @@ const InitialRouteHandler: React.FC = () => {
         initializeOnboarding();
       }
     }
-  }, [subscription, subscriptionLoading, initializeOnboarding, location.search]);
+  }, [subscription, subscriptionLoading, initializeOnboarding, isCheckoutSuccess]);
+
+  // Early return for checkout success in demo mode
+  if (isCheckoutSuccess && subscription?.active && shouldSkipOnboarding()) {
+    console.log('InitialRouteHandler: Early redirect - Stripe checkout success in demo mode → Podcast Maker');
+    return <Navigate to="/podcast-maker" replace />;
+  }
 
   // Handle connection error - show connection error page
   if (connectionError.hasError) {
