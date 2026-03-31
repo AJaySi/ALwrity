@@ -121,22 +121,12 @@ Return JSON with:
             enhanced_ideas=enhanced_ideas[:3],  # Ensure exactly 3
             rationales=rationales[:3]  # Ensure exactly 3
         )
+    except HTTPException:
+        # Re-raise HTTPExceptions (e.g., 429 subscription limit) - preserve error details
+        raise
     except Exception as exc:
         logger.error(f"[Podcast Enhance] Failed for user {user_id}: {exc}")
-        # Fallback to basic variations of original idea
-        base_idea = request.idea
-        return PodcastEnhanceIdeaResponse(
-            enhanced_ideas=[
-                f"Expert insights on {base_idea}: A deep dive into industry trends and best practices.",
-                f"The human side of {base_idea}: Personal stories and real-world experiences that resonate.",
-                f"Modern perspectives on {base_idea}: Current trends and forward-thinking approaches."
-            ],
-            rationales=[
-                "Professional approach focusing on expertise and authority",
-                "Storytelling approach emphasizing human connection",
-                "Contemporary approach highlighting current relevance"
-            ]
-        )
+        raise HTTPException(status_code=500, detail=f"Enhance failed: {exc}")
 
 
 @router.post("/analyze", response_model=PodcastAnalyzeResponse)

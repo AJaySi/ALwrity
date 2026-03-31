@@ -160,10 +160,11 @@ Requirements:
                 
             summary = data.get("summary", "")
             key_insights = [PodcastResearchInsight(**insight) for insight in data.get("key_insights", [])]
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.error(f"[Podcast Research] LLM Insight extraction failed: {exc}")
-            # Fallback to a basic summary if LLM fails
-            summary = f"Research completed for '{request.topic}'. Found {len(sources)} sources."
+            raise HTTPException(status_code=500, detail=f"Research insight extraction failed: {exc}")
             
     # Fallback: if summary is still empty (e.g. LLM returned empty string), use raw content first paragraph or basic text
     if not summary:
