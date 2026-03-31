@@ -177,12 +177,12 @@ const PodcastDashboard: React.FC = () => {
           {/* Announcements */}
           {workflow.announcement && (
             <Alert
-              severity="info"
+              severity={workflow.announcementSeverity || "info"}
               onClose={() => workflow.setAnnouncement("")}
               sx={{
-                background: "#dbeafe",
-                border: "1px solid #bfdbfe",
-                "& .MuiAlert-icon": { color: "#3b82f6" },
+                background: workflow.announcementSeverity === "error" ? "#fef2f2" : workflow.announcementSeverity === "success" ? "#f0fdf4" : "#dbeafe",
+                border: `1px solid ${workflow.announcementSeverity === "error" ? "#fecaca" : workflow.announcementSeverity === "success" ? "#bbf7d0" : "#bfdbfe"}`,
+                "& .MuiAlert-icon": { color: workflow.announcementSeverity === "error" ? "#ef4444" : workflow.announcementSeverity === "success" ? "#22c55e" : "#3b82f6" },
               }}
             >
               {workflow.announcement}

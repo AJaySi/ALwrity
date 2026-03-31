@@ -48,6 +48,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isResearching, setIsResearching] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [announcementSeverity, setAnnouncementSeverity] = useState<"info" | "error" | "success">("info");
   const [showResumeAlert, setShowResumeAlert] = useState(false);
   const [showPreflightDialog, setShowPreflightDialog] = useState(false);
   const [preflightResponse, setPreflightResponse] = useState<any>(null);
@@ -216,10 +217,10 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
           setAnnouncement("Subscription limit reached. Please upgrade to continue.");
         } else {
           const message = typeof errorDetail === 'string' ? errorDetail : errorDetail.message || errorDetail.error || 'Request limit exceeded';
-          announceError(setAnnouncement, new Error(message));
+          announceError(setAnnouncement, setAnnouncementSeverityFn, new Error(message));
         }
       } else {
-        announceError(setAnnouncement, error);
+        announceError(setAnnouncement, setAnnouncementSeverityFn, error);
       }
     } finally {
       setIsAnalyzing(false);
@@ -396,11 +397,16 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     await handleCreate(payload, feedback);
   }, [project, projectState.knobs, projectState.budgetCap, handleCreate]);
 
+  const setAnnouncementSeverityFn = useCallback((severity: "info" | "error" | "success") => {
+    setAnnouncementSeverity(severity);
+  }, []);
+
   return {
     // State
     isAnalyzing,
     isResearching,
     announcement,
+    announcementSeverity,
     showResumeAlert,
     showPreflightDialog,
     preflightResponse,
@@ -415,6 +421,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     handleProceedToRendering,
     toggleQuery,
     setAnnouncement,
+    setAnnouncementSeverity: setAnnouncementSeverityFn,
     setShowResumeAlert,
     setShowPreflightDialog,
     setPreflightResponse,

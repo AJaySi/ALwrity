@@ -54,9 +54,31 @@ export const sanitizeExaConfig = (
   };
 };
 
-export const announceError = (setAnnouncement: (msg: string) => void, error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unexpected error";
+export const announceError = (
+  setAnnouncement: (msg: string) => void,
+  setAnnouncementSeverity?: (severity: "info" | "error" | "success") => void,
+  error?: unknown
+) => {
+  let message = "Unexpected error occurred. Please try again.";
+  if (error instanceof Error) {
+    message = error.message;
+    // Simplify common error messages
+    if (message.includes("RESOURCE_EXHAUSTED") || message.includes("quota")) {
+      message = "API quota exceeded. Please check your API keys or try again later.";
+    } else if (message.includes("All LLM providers failed")) {
+      message = "AI service temporarily unavailable. Please try again later.";
+    } else if (message.includes("No LLM API keys configured")) {
+      message = "API keys not configured. Please contact support.";
+    } else if (message.includes("RESOURCE_EXHAUSTED")) {
+      message = "API quota exceeded. Please check your subscription or try again later.";
+    } else if (message.length > 100) {
+      message = "An error occurred during analysis. Please try again.";
+    }
+  }
   setAnnouncement(message);
+  if (setAnnouncementSeverity) {
+    setAnnouncementSeverity("error");
+  }
 };
 
 export const getStepLabel = (step: string | null): string => {
