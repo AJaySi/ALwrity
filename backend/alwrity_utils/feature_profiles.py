@@ -9,10 +9,8 @@ from typing import Iterable, Tuple
 from .feature_registry import FEATURE_GROUPS, PROFILE_GROUP_MAP
 
 
-# Consolidated env var - supports both old and new format
-ENV_FEATURE_PROFILE = "ALWRITY_ENABLED_FEATURES"
-ENV_FEATURE_PROFILE_LEGACY = "ALWRITY_FEATURE_TO_ENABLE"
-DEFAULT_PROFILE = "all"
+ENV_ENABLED_FEATURES = "ALWRITY_ENABLED_FEATURES"
+DEFAULT_FEATURES = "all"
 
 
 @dataclass(frozen=True)
@@ -24,31 +22,31 @@ class ExpandedFeatureProfile:
 
 
 class UnknownFeatureProfileError(ValueError):
-    """Raised when ALWRITY_ENABLED_FEATURES contains unknown profile values."""
+    """Raised when ALWRITY_ENABLED_FEATURES contains unknown feature values."""
 
 
 def _get_env_value() -> str:
-    """Get the feature profile value from environment - new var takes precedence."""
-    return os.getenv(ENV_FEATURE_PROFILE) or os.getenv(ENV_FEATURE_PROFILE_LEGACY) or DEFAULT_PROFILE
+    """Get the enabled features value from environment."""
+    return os.getenv(ENV_ENABLED_FEATURES) or DEFAULT_FEATURES
 
 
 def _normalize_values(raw_value: str | None) -> Tuple[str, ...]:
     if not raw_value or not raw_value.strip():
-        return (DEFAULT_PROFILE,)
+        return (DEFAULT_FEATURES,)
     
     normalized = tuple(
         value.strip().lower()
         for value in raw_value.split(",")
         if value.strip()
     )
-    return normalized or (DEFAULT_PROFILE,)
+    return normalized or (DEFAULT_FEATURES,)
 
 
 def parse_feature_profiles(raw_value: str | None = None) -> Tuple[str, ...]:
-    """Parse and validate profile names from env/raw input.
+    """Parse and validate feature names from env/raw input.
     
-    Supports comma-separated profile names, e.g. `core,podcast`.
-    Raises UnknownFeatureProfileError when any profile is not registered.
+    Supports comma-separated feature names, e.g. `podcast,core`.
+    Raises UnknownFeatureProfileError when any feature is not registered.
     """
     
     selected_profiles = _normalize_values(raw_value if raw_value is not None else _get_env_value())
@@ -58,7 +56,7 @@ def parse_feature_profiles(raw_value: str | None = None) -> Tuple[str, ...]:
         supported = ", ".join(sorted(set(PROFILE_GROUP_MAP.keys()) | set(FEATURE_GROUPS.keys())))
         unknown_display = ", ".join(unknown)
         raise UnknownFeatureProfileError(
-            f"Unknown {ENV_FEATURE_PROFILE} value(s): {unknown_display}. Supported profiles: {supported}."
+            f"Unknown {ENV_ENABLED_FEATURES} value(s): {unknown_display}. Supported: {supported}."
         )
     
     return selected_profiles

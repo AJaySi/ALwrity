@@ -33,8 +33,6 @@ def get_enabled_features() -> set:
     - "all" - enable all features (default)
     - comma-separated: "podcast,blog-writer,youtube"
     - single feature: "podcast"
-    
-    DEPRECATED: ALWRITY_FEATURE_PROFILE, ALWRITY_ROUTER_PROFILE, ALWRITY_FEATURE_TO_ENABLE
     """
     env_value = os.getenv("ALWRITY_ENABLED_FEATURES", "all").strip().lower()
     
@@ -42,14 +40,6 @@ def get_enabled_features() -> set:
         return {"all"}
     
     return {f.strip() for f in env_value.split(",") if f.strip()}
-
-
-def get_active_profile() -> str:
-    """Legacy function - use get_enabled_features() instead."""
-    enabled = get_enabled_features()
-    if "all" in enabled:
-        return "all"
-    return list(enabled)[0] if enabled else "all"
 
 
 def should_bootstrap_linguistic_models() -> bool:
@@ -220,10 +210,11 @@ def bootstrap_local_llm_models() -> BootstrapResult:
 BOOTSTRAP_RESULTS = []
 
 if __name__ == "__main__":
-    profile = get_active_profile()
-    os.environ["ALWRITY_ACTIVE_PROFILE"] = profile
+    enabled_features = get_enabled_features()
+    features_str = ",".join(sorted(enabled_features))
+    os.environ["ALWRITY_ENABLED_FEATURES"] = features_str
     
-    print(f"\n📋 Active profile: {profile}")
+    print(f"\n📋 Enabled features: {features_str}")
     
     if should_bootstrap_linguistic_models():
         result = bootstrap_linguistic_models()
@@ -240,11 +231,11 @@ if __name__ == "__main__":
     else:
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
         if verbose:
-            print("⏭️  Skipping local LLM model bootstrap (profile-gated)")
-        BOOTSTRAP_RESULTS.append(BootstrapResult(name="local_llm_models", success=True, skipped=True, reason="profile_gated"))
+            print("⏭️  Skipping local LLM model bootstrap (feature-gated)")
+        BOOTSTRAP_RESULTS.append(BootstrapResult(name="local_llm_models", success=True, skipped=True, reason="feature_gated"))
     
     summary = {
-        "active_profile": profile,
+        "enabled_features": features_str,
         "bootstraps": [asdict(r) for r in BOOTSTRAP_RESULTS]
     }
     os.environ["ALWRITY_BOOTSTRAP_SUMMARY"] = json.dumps(summary)

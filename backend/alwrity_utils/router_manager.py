@@ -89,8 +89,6 @@ class RouterManager:
         - "all" - enable all features (default)
         - comma-separated: "podcast,blog-writer,youtube"
         - single feature: "podcast"
-        
-        DEPRECATED: ALWRITY_FEATURE_PROFILE, ALWRITY_ROUTER_PROFILE, ALWRITY_FEATURE_TO_ENABLE
         """
         env_value = os.getenv("ALWRITY_ENABLED_FEATURES", "all").strip().lower()
         
