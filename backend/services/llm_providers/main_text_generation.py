@@ -169,7 +169,8 @@ def llm_text_gen(
         logger.info(
             f"[llm_text_gen][{flow_tag}] Provider preflight: env_provider='{env_provider or 'auto'}', "
             f"provider_list={provider_list}, strict_provider_mode={strict_provider_mode}, "
-            f"available_providers={available_providers}, preferred_provider={preferred_provider or 'none'}"
+            f"available_providers={available_providers}, preferred_provider={preferred_provider or 'none'}, "
+            f"gpt_provider={gpt_provider}, model={model}"
         )
 
         if gpt_provider not in available_providers:
