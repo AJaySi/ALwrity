@@ -8,6 +8,7 @@ IMPORTANT: This is a compatibility layer. For new code, use UserAPIKeyContext di
 """
 
 import os
+import time
 from fastapi import Request
 from loguru import logger
 from typing import Callable
@@ -20,8 +21,61 @@ class APIKeyInjectionMiddleware:
     for the duration of each request.
     """
     
+    # Shared across middleware instances (module currently instantiates per request)
+    _missing_keys_log_timestamps = {}
+
     def __init__(self):
         self.original_keys = {}
+
+    @staticmethod
+    def _should_skip_missing_key_warning(request: Request) -> bool:
+        """
+        Optionally suppress missing-key warnings for non-AI/internal routes.
+        Controlled by API_KEY_INJECTION_SKIP_NON_AI_WARNINGS (default: true).
+        """
+        skip_non_ai_warnings = os.getenv('API_KEY_INJECTION_SKIP_NON_AI_WARNINGS', 'true').lower() in ('1', 'true', 'yes')
+        if not skip_non_ai_warnings:
+            return False
+
+        path_lower = (request.url.path or '').lower()
+        return (
+            path_lower.startswith('/api/subscription/')
+            or path_lower.startswith('/api/onboarding/')
+            or path_lower.endswith('/status')
+            or path_lower.endswith('/health')
+            or path_lower == '/health'
+            or path_lower == '/status'
+        )
+
+    def _log_missing_keys_non_blocking(self, request: Request, user_id: str) -> None:
+        """
+        Log missing API keys without interrupting request flow.
+        - Defaults to debug-level logging.
+        - Optional warn once-per-user-per-interval via env:
+          API_KEY_INJECTION_MISSING_KEYS_LOG_MODE=warn_once
+          API_KEY_INJECTION_MISSING_KEYS_LOG_INTERVAL_SECONDS=900
+        """
+        try:
+            if self._should_skip_missing_key_warning(request):
+                logger.debug(f"[API Key Injection] Missing keys for user {user_id} on non-AI route; skipping warning")
+                return
+
+            log_mode = os.getenv('API_KEY_INJECTION_MISSING_KEYS_LOG_MODE', 'debug').lower()
+            if log_mode != 'warn_once':
+                logger.debug(f"No API keys found for user {user_id}")
+                return
+
+            interval_seconds = int(os.getenv('API_KEY_INJECTION_MISSING_KEYS_LOG_INTERVAL_SECONDS', '900'))
+            now = time.time()
+            last_logged_at = self._missing_keys_log_timestamps.get(user_id, 0)
+            if (now - last_logged_at) >= max(interval_seconds, 1):
+                logger.warning(f"No API keys found for user {user_id}")
+                self._missing_keys_log_timestamps[user_id] = now
+            else:
+                logger.debug(f"No API keys found for user {user_id} (warning suppressed by interval)")
+        except Exception as log_error:
+            # Logging should never block request processing
+            logger.debug(f"[API Key Injection] Failed to log missing keys state for user {user_id}: {log_error}")
     
     async def __call__(self, request: Request, call_next: Callable):
         """
@@ -68,7 +122,7 @@ class APIKeyInjectionMiddleware:
         # Get user-specific API keys from database
         with user_api_keys(user_id) as user_keys:
             if not user_keys:
-                logger.warning(f"No API keys found for user {user_id}")
+                self._log_missing_keys_non_blocking(request, user_id)
                 return await call_next(request)
             
             # Save original environment values
@@ -120,4 +174,3 @@ async def api_key_injection_middleware(request: Request, call_next: Callable):
     """
     middleware = APIKeyInjectionMiddleware()
     return await middleware(request, call_next)
-
