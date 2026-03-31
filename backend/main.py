@@ -379,50 +379,6 @@ async def analyze_urls_ai_endpoint(request: AnalyzeURLsRequest, current_user: di
     """Run AI-powered SEO analysis on selected URLs."""
     return await analyze_urls_ai(request, current_user)
 
-# Include platform analytics router
-from routers.platform_analytics import router as platform_analytics_router
-app.include_router(platform_analytics_router)
-app.include_router(images_router)
-app.include_router(image_studio_router)
-app.include_router(product_marketing_router)
-app.include_router(campaign_creator_router)
-
-# Include content assets router
-from api.content_assets.router import router as content_assets_router
-app.include_router(content_assets_router)
-
-# Include Podcast Maker router
-from api.podcast.router import router as podcast_router
-app.include_router(podcast_router)
-
-# Include YouTube Creator Studio router
-from api.youtube.router import router as youtube_router
-app.include_router(youtube_router, prefix="/api")
-
-# Include research configuration router
-app.include_router(research_config_router, prefix="/api/research", tags=["research"])
-
-# Include Research Engine router (standalone AI research module)
-from api.research.router import router as research_engine_router
-app.include_router(research_engine_router, tags=["Research Engine"])
-
-# Scheduler dashboard routes
-from api.scheduler_dashboard import router as scheduler_router
-app.include_router(scheduler_router)
-app.include_router(oauth_token_monitoring_router)
-
-# Include scheduler monitoring API
-# from api.scheduler_monitoring import router as scheduler_monitoring_router
-# app.include_router(scheduler_monitoring_router)
-
-# Autonomous Agents API routes (Phase 3A)
-from api.agents_api import router as agents_router
-app.include_router(agents_router)
-
-# Today workflow routes
-from api.today_workflow import router as today_workflow_router
-app.include_router(today_workflow_router)
-
 # Setup frontend serving using modular utilities
 frontend_serving.setup_frontend_serving()
 

@@ -3,26 +3,96 @@ Router Manager Module
 Handles FastAPI router inclusion and management.
 """
 
+from importlib import import_module
+from typing import Any, Dict, List, Optional
+import os
+
 from fastapi import FastAPI
 from loguru import logger
-from typing import List, Dict, Any, Optional
-import os
 
 
 class RouterManager:
     """Manages FastAPI router inclusion and organization."""
-    
+
+    CORE_ROUTER_REGISTRY = [
+        {"name": "component_logic", "module": "api.component_logic", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "subscription", "module": "api.subscription", "attr": "router", "profiles": {"all", "default", "podcast"}},
+        {"name": "step3_research", "module": "api.onboarding_utils.step3_routes", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "step4_assets", "module": "api.onboarding_utils.step4_asset_routes", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "step4_persona", "module": "api.onboarding_utils.step4_persona_routes_optimized", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "gsc_auth", "module": "routers.gsc_auth", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "wordpress_oauth", "module": "routers.wordpress_oauth", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "bing_oauth", "module": "routers.bing_oauth", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "bing_analytics", "module": "routers.bing_analytics", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "bing_analytics_storage", "module": "routers.bing_analytics_storage", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "seo_tools", "module": "routers.seo_tools", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "facebook_writer", "module": "api.facebook_writer.routers", "attr": "facebook_router", "profiles": {"all", "default"}},
+        {"name": "linkedin", "module": "routers.linkedin", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "linkedin_image", "module": "api.linkedin_image_generation", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "brainstorm", "module": "api.brainstorm", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "hallucination_detector", "module": "api.hallucination_detector", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "writing_assistant", "module": "api.writing_assistant", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "content_planning", "module": "api.content_planning.api.router", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "user_data", "module": "api.user_data", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "user_environment", "module": "api.user_environment", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "strategy_copilot", "module": "api.content_planning.strategy_copilot", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "error_logging", "module": "routers.error_logging", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "frontend_env_manager", "module": "routers.frontend_env_manager", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "platform_analytics", "module": "routers.platform_analytics", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "bing_insights", "module": "routers.bing_insights", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "background_jobs", "module": "routers.background_jobs", "attr": "router", "profiles": {"all", "default"}},
+    ]
+
+    OPTIONAL_ROUTER_REGISTRY = [
+        {"name": "blog_writer", "module": "api.blog_writer.router", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "story_writer", "module": "api.story_writer.router", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "wix", "module": "api.wix_routes", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "blog_seo_analysis", "module": "api.blog_writer.seo_analysis", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "persona", "module": "api.persona_routes", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "video_studio", "module": "api.video_studio.router", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "stability", "module": "routers.stability", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "stability_advanced", "module": "routers.stability_advanced", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "stability_admin", "module": "routers.stability_admin", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "images", "module": "api.images", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "image_studio", "module": "routers.image_studio", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "product_marketing", "module": "routers.product_marketing", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "campaign_creator", "module": "routers.campaign_creator", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "content_assets", "module": "api.content_assets.router", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "podcast", "module": "api.podcast.router", "attr": "router", "profiles": {"all", "default", "podcast"}},
+        {"name": "youtube", "module": "api.youtube.router", "attr": "router", "profiles": {"all", "default"}, "include_kwargs": {"prefix": "/api"}},
+        {"name": "research_config", "module": "api.research_config", "attr": "router", "profiles": {"all", "default"}, "include_kwargs": {"prefix": "/api/research", "tags": ["research"]}},
+        {"name": "research_engine", "module": "api.research.router", "attr": "router", "profiles": {"all", "default"}, "include_kwargs": {"tags": ["Research Engine"]}},
+        {"name": "scheduler_dashboard", "module": "api.scheduler_dashboard", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "oauth_token_monitoring", "module": "api.oauth_token_monitoring_routes", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "agents", "module": "api.agents_api", "attr": "router", "profiles": {"all", "default"}},
+        {"name": "today_workflow", "module": "api.today_workflow", "attr": "router", "profiles": {"all", "default"}},
+    ]
+
     def __init__(self, app: FastAPI):
         self.app = app
         self.included_routers = []
         self.failed_routers = []
-    
-    def include_router_safely(self, router, router_name: str = None) -> bool:
+
+    def _is_verbose(self) -> bool:
+        return os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+
+    def _get_profile(self) -> str:
+        return os.getenv("ALWRITY_ROUTER_PROFILE", os.getenv("ALWRITY_PROFILE", "all")).strip().lower() or "all"
+
+    def _should_include_router(self, registry_entry: Dict[str, Any], profile: str) -> bool:
+        profiles = registry_entry.get("profiles", {"all", "default"})
+        return profile in profiles or profile in {"all", "default"}
+
+    def _load_router_from_registry(self, registry_entry: Dict[str, Any]):
+        module = import_module(registry_entry["module"])
+        return getattr(module, registry_entry["attr"])
+
+    def include_router_safely(self, router, router_name: str = None, include_kwargs: Optional[Dict[str, Any]] = None) -> bool:
         """Include a router safely with error handling."""
-        verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+        verbose = self._is_verbose()
 
         try:
-            self.app.include_router(router)
+            self.app.include_router(router, **(include_kwargs or {}))
             router_name = router_name or getattr(router, 'prefix', 'unknown')
             self.included_routers.append(router_name)
             if verbose:
@@ -34,209 +104,43 @@ class RouterManager:
             if verbose:
                 logger.warning(f"❌ Router inclusion failed: {router_name} - {e}")
             return False
-    
-    def include_core_routers(self) -> bool:
-        """Include core application routers."""
-        # Import os locally to avoid UnboundLocalError if it's shadowed
-        import os
-        verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+
+    def _include_registry_group(self, registry: List[Dict[str, Any]], group_name: str) -> bool:
+        verbose = self._is_verbose()
+        profile = self._get_profile()
 
         try:
             if verbose:
-                logger.info("Including core routers...")
+                logger.info(f"Including {group_name} routers for profile '{profile}'...")
 
-            # Component logic router
-            from api.component_logic import router as component_logic_router
-            self.include_router_safely(component_logic_router, "component_logic")
-            
-            # Subscription router
-            from api.subscription import router as subscription_router
-            self.include_router_safely(subscription_router, "subscription")
-            
-            # Step 3 Research router (core onboarding functionality)
-            from api.onboarding_utils.step3_routes import router as step3_research_router
-            self.include_router_safely(step3_research_router, "step3_research")
+            for entry in registry:
+                if not self._should_include_router(entry, profile):
+                    continue
 
-            # Step 4 Persona and Asset routers
-            from api.onboarding_utils.step4_asset_routes import router as step4_asset_router
-            self.include_router_safely(step4_asset_router, "step4_assets")
+                try:
+                    router = self._load_router_from_registry(entry)
+                    self.include_router_safely(router, entry["name"], entry.get("include_kwargs"))
+                except Exception as e:
+                    logger.warning(f"{entry['name']} router not mounted: {e}")
 
-            from api.onboarding_utils.step4_persona_routes_optimized import router as step4_persona_router
-            self.include_router_safely(step4_persona_router, "step4_persona")
-            
-            # GSC router
-            from routers.gsc_auth import router as gsc_auth_router
-            self.include_router_safely(gsc_auth_router, "gsc_auth")
-            
-            # WordPress router
-            from routers.wordpress_oauth import router as wordpress_oauth_router
-            self.include_router_safely(wordpress_oauth_router, "wordpress_oauth")
-            
-            # Bing Webmaster router
-            from routers.bing_oauth import router as bing_oauth_router
-            self.include_router_safely(bing_oauth_router, "bing_oauth")
-            
-            # Bing Analytics router
-            from routers.bing_analytics import router as bing_analytics_router
-            self.include_router_safely(bing_analytics_router, "bing_analytics")
-            
-            # Bing Analytics Storage router
-            from routers.bing_analytics_storage import router as bing_analytics_storage_router
-            self.include_router_safely(bing_analytics_storage_router, "bing_analytics_storage")
-            
-            # SEO tools router
-            from routers.seo_tools import router as seo_tools_router
-            self.include_router_safely(seo_tools_router, "seo_tools")
-            
-            # Facebook Writer router
-            from api.facebook_writer.routers import facebook_router
-            self.include_router_safely(facebook_router, "facebook_writer")
-            
-            # LinkedIn routers
-            from routers.linkedin import router as linkedin_router
-            self.include_router_safely(linkedin_router, "linkedin")
-
-            from api.linkedin_image_generation import router as linkedin_image_router
-            self.include_router_safely(linkedin_image_router, "linkedin_image")
-            
-            # Brainstorm router
-            from api.brainstorm import router as brainstorm_router
-            self.include_router_safely(brainstorm_router, "brainstorm")
-
-            # Hallucination detector and writing assistant
-            from api.hallucination_detector import router as hallucination_detector_router
-            self.include_router_safely(hallucination_detector_router, "hallucination_detector")
-
-            from api.writing_assistant import router as writing_assistant_router
-            self.include_router_safely(writing_assistant_router, "writing_assistant")
-            
-            # Content planning and user data
-            from api.content_planning.api.router import router as content_planning_router
-            self.include_router_safely(content_planning_router, "content_planning")
-
-            from api.user_data import router as user_data_router
-            self.include_router_safely(user_data_router, "user_data")
-
-            from api.user_environment import router as user_environment_router
-            self.include_router_safely(user_environment_router, "user_environment")
-
-            # Strategy copilot
-            from api.content_planning.strategy_copilot import router as strategy_copilot_router
-            self.include_router_safely(strategy_copilot_router, "strategy_copilot")
-            
-            # Error logging router
-            from routers.error_logging import router as error_logging_router
-            self.include_router_safely(error_logging_router, "error_logging")
-            
-            # Frontend environment manager router
-            from routers.frontend_env_manager import router as frontend_env_router
-            self.include_router_safely(frontend_env_router, "frontend_env_manager")
-            
-            # Platform analytics router
-            try:
-                from routers.platform_analytics import router as platform_analytics_router
-                self.include_router_safely(platform_analytics_router, "platform_analytics")
-                logger.info("✅ Platform analytics router included successfully")
-            except Exception as e:
-                logger.error(f"❌ Failed to include platform analytics router: {e}")
-                # Continue with other routers
-            
-            # Bing insights router
-            try:
-                from routers.bing_insights import router as bing_insights_router
-                self.include_router_safely(bing_insights_router, "bing_insights")
-                logger.info("✅ Bing insights router included successfully")
-            except Exception as e:
-                logger.error(f"❌ Failed to include Bing insights router: {e}")
-                # Continue with other routers
-            
-            # Background jobs router
-            try:
-                from routers.background_jobs import router as background_jobs_router
-                self.include_router_safely(background_jobs_router, "background_jobs")
-                logger.info("✅ Background jobs router included successfully")
-            except Exception as e:
-                logger.error(f"❌ Failed to include Background jobs router: {e}")
-                # Continue with other routers
-            
-            logger.info("✅ Core routers included successfully")
+            logger.info(f"✅ {group_name.capitalize()} routers processed for profile '{profile}'")
             return True
-            
         except Exception as e:
-            logger.error(f"❌ Error including core routers: {e}")
+            logger.error(f"❌ Error including {group_name} routers: {e}")
             return False
-    
+
+    def include_core_routers(self) -> bool:
+        """Include core application routers."""
+        return self._include_registry_group(self.CORE_ROUTER_REGISTRY, "core")
+
     def include_optional_routers(self) -> bool:
         """Include optional routers with error handling."""
-        try:
-            logger.info("Including optional routers...")
-            
-            # AI Blog Writer router
-            try:
-                from api.blog_writer.router import router as blog_writer_router
-                self.include_router_safely(blog_writer_router, "blog_writer")
-            except Exception as e:
-                logger.warning(f"AI Blog Writer router not mounted: {e}")
-            
-            # Story Writer router
-            try:
-                from api.story_writer.router import router as story_writer_router
-                self.include_router_safely(story_writer_router, "story_writer")
-            except Exception as e:
-                logger.warning(f"Story Writer router not mounted: {e}")
-            
-            # Wix Integration router
-            try:
-                from api.wix_routes import router as wix_router
-                self.include_router_safely(wix_router, "wix")
-            except Exception as e:
-                logger.warning(f"Wix Integration router not mounted: {e}")
-            
-            # Blog Writer SEO Analysis router
-            try:
-                from api.blog_writer.seo_analysis import router as blog_seo_analysis_router
-                self.include_router_safely(blog_seo_analysis_router, "blog_seo_analysis")
-            except Exception as e:
-                logger.warning(f"Blog Writer SEO Analysis router not mounted: {e}")
-            
-            # Persona router
-            try:
-                from api.persona_routes import router as persona_router
-                self.include_router_safely(persona_router, "persona")
-            except Exception as e:
-                logger.warning(f"Persona router not mounted: {e}")
-            
-            # Video Studio router
-            try:
-                from api.video_studio.router import router as video_studio_router
-                self.include_router_safely(video_studio_router, "video_studio")
-            except Exception as e:
-                logger.warning(f"Video Studio router not mounted: {e}")
+        return self._include_registry_group(self.OPTIONAL_ROUTER_REGISTRY, "optional")
 
-            # Stability AI routers
-            try:
-                from routers.stability import router as stability_router
-                self.include_router_safely(stability_router, "stability")
-                
-                from routers.stability_advanced import router as stability_advanced_router
-                self.include_router_safely(stability_advanced_router, "stability_advanced")
-                
-                from routers.stability_admin import router as stability_admin_router
-                self.include_router_safely(stability_admin_router, "stability_admin")
-            except Exception as e:
-                logger.warning(f"Stability AI routers not mounted: {e}")
-            
-            
-            logger.info("✅ Optional routers processed")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error including optional routers: {e}")
-            return False
-    
     def get_router_status(self) -> Dict[str, Any]:
         """Get the status of router inclusion."""
         return {
+            "active_profile": self._get_profile(),
             "included_routers": self.included_routers,
             "failed_routers": self.failed_routers,
             "total_included": len(self.included_routers),
