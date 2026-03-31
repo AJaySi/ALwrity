@@ -250,13 +250,10 @@ const InitialRouteHandler: React.FC = () => {
       if (subscription.active && !isNewUser) {
         console.log('InitialRouteHandler: Subscription confirmed, initializing onboarding...');
         
-        // Handle post-Stripe-checkout redirect in demo mode
-        if (isCheckoutSuccess && shouldSkipOnboarding()) {
-          console.log('InitialRouteHandler: Stripe checkout success in demo mode → Podcast Maker');
-          return <Navigate to="/podcast-maker" replace />;
+        // Don't initialize onboarding if checkout was successful - early return handles redirect
+        if (!isCheckoutSuccess) {
+          initializeOnboarding();
         }
-        
-        initializeOnboarding();
       }
     }
   }, [subscription, subscriptionLoading, initializeOnboarding, isCheckoutSuccess]);
