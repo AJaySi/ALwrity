@@ -293,7 +293,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
         throw researchError;
       }
     } catch (error) {
-      announceError(setAnnouncement, error);
+      announceError(setAnnouncement, setAnnouncementSeverityFn, error);
     } finally {
       setIsResearching(false);
     }
@@ -337,7 +337,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
 
       setScriptData(result);
     } catch (error) {
-      announceError(setAnnouncement, error);
+      announceError(setAnnouncement, setAnnouncementSeverityFn, error);
     }
   }, [showScriptEditor, project, research, preflightCheck, setScriptData, setShowRenderQueue, setShowScriptEditor, rawResearch, projectState.knobs, projectState.bible])
 
