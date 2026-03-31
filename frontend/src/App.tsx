@@ -394,10 +394,44 @@ const InitialRouteHandler: React.FC = () => {
     }
     
     // Subscription check completed but returned null/undefined
-    // This likely means no subscription - redirect to pricing
-    console.log('InitialRouteHandler: No subscription data after check → Pricing page');
-    return <Navigate to="/pricing" replace />;
-  }
+    // In demo mode, allow access to podcast-maker even with no subscription data
+    if (!subscription) {
+      if (isOnboardingComplete) {
+        console.log('InitialRouteHandler: Onboarding complete but no subscription data → Dashboard (allow access)');
+        return <Navigate to="/dashboard" replace />;
+      }
+      
+      // Onboarding not complete and no subscription data
+      // If subscription check is still loading, show loading state
+      if (subscriptionLoading) {
+        return (
+          <Box
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            minHeight="100vh"
+            gap={2}
+          >
+            <CircularProgress size={60} />
+            <Typography variant="h6" color="textSecondary">
+              Checking subscription...
+            </Typography>
+          </Box>
+        );
+      }
+      
+      // In demo mode, redirect to podcast-maker even without subscription
+      if (shouldSkipOnboarding()) {
+        console.log('InitialRouteHandler: Demo mode - no subscription but allowing access to podcast-maker');
+        return <Navigate to="/podcast-maker" replace />;
+      }
+      
+      // Subscription check completed but returned null/undefined
+      // This likely means no subscription - redirect to pricing
+      console.log('InitialRouteHandler: No subscription data after check → Pricing page');
+      return <Navigate to="/pricing" replace />;
+    }
 
   // 3. Check subscription status first
   const isNewUser = !subscription || subscription.plan === 'none';
