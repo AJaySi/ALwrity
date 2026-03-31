@@ -13,57 +13,57 @@ from loguru import logger
 
 
 CORE_ROUTER_REGISTRY = [
-    {"name": "component_logic", "module": "api.component_logic", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "subscription", "module": "api.subscription", "attr": "router", "profiles": {"all", "default", "podcast"}},
-    {"name": "step3_research", "module": "api.onboarding_utils.step3_routes", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "step4_assets", "module": "api.onboarding_utils.step4_asset_routes", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "step4_persona", "module": "api.onboarding_utils.step4_persona_routes_optimized", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "gsc_auth", "module": "routers.gsc_auth", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "wordpress_oauth", "module": "routers.wordpress_oauth", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "bing_oauth", "module": "routers.bing_oauth", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "bing_analytics", "module": "routers.bing_analytics", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "bing_analytics_storage", "module": "routers.bing_analytics_storage", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "seo_tools", "module": "routers.seo_tools", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "facebook_writer", "module": "api.facebook_writer.routers", "attr": "facebook_router", "profiles": {"all", "default"}},
-    {"name": "linkedin", "module": "routers.linkedin", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "linkedin_image", "module": "api.linkedin_image_generation", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "brainstorm", "module": "api.brainstorm", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "hallucination_detector", "module": "api.hallucination_detector", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "writing_assistant", "module": "api.writing_assistant", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "content_planning", "module": "api.content_planning.api.router", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "user_data", "module": "api.user_data", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "user_environment", "module": "api.user_environment", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "strategy_copilot", "module": "api.content_planning.strategy_copilot", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "error_logging", "module": "routers.error_logging", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "frontend_env_manager", "module": "routers.frontend_env_manager", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "platform_analytics", "module": "routers.platform_analytics", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "bing_insights", "module": "routers.bing_insights", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "background_jobs", "module": "routers.background_jobs", "attr": "router", "profiles": {"all", "default"}},
+    {"name": "component_logic", "module": "api.component_logic", "attr": "router", "features": {"all", "core"}},
+    {"name": "subscription", "module": "api.subscription", "attr": "router", "features": {"all", "core", "podcast", "blog-writer", "youtube"}},
+    {"name": "step3_research", "module": "api.onboarding_utils.step3_routes", "attr": "router", "features": {"all", "core"}},
+    {"name": "step4_assets", "module": "api.onboarding_utils.step4_asset_routes", "attr": "router", "features": {"all", "core"}},
+    {"name": "step4_persona", "module": "api.onboarding_utils.step4_persona_routes_optimized", "attr": "router", "features": {"all", "core"}},
+    {"name": "gsc_auth", "module": "routers.gsc_auth", "attr": "router", "features": {"all", "core", "seo"}},
+    {"name": "wordpress_oauth", "module": "routers.wordpress_oauth", "attr": "router", "features": {"all", "core"}},
+    {"name": "bing_oauth", "module": "routers.bing_oauth", "attr": "router", "features": {"all", "core"}},
+    {"name": "bing_analytics", "module": "routers.bing_analytics", "attr": "router", "features": {"all", "core"}},
+    {"name": "bing_analytics_storage", "module": "routers.bing_analytics_storage", "attr": "router", "features": {"all", "core"}},
+    {"name": "seo_tools", "module": "routers.seo_tools", "attr": "router", "features": {"all", "core", "seo"}},
+    {"name": "facebook_writer", "module": "api.facebook_writer.routers", "attr": "facebook_router", "features": {"all", "core", "facebook"}},
+    {"name": "linkedin", "module": "routers.linkedin", "attr": "router", "features": {"all", "core", "linkedin"}},
+    {"name": "linkedin_image", "module": "api.linkedin_image_generation", "attr": "router", "features": {"all", "core", "linkedin"}},
+    {"name": "brainstorm", "module": "api.brainstorm", "attr": "router", "features": {"all", "core"}},
+    {"name": "hallucination_detector", "module": "api.hallucination_detector", "attr": "router", "features": {"all", "core"}},
+    {"name": "writing_assistant", "module": "api.writing_assistant", "attr": "router", "features": {"all", "core"}},
+    {"name": "content_planning", "module": "api.content_planning.api.router", "attr": "router", "features": {"all", "core", "content-planning"}},
+    {"name": "user_data", "module": "api.user_data", "attr": "router", "features": {"all", "core"}},
+    {"name": "user_environment", "module": "api.user_environment", "attr": "router", "features": {"all", "core"}},
+    {"name": "strategy_copilot", "module": "api.content_planning.strategy_copilot", "attr": "router", "features": {"all", "core", "content-planning"}},
+    {"name": "error_logging", "module": "routers.error_logging", "attr": "router", "features": {"all", "core"}},
+    {"name": "frontend_env_manager", "module": "routers.frontend_env_manager", "attr": "router", "features": {"all", "core"}},
+    {"name": "platform_analytics", "module": "routers.platform_analytics", "attr": "router", "features": {"all", "core"}},
+    {"name": "bing_insights", "module": "routers.bing_insights", "attr": "router", "features": {"all", "core", "seo"}},
+    {"name": "background_jobs", "module": "routers.background_jobs", "attr": "router", "features": {"all", "core"}},
 ]
 
 OPTIONAL_ROUTER_REGISTRY = [
-    {"name": "blog_writer", "module": "api.blog_writer.router", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "story_writer", "module": "api.story_writer.router", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "wix", "module": "api.wix_routes", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "blog_seo_analysis", "module": "api.blog_writer.seo_analysis", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "persona", "module": "api.persona_routes", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "video_studio", "module": "api.video_studio.router", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "stability", "module": "routers.stability", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "stability_advanced", "module": "routers.stability_advanced", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "stability_admin", "module": "routers.stability_admin", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "images", "module": "api.images", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "image_studio", "module": "routers.image_studio", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "product_marketing", "module": "routers.product_marketing", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "campaign_creator", "module": "routers.campaign_creator", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "content_assets", "module": "api.content_assets.router", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "podcast", "module": "api.podcast.router", "attr": "router", "profiles": {"all", "default", "podcast"}},
-    {"name": "youtube", "module": "api.youtube.router", "attr": "router", "profiles": {"all", "default"}, "include_kwargs": {"prefix": "/api"}},
-    {"name": "research_config", "module": "api.research_config", "attr": "router", "profiles": {"all", "default"}, "include_kwargs": {"prefix": "/api/research", "tags": ["research"]}},
-    {"name": "research_engine", "module": "api.research.router", "attr": "router", "profiles": {"all", "default"}, "include_kwargs": {"tags": ["Research Engine"]}},
-    {"name": "scheduler_dashboard", "module": "api.scheduler_dashboard", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "oauth_token_monitoring", "module": "api.oauth_token_monitoring_routes", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "agents", "module": "api.agents_api", "attr": "router", "profiles": {"all", "default"}},
-    {"name": "today_workflow", "module": "api.today_workflow", "attr": "router", "profiles": {"all", "default"}},
+    {"name": "blog_writer", "module": "api.blog_writer.router", "attr": "router", "features": {"all", "blog-writer"}},
+    {"name": "story_writer", "module": "api.story_writer.router", "attr": "router", "features": {"all", "story-writer"}},
+    {"name": "wix", "module": "api.wix_routes", "attr": "router", "features": {"all"}},
+    {"name": "blog_seo_analysis", "module": "api.blog_writer.seo_analysis", "attr": "router", "features": {"all", "blog-writer"}},
+    {"name": "persona", "module": "api.persona_routes", "attr": "router", "features": {"all", "persona"}},
+    {"name": "video_studio", "module": "api.video_studio.router", "attr": "router", "features": {"all", "video-studio"}},
+    {"name": "stability", "module": "routers.stability", "attr": "router", "features": {"all", "image-studio"}},
+    {"name": "stability_advanced", "module": "routers.stability_advanced", "attr": "router", "features": {"all", "image-studio"}},
+    {"name": "stability_admin", "module": "routers.stability_admin", "attr": "router", "features": {"all", "image-studio"}},
+    {"name": "images", "module": "api.images", "attr": "router", "features": {"all", "image-studio"}},
+    {"name": "image_studio", "module": "routers.image_studio", "attr": "router", "features": {"all", "image-studio"}},
+    {"name": "product_marketing", "module": "routers.product_marketing", "attr": "router", "features": {"all", "product-marketing"}},
+    {"name": "campaign_creator", "module": "routers.campaign_creator", "attr": "router", "features": {"all"}},
+    {"name": "content_assets", "module": "api.content_assets.router", "attr": "router", "features": {"all"}},
+    {"name": "podcast", "module": "api.podcast.router", "attr": "router", "features": {"all", "podcast"}},
+    {"name": "youtube", "module": "api.youtube.router", "attr": "router", "features": {"all", "youtube"}, "include_kwargs": {"prefix": "/api"}},
+    {"name": "research_config", "module": "api.research_config", "attr": "router", "features": {"all", "research"}, "include_kwargs": {"prefix": "/api/research", "tags": ["research"]}},
+    {"name": "research_engine", "module": "api.research.router", "attr": "router", "features": {"all", "research"}, "include_kwargs": {"tags": ["Research Engine"]}},
+    {"name": "scheduler_dashboard", "module": "api.scheduler_dashboard", "attr": "router", "features": {"all", "scheduler"}},
+    {"name": "oauth_token_monitoring", "module": "api.oauth_token_monitoring_routes", "attr": "router", "features": {"all", "core"}},
+    {"name": "agents", "module": "api.agents_api", "attr": "router", "features": {"all"}},
+    {"name": "today_workflow", "module": "api.today_workflow", "attr": "router", "features": {"all"}},
 ]
 
 OPTIONAL_MODULE_MATRIX = {
@@ -81,15 +81,50 @@ class RouterManager:
         self.failed_routers = []
         self.skipped_routers = []
     
+    @staticmethod
+    def get_enabled_features() -> set:
+        """Get enabled features from environment variable.
+        
+        ALWRITY_ENABLED_FEATURES can be:
+        - "all" - enable all features (default)
+        - comma-separated list: "podcast,blog-writer,youtube"
+        - single feature: "podcast"
+        """
+        env_value = os.getenv(
+            "ALWRITY_ENABLED_FEATURES",
+            os.getenv("ALWRITY_FEATURE_PROFILE", os.getenv("ALWRITY_ROUTER_PROFILE", "all"))
+        ).strip().lower()
+        
+        if not env_value or env_value == "all":
+            return {"all"}
+        
+        return {f.strip() for f in env_value.split(",") if f.strip()}
+    
     def _is_verbose(self) -> bool:
         return os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
     
     def _get_profile(self) -> str:
-        return os.getenv("ALWRITY_FEATURE_PROFILE", os.getenv("ALWRITY_ROUTER_PROFILE", os.getenv("ALWRITY_FEATURE_TO_ENABLE", "all"))).strip().lower() or "all"
+        """Legacy method - returns primary profile."""
+        enabled = self.get_enabled_features()
+        if "all" in enabled:
+            return "all"
+        # Return first feature as profile for backwards compatibility
+        return list(enabled)[0] if enabled else "all"
     
-    def _should_include_router(self, registry_entry: Dict[str, Any], profile: str) -> bool:
-        profiles = registry_entry.get("profiles", {"all", "default"})
-        return profile in profiles or profile in {"all", "default"}
+    def _should_include_router(self, registry_entry: Dict[str, Any], enabled_features: set) -> bool:
+        """Check if router should be included based on enabled features."""
+        required_features = registry_entry.get("features", set())
+        
+        # If "all" is enabled, include everything
+        if "all" in enabled_features:
+            return True
+        
+        # If no required features specified, include by default
+        if not required_features:
+            return True
+        
+        # Check if any required feature is enabled
+        return bool(required_features & enabled_features)
     
     def _load_router_from_registry(self, registry_entry: Dict[str, Any]):
         module = import_module(registry_entry["module"])
@@ -120,15 +155,15 @@ class RouterManager:
     
     def _include_registry_group(self, registry: List[Dict[str, Any]], group_name: str) -> bool:
         verbose = self._is_verbose()
-        profile = self._get_profile()
+        enabled_features = self.get_enabled_features()
         
         try:
             if verbose:
-                logger.info(f"Including {group_name} routers for profile '{profile}'...")
+                logger.info(f"Including {group_name} routers with features: {enabled_features}...")
             
             for entry in registry:
-                if not self._should_include_router(entry, profile):
-                    reason = f"profile '{profile}' not in {entry.get('profiles', set())}"
+                if not self._should_include_router(entry, enabled_features):
+                    reason = f"features {enabled_features} not matching {entry.get('features', set())}"
                     self.skipped_routers.append({"name": entry["name"], "reason": reason})
                     if verbose:
                         logger.info(f"⏭️  Skipping {entry['name']}: {reason}")
@@ -140,7 +175,7 @@ class RouterManager:
                 except Exception as e:
                     logger.warning(f"{entry['name']} router not mounted: {e}")
             
-            logger.info(f"✅ {group_name.capitalize()} routers processed for profile '{profile}'")
+            logger.info(f"✅ {group_name.capitalize()} routers processed for features: {enabled_features}")
             return True
             
         except Exception as e:

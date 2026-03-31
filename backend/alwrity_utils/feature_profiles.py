@@ -9,7 +9,9 @@ from typing import Iterable, Tuple
 from .feature_registry import FEATURE_GROUPS, PROFILE_GROUP_MAP
 
 
-ENV_FEATURE_PROFILE = "ALWRITY_FEATURE_TO_ENABLE"
+# Consolidated env var - supports both old and new format
+ENV_FEATURE_PROFILE = "ALWRITY_ENABLED_FEATURES"
+ENV_FEATURE_PROFILE_LEGACY = "ALWRITY_FEATURE_TO_ENABLE"
 DEFAULT_PROFILE = "all"
 
 
@@ -22,7 +24,12 @@ class ExpandedFeatureProfile:
 
 
 class UnknownFeatureProfileError(ValueError):
-    """Raised when ALWRITY_FEATURE_TO_ENABLE contains unknown profile values."""
+    """Raised when ALWRITY_ENABLED_FEATURES contains unknown profile values."""
+
+
+def _get_env_value() -> str:
+    """Get the feature profile value from environment - new var takes precedence."""
+    return os.getenv(ENV_FEATURE_PROFILE) or os.getenv(ENV_FEATURE_PROFILE_LEGACY) or DEFAULT_PROFILE
 
 
 def _normalize_values(raw_value: str | None) -> Tuple[str, ...]:
@@ -44,11 +51,11 @@ def parse_feature_profiles(raw_value: str | None = None) -> Tuple[str, ...]:
     Raises UnknownFeatureProfileError when any profile is not registered.
     """
     
-    selected_profiles = _normalize_values(raw_value if raw_value is not None else os.getenv(ENV_FEATURE_PROFILE))
+    selected_profiles = _normalize_values(raw_value if raw_value is not None else _get_env_value())
     
-    unknown = sorted({profile for profile in selected_profiles if profile not in PROFILE_GROUP_MAP})
+    unknown = sorted({profile for profile in selected_profiles if profile not in PROFILE_GROUP_MAP and profile not in FEATURE_GROUPS})
     if unknown:
-        supported = ", ".join(sorted(PROFILE_GROUP_MAP))
+        supported = ", ".join(sorted(set(PROFILE_GROUP_MAP.keys()) | set(FEATURE_GROUPS.keys())))
         unknown_display = ", ".join(unknown)
         raise UnknownFeatureProfileError(
             f"Unknown {ENV_FEATURE_PROFILE} value(s): {unknown_display}. Supported profiles: {supported}."
@@ -64,14 +71,18 @@ def _dedupe_stable(items: Iterable[str]) -> Tuple[str, ...]:
 def expand_profiles(profiles: Tuple[str, ...]) -> ExpandedFeatureProfile:
     """Expand profile names into a deduplicated group list."""
     
+    # Handle "all" specially - include all groups
+    if "all" in profiles:
+        return ExpandedFeatureProfile(profiles=("all",), groups=tuple(FEATURE_GROUPS.keys()))
+    
+    # Otherwise expand via PROFILE_GROUP_MAP
     groups = _dedupe_stable(
         group
         for profile in profiles
-        for group in PROFILE_GROUP_MAP[profile]
+        for group in PROFILE_GROUP_MAP.get(profile, (profile,))
     )
     
-    missing_groups = sorted({group for group in groups if group not in FEATURE_GROUPS})
-    if missing_groups:
-        raise RuntimeError(f"Profile mapping references unknown groups: {', '.join(missing_groups)}")
+    # Include FEATURE_GROUPS keys directly
+    all_groups = _dedupe_stable(list(groups) + [g for g in groups if g in FEATURE_GROUPS])
     
-    return ExpandedFeatureProfile(profiles=profiles, groups=groups)
+    return ExpandedFeatureProfile(profiles=profiles, groups=all_groups)

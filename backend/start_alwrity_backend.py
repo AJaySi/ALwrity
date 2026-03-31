@@ -26,42 +26,63 @@ class BootstrapResult:
 LINGUISTIC_REQUIRED_FEATURES = {"content_planning", "strategy_copilot", "facebook", "linkedin", "blog_writer", "persona"}
 
 
+def get_enabled_features() -> set:
+    """Get enabled features from environment variable.
+    
+    ALWRITY_ENABLED_FEATURES can be:
+    - "all" - enable all features (default)
+    - comma-separated list: "podcast,blog-writer,youtube"
+    - single feature: "podcast"
+    """
+    env_value = os.getenv(
+        "ALWRITY_ENABLED_FEATURES",
+        os.getenv("ALWRITY_FEATURE_PROFILE", os.getenv("ALWRITY_ROUTER_PROFILE", "all"))
+    ).strip().lower()
+    
+    if not env_value or env_value == "all":
+        return {"all"}
+    
+    return {f.strip() for f in env_value.split(",") if f.strip()}
+
+
 def get_active_profile() -> str:
-    """Get active profile from environment variables."""
-    return os.getenv("ALWRITY_ACTIVE_PROFILE", os.getenv("ALWRITY_PROFILE", os.getenv("ALWRITY_FEATURE_PROFILE", os.getenv("ALWRITY_ROUTER_PROFILE", os.getenv("ALWRITY_FEATURE_TO_ENABLE", "all"))))).strip().lower() or "all"
-
-
-def get_loaded_features() -> set:
-    """Get loaded features from environment variables."""
-    features_str = os.getenv("ALWRITY_LOADED_FEATURES", os.getenv("ALWRITY_ENABLED_FEATURES", os.getenv("ALWRITY_FEATURES", "")))
-    if not features_str:
-        return set()
-    return {f.strip().lower() for f in features_str.split(",") if f.strip()}
+    """Legacy function - returns primary profile for backwards compatibility."""
+    enabled = get_enabled_features()
+    if "all" in enabled:
+        return "all"
+    return list(enabled)[0] if enabled else "all"
 
 
 def should_bootstrap_linguistic_models() -> bool:
-    """Decide whether to bootstrap linguistic models based on profile."""
-    profile = get_active_profile()
+    """Decide whether to bootstrap linguistic models based on enabled features."""
+    enabled_features = get_enabled_features()
     verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
     
-    if profile in {"all", "default"}:
+    if "all" in enabled_features:
         return True
     
-    loaded_features = get_loaded_features()
-    if not loaded_features:
-        return False
+    # Map old profile names to features for backwards compatibility
+    feature_mapping = {
+        "podcast": "podcast",
+        "youtube": "youtube",
+        "planning": "content-planning",
+        "default": "all"
+    }
     
-    return bool(loaded_features & LINGUISTIC_REQUIRED_FEATURES)
+    # Check if any linguistic-required feature is enabled
+    linguistic_features = {"content_planning", "facebook", "linkedin", "blog-writer", "persona"}
+    return bool(enabled_features & linguistic_features)
 
 
 def should_bootstrap_local_llm_models() -> bool:
-    """Decide whether to bootstrap local LLM models based on profile."""
-    profile = get_active_profile()
+    """Decide whether to bootstrap local LLM models based on enabled features."""
+    enabled_features = get_enabled_features()
     
-    if profile in {"all", "default"}:
+    if "all" in enabled_features:
         return True
     
-    return profile not in {"podcast", "youtube", "planning"}
+    # Skip LLM bootstrap for lean deployments
+    return "core" in enabled_features or "podcast" in enabled_features
 
 
 def bootstrap_linguistic_models() -> BootstrapResult:

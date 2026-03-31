@@ -1,47 +1,79 @@
 /**
- * Demo mode detection utilities for podcast-only demo mode.
+ * Consolidated feature mode detection utilities.
+ * 
+ * Uses ALWRITY_ENABLED_FEATURES (backend) / REACT_APP_ENABLED_FEATURES (frontend)
+ * Format: "all" or comma-separated features: "podcast,core"
  */
 
-const DEMO_MODE_STORAGE_KEYS = [
+const ENABLED_FEATURES_STORAGE_KEYS = [
   'app_mode',
+  'enabled_features',
   'demo_mode',
   'podcast_only_demo_mode',
 ];
 
-const DEMO_MODE_ENV_KEYS = [
+const ENABLED_FEATURES_ENV_KEYS = [
+  'REACT_APP_ENABLED_FEATURES',
   'REACT_APP_APP_MODE',
   'REACT_APP_DEMO_MODE',
   'REACT_APP_PODCAST_ONLY_DEMO_MODE',
 ];
 
 /**
- * Check if podcast-only demo mode is enabled.
- * Checks localStorage first, then environment variables.
+ * Get enabled features from localStorage or environment.
+ * Returns a set of enabled feature names.
  */
-export function isPodcastOnlyDemoMode(): boolean {
-  // Check localStorage
-  for (const key of DEMO_MODE_STORAGE_KEYS) {
-    const value = (localStorage.getItem(key) || '').toLowerCase();
-    if (value === 'true' || value === 'podcast-only' || value === 'podcast_only') {
-      return true;
+export function getEnabledFeatures(): Set<string> {
+  // Check localStorage first
+  for (const key of ENABLED_FEATURES_STORAGE_KEYS) {
+    const value = localStorage.getItem(key);
+    if (value) {
+      const features = value.toLowerCase().split(',').map(f => f.trim());
+      if (features.includes('all')) {
+        return new Set(['all']);
+      }
+      return new Set(features.filter(f => f));
     }
   }
 
   // Check environment variables
-  for (const key of DEMO_MODE_ENV_KEYS) {
-    const value = (process.env[key] || '').toLowerCase();
-    if (value === 'true' || value === 'podcast-only' || value === 'podcast_only') {
-      return true;
+  for (const key of ENABLED_FEATURES_ENV_KEYS) {
+    const value = process.env[key];
+    if (value) {
+      const features = value.toLowerCase().split(',').map(f => f.trim());
+      if (features.includes('all')) {
+        return new Set(['all']);
+      }
+      return new Set(features.filter(f => f));
     }
   }
 
-  return false;
+  // Default: all features enabled
+  return new Set(['all']);
+}
+
+/**
+ * Check if a specific feature is enabled.
+ */
+export function isFeatureEnabled(feature: string): boolean {
+  const enabled = getEnabledFeatures();
+  return enabled.has('all') || enabled.has(feature);
+}
+
+/**
+ * Check if podcast-only mode is enabled.
+ * Returns true when podcast is enabled but not "all".
+ */
+export function isPodcastOnlyDemoMode(): boolean {
+  const enabled = getEnabledFeatures();
+  return enabled.has('podcast') && !enabled.has('all');
 }
 
 /**
  * Check if the app should skip onboarding entirely.
- * Returns true in podcast-only demo mode.
+ * Returns true in podcast-only demo mode or when not using all features.
  */
 export function shouldSkipOnboarding(): boolean {
-  return isPodcastOnlyDemoMode();
+  const enabled = getEnabledFeatures();
+  return enabled.has('podcast') || !enabled.has('all');
 }

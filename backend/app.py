@@ -59,18 +59,47 @@ def _env_flag_enabled(*env_names: str) -> bool:
     return False
 
 
-PODCAST_ONLY_DEMO_MODE = _env_flag_enabled(
-    "ALWRITY_PODCAST_ONLY_DEMO_MODE",
-    "PODCAST_ONLY_DEMO_MODE",
-)
+def get_enabled_features() -> set:
+    """Get enabled features from environment variable.
+    
+    ALWRITY_ENABLED_FEATURES can be:
+    - "all" - enable all features (default)
+    - comma-separated list: "podcast,core"
+    - single feature: "podcast"
+    """
+    env_value = os.getenv(
+        "ALWRITY_ENABLED_FEATURES",
+        os.getenv("ALWRITY_FEATURE_PROFILE", os.getenv("ALWRITY_ROUTER_PROFILE", "all"))
+    ).strip().lower()
+    
+    if not env_value or env_value == "all":
+        return {"all"}
+    
+    return {f.strip() for f in env_value.split(",") if f.strip()}
 
 
 def is_podcast_only_demo_mode() -> bool:
-    return PODCAST_ONLY_DEMO_MODE
+    """Check if podcast-only mode is enabled via new or legacy flags."""
+    # First check the new consolidated flag
+    enabled = get_enabled_features()
+    if "podcast" in enabled and "all" not in enabled:
+        return True
+    
+    # Fall back to legacy flags for backwards compatibility
+    return _env_flag_enabled(
+        "ALWRITY_PODCAST_ONLY_DEMO_MODE",
+        "PODCAST_ONLY_DEMO_MODE"
+    )
 
 
 def should_include_non_podcast_features() -> bool:
-    return not is_podcast_only_demo_mode()
+    """Check if non-podcast features should be included."""
+    enabled = get_enabled_features()
+    return "all" in enabled or "core" in enabled or "blog-writer" in enabled
+
+
+# Legacy constant for backwards compatibility - prefer using get_enabled_features()
+PODCAST_ONLY_DEMO_MODE = is_podcast_only_demo_mode()
 
 
 # Set up clean logging for end users
