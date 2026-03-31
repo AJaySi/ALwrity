@@ -197,8 +197,7 @@ async def analyze_podcast_idea(
             image_result = generate_image(
                 prompt=final_avatar_prompt,
                 user_id=user_id,
-                width=1024,
-                height=1024
+                options={"width": 1024, "height": 1024}
             )
             
             # 4. Save to disk and library
