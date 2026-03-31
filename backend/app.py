@@ -60,17 +60,16 @@ def _env_flag_enabled(*env_names: str) -> bool:
 
 
 def get_enabled_features() -> set:
-    """Get enabled features from environment variable.
+    """Get enabled features from ALWRITY_ENABLED_FEATURES env var.
     
-    ALWRITY_ENABLED_FEATURES can be:
+    Values:
     - "all" - enable all features (default)
-    - comma-separated list: "podcast,core"
+    - comma-separated: "podcast,core"
     - single feature: "podcast"
+    
+    DEPRECATED: ALWRITY_FEATURE_PROFILE, ALWRITY_ROUTER_PROFILE, ALWRITY_FEATURE_TO_ENABLE
     """
-    env_value = os.getenv(
-        "ALWRITY_ENABLED_FEATURES",
-        os.getenv("ALWRITY_FEATURE_PROFILE", os.getenv("ALWRITY_ROUTER_PROFILE", "all"))
-    ).strip().lower()
+    env_value = os.getenv("ALWRITY_ENABLED_FEATURES", "all").strip().lower()
     
     if not env_value or env_value == "all":
         return {"all"}

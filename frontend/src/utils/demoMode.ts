@@ -1,22 +1,26 @@
 /**
  * Consolidated feature mode detection utilities.
  * 
- * Uses ALWRITY_ENABLED_FEATURES (backend) / REACT_APP_ENABLED_FEATURES (frontend)
- * Format: "all" or comma-separated features: "podcast,core"
+ * Primary: REACT_APP_ENABLED_FEATURES (format: "all" or "podcast,core")
+ * 
+ * DEPRECATED (fallback order):
+ * - REACT_APP_APP_MODE
+ * - REACT_APP_DEMO_MODE
+ * - REACT_APP_PODCAST_ONLY_DEMO_MODE
  */
 
 const ENABLED_FEATURES_STORAGE_KEYS = [
+  'enabled_features',  // Primary
   'app_mode',
-  'enabled_features',
   'demo_mode',
   'podcast_only_demo_mode',
 ];
 
 const ENABLED_FEATURES_ENV_KEYS = [
-  'REACT_APP_ENABLED_FEATURES',
-  'REACT_APP_APP_MODE',
-  'REACT_APP_DEMO_MODE',
-  'REACT_APP_PODCAST_ONLY_DEMO_MODE',
+  'REACT_APP_ENABLED_FEATURES',  // Primary - use this!
+  'REACT_APP_APP_MODE',           // DEPRECATED
+  'REACT_APP_DEMO_MODE',          // DEPRECATED
+  'REACT_APP_PODCAST_ONLY_DEMO_MODE', // DEPRECATED
 ];
 
 /**
