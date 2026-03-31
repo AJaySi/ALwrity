@@ -488,34 +488,37 @@ def llm_text_gen(
             # CIRCUIT BREAKER: Stop immediately to prevent expensive API calls
             logger.error("[llm_text_gen] CIRCUIT BREAKER: All providers failed.")
             
-            # Check if any provider failed due to quota/rate limit vs other errors
-            error_types = {
-                "quota_exceeded": False,
-                "rate_limit": False,
-                "auth_error": False,
-                "not_found": False,
-                "other": True
-            }
-            
             # Provide more helpful error message based on available providers
             if not available_providers:
                 raise HTTPException(
-                    status_code=503,
+                    status_code=429,
                     detail={
                         "error": "No LLM providers configured",
                         "message": "No LLM API keys found. Please configure at least one provider (GPT_PROVIDER, GOOGLE_API_KEY, HF_TOKEN, or WAVESPEED_API_KEY).",
-                        "suggestion": "Set GPT_PROVIDER=wavespeed in environment or configure API keys in the dashboard."
+                        "usage_info": {
+                            "error_type": "no_providers_configured",
+                            "operation_type": "text-generation",
+                            "limit": 0,
+                            "current_tokens": 0,
+                            "suggestion": "Set GPT_PROVIDER=wavespeed in environment or configure API keys in the dashboard."
+                        }
                     }
                 )
             
             raise HTTPException(
-                status_code=503,
+                status_code=429,
                 detail={
                     "error": "All LLM providers failed",
                     "message": str(e),
-                    "available_providers": available_providers,
-                    "requested_provider": gpt_provider,
-                    "suggestion": f"Provider {gpt_provider} failed. Available: {', '.join(available_providers)}. Try setting GPT_PROVIDER to one of: {', '.join(available_providers)}"
+                    "usage_info": {
+                        "error_type": "all_providers_failed",
+                        "operation_type": "text-generation",
+                        "available_providers": available_providers,
+                        "requested_provider": gpt_provider,
+                        "limit": 0,
+                        "current_tokens": 0,
+                        "suggestion": f"Provider {gpt_provider} failed. Available: {', '.join(available_providers)}. Try setting GPT_PROVIDER to one of: {', '.join(available_providers)}"
+                    }
                 }
             )
 
