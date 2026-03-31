@@ -10,6 +10,55 @@ import sys
 import argparse
 from pathlib import Path
 
+LINGUISTIC_REQUIRED_FEATURES = {
+    "blog",
+    "blog_writer",
+    "content_planning",
+    "linkedin",
+    "research",
+    "seo",
+    "story",
+}
+
+
+def get_active_profile() -> str:
+    """Resolve currently active bootstrap profile."""
+    raw_profile = (
+        os.getenv("ALWRITY_ACTIVE_PROFILE")
+        or os.getenv("ALWRITY_PROFILE")
+        or os.getenv("ALWRITY_FEATURE_PROFILE")
+        or "all"
+    )
+    profile = raw_profile.strip().lower()
+    if profile in {"", "all", "default"}:
+        return "all"
+    return profile
+
+
+def get_loaded_features() -> set:
+    """Resolve feature set from environment hints."""
+    raw_features = (
+        os.getenv("ALWRITY_LOADED_FEATURES")
+        or os.getenv("ALWRITY_ENABLED_FEATURES")
+        or os.getenv("ALWRITY_FEATURES")
+        or ""
+    )
+    return {feature.strip().lower() for feature in raw_features.split(",") if feature.strip()}
+
+
+def should_bootstrap_linguistic_models(profile: str, loaded_features: set) -> bool:
+    """Full bootstrap for all/default; selective otherwise."""
+    if profile == "all":
+        return True
+    if not loaded_features:
+        return False
+    return bool(loaded_features & LINGUISTIC_REQUIRED_FEATURES)
+
+
+def should_bootstrap_local_llm_models(profile: str) -> bool:
+    """Skip local LLM bootstrap for podcast-only profile."""
+    return profile != "podcast"
+
 
 def bootstrap_linguistic_models():
     """
@@ -145,8 +194,19 @@ def bootstrap_local_llm_models():
 
 # Bootstrap linguistic models BEFORE any imports that might need them
 if __name__ == "__main__":
-    bootstrap_linguistic_models()
-    bootstrap_local_llm_models()
+    active_profile = get_active_profile()
+    loaded_features = get_loaded_features()
+    verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
+
+    if should_bootstrap_linguistic_models(active_profile, loaded_features):
+        bootstrap_linguistic_models()
+    elif verbose:
+        print(f"⏭️  Skipping linguistic bootstrap for profile '{active_profile}'")
+
+    if should_bootstrap_local_llm_models(active_profile):
+        bootstrap_local_llm_models()
+    elif verbose:
+        print(f"⏭️  Skipping local LLM bootstrap for profile '{active_profile}'")
 
 # NOW import modular utilities (after bootstrap)
 from alwrity_utils import (
