@@ -198,6 +198,7 @@ You can customize the server behavior with these environment variables:
 - `HOST`: Server host (default: 0.0.0.0)
 - `PORT`: Server port (default: 8000)
 - `RELOAD`: Enable auto-reload (default: true)
+- `ALWRITY_FEATURE_PROFILE`: Optional feature profile switch for optional modules. Defaults to `all` when missing (preserves current behavior). Supported values: `all`, `default`.
 
 Subscription billing (Stripe) variables used in deployment:
 

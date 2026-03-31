@@ -16,6 +16,31 @@ class RouterManager:
         self.app = app
         self.included_routers = []
         self.failed_routers = []
+        # Profile defaults to `all` when env var is missing to preserve
+        # current behavior (all optional modules enabled).
+        self.feature_profile = os.getenv("ALWRITY_FEATURE_PROFILE", "all").strip().lower() or "all"
+        self._optional_module_matrix = {
+            "all": {
+                "blog_writer",
+                "story_writer",
+                "wix",
+                "blog_seo_analysis",
+                "persona",
+                "video_studio",
+                "stability",
+            },
+            # Lean profile for reduced startup surface area.
+            "default": {
+                "blog_writer",
+                "story_writer",
+                "video_studio",
+            },
+        }
+        if self.feature_profile not in self._optional_module_matrix:
+            logger.warning(
+                f"Unknown ALWRITY_FEATURE_PROFILE='{self.feature_profile}', falling back to 'all'"
+            )
+            self.feature_profile = "all"
     
     def include_router_safely(self, router, router_name: str = None) -> bool:
         """Include a router safely with error handling."""
@@ -170,61 +195,72 @@ class RouterManager:
         """Include optional routers with error handling."""
         try:
             logger.info("Including optional routers...")
+            enabled_modules = self._optional_module_matrix[self.feature_profile]
+            logger.info(
+                f"Feature profile '{self.feature_profile}' enables optional modules: {sorted(enabled_modules)}"
+            )
             
             # AI Blog Writer router
-            try:
-                from api.blog_writer.router import router as blog_writer_router
-                self.include_router_safely(blog_writer_router, "blog_writer")
-            except Exception as e:
-                logger.warning(f"AI Blog Writer router not mounted: {e}")
+            if "blog_writer" in enabled_modules:
+                try:
+                    from api.blog_writer.router import router as blog_writer_router
+                    self.include_router_safely(blog_writer_router, "blog_writer")
+                except Exception as e:
+                    logger.warning(f"AI Blog Writer router not mounted: {e}")
             
             # Story Writer router
-            try:
-                from api.story_writer.router import router as story_writer_router
-                self.include_router_safely(story_writer_router, "story_writer")
-            except Exception as e:
-                logger.warning(f"Story Writer router not mounted: {e}")
+            if "story_writer" in enabled_modules:
+                try:
+                    from api.story_writer.router import router as story_writer_router
+                    self.include_router_safely(story_writer_router, "story_writer")
+                except Exception as e:
+                    logger.warning(f"Story Writer router not mounted: {e}")
             
             # Wix Integration router
-            try:
-                from api.wix_routes import router as wix_router
-                self.include_router_safely(wix_router, "wix")
-            except Exception as e:
-                logger.warning(f"Wix Integration router not mounted: {e}")
+            if "wix" in enabled_modules:
+                try:
+                    from api.wix_routes import router as wix_router
+                    self.include_router_safely(wix_router, "wix")
+                except Exception as e:
+                    logger.warning(f"Wix Integration router not mounted: {e}")
             
             # Blog Writer SEO Analysis router
-            try:
-                from api.blog_writer.seo_analysis import router as blog_seo_analysis_router
-                self.include_router_safely(blog_seo_analysis_router, "blog_seo_analysis")
-            except Exception as e:
-                logger.warning(f"Blog Writer SEO Analysis router not mounted: {e}")
+            if "blog_seo_analysis" in enabled_modules:
+                try:
+                    from api.blog_writer.seo_analysis import router as blog_seo_analysis_router
+                    self.include_router_safely(blog_seo_analysis_router, "blog_seo_analysis")
+                except Exception as e:
+                    logger.warning(f"Blog Writer SEO Analysis router not mounted: {e}")
             
             # Persona router
-            try:
-                from api.persona_routes import router as persona_router
-                self.include_router_safely(persona_router, "persona")
-            except Exception as e:
-                logger.warning(f"Persona router not mounted: {e}")
+            if "persona" in enabled_modules:
+                try:
+                    from api.persona_routes import router as persona_router
+                    self.include_router_safely(persona_router, "persona")
+                except Exception as e:
+                    logger.warning(f"Persona router not mounted: {e}")
             
             # Video Studio router
-            try:
-                from api.video_studio.router import router as video_studio_router
-                self.include_router_safely(video_studio_router, "video_studio")
-            except Exception as e:
-                logger.warning(f"Video Studio router not mounted: {e}")
+            if "video_studio" in enabled_modules:
+                try:
+                    from api.video_studio.router import router as video_studio_router
+                    self.include_router_safely(video_studio_router, "video_studio")
+                except Exception as e:
+                    logger.warning(f"Video Studio router not mounted: {e}")
 
             # Stability AI routers
-            try:
-                from routers.stability import router as stability_router
-                self.include_router_safely(stability_router, "stability")
-                
-                from routers.stability_advanced import router as stability_advanced_router
-                self.include_router_safely(stability_advanced_router, "stability_advanced")
-                
-                from routers.stability_admin import router as stability_admin_router
-                self.include_router_safely(stability_admin_router, "stability_admin")
-            except Exception as e:
-                logger.warning(f"Stability AI routers not mounted: {e}")
+            if "stability" in enabled_modules:
+                try:
+                    from routers.stability import router as stability_router
+                    self.include_router_safely(stability_router, "stability")
+                    
+                    from routers.stability_advanced import router as stability_advanced_router
+                    self.include_router_safely(stability_advanced_router, "stability_advanced")
+                    
+                    from routers.stability_admin import router as stability_admin_router
+                    self.include_router_safely(stability_admin_router, "stability_admin")
+                except Exception as e:
+                    logger.warning(f"Stability AI routers not mounted: {e}")
             
             
             logger.info("✅ Optional routers processed")
@@ -241,4 +277,14 @@ class RouterManager:
             "failed_routers": self.failed_routers,
             "total_included": len(self.included_routers),
             "total_failed": len(self.failed_routers)
+        }
+
+    def get_feature_profile_status(self) -> Dict[str, Any]:
+        """Get active feature profile and enabled optional modules."""
+        enabled_modules = sorted(self._optional_module_matrix[self.feature_profile])
+        return {
+            "feature_profile": self.feature_profile,
+            "enabled_optional_modules": enabled_modules,
+            "available_profiles": sorted(self._optional_module_matrix.keys()),
+            "env_var": "ALWRITY_FEATURE_PROFILE",
         }
