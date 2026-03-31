@@ -509,7 +509,7 @@ def llm_text_gen(
                 status_code=429,
                 detail={
                     "error": "All LLM providers failed",
-                    "message": str(e),
+                    "message": "All configured LLM providers failed to generate a response. Please check API keys and try again.",
                     "usage_info": {
                         "error_type": "all_providers_failed",
                         "operation_type": "text-generation",
@@ -522,6 +522,9 @@ def llm_text_gen(
                 }
             )
 
+    except HTTPException:
+        # Re-raise HTTPExceptions (e.g., 429 subscription limit) - preserve error details
+        raise
     except Exception as e:
         logger.error(f"[llm_text_gen] Error during text generation: {str(e)}")
         raise
