@@ -485,8 +485,38 @@ def llm_text_gen(
                     logger.error(f"[llm_text_gen] Fallback provider {fallback_provider} also failed: {str(fallback_error)}")
             
             # CIRCUIT BREAKER: Stop immediately to prevent expensive API calls
-            logger.error("[llm_text_gen] CIRCUIT BREAKER: Stopping to prevent expensive API calls.")
-            raise RuntimeError("All LLM providers failed to generate a response.")
+            logger.error("[llm_text_gen] CIRCUIT BREAKER: All providers failed.")
+            
+            # Check if any provider failed due to quota/rate limit vs other errors
+            error_types = {
+                "quota_exceeded": False,
+                "rate_limit": False,
+                "auth_error": False,
+                "not_found": False,
+                "other": True
+            }
+            
+            # Provide more helpful error message based on available providers
+            if not available_providers:
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "No LLM providers configured",
+                        "message": "No LLM API keys found. Please configure at least one provider (GPT_PROVIDER, GOOGLE_API_KEY, HF_TOKEN, or WAVESPEED_API_KEY).",
+                        "suggestion": "Set GPT_PROVIDER=wavespeed in environment or configure API keys in the dashboard."
+                    }
+                )
+            
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "All LLM providers failed",
+                    "message": str(e),
+                    "available_providers": available_providers,
+                    "requested_provider": gpt_provider,
+                    "suggestion": f"Provider {gpt_provider} failed. Available: {', '.join(available_providers)}. Try setting GPT_PROVIDER to one of: {', '.join(available_providers)}"
+                }
+            )
 
     except Exception as e:
         logger.error(f"[llm_text_gen] Error during text generation: {str(e)}")
