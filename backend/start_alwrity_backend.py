@@ -8,7 +8,32 @@ Run this from the backend directory to set up and start the FastAPI server.
 import os
 import sys
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class StartupProfile:
+    name: str
+    description: str
+    enable_nlp_llm_hooks: bool
+    enable_heavy_diagnostics: bool
+
+
+STARTUP_PROFILES = {
+    "podcast_demo": StartupProfile(
+        name="podcast_demo",
+        description="Lean startup for podcast demo flows (core services only).",
+        enable_nlp_llm_hooks=False,
+        enable_heavy_diagnostics=False,
+    ),
+    "full_stack": StartupProfile(
+        name="full_stack",
+        description="Full platform startup with NLP/LLM hooks and heavy diagnostics.",
+        enable_nlp_llm_hooks=True,
+        enable_heavy_diagnostics=True,
+    ),
+}
 
 
 def bootstrap_linguistic_models():
@@ -143,21 +168,20 @@ def bootstrap_local_llm_models():
     return True
 
 
-# Bootstrap linguistic models BEFORE any imports that might need them
-if __name__ == "__main__":
+def run_startup_phase_two(profile: StartupProfile) -> None:
+    """
+    Phase 2 (optional): NLP/LLM startup hooks.
+    """
+    print(f"🧠 Phase 2: Optional NLP/LLM hooks ({'ENABLED' if profile.enable_nlp_llm_hooks else 'SKIPPED'})")
+    if not profile.enable_nlp_llm_hooks:
+        print("   ⏭️  Skipping linguistic + local LLM bootstrap for lean startup profile")
+        return
+
     bootstrap_linguistic_models()
     bootstrap_local_llm_models()
 
-# NOW import modular utilities (after bootstrap)
-from alwrity_utils import (
-    DependencyManager,
-    EnvironmentSetup,
-    DatabaseSetup,
-    ProductionOptimizer
-)
 
-
-def start_backend(enable_reload=False, production_mode=False):
+def start_backend(enable_reload=False, production_mode=False, profile: StartupProfile | None = None):
     """Start the backend server."""
     print("🚀 Starting ALwrity Backend...")
     
@@ -215,31 +239,37 @@ def start_backend(enable_reload=False, production_mode=False):
         print("\n[STOP]  Press Ctrl+C to stop the server")
         print("=" * 50)
         
+        selected_profile = profile or STARTUP_PROFILES["full_stack"]
+
         # Set up clean logging for end users
         from logging_config import setup_clean_logging, get_uvicorn_log_level
-        # Video stack preflight (diagnostics + version assert)
-        try:
-            from services.story_writer.video_preflight import (
-                log_video_stack_diagnostics,
-                assert_supported_moviepy,
-            )
-        except Exception:
-            # Preflight is optional; continue if module missing
-            log_video_stack_diagnostics = None
-            assert_supported_moviepy = None
         
         verbose_mode = setup_clean_logging()
         uvicorn_log_level = get_uvicorn_log_level()
 
-        # Log diagnostics and assert versions (fail fast if misconfigured)
-        try:
-            if log_video_stack_diagnostics:
-                log_video_stack_diagnostics()
-            if assert_supported_moviepy:
-                assert_supported_moviepy()
-        except Exception as _video_stack_err:
-            print(f"[ERROR] Video stack preflight failed: {_video_stack_err}")
-            return False
+        # Phase 3 (profile-dependent): heavy startup diagnostics
+        if selected_profile.enable_heavy_diagnostics:
+            print("🧪 Phase 3: Heavy diagnostics ENABLED (video stack preflight)")
+            try:
+                from services.story_writer.video_preflight import (
+                    log_video_stack_diagnostics,
+                    assert_supported_moviepy,
+                )
+            except Exception:
+                # Preflight is optional; continue if module missing
+                log_video_stack_diagnostics = None
+                assert_supported_moviepy = None
+
+            try:
+                if log_video_stack_diagnostics:
+                    log_video_stack_diagnostics()
+                if assert_supported_moviepy:
+                    assert_supported_moviepy()
+            except Exception as _video_stack_err:
+                print(f"[ERROR] Video stack preflight failed: {_video_stack_err}")
+                return False
+        else:
+            print("🧪 Phase 3: Heavy diagnostics SKIPPED for lean startup profile")
         
         uvicorn.run(
             "app:app",
@@ -298,12 +328,19 @@ def main():
     parser.add_argument("--dev", action="store_true", help="Enable development mode (auto-reload)")
     parser.add_argument("--production", action="store_true", help="Enable production mode (optimized for deployment)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging for debugging")
+    parser.add_argument(
+        "--startup-profile",
+        choices=sorted(STARTUP_PROFILES.keys()),
+        default=os.getenv("ALWRITY_STARTUP_PROFILE", "full_stack"),
+        help="Startup profile: full_stack (default) or podcast_demo (lean core startup).",
+    )
     args = parser.parse_args()
     
     # Determine mode
     production_mode = args.production
     enable_reload = (args.reload or args.dev) and not production_mode
     verbose_mode = args.verbose
+    startup_profile = STARTUP_PROFILES[args.startup_profile]
     
     # Set global verbose flag for utilities
     os.environ["ALWRITY_VERBOSE"] = "true" if verbose_mode else "false"
@@ -312,9 +349,13 @@ def main():
     print("=" * 40)
     print(f"Mode: {'PRODUCTION' if production_mode else 'DEVELOPMENT'}")
     print(f"Auto-reload: {'ENABLED' if enable_reload else 'DISABLED'}")
+    print(f"Startup profile: {startup_profile.name} ({startup_profile.description})")
     if verbose_mode:
         print("Verbose logging: ENABLED")
     print("=" * 40)
+
+    # Phase 2 (optional hooks) must run before backend imports that may require NLP resources.
+    run_startup_phase_two(startup_profile)
     
     # Check if we're in the right directory
     if not os.path.exists("app.py"):
@@ -323,7 +364,14 @@ def main():
         print("   Expected files:", [f for f in os.listdir('.') if f.endswith('.py')])
         return False
     
-    # Initialize modular components
+    # Initialize modular components (Phase 1 core)
+    from alwrity_utils import (
+        DependencyManager,
+        EnvironmentSetup,
+        DatabaseSetup,
+        ProductionOptimizer
+    )
+
     dependency_manager = DependencyManager()
     environment_setup = EnvironmentSetup(production_mode=production_mode)
     database_setup = DatabaseSetup(production_mode=production_mode)
@@ -337,7 +385,7 @@ def main():
         "Starting server"
     ]
     
-    print("🔧 Initializing ALwrity...")
+    print("🔧 Phase 1: Core startup (auth, DB, subscriptions, podcast essentials)")
     
     # Apply production optimizations if needed
     if production_mode:
@@ -395,7 +443,11 @@ def main():
     
     # Step 4: Start backend
     print(f"   🚀 {setup_steps[3]}...")
-    return start_backend(enable_reload=enable_reload, production_mode=production_mode)
+    return start_backend(
+        enable_reload=enable_reload,
+        production_mode=production_mode,
+        profile=startup_profile,
+    )
 
 
 if __name__ == "__main__":
