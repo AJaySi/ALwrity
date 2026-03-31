@@ -281,12 +281,13 @@ const InitialRouteHandler: React.FC = () => {
     );
   }
 
-  // Loading state - only wait for onboarding init, not subscription check
-  // Subscription check is non-blocking and happens in background
-  // In demo mode, skip waiting for onboarding data
+  // Loading state - only wait for onboarding init when user has active subscription
+  // In demo mode, skip waiting for onboarding data entirely
+  // This allows no-subscription/inactive flows to continue even when onboarding data is still null.
   const isDemoMode = shouldSkipOnboarding();
-  const waitingForOnboardingInit = !isDemoMode && (loading || !data);
-  if (!isDemoMode && (loading || waitingForOnboardingInit)) {
+  const isActiveSubscriber = Boolean(subscription && subscription.active && subscription.plan !== 'none');
+  const waitingForOnboardingInit = !isDemoMode && isActiveSubscriber && (loading || !data);
+  if (waitingForOnboardingInit) {
     return (
       <Box
         display="flex"
@@ -298,7 +299,7 @@ const InitialRouteHandler: React.FC = () => {
       >
         <CircularProgress size={60} />
         <Typography variant="h6" color="textSecondary">
-          {subscriptionLoading ? 'Checking subscription...' : 'Preparing your workspace...'}
+          Preparing your workspace...
         </Typography>
       </Box>
     );
