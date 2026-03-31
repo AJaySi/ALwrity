@@ -283,8 +283,10 @@ const InitialRouteHandler: React.FC = () => {
 
   // Loading state - only wait for onboarding init, not subscription check
   // Subscription check is non-blocking and happens in background
-  const waitingForOnboardingInit = loading || !data;
-  if (loading || waitingForOnboardingInit) {
+  // In demo mode, skip waiting for onboarding data
+  const isDemoMode = shouldSkipOnboarding();
+  const waitingForOnboardingInit = !isDemoMode && (loading || !data);
+  if (!isDemoMode && (loading || waitingForOnboardingInit)) {
     return (
       <Box
         display="flex"
