@@ -137,6 +137,9 @@ def llm_text_gen(
         # Check which providers have API keys available using APIKeyManager
         api_key_manager = APIKeyManager()
         available_providers = []
+        
+        # Get strict provider mode from environment
+        strict_provider_mode = os.getenv("STRICT_PROVIDER_MODE", "false").lower() in {"1", "true", "yes", "on"}
         if api_key_manager.get_api_key("gemini"):
             available_providers.append("google")
         if api_key_manager.get_api_key("hf_token"):
