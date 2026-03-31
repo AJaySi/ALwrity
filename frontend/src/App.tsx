@@ -175,6 +175,7 @@ const AuthenticatedCopilotWrapper: React.FC<{
 const InitialRouteHandler: React.FC = () => {
   const { loading, error, isOnboardingComplete, initializeOnboarding, data } = useOnboarding();
   const { subscription, loading: subscriptionLoading, checkSubscription } = useSubscription();
+  const location = useLocation();
   const [connectionError, setConnectionError] = useState<{
     hasError: boolean;
     error: Error | null;
@@ -244,10 +245,18 @@ const InitialRouteHandler: React.FC = () => {
       
       if (subscription.active && !isNewUser) {
         console.log('InitialRouteHandler: Subscription confirmed, initializing onboarding...');
+        
+        // Handle post-Stripe-checkout redirect in demo mode
+        const urlParams = new URLSearchParams(location.search);
+        if (urlParams.get('subscription') === 'success' && shouldSkipOnboarding()) {
+          console.log('InitialRouteHandler: Stripe checkout success in demo mode → Podcast Maker');
+          return <Navigate to="/podcast-maker" replace />;
+        }
+        
         initializeOnboarding();
       }
     }
-  }, [subscription, subscriptionLoading, initializeOnboarding]);
+  }, [subscription, subscriptionLoading, initializeOnboarding, location.search]);
 
   // Handle connection error - show connection error page
   if (connectionError.hasError) {

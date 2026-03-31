@@ -235,7 +235,9 @@ const PricingPage: React.FC = () => {
         const response = await apiClient.post('/api/subscription/create-checkout-session', {
           tier: plan.tier,
           billing_cycle: yearlyBilling ? 'yearly' : 'monthly',
-          success_url: `${window.location.origin}/dashboard?subscription=success`,
+          success_url: isPodcastOnlyDemoMode() 
+            ? `${window.location.origin}/podcast-maker?subscription=success`
+            : `${window.location.origin}/dashboard?subscription=success`,
           cancel_url: `${window.location.origin}/pricing?subscription=cancel`,
         });
 
