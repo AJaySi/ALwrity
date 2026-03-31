@@ -8,6 +8,7 @@ Run this from the backend directory to set up and start the FastAPI server.
 import os
 import sys
 import argparse
+import json
 from pathlib import Path
 
 
@@ -44,7 +45,12 @@ def bootstrap_linguistic_models():
                 if verbose:
                     print(f"   ❌ Failed to download spaCy model: {e}")
                     print("   Please run: python -m spacy download en_core_web_sm")
-                return False
+                return {
+                    "name": "linguistic_models",
+                    "enabled": False,
+                    "skipped": False,
+                    "reason": f"spaCy model download failed: {e}",
+                }
     except ImportError:
         if verbose:
             print("   ⚠️  spaCy not installed - skipping")
@@ -87,7 +93,12 @@ def bootstrap_linguistic_models():
     
     if verbose:
         print("✅ Linguistic model bootstrap complete")
-    return True
+    return {
+        "name": "linguistic_models",
+        "enabled": True,
+        "skipped": False,
+        "reason": "loaded",
+    }
 
 
 def bootstrap_local_llm_models():
@@ -117,7 +128,12 @@ def bootstrap_local_llm_models():
     if os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT"):
         if verbose:
             print("   ⚠️  Cloud environment detected (Render/Railway). Skipping local LLM bootstrap to save RAM/Time.")
-        return True
+        return {
+            "name": "local_llm_models",
+            "enabled": False,
+            "skipped": True,
+            "reason": "Cloud environment detected (Render/Railway)",
+        }
     
     target_model = "Qwen/Qwen2.5-3B-Instruct"
     
@@ -135,18 +151,53 @@ def bootstrap_local_llm_models():
             if verbose:
                 print(f"   ⚠️  Failed to download/check local LLM: {e}")
                 print("       SIF agents may try to download it at runtime.")
-            return False
+            return {
+                "name": "local_llm_models",
+                "enabled": False,
+                "skipped": False,
+                "reason": f"failed to download/check local LLM: {e}",
+            }
     except ImportError:
         if verbose:
             print("   ⚠️  huggingface_hub not installed - skipping LLM bootstrap")
-    
-    return True
+        return {
+            "name": "local_llm_models",
+            "enabled": False,
+            "skipped": True,
+            "reason": "huggingface_hub not installed",
+        }
+
+    return {
+        "name": "local_llm_models",
+        "enabled": True,
+        "skipped": False,
+        "reason": "loaded",
+    }
+
+
+def _log_bootstrap_summary(bootstrap_results):
+    """Log deterministic bootstrap summary for demos and debugging."""
+    enabled = [item["name"] for item in bootstrap_results if item.get("enabled")]
+    skipped = [item for item in bootstrap_results if item.get("skipped")]
+
+    print("\n[*] Bootstrap summary")
+    print(f"Enabled bootstraps: {enabled if enabled else 'none'}")
+    if skipped:
+        print("Skipped bootstraps:")
+        for item in skipped:
+            print(f" - {item['name']}: {item.get('reason', 'no reason provided')}")
+    else:
+        print("Skipped bootstraps: none")
 
 
 # Bootstrap linguistic models BEFORE any imports that might need them
 if __name__ == "__main__":
-    bootstrap_linguistic_models()
-    bootstrap_local_llm_models()
+    bootstrap_results = [
+        bootstrap_linguistic_models(),
+        bootstrap_local_llm_models(),
+    ]
+    os.environ["ALWRITY_BOOTSTRAP_SUMMARY"] = json.dumps(bootstrap_results)
+    _log_bootstrap_summary(bootstrap_results)
 
 # NOW import modular utilities (after bootstrap)
 from alwrity_utils import (
@@ -307,10 +358,13 @@ def main():
     
     # Set global verbose flag for utilities
     os.environ["ALWRITY_VERBOSE"] = "true" if verbose_mode else "false"
+    active_profile = "production" if production_mode else "development"
+    os.environ["ALWRITY_ACTIVE_PROFILE"] = active_profile
     
     print("[*] ALwrity Backend Server")
     print("=" * 40)
     print(f"Mode: {'PRODUCTION' if production_mode else 'DEVELOPMENT'}")
+    print(f"Active profile: {active_profile}")
     print(f"Auto-reload: {'ENABLED' if enable_reload else 'DISABLED'}")
     if verbose_mode:
         print("Verbose logging: ENABLED")

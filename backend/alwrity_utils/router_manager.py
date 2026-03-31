@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from loguru import logger
 from typing import List, Dict, Any, Optional
 import os
+import json
 
 
 class RouterManager:
@@ -16,6 +17,11 @@ class RouterManager:
         self.app = app
         self.included_routers = []
         self.failed_routers = []
+        self.skipped_routers = []
+
+    def _record_skipped_router(self, router_name: str, reason: str) -> None:
+        """Track routers intentionally skipped at startup."""
+        self.skipped_routers.append({"name": router_name, "reason": reason})
     
     def include_router_safely(self, router, router_name: str = None) -> bool:
         """Include a router safely with error handling."""
@@ -176,6 +182,7 @@ class RouterManager:
                 from api.blog_writer.router import router as blog_writer_router
                 self.include_router_safely(blog_writer_router, "blog_writer")
             except Exception as e:
+                self._record_skipped_router("blog_writer", str(e))
                 logger.warning(f"AI Blog Writer router not mounted: {e}")
             
             # Story Writer router
@@ -183,6 +190,7 @@ class RouterManager:
                 from api.story_writer.router import router as story_writer_router
                 self.include_router_safely(story_writer_router, "story_writer")
             except Exception as e:
+                self._record_skipped_router("story_writer", str(e))
                 logger.warning(f"Story Writer router not mounted: {e}")
             
             # Wix Integration router
@@ -190,6 +198,7 @@ class RouterManager:
                 from api.wix_routes import router as wix_router
                 self.include_router_safely(wix_router, "wix")
             except Exception as e:
+                self._record_skipped_router("wix", str(e))
                 logger.warning(f"Wix Integration router not mounted: {e}")
             
             # Blog Writer SEO Analysis router
@@ -197,6 +206,7 @@ class RouterManager:
                 from api.blog_writer.seo_analysis import router as blog_seo_analysis_router
                 self.include_router_safely(blog_seo_analysis_router, "blog_seo_analysis")
             except Exception as e:
+                self._record_skipped_router("blog_seo_analysis", str(e))
                 logger.warning(f"Blog Writer SEO Analysis router not mounted: {e}")
             
             # Persona router
@@ -204,6 +214,7 @@ class RouterManager:
                 from api.persona_routes import router as persona_router
                 self.include_router_safely(persona_router, "persona")
             except Exception as e:
+                self._record_skipped_router("persona", str(e))
                 logger.warning(f"Persona router not mounted: {e}")
             
             # Video Studio router
@@ -211,6 +222,7 @@ class RouterManager:
                 from api.video_studio.router import router as video_studio_router
                 self.include_router_safely(video_studio_router, "video_studio")
             except Exception as e:
+                self._record_skipped_router("video_studio", str(e))
                 logger.warning(f"Video Studio router not mounted: {e}")
 
             # Stability AI routers
@@ -224,6 +236,7 @@ class RouterManager:
                 from routers.stability_admin import router as stability_admin_router
                 self.include_router_safely(stability_admin_router, "stability_admin")
             except Exception as e:
+                self._record_skipped_router("stability_suite", str(e))
                 logger.warning(f"Stability AI routers not mounted: {e}")
             
             
@@ -239,6 +252,40 @@ class RouterManager:
         return {
             "included_routers": self.included_routers,
             "failed_routers": self.failed_routers,
+            "skipped_routers": self.skipped_routers,
             "total_included": len(self.included_routers),
-            "total_failed": len(self.failed_routers)
+            "total_failed": len(self.failed_routers),
+            "total_skipped": len(self.skipped_routers),
         }
+
+    def log_startup_summary(self) -> None:
+        """Log concise startup summary for demos."""
+        active_profile = os.getenv("ALWRITY_ACTIVE_PROFILE", "development")
+        logger.info(f"[startup] active profile: {active_profile}")
+        logger.info(f"[startup] enabled routers: {self.included_routers}")
+
+        raw_bootstrap_summary = os.getenv("ALWRITY_BOOTSTRAP_SUMMARY")
+        if not raw_bootstrap_summary:
+            logger.info("[startup] enabled bootstraps: []")
+            logger.info("[startup] skipped bootstraps: []")
+            return
+
+        try:
+            bootstrap_summary = json.loads(raw_bootstrap_summary)
+        except json.JSONDecodeError:
+            logger.warning("[startup] skipped bootstraps: unable to parse ALWRITY_BOOTSTRAP_SUMMARY")
+            return
+
+        enabled_bootstraps = [
+            item.get("name")
+            for item in bootstrap_summary
+            if item.get("enabled")
+        ]
+        skipped_bootstraps = [
+            {"name": item.get("name"), "reason": item.get("reason", "unspecified")}
+            for item in bootstrap_summary
+            if item.get("skipped")
+        ]
+
+        logger.info(f"[startup] enabled bootstraps: {enabled_bootstraps}")
+        logger.info(f"[startup] skipped bootstraps with reason: {skipped_bootstraps}")

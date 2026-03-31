@@ -261,6 +261,7 @@ async def onboarding_status():
 # Include routers using modular utilities
 router_manager.include_core_routers()
 router_manager.include_optional_routers()
+router_manager.log_startup_summary()
 
 # Include assets serving router (must be mounted to serve generated images)
 app.include_router(assets_serving_router)
