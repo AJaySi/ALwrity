@@ -290,6 +290,11 @@ async def router_status():
     )
     return status
 
+@app.get("/api/feature-profile/status")
+async def feature_profile_status():
+    """Get feature profile status and enabled modules."""
+    return router_manager.get_feature_profile_status()
+
 # Onboarding management endpoints
 @app.get("/api/onboarding/status")
 async def onboarding_status():

@@ -66,6 +66,11 @@ OPTIONAL_ROUTER_REGISTRY = [
     {"name": "today_workflow", "module": "api.today_workflow", "attr": "router", "profiles": {"all", "default"}},
 ]
 
+OPTIONAL_MODULE_MATRIX = {
+    "all": [entry["name"] for entry in OPTIONAL_ROUTER_REGISTRY],
+    "default": [entry["name"] for entry in OPTIONAL_ROUTER_REGISTRY],
+}
+
 
 class RouterManager:
     """Manages FastAPI router inclusion and organization."""
@@ -79,7 +84,7 @@ class RouterManager:
         return os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
     
     def _get_profile(self) -> str:
-        return os.getenv("ALWRITY_ROUTER_PROFILE", os.getenv("ALWRITY_FEATURE_TO_ENABLE", "all")).strip().lower() or "all"
+        return os.getenv("ALWRITY_FEATURE_PROFILE", os.getenv("ALWRITY_ROUTER_PROFILE", os.getenv("ALWRITY_FEATURE_TO_ENABLE", "all"))).strip().lower() or "all"
     
     def _should_include_router(self, registry_entry: Dict[str, Any], profile: str) -> bool:
         profiles = registry_entry.get("profiles", {"all", "default"})
@@ -153,4 +158,15 @@ class RouterManager:
             "failed_routers": self.failed_routers,
             "total_included": len(self.included_routers),
             "total_failed": len(self.failed_routers)
+        }
+    
+    def get_feature_profile_status(self) -> Dict[str, Any]:
+        """Get feature profile status and enabled modules."""
+        profile = self._get_profile()
+        enabled_modules = OPTIONAL_MODULE_MATRIX.get(profile, OPTIONAL_MODULE_MATRIX.get("all", []))
+        
+        return {
+            "active_profile": profile,
+            "enabled_modules": enabled_modules,
+            "available_profiles": list(OPTIONAL_MODULE_MATRIX.keys())
         }
