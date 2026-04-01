@@ -148,7 +148,7 @@ Requirements:
                 prompt=prompt,
                 user_id=user_id,
                 json_struct=None,
-                preferred_provider="huggingface",
+                preferred_provider=None,
                 flow_type="premium_tool",
             )
             
