@@ -94,7 +94,7 @@ def llm_text_gen(
             primary_provider = provider_list[0]
             if primary_provider in ['wavespeed', 'wave']:
                 gpt_provider = "wavespeed"
-                model = os.getenv('WAVESPEED_TEXT_MODEL', 'Qwen/Qwen2.5-7B-Instruct')
+                model = os.getenv('WAVESPEED_TEXT_MODEL', 'openai/gpt-oss-120b:cerebras')
             elif primary_provider in ['gemini', 'google']:
                 gpt_provider = "google"
                 model = "gemini-2.0-flash-001"
@@ -111,7 +111,7 @@ def llm_text_gen(
         elif preferred_provider:
             if preferred_provider in ['wavespeed', 'wave']:
                 gpt_provider = "wavespeed"
-                model = os.getenv('WAVESPEED_TEXT_MODEL', 'Qwen/Qwen2.5-7B-Instruct')
+                model = os.getenv('WAVESPEED_TEXT_MODEL', 'openai/gpt-oss-120b:cerebras')
             elif preferred_provider in ['openai', 'gpt']:
                 gpt_provider = "openai"
                 model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
@@ -363,7 +363,7 @@ def llm_text_gen(
                 from services.llm_providers.wavespeed_provider import wavespeed_text_response
                 response_text = wavespeed_text_response(
                     prompt=prompt,
-                    model=model or "Qwen/Qwen2.5-7B-Instruct",
+                    model=model or "openai/gpt-oss-120b:cerebras",
                     temperature=temperature,
                     max_tokens=max_tokens,
                     top_p=top_p,
