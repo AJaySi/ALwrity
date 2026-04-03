@@ -61,6 +61,17 @@ class PodcastService:
             )
         ).first()
     
+    def get_project_by_idea(self, user_id: str, idea: str) -> Optional[PodcastProject]:
+        """Find a project by matching idea (case-insensitive, partial match)."""
+        # Normalize idea for comparison
+        normalized_idea = idea.strip().lower()
+        return self.db.query(PodcastProject).filter(
+            and_(
+                PodcastProject.user_id == user_id,
+                PodcastProject.idea.ilike(f"%{normalized_idea}%")
+            )
+        ).order_by(desc(PodcastProject.updated_at)).first()
+    
     def update_project(
         self,
         user_id: str,

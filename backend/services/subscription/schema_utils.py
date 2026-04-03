@@ -88,6 +88,9 @@ def ensure_usage_summaries_columns(db: Session) -> None:
             "image_edit_cost": "REAL DEFAULT 0.0",
             "audio_calls": "INTEGER DEFAULT 0",
             "audio_cost": "REAL DEFAULT 0.0",
+            "wavespeed_calls": "INTEGER DEFAULT 0",
+            "wavespeed_tokens": "INTEGER DEFAULT 0",
+            "wavespeed_cost": "REAL DEFAULT 0.0",
         }
 
         for col_name, ddl in required_columns.items():

@@ -431,7 +431,7 @@ class LimitValidator:
                     self.db.refresh(usage)
             except Exception as query_err:
                 error_str = str(query_err).lower()
-                if 'no such column' in error_str and 'exa_calls' in error_str:
+                if 'no such column' in error_str and ('exa_calls' in error_str or 'wavespeed' in error_str):
                     logger.warning("Missing column detected in usage query, fixing schema and retrying...")
                     import sqlite3
                     import services.subscription.schema_utils as schema_utils
