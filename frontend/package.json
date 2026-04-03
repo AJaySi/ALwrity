@@ -22,6 +22,7 @@
     "@types/recharts": "^1.8.29",
     "@wix/blog": "^1.0.488",
     "@wix/sdk": "^1.17.1",
+    "ajv": "^8.18.0",
     "axios": "^1.12.0",
     "framer-motion": "^12.23.12",
     "html2canvas": "^1.4.1",

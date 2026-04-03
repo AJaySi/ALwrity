@@ -156,11 +156,11 @@ export const TrendsChart: React.FC<TrendsChartProps> = ({
               border: `1px solid ${theme.palette.divider}`,
               borderRadius: '8px',
             }}
-            formatter={(value: any, name: string) => {
+            formatter={(value: any, name: any) => {
               if (typeof value === 'number') {
-                return [`${Math.round(value)}`, name];
+                return [`${Math.round(value)}`, String(name)];
               }
-              return [value, name];
+              return [value, String(name)];
             }}
             labelFormatter={(label) => `Date: ${label}`}
           />

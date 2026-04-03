@@ -418,7 +418,7 @@ const AdvancedCostAnalytics: React.FC<AdvancedCostAnalyticsProps> = ({
                           border: '1px solid rgba(255,255,255,0.1)',
                           borderRadius: 8
                         }}
-                        formatter={(value: number) => [formatCurrency(value), 'Cost']}
+                        formatter={(value: any) => [formatCurrency(Number(value) || 0), 'Cost']}
                       />
                       <Bar dataKey="cost" fill="#667eea" radius={[4, 4, 0, 0]} />
                     </LazyBarChart>
@@ -478,7 +478,7 @@ const AdvancedCostAnalytics: React.FC<AdvancedCostAnalyticsProps> = ({
                         ))}
                       </Pie>
                       <RechartsTooltip
-                        formatter={(value: number) => formatCurrency(value)}
+                        formatter={(value: any) => formatCurrency(Number(value) || 0)}
                         contentStyle={{
                           backgroundColor: 'rgba(0, 0, 0, 0.8)',
                           border: '1px solid rgba(255,255,255,0.1)',
