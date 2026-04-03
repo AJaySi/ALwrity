@@ -221,6 +221,11 @@ BOOTSTRAP_RESULTS = []
 from dotenv import load_dotenv
 load_dotenv()
 
+# Debug: Print what PORT is set to
+import os
+print(f"[DEBUG] PORT env: {os.getenv('PORT')}")
+print(f"[DEBUG] RENDER env: {os.getenv('RENDER')}")
+
 if __name__ == "__main__":
     enabled_features = get_enabled_features()
     features_str = ",".join(sorted(enabled_features))
@@ -301,13 +306,14 @@ def start_backend(enable_reload=False, production_mode=False):
         os.environ.setdefault("RELOAD", "false")
         print("   🏭 Production mode: Auto-reload disabled")
     
-    host = os.getenv("HOST")
+    host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     reload = os.getenv("RELOAD", "false").lower() == "true"
     
     print(f"   📍 Host: {host}")
     print(f"   🔌 Port: {port}")
     print(f"   🔄 Reload: {reload}")
+    print(f"[DEBUG] Starting server with host={host}, port={port}")
     
     try:
         # Import and run the app
