@@ -126,12 +126,14 @@ async def generate_podcast_audio(
 
     try:
         audio_service = get_podcast_audio_service(user_id)
+        logger.warning(f"[Podcast] Generating audio with service dir: {audio_service.output_dir}")
         result: StoryAudioResult = audio_service.generate_ai_audio(
             scene_number=0,
             scene_title=request.scene_title,
             text=request.text.strip(),
             user_id=user_id,
             voice_id=request.voice_id or "Wise_Woman",
+            custom_voice_id=request.custom_voice_id,
             speed=request.speed or 1.0,  # Normal speed (was 0.9, but too slow - causing duration issues)
             volume=request.volume or 1.0,
             pitch=request.pitch or 0.0,  # Normal pitch (0.0 = neutral)
@@ -149,6 +151,8 @@ async def generate_podcast_audio(
         if result.get("audio_url") and "/api/story/audio/" in result.get("audio_url", ""):
             audio_filename = result.get("audio_filename", "")
             result["audio_url"] = f"/api/podcast/audio/{audio_filename}"
+        
+        logger.warning(f"[Podcast] Audio generated - path: {result.get('audio_path')}, url: {result.get('audio_url')}")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Audio generation failed: {exc}")
 
@@ -387,7 +391,9 @@ async def serve_podcast_audio(
         raise HTTPException(status_code=400, detail="Invalid filename")
     
     user_id = require_authenticated_user(current_user)
+    logger.warning(f"[Podcast] serve_podcast_audio called: user_id={user_id}, filename={filename}")
     audio_path = _resolve_podcast_media_file(filename, "audio", user_id)
+    logger.warning(f"[Podcast] Resolved audio path: {audio_path}")
     
     return FileResponse(audio_path, media_type="audio/mpeg")
 

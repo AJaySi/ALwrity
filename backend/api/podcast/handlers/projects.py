@@ -27,7 +27,10 @@ async def create_project(
     db: Session = Depends(get_db),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Create a new podcast project."""
+    """Create a new podcast project.
+    
+    If a project with the same idea already exists, return 409 conflict with existing project info.
+    """
     try:
         user_id = current_user.get("user_id") or current_user.get("id")
         if not user_id:
@@ -39,6 +42,19 @@ async def create_project(
         existing = service.get_project(user_id, request.project_id)
         if existing:
             raise HTTPException(status_code=400, detail="Project ID already exists")
+        
+        # Check for duplicate idea (case-insensitive partial match)
+        existing_idea = service.get_project_by_idea(user_id, request.idea)
+        if existing_idea:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "A project with similar idea already exists",
+                    "existing_project_id": existing_idea.project_id,
+                    "existing_idea": existing_idea.idea,
+                    "existing_status": existing_idea.status,
+                }
+            )
         
         project = service.create_project(
             user_id=user_id,

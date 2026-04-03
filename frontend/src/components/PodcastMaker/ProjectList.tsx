@@ -22,10 +22,12 @@ import {
   Mic as MicIcon,
   PlayArrow as PlayArrowIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
+  ArrowBack as ArrowBackIcon,
 } from "@mui/icons-material";
 import { podcastApi } from "../../services/podcastApi";
 import { GlassyCard, glassyCardSx, PrimaryButton, SecondaryButton } from "./ui";
@@ -45,9 +47,10 @@ interface Project {
 
 interface ProjectListProps {
   onSelectProject: (projectId: string) => void;
+  onBack?: () => void;
 }
 
-export const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => {
+export const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject, onBack }) => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,6 +178,9 @@ export const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => 
               </Typography>
             </Box>
             <Stack direction="row" spacing={1}>
+              <SecondaryButton onClick={onBack || (() => navigate(-1))} startIcon={<ArrowBackIcon />}>
+                Back
+              </SecondaryButton>
               <SecondaryButton onClick={loadProjects} startIcon={<RefreshIcon />} disabled={loading}>
                 Refresh
               </SecondaryButton>
@@ -248,7 +254,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => 
                 >
                   <Stack spacing={2}>
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                      <Box flex={1}>
+                      <Box flex={1} onClick={() => onSelectProject(project.project_id)} sx={{ cursor: "pointer" }}>
                         <Typography variant="h6" sx={{ mb: 1 }}>
                           {project.idea.length > 100 ? `${project.idea.substring(0, 100)}...` : project.idea}
                         </Typography>
@@ -270,14 +276,25 @@ export const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => 
                           </Typography>
                         </Stack>
                       </Box>
-                      <Stack direction="row" spacing={1}>
+                      <Stack direction="row" spacing={0.5}>
+                        <Tooltip title="Edit project">
+                          <IconButton
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectProject(project.project_id);
+                            }}
+                            sx={{ color: "#a78bfa" }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title={project.is_favorite ? "Remove from favorites" : "Add to favorites"}>
                           <IconButton
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleFavorite(project.project_id, project.is_favorite);
                             }}
-                            sx={{ color: project.is_favorite ? "#fbbf24" : "rgba(255,255,255,0.5)" }}
+                            sx={{ color: project.is_favorite ? "#fbbf24" : "#a78bfa" }}
                           >
                             {project.is_favorite ? <StarIcon /> : <StarBorderIcon />}
                           </IconButton>
@@ -289,7 +306,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({ onSelectProject }) => 
                               setProjectToDelete(project.project_id);
                               setDeleteDialogOpen(true);
                             }}
-                            sx={{ color: "rgba(255,255,255,0.5)" }}
+                            sx={{ color: "#ef4444" }}
                           >
                             <DeleteIcon />
                           </IconButton>

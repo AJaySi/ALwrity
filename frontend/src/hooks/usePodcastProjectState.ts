@@ -61,6 +61,8 @@ export interface PodcastProjectState {
 const DEFAULT_KNOBS: Knobs = {
   voice_emotion: "neutral",
   voice_speed: 1,
+  voice_id: "Wise_Woman",
+  custom_voice_id: undefined,
   resolution: "720p",
   scene_length_target: 45,
   sample_rate: 24000,
@@ -338,7 +340,12 @@ export const usePodcastProjectState = () => {
         budget_cap: payload.budgetCap,
         avatar_url: finalAvatarUrl,
       });
-    } catch (error) {
+    } catch (error: any) {
+      const errorStr = error?.message || "";
+      if (errorStr.includes("DUPLICATE_IDEA")) {
+        // Re-throw duplicate idea error for UI handling
+        throw error;
+      }
       console.error('Error creating project in database:', error);
       // Continue anyway - localStorage fallback
     }

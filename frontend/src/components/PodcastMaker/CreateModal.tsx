@@ -5,6 +5,7 @@ import { useSubscription } from "../../contexts/SubscriptionContext";
 import { podcastApi } from "../../services/podcastApi";
 import { fetchMediaBlobUrl, clearMediaCache } from "../../utils/fetchMediaBlobUrl";
 import { getLatestBrandAvatar } from "../../api/brandAssets";
+import { VoiceSelector } from "../shared/VoiceSelector";
 
 // Imported Components
 import { CreateHeader } from "./CreateStep/CreateHeader";
@@ -43,6 +44,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const [enhancingTopic, setEnhancingTopic] = useState(false);
   const [enhanceTopicProgressIndex, setEnhanceTopicProgressIndex] = useState(0);
   const [knobs, setKnobs] = useState<Knobs>({ ...defaultKnobs });
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("Wise_Woman");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [avatarTab, setAvatarTab] = useState(0);
   const [loadingBrandAvatar, setLoadingBrandAvatar] = useState(false);
@@ -318,11 +320,17 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
       }
     }
     
+    // Include selected voice in knobs
+    const finalKnobs = {
+      ...knobs,
+      voice_id: selectedVoiceId,
+    };
+    
     onCreate({
       ideaOrUrl: finalUrl || finalIdea,
       speakers,
       duration,
-      knobs,
+      knobs: finalKnobs,
       budgetCap,
       files: { voiceFile, avatarFile },
       avatarUrl: finalAvatarUrl,
@@ -342,6 +350,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     setEnhancingTopic(false);
     setEnhanceTopicProgressIndex(0);
     setKnobs({ ...defaultKnobs });
+    setSelectedVoiceId("Wise_Woman");
     setPlaceholderIndex(0);
   };
 
@@ -563,6 +572,12 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
           brandAvatarBlobUrl={brandAvatarBlobUrl}
           cameraSelfieOpen={cameraSelfieOpen}
           setCameraSelfieOpen={setCameraSelfieOpen}
+        />
+
+        <VoiceSelector
+          value={selectedVoiceId}
+          onChange={setSelectedVoiceId}
+          showVoiceClone={true}
         />
 
         <CreateActions

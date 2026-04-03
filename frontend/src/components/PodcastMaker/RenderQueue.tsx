@@ -63,6 +63,7 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
     knobs,
     projectId,
     bible,
+    analysis,
     budgetCap,
     avatarImageUrl,
     onUpdateJob,

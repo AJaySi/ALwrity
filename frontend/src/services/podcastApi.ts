@@ -24,6 +24,8 @@ import { TaskStatus } from "./storyWriterApi";
 const DEFAULT_KNOBS: Knobs = {
   voice_emotion: "neutral",
   voice_speed: 1,
+  voice_id: "Wise_Woman",
+  custom_voice_id: undefined,
   resolution: "720p",
   scene_length_target: 45,
   sample_rate: 24000,
@@ -119,31 +121,46 @@ const mapPersonaQueries = (persona: ResearchPersona | undefined, seed: string): 
   return generated.slice(0, 6);
 };
 
-const mapSourcesToFacts = (sources: ExaSource[]): Fact[] => {
-  if (!sources || !sources.length) return [];
-  return sources.slice(0, 12).map((source: ExaSource, idx: number) => ({
-    id: source.url || createId("fact"),
-    quote: source.excerpt || source.title || "Insight",
-    url: source.url || "",
-    date: source.published_at || "Unknown",
-    confidence: typeof (source as any).credibility_score === "number" ? (source as any).credibility_score : Math.max(0.5, 0.85 - idx * 0.02),
-    image: source.image,
-    author: source.author,
-    highlights: source.highlights,
-  }));
-};
-
 type ExaSource = {
   title?: string;
   url?: string;
   excerpt?: string;
   published_at?: string;
+  publishedDate?: string;  // Exa format
   highlights?: string[];
   summary?: string;
   source_type?: string;
   index?: number;
   image?: string;
   author?: string;
+  text?: string;  // Exa full text content
+  credibility_score?: number;
+};
+
+const mapSourcesToFacts = (sources: ExaSource[]): Fact[] => {
+  if (!sources || !sources.length) return [];
+  
+  // Deduplicate by URL
+  const seenUrls = new Set<string>();
+  const uniqueSources = sources.filter(s => {
+    if (!s.url || seenUrls.has(s.url)) return false;
+    seenUrls.add(s.url);
+    return true;
+  });
+  
+  return uniqueSources.slice(0, 12).map((source: ExaSource, idx: number) => ({
+    id: source.url || `fact-${idx}`,
+    quote: source.excerpt || source.highlights?.[0] || source.summary || source.title || "Insight",
+    url: source.url || "",
+    // Use published_at (backend format) or publishedDate (Exa format)
+    date: source.published_at || source.publishedDate || "Unknown",
+    confidence: source.credibility_score || Math.max(0.5, 0.85 - idx * 0.02),
+    image: source.image,
+    author: source.author,
+    highlights: source.highlights,
+    // Include full text if available
+    fullText: source.text,
+  }));
 };
 
 type ExaResearchResult = {
@@ -180,7 +197,9 @@ const mapExaResearchResponse = (response: any): Research => {
 };
 
 const ensurePreflight = async (operation: PreflightOperation) => {
+  console.log('[podcastApi] Running preflight for:', operation);
   const result = await checkPreflight(operation);
+  console.log('[podcastApi] Preflight result:', result);
   if (!result.can_proceed) {
     const message = result.operations[0]?.message || "Pre-flight validation failed";
     throw new Error(message);
@@ -222,6 +241,10 @@ export const podcastApi = {
       suggestedOutlines: outlines,
       suggestedKnobs: { ...DEFAULT_KNOBS, ...payload.knobs },
       titleSuggestions: (analysisResp.data?.title_suggestions || []).filter(Boolean),
+      episode_hook: analysisResp.data?.episode_hook || "",
+      key_takeaways: analysisResp.data?.key_takeaways || [],
+      guest_talking_points: analysisResp.data?.guest_talking_points || [],
+      listener_cta: analysisResp.data?.listener_cta || "",
       research_queries: analysisResp.data?.research_queries || [],
       exaSuggestedConfig: analysisResp.data?.exa_suggested_config || undefined,
     };
@@ -240,6 +263,9 @@ export const podcastApi = {
     } else {
       queries = mapPersonaQueries(researchConfig?.research_persona, storyIdea);
     }
+
+    // Note: selectedQueries should be set to empty Set by the caller (workflow) 
+    // so users can manually choose which queries to run
 
     const projectId = createId("podcast");
     const estimate = estimateCosts({
@@ -303,13 +329,20 @@ export const podcastApi = {
       actual_provider_name: "exa",
     });
 
-    const response = await aiApiClient.post("/api/podcast/research/exa", {
-      topic: params.topic || keywords[0],
-      queries: keywords,
-      exa_config: sanitizedExaConfig,
-      bible: params.bible,
-      analysis: params.analysis,
-    });
+    let response;
+    try {
+      response = await aiApiClient.post("/api/podcast/research/exa", {
+        topic: params.topic || keywords[0],
+        queries: keywords,
+        exa_config: sanitizedExaConfig,
+        bible: params.bible,
+        analysis: params.analysis,
+      }, { timeout: 300000 }); // 5 minute timeout for research
+      console.log('[podcastApi] Exa research response received:', response.status, response.data);
+    } catch (error: any) {
+      console.error('[podcastApi] Exa research error:', error?.response?.status, error?.response?.data, error?.message);
+      throw error;
+    }
 
     const exaResult = response.data as ExaResearchResult;
     if (params.onProgress) {
@@ -329,6 +362,7 @@ export const podcastApi = {
     bible?: any;
     outline?: any;
     analysis?: PodcastAnalysis | null;
+    onProgress?: (message: string) => void;
   }): Promise<Script> {
     await ensurePreflight({
       provider: "gemini",
@@ -336,6 +370,10 @@ export const podcastApi = {
       tokens_requested: 2000,
       actual_provider_name: "gemini",
     });
+
+    if (params.onProgress) {
+      params.onProgress("Analyzing research data and extracting key insights...");
+    }
 
     const response = await aiApiClient.post("/api/podcast/script", {
       idea: params.idea,
@@ -346,6 +384,10 @@ export const podcastApi = {
       outline: params.outline,
       analysis: params.analysis,
     });
+
+    if (params.onProgress) {
+      params.onProgress("Creating podcast structure with scenes and dialogue...");
+    }
 
     const scenes = response.data?.scenes || [];
     const scriptScenes: Scene[] = scenes.map((scene: any) => ({
@@ -406,6 +448,7 @@ export const podcastApi = {
   async renderSceneAudio(params: {
     scene: Scene;
     voiceId?: string;
+    customVoiceId?: string;
     emotion?: string; // Fallback if scene doesn't have emotion
     speed?: number;
     volume?: number;
@@ -498,6 +541,7 @@ export const podcastApi = {
       scene_title: params.scene.title,
       text: textToUse,
       voice_id: params.voiceId || "Wise_Woman",
+      custom_voice_id: params.customVoiceId || null,
       speed: params.speed ?? 1.0, // Normal speed (was 0.9, but too slow - causing duration issues)
       volume: params.volume ?? 1.0,
       pitch: params.pitch ?? 0.0,
@@ -522,7 +566,7 @@ export const podcastApi = {
   },
 
   async approveScene(params: { projectId: string; sceneId: string; notes?: string }) {
-    await aiApiClient.post("/api/story/script/approve", {
+    await aiApiClient.post("/api/podcast/script/approve", {
       project_id: params.projectId,
       scene_id: params.sceneId,
       approved: true,
@@ -564,8 +608,22 @@ export const podcastApi = {
     budget_cap: number;
     avatar_url?: string | null;
   }): Promise<any> {
-    const response = await aiApiClient.post("/api/podcast/projects", params);
-    return response.data;
+    try {
+      const response = await aiApiClient.post("/api/podcast/projects", params);
+      return response.data;
+    } catch (error: any) {
+      if (error?.response?.status === 409) {
+        // Duplicate idea detected - throw specific error for UI handling
+        const conflictData = error.response.data?.detail || {};
+        throw new Error(JSON.stringify({
+          type: "DUPLICATE_IDEA",
+          existing_project_id: conflictData.existing_project_id,
+          existing_idea: conflictData.existing_idea,
+          message: conflictData.message,
+        }));
+      }
+      throw error;
+    }
   },
 
   async updateProject(projectId: string, updates: any): Promise<any> {
@@ -579,6 +637,16 @@ export const podcastApi = {
 
   async toggleFavorite(projectId: string): Promise<any> {
     const response = await aiApiClient.post(`/api/podcast/projects/${projectId}/favorite`);
+    return response.data;
+  },
+
+  async regenerateResearchQueries(params: {
+    idea: string;
+    feedback: string;
+    existing_analysis?: any;
+    bible?: any;
+  }): Promise<{ research_queries: { query: string; rationale: string }[] }> {
+    const response = await aiApiClient.post("/api/podcast/regenerate-queries", params);
     return response.data;
   },
 
@@ -624,6 +692,9 @@ export const podcastApi = {
     audioUrl: string;
     avatarImageUrl?: string;
     bible?: any;
+    analysis?: any;
+    sceneImagePrompt?: string;
+    sceneNarration?: string;
     resolution?: string;
     prompt?: string;
     seed?: number;
@@ -636,6 +707,9 @@ export const podcastApi = {
       audio_url: params.audioUrl,
       avatar_image_url: params.avatarImageUrl,
       bible: params.bible,
+      analysis: params.analysis,
+      scene_image_prompt: params.sceneImagePrompt,
+      scene_narration: params.sceneNarration,
       resolution: params.resolution || "720p",
       prompt: params.prompt,
       seed: params.seed ?? -1,
@@ -697,9 +771,15 @@ export const podcastApi = {
     sceneId: string;
     sceneTitle: string;
     sceneContent?: string;
+    sceneEmotion?: string;
     baseAvatarUrl?: string;
     bible?: any;
     idea?: string;
+    analysis?: {
+      audience?: string;
+      contentType?: string;
+      topKeywords?: string[];
+    };
     width?: number;
     height?: number;
     customPrompt?: string;
@@ -716,14 +796,17 @@ export const podcastApi = {
     provider: string;
     model?: string;
     cost: number;
+    image_prompt?: string;
   }> {
     const response = await aiApiClient.post("/api/podcast/image", {
       scene_id: params.sceneId,
       scene_title: params.sceneTitle,
       scene_content: params.sceneContent,
+      scene_emotion: params.sceneEmotion || null,
       base_avatar_url: params.baseAvatarUrl || null,
       bible: params.bible,
       idea: params.idea || null,
+      analysis: params.analysis || null,
       width: params.width || 1024,
       height: params.height || 1024,
       custom_prompt: params.customPrompt || null,

@@ -46,33 +46,39 @@ export const VideoRegenerateModal: React.FC<VideoRegenerateModalProps> = ({
   // Use a more intelligent default prompt based on context if available
   const [prompt, setPrompt] = useState(initialPrompt);
   
-  // Update prompt when context changes or modal opens
+  // Update prompt when modal opens - build enhanced prompt from context
   useEffect(() => {
     if (open) {
-      let smartPrompt = initialPrompt;
+      // Always build an enhanced prompt from available context
+      const parts = [];
       
-      // If the initial prompt is generic/empty, try to build a better one
-      if (!smartPrompt || smartPrompt === "Professional podcast scene with subtle movement") {
-        const parts = [];
-        
-        // Add scene context
-        if (sceneTitle) parts.push(`Scene: ${sceneTitle}`);
-        
-        // Add bible/persona context
-        if (bible?.host_persona) parts.push(`Host Persona: ${bible.host_persona}`);
-        if (bible?.tone) parts.push(`Tone: ${bible.tone}`);
-        
-        // Add analysis context
-        if (analysis?.content_type) parts.push(`Style: ${analysis.content_type}`);
-        
-        // Combine into a descriptive prompt
-        if (parts.length > 0) {
-          smartPrompt = `Professional talking head video for podcast. ${parts.join(". ")}. Cinematic lighting, 4k, high detail.`;
-        }
+      // Add scene context
+      if (sceneTitle) parts.push(`Scene: ${sceneTitle}`);
+      
+      // Add bible/persona context
+      if (bible?.host_persona) parts.push(`Host Persona: ${bible.host_persona}`);
+      if (bible?.tone) parts.push(`Tone: ${bible.tone}`);
+      if (bible?.visual_style) parts.push(`Visual Style: ${bible.visual_style}`);
+      if (bible?.background) parts.push(`Background: ${bible.background}`);
+      
+      // Add analysis context
+      if (analysis?.content_type) parts.push(`Content Type: ${analysis.content_type}`);
+      if (analysis?.audience) parts.push(`Target: ${analysis.audience}`);
+      if (analysis?.guestName) parts.push(`Guest: ${analysis.guestName}`);
+      if (analysis?.keyTakeaways?.length) parts.push(`Key: ${analysis.keyTakeaways[0]}`);
+      
+      // Build enhanced prompt
+      let smartPrompt = "";
+      if (parts.length > 0) {
+        smartPrompt = `Professional podcast video. ${parts.join(". ")}. Cinematic lighting, high detail, 4k quality, smooth subtle motion.`;
+      } else {
+        // Fallback to initial prompt
+        smartPrompt = initialPrompt || "Professional podcast scene with subtle movement";
       }
+      
       setPrompt(smartPrompt);
     }
-  }, [open, initialPrompt, sceneTitle, bible, analysis]);
+  }, [open, sceneTitle, bible, analysis]);
 
   const [resolution, setResolution] = useState<"480p" | "720p">(initialResolution);
   const [seed, setSeed] = useState<string>(initialSeed != null && initialSeed !== -1 ? String(initialSeed) : "");

@@ -46,6 +46,7 @@ class StoryAudioGenerationService:
             return _get_story_media_write_dir("audio", user_id=user_id, db=db)
         except Exception as e:
             logger.warning(f"[StoryAudioGeneration] Failed to resolve user workspace path for {user_id}: {e}")
+            # Don't fall back to default - keep using the already-set output_dir for podcast
             return self.output_dir
 
     def _generate_audio_filename(self, scene_number: int, scene_title: str) -> str:
@@ -318,6 +319,7 @@ class StoryAudioGenerationService:
         text: str,
         user_id: str,
         voice_id: str = "Wise_Woman",
+        custom_voice_id: Optional[str] = None,
         speed: float = 1.0,
         volume: float = 1.0,
         pitch: float = 0.0,
@@ -364,6 +366,7 @@ class StoryAudioGenerationService:
             result = generate_audio(
                 text=text.strip(),
                 voice_id=voice_id,
+                custom_voice_id=custom_voice_id,
                 speed=speed,
                 volume=volume,
                 pitch=pitch,
@@ -378,8 +381,8 @@ class StoryAudioGenerationService:
                 enable_sync_mode=enable_sync_mode,
             )
             
-            # Determine output directory (user workspace or default)
-            output_dir = self._get_user_audio_dir(user_id, db)
+            # Use the output_dir that was set when service was created (already handles podcast vs story)
+            output_dir = self.output_dir
             
             # Save audio to file
             audio_filename = self._generate_audio_filename(scene_number, scene_title)

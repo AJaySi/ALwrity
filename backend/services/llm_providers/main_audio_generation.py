@@ -62,6 +62,7 @@ class VoiceCloneResult:
 def generate_audio(
     text: str,
     voice_id: str = "Wise_Woman",
+    custom_voice_id: Optional[str] = None,
     speed: float = 1.0,
     volume: float = 1.0,
     pitch: float = 0.0,
@@ -173,6 +174,7 @@ def generate_audio(
             audio_bytes = client.generate_speech(
                 text=text,
                 voice_id=voice_id,
+                custom_voice_id=custom_voice_id,
                 speed=speed,
                 volume=volume,
                 pitch=pitch,

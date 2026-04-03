@@ -442,9 +442,34 @@ class PricingService:
                 "description": "AI Audio Generation default pricing"
             }
         ]
+
+        # WaveSpeed LLM Text Generation Pricing (via Cerebras)
+        wavespeed_llm_pricing = [
+            {
+                "provider": APIProvider.WAVESPEED,
+                "model_name": "openai/gpt-oss-120b",
+                "cost_per_input_token": 0.0000006,   # $0.60 per 1M input tokens
+                "cost_per_output_token": 0.0000006,  # $0.60 per 1M output tokens
+                "description": "WaveSpeed GPT-OSS 120B (Cerebras) - Fast text generation"
+            },
+            {
+                "provider": APIProvider.WAVESPEED,
+                "model_name": "openai/gpt-oss-120b:cerebras",
+                "cost_per_input_token": 0.0000006,
+                "cost_per_output_token": 0.0000006,
+                "description": "WaveSpeed GPT-OSS 120B (Cerebras) - Fast text generation"
+            },
+            {
+                "provider": APIProvider.WAVESPEED,
+                "model_name": "openai/gpt-oss-20b",
+                "cost_per_input_token": 0.0000002,   # $0.20 per 1M input tokens
+                "cost_per_output_token": 0.0000002,  # $0.20 per 1M output tokens
+                "description": "WaveSpeed GPT-OSS 20B (Cerebras) - Cost-effective text generation"
+            },
+        ]
         
         # Combine all pricing data (include video pricing in search_pricing list)
-        all_pricing = gemini_pricing + openai_pricing + anthropic_pricing + mistral_pricing + search_pricing
+        all_pricing = gemini_pricing + openai_pricing + anthropic_pricing + mistral_pricing + search_pricing + wavespeed_llm_pricing
         
         # Insert or update pricing data
         for pricing_data in all_pricing:

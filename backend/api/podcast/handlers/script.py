@@ -1,11 +1,12 @@
 """
 Podcast Script Handlers
 
-Script generation endpoint.
+Script generation and approval endpoints.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from pydantic import BaseModel, Field
 import json
 
 from middleware.auth_middleware import get_current_user
@@ -24,6 +25,29 @@ from ..models import (
 router = APIRouter()
 
 
+class SceneApprovalRequest(BaseModel):
+    project_id: str = Field(..., min_length=1)
+    scene_id: str = Field(..., min_length=1)
+    approved: bool = True
+    notes: Optional[str] = None
+
+
+@router.post("/script/approve")
+async def approve_podcast_scene(
+    request: SceneApprovalRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Persist scene approval metadata for auditing (podcast-specific)."""
+    user_id = require_authenticated_user(current_user)
+    logger.warning(f"[Podcast] Scene approval recorded user={user_id} project={request.project_id} scene={request.scene_id} approved={request.approved}")
+    return {
+        "success": True,
+        "project_id": request.project_id,
+        "scene_id": request.scene_id,
+        "approved": request.approved,
+    }
+
+
 @router.post("/script", response_model=PodcastScriptResponse)
 async def generate_podcast_script(
     request: PodcastScriptRequest,
@@ -33,6 +57,10 @@ async def generate_podcast_script(
     Generate a podcast script outline (scenes + lines) using podcast-oriented prompting.
     """
     user_id = require_authenticated_user(current_user)
+    logger.warning(f"[ScriptGen] ========== SCRIPT GENERATION START ==========")
+    logger.warning(f"[ScriptGen] Topic: {request.idea[:60]}...")
+    logger.warning(f"[ScriptGen] Duration: {request.duration_minutes} min, Speakers: {request.speakers}")
+    logger.warning(f"[ScriptGen] Has research: {bool(request.research)}, Has bible: {bool(request.bible)}, Has analysis: {bool(request.analysis)}")
 
     # Build comprehensive research context for higher-quality scripts
     research_context = ""
@@ -77,55 +105,53 @@ async def generate_podcast_script(
     # Extract Analysis and Outline context for grounding
     analysis_context = ""
     if request.analysis:
-        analysis_context = f"""
-TARGET AUDIENCE: {request.analysis.get('audience', 'General')}
-CONTENT TYPE: {request.analysis.get('contentType', 'Conversational')}
-TOP KEYWORDS: {', '.join(request.analysis.get('topKeywords', []))}
-"""
+        try:
+            audience = request.analysis.get('audience', '') or ''
+            content_type = request.analysis.get('contentType', '') or ''
+            keywords = request.analysis.get('topKeywords', []) or []
+            analysis_context = f"ANALYSIS: Audience={audience} | Type={content_type} | Keywords={', '.join(keywords[:8])}"
+        except:
+            pass
 
     outline_context = ""
     if request.outline:
-        outline_context = f"""
-REFINED EPISODE OUTLINE (Follow this structure closely):
-Title: {request.outline.get('title', 'N/A')}
-Segments: {' | '.join(request.outline.get('segments', []))}
-"""
+        try:
+            title = request.outline.get('title', '') or ''
+            segments = request.outline.get('segments', []) or []
+            outline_context = f"OUTLINE: {title} - {' | '.join(segments[:5])}"
+        except:
+            pass
 
-    prompt = f"""You are an expert podcast script planner. Create natural, conversational podcast scenes.
+    prompt = f"""Create a podcast script with scenes and dialogue.
 
-{f"PODCAST BIBLE (Hyper-Personalization Context):\n{bible_context}\n" if bible_context else ""}
-{f"ANALYSIS CONTEXT:\n{analysis_context}\n" if analysis_context else ""}
-{f"REFINED OUTLINE:\n{outline_context}\n" if outline_context else ""}
+{f"BIBLE: {bible_context[:1500]}" if bible_context else ""}
+{f"{analysis_context}" if analysis_context else ""}
+{f"{outline_context}" if outline_context else ""}
+{f"RESEARCH: {research_context[:1200]}" if research_context else ""}
 
-Podcast Idea: "{request.idea}"
-Duration: ~{request.duration_minutes} minutes
-Speakers: {request.speakers} (Host + optional Guest)
+Topic: "{request.idea}"
+Duration: {request.duration_minutes} min | Speakers: {request.speakers}
 
-{f"RESEARCH CONTEXT:\n{research_context}\n" if research_context else ""}
+Return JSON with scenes array. Each scene:
+- id: string
+- title: short title (<=50 chars)
+- duration: seconds (total/5)
+- emotion: neutral|happy|excited|serious|curious|confident
+- lines: array of {{speaker, text, emphasis}}
+  - Use 2-4 LINES PER SCENE (shorter script = lower TTS costs)
+  - Each line: 1-3 sentences, conversational
+  - Plain text only, no markdown
 
-Return JSON with:
-- scenes: array of scenes. Each scene has:
-  - id: string
-  - title: short scene title (<= 60 chars)
-  - duration: duration in seconds (evenly split across total duration)
-  - emotion: string (one of: "neutral", "happy", "excited", "serious", "curious", "confident")
-  - lines: array of {{"speaker": "...", "text": "...", "emphasis": boolean}}
-    * Write natural, conversational dialogue
-    * Each line can be a sentence or a few sentences that flow together
-    * Use plain text only - no markdown formatting (no asterisks, underscores, etc.)
-    * Mark "emphasis": true for key statistics or important points
-
-Guidelines:
-- Write for spoken delivery: conversational, natural, with contractions.
-- Follow the interaction tone specified in the Bible.
-- Ensure the Host persona matches the background and personality traits from the Bible.
-- Structure the intro and outro scenes according to the Bible's "Intro Format" and "Outro Format".
-- Adhere to any constraints mentioned in the Bible.
-- Use insights from the Research Context to ground the conversation in facts.
-- IMPORTANT: Follow the REFINED OUTLINE segments as the primary structure for the episode.
+COST OPTIMIZATION:
+- 5-6 scenes max for {request.duration_minutes} min episode
+- Concise, information-dense dialogue
+- Skip filler words and redundant phrases
+- Focus on unique insights from research
+- Make every line count toward value delivery
 """
 
     try:
+        logger.warning(f"[ScriptGen] Calling LLM to generate script (prompt length: {len(prompt)})...")
         raw = llm_text_gen(
             prompt=prompt,
             user_id=user_id,
@@ -133,6 +159,7 @@ Guidelines:
             preferred_provider=None,
             flow_type="premium_tool",
         )
+        logger.warning(f"[ScriptGen] LLM response received, length: {len(raw) if raw else 0}")
     except HTTPException:
         raise
     except Exception as exc:

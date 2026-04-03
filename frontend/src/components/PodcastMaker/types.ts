@@ -1,6 +1,8 @@
 export type Knobs = {
   voice_emotion: string;
   voice_speed: number;
+  voice_id: string;
+  custom_voice_id?: string;
   resolution: string;
   scene_length_target: number;
   sample_rate: number;
@@ -64,6 +66,7 @@ export type Scene = {
   emotion?: string; // Scene-specific emotion
   audioUrl?: string; // Generated audio URL for this scene
   imageUrl?: string; // Generated image URL for this scene (for video generation)
+  imagePrompt?: string; // Original image generation prompt for video context
 };
 
 export type Script = {
@@ -104,6 +107,10 @@ export type PodcastAnalysis = {
   suggestedOutlines: { id: number | string; title: string; segments: string[] }[];
   suggestedKnobs: Knobs;
   titleSuggestions: string[];
+  episode_hook?: string;
+  key_takeaways?: string[];
+  guest_talking_points?: string[];
+  listener_cta?: string;
   research_queries?: { query: string; rationale: string }[];
   exaSuggestedConfig?: {
     exa_search_type?: "auto" | "keyword" | "neural";

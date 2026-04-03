@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from "react";
-import { Stack, Typography, Chip, Divider, Box, alpha, Paper } from "@mui/material";
+import { Stack, Typography, Chip, Divider, Box, alpha, Paper, Stepper, Step, StepLabel, CircularProgress } from "@mui/material";
 import {
   Insights as InsightsIcon,
   Search as SearchIcon,
@@ -7,21 +7,26 @@ import {
   EditNote as EditNoteIcon,
   Article as ArticleIcon,
   AutoAwesome as AutoAwesomeIcon,
+  ArrowForward as ArrowForwardIcon,
+  CheckCircle as CheckCircleIcon,
 } from "@mui/icons-material";
 import { Research, ResearchInsight } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
 import { FactCard } from "../FactCard";
+import { TextToSpeechButton } from "../../shared/TextToSpeechButton";
 
 interface ResearchSummaryProps {
   research: Research;
   canGenerateScript: boolean;
   onGenerateScript: () => void;
+  isGeneratingScript?: boolean;
 }
 
 export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
   research,
   canGenerateScript,
   onGenerateScript,
+  isGeneratingScript = false,
 }) => {
   // Simple markdown-to-HTML converter
   const renderMarkdown = useCallback((text: string) => {
@@ -51,6 +56,34 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
   return (
     <GlassyCard sx={glassyCardSx}>
       <Stack spacing={3}>
+        {/* Step Indicator */}
+        <Box sx={{ mb: 1 }}>
+          <Stepper activeStep={1} alternativeLabel>
+            <Step completed>
+              <StepLabel 
+                StepIconComponent={() => <CheckCircleIcon sx={{ color: "#22c55e", fontSize: 24 }} />}
+              >
+                Analysis
+              </StepLabel>
+            </Step>
+            <Step active>
+              <StepLabel>
+                Research
+              </StepLabel>
+            </Step>
+            <Step>
+              <StepLabel>
+                Script
+              </StepLabel>
+            </Step>
+            <Step>
+              <StepLabel>
+                Render
+              </StepLabel>
+            </Step>
+          </Stepper>
+        </Box>
+
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
           <Stack direction="row" alignItems="center" spacing={2} sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1, color: "#0f172a", fontWeight: 700 }}>
@@ -115,11 +148,31 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
 
           <PrimaryButton
             onClick={onGenerateScript}
-            disabled={!canGenerateScript}
-            startIcon={<EditNoteIcon />}
+            disabled={!canGenerateScript || isGeneratingScript}
+            startIcon={isGeneratingScript ? <CircularProgress size={18} color="inherit" /> : <EditNoteIcon />}
+            endIcon={isGeneratingScript ? undefined : <ArrowForwardIcon />}
             tooltip={!canGenerateScript ? "Complete research to generate script" : "Generate AI-powered script from research"}
+            sx={{
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: "1rem",
+              px: 4,
+              py: 1.5,
+              borderRadius: 2,
+              textTransform: "none",
+              boxShadow: "0 4px 14px rgba(102, 126, 234, 0.4)",
+              "&:hover": {
+                background: "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+                boxShadow: "0 6px 20px rgba(102, 126, 234, 0.5)",
+              },
+              "&:disabled": {
+                background: "#94a3b8",
+                boxShadow: "none",
+              }
+            }}
           >
-            Generate Script
+            {isGeneratingScript ? "Generating Script..." : "Generate Script to Continue"}
           </PrimaryButton>
         </Stack>
 
@@ -139,6 +192,9 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
               <Typography variant="subtitle2" sx={{ mb: 1.5, color: "#64748b", fontWeight: 700, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 1 }}>
                 <AutoAwesomeIcon fontSize="small" sx={{ color: "#667eea", fontSize: "1rem" }} />
                 Executive Summary
+                <Box sx={{ ml: 'auto' }}>
+                  <TextToSpeechButton text={research.summary} size="small" showSettings />
+                </Box>
               </Typography>
               <Box sx={{ 
                 lineHeight: 1.6,

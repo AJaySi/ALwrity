@@ -49,7 +49,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [approvingSceneId, setApprovingSceneId] = useState<string | null>(null);
   const [generatingAudioId, setGeneratingAudioId] = useState<string | null>(null);
-  const [showScriptFormatInfo, setShowScriptFormatInfo] = useState(true);
+  const [showScriptFormatInfo, setShowScriptFormatInfo] = useState(false);
   const [combiningAudio, setCombiningAudio] = useState(false);
   const [combinedAudioResult, setCombinedAudioResult] = useState<{
     url: string;
@@ -622,6 +622,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
                   }}
                   idea={idea}
                   avatarUrl={avatarUrl}
+                  analysis={analysis}
                 />
               </GlassyCard>
             ))}

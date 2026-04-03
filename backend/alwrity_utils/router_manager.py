@@ -116,6 +116,10 @@ class RouterManager:
         if "all" in enabled_features:
             return True
         
+        # Skip core routers in podcast-only mode (they require non-podcast features)
+        if enabled_features == {"podcast"}:
+            return False
+        
         # If no required features specified, include by default
         if not required_features:
             return True

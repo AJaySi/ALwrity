@@ -67,7 +67,7 @@ def llm_text_gen(
         resolved_flow_type = flow_type or ("sif_agent" if preferred_hf_models else "premium_tool")
         flow_tag = f"flow_type={resolved_flow_type}"
         
-        logger.info(f"[llm_text_gen][{flow_tag}] Starting text generation")
+        logger.warning(f"[llm_text_gen][{flow_tag}] Starting text generation")
         logger.debug(f"[llm_text_gen] Prompt length: {len(prompt)} characters")
         
         # Set default values for LLM parameters
@@ -94,7 +94,7 @@ def llm_text_gen(
             primary_provider = provider_list[0]
             if primary_provider in ['wavespeed', 'wave']:
                 gpt_provider = "wavespeed"
-                model = os.getenv('WAVESPEED_TEXT_MODEL', 'openai/gpt-oss-120b:cerebras')
+                model = os.getenv('WAVESPEED_TEXT_MODEL', 'openai/gpt-oss-120b')
             elif primary_provider in ['gemini', 'google']:
                 gpt_provider = "google"
                 model = "gemini-2.0-flash-001"
@@ -111,7 +111,7 @@ def llm_text_gen(
         elif preferred_provider:
             if preferred_provider in ['wavespeed', 'wave']:
                 gpt_provider = "wavespeed"
-                model = os.getenv('WAVESPEED_TEXT_MODEL', 'openai/gpt-oss-120b:cerebras')
+                model = os.getenv('WAVESPEED_TEXT_MODEL', 'openai/gpt-oss-120b')
             elif preferred_provider in ['openai', 'gpt']:
                 gpt_provider = "openai"
                 model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
@@ -166,7 +166,7 @@ def llm_text_gen(
         if api_key_manager.get_api_key("wavespeed"):
             available_providers.append("wavespeed")
         
-        logger.info(
+        logger.warning(
             f"[llm_text_gen][{flow_tag}] Provider preflight: env_provider='{env_provider or 'auto'}', "
             f"provider_list={provider_list}, strict_provider_mode={strict_provider_mode}, "
             f"available_providers={available_providers}, preferred_provider={preferred_provider or 'none'}, "
@@ -278,7 +278,12 @@ def llm_text_gen(
                     UsageSummary.billing_period == current_period
                 ).first()
                 
-                # No separate log here - we'll create unified log after API call and usage tracking
+                # Log subscription details before making the API call
+                if usage:
+                    total_llm_calls = (usage.gemini_calls or 0) + (usage.openai_calls or 0) + (usage.anthropic_calls or 0) + (usage.mistral_calls or 0) + (usage.wavespeed_calls or 0)
+                    logger.info(f"[llm_text_gen] Subscription check passed for user {user_id}: provider={actual_provider_name or gpt_provider}, tokens_requested={estimated_total_tokens}, current_usage=${usage.total_cost or 0:.4f}, calls_used={total_llm_calls}")
+                else:
+                    logger.info(f"[llm_text_gen] Subscription check passed for user {user_id}: provider={actual_provider_name or gpt_provider}, tokens_requested={estimated_total_tokens}, new_user_no_usage_record")
                 
             finally:
                 db.close()
@@ -363,7 +368,7 @@ def llm_text_gen(
                 from services.llm_providers.wavespeed_provider import wavespeed_text_response
                 response_text = wavespeed_text_response(
                     prompt=prompt,
-                    model=model or "openai/gpt-oss-120b:cerebras",
+                    model=model or "openai/gpt-oss-120b",
                     temperature=temperature,
                     max_tokens=max_tokens,
                     top_p=top_p,

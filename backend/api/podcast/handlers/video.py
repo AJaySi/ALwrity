@@ -140,17 +140,20 @@ def _execute_podcast_video_task(
         except Exception as e:
             logger.warning(f"[Podcast] Failed to fetch project context for video generation: {e}")
 
-        # Prepare scene data for animation
+        # Prepare scene data for animation - include all context for enhanced prompt
         scene_data = {
             "scene_number": scene_number,
             "title": request.scene_title,
             "scene_id": request.scene_id,
+            "image_prompt": request.scene_image_prompt,
+            "description": request.scene_narration,
+            "lines": [{"text": request.scene_narration}] if request.scene_narration else [],
         }
         story_context = {
             "project_id": request.project_id,
             "type": "podcast",
             "bible": project_bible,
-            "analysis": project_analysis,
+            "analysis": request.analysis or project_analysis,  # Use passed analysis or fallback to DB
         }
 
         animation_result = animate_scene_with_voiceover(

@@ -26,20 +26,24 @@ def _generate_simple_infinitetalk_prompt(
     story_context: Dict[str, Any],
 ) -> Optional[str]:
     """
-    Generate a balanced, concise prompt for InfiniteTalk.
-    InfiniteTalk is audio-driven, so the prompt should describe the scene and suggest
-    subtle motion, but avoid overly elaborate cinematic descriptions.
+    Generate an enhanced prompt for InfiniteTalk video generation.
+    Includes scene content, analysis, bible context, and visual elements.
     
     Returns None if no meaningful prompt can be generated.
     """
     title = (scene_data.get("title") or "").strip()
     description = (scene_data.get("description") or "").strip()
     image_prompt = (scene_data.get("image_prompt") or "").strip()
+    lines = scene_data.get("lines", [])
+    narration = ""
+    if lines:
+        # Combine first few lines for context
+        narration = " ".join([str(l.get("text", "")) for l in lines[:3]])[:150]
     
-    # Build a balanced prompt: scene description + simple motion hint
+    # Build enhanced prompt with multiple context sources
     parts = []
     
-    # Add scene context
+    # Add main scene title
     if title and len(title) > 5 and title.lower() not in ("scene", "podcast", "episode"):
         parts.append(title)
     
@@ -48,60 +52,70 @@ def _generate_simple_infinitetalk_prompt(
     if analysis:
         content_type = analysis.get("content_type")
         if content_type:
-             parts.append(f"Style: {content_type}")
+            parts.append(f"Content type: {content_type}")
         
-        # Audience helps define the formality/vibe
+        # Add key takeaways if available
+        key_takeaways = analysis.get("keyTakeaways", [])
+        if key_takeaways and isinstance(key_takeaways, list) and len(key_takeaways) > 0:
+            takeaway = str(key_takeaways[0])[:80]
+            if takeaway:
+                parts.append(f"Key insight: {takeaway}")
+        
+        # Audience
         audience = analysis.get("audience")
         if audience:
-             # Just use first few words of audience to keep it short
-             short_audience = " ".join(audience.split()[:3])
-             parts.append(f"For: {short_audience}")
-
-    # Add bible context if available
+            short_audience = " ".join(audience.split()[:3])
+            parts.append(f"Target audience: {short_audience}")
+        
+        # Guest info
+        guest_name = analysis.get("guestName")
+        guest_expertise = analysis.get("guestExpertise")
+        if guest_name:
+            parts.append(f"Guest: {guest_name}")
+        if guest_expertise:
+            parts.append(f"Expertise: {guest_expertise}")
+    
+    # Add bible context
     bible = story_context.get("bible", {})
     if bible:
         host_persona = bible.get("host_persona")
         tone = bible.get("tone")
+        visual_style = bible.get("visual_style")
+        background = bible.get("background")
+        
         if host_persona:
-            parts.append(f"Host: {host_persona}")
+            parts.append(f"Host persona: {host_persona}")
         if tone:
             parts.append(f"Tone: {tone}")
-
-    elif description:
-        # Take first sentence or first 60 chars
-        desc_part = description.split('.')[0][:60].strip()
-        if desc_part:
-            parts.append(desc_part)
-    elif image_prompt:
-        # Take first sentence or first 60 chars
-        img_part = image_prompt.split('.')[0][:60].strip()
+        if visual_style:
+            parts.append(f"Visual style: {visual_style}")
+        if background:
+            parts.append(f"Background: {background}")
+    
+    # Add original image prompt as fallback context
+    if image_prompt and len(parts) < 3:
+        img_part = image_prompt.split('.')[0][:100].strip()
         if img_part:
-            parts.append(img_part)
+            parts.append(f"Visual context: {img_part}")
+    
+    # Add narration snippet if available
+    if narration and len(parts) < 4:
+        parts.append(f"Discussing: {narration}")
     
     if not parts:
         return None
     
-    # Add a simple, subtle motion suggestion (not elaborate camera movements)
-    # Keep it natural and audio-driven
-    motion_hints = [
-        "with subtle movement",
-        "with gentle motion",
-        "with natural animation",
-    ]
+    # Build prompt with visual quality keywords
+    quality_keywords = "Cinematic lighting, high detail, 4k quality, smooth motion"
     
-    # Combine scene description with subtle motion hint
-    if len(parts[0]) < 80:
-        # Room for a motion hint
-        prompt = f"{parts[0]}, {motion_hints[0]}"
-    else:
-        # Just use the description if it's already long enough
-        prompt = parts[0]
+    # Combine parts into final prompt
+    prompt = f"{'. '.join(parts)}. {quality_keywords}. With subtle natural movement."
     
-    # Keep it concise - max 120 characters (allows for scene + motion hint)
-    prompt = prompt[:120].strip()
+    # Allow more room for detailed prompts - max 350 characters
+    prompt = prompt[:350].strip()
     
-    # Clean up trailing commas or incomplete sentences
-    if prompt.endswith(','):
+    # Clean up trailing punctuation
+    if prompt.endswith(',') or prompt.endswith('.'):
         prompt = prompt[:-1].strip()
     
     return prompt if len(prompt) >= 15 else None

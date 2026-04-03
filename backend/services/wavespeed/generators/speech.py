@@ -40,6 +40,7 @@ class SpeechGenerator:
         self,
         text: str,
         voice_id: str,
+        custom_voice_id: Optional[str] = None,
         speed: float = 1.0,
         volume: float = 1.0,
         pitch: float = 0.0,
@@ -54,6 +55,7 @@ class SpeechGenerator:
         Args:
             text: Text to convert to speech (max 10000 characters)
             voice_id: Voice ID (e.g., "Wise_Woman", "Friendly_Person", etc.)
+            custom_voice_id: Custom voice clone ID for using cloned voice
             speed: Speech speed (0.5-2.0, default: 1.0)
             volume: Speech volume (0.1-10.0, default: 1.0)
             pitch: Speech pitch (-12 to 12, default: 0.0)
@@ -76,6 +78,11 @@ class SpeechGenerator:
         sanitized_voice_id = str(voice_id).strip()
         if not sanitized_voice_id:
             raise ValueError("Voice ID cannot be empty after sanitization")
+        
+        # Sanitize custom_voice_id if provided
+        sanitized_custom_voice_id = None
+        if custom_voice_id:
+            sanitized_custom_voice_id = str(custom_voice_id).strip() or None
         
         # Ensure numeric parameters are proper floats and within valid ranges
         sanitized_speed = max(0.5, min(2.0, float(speed))) if speed is not None else 1.0
@@ -111,6 +118,10 @@ class SpeechGenerator:
             "emotion": mapped_emotion,
             "enable_sync_mode": bool(enable_sync_mode),
         }
+        
+        # Add custom voice clone ID if provided
+        if sanitized_custom_voice_id:
+            payload["custom_voice_id"] = sanitized_custom_voice_id
         
         # Add optional parameters with proper type validation
         optional_params = [
@@ -179,6 +190,20 @@ class SpeechGenerator:
         
         if response.status_code != 200:
             logger.error(f"[WaveSpeed] Speech generation failed: {response.status_code} {response.text}")
+            
+            # Check for custom voice ID specific errors
+            response_text = response.text.lower()
+            if "custom_voice" in response_text or "voice_id" in response_text:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "Invalid voice clone ID",
+                        "message": "The custom voice ID is invalid or expired. Please create a new voice clone or use a predefined voice.",
+                        "status_code": response.status_code,
+                        "response": response.text,
+                    },
+                )
+            
             raise HTTPException(
                 status_code=502,
                 detail={

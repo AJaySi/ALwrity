@@ -4,6 +4,8 @@ import { CreateProjectPayload, Knobs } from "../types";
 export const DEFAULT_KNOBS: Knobs = {
   voice_emotion: "neutral",
   voice_speed: 1,
+  voice_id: "Wise_Woman",
+  custom_voice_id: undefined,
   resolution: "720p",
   scene_length_target: 45,
   sample_rate: 24000,

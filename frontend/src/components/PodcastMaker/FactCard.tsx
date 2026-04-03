@@ -3,6 +3,7 @@ import { Stack, Typography, Divider, Chip, Tooltip, IconButton, alpha, Box } fro
 import { OpenInNew as OpenInNewIcon, ContentCopy as ContentCopyIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon } from "@mui/icons-material";
 import { Fact } from "./types";
 import { GlassyCard, glassyCardSx } from "./ui";
+import { TextToSpeechButton } from "../shared/TextToSpeechButton";
 
 interface FactCardProps {
   fact: Fact;
@@ -162,6 +163,7 @@ export const FactCard: React.FC<FactCardProps> = ({ fact }) => {
               <ContentCopyIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <TextToSpeechButton text={fact.quote} size="small" />
         </Stack>
 
         {/* Confidence and Date */}

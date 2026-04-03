@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
 from types import SimpleNamespace
 import json
+import re
 
 from middleware.auth_middleware import get_current_user
 from api.story_writer.utils.auth import require_authenticated_user
@@ -36,10 +37,16 @@ async def podcast_research_exa(
     Uses Podcast Bible and Analysis context for hyper-personalization.
     """
     user_id = require_authenticated_user(current_user)
+    logger.warning(f"[Podcast Research] ========== REQUEST START ==========")
+    logger.warning(f"[Podcast Research] User: {user_id}, Topic: {request.topic[:80]}...")
+    logger.warning(f"[Podcast Research] Queries count: {len(request.queries) if request.queries else 0}")
+
 
     queries = [q.strip() for q in request.queries if q and q.strip()]
     if not queries:
         raise HTTPException(status_code=400, detail="At least one query is required for research.")
+    
+    logger.warning(f"[Podcast Research] EXACT queries being sent to Exa: {queries}")
 
     exa_cfg = request.exa_config or PodcastExaConfig()
     cfg = SimpleNamespace(
@@ -52,6 +59,7 @@ async def podcast_research_exa(
     )
 
     provider = ExaResearchProvider()
+    logger.warning(f"[Podcast Research] Provider initialized, starting Exa search...")
     
     # --- Context Building ---
     bible_service = PodcastBibleService()
@@ -68,9 +76,16 @@ async def podcast_research_exa(
     if request.analysis:
         analysis_context = f"""
 PODCAST ANALYSIS CONTEXT:
-Audience: {request.analysis.get('audience', 'General')}
+========================
+Topic: {request.topic}
+Target Audience: {request.analysis.get('audience', 'General')}
 Content Type: {request.analysis.get('content_type', 'Informative')}
 Top Keywords: {', '.join(request.analysis.get('top_keywords', []))}
+
+Episode Hook (Intro): {request.analysis.get('episode_hook', 'N/A')}
+Key Takeaways: {', '.join(request.analysis.get('key_takeaways', [])) or 'N/A'}
+Guest Talking Points: {', '.join(request.analysis.get('guest_talking_points', [])) or 'N/A'}
+Listener CTA: {request.analysis.get('listener_cta', 'N/A')}
 """
 
     # Exa search params
@@ -84,6 +99,7 @@ Top Keywords: {', '.join(request.analysis.get('top_keywords', []))}
 
     try:
         # 1. RUN EXA SEARCH
+        logger.warning(f"[Podcast Research] Calling Exa search with topic: {request.topic[:100]}...")
         result = await provider.search(
             prompt=request.topic,
             topic=request.topic,
@@ -92,8 +108,9 @@ Top Keywords: {', '.join(request.analysis.get('top_keywords', []))}
             config=cfg,
             user_id=user_id,
         )
+        logger.warning(f"[Podcast Research] Exa search completed, got {len(result.get('sources', []))} sources")
     except Exception as exc:
-        logger.error(f"[Podcast Exa Research] Search failed for user {user_id}: {exc}")
+        logger.error(f"[Podcast Exa Research] Search failed for user {user_id}: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Exa research failed: {exc}")
 
     # 2. EXTRACT INSIGHTS VIA LLM
@@ -104,46 +121,77 @@ Top Keywords: {', '.join(request.analysis.get('top_keywords', []))}
     key_insights = []
     
     if raw_content and sources:
-        logger.info(f"[Podcast Research] Extracting insights from {len(sources)} sources for user {user_id}")
+        logger.warning(f"[Podcast Research] Extracting insights from {len(sources)} sources for user {user_id}")
+        
+        # Build list of research queries used for this search
+        queries_used = ", ".join([f"Query {i+1}: {q}" for i, q in enumerate(queries)]) if queries else "No specific queries"
         
         prompt = f"""
-You are an expert research analyst for a high-end podcast production team. 
-Your task is to analyze the following research data and extract deep, actionable insights for a podcast episode.
+You are an expert research analyst and content strategist for a high-end podcast production team. 
+Your task is to analyze the research data and extract deep, podcast-ready insights.
 
 PODCAST CONTEXT:
-Topic: {request.topic}
+================
+Main Topic: {request.topic}
+
+RESEARCH QUERIES USED:
+=====================
+{queries_used}
+
+PODCAST BIBLE & BRAND CONTEXT:
+==============================
 {bible_context}
+
+PODCAST ANALYSIS (from AI Analysis phase):
+==========================================
 {analysis_context}
 
 RESEARCH DATA (from {len(sources)} sources):
+============================================
 {raw_content}
 
-TASK:
-1. Provide a comprehensive summary (2-3 paragraphs) of the most important findings. Use Markdown for formatting (bolding, lists).
-2. Extract 3-5 "Key Insights". Each insight should have a title and a detailed explanation.
-3. For each insight, identify which source indices (e.g. 1, 2) it was derived from.
+YOUR TASK:
+==========
+As a podcast research expert, analyze this data and create content that will:
+1. Engage the specific target audience identified above
+2. Support the episode hook and key takeaways already planned
+3. Provide talking points that complement the guest's expertise
+4. Include a compelling call-to-action for listeners
 
-NOTE: The research data includes "Key Highlights", "Summaries", and "Excerpts" from various sources. 
-Pay special attention to the "Key Highlights" sections as they contain the most relevant information extracted by the neural search engine.
-
-Return JSON structure:
+REQUIRED OUTPUT (JSON):
+=======================
 {{
-  "summary": "Detailed markdown summary...",
+  "summary": "2-3 paragraph comprehensive summary in Markdown. Start with a hook that matches the episode intro. Include specific data points, expert quotes, and trends.",
   "key_insights": [
     {{
-      "title": "Insight Title",
-      "content": "Detailed markdown content...",
-      "source_indices": [1, 2]
+      "title": "Catchy, engaging title for this insight",
+      "content": "3-4 sentences with specific facts, quotes, or data. Write in a conversational tone suitable for a podcast host to discuss.",
+      "source_indices": [1, 2, 3],
+      "podcast_talking_points": ["Point 1 host can expand on", "Counter-point or follow-up", "Question to ask guest"]
     }}
-  ]
+  ],
+  "expert_quotes": [
+    {{
+      "quote": "Direct quote from source",
+      "source_index": 1,
+      "context": "Why this quote matters for the podcast"
+    }}
+  ],
+  "listener_cta_suggestions": ["Specific action listener can take", "Resource to share", "Next episode preview"]
 }}
 
-Requirements:
-- Ensure insights are deep, not just superficial facts. Look for trends, expert opinions, and specific data points.
-- Tone should be professional, insightful, and ready for a podcast host to discuss.
-- Avoid generic filler.
+QUALITY STANDARDS:
+==================
+- INSIGHTS MUST BE DEEP, not superficial - avoid generic statements
+- Include SPECIFIC DATA POINTS, percentages, statistics when available
+- Extract EXPERT QUOTES that hosts can reference
+- Identify GAPS in the research where more depth is needed
+- Make content naturally flow into the planned episode hook and CTA
+- Write in a CONVERSATIONAL tone - how a host would actually speak
+- Flag any CONTROVERSIAL or debatable claims for host to address
 """
         try:
+            logger.warning(f"[Podcast Research] Calling LLM for insight extraction...")
             llm_response = llm_text_gen(
                 prompt=prompt,
                 user_id=user_id,
@@ -151,15 +199,45 @@ Requirements:
                 preferred_provider=None,
                 flow_type="premium_tool",
             )
+            logger.warning(f"[Podcast Research] LLM response received, length: {len(llm_response) if llm_response else 0}")
             
-            # Normalize response
+            # Normalize response - handle both string and dict responses
+            data = None
             if isinstance(llm_response, str):
-                data = json.loads(llm_response)
+                try:
+                    # Try to fix common JSON issues
+                    fixed_response = llm_response.strip()
+                    # Remove markdown code blocks if present
+                    if fixed_response.startswith("```"):
+                        fixed_response = fixed_response.split("```")[1]
+                        if fixed_response.startswith("json"):
+                            fixed_response = fixed_response[4:]
+                    fixed_response = fixed_response.strip()
+                    data = json.loads(fixed_response)
+                except json.JSONDecodeError as json_err:
+                    logger.warning(f"[Podcast Research] Failed to parse JSON: {json_err}. Response preview: {llm_response[:500]}...")
+                    # Try to extract JSON from response using regex
+                    json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+                    if json_match:
+                        try:
+                            data = json.loads(json_match.group())
+                            logger.warning("[Podcast Research] Successfully extracted JSON via regex")
+                        except:
+                            pass
             else:
                 data = llm_response
-                
-            summary = data.get("summary", "")
-            key_insights = [PodcastResearchInsight(**insight) for insight in data.get("key_insights", [])]
+            
+            if data:
+                try:
+                    summary = data.get("summary", "")
+                    key_insights = [PodcastResearchInsight(**insight) for insight in data.get("key_insights", [])]
+                except Exception as insight_err:
+                    logger.warning(f"[Podcast Research] Failed to parse insights: {insight_err}. Data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+                    summary = data.get("summary", "") if isinstance(data, dict) else ""
+                    key_insights = []
+            else:
+                summary = ""
+                key_insights = []
         except HTTPException:
             raise
         except Exception as exc:
@@ -183,21 +261,32 @@ Requirements:
         logger.warning(f"[Podcast Exa Research] Failed to track usage: {track_err}")
 
     sources_payload = []
+    seen_urls = set()
     for src in sources:
+        url = src.get("url", "")
+        # Skip duplicates
+        if url and url in seen_urls:
+            continue
+        if url:
+            seen_urls.add(url)
+        
         try:
             sources_payload.append(PodcastExaSource(**src))
         except Exception:
             sources_payload.append(PodcastExaSource(**{
                 "title": src.get("title", ""),
-                "url": src.get("url", ""),
-                "excerpt": src.get("excerpt", ""),
+                "url": url,
+                "excerpt": src.get("excerpt") or (src.get("highlights")[0] if src.get("highlights") else "") or src.get("summary", ""),
                 "published_at": src.get("published_at"),
+                "publishedDate": src.get("publishedDate"),
                 "highlights": src.get("highlights"),
                 "summary": src.get("summary"),
                 "source_type": src.get("source_type"),
                 "index": src.get("index"),
                 "image": src.get("image"),
                 "author": src.get("author"),
+                "text": src.get("text"),
+                "credibility_score": src.get("credibility_score"),
             }))
 
     return PodcastExaResearchResponse(

@@ -8,6 +8,7 @@ interface UseRenderQueueProps {
   knobs: Knobs;
   projectId: string;
   bible?: any | null;
+  analysis?: any | null;
   budgetCap?: number;
   avatarImageUrl?: string | null;
   onUpdateJob: (sceneId: string, updates: Partial<Job>) => void;
@@ -23,6 +24,7 @@ export const useRenderQueue = ({
   knobs,
   projectId,
   bible,
+  analysis,
   budgetCap,
   avatarImageUrl,
   onUpdateJob,
@@ -54,27 +56,32 @@ export const useRenderQueue = ({
     };
   }, []);
 
-  // Initialize jobs if empty (audio/image only)
+  // Initialize jobs if empty (audio/image only) OR sync with script scenes
   useEffect(() => {
-    if (jobs.length === 0 && script.scenes.length > 0) {
-      const initialJobs: Job[] = script.scenes.map((s) => {
+    // Always sync jobs with script scenes - this ensures render queue shows current audio/image
+    if (script.scenes.length > 0) {
+      script.scenes.forEach((s) => {
         const hasExistingAudio = Boolean(s.audioUrl);
-        return {
+        const hasExistingImage = Boolean(s.imageUrl);
+        const isReady = hasExistingAudio;
+        
+        // Create job from scene data
+        const jobFromScene: Job = {
           sceneId: s.id,
           title: s.title,
-          status: hasExistingAudio ? ("completed" as const) : ("idle" as const),
-          progress: hasExistingAudio ? 100 : 0,
+          status: isReady ? ("completed" as const) : ("idle" as const),
+          progress: isReady ? 100 : 0,
           previewUrl: null,
           finalUrl: hasExistingAudio ? s.audioUrl || null : null,
-          imageUrl: s.imageUrl || null,
+          imageUrl: hasExistingImage ? s.imageUrl || null : null,
           jobId: null,
         };
-      });
-      initialJobs.forEach((job) => {
-        onUpdateJob(job.sceneId, job);
+        
+        // Update job with scene's audio/image data
+        onUpdateJob(s.id, jobFromScene);
       });
     }
-  }, [jobs.length, script.scenes.length, onUpdateJob, script.scenes]);
+  }, [script.scenes, onUpdateJob]);
 
   // Load final video URL from project on mount (for persistence across reloads)
   useEffect(() => {
@@ -95,6 +102,7 @@ export const useRenderQueue = ({
   }, [projectId]);
 
   // Always try to attach existing videos to scenes (even after reloads)
+  // But skip if job already has imageUrl - indicates user just came from script phase
   useEffect(() => {
     if (script.scenes.length === 0) return;
 
@@ -121,6 +129,23 @@ export const useRenderQueue = ({
           if (!videoUrl) return;
 
           const job = jobs.find((j) => j.sceneId === scene.id);
+
+          // Skip if job already has imageUrl from script phase - don't override with old video
+          if (job?.imageUrl) {
+            console.log("[useRenderQueue] Skipping old video - job has imageUrl from script phase:", scene.id, "imageUrl:", job.imageUrl);
+            return;
+          }
+
+          // Job has no imageUrl - this could be from page reload or old state
+          console.log("[useRenderQueue] Job missing imageUrl, checking for old video:", scene.id, "job:", job);
+
+          // Only attach old video if job has NO content at all (no image, no video, no audio)
+          // If job has finalUrl (audio) or imageUrl from script phase, don't attach old video
+          const isJobEmpty = !job || (!job.imageUrl && !job.videoUrl && !job.finalUrl);
+          if (!isJobEmpty) {
+            console.log("[useRenderQueue] Skipping old video - job has content already:", scene.id, "job:", job);
+            return;
+          }
 
           // Avoid redundant updates
           if (job?.videoUrl === videoUrl) return;
@@ -569,6 +594,9 @@ export const useRenderQueue = ({
           audioUrl,
           avatarImageUrl: sceneImageUrl,
           bible: bible,
+          analysis: analysis, // Pass analysis for enhanced prompt
+          sceneImagePrompt: scene.imagePrompt || undefined, // Original image generation prompt
+          sceneNarration: scene.lines?.map((l: any) => l.text).join(" ").slice(0, 200) || undefined,
           resolution: targetResolution,
           prompt: settings?.prompt || undefined,
           seed: settings?.seed ?? -1,

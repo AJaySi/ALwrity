@@ -15,14 +15,31 @@ class PodcastBibleService:
     """Service for generating and managing the Podcast Bible."""
 
     def __init__(self):
-        self.personalization_service = PersonalizationService()
+        try:
+            from services.product_marketing.personalization_service import PersonalizationService
+            self.personalization_service = PersonalizationService()
+        except Exception as e:
+            logger.warning(f"Failed to initialize PersonalizationService: {e}")
+            self.personalization_service = None
 
     def generate_bible(self, user_id: str, project_id: str) -> PodcastBible:
         """Generate a Podcast Bible from onboarding data."""
         logger.info(f"Generating Podcast Bible for user {user_id}")
         
         try:
-            preferences = self.personalization_service.get_user_preferences(user_id) or {}
+            if not self.personalization_service:
+                logger.warning("PersonalizationService not available, using default bible")
+                return self._get_default_bible(project_id)
+            
+            try:
+                preferences = self.personalization_service.get_user_preferences(user_id)
+            except Exception as pref_err:
+                logger.warning(f"Failed to get user preferences: {pref_err}, using defaults")
+                return self._get_default_bible(project_id)
+            
+            if not preferences:
+                logger.info(f"No preferences found for user {user_id}, using defaults")
+                return self._get_default_bible(project_id)
             if not isinstance(preferences, dict):
                 logger.warning(f"Podcast Bible preferences payload is non-dict for user {user_id}, using defaults")
                 preferences = {}
@@ -129,18 +146,23 @@ class PodcastBibleService:
                 name="AI Host",
                 background="Industry Professional",
                 expertise_level="Expert",
+                personality_traits=["Professional", "Informative"],
                 vocal_style="Authoritative",
-                vocal_characteristics=["Deep", "Steady"]
+                vocal_characteristics=["Deep", "Steady"],
+                look="A professional individual dressed in business-casual attire."
             ),
             audience=AudienceDNA(
                 expertise_level="Intermediate",
                 interests=["Industry Trends", "Technology"],
-                pain_points=["Staying Competitive", "Operational Efficiency"]
+                pain_points=["Staying Competitive", "Operational Efficiency"],
+                demographics=None
             ),
             brand=BrandDNA(
                 industry="General Business",
                 tone="Professional",
-                communication_style="Analytical"
+                communication_style="Analytical",
+                key_messages=[],
+                competitor_context=None
             ),
             visual_style=VisualStyle(
                 environment="Professional modern office studio",

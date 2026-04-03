@@ -63,6 +63,10 @@ class PodcastAnalyzeResponse(BaseModel):
     top_keywords: list[str]
     suggested_outlines: list[Dict[str, Any]]
     title_suggestions: list[str]
+    episode_hook: Optional[str] = None
+    key_takeaways: Optional[list[str]] = None
+    guest_talking_points: Optional[list[str]] = None
+    listener_cta: Optional[str] = None
     research_queries: Optional[List[Dict[str, str]]] = None
     exa_suggested_config: Optional[Dict[str, Any]] = None
     bible: Optional[Dict[str, Any]] = None
@@ -142,12 +146,15 @@ class PodcastExaSource(BaseModel):
     url: str = ""
     excerpt: str = ""
     published_at: Optional[str] = None
+    publishedDate: Optional[str] = None  # Exa format
     highlights: Optional[List[str]] = None
     summary: Optional[str] = None
     source_type: Optional[str] = None
     index: Optional[int] = None
     image: Optional[str] = None
     author: Optional[str] = None
+    text: Optional[str] = None  # Exa full text
+    credibility_score: Optional[float] = None  # Exa scores
 
 
 class PodcastResearchInsight(BaseModel):
@@ -155,6 +162,9 @@ class PodcastResearchInsight(BaseModel):
     title: str
     content: str
     source_indices: List[int] = []
+    podcast_talking_points: Optional[List[str]] = []  # Talking points for host to expand on
+    expert_quotes: Optional[List[Dict[str, str]]] = []  # Quotes from sources
+    listener_cta_suggestions: Optional[List[str]] = []  # CTA suggestions
 
 
 class PodcastExaResearchResponse(BaseModel):
@@ -178,6 +188,7 @@ class PodcastAudioRequest(BaseModel):
     scene_title: str
     text: str
     voice_id: Optional[str] = "Wise_Woman"
+    custom_voice_id: Optional[str] = None  # Voice clone ID for custom voice
     speed: Optional[float] = 1.0
     volume: Optional[float] = 1.0
     pitch: Optional[float] = 0.0
@@ -263,7 +274,9 @@ class PodcastImageRequest(BaseModel):
     scene_id: str
     scene_title: str
     scene_content: Optional[str] = None  # Optional: scene lines text for context
+    scene_emotion: Optional[str] = None  # Optional: scene emotion for visual tone
     idea: Optional[str] = None  # Optional: podcast idea for context
+    analysis: Optional[Dict[str, Any]] = Field(None, description="AI analysis for visual context (keywords, audience)")
     base_avatar_url: Optional[str] = None  # Base avatar image URL for scene variations
     bible: Optional[Dict[str, Any]] = Field(None, description="Podcast Bible for hyper-personalization")
     width: int = 1024
@@ -285,6 +298,7 @@ class PodcastImageResponse(BaseModel):
     provider: str
     model: Optional[str] = None
     cost: float
+    image_prompt: Optional[str] = None  # Return the prompt used for generation
 
 
 class PodcastVideoGenerationRequest(BaseModel):
@@ -295,6 +309,9 @@ class PodcastVideoGenerationRequest(BaseModel):
     audio_url: str = Field(..., description="URL to the generated audio file")
     avatar_image_url: Optional[str] = Field(None, description="URL to scene image (required for video generation)")
     bible: Optional[Dict[str, Any]] = Field(None, description="Podcast Bible for hyper-personalization")
+    analysis: Optional[Dict[str, Any]] = Field(None, description="Podcast Analysis for context (content type, audience, takeaways, guest)")
+    scene_image_prompt: Optional[str] = Field(None, description="Original image generation prompt for visual context")
+    scene_narration: Optional[str] = Field(None, description="Scene narration/script lines for context")
     resolution: str = Field("720p", description="Video resolution (480p or 720p)")
     prompt: Optional[str] = Field(None, description="Optional animation prompt override")
     seed: Optional[int] = Field(-1, description="Random seed; -1 for random")

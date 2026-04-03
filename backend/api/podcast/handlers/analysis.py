@@ -5,10 +5,11 @@ Analysis endpoint for podcast ideas.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 import json
 import uuid
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from services.database import get_db
 from middleware.auth_middleware import get_current_user
@@ -258,6 +259,10 @@ Return JSON with:
 - top_keywords: 5 podcast-relevant keywords/phrases
 - suggested_outlines: 2 items, each with title (<=60 chars) and 4-6 short segments (bullet-friendly, factual)
 - title_suggestions: 3 concise episode titles
+- episode_hook: one compelling 15-30 second opening hook/angle that grabs attention
+- key_takeaways: 3-5 actionable insights listeners will learn
+- guest_talking_points: (if guest included) 3-4 suggested questions/angles for guest interview
+- listener_cta: one clear call-to-action for listeners
 - research_queries: array of {{"query": "string", "rationale": "string"}}
 - exa_suggested_config: suggested Exa search options with:
   - exa_search_type: "auto" | "neural" | "keyword"
@@ -271,7 +276,10 @@ Return JSON with:
 Requirements:
 - Keep language factual, actionable, and suited for spoken audio.
 - Avoid narrative fiction tone.
-- Prefer 2024-2025 context.
+- For research queries: Mix of time-sensitive and evergreen queries:
+  - 2-3 queries should focus on latest 2025-2026 developments, trends, and data (use year in query)
+  - 2-3 queries should be evergreen/fundamental (concepts, definitions, best practices, proven strategies) - do NOT include years in these
+- Today's date is April 2026.
 """
 
     try:
@@ -305,6 +313,10 @@ Requirements:
     top_keywords = data.get("top_keywords") or []
     suggested_outlines = data.get("suggested_outlines") or []
     title_suggestions = data.get("title_suggestions") or []
+    episode_hook = data.get("episode_hook") or ""
+    key_takeaways = data.get("key_takeaways") or []
+    guest_talking_points = data.get("guest_talking_points") or []
+    listener_cta = data.get("listener_cta") or ""
     research_queries = data.get("research_queries") or []
     exa_suggested_config = data.get("exa_suggested_config") or None
 
@@ -314,10 +326,117 @@ Requirements:
         top_keywords=top_keywords,
         suggested_outlines=suggested_outlines,
         title_suggestions=title_suggestions,
+        episode_hook=episode_hook,
+        key_takeaways=key_takeaways,
+        guest_talking_points=guest_talking_points,
+        listener_cta=listener_cta,
         research_queries=research_queries,
         exa_suggested_config=exa_suggested_config,
         bible=bible_obj.model_dump() if bible_obj else None,
         avatar_url=final_avatar_url,
         avatar_prompt=final_avatar_prompt,
     )
+
+
+class RegenerateQueriesRequest(BaseModel):
+    idea: str
+    feedback: str
+    existing_analysis: Optional[Dict[str, Any]] = None
+    bible: Optional[Dict[str, Any]] = None
+
+
+class RegenerateQueriesResponse(BaseModel):
+    research_queries: List[Dict[str, str]]
+
+
+@router.post("/regenerate-queries", response_model=RegenerateQueriesResponse)
+async def regenerate_research_queries(
+    request: RegenerateQueriesRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Regenerate research queries based on user feedback and existing analysis.
+    """
+    user_id = require_authenticated_user(current_user)
+    
+    # Build context from existing analysis
+    idea = request.idea
+    feedback = request.feedback
+    
+    # Get topic, keywords, audience from existing analysis if provided
+    topic = idea
+    keywords = ""
+    audience = ""
+    if request.existing_analysis:
+        topic = request.existing_analysis.get("title_suggestions", [idea])[0] if request.existing_analysis.get("title_suggestions") else idea
+        keywords = ", ".join(request.existing_analysis.get("top_keywords", [])[:5])
+        audience = request.existing_analysis.get("audience", "")
+    
+    # Serialize Bible context if provided
+    bible_context = ""
+    if request.bible:
+        try:
+            bible_service = PodcastBibleService()
+            from models.podcast_bible_models import PodcastBible
+            bible_data = PodcastBible(**request.bible)
+            bible_context = bible_service.serialize_bible(bible_data)
+        except Exception as e:
+            logger.warning(f"Failed to serialize bible for query regeneration: {e}")
+    
+    prompt = f"""
+You are a research strategist for podcast content. Given a podcast idea, existing analysis, and user feedback,
+generate 7 new research queries that address the user's specific needs.
+
+{f"USER FEEDBACK: {feedback}" if feedback else ""}
+
+{f"EXISTING ANALYSIS CONTEXT:\n- Topic: {topic}\n- Keywords: {keywords}\n- Audience: {audience}\n" if request.existing_analysis else ""}
+{f"PODCAST BIBLE CONTEXT:\n{bible_context}\n" if bible_context else ""}
+
+Podcast Idea: "{idea}"
+
+TASK:
+Generate exactly 7 research queries that:
+1. Incorporate the user's feedback direction
+2. Build on the existing analysis context
+3. Mix of time-sensitive (2025-2026) and evergreen topics
+4. Are highly specific to the podcast topic
+
+Return JSON with:
+- research_queries: array of {{"query": "string", "rationale": "string"}}
+
+Requirements:
+- At least 2-3 queries should focus on latest 2025-2026 developments (include year in query)
+- At least 2-3 queries should be evergreen (concepts, definitions, best practices - NO year)
+- Queries should be specific and actionable, not generic
+"""
+    
+    try:
+        from services.llm_providers.main_text_generation import llm_text_gen
+        
+        raw = llm_text_gen(
+            prompt=prompt,
+            user_id=user_id,
+            json_struct={"research_queries": [{"query": "string", "rationale": "string"}]},
+            preferred_provider=None,
+            flow_type="premium_tool",
+        )
+        
+        # Parse response
+        if isinstance(raw, dict):
+            queries = raw.get("research_queries", [])
+        else:
+            # Try to parse as JSON
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                queries = parsed.get("research_queries", []) if isinstance(parsed, dict) else []
+            except:
+                queries = []
+        
+        return RegenerateQueriesResponse(research_queries=queries[:7])
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Regenerate Queries] Failed for user {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail=f"Regenerate queries failed: {exc}")
 

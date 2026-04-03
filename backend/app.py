@@ -9,59 +9,26 @@ builtins.Dict = typing.Dict
 builtins.Any = typing.Any
 builtins.Union = typing.Union
 
-# Import onboarding models VERY early to ensure they're available before any services
-from models.onboarding import APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
-
-
-from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import Dict, Any, Optional
-import os
-from loguru import logger
-from dotenv import load_dotenv
-import asyncio
-from datetime import datetime
-
-# Import OnboardingSession right after basic imports to ensure it's available
-from models.onboarding import OnboardingSession
-
-from services.subscription import monitoring_middleware
-
-# Import remaining onboarding models
-from models import APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
-
-# Import modular utilities
-from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager
-from alwrity_utils import OnboardingManager
-
-# Load environment variables
-# Try multiple locations for .env file
+# Load environment variables FIRST before any other imports
 from pathlib import Path
+from dotenv import load_dotenv
 backend_dir = Path(__file__).parent
 project_root = backend_dir.parent
+load_dotenv(backend_dir / '.env')
+load_dotenv(project_root / '.env')
+load_dotenv()
 
-# Load from backend/.env first (higher priority), then root .env
-load_dotenv(backend_dir / '.env')  # backend/.env
-load_dotenv(project_root / '.env')  # root .env (fallback)
-load_dotenv()  # CWD .env (fallback)
+# Set LOG_LEVEL early to WARNING to suppress DEBUG persona logs in podcast mode
+import os
+if os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast":
+    os.environ["LOG_LEVEL"] = "WARNING"
 
 
 def get_enabled_features() -> set:
-    """Get enabled features from ALWRITY_ENABLED_FEATURES env var.
-    
-    Values:
-    - "all" - enable all features (default)
-    - comma-separated: "podcast,core"
-    - single feature: "podcast"
-    """
+    """Get enabled features from ALWRITY_ENABLED_FEATURES env var."""
     env_value = os.getenv("ALWRITY_ENABLED_FEATURES", "all").strip().lower()
-    
     if not env_value or env_value == "all":
         return {"all"}
-    
     return {f.strip() for f in env_value.split(",") if f.strip()}
 
 
@@ -69,6 +36,32 @@ def is_podcast_only_demo_mode() -> bool:
     """Check if podcast-only mode is enabled."""
     enabled = get_enabled_features()
     return "podcast" in enabled and "all" not in enabled
+
+
+# Import onboarding models (after env is loaded)
+from models.onboarding import APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
+
+
+# Import FastAPI and related
+from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
+import os
+import asyncio
+from datetime import datetime
+from loguru import logger
+
+
+# Import modular utilities (skip OnboardingManager import in podcast-only mode)
+from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager
+if not is_podcast_only_demo_mode():
+    from alwrity_utils import OnboardingManager
+
+# Import monitoring middleware
+from services.subscription import monitoring_middleware
 
 
 def should_include_non_podcast_features() -> bool:
@@ -94,8 +87,10 @@ from api.component_logic import router as component_logic_router
 # Import subscription API endpoints
 from api.subscription import router as subscription_router
 
-# Import Step 3 onboarding routes
-from api.onboarding_utils.step3_routes import router as step3_routes
+# Import Step 3 onboarding routes (skip in podcast-only mode)
+step3_routes = None
+if not PODCAST_ONLY_DEMO_MODE:
+    from api.onboarding_utils.step3_routes import router as step3_routes
 
 # Import SEO tools router
 from routers.seo_tools import router as seo_tools_router
@@ -218,7 +213,9 @@ router_manager = RouterManager(app)
 router_group_status: Dict[str, Dict[str, Any]] = {}
 
 onboarding_manager = None
+# Only create OnboardingManager if NOT in podcast-only mode
 if not PODCAST_ONLY_DEMO_MODE:
+    from alwrity_utils import OnboardingManager
     onboarding_manager = OnboardingManager(app)
 
 # Middleware Order (FastAPI executes in REVERSE order of registration - LIFO):
@@ -575,9 +572,12 @@ async def startup_event():
         if startup_report.get("status") != "healthy":
             logger.error(f"Startup readiness finished with failures: {startup_report.get('errors', [])}")
 
-        # Start task scheduler
-        from services.scheduler import get_scheduler
-        await get_scheduler().start()
+        # Start task scheduler only if NOT in podcast-only mode
+        if not is_podcast_only_demo_mode():
+            from services.scheduler import get_scheduler
+            await get_scheduler().start()
+        else:
+            logger.info("[Podcast] Skipping scheduler startup (podcast-only mode)")
 
         # Check Wix API key configuration
         wix_api_key = os.getenv('WIX_API_KEY')

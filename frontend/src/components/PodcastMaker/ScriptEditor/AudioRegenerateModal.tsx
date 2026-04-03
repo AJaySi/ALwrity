@@ -21,9 +21,11 @@ import {
 } from "@mui/material";
 import { HelpOutline as HelpOutlineIcon, Close as CloseIcon } from "@mui/icons-material";
 import { PrimaryButton, SecondaryButton } from "../ui";
+import { VoiceSelector } from "../../shared/VoiceSelector";
 
 export type AudioGenerationSettings = {
   voiceId: string;
+  customVoiceId?: string;
   speed: number;
   volume: number;
   pitch: number;
@@ -156,26 +158,12 @@ export const AudioRegenerateModal: React.FC<AudioRegenerateModalProps> = ({
                 </IconButton>
               </Tooltip>
             </Stack>
-            <FormControl fullWidth>
-              <Select
-                value={settings.voiceId}
-                onChange={(e) => setSettings({ ...settings, voiceId: e.target.value })}
-                sx={{
-                  backgroundColor: alpha("#ffffff", 0.05),
-                  color: "white",
-                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(255,255,255,0.2)" },
-                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(255,255,255,0.3)" },
-                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#667eea" },
-                  "& .MuiSvgIcon-root": { color: "rgba(255,255,255,0.7)" },
-                }}
-              >
-                {VOICE_OPTIONS.map((v) => (
-                  <MenuItem key={v} value={v}>
-                    {v}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <VoiceSelector
+              value={settings.voiceId}
+              onChange={(voiceId) => setSettings({ ...settings, voiceId })}
+              showVoiceClone={true}
+              disabled={false}
+            />
           </Box>
 
           {/* Speed / Volume / Pitch */}

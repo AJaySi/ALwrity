@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { Box, Paper, Stack, Alert, Divider, CircularProgress, alpha } from "@mui/material";
+import { Box, Paper, Stack, Alert, Divider, CircularProgress, alpha, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from "@mui/material";
 import { usePodcastProjectState } from "../../hooks/usePodcastProjectState";
 import { CreateModal } from "./CreateModal";
 import { AnalysisPanel } from "./AnalysisPanel";
@@ -78,7 +78,7 @@ const PodcastDashboard: React.FC = () => {
   }, [resetState]);
 
   if (showProjectList) {
-    return <ProjectList onSelectProject={handleSelectProject} />;
+    return <ProjectList onSelectProject={handleSelectProject} onBack={() => setShowProjectList(false)} />;
   }
 
   return (
@@ -197,19 +197,13 @@ const PodcastDashboard: React.FC = () => {
             />
           )}
 
-          {(workflow.isAnalyzing || workflow.isResearching) && (
-            <Alert
-              severity="warning"
-              icon={<CircularProgress size={20} />}
-              sx={{
-                background: "#fef3c7",
-                border: "1px solid #fde68a",
-              }}
-            >
-              <Box component="span" sx={{ fontSize: "0.875rem" }}>
-                {workflow.isAnalyzing ? "Analyzing your idea with AI..." : "Running research... This may take a moment."}
-              </Box>
-            </Alert>
+          {(workflow.isAnalyzing || workflow.isResearching || workflow.isGeneratingScript) && (
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ py: 1.5 }}>
+              <CircularProgress size={20} sx={{ color: "#667eea" }} />
+              <Typography variant="body2" sx={{ color: "#64748b" }}>
+                {workflow.isAnalyzing ? "Analyzing your idea with AI..." : workflow.isGeneratingScript ? "Generating script with AI..." : "Running research... This may take a moment."}
+              </Typography>
+            </Stack>
           )}
 
           {/* Create Modal */}
@@ -238,6 +232,11 @@ const PodcastDashboard: React.FC = () => {
                 avatarPrompt={project?.avatarPrompt}
                 onRegenerate={() => setShowRegenModal(true)}
                 onUpdateAnalysis={(updated) => projectState.setAnalysis(updated)}
+                onRunResearch={() => workflow.handleRunResearch()}
+                isResearchRunning={workflow.isResearching}
+                selectedQueries={selectedQueries}
+                onToggleQuery={workflow.toggleQuery}
+                queries={queries}
               />
             )}
 
@@ -251,6 +250,11 @@ const PodcastDashboard: React.FC = () => {
                 onToggleQuery={workflow.toggleQuery}
                 onProviderChange={setResearchProvider}
                 onRunResearch={workflow.handleRunResearch}
+                onRegenerateQueries={workflow.handleRegenerateQueries}
+                onUpdateQuery={workflow.handleUpdateQuery}
+                onDeleteQuery={workflow.handleDeleteQuery}
+                analysis={analysis}
+                idea={project?.idea || ""}
               />
             )}
 
@@ -259,6 +263,7 @@ const PodcastDashboard: React.FC = () => {
                 research={research}
                 canGenerateScript={workflow.canGenerateScript}
                 onGenerateScript={workflow.handleGenerateScript}
+                isGeneratingScript={workflow.isGeneratingScript}
               />
             )}
 
@@ -332,6 +337,55 @@ const PodcastDashboard: React.FC = () => {
         }}
         isSubmitting={workflow.isAnalyzing}
       />
+
+      {/* Duplicate Project Dialog */}
+      <Dialog
+        open={workflow.showDuplicateDialog}
+        onClose={() => workflow.setShowDuplicateDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+            border: "1px solid rgba(167, 139, 250, 0.3)",
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: "#fff", display: "flex", alignItems: "center", gap: 1 }}>
+          Duplicate Project Found
+        </DialogTitle>
+        <DialogContent sx={{ color: "rgba(255,255,255,0.8)" }}>
+          <Alert severity="warning" sx={{ mb: 2, bgcolor: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)" }}>
+            A project with a similar idea already exists. You can edit the existing project or create a new one (which will overwrite the previous).
+          </Alert>
+          <Box sx={{ p: 2, bgcolor: "rgba(255,255,255,0.05)", borderRadius: 2 }}>
+            <strong style={{ color: "#fff" }}>Existing project idea:</strong>
+            <p style={{ color: "rgba(255,255,255,0.7)", marginTop: 8 }}>
+              {workflow.duplicateProjectInfo.idea}
+            </p>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button 
+            onClick={() => {
+              workflow.setShowDuplicateDialog(false);
+              // Load existing project
+              loadProjectFromDb(workflow.duplicateProjectInfo.projectId);
+            }}
+            sx={{ color: "#a78bfa" }}
+          >
+            Edit Existing
+          </Button>
+          <Button 
+            onClick={() => workflow.setShowDuplicateDialog(false)}
+            variant="contained"
+            sx={{ bgcolor: "#ef4444", "&:hover": { bgcolor: "#dc2626" } }}
+          >
+            Create New (Overwrite)
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

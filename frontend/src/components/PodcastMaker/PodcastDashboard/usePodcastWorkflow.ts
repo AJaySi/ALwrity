@@ -5,6 +5,9 @@ import { useBudgetTracking } from "../../../hooks/useBudgetTracking";
 import { CreateProjectPayload, Script } from "../types";
 import { usePodcastProjectState } from "../../../hooks/usePodcastProjectState";
 import { sanitizeExaConfig, announceError, getStepLabel } from "./utils";
+import { clearSceneMediaCache, clearMediaCache } from "../../../utils/mediaCache";
+
+const createId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
 type PodcastProjectStateReturn = ReturnType<typeof usePodcastProjectState>;
 
@@ -41,18 +44,22 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     setResearchProvider,
     setBudgetCap,
     updateRenderJob,
+    setRenderJobs,
     initializeProject,
     setBible,
   } = projectState;
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isResearching, setIsResearching] = useState(false);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [announcementSeverity, setAnnouncementSeverity] = useState<"info" | "error" | "success">("info");
   const [showResumeAlert, setShowResumeAlert] = useState(false);
   const [showPreflightDialog, setShowPreflightDialog] = useState(false);
   const [preflightResponse, setPreflightResponse] = useState<any>(null);
   const [preflightOperationName, setPreflightOperationName] = useState<string>("");
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [duplicateProjectInfo, setDuplicateProjectInfo] = useState<{projectId: string; idea: string}>({ projectId: "", idea: "" });
 
   const budgetTracking = useBudgetTracking(budgetCap || 50);
   const preflightCheck = usePreflightCheck({
@@ -113,7 +120,27 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       // This allows the analysis to be personalized using the Bible context
       const projectId = project?.id || `podcast_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       setAnnouncement("Initializing project and brand context...");
-      const dbProject = project ? null : await initializeProject(payload, projectId, avatarUrl);
+      
+      let dbProject: any = null;
+      try {
+        dbProject = project ? null : await initializeProject(payload, projectId, avatarUrl);
+      } catch (initError: any) {
+        const errorStr = initError?.message || "";
+        if (errorStr.includes("DUPLICATE_IDEA")) {
+          try {
+            const dupData = JSON.parse(errorStr);
+            const existingId = dupData.existing_project_id;
+          const existingIdea = dupData.existing_idea;
+            setAnnouncement("");
+            // Throw error to trigger UI modal
+            throw new Error(`DUPLICATE_IDEA:${existingId}:${existingIdea}`);
+          } catch (parseErr) {
+            console.error("Failed to parse duplicate idea error:", parseErr);
+          }
+        }
+        throw initError;
+      }
+      
       const bible = dbProject?.bible || projectState.bible;
 
       setAnnouncement(feedback ? "Regenerating analysis using your feedback..." : "Analyzing your idea — AI suggestions incoming");
@@ -131,7 +158,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
           analysis: result.analysis,
           estimate: result.estimate,
           queries: result.queries,
-          selected_queries: result.queries.map(q => q.id),
+          selected_queries: [], // Don't auto-select - user must choose manually
           avatar_url: result.avatar_url,
           avatar_prompt: result.avatar_prompt,
         });
@@ -152,7 +179,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       setAnalysis(result.analysis);
       setEstimate(result.estimate);
       setQueries(result.queries);
-      setSelectedQueries(new Set(result.queries.map((q) => q.id)));
+      setSelectedQueries(new Set()); // Start with none selected - user must choose manually
       setKnobs(payload.knobs);
       setBudgetCap(payload.budgetCap);
       
@@ -192,6 +219,18 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
         setAnnouncement("Analysis complete");
       }
     } catch (error: any) {
+      // Handle duplicate idea error
+      const errorMessage = error?.message || String(error);
+      if (errorMessage.startsWith("DUPLICATE_IDEA:")) {
+        const parts = errorMessage.split(":");
+        const existingId = parts[1] || "";
+        const existingIdea = parts.slice(2).join(":") || "existing project";
+        setAnnouncement("");
+        setShowDuplicateDialog(true);
+        setDuplicateProjectInfo({ projectId: existingId, idea: existingIdea });
+        return;
+      }
+      
       if (error?.response?.status === 429 || error?.response?.data?.detail) {
         const errorDetail = error.response.data.detail;
         if (typeof errorDetail === 'object' && errorDetail.error && errorDetail.error.includes('limit')) {
@@ -240,6 +279,8 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
 
     setPreflightOperationName("Research");
     const approvedQueries = queries.filter((q) => selectedQueries.has(q.id));
+    console.log('[Research] User selected queries:', Array.from(selectedQueries));
+    console.log('[Research] Filtered approvedQueries for API:', approvedQueries.map(q => q.query));
     const preflightResult = await preflightCheck.check({
       provider: researchProvider === "exa" ? "exa" : "gemini",
       operation_type: researchProvider === "exa" ? "exa_neural_search" : "google_grounding",
@@ -261,6 +302,8 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       setShowRenderQueue(false);
 
       try {
+        console.log('[Research] Starting research with:', { topic: project.idea, approvedQueries, provider: researchProvider });
+        console.log('[Research] Calling podcastApi.runResearch...');
         const { research: mapped, raw } = await podcastApi.runResearch({
           projectId: project.id,
           topic: project.idea,
@@ -273,6 +316,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
             setAnnouncement(message);
           },
         });
+        console.log('[Research] Response received:', { mapped, raw });
         setResearch(mapped);
         setRawResearch(raw);
         setAnnouncement("Research complete — review fact cards below");
@@ -281,6 +325,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
           ? researchError.message
           : "Research failed. Please try again or switch to Standard Research.";
 
+        console.error('[Research] Error caught:', researchError);
         if (errorMessage.includes("Exa") || errorMessage.includes("exa")) {
           setAnnouncement(`Deep research failed: ${errorMessage}. Try Standard Research instead.`);
         } else if (errorMessage.includes("timeout")) {
@@ -321,8 +366,18 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     setScriptData(null);
     setShowRenderQueue(false);
     setShowScriptEditor(true);
+    setIsGeneratingScript(true);
+    setAnnouncement("Generating script with AI... Creating scenes and dialogue based on your research...");
 
     try {
+      console.log('[ScriptGen] Starting script generation with:', {
+        idea: project.idea,
+        speakers: project.speakers,
+        duration: project.duration,
+        hasResearch: !!rawResearch,
+        hasOutline: !!analysis?.suggestedOutlines?.[0],
+      });
+      
       const result = await podcastApi.generateScript({
         projectId: project.id,
         idea: project.idea,
@@ -331,35 +386,55 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
         speakers: project.speakers,
         durationMinutes: project.duration,
         bible: projectState.bible,
-        outline: analysis?.suggestedOutlines?.[0], // Pass the first (possibly refined) outline
-        analysis: analysis, // Pass full analysis context
+        outline: analysis?.suggestedOutlines?.[0],
+        analysis: analysis,
+        onProgress: (message) => {
+          console.log('[ScriptGen] Progress:', message);
+          setAnnouncement(message);
+        },
       });
 
+      console.log('[ScriptGen] Script generated:', { sceneCount: result.scenes?.length });
       setScriptData(result);
+      setIsGeneratingScript(false);
+      setAnnouncement("Script generated! Review and edit your scenes below.");
     } catch (error) {
+      setIsGeneratingScript(false);
       announceError(setAnnouncement, setAnnouncementSeverityFn, error);
     }
   }, [showScriptEditor, project, research, preflightCheck, setScriptData, setShowRenderQueue, setShowScriptEditor, rawResearch, projectState.knobs, projectState.bible])
 
   const handleProceedToRendering = useCallback((script: Script) => {
+    // Clear media cache for all scenes before proceeding to remove old blobs
+    script.scenes.forEach((scene) => {
+      clearSceneMediaCache(scene.id);
+    });
+    // Also clear global media cache to ensure clean slate
+    clearMediaCache();
+    
+    // Clear all render jobs to start fresh (removes old videos/images)
+    setRenderJobs([]);
+    
     setScriptData(script);
-    if (renderJobs.length === 0) {
-      script.scenes.forEach((scene) => {
-        const hasExistingAudio = Boolean(scene.audioUrl);
-        updateRenderJob(scene.id, {
-          sceneId: scene.id,
-          title: scene.title,
-          status: hasExistingAudio ? ("completed" as const) : ("idle" as const),
-          progress: hasExistingAudio ? 100 : 0,
-          previewUrl: null,
-          finalUrl: hasExistingAudio ? scene.audioUrl : null,
-          jobId: null,
-        });
+    // Create new render jobs with current script scene data
+    script.scenes.forEach((scene) => {
+      const hasExistingAudio = Boolean(scene.audioUrl);
+      const hasExistingImage = Boolean(scene.imageUrl);
+      updateRenderJob(scene.id, {
+        sceneId: scene.id,
+        title: scene.title,
+        status: hasExistingAudio ? ("completed" as const) : ("idle" as const),
+        progress: hasExistingAudio ? 100 : 0,
+        previewUrl: null,
+        finalUrl: hasExistingAudio ? scene.audioUrl : null,
+        imageUrl: hasExistingImage ? scene.imageUrl : null,
+        videoUrl: null,
+        jobId: null,
       });
-    }
+    });
     setShowRenderQueue(true);
     setShowScriptEditor(false);
-  }, [renderJobs.length, setScriptData, updateRenderJob, setShowRenderQueue, setShowScriptEditor]);
+  }, [setScriptData, setRenderJobs, updateRenderJob, setShowRenderQueue, setShowScriptEditor]);
 
   const toggleQuery = useCallback((id: string) => {
     if (isResearching) return;
@@ -369,6 +444,22 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     else next.add(id);
     setSelectedQueries(next);
   }, [isResearching, selectedQueries, setSelectedQueries]);
+
+  const handleUpdateQuery = useCallback((id: string, newQuery: string, newRationale: string) => {
+    const updated = queries.map(q => q.id === id ? { ...q, query: newQuery, rationale: newRationale } : q);
+    setQueries(updated);
+  }, [queries, setQueries]);
+
+  const handleDeleteQuery = useCallback((id: string) => {
+    const updated = queries.filter(q => q.id !== id);
+    setQueries(updated);
+    // Also remove from selected if it was selected
+    if (selectedQueries.has(id)) {
+      const newSelected = new Set(selectedQueries);
+      newSelected.delete(id);
+      setSelectedQueries(newSelected);
+    }
+  }, [queries, selectedQueries, setQueries, setSelectedQueries]);
 
   const activeStep = useMemo(() => {
     if (showRenderQueue) return 3;
@@ -397,6 +488,37 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     await handleCreate(payload, feedback);
   }, [project, projectState.knobs, projectState.budgetCap, handleCreate]);
 
+  // Regenerate only research queries (keeps other sections intact)
+  const handleRegenerateQueries = useCallback(async (feedback: string) => {
+    if (!project || !analysis) return;
+    
+    setAnnouncement("Regenerating research queries...");
+    
+    try {
+      const response = await podcastApi.regenerateResearchQueries({
+        idea: project.idea,
+        feedback: feedback,
+        existing_analysis: analysis,
+        bible: projectState.bible,
+      });
+      
+      // Convert to Query format
+      const newQueries = response.research_queries.map((rq, idx) => ({
+        id: createId("q"),
+        query: rq.query,
+        rationale: rq.rationale,
+        needsRecentStats: /202[45]|latest|trend/i.test(rq.query),
+      }));
+      
+      setQueries(newQueries);
+      setSelectedQueries(new Set()); // Don't auto-select - user must choose manually
+      setAnnouncement("Research queries regenerated");
+    } catch (error) {
+      console.error("Failed to regenerate queries:", error);
+      setAnnouncement("Failed to regenerate queries");
+    }
+  }, [project, analysis, projectState.bible, setQueries, setSelectedQueries]);
+
   const setAnnouncementSeverityFn = useCallback((severity: "info" | "error" | "success") => {
     setAnnouncementSeverity(severity);
   }, []);
@@ -405,12 +527,15 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     // State
     isAnalyzing,
     isResearching,
+    isGeneratingScript,
     announcement,
     announcementSeverity,
     showResumeAlert,
     showPreflightDialog,
     preflightResponse,
     preflightOperationName,
+    showDuplicateDialog,
+    duplicateProjectInfo,
     activeStep,
     canGenerateScript,
     // Handlers
@@ -425,8 +550,13 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     setShowResumeAlert,
     setShowPreflightDialog,
     setPreflightResponse,
+    setShowDuplicateDialog,
+    setDuplicateProjectInfo,
     setResearchProvider,
     getStepLabel,
+    handleRegenerateQueries: handleRegenerateQueries,
+    handleUpdateQuery,
+    handleDeleteQuery,
   };
 };
 

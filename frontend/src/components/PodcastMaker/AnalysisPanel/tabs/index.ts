@@ -1,0 +1,9 @@
+export { HookTab } from "./HookTab";
+export { CTATab } from "./CTATab";
+export { GuestTab } from "./GuestTab";
+export { TakeawaysTab } from "./TakeawaysTab";
+export { ResearchTab } from "./ResearchTab";
+export { TitlesTab } from "./TitlesTab";
+export { OutlineTab } from "./OutlineTab";
+export { AudienceTab } from "./AudienceTab";
+export { InputsTab } from "./InputsTab";

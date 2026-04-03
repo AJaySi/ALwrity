@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Stack, Box, Typography, Divider, Chip, alpha, CircularProgress, LinearProgress, IconButton, Tooltip } from "@mui/material";
+import { Stack, Box, Typography, Divider, Chip, alpha, CircularProgress, LinearProgress, IconButton, Tooltip, Dialog, DialogContent } from "@mui/material";
 import {
   EditNote as EditNoteIcon,
   CheckCircle as CheckCircleIcon,
@@ -8,6 +8,8 @@ import {
   PlayArrow as PlayArrowIcon,
   Image as ImageIcon,
   Delete as DeleteIcon,
+  Fullscreen as FullscreenIcon,
+  Close as CloseIcon,
 } from "@mui/icons-material";
 import { Scene, Line, Knobs } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
@@ -31,6 +33,11 @@ interface SceneEditorProps {
   idea?: string; // Podcast idea for image generation context
   avatarUrl?: string | null; // Base avatar URL for consistent scene image generation
   totalScenes?: number; // Total number of scenes in the script
+  analysis?: {
+    audience?: string;
+    contentType?: string;
+    topKeywords?: string[];
+  } | null;
 }
 
 export const SceneEditor: React.FC<SceneEditorProps> = ({
@@ -46,6 +53,7 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   idea,
   avatarUrl,
   totalScenes,
+  analysis,
 }) => {
   const [localGenerating, setLocalGenerating] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -56,8 +64,10 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   const [imageLoading, setImageLoading] = useState(false);
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
+  const [showImagePreview, setShowImagePreview] = useState(false);
   const [audioSettings, setAudioSettings] = useState<AudioGenerationSettings>({
     voiceId: "Wise_Woman",
+    customVoiceId: undefined,
     speed: 1.0,
     volume: 1.0,
     pitch: 0.0,
@@ -300,7 +310,8 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
       const effectiveSettings = settings || audioSettings;
       const result = await podcastApi.renderSceneAudio({
         scene: currentScene,
-        voiceId: effectiveSettings.voiceId || "Wise_Woman",
+        voiceId: effectiveSettings.voiceId || knobs.voice_id || "Wise_Woman",
+        customVoiceId: effectiveSettings.customVoiceId || knobs.custom_voice_id,
         emotion: effectiveSettings.emotion || scene.emotion || knobs.voice_emotion || "neutral",
         speed: effectiveSettings.speed ?? knobs.voice_speed ?? 1.0,
         volume: effectiveSettings.volume ?? 1.0,
@@ -323,6 +334,24 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
       }
     } catch (error) {
       console.error("Failed to approve and generate audio:", error);
+      
+      // Provide user-friendly error message based on error type
+      let userMessage = "Failed to generate audio. Please try again.";
+      
+      if (error instanceof Error) {
+        const errorMsg = error.message.toLowerCase();
+        
+        if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("limit")) {
+          userMessage = "Audio generation limit reached. Please check your subscription and try again.";
+        } else if (errorMsg.includes("voice") || errorMsg.includes("custom_voice")) {
+          userMessage = "Invalid voice. Please select a different voice and try again.";
+        } else if (errorMsg.includes("timeout") || errorMsg.includes("timed out")) {
+          userMessage = "Audio generation timed out. Please try again.";
+        } else if (errorMsg.includes("network") || errorMsg.includes("connection")) {
+          userMessage = "Network error. Please check your connection and try again.";
+        }
+      }
+      
       // On error, revert approval only if we just approved it in this call
       if (!wasAlreadyApproved) {
         onUpdateScene({ ...scene, approved: false, audioUrl: undefined });
@@ -379,11 +408,12 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
         sceneId: scene.id,
         sceneTitle: scene.title,
         sceneContent: sceneContent,
-        baseAvatarUrl: avatarUrl || undefined, // Pass base avatar URL for character consistency
+        sceneEmotion: scene.emotion,
+        baseAvatarUrl: avatarUrl || undefined,
         idea: idea,
+        analysis: analysis || undefined,
         width: 1024,
         height: 1024,
-        // Pass custom settings if provided
         customPrompt: settings?.prompt,
         style: settings?.style,
         renderingSpeed: settings?.renderingSpeed,
@@ -398,8 +428,12 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
       setImageGenerationStatus("Finalizing image...");
       setImageGenerationProgress(95);
       
-      // Update scene with image URL
-      const updatedScene = { ...scene, imageUrl: result.image_url };
+      // Update scene with image URL and the prompt used
+      const updatedScene = { 
+        ...scene, 
+        imageUrl: result.image_url,
+        imagePrompt: result.image_prompt || undefined,
+      };
       onUpdateScene(updatedScene);
       
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -725,11 +759,25 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
                   : "1px solid rgba(245, 158, 11, 0.2)",
               }}
             >
-              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
+              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5, width: "100%" }}>
                 <ImageIcon sx={{ color: imageBlobUrl && !imageLoading ? "#667eea" : "#d97706", fontSize: "1.25rem" }} />
-                <Typography variant="subtitle2" sx={{ color: imageBlobUrl && !imageLoading ? "#667eea" : "#d97706", fontWeight: 600 }}>
+                <Typography variant="subtitle2" sx={{ color: imageBlobUrl && !imageLoading ? "#667eea" : "#d97706", fontWeight: 600, flex: 1 }}>
                   {imageBlobUrl && !imageLoading ? "Image Generated" : "Loading Image..."}
                 </Typography>
+                {imageBlobUrl && !imageLoading && (
+                  <Tooltip title="View full size">
+                    <IconButton
+                      size="small"
+                      onClick={() => setShowImagePreview(true)}
+                      sx={{
+                        color: "#667eea",
+                        "&:hover": { background: "rgba(102, 126, 234, 0.1)" },
+                      }}
+                    >
+                      <FullscreenIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </Stack>
               {imageBlobUrl && !imageLoading ? (
                 <Box
@@ -805,6 +853,49 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
         initialSettings={audioSettings}
         isGenerating={generating}
       />
+
+      {/* Full-size Image Preview Modal */}
+      <Dialog
+        open={showImagePreview}
+        onClose={() => setShowImagePreview(false)}
+        maxWidth="lg"
+        PaperProps={{
+          sx: {
+            background: "rgba(0, 0, 0, 0.9)",
+            borderRadius: 3,
+            maxHeight: "90vh",
+          }
+        }}
+      >
+        <DialogContent sx={{ p: 0, position: "relative" }}>
+          <IconButton
+            onClick={() => setShowImagePreview(false)}
+            sx={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              color: "#fff",
+              background: "rgba(0, 0, 0, 0.5)",
+              zIndex: 1,
+              "&:hover": { background: "rgba(0, 0, 0, 0.7)" },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+          <Box
+            component="img"
+            src={imageBlobUrl || ""}
+            alt={scene.title}
+            sx={{
+              width: "100%",
+              height: "auto",
+              maxHeight: "85vh",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </GlassyCard>
   );
 };

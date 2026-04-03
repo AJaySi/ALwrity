@@ -241,6 +241,7 @@ class WaveSpeedClient:
         self,
         text: str,
         voice_id: str,
+        custom_voice_id: Optional[str] = None,
         speed: float = 1.0,
         volume: float = 1.0,
         pitch: float = 0.0,
@@ -255,6 +256,7 @@ class WaveSpeedClient:
         Args:
             text: Text to convert to speech (max 10000 characters)
             voice_id: Voice ID (e.g., "Wise_Woman", "Friendly_Person", etc.)
+            custom_voice_id: Custom voice clone ID for using cloned voice
             speed: Speech speed (0.5-2.0, default: 1.0)
             volume: Speech volume (0.1-10.0, default: 1.0)
             pitch: Speech pitch (-12 to 12, default: 0.0)
@@ -269,6 +271,7 @@ class WaveSpeedClient:
         return self.speech.generate_speech(
             text=text,
             voice_id=voice_id,
+            custom_voice_id=custom_voice_id,
             speed=speed,
             volume=volume,
             pitch=pitch,

@@ -14,6 +14,7 @@ export interface AssetResponse {
 export interface VoiceCloneResponse {
   success: boolean;
   custom_voice_id?: string;
+  voice_name?: string;
   preview_audio_url?: string;
   asset_id?: number;
   message?: string;

@@ -6,6 +6,7 @@ Centralized constants and directory configuration for podcast module.
 
 from pathlib import Path
 from typing import Literal
+from loguru import logger
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
 
 # Directory paths
@@ -45,10 +46,13 @@ def get_podcast_media_dir(
     }[media_type]
 
     if user_id:
-        tenant_media_dir = ROOT_DIR / "workspace" / f"workspace_{_sanitize_user_id(user_id)}" / "media" / media_subdir
+        sanitized = _sanitize_user_id(user_id)
+        tenant_media_dir = ROOT_DIR / "workspace" / f"workspace_{sanitized}" / "media" / media_subdir
         resolved_dir = tenant_media_dir.resolve()
     else:
         resolved_dir = (DATA_MEDIA_DIR / media_subdir).resolve()
+
+    logger.debug(f"[Podcast] get_podcast_media_dir: type={media_type}, user_id={user_id}, sanitized={user_id and _sanitize_user_id(user_id)}, resolved={resolved_dir}")
 
     if ensure_exists:
         resolved_dir.mkdir(parents=True, exist_ok=True)
@@ -61,7 +65,9 @@ def get_podcast_media_read_dirs(media_type: MediaType, user_id: str | None = Non
     dirs: list[Path] = []
     if user_id:
         dirs.append(get_podcast_media_dir(media_type, user_id))
+        logger.debug(f"[Podcast] get_podcast_media_read_dirs: added user dir for {user_id}")
     dirs.append(get_podcast_media_dir(media_type, None))
+    logger.debug(f"[Podcast] get_podcast_media_read_dirs: dirs={dirs}")
     return dirs
 
 

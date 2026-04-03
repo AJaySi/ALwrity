@@ -50,6 +50,10 @@ def should_bootstrap_linguistic_models() -> bool:
     if "all" in enabled_features:
         return True
     
+    # Podcast-only mode doesn't need linguistic models
+    if enabled_features == {"podcast"}:
+        return False
+    
     # Map old profile names to features for backwards compatibility
     feature_mapping = {
         "podcast": "podcast",
@@ -64,14 +68,18 @@ def should_bootstrap_linguistic_models() -> bool:
 
 
 def should_bootstrap_local_llm_models() -> bool:
-    """Decide whether to bootstrap local LLM models based on enabled features."""
+    """Decide whether to bootstrap local LLM models based on enabled features.
+    
+    SIF/Story Writer requires local LLM - skip if only podcast is enabled.
+    """
     enabled_features = get_enabled_features()
     
     if "all" in enabled_features:
         return True
     
-    # Skip LLM bootstrap for lean deployments
-    return "core" in enabled_features or "podcast" in enabled_features
+    # SIF/Story Writer requires local LLM - only bootstrap if explicitly needed
+    # Skip for lean deployments (podcast-only, content-planning only, etc.)
+    return False  # Default to skip unless "all" is enabled
 
 
 def bootstrap_linguistic_models() -> BootstrapResult:
@@ -208,6 +216,10 @@ def bootstrap_local_llm_models() -> BootstrapResult:
 
 # Bootstrap linguistic models BEFORE any imports that might need them
 BOOTSTRAP_RESULTS = []
+
+# Load .env file early so ALWRITY_ENABLED_FEATURES is available
+from dotenv import load_dotenv
+load_dotenv()
 
 if __name__ == "__main__":
     enabled_features = get_enabled_features()

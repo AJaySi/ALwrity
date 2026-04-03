@@ -104,6 +104,16 @@ async def generate_podcast_scene_image(
         # Otherwise, generate from scratch with podcast-optimized prompt
         image_prompt = ""  # Initialize prompt variable
         
+        # Emotion to lighting mapping for visual tone
+        emotion_lighting = {
+            "happy": "warm, bright lighting, cheerful atmosphere",
+            "excited": "dynamic, energetic lighting with highlights",
+            "serious": "professional, balanced lighting, authoritative feel",
+            "curious": "soft, inviting lighting, thoughtful atmosphere",
+            "confident": "strong, dramatic lighting, authoritative look",
+            "neutral": "professional, balanced lighting"
+        }
+        
         if base_avatar_bytes:
             # Use Ideogram Character API for consistent character generation
             # Use custom prompt if provided, otherwise build scene-specific prompt
@@ -127,6 +137,28 @@ async def generate_podcast_scene_image(
                     if bible_obj.host.look:
                         prompt_parts.append(f"Host Look: {bible_obj.host.look}")
                 
+                # Scene emotion for visual tone
+                emotion_lighting = {
+                    "happy": "warm, bright lighting, cheerful atmosphere",
+                    "excited": "dynamic, energetic lighting with highlights",
+                    "serious": "professional, balanced lighting, authoritative feel",
+                    "curious": "soft, inviting lighting, thoughtful atmosphere",
+                    "confident": "strong, dramatic lighting, authoritative look",
+                    "neutral": "professional, balanced lighting"
+                }
+                scene_emotion = request.scene_emotion
+                if scene_emotion and scene_emotion in emotion_lighting:
+                    prompt_parts.append(emotion_lighting[scene_emotion])
+                
+                # AI Analysis context for visual relevance
+                if request.analysis:
+                    keywords = request.analysis.get("topKeywords", [])[:5]
+                    if keywords:
+                        prompt_parts.append(f"Keywords: {', '.join(keywords)}")
+                    audience = request.analysis.get("audience", "")
+                    if audience:
+                        prompt_parts.append(f"Target: {audience}")
+                
                 # Scene content insights for visual context
                 if request.scene_content:
                     content_preview = request.scene_content[:200].replace("\n", " ").strip()
@@ -139,6 +171,12 @@ async def generate_podcast_scene_image(
                         visual_keywords.append("modern tech studio setting")
                     if any(word in content_lower for word in ["business", "growth", "strategy", "market"]):
                         visual_keywords.append("professional business studio")
+                    if any(word in content_lower for word in ["nature", "outdoor", "environment", "green"]):
+                        visual_keywords.append("natural outdoor setting")
+                    if any(word in content_lower for word in ["medical", "health", "wellness"]):
+                        visual_keywords.append("clean medical studio")
+                    if any(word in content_lower for word in ["education", "learning", "students"]):
+                        visual_keywords.append("classroom or educational setting")
                     if visual_keywords:
                         prompt_parts.append(", ".join(visual_keywords))
                 
@@ -265,6 +303,19 @@ async def generate_podcast_scene_image(
             if request.scene_title:
                 prompt_parts.append(f"Scene theme: {request.scene_title}")
             
+            # Scene emotion for visual tone (no avatar branch)
+            if request.scene_emotion and request.scene_emotion in emotion_lighting:
+                prompt_parts.append(emotion_lighting[request.scene_emotion])
+            
+            # AI Analysis context (no avatar branch)
+            if request.analysis:
+                keywords = request.analysis.get("topKeywords", [])[:5]
+                if keywords:
+                    prompt_parts.append(f"Keywords: {', '.join(keywords)}")
+                audience = request.analysis.get("audience", "")
+                if audience:
+                    prompt_parts.append(f"Target: {audience}")
+            
             # Content context for visual relevance
             if request.scene_content:
                 content_preview = request.scene_content[:150].replace("\n", " ").strip()
@@ -276,6 +327,12 @@ async def generate_podcast_scene_image(
                     visual_keywords.append("modern technology aesthetic")
                 if any(word in content_lower for word in ["business", "growth", "strategy", "market"]):
                     visual_keywords.append("professional business environment")
+                if any(word in content_lower for word in ["nature", "outdoor", "environment"]):
+                    visual_keywords.append("natural outdoor setting")
+                if any(word in content_lower for word in ["medical", "health", "wellness"]):
+                    visual_keywords.append("clean medical studio")
+                if any(word in content_lower for word in ["education", "learning", "students"]):
+                    visual_keywords.append("classroom or educational setting")
                 if visual_keywords:
                     prompt_parts.append(", ".join(visual_keywords))
             
@@ -379,6 +436,7 @@ async def generate_podcast_scene_image(
             provider=result.provider,
             model=result.model,
             cost=cost,
+            image_prompt=image_prompt,
         )
 
     except HTTPException:
