@@ -311,31 +311,33 @@ def start_backend(enable_reload=False, production_mode=False):
     port = int(os.getenv("PORT", "8000"))
     reload = os.environ.get("RELOAD", "false").lower() == "true"
     
-    print(f"   📍 Host: {host}")
-    print(f"   🔌 Port: {port}")
-    print(f"   🔄 Reload: {reload}")
-    print(f"[DEBUG] Starting server with host={host}, port={port}")
+    print(f"   📍 Host: {host}", flush=True)
+    print(f"   🔌 Port: {port}", flush=True)
+    print(f"   🔄 Reload: {reload}", flush=True)
+    print(f"[DEBUG] Starting server with host={host}, port={port}", flush=True)
+    print(f"[DEBUG] About to import app and run uvicorn...", flush=True)
     
     try:
         # Import and run the app
         from app import app
         import uvicorn
+        print(f"[DEBUG] Imported app and uvicorn successfully", flush=True)
 
         # Note: Database already initialized by DatabaseSetup in main()
         
-        print("\n🌐 ALwrity Backend Server")
-        print("=" * 50)
-        print("   📖 API Documentation: http://localhost:8000/api/docs")
-        print("   🔍 Health Check: http://localhost:8000/health")
-        print("   📊 ReDoc: http://localhost:8000/api/redoc")
+        print("\n🌐 ALwrity Backend Server", flush=True)
+        print("=" * 50, flush=True)
+        print("   📖 API Documentation: http://localhost:8000/api/docs", flush=True)
+        print("   🔍 Health Check: http://localhost:8000/health", flush=True)
+        print("   📊 ReDoc: http://localhost:8000/api/redoc", flush=True)
         
         if not production_mode:
-            print("   📈 API Monitoring: http://localhost:8000/api/content-planning/monitoring/health")
-            print("   💳 Billing Dashboard: http://localhost:8000/api/subscription/plans")
-            print("   📊 Usage Tracking: http://localhost:8000/api/subscription/usage/demo")
+            print("   📈 API Monitoring: http://localhost:8000/api/content-planning/monitoring/health", flush=True)
+            print("   💳 Billing Dashboard: http://localhost:8000/api/subscription/plans", flush=True)
+            print("   📊 Usage Tracking: http://localhost:8000/api/subscription/usage/demo", flush=True)
         
-        print("\n[STOP]  Press Ctrl+C to stop the server")
-        print("=" * 50)
+        print("\n[STOP]  Press Ctrl+C to stop the server", flush=True)
+        print("=" * 50, flush=True)
         
         # Set up clean logging for end users
         from logging_config import setup_clean_logging, get_uvicorn_log_level
@@ -402,11 +404,14 @@ def start_backend(enable_reload=False, production_mode=False):
             ],
             log_level=uvicorn_log_level
         )
+        print("[DEBUG] uvicorn.run() has finished", flush=True)
         
     except KeyboardInterrupt:
         print("\n\n🛑 Backend stopped by user")
     except Exception as e:
-        print(f"\n[ERROR] Error starting backend: {e}")
+        print(f"\n[ERROR] Error starting backend: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return False
     
     return True
