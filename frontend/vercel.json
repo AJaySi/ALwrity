@@ -11,6 +11,7 @@
   ],
   "env": {
     "REACT_APP_ENVIRONMENT": "production",
-    "REACT_APP_ENABLED_FEATURES": "podcast"
+    "REACT_APP_ENABLED_FEATURES": "podcast",
+    "REACT_APP_API_URL": "https://alwrity.onrender.com"
   }
 }
