@@ -50,8 +50,15 @@ export const useRealTimeData = (options: RealTimeDataOptions) => {
 
     try {
       // Build WebSocket URL from environment variables
-      // Consistent with API URL pattern - no hardcoded localhost
-      const apiUrl = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+      const getApiBaseUrl = () => {
+        const url = process.env.REACT_APP_API_URL;
+        if (process.env.NODE_ENV === 'production' && !url) {
+          throw new Error('REACT_APP_API_URL environment variable is required for production');
+        }
+        return url || 'http://localhost:8000';
+      };
+      
+      const apiUrl = getApiBaseUrl();
       
       // In development, use proxy (empty string means use same origin)
       // In production, derive WebSocket URL from API URL

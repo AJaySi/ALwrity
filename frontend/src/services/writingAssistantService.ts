@@ -21,8 +21,14 @@ export interface WASuggestResponse {
 class WritingAssistantService {
   private baseUrl: string;
   constructor() {
-    // Consistent API URL pattern - no hardcoded localhost fallback
-    this.baseUrl = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+    const getApiBaseUrl = () => {
+      const url = process.env.REACT_APP_API_URL;
+      if (process.env.NODE_ENV === 'production' && !url) {
+        throw new Error('REACT_APP_API_URL environment variable is required for production');
+      }
+      return url || 'http://localhost:8000';
+    };
+    this.baseUrl = getApiBaseUrl();
   }
 
   async suggest(text: string): Promise<WASuggestion[]> {

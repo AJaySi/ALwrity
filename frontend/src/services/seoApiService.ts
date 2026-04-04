@@ -12,8 +12,16 @@ import {
   CopilotSuggestion
 } from '../types/seoCopilotTypes';
 
-// Consistent API URL pattern - use same env vars as other services
-const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+// API URL - require REACT_APP_API_URL in production
+const getApiBaseUrl = () => {
+  const url = process.env.REACT_APP_API_URL;
+  if (process.env.NODE_ENV === 'production' && !url) {
+    throw new Error('REACT_APP_API_URL environment variable is required for production');
+  }
+  return url || 'http://localhost:8000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 class SEOApiService {
   private baseUrl: string;

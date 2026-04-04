@@ -49,7 +49,15 @@ export interface AssetListResponse {
   offset: number;
 }
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const getApiBaseUrl = () => {
+  const url = process.env.REACT_APP_API_URL;
+  if (process.env.NODE_ENV === 'production' && !url) {
+    throw new Error('REACT_APP_API_URL environment variable is required for production');
+  }
+  return url || 'http://localhost:8000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export const useContentAssets = (filters: AssetFilters = {}) => {
   const { getToken } = useAuth();

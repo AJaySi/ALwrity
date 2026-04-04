@@ -64,13 +64,21 @@ export const getAuthTokenGetter = (): (() => Promise<string | null>) | null => {
 
 // Get API URL from environment variables
 export const getApiUrl = () => {
-  if (process.env.NODE_ENV === 'production') {
-    // In production, use the environment variable or fallback
-    return process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL;
+  const apiUrl = process.env.REACT_APP_API_URL;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // In production, require REACT_APP_API_URL to be set
+  if (isProduction && !apiUrl) {
+    console.error('[apiClient] ❌ REACT_APP_API_URL is not set for production! Please configure in Vercel environment variables.');
+    throw new Error('REACT_APP_API_URL environment variable is required for production. Please set it in your Vercel project settings.');
   }
-  // In development, prefer the local backend to avoid CORS/proxy header stripping.
-  // If an ngrok URL is set in env but we're on localhost, override to localhost:8000.
-  const envUrl = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL;
+  
+  if (isProduction) {
+    return apiUrl;
+  }
+  
+  // In development, use localhost by default
+  const envUrl = process.env.REACT_APP_API_URL;
   const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
   const isNgrok = envUrl && envUrl.includes('ngrok');
   if (isLocalhost) {
