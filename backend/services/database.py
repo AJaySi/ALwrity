@@ -351,16 +351,15 @@ def init_database():
 
     try:
         # Create all tables for all models using default engine
-        OnboardingBase.metadata.create_all(bind=default_engine)
-        SEOAnalysisBase.metadata.create_all(bind=default_engine)
-        ContentPlanningBase.metadata.create_all(bind=default_engine)
-        EnhancedStrategyBase.metadata.create_all(bind=default_engine)
-        MonitoringBase.metadata.create_all(bind=default_engine)
-        APIMonitoringBase.metadata.create_all(bind=default_engine)
-        PersonaBase.metadata.create_all(bind=default_engine)
-        SubscriptionBase.metadata.create_all(bind=default_engine)
-        UserBusinessInfoBase.metadata.create_all(bind=default_engine)
-        ContentAssetBase.metadata.create_all(bind=default_engine)
+        # Use checkfirst=True (default) to avoid errors for existing tables
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import StaticPool
+        
+        # Create tables with checkfirst=True explicitly to handle existing objects
+        for base in [OnboardingBase, SEOAnalysisBase, ContentPlanningBase, 
+                     EnhancedStrategyBase, MonitoringBase, APIMonitoringBase, 
+                     PersonaBase, SubscriptionBase, UserBusinessInfoBase, ContentAssetBase]:
+            base.metadata.create_all(bind=default_engine, checkfirst=True)
         logger.info("Global database initialized successfully")
     except SQLAlchemyError as e:
         logger.error(f"Error initializing global database: {str(e)}")

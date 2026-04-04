@@ -568,9 +568,13 @@ async def serve_frontend():
 async def startup_event():
     """Initialize services on startup."""
     try:
-        startup_report = run_startup_health_routine(app)
-        if startup_report.get("status") != "healthy":
-            logger.error(f"Startup readiness finished with failures: {startup_report.get('errors', [])}")
+        # Skip startup health checks in podcast-only mode to avoid unnecessary DB errors
+        if not is_podcast_only_demo_mode():
+            startup_report = run_startup_health_routine(app)
+            if startup_report.get("status") != "healthy":
+                logger.error(f"Startup readiness finished with failures: {startup_report.get('errors', [])}")
+        else:
+            logger.info("[Podcast] Skipping startup health routine (podcast-only mode)")
 
         # Start task scheduler only if NOT in podcast-only mode
         if not is_podcast_only_demo_mode():
