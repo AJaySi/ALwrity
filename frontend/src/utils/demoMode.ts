@@ -16,6 +16,7 @@ export function getEnabledFeatures(): Set<string> {
   // Check localStorage first
   const storageValue = localStorage.getItem(PRIMARY_STORAGE_KEY);
   if (storageValue) {
+    console.log('demoMode: Found in localStorage:', storageValue);
     const features = storageValue.toLowerCase().split(',').map(f => f.trim());
     if (features.includes('all')) {
       return new Set(['all']);
@@ -25,6 +26,7 @@ export function getEnabledFeatures(): Set<string> {
 
   // Check environment variable
   const envValue = process.env[PRIMARY_ENV_KEY];
+  console.log('demoMode: ENV value for', PRIMARY_ENV_KEY, ':', envValue);
   if (envValue) {
     const features = envValue.toLowerCase().split(',').map(f => f.trim());
     if (features.includes('all')) {
@@ -34,6 +36,7 @@ export function getEnabledFeatures(): Set<string> {
   }
 
   // Default: all features enabled
+  console.log('demoMode: No env var, returning default "all"');
   return new Set(['all']);
 }
 

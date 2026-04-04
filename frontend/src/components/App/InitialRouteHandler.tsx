@@ -117,6 +117,13 @@ const InitialRouteHandler: React.FC = () => {
   }
 
   const isDemoMode = shouldSkipOnboarding();
+  console.log('InitialRouteHandler DEBUG:', {
+    isDemoMode,
+    isOnboardingComplete,
+    subscription: subscription ? { plan: subscription.plan, active: subscription.active } : null,
+    loading,
+    data: !!data
+  });
   const isActiveSubscriber = Boolean(subscription && subscription.active && subscription.plan !== 'none');
   const waitingForOnboardingInit = !isDemoMode && isActiveSubscriber && (loading || !data);
   if (waitingForOnboardingInit) {
