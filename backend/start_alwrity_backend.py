@@ -219,12 +219,17 @@ BOOTSTRAP_RESULTS = []
 
 # Load .env file early so ALWRITY_ENABLED_FEATURES is available
 from dotenv import load_dotenv
-load_dotenv()
+from pathlib import Path
+
+# Load from backend/.env specifically
+backend_dir = Path(__file__).parent
+load_dotenv(backend_dir / '.env')
 
 # Debug: Print what PORT is set to
 import os
 print(f"[DEBUG] PORT env: {os.getenv('PORT')}")
 print(f"[DEBUG] RENDER env: {os.getenv('RENDER')}")
+print(f"[DEBUG] ALWRITY_ENABLED_FEATURES: {os.getenv('ALWRITY_ENABLED_FEATURES')}")
 
 if __name__ == "__main__":
     enabled_features = get_enabled_features()
