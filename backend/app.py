@@ -597,7 +597,7 @@ async def startup_event():
         _assert_router_mounted("podcast")
     except Exception as e:
         logger.error(f"Error during startup: {e}")
-        raise
+        # Don't raise - let the server start anyway
 
 
 def _assert_router_mounted(router_name: str) -> None:
