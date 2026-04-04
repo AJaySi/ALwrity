@@ -308,7 +308,7 @@ def start_backend(enable_reload=False, production_mode=False):
         print("   🏭 Production mode: Auto-reload disabled")
     
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "10000"))
+    port = int(os.getenv("PORT", "8000"))
     reload = os.environ.get("RELOAD", "false").lower() == "true"
     
     print(f"   📍 Host: {host}")
