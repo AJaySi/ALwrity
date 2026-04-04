@@ -285,11 +285,12 @@ def start_backend(enable_reload=False, production_mode=False):
     # Set host based on environment and mode
     # Use 127.0.0.1 for local production testing on Windows
     # Use 0.0.0.0 for actual cloud deployments (Render, Railway, etc.)
-    # Render provides PORT env var, we must bind to it.
-    default_host = os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("DEPLOY_ENV")
-    if default_host:
-        # Cloud deployment detected - use 0.0.0.0
+    # Render provides PORT env var, detect cloud by presence of PORT
+    render_port = os.getenv("PORT")
+    if render_port:
+        # Cloud deployment detected (Render sets PORT env var) - use 0.0.0.0
         os.environ.setdefault("HOST", "0.0.0.0")
+        os.environ.setdefault("PORT", render_port)
     else:
         # Local deployment - use 127.0.0.1 for better Windows compatibility
         os.environ.setdefault("HOST", "127.0.0.1")
