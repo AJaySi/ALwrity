@@ -8,6 +8,11 @@ import { shouldSkipOnboarding } from '../../utils/demoMode';
 import ConnectionErrorPage from '../shared/ConnectionErrorPage';
 
 const InitialRouteHandler: React.FC = () => {
+  // Helper to log and navigate in a single place
+  const navigateAndLog = (to: string) => {
+    console.log(`InitialRouteHandler: Redirecting to ${to}`);
+    return <Navigate to={to} replace />;
+  };
   const { loading, error, isOnboardingComplete, initializeOnboarding, data } = useOnboarding();
   const { subscription, loading: subscriptionLoading, checkSubscription } = useSubscription();
   const location = useLocation();
@@ -83,7 +88,7 @@ const InitialRouteHandler: React.FC = () => {
 
   if (isCheckoutSuccess && subscription?.active && shouldSkipOnboarding()) {
     console.log('InitialRouteHandler: Early redirect - Stripe checkout success in demo mode → Podcast Maker');
-    return <Navigate to="/podcast-maker" replace />;
+    return navigateAndLog("/podcast-maker");
   }
 
   if (connectionError.hasError) {
@@ -121,10 +126,12 @@ const InitialRouteHandler: React.FC = () => {
     isDemoMode,
     isOnboardingComplete,
     subscription: subscription ? { plan: subscription.plan, active: subscription.active } : null,
+    subscriptionLoading,
     loading,
     data: !!data
   });
   const isActiveSubscriber = Boolean(subscription && subscription.active && subscription.plan !== 'none');
+  console.log('InitialRouteHandler: isActiveSubscriber =', isActiveSubscriber);
   const waitingForOnboardingInit = !isDemoMode && isActiveSubscriber && (loading || !data);
   if (waitingForOnboardingInit) {
     return (
@@ -186,7 +193,7 @@ const InitialRouteHandler: React.FC = () => {
   if (!subscription) {
     if (isOnboardingComplete) {
       console.log('InitialRouteHandler: Onboarding complete but no subscription data → Dashboard (allow access)');
-      return <Navigate to="/dashboard" replace />;
+      return navigateAndLog("/dashboard");
     }
     
     if (subscriptionLoading) {
@@ -210,7 +217,7 @@ const InitialRouteHandler: React.FC = () => {
     if (!subscription) {
       if (isOnboardingComplete) {
         console.log('InitialRouteHandler: Onboarding complete but no subscription data → Dashboard (allow access)');
-        return <Navigate to="/dashboard" replace />;
+        return navigateAndLog("/dashboard");
       }
       
       if (subscriptionLoading) {
@@ -233,11 +240,11 @@ const InitialRouteHandler: React.FC = () => {
       
       if (shouldSkipOnboarding()) {
         console.log('InitialRouteHandler: Demo mode - no subscription but allowing access to podcast-maker');
-        return <Navigate to="/podcast-maker" replace />;
+        return navigateAndLog("/podcast-maker");
       }
       
       console.log('InitialRouteHandler: No subscription data after check → Pricing page');
-      return <Navigate to="/pricing" replace />;
+      return navigateAndLog("/pricing");
     }
   }
 
@@ -253,16 +260,17 @@ const InitialRouteHandler: React.FC = () => {
   }
 
   if (!isOnboardingComplete) {
+    console.log('InitialRouteHandler: isOnboardingComplete = false, shouldSkipOnboarding() =', shouldSkipOnboarding());
     if (shouldSkipOnboarding()) {
       console.log('InitialRouteHandler: Demo mode - skipping onboarding → Podcast Maker');
-      return <Navigate to="/podcast-maker" replace />;
+      return navigateAndLog("/podcast-maker");
     }
     console.log('InitialRouteHandler: Subscription active but onboarding incomplete → Onboarding');
-    return <Navigate to="/onboarding" replace />;
+    return navigateAndLog("/onboarding");
   }
 
   console.log('InitialRouteHandler: All set (subscription + onboarding) → Dashboard');
-  return <Navigate to="/dashboard" replace />;
+  return navigateAndLog("/dashboard");
 };
 
 export default InitialRouteHandler;
