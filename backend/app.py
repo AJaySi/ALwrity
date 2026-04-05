@@ -66,14 +66,21 @@ def _log_memory_usage():
         # psutil not available or failed; skip silently
         pass
 
+# Log memory early in app.py startup
+_log_memory_usage()
+logger.info("app.py: Early memory checkpoint after env load")
+
 
 # Import modular utilities (skip OnboardingManager import in podcast-only mode)
 from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager
 if not is_podcast_only_demo_mode():
     from alwrity_utils import OnboardingManager
 
-# Import monitoring middleware
-from services.subscription import monitoring_middleware
+# Skip monitoring middleware in podcast-only mode to save memory
+if not is_podcast_only_demo_mode():
+    from services.subscription import monitoring_middleware
+else:
+    monitoring_middleware = None
 
 
 def should_include_non_podcast_features() -> bool:
@@ -258,8 +265,9 @@ if not PODCAST_ONLY_DEMO_MODE:
 # Registration order:  1. Monitoring  2. Rate Limit  3. API Key Injection
 # Execution order:     1. API Key Injection (sets user_id)  2. Rate Limit  3. Monitoring (uses user_id)
 
-# 1. FIRST REGISTERED (runs LAST) - Monitoring middleware
-app.middleware("http")(monitoring_middleware)
+# 1. FIRST REGISTERED (runs LAST) - Monitoring middleware (skip in podcast-only mode)
+if monitoring_middleware:
+    app.middleware("http")(monitoring_middleware)
 
 # 2. SECOND REGISTERED (runs SECOND) - Rate limiting
 @app.middleware("http")
