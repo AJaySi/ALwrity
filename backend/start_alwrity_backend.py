@@ -316,11 +316,12 @@ def start_backend(enable_reload=False, production_mode=False):
     port = int(os.getenv("PORT", "8000"))
     reload = os.environ.get("RELOAD", "false").lower() == "true"
     print(f"[DEBUG] Bind prepared - host={host}, port={port}, reload={reload}", flush=True)
+    print(f"[DEBUG] ENV check - ALWRITY_ENABLED_FEATURES={os.getenv('ALWRITY_ENABLED_FEATURES')}", flush=True)
     
     print(f"   📍 Host: {host}", flush=True)
     print(f"   🔌 Port: {port}", flush=True)
     print(f"   🔄 Reload: {reload}", flush=True)
-    print(f"[DEBUG] Starting server with host={host}, port={port}", flush=True)
+    print(f"[DEBUG] About to import app module...", flush=True)
     print(f"[DEBUG] About to import app and run uvicorn...", flush=True)
     
     try:
@@ -372,6 +373,24 @@ def start_backend(enable_reload=False, production_mode=False):
             return False
         
         print(f"[DEBUG] Starting uvicorn with host={host} port={port}", flush=True)
+        
+        # Skip video preflight in podcast-only mode to save memory/time
+        is_podcast = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast"
+        print(f"[DEBUG] Podcast mode check: {is_podcast}", flush=True)
+        
+        if is_podcast:
+            print("[DEBUG] Podcast mode - skipping video preflight", flush=True)
+        else:
+            # Log diagnostics and assert versions (fail fast if misconfigured)
+            try:
+                if log_video_stack_diagnostics:
+                    log_video_stack_diagnostics()
+                if assert_supported_moviepy:
+                    assert_supported_moviepy()
+            except Exception as _video_stack_err:
+                print(f"[ERROR] Video stack preflight failed: {_video_stack_err}")
+                return False
+        
         uvicorn.run(
             "app:app",
             host=host,
