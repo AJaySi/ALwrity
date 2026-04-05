@@ -323,11 +323,13 @@ def start_backend(enable_reload=False, production_mode=False):
     print(f"   🔌 Port: {port}", flush=True)
     print(f"   🔄 Reload: {reload}", flush=True)
     print(f"[DEBUG] About to import app module...", flush=True)
-    print(f"[DEBUG] About to import app and run uvicorn...", flush=True)
+    print("[DEBUG] >>> START APP IMPORT <<<", flush=True)
     
     try:
         # Import and run the app
         from app import app
+        print("[DEBUG] >>> END APP IMPORT <<<", flush=True)
+        
         import uvicorn
         print(f"[DEBUG] Imported app and uvicorn successfully", flush=True)
 
@@ -335,14 +337,14 @@ def start_backend(enable_reload=False, production_mode=False):
         
         print("\n🌐 ALwrity Backend Server", flush=True)
         print("=" * 50, flush=True)
-        print("   📖 API Documentation: http://localhost:8000/api/docs", flush=True)
-        print("   🔍 Health Check: http://localhost:8000/health", flush=True)
-        print("   📊 ReDoc: http://localhost:8000/api/redoc", flush=True)
+        print(f"   📖 API Documentation: http://localhost:{os.getenv('PORT', '8000')}/api/docs", flush=True)
+        print(f"   🔍 Health Check: http://localhost:{os.getenv('PORT', '8000')}/health", flush=True)
+        print(f"   📊 ReDoc: http://localhost:{os.getenv('PORT', '8000')}/api/redoc", flush=True)
         
         if not production_mode:
-            print("   📈 API Monitoring: http://localhost:8000/api/content-planning/monitoring/health", flush=True)
-            print("   💳 Billing Dashboard: http://localhost:8000/api/subscription/plans", flush=True)
-            print("   📊 Usage Tracking: http://localhost:8000/api/subscription/usage/demo", flush=True)
+            print(f"   📈 API Monitoring: http://localhost:{os.getenv('PORT', '8000')}/api/content-planning/monitoring/health", flush=True)
+            print(f"   💳 Billing Dashboard: http://localhost:{os.getenv('PORT', '8000')}/api/subscription/plans", flush=True)
+            print(f"   📊 Usage Tracking: http://localhost:{os.getenv('PORT', '8000')}/api/subscription/usage/demo", flush=True)
         
         print("\n[STOP]  Press Ctrl+C to stop the server", flush=True)
         print("=" * 50, flush=True)
