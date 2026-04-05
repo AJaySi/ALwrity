@@ -25,6 +25,8 @@ load_dotenv(override=False)
 import os
 if os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast":
     os.environ["LOG_LEVEL"] = "WARNING"
+    
+print(f"[app.py] Starting... ALWRITY_ENABLED_FEATURES={os.getenv('ALWRITY_ENABLED_FEATURES')}", flush=True)
 
 
 def get_enabled_features() -> set:
