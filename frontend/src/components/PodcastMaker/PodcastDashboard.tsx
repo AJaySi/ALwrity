@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { shouldSkipOnboarding } from '../../utils/demoMode';
 import { Box, Paper, Stack, Alert, Divider, CircularProgress, alpha, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from "@mui/material";
 import { usePodcastProjectState } from "../../hooks/usePodcastProjectState";
 import { CreateModal } from "./CreateModal";
@@ -22,6 +23,14 @@ import {
 } from "./PodcastDashboard/index";
 
 const PodcastDashboard: React.FC = () => {
+  useEffect(() => {
+    try {
+      const skip = shouldSkipOnboarding();
+      console.log('PodcastDashboard entry: shouldSkipOnboarding =', skip);
+    } catch (e) {
+      console.warn('PodcastDashboard entry: gating log error', e);
+    }
+  }, []);
   const projectState = usePodcastProjectState();
   const [showProjectList, setShowProjectList] = useState(false);
   const {
