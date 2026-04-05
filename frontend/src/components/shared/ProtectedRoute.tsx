@@ -5,6 +5,7 @@ import { Box, CircularProgress, Typography, Alert, Button } from '@mui/material'
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import { shouldSkipOnboarding } from '../../utils/demoMode';
+import { useLocation } from 'react-router-dom';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -21,7 +22,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     refresh,
     clearError 
   } = useOnboarding();
-
+  const location = useLocation();
   useEffect(() => {
     try {
       const skip = shouldSkipOnboarding();
@@ -35,7 +36,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const localComplete = (() => {
     try { return localStorage.getItem('onboarding_complete') === 'true'; } catch { return false; }
   })();
-  const allowAccess = isOnboardingComplete || localComplete;
+  const isPodcastMode = shouldSkipOnboarding();
+  const podcastMakerPath = typeof location?.pathname === 'string' && location.pathname.startsWith('/podcast-maker');
+  const allowAccess = isOnboardingComplete || localComplete || (isPodcastMode && podcastMakerPath);
 
   // Wait for Clerk to load before any redirect decisions
   if (!isLoaded) {
