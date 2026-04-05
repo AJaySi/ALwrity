@@ -39,9 +39,10 @@ class ProductionOptimizer:
     def _set_production_env_vars(self) -> None:
         """Set production-specific environment variables."""
         production_vars = {
+            # Note: PORT is NOT set here - it's provided by the deployment platform (e.g., Render)
+            # Don't override PORT as it must come from the environment
             # Note: HOST is not set here - it's auto-detected by start_backend()
             # Based on deployment environment (cloud vs local)
-            'PORT': '8000',
             'RELOAD': 'false',
             'LOG_LEVEL': 'INFO',
             'DEBUG': 'false',

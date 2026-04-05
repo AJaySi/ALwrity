@@ -225,11 +225,12 @@ from pathlib import Path
 backend_dir = Path(__file__).parent
 load_dotenv(backend_dir / '.env')
 
-# Debug: Print what PORT is set to
+# Debug: Print what PORT is set to - IMMEDIATELY at startup
 import os
-print(f"[DEBUG] PORT env: {os.getenv('PORT')}")
-print(f"[DEBUG] RENDER env: {os.getenv('RENDER')}")
-print(f"[DEBUG] ALWRITY_ENABLED_FEATURES: {os.getenv('ALWRITY_ENABLED_FEATURES')}")
+print(f"[STARTUP] PORT env: {os.getenv('PORT')}", flush=True)
+print(f"[STARTUP] RENDER env: {os.getenv('RENDER')}", flush=True)
+print(f"[STARTUP] ALWRITY_ENABLED_FEATURES: {os.getenv('ALWRITY_ENABLED_FEATURES')}", flush=True)
+print(f"[STARTUP] HOST env: {os.getenv('HOST')}", flush=True)
 
 if __name__ == "__main__":
     enabled_features = get_enabled_features()

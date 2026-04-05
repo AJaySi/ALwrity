@@ -18,9 +18,12 @@ import json
 from services.database import get_db_session
 from models.onboarding import OnboardingSession, WebsiteAnalysis, ResearchPreferences
 from models.persona_models import WritingPersona, PlatformPersona, PersonaAnalysisResult
-from services.persona.core_persona import CorePersonaService, OnboardingDataCollector
-from services.persona.linkedin.linkedin_persona_service import LinkedInPersonaService
-from services.persona.facebook.facebook_persona_service import FacebookPersonaService
+
+def _get_podcast_mode():
+    """Check if running in podcast-only mode to skip heavy initialization."""
+    import os
+    env_val = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower()
+    return env_val == "podcast"
 
 class PersonaAnalysisService:
     """Service for analyzing onboarding data and generating writing personas using Gemini AI."""
@@ -37,12 +40,40 @@ class PersonaAnalysisService:
     def __init__(self):
         """Initialize the persona analysis service (only once)."""
         if not self._initialized:
+            # Skip heavy initialization in podcast-only mode
+            if _get_podcast_mode():
+                logger.debug("PersonaAnalysisService: Skipping heavy init in podcast mode")
+                self._initialized = True
+                return
+            
+            # Only initialize heavy services when needed (not at import time)
+            self._heavy_init_done = False
+    
+    def _ensure_heavy_init(self):
+        """Lazily initialize heavy services only when first used."""
+        if self._heavy_init_done:
+            return
+            
+        # Check again in case mode changed
+        if _get_podcast_mode():
+            logger.debug("PersonaAnalysisService: Skipping heavy init in podcast mode")
+            self._heavy_init_done = True
+            return
+            
+        try:
+            from services.persona.core_persona import CorePersonaService, OnboardingDataCollector
+            from services.persona.linkedin.linkedin_persona_service import LinkedInPersonaService
+            from services.persona.facebook.facebook_persona_service import FacebookPersonaService
+            
             self.core_persona_service = CorePersonaService()
             self.data_collector = OnboardingDataCollector()
             self.linkedin_service = LinkedInPersonaService()
             self.facebook_service = FacebookPersonaService()
-            logger.debug("PersonaAnalysisService initialized")
-            self._initialized = True
+            self._heavy_init_done = True
+            logger.debug("PersonaAnalysisService initialized (lazy)")
+        except Exception as e:
+            logger.warning(f"PersonaAnalysisService: Failed to initialize heavy services: {e}")
+            self._heavy_init_done = True
     
     def generate_persona_from_onboarding(self, user_id: str, onboarding_session_id: int = None) -> Dict[str, Any]:
         """
@@ -55,6 +86,13 @@ class PersonaAnalysisService:
         Returns:
             Generated persona data with platform adaptations
         """
+        # Ensure heavy services are initialized
+        self._ensure_heavy_init()
+        
+        # Check if heavy init failed (podcast mode)
+        if not getattr(self, '_heavy_init_done', False):
+            return {"error": "Persona service unavailable in podcast-only mode"}
+            
         try:
             logger.info(f"Generating persona for user {user_id}")
             

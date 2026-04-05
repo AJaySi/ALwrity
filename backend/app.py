@@ -14,9 +14,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 backend_dir = Path(__file__).parent
 project_root = backend_dir.parent
-load_dotenv(backend_dir / '.env')
-load_dotenv(project_root / '.env')
-load_dotenv()
+
+# Load .env but DON'T override existing environment variables (especially PORT from Render)
+# Use override=False to preserve Render-provided PORT
+load_dotenv(backend_dir / '.env', override=False)
+load_dotenv(project_root / '.env', override=False)
+load_dotenv(override=False)
 
 # Set LOG_LEVEL early to WARNING to suppress DEBUG persona logs in podcast mode
 import os
