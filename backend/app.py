@@ -103,22 +103,35 @@ if not PODCAST_ONLY_DEMO_MODE:
 
 # Import SEO tools router
 from routers.seo_tools import router as seo_tools_router
-# Import Facebook Writer endpoints
-from api.facebook_writer.routers import facebook_router
-# Import LinkedIn content generation router
-from routers.linkedin import router as linkedin_router
-# Import LinkedIn image generation router
-from api.linkedin_image_generation import router as linkedin_image_router
-from api.brainstorm import router as brainstorm_router
-from api.images import router as images_router
-from api.assets_serving import router as assets_serving_router
-from routers.image_studio import router as image_studio_router
-from routers.product_marketing import router as product_marketing_router
-from routers.campaign_creator import router as campaign_creator_router
 
-# Import hallucination detector router
-from api.hallucination_detector import router as hallucination_detector_router
-from api.writing_assistant import router as writing_assistant_router
+# Skip Facebook Writer, LinkedIn, and other non-podcast routes in podcast-only mode
+# Also skip other heavy services that trigger PersonaAnalysisService initialization
+if not PODCAST_ONLY_DEMO_MODE:
+    from api.facebook_writer.routers import facebook_router
+    from routers.linkedin import router as linkedin_router
+    from api.linkedin_image_generation import router as linkedin_image_router
+    from api.brainstorm import router as brainstorm_router
+    from api.images import router as images_router
+    from api.assets_serving import router as assets_serving_router
+    from routers.image_studio import router as image_studio_router
+    from routers.product_marketing import router as product_marketing_router
+    from routers.campaign_creator import router as campaign_creator_router
+else:
+    # In podcast-only mode, only load essential podcast assets router
+    from api.assets_serving import router as assets_serving_router
+    brainstorm_router = None
+    images_router = None
+    image_studio_router = None
+    product_marketing_router = None
+    campaign_creator_router = None
+
+# Import hallucination detector router (skip in podcast-only mode - triggers heavy ML)
+if not PODCAST_ONLY_DEMO_MODE:
+    from api.hallucination_detector import router as hallucination_detector_router
+    from api.writing_assistant import router as writing_assistant_router
+else:
+    hallucination_detector_router = None
+    writing_assistant_router = None
 
 # Import research configuration router
 from api.research_config import router as research_config_router
@@ -514,10 +527,14 @@ if not PODCAST_ONLY_DEMO_MODE:
     # Include Bing Analytics Storage router to expose storage-backed endpoints
     from routers.bing_analytics_storage import router as bing_analytics_storage_router
     app.include_router(bing_analytics_storage_router)
-    app.include_router(images_router)
-    app.include_router(image_studio_router)
-    app.include_router(product_marketing_router)
-    app.include_router(campaign_creator_router)
+    if images_router:
+        app.include_router(images_router)
+    if image_studio_router:
+        app.include_router(image_studio_router)
+    if product_marketing_router:
+        app.include_router(product_marketing_router)
+    if campaign_creator_router:
+        app.include_router(campaign_creator_router)
 
     # Include content assets router
     from api.content_assets.router import router as content_assets_router
@@ -532,7 +549,7 @@ else:
         "reason": "Skipped in podcast-only demo mode",
     }
 
-# Include Podcast Maker router
+# Include Podcast Maker router (always needed for podcast mode)
 from api.podcast.router import router as podcast_router
 app.include_router(podcast_router)
 router_group_status["podcast_maker"] = {
