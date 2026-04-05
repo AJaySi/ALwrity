@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { Box, CircularProgress, Typography, Alert, Button } from '@mui/material';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { useOnboarding } from '../../contexts/OnboardingContext';
+import { shouldSkipOnboarding } from '../../utils/demoMode';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -20,6 +21,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     refresh,
     clearError 
   } = useOnboarding();
+
+  useEffect(() => {
+    try {
+      const skip = shouldSkipOnboarding();
+      console.log('ProtectedRoute: gating shouldSkipOnboarding =', skip);
+    } catch (e) {
+      console.warn('ProtectedRoute: gating log error', e);
+    }
+  }, []);
 
   // Local fallback (in case context hasn't refreshed yet right after completion)
   const localComplete = (() => {
