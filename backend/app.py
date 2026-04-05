@@ -54,6 +54,15 @@ import asyncio
 from datetime import datetime
 from loguru import logger
 
+def _log_memory_usage():
+    try:
+        import psutil
+        mem_mb = psutil.Process().memory_info().rss // (1024 * 1024)
+        logger.info(f"Memory usage (MB): {mem_mb}")
+    except Exception:
+        # psutil not available or failed; skip silently
+        pass
+
 
 # Import modular utilities (skip OnboardingManager import in podcast-only mode)
 from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager
@@ -579,6 +588,7 @@ async def serve_frontend():
 async def startup_event():
     """Initialize services on startup."""
     try:
+        _log_memory_usage()
         # Skip startup health checks in podcast-only mode to avoid unnecessary DB errors
         if not is_podcast_only_demo_mode():
             startup_report = run_startup_health_routine(app)

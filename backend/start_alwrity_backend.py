@@ -315,6 +315,7 @@ def start_backend(enable_reload=False, production_mode=False):
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     reload = os.environ.get("RELOAD", "false").lower() == "true"
+    print(f"[DEBUG] Bind prepared - host={host}, port={port}, reload={reload}", flush=True)
     
     print(f"   📍 Host: {host}", flush=True)
     print(f"   🔌 Port: {port}", flush=True)
@@ -370,6 +371,7 @@ def start_backend(enable_reload=False, production_mode=False):
             print(f"[ERROR] Video stack preflight failed: {_video_stack_err}")
             return False
         
+        print(f"[DEBUG] Starting uvicorn with host={host} port={port}", flush=True)
         uvicorn.run(
             "app:app",
             host=host,
