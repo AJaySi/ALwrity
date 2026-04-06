@@ -9,15 +9,12 @@ IS_PODCAST_ONLY=false
 
 if [[ "$ENABLED_FEATURES" == "podcast" ]]; then
     IS_PODCAST_ONLY=true
-    echo "🔊 Podcast-only mode detected - skipping spaCy/NLTK model download"
-fi
-
-python -m pip install --retries 10 --timeout 120 -r requirements.txt
-
-# Download required NLTK and spaCy models during build phase (skip for podcast-only)
-if [[ "$IS_PODCAST_ONLY" == "false" ]]; then
+    echo "🔊 Podcast-only mode detected - using minimal requirements"
+    python -m pip install --retries 10 --timeout 120 -r requirements-podcast.txt
+else
+    echo "📦 Full mode - using all requirements"
+    python -m pip install --retries 10 --timeout 120 -r requirements.txt
+    # Download required NLTK and spaCy models during build phase (skip for podcast-only)
     python -m spacy download en_core_web_sm
     python -m nltk.downloader punkt_tab stopwords averaged_perceptron_tagger
-else
-    echo "🔊 Skipping spaCy/NLTK download for podcast-only mode"
 fi
