@@ -31,8 +31,8 @@ def log_video_stack_diagnostics() -> None:
 def assert_supported_moviepy() -> None:
     """Fail fast if MoviePy isn't version 2.x."""
     try:
-        import pkg_resources as pr
-        mv = pr.get_distribution("moviepy").version
+        from importlib.metadata import version
+        mv = version("moviepy")
         if not mv.startswith("2."):
             raise RuntimeError(
                 f"Unsupported MoviePy version {mv}. Expected 2.x. "
