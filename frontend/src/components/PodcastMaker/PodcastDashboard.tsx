@@ -242,11 +242,6 @@ const PodcastDashboard: React.FC = () => {
                 avatarPrompt={project?.avatarPrompt}
                 onRegenerate={() => setShowRegenModal(true)}
                 onUpdateAnalysis={(updated) => projectState.setAnalysis(updated)}
-                onRunResearch={() => workflow.handleRunResearch()}
-                isResearchRunning={workflow.isResearching}
-                selectedQueries={selectedQueries}
-                onToggleQuery={workflow.toggleQuery}
-                queries={queries}
               />
             )}
 

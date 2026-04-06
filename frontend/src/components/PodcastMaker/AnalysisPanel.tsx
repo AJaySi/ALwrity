@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Stack, Box, Typography, Divider, Chip, Paper, alpha, CircularProgress, Button, Checkbox } from "@mui/material";
-import { Psychology as PsychologyIcon, Insights as InsightsIcon, Search as SearchIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Add as AddIcon, EditNote as EditNoteIcon, Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, RecordVoiceOver as VoiceIcon, Lightbulb as TipsIcon, Quiz as TalkIcon } from "@mui/icons-material";
+import { Stack, Box, Typography, Divider, Chip, alpha, Button } from "@mui/material";
+import { Psychology as PsychologyIcon, Insights as InsightsIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Add as AddIcon, EditNote as EditNoteIcon, Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, RecordVoiceOver as VoiceIcon, Lightbulb as TipsIcon, Quiz as TalkIcon } from "@mui/icons-material";
 import { PodcastAnalysis, PodcastEstimate } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
@@ -17,11 +17,6 @@ interface AnalysisPanelProps {
   avatarPrompt?: string | null;
   onRegenerate?: () => void;
   onUpdateAnalysis?: (updatedAnalysis: PodcastAnalysis) => void;
-  onRunResearch?: () => void;
-  isResearchRunning?: boolean;
-  selectedQueries?: Set<string>;
-  onToggleQuery?: (queryId: string) => void;
-  queries?: { id: string; query: string; rationale: string }[];
 }
 
 type TabId = 'inputs' | 'audience' | 'content' | 'outline' | 'titles' | 'hook' | 'takeaways' | 'cta' | 'guest';
@@ -68,12 +63,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   avatarUrl, 
   avatarPrompt, 
   onRegenerate,
-  onUpdateAnalysis,
-  onRunResearch,
-  isResearchRunning,
-  selectedQueries,
-  onToggleQuery,
-  queries
+  onUpdateAnalysis
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('inputs');
   const [avatarBlobUrl, setAvatarBlobUrl] = useState<string | null>(null);
@@ -452,107 +442,6 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
           {activeTab === 'cta' && (
             <CTATab analysis={currentAnalysis} />
-          )}
-        </Box>
-
-        {/* Research Section - Separate from tabs */}
-        <Divider sx={{ borderColor: "rgba(0,0,0,0.06)", my: 2 }} />
-        
-        <Box>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ color: "#0f172a", fontWeight: 700, display: "flex", alignItems: "center", gap: 1 }}>
-              <SearchIcon sx={{ color: "#4f46e5" }} />
-              Research Queries
-              {selectedQueries && selectedQueries.size > 0 && (
-                <Chip 
-                  label={`${selectedQueries.size} selected`} 
-                  size="small" 
-                  sx={{ ml: 1, height: 20, fontSize: "0.65rem", bgcolor: "#4f46e5", color: "#fff" }} 
-                />
-              )}
-            </Typography>
-            {onRunResearch && (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={onRunResearch}
-                disabled={isResearchRunning || !selectedQueries || selectedQueries.size === 0}
-                startIcon={isResearchRunning ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />}
-                sx={{
-                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                  color: "#fff",
-                  fontWeight: 600,
-                  fontSize: "0.75rem",
-                  px: 2,
-                  py: 0.75,
-                  borderRadius: 2,
-                  textTransform: "none",
-                  "&:hover": {
-                    background: "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
-                  },
-                  "&:disabled": {
-                    background: "#94a3b8",
-                  }
-                }}
-              >
-                {isResearchRunning ? "Running..." : "Run Research"}
-              </Button>
-            )}
-          </Stack>
-
-          {!analysis?.research_queries || analysis.research_queries.length === 0 ? (
-            <Typography variant="body2" sx={{ color: "#64748b", fontStyle: "italic" }}>
-              No research queries yet. Click "Regenerate Analysis" to generate research queries based on your podcast idea.
-            </Typography>
-          ) : (
-            <Stack spacing={1.5}>
-              {(queries || analysis.research_queries?.map((rq, idx) => ({ id: `query-${idx}`, ...rq }))).map((rq: { id: string; query: string; rationale: string }, idx: number) => {
-                const queryId = rq.id;
-                const isSelected = selectedQueries?.has(queryId) || false;
-                return (
-                  <Paper 
-                    key={idx} 
-                    elevation={0} 
-                    sx={{ 
-                      p: 2, 
-                      bgcolor: isSelected ? "#f0f9ff" : "#f8fafc", 
-                      border: `1px solid ${isSelected ? 'rgba(79,70,229,0.4)' : 'rgba(0,0,0,0.08)'}`,
-                      borderRadius: 2,
-                      transition: "all 0.2s ease",
-                      cursor: onToggleQuery ? "pointer" : "default",
-                      "&:hover": onToggleQuery ? {
-                        borderColor: "rgba(79,70,229,0.3)",
-                        bgcolor: "#f8fafc"
-                      } : {}
-                    }}
-                    onClick={() => onToggleQuery?.(queryId)}
-                  >
-                    <Stack direction="row" alignItems="flex-start" gap={1.5}>
-                      <Checkbox
-                        checked={isSelected}
-                        onChange={() => onToggleQuery?.(queryId)}
-                        sx={{
-                          color: "#64748b",
-                          "&.Mui-checked": {
-                            color: "#4f46e5",
-                          },
-                          padding: 0.5,
-                        }}
-                      />
-                      <Chip label={idx + 1} size="small" sx={{ minWidth: 24, bgcolor: "#4f46e5", color: "#fff" }} />
-                      <Box>
-                        <Typography variant="body2" sx={{ color: "#0f172a", fontWeight: 600, mb: 0.5 }}>
-                          {rq.query}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: "#64748b" }}>
-                          Rationale: {rq.rationale}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  </Paper>
-                );
-              })}
-            </Stack>
           )}
         </Box>
       </Stack>
