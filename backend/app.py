@@ -43,7 +43,11 @@ def is_podcast_only_demo_mode() -> bool:
     return "podcast" in enabled and "all" not in enabled
 
 
-# Import onboarding models (after env is loaded)
+# Podcast-only check BEFORE heavy imports
+PODCAST_ONLY_DEMO_MODE = is_podcast_only_demo_mode()
+
+
+# Import onboarding models (after env is loaded, before heavy imports)
 from models.onboarding import APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
 
 
@@ -613,12 +617,18 @@ async def serve_frontend():
     """Serve the React frontend."""
     return frontend_serving.serve_frontend()
 
-# Startup event
+# Startup event - fires AFTER port is bound
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
+    import time
+    startup_start = time.time()
+    
+    logger.info("[STARTUP] Server port bound, beginning background initialization...")
+    
     try:
         _log_memory_usage()
+        
         # Skip startup health checks in podcast-only mode to avoid unnecessary DB errors
         if not is_podcast_only_demo_mode():
             startup_report = run_startup_health_routine(app)
@@ -641,7 +651,8 @@ async def startup_event():
         else:
             logger.warning("⚠️ WIX_API_KEY not found in environment - Wix publishing may fail")
 
-        logger.info("ALwrity backend started successfully")
+        elapsed = time.time() - startup_start
+        logger.info(f"ALwrity backend started successfully in {elapsed:.1f}s")
         
         # Critical router mount assertions for podcast-only demo mode
         _assert_router_mounted("subscription")
