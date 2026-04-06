@@ -705,4 +705,19 @@ async def shutdown_event():
         close_database()
         logger.info("ALwrity backend shutdown successfully")
     except Exception as e:
-        logger.error(f"Error during shutdown: {e}") 
+        logger.error(f"Error during shutdown: {e}")
+
+
+# Add main block to allow running directly with: python app.py
+# This also helps Gunicorn work correctly
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", "10000"))
+    host = os.environ.get("HOST", "0.0.0.0")
+    
+    print(f"[app.py] ====================", flush=True)
+    print(f"[app.py] DIRECT STARTUP", flush=True)
+    print(f"[app.py] PORT={port}, HOST={host}", flush=True)
+    print(f"[app.py] ====================", flush=True)
+    
+    uvicorn.run(app, host=host, port=port) 
