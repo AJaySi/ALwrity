@@ -28,6 +28,7 @@ fastapi-clerk-auth>=0.0.7
 sqlalchemy>=2.0.25
 stripe>=8.0.0
 httpx>=0.27.2,<0.28.0
+aiohttp>=3.9.0
 openai>=1.3.0
 google-genai>=1.0.0
 gtts>=2.4.0
@@ -45,6 +46,11 @@ pytest-asyncio>=0.21.0
 apscheduler>=3.10.0
 redis>=5.0.0
 schedule>=1.2.0
+aiofiles>=23.2.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+psutil>=5.9.0
 EOF
     python -m pip install --retries 10 --timeout 120 -r requirements_min.txt
 else
