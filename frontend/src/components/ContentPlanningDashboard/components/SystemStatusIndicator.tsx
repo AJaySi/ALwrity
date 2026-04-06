@@ -21,6 +21,7 @@ import {
   Avatar
 } from '@mui/material';
 import { apiClient } from '../../../api/client';
+import { isPodcastOnlyDemoMode } from '../../../utils/demoMode';
 import {
   CheckCircle as HealthyIcon,
   Warning as WarningIcon,
@@ -90,6 +91,19 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
   const [, setCachePerf] = useState<{ hits: number; misses: number; hit_rate: number } | null>(null);
 
   const fetchStatus = async () => {
+    // Skip system status checks in podcast-only mode (endpoint not available)
+    if (isPodcastOnlyDemoMode()) {
+      setStatusData({
+        status: 'unknown',
+        icon: '⚪',
+        recent_requests: 0,
+        recent_errors: 0,
+        error_rate: 0,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
     setLoading(true);
     setError(null);
     

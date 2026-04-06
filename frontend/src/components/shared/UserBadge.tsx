@@ -4,6 +4,7 @@ import { useUser, useClerk } from '@clerk/clerk-react';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import SystemStatusIndicator from '../ContentPlanningDashboard/components/SystemStatusIndicator';
 import UsageDashboard from './UsageDashboard';
+import { isPodcastOnlyDemoMode } from '../../utils/demoMode';
 import {
   apiClient,
   isBackendCooldownActive,
@@ -30,6 +31,12 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
 
   // Fetch system status for status bulb
   useEffect(() => {
+    // Skip system status checks in podcast-only mode (endpoint not available)
+    if (isPodcastOnlyDemoMode()) {
+      setSystemStatus('unknown');
+      return;
+    }
+
     const fetchSystemStatus = async () => {
       if (isBackendCooldownActive()) {
         logBackendCooldownSkipOnce('UserBadge');

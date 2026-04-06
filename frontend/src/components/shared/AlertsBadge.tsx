@@ -5,6 +5,7 @@ import { Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, CheckCirc
 import { billingService } from '../../services/billingService';
 import { useAuth } from '@clerk/clerk-react';
 import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../../api/schedulerDashboard';
+import { isPodcastOnlyDemoMode } from '../../utils/demoMode';
 import {
   apiClient,
   isBackendCooldownActive,
@@ -105,6 +106,12 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
 
   const fetchAlerts = async () => {
     if (!userId || isPollingRef.current) return;
+
+    // Skip alerts fetching in podcast-only mode (endpoints not available)
+    if (isPodcastOnlyDemoMode()) {
+      setLoading(false);
+      return;
+    }
 
     if (isBackendCooldownActive()) {
       logBackendCooldownSkipOnce('AlertsBadge');
