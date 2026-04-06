@@ -19,6 +19,7 @@ from services.llm_providers.main_image_generation import generate_image
 from services.podcast_bible_service import PodcastBibleService
 from utils.asset_tracker import save_asset_to_library
 from loguru import logger
+import os
 from ..constants import PODCAST_IMAGES_DIR
 from ..models import (
     PodcastAnalyzeRequest, 
@@ -26,6 +27,11 @@ from ..models import (
     PodcastEnhanceIdeaRequest,
     PodcastEnhanceIdeaResponse
 )
+
+# Check if running in podcast-only demo mode
+def _is_podcast_only_mode() -> bool:
+    """Check if podcast-only demo mode is enabled."""
+    return os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast"
 
 router = APIRouter()
 
@@ -42,19 +48,31 @@ async def enhance_podcast_idea(
     user_id = require_authenticated_user(current_user)
     
     # Serialize Bible context if provided or generate from onboarding
+    # In podcast-only mode, skip bible generation since onboarding is disabled
     bible_context = ""
-    try:
-        bible_service = PodcastBibleService()
+    if not _is_podcast_only_mode():
+        try:
+            bible_service = PodcastBibleService()
+            if request.bible:
+                from models.podcast_bible_models import PodcastBible
+                bible_data = PodcastBible(**request.bible)
+                bible_context = bible_service.serialize_bible(bible_data)
+            else:
+                # Generate from onboarding data directly
+                bible_obj = bible_service.generate_bible(user_id, "temp_enhance")
+                bible_context = bible_service.serialize_bible(bible_obj)
+        except Exception as exc:
+            logger.warning(f"[Podcast Enhance] Failed to parse or generate bible context: {exc}")
+    else:
+        # In podcast mode, use the provided bible directly if available
         if request.bible:
-            from models.podcast_bible_models import PodcastBible
-            bible_data = PodcastBible(**request.bible)
-            bible_context = bible_service.serialize_bible(bible_data)
-        else:
-            # Generate from onboarding data directly
-            bible_obj = bible_service.generate_bible(user_id, "temp_enhance")
-            bible_context = bible_service.serialize_bible(bible_obj)
-    except Exception as exc:
-        logger.warning(f"[Podcast Enhance] Failed to parse or generate bible context: {exc}")
+            try:
+                from models.podcast_bible_models import PodcastBible
+                bible_data = PodcastBible(**request.bible)
+                bible_service = PodcastBibleService()
+                bible_context = bible_service.serialize_bible(bible_data)
+            except Exception as exc:
+                logger.debug(f"[Podcast Enhance] Bible parsing skipped in podcast mode: {exc}")
 
     prompt = f"""
 You are a creative podcast producer. Generate 3 distinct, compelling podcast episode concepts from the raw idea.
@@ -72,8 +90,22 @@ Generate 3 different enhanced versions, each with a unique angle:
 Each version should be 2-3 sentences, audience-focused, and align with host persona if provided.
 
 Return JSON with:
-- enhanced_ideas: array of 3 enhanced episode pitches (in order: Professional, Storytelling, Trendy)
-- rationales: array of 3 rationales explaining the approach for each version
+- enhanced_ideas: array of 3 strings, each string being a complete episode pitch (NOT objects, just plain strings)
+- rationales: array of 3 strings explaining the approach for each version
+
+IMPORTANT: enhanced_ideas must be an array of plain strings, NOT objects. Example:
+{{
+  "enhanced_ideas": [
+    "Your expert guide to AI advancement: A practical look at how AI is transforming industries...",
+    "The human stories behind AI innovation: From Silicon Valley to your daily life...",
+    "AI in 2026: What's trending and what's next in artificial intelligence..."
+  ],
+  "rationales": [
+    "Professional approach focusing on expertise and authority",
+    "Storytelling approach emphasizing human connection",
+    "Contemporary approach highlighting current relevance"
+  ]
+}}
 """
 
     try:
@@ -94,6 +126,19 @@ Return JSON with:
         # Extract enhanced ideas and rationales with fallbacks
         enhanced_ideas = data.get("enhanced_ideas", [])
         rationales = data.get("rationales", [])
+        
+        # Handle case where LLM returns objects instead of strings
+        normalized_ideas = []
+        for idea in enhanced_ideas:
+            if isinstance(idea, dict):
+                # Extract title and description from object
+                title = idea.get("title", "")
+                description = idea.get("description", "") or idea.get("content", "")
+                normalized_ideas.append(f"{title}: {description}" if description else title)
+            elif isinstance(idea, str):
+                normalized_ideas.append(idea)
+        
+        enhanced_ideas = normalized_ideas
         
         # Ensure we have exactly 3 ideas, fallback to original if needed
         if not isinstance(enhanced_ideas, list) or len(enhanced_ideas) != 3:

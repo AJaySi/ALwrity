@@ -222,6 +222,11 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
 
   // Poll for alerts
   useEffect(() => {
+    // Skip alerts polling entirely in podcast-only mode
+    if (isPodcastOnlyDemoMode()) {
+      return;
+    }
+
     if (!userId) return;
 
     // Delay initial fetch slightly to ensure auth token getter is installed
