@@ -45,8 +45,12 @@ def get_enabled_features() -> set:
 
 def is_podcast_only_demo_mode() -> bool:
     """Check if podcast-only mode is enabled."""
+    import os
+    env_val = os.getenv("ALWRITY_ENABLED_FEATURES", "all")
     enabled = get_enabled_features()
-    return "podcast" in enabled and "all" not in enabled
+    result = "podcast" in enabled and "all" not in enabled
+    print(f"[DEBUG] is_podcast_only_demo_mode: ALWRITY_ENABLED_FEATURES={env_val}, enabled={enabled}, result={result}", flush=True)
+    return result
 
 
 # Podcast-only check BEFORE heavy imports
