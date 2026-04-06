@@ -55,22 +55,28 @@ class EnvironmentSetup:
         print("🔧 Setting up environment variables...")
         
         # Production environment variables
+        # IMPORTANT: Don't override PORT if already set by Render cloud
+        render_port = os.getenv("PORT")
+        
         if self.production_mode:
             env_vars = {
                 "HOST": "0.0.0.0",
-                "PORT": "8000", 
                 "RELOAD": "false",
                 "LOG_LEVEL": "INFO",
                 "DEBUG": "false"
             }
+            # Only set PORT if not already provided by cloud (Render sets PORT)
+            if not render_port:
+                env_vars["PORT"] = "8000"
         else:
             env_vars = {
                 "HOST": "0.0.0.0",
-                "PORT": "8000",
                 "RELOAD": "true", 
                 "LOG_LEVEL": "DEBUG",
                 "DEBUG": "true"
             }
+            if not render_port:
+                env_vars["PORT"] = "8000"
         
         for key, value in env_vars.items():
             os.environ.setdefault(key, value)
