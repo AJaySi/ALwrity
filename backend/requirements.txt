@@ -49,6 +49,7 @@ huggingface_hub>=1.1.4
 
 # TTS for podcast
 gtts>=2.4.0
+pyttsx3>=2.90
 
 # Video composition
 moviepy==2.1.2

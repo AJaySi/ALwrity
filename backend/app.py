@@ -179,8 +179,11 @@ from services.startup_health import (
 
 # Trigger reload for monitoring fix
 
-# Import OAuth token monitoring routes
-from api.oauth_token_monitoring_routes import router as oauth_token_monitoring_router
+# Import OAuth token monitoring routes (skip in podcast-only mode)
+if not is_podcast_only_demo_mode():
+    from api.oauth_token_monitoring_routes import router as oauth_token_monitoring_router
+else:
+    oauth_token_monitoring_router = None
 
 # Import SEO Dashboard endpoints
 from api.seo_dashboard import (
@@ -595,7 +598,8 @@ if not PODCAST_ONLY_DEMO_MODE:
     # Scheduler dashboard routes
     from api.scheduler_dashboard import router as scheduler_dashboard_router
     app.include_router(scheduler_dashboard_router)
-    app.include_router(oauth_token_monitoring_router)
+    if oauth_token_monitoring_router:
+        app.include_router(oauth_token_monitoring_router)
 
     # Autonomous Agents API routes (Phase 3A)
     from api.agents_api import router as agents_router
