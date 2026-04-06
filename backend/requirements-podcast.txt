@@ -38,6 +38,7 @@ exa-py==1.9.1
 
 # Text processing (minimal)
 markdown>=3.5.0
+beautifulsoup4>=4.12.0
 
 # Data processing (numpy needed for moviepy)
 numpy>=1.24.0

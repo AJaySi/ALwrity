@@ -100,7 +100,7 @@ def bootstrap_linguistic_models() -> BootstrapResult:
     verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
     
     if verbose:
-        print("🔍 Bootstrapping linguistic models...")
+        print("[DEBUG] Bootstrapping linguistic models...")
     
     # Check and download spaCy model
     try:
@@ -108,7 +108,7 @@ def bootstrap_linguistic_models() -> BootstrapResult:
         try:
             nlp = spacy.load("en_core_web_sm")
             if verbose:
-                print("   ✅ spaCy model 'en_core_web_sm' available")
+                print("   [OK] spaCy model 'en_core_web_sm' available")
         except OSError:
             if verbose:
                 print("   ⚠️  spaCy model 'en_core_web_sm' not found, downloading...")
@@ -117,10 +117,10 @@ def bootstrap_linguistic_models() -> BootstrapResult:
                     sys.executable, "-m", "spacy", "download", "en_core_web_sm"
                 ])
                 if verbose:
-                    print("   ✅ spaCy model downloaded successfully")
+                    print("   [OK] spaCy model downloaded successfully")
             except subprocess.CalledProcessError as e:
                 if verbose:
-                    print(f"   ❌ Failed to download spaCy model: {e}")
+                    print(f"   [FAIL] Failed to download spaCy model: {e}")
                     print("   Please run: python -m spacy download en_core_web_sm")
                 return BootstrapResult(name="linguistic_models", success=False, skipped=False, reason="spacy_download_failed")
     except ImportError:
@@ -140,14 +140,14 @@ def bootstrap_linguistic_models() -> BootstrapResult:
             try:
                 nltk.data.find(path)
                 if verbose:
-                    print(f"   ✅ NLTK {data_package} available")
+                    print(f"   [OK] NLTK {data_package} available")
             except LookupError:
                 if verbose:
                     print(f"   ⚠️  NLTK {data_package} not found, downloading...")
                 try:
                     nltk.download(data_package, quiet=True)
                     if verbose:
-                        print(f"   ✅ NLTK {data_package} downloaded")
+                        print(f"   [OK] NLTK {data_package} downloaded")
                 except Exception as e:
                     if verbose:
                         print(f"   ⚠️  Failed to download {data_package}: {e}")
@@ -155,7 +155,7 @@ def bootstrap_linguistic_models() -> BootstrapResult:
                         try:
                             nltk.download('punkt', quiet=True)
                             if verbose:
-                                print(f"   ✅ NLTK punkt (fallback) downloaded")
+                                print(f"   [OK] NLTK punkt (fallback) downloaded")
                         except:
                             pass
     except ImportError:
@@ -163,7 +163,7 @@ def bootstrap_linguistic_models() -> BootstrapResult:
             print("   ⚠️  NLTK not installed - skipping")
     
     if verbose:
-        print("✅ Linguistic model bootstrap complete")
+        print("[OK] Linguistic model bootstrap complete")
     return BootstrapResult(name="linguistic_models", success=True, skipped=False)
 
 
@@ -207,7 +207,7 @@ def bootstrap_local_llm_models() -> BootstrapResult:
             # This checks cache and downloads if missing
             snapshot_download(repo_id=target_model, repo_type="model")
             if verbose:
-                print(f"   ✅ Local LLM '{target_model}' available")
+                print(f"   [OK] Local LLM '{target_model}' available")
         except Exception as e:
             if verbose:
                 print(f"   ⚠️  Failed to download/check local LLM: {e}")
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     features_str = ",".join(sorted(enabled_features))
     os.environ["ALWRITY_ENABLED_FEATURES"] = features_str
     
-    print(f"\n📋 Enabled features: {features_str}")
+    print(f"\n[OK] Enabled features: {features_str}")
     
     if should_bootstrap_linguistic_models():
         result = bootstrap_linguistic_models()
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     else:
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
         if verbose:
-            print("⏭️  Skipping linguistic model bootstrap (profile-gated)")
+            print("[SKIP]  Skipping linguistic model bootstrap (profile-gated)")
         BOOTSTRAP_RESULTS.append(BootstrapResult(name="linguistic_models", success=True, skipped=True, reason="profile_gated"))
     
     if should_bootstrap_local_llm_models():
@@ -261,7 +261,7 @@ if __name__ == "__main__":
     else:
         verbose = os.getenv("ALWRITY_VERBOSE", "false").lower() == "true"
         if verbose:
-            print("⏭️  Skipping local LLM model bootstrap (feature-gated)")
+            print("[SKIP]  Skipping local LLM model bootstrap (feature-gated)")
         BOOTSTRAP_RESULTS.append(BootstrapResult(name="local_llm_models", success=True, skipped=True, reason="feature_gated"))
     
     summary = {
@@ -270,9 +270,9 @@ if __name__ == "__main__":
     }
     os.environ["ALWRITY_BOOTSTRAP_SUMMARY"] = json.dumps(summary)
     
-    print(f"\n📋 Bootstrap Summary:")
+    print(f"\n[INFO] Bootstrap Summary:")
     for r in BOOTSTRAP_RESULTS:
-        status = "⏭️  Skipped" if r.skipped else ("✅ Enabled" if r.success else "❌ Failed")
+        status = "[SKIP]  Skipped" if r.skipped else ("[OK] Enabled" if r.success else "[FAIL] Failed")
         print(f"   {r.name}: {status}" + (f" ({r.reason})" if r.reason else ""))
 
 # NOW import modular utilities (after bootstrap)
@@ -286,12 +286,12 @@ from alwrity_utils import (
 
 def start_backend(enable_reload=False, production_mode=False):
     """Start the backend server."""
-    print("🚀 Starting ALwrity Backend...")
+    print("==> Starting ALwrity Backend...")
     podcast_only_demo_mode = os.getenv("ALWRITY_PODCAST_ONLY_DEMO_MODE", os.getenv("PODCAST_ONLY_DEMO_MODE", "false")).lower() in {"1", "true", "yes", "on"}
 
     if podcast_only_demo_mode:
         print("\n" + "=" * 60)
-        print("🎙️  PODCAST-ONLY DEMO MODE ACTIVE")
+        print("==> PODCAST-ONLY DEMO MODE ACTIVE")
         print("   Non-podcast router groups are intentionally skipped.")
         print("=" * 60)
     
@@ -315,10 +315,10 @@ def start_backend(enable_reload=False, production_mode=False):
     # Set reload based on argument or environment variable
     if enable_reload and not production_mode:
         os.environ.setdefault("RELOAD", "true")
-        print("   🔄 Development mode: Auto-reload enabled")
+        print("   [DEV] Development mode: Auto-reload enabled")
     else:
         os.environ.setdefault("RELOAD", "false")
-        print("   🏭 Production mode: Auto-reload disabled")
+        print("   [PROD] Production mode: Auto-reload disabled")
     
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
@@ -326,9 +326,9 @@ def start_backend(enable_reload=False, production_mode=False):
     print(f"[DEBUG] Bind prepared - host={host}, port={port}, reload={reload}", flush=True)
     print(f"[DEBUG] ENV check - ALWRITY_ENABLED_FEATURES={os.getenv('ALWRITY_ENABLED_FEATURES')}", flush=True)
     
-    print(f"   📍 Host: {host}", flush=True)
-    print(f"   🔌 Port: {port}", flush=True)
-    print(f"   🔄 Reload: {reload}", flush=True)
+    print(f"   ==> Host: {host}", flush=True)
+    print(f"   ==> Port: {port}", flush=True)
+    print(f"   [DEV] Reload: {reload}", flush=True)
     print(f"[DEBUG] About to import app module...", flush=True)
     print("[DEBUG] >>> START APP IMPORT <<<", flush=True)
     
@@ -342,7 +342,7 @@ def start_backend(enable_reload=False, production_mode=False):
 
         # Note: Database already initialized by DatabaseSetup in main()
         
-        print("\n🌐 ALwrity Backend Server", flush=True)
+        print("\n[WORLD] ALwrity Backend Server", flush=True)
         print("=" * 50, flush=True)
         print(f"   📖 API Documentation: http://localhost:{os.getenv('PORT', '8000')}/api/docs", flush=True)
         print(f"   🔍 Health Check: http://localhost:{os.getenv('PORT', '8000')}/health", flush=True)
@@ -501,12 +501,12 @@ def main():
         "Starting server"
     ]
     
-    print("🔧 Initializing ALwrity...")
+    print("==> Initializing ALwrity...")
     
     # Apply production optimizations if needed
     if production_mode:
         if not production_optimizer.apply_production_optimizations():
-            print("❌ Production optimization failed")
+            print("[FAIL] Production optimization failed")
             return False
     
     # Step 1: Dependencies
@@ -515,11 +515,11 @@ def main():
     if not critical_ok:
         print("installing...", end=" ", flush=True)
         if not dependency_manager.install_requirements():
-            print("❌ Failed")
+            print("[FAIL] Failed")
             return False
-        print("✅ Done")
+        print("[OK] Done")
     else:
-        print("✅ Done")
+        print("[OK] Done")
     
     # Check optional dependencies (non-critical) - only in verbose mode
     if verbose_mode:
@@ -528,24 +528,24 @@ def main():
     # Step 2: Environment
     print(f"   🔧 {setup_steps[1]}...", end=" ", flush=True)
     if not environment_setup.setup_directories():
-        print("❌ Directory setup failed")
+        print("[FAIL] Directory setup failed")
         return False
     
     if not environment_setup.setup_environment_variables():
-        print("❌ Environment setup failed")
+        print("[FAIL] Environment setup failed")
         return False
     
     # Create .env file only in development
     if not production_mode:
         environment_setup.create_env_file()
-    print("✅ Done")
+    print("[OK] Done")
     
     # Step 3: Database
     print(f"   📊 {setup_steps[2]}...", end=" ", flush=True)
     if not database_setup.setup_essential_tables():
         print("⚠️  Issues detected, continuing...")
     else:
-        print("✅ Done")
+        print("[OK] Done")
     
     # Setup advanced features in development, verify in all modes
     if not production_mode:

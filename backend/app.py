@@ -119,8 +119,10 @@ setup_clean_logging()
 # Import middleware
 from middleware.auth_middleware import get_current_user
 
-# Import component logic endpoints (needs OnboardingSession, so import after models)
-from api.component_logic import router as component_logic_router
+# Import component logic endpoints (skip in podcast-only mode - uses seo_analyzer)
+component_logic_router = None
+if not PODCAST_ONLY_DEMO_MODE:
+    from api.component_logic import router as component_logic_router
 
 # Import subscription API endpoints
 from api.subscription import router as subscription_router
@@ -130,8 +132,10 @@ step3_routes = None
 if not PODCAST_ONLY_DEMO_MODE:
     from api.onboarding_utils.step3_routes import router as step3_routes
 
-# Import SEO tools router
-from routers.seo_tools import router as seo_tools_router
+# Import SEO tools router (skip in podcast-only mode - uses seo_analyzer)
+seo_tools_router = None
+if not PODCAST_ONLY_DEMO_MODE:
+    from routers.seo_tools import router as seo_tools_router
 
 # Skip Facebook Writer, LinkedIn, and other non-podcast routes in podcast-only mode
 # Also skip other heavy services that trigger PersonaAnalysisService initialization
@@ -162,8 +166,11 @@ else:
     hallucination_detector_router = None
     writing_assistant_router = None
 
-# Import research configuration router
-from api.research_config import router as research_config_router
+# Import research configuration router (skip in podcast-only mode)
+if not is_podcast_only_demo_mode():
+    from api.research_config import router as research_config_router
+else:
+    research_config_router = None
 
 # Import user data endpoints
 # Import content planning endpoints (skip in podcast-only mode)
@@ -174,7 +181,11 @@ else:
     content_planning_router = None
     strategy_copilot_router = None
 
-from api.user_data import router as user_data_router
+# Import user data endpoints (skip in podcast-only mode to save memory)
+if not is_podcast_only_demo_mode():
+    from api.user_data import router as user_data_router
+else:
+    user_data_router = None
 
 # Import database service
 from services.database import close_database
@@ -192,36 +203,65 @@ if not is_podcast_only_demo_mode():
 else:
     oauth_token_monitoring_router = None
 
-# Import SEO Dashboard endpoints
-from api.seo_dashboard import (
-    get_seo_dashboard_data,
-    get_seo_health_score,
-    get_seo_metrics,
-    get_platform_status,
-    get_ai_insights,
-    seo_dashboard_health_check,
-    analyze_seo_comprehensive,
-    analyze_seo_full,
-    get_seo_metrics_detailed,
-    get_analysis_summary,
-    batch_analyze_urls,
-    SEOAnalysisRequest,
-    get_seo_dashboard_overview,
-    get_gsc_raw_data,
-    get_bing_raw_data,
-    get_competitive_insights,
-    get_deep_competitor_analysis,
-    run_strategic_insights,
-    get_strategic_insights_history,
-    refresh_analytics_data,
-    analyze_urls_ai,
-    AnalyzeURLsRequest,
-    get_analyzed_pages,
-    get_semantic_health,
-    get_semantic_cache_stats,
-    get_sif_indexing_health,
-    get_onboarding_task_health,
-)
+# Import SEO Dashboard endpoints (skip in podcast-only mode to save memory)
+if not is_podcast_only_demo_mode():
+    from api.seo_dashboard import (
+        get_seo_dashboard_data,
+        get_seo_health_score,
+        get_seo_metrics,
+        get_platform_status,
+        get_ai_insights,
+        seo_dashboard_health_check,
+        analyze_seo_comprehensive,
+        analyze_seo_full,
+        get_seo_metrics_detailed,
+        get_analysis_summary,
+        batch_analyze_urls,
+        SEOAnalysisRequest,
+        get_seo_dashboard_overview,
+        get_gsc_raw_data,
+        get_bing_raw_data,
+        get_competitive_insights,
+        get_deep_competitor_analysis,
+        run_strategic_insights,
+        get_strategic_insights_history,
+        refresh_analytics_data,
+        analyze_urls_ai,
+        AnalyzeURLsRequest,
+        get_analyzed_pages,
+        get_semantic_health,
+        get_semantic_cache_stats,
+        get_sif_indexing_health,
+        get_onboarding_task_health,
+    )
+else:
+    get_seo_dashboard_data = None
+    get_seo_health_score = None
+    get_seo_metrics = None
+    get_platform_status = None
+    get_ai_insights = None
+    seo_dashboard_health_check = None
+    analyze_seo_comprehensive = None
+    analyze_seo_full = None
+    get_seo_metrics_detailed = None
+    get_analysis_summary = None
+    batch_analyze_urls = None
+    SEOAnalysisRequest = None
+    get_seo_dashboard_overview = None
+    get_gsc_raw_data = None
+    get_bing_raw_data = None
+    get_competitive_insights = None
+    get_deep_competitor_analysis = None
+    run_strategic_insights = None
+    get_strategic_insights_history = None
+    refresh_analytics_data = None
+    analyze_urls_ai = None
+    AnalyzeURLsRequest = None
+    get_analyzed_pages = None
+    get_semantic_health = None
+    get_semantic_cache_stats = None
+    get_sif_indexing_health = None
+    get_onboarding_task_health = None
 
 
 # Initialize FastAPI app
@@ -413,145 +453,143 @@ router_group_status["assets_serving"] = {
     "reason": "Required for podcast media assets",
 }
 
-# SEO Dashboard endpoints
-@app.get("/api/seo-dashboard/data")
-async def seo_dashboard_data():
-    """Get complete SEO dashboard data."""
-    return await get_seo_dashboard_data()
+# SEO Dashboard endpoints (skip in podcast-only mode)
+if not is_podcast_only_demo_mode():
+    @app.get("/api/seo-dashboard/data")
+    async def seo_dashboard_data():
+        """Get complete SEO dashboard data."""
+        return await get_seo_dashboard_data()
 
-@app.get("/api/seo-dashboard/health-score")
-async def seo_health_score():
-    """Get SEO health score."""
-    return await get_seo_health_score()
+    @app.get("/api/seo-dashboard/health-score")
+    async def seo_health_score():
+        """Get SEO health score."""
+        return await get_seo_health_score()
 
-@app.get("/api/seo-dashboard/metrics")
-async def seo_metrics():
-    """Get SEO metrics."""
-    return await get_seo_metrics()
+    @app.get("/api/seo-dashboard/metrics")
+    async def seo_metrics():
+        """Get SEO metrics."""
+        return await get_seo_metrics()
 
-@app.get("/api/seo-dashboard/platforms")
-async def seo_platforms(current_user: dict = Depends(get_current_user)):
-    """Get platform status."""
-    return await get_platform_status(current_user)
+    @app.get("/api/seo-dashboard/platforms")
+    async def seo_platforms(current_user: dict = Depends(get_current_user)):
+        """Get platform status."""
+        return await get_platform_status(current_user)
 
-@app.get("/api/seo-dashboard/insights")
-async def seo_insights():
-    """Get AI insights."""
-    return await get_ai_insights()
+    @app.get("/api/seo-dashboard/insights")
+    async def seo_insights():
+        """Get AI insights."""
+        return await get_ai_insights()
 
-# New SEO Dashboard endpoints with real data
-@app.get("/api/seo-dashboard/overview")
-async def seo_dashboard_overview_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
-    """Get comprehensive SEO dashboard overview with real GSC/Bing data."""
-    return await get_seo_dashboard_overview(current_user, site_url)
+    @app.get("/api/seo-dashboard/overview")
+    async def seo_dashboard_overview_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+        """Get comprehensive SEO dashboard overview with real GSC/Bing data."""
+        return await get_seo_dashboard_overview(current_user, site_url)
 
-@app.get("/api/seo-dashboard/gsc/raw")
-async def gsc_raw_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
-    """Get raw GSC data for the specified site."""
-    return await get_gsc_raw_data(current_user, site_url)
+    @app.get("/api/seo-dashboard/gsc/raw")
+    async def gsc_raw_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+        """Get raw GSC data for the specified site."""
+        return await get_gsc_raw_data(current_user, site_url)
 
-@app.get("/api/seo-dashboard/bing/raw")
-async def bing_raw_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
-    """Get raw Bing data for the specified site."""
-    return await get_bing_raw_data(current_user, site_url)
+    @app.get("/api/seo-dashboard/bing/raw")
+    async def bing_raw_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+        """Get raw Bing data for the specified site."""
+        return await get_bing_raw_data(current_user, site_url)
 
-@app.get("/api/seo-dashboard/competitive-insights")
-async def competitive_insights_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
-    """Get competitive insights from onboarding step 3 data."""
-    return await get_competitive_insights(current_user, site_url)
+    @app.get("/api/seo-dashboard/competitive-insights")
+    async def competitive_insights_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+        """Get competitive insights from onboarding step 3 data."""
+        return await get_competitive_insights(current_user, site_url)
 
-@app.get("/api/seo-dashboard/deep-competitor-analysis")
-async def deep_competitor_analysis_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
-    """Get deep competitor analysis results (auto-scheduled post-onboarding)."""
-    return await get_deep_competitor_analysis(current_user, site_url)
+    @app.get("/api/seo-dashboard/deep-competitor-analysis")
+    async def deep_competitor_analysis_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+        """Get deep competitor analysis results (auto-scheduled post-onboarding)."""
+        return await get_deep_competitor_analysis(current_user, site_url)
 
-@app.post("/api/seo-dashboard/strategic-insights/run")
-async def run_strategic_insights_endpoint(current_user: dict = Depends(get_current_user)):
-    """Run AI-powered strategic insights analysis manually."""
-    return await run_strategic_insights(current_user)
+    @app.post("/api/seo-dashboard/strategic-insights/run")
+    async def run_strategic_insights_endpoint(current_user: dict = Depends(get_current_user)):
+        """Run AI-powered strategic insights analysis manually."""
+        return await run_strategic_insights(current_user)
 
-@app.get("/api/seo-dashboard/strategic-insights/history")
-async def get_strategic_insights_history_endpoint(current_user: dict = Depends(get_current_user)):
-    """Fetch the history of strategic insights for the user."""
-    return await get_strategic_insights_history(current_user)
+    @app.get("/api/seo-dashboard/strategic-insights/history")
+    async def get_strategic_insights_history_endpoint(current_user: dict = Depends(get_current_user)):
+        """Fetch the history of strategic insights for the user."""
+        return await get_strategic_insights_history(current_user)
 
-@app.post("/api/seo-dashboard/refresh")
-async def refresh_analytics_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
-    """Refresh analytics data by invalidating cache and fetching fresh data."""
-    return await refresh_analytics_data(current_user, site_url)
-
-
-
-@app.get("/api/seo-dashboard/onboarding-task-health")
-async def onboarding_task_health_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
-    """Get consolidated health for onboarding-scheduled SEO tasks."""
-    return await get_onboarding_task_health(current_user, site_url)
-
-@app.get("/api/seo-dashboard/health")
-async def seo_dashboard_health():
-    """Health check for SEO dashboard."""
-    return await seo_dashboard_health_check()
-
-# Phase 2B: Semantic health monitoring endpoint (24-hour polling)
-@app.get("/api/seo-dashboard/semantic-health")
-async def semantic_health_endpoint(current_user: dict = Depends(get_current_user)):
-    """
-    Get real-time semantic health metrics for content and competitors.
-    This endpoint provides Phase 2B semantic intelligence monitoring data.
-    
-    Returns semantic health score, status, and recommendations.
-    Data is cached and updated every 24 hours via scheduler.
-    """
-    return await get_semantic_health(current_user)
+    @app.post("/api/seo-dashboard/refresh")
+    async def refresh_analytics_data_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+        """Refresh analytics data by invalidating cache and fetching fresh data."""
+        return await refresh_analytics_data(current_user, site_url)
 
 
-@app.get("/api/seo-dashboard/cache-stats")
-async def semantic_cache_stats_endpoint(current_user: dict = Depends(get_current_user)):
-    """
-    Get semantic cache performance statistics.
-    Returns hit rate, memory usage, and eviction counts.
-    """
-    return await get_semantic_cache_stats(current_user)
+    @app.get("/api/seo-dashboard/onboarding-task-health")
+    async def onboarding_task_health_endpoint(current_user: dict = Depends(get_current_user), site_url: str = None):
+        """Get consolidated health for onboarding-scheduled SEO tasks."""
+        return await get_onboarding_task_health(current_user, site_url)
+
+    @app.get("/api/seo-dashboard/health")
+    async def seo_dashboard_health():
+        """Health check for SEO dashboard."""
+        return await seo_dashboard_health_check()
+
+    @app.get("/api/seo-dashboard/semantic-health")
+    async def semantic_health_endpoint(current_user: dict = Depends(get_current_user)):
+        """
+        Get real-time semantic health metrics for content and competitors.
+        This endpoint provides Phase 2B semantic intelligence monitoring data.
+        
+        Returns semantic health score, status, and recommendations.
+        Data is cached and updated every 24 hours via scheduler.
+        """
+        return await get_semantic_health(current_user)
 
 
-@app.get("/api/seo-dashboard/sif-health")
-async def sif_indexing_health_endpoint(current_user: dict = Depends(get_current_user)):
-    """
-    Get SIF indexing health summary for the current user.
-    Used by the Semantic Indexing Status widget on the dashboard.
-    """
-    return await get_sif_indexing_health(current_user)
+    @app.get("/api/seo-dashboard/cache-stats")
+    async def semantic_cache_stats_endpoint(current_user: dict = Depends(get_current_user)):
+        """
+        Get semantic cache performance statistics.
+        Returns hit rate, memory usage, and eviction counts.
+        """
+        return await get_semantic_cache_stats(current_user)
 
-# Comprehensive SEO Analysis endpoints
-@app.post("/api/seo-dashboard/analyze-comprehensive")
-async def analyze_seo_comprehensive_endpoint(request: SEOAnalysisRequest):
-    """Analyze a URL for comprehensive SEO performance."""
-    return await analyze_seo_comprehensive(request)
 
-@app.post("/api/seo-dashboard/analyze-full")
-async def analyze_seo_full_endpoint(request: SEOAnalysisRequest):
-    """Analyze a URL for comprehensive SEO performance."""
-    return await analyze_seo_full(request)
+    @app.get("/api/seo-dashboard/sif-health")
+    async def sif_indexing_health_endpoint(current_user: dict = Depends(get_current_user)):
+        """
+        Get SIF indexing health summary for the current user.
+        Used by the Semantic Indexing Status widget on the dashboard.
+        """
+        return await get_sif_indexing_health(current_user)
 
-@app.get("/api/seo-dashboard/metrics-detailed")
-async def seo_metrics_detailed(url: str):
-    """Get detailed SEO metrics for a URL."""
-    return await get_seo_metrics_detailed(url)
+    # Comprehensive SEO Analysis endpoints
+    @app.post("/api/seo-dashboard/analyze-comprehensive")
+    async def analyze_seo_comprehensive_endpoint(request: SEOAnalysisRequest):
+        """Analyze a URL for comprehensive SEO performance."""
+        return await analyze_seo_comprehensive(request)
 
-@app.get("/api/seo-dashboard/analysis-summary")
-async def seo_analysis_summary(url: str):
-    """Get a quick summary of SEO analysis for a URL."""
-    return await get_analysis_summary(url)
+    @app.post("/api/seo-dashboard/analyze-full")
+    async def analyze_seo_full_endpoint(request: SEOAnalysisRequest):
+        """Analyze a URL for comprehensive SEO performance."""
+        return await analyze_seo_full(request)
 
-@app.post("/api/seo-dashboard/batch-analyze")
-async def batch_analyze_urls_endpoint(urls: list[str]):
-    """Analyze multiple URLs in batch."""
-    return await batch_analyze_urls(urls)
+    @app.get("/api/seo-dashboard/metrics-detailed")
+    async def seo_metrics_detailed(url: str):
+        """Get detailed SEO metrics for a URL."""
+        return await get_seo_metrics_detailed(url)
 
-@app.post("/api/seo-dashboard/analyze-urls-ai")
-async def analyze_urls_ai_endpoint(request: AnalyzeURLsRequest, current_user: dict = Depends(get_current_user)):
-    """Run AI-powered SEO analysis on selected URLs."""
-    return await analyze_urls_ai(request, current_user)
+    @app.get("/api/seo-dashboard/analysis-summary")
+    async def seo_analysis_summary(url: str):
+        """Get a quick summary of SEO analysis for a URL."""
+        return await get_analysis_summary(url)
+
+    @app.post("/api/seo-dashboard/batch-analyze")
+    async def batch_analyze_urls_endpoint(urls: list[str]):
+        """Analyze multiple URLs in batch."""
+        return await batch_analyze_urls(urls)
+
+    @app.post("/api/seo-dashboard/analyze-urls-ai")
+    async def analyze_urls_ai_endpoint(request: AnalyzeURLsRequest, current_user: dict = Depends(get_current_user)):
+        """Run AI-powered SEO analysis on selected URLs."""
+        return await analyze_urls_ai(request, current_user)
 
 # Include platform analytics router
 if not PODCAST_ONLY_DEMO_MODE:
