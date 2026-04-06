@@ -43,6 +43,9 @@ def get_enabled_features() -> set:
     return {f.strip() for f in env_value.split(",") if f.strip()}
 
 
+# Print env var IMMEDIATELY at module start
+print(f"[app.py] ALWRITY_ENABLED_FEATURES at start: {os.getenv('ALWRITY_ENABLED_FEATURES')}", flush=True)
+
 def is_podcast_only_demo_mode() -> bool:
     """Check if podcast-only mode is enabled."""
     import os
