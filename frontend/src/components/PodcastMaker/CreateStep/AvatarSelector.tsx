@@ -61,30 +61,33 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
       sx={{
         flex: 1,
         minWidth: 0,
-        p: 2.5,
+        p: { xs: 1.5, sm: 2.5 },
         borderRadius: 2,
         background: "#ffffff",
         border: "1px solid rgba(15, 23, 42, 0.08)",
         boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
       }}
     >
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
-        <Box
-          sx={{
-            width: 36,
-            height: 36,
-            borderRadius: 1.5,
-            background: "linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <PersonIcon fontSize="small" sx={{ color: "#667eea" }} />
-        </Box>
-        <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, fontSize: "0.9375rem" }}>
-          Podcast Presenter Avatar
-        </Typography>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 1, sm: 1.5 }} alignItems={{ xs: "flex-start", sm: "center" }} sx={{ mb: 2 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: 1.5,
+              background: "linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <PersonIcon fontSize="small" sx={{ color: "#667eea" }} />
+          </Box>
+          <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, fontSize: "0.9375rem" }}>
+            Podcast Presenter Avatar
+          </Typography>
+        </Stack>
         <Tooltip
           title={
             <Box>
@@ -102,7 +105,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           arrow
           placement="top"
         >
-          <InfoIcon fontSize="small" sx={{ color: "#94a3b8", cursor: "help" }} />
+          <InfoIcon fontSize="small" sx={{ color: "#94a3b8", cursor: "help", ml: { xs: 0, sm: 0 } }} />
         </Tooltip>
       </Stack>
       
@@ -115,21 +118,22 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             variant="scrollable"
             scrollButtons="auto"
             sx={{ 
-              mb: 3,
-              minHeight: 48,
+              mb: { xs: 2, sm: 3 },
+              minHeight: { xs: 40, sm: 48 },
               "& .MuiTabs-indicator": {
                 display: "none",
               },
               "& .MuiTabs-flexContainer": {
-                gap: 1.5,
+                gap: { xs: 1, sm: 1.5 },
               },
               "& .MuiTab-root": {
                 textTransform: "none",
-                minHeight: 44,
+                minHeight: { xs: 36, sm: 44 },
                 fontWeight: 600,
-                fontSize: "0.875rem",
-                borderRadius: "12px",
-                px: 2.5,
+                fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                borderRadius: { xs: "8px", sm: "12px" },
+                px: { xs: 1.5, sm: 2.5 },
+                minWidth: { xs: "auto", sm: 0 },
                 color: "#64748b",
                 border: "1.5px solid #e2e8f0",
                 transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -156,11 +160,11 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
 
           {avatarTab === 0 && (
             <Stack spacing={2}>
-              <Box sx={{ minHeight: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", bgcolor: "#f8fafc", borderRadius: 2, p: 2, position: "relative" }}>
+              <Box sx={{ minHeight: { xs: 160, sm: 200 }, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", bgcolor: "#f8fafc", borderRadius: 2, p: { xs: 1.5, sm: 2 }, position: "relative" }}>
                 {loadingBrandAvatar ? (
                   <CircularProgress size={32} />
                 ) : avatarPreview && avatarPreview === brandAvatarFromDb ? (
-                  <Stack spacing={2} alignItems="center" sx={{ width: "100%", maxWidth: 280 }}>
+                  <Stack spacing={2} alignItems="center" sx={{ width: "100%", maxWidth: { xs: 220, sm: 280 } }}>
                     <Box sx={{ position: "relative", width: "100%" }}>
                       <Box
                         component="img"
@@ -169,7 +173,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                         sx={{
                           width: "100%",
                           height: "auto",
-                          maxHeight: 200,
+                          maxHeight: { xs: 160, sm: 200 },
                           objectFit: "contain",
                           borderRadius: 2,
                           border: "2px solid #667eea",
@@ -204,7 +208,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                     </Stack>
                   </Stack>
                 ) : brandAvatarFromDb ? (
-                  <Stack spacing={2} alignItems="center" sx={{ width: "100%", maxWidth: 280 }}>
+                  <Stack spacing={2} alignItems="center" sx={{ width: "100%", maxWidth: { xs: 220, sm: 280 } }}>
                     <Box
                       component="img"
                       src={brandAvatarBlobUrl || ""}
@@ -212,7 +216,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                       sx={{
                         width: "100%",
                         height: "auto",
-                        maxHeight: 200,
+                        maxHeight: { xs: 160, sm: 200 },
                         objectFit: "contain",
                         borderRadius: 2,
                         border: "1.5px solid #e2e8f0",
@@ -236,8 +240,8 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                   </Stack>
                 ) : (
                   <Stack spacing={2} alignItems="center">
-                    <PersonIcon sx={{ fontSize: 48, color: "#cbd5e1" }} />
-                    <Typography variant="body2" color="text.secondary">
+                    <PersonIcon sx={{ fontSize: { xs: 36, sm: 48 }, color: "#cbd5e1" }} />
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", px: 2 }}>
                       No brand avatar found.
                     </Typography>
                     <Button size="small" startIcon={<RefreshIcon />} onClick={() => void handleUseBrandAvatar()}>
@@ -248,17 +252,17 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               </Box>
               <Box
                 sx={{
-                  p: 1.5,
+                  p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
                   background: alpha("#f0f4ff", 0.6),
                   border: "1px solid rgba(99, 102, 241, 0.2)",
                 }}
               >
-                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.875rem", fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.875rem" }, fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
                   <AutoAwesomeIcon fontSize="small" sx={{ color: "#667eea" }} />
                   Brand Avatar
                 </Typography>
-                <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                <Typography variant="body2" sx={{ color: "#475569", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, lineHeight: 1.6 }}>
                   Select your pre-configured brand avatar to maintain consistency. If not selected, a new AI presenter will be generated.
                 </Typography>
               </Box>
@@ -267,7 +271,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
 
           {avatarTab === 1 && (
             <Stack spacing={2}>
-              <Box sx={{ minHeight: 300, position: "relative" }}>
+              <Box sx={{ minHeight: { xs: 240, sm: 300 }, position: "relative" }}>
                 {avatarPreview && !avatarFile && (
                   <IconButton
                     size="small"
@@ -297,17 +301,17 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               </Box>
               <Box
                 sx={{
-                  p: 1.5,
+                  p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
                   background: alpha("#f8fafc", 0.8),
                   border: "1px solid rgba(15, 23, 42, 0.1)",
                 }}
               >
-                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.875rem", fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.875rem" }, fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
                   <CollectionsIcon fontSize="small" sx={{ color: "#64748b" }} />
                   Asset Library
                 </Typography>
-                <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                <Typography variant="body2" sx={{ color: "#475569", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, lineHeight: 1.6 }}>
                   Select from your previously uploaded images. Filter by favorites or search to find the perfect presenter.
                 </Typography>
               </Box>
@@ -318,8 +322,8 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             <Stack spacing={2}>
               <Box>
                 {avatarFile && avatarPreview ? (
-                  <Stack spacing={2} alignItems="center" sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: 2 }}>
-                    <Box sx={{ position: "relative", display: "inline-block", width: "100%", maxWidth: 280 }}>
+                  <Stack spacing={2} alignItems="center" sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: { xs: 1.5, sm: 2 } }}>
+                    <Box sx={{ position: "relative", display: "inline-block", width: "100%", maxWidth: { xs: 220, sm: 280 } }}>
                       <Box
                         component="img"
                         src={avatarPreviewBlobUrl || (avatarPreview.startsWith("data:") ? avatarPreview : "")}
@@ -327,7 +331,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                         sx={{
                           width: "100%",
                           height: "auto",
-                          maxHeight: 200,
+                          maxHeight: { xs: 160, sm: 200 },
                           objectFit: "contain",
                           borderRadius: 2,
                           border: "2px solid #e2e8f0",
@@ -361,7 +365,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                         arrow
                         placement="top"
                       >
-                        <Box>
+                        <Box sx={{ width: "100%", maxWidth: { xs: 220, sm: 280 } }}>
                           <Button
                             onClick={handleMakePresentable}
                             disabled={makingPresentable}
@@ -370,7 +374,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                             sx={{
                               width: "100%",
                               textTransform: "none",
-                              fontSize: "0.875rem",
+                              fontSize: { xs: "0.75rem", sm: "0.875rem" },
                               fontWeight: 600,
                               borderRadius: 2.5,
                               color: "#f8fbff",
@@ -407,7 +411,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                       alignItems: "center",
                       justifyContent: "center",
                       width: "100%",
-                      minHeight: 200,
+                      minHeight: { xs: 160, sm: 200 },
                       border: "2px dashed #cbd5e1",
                       borderRadius: 2.5,
                       bgcolor: "#f8fafc",
@@ -421,7 +425,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                       },
                     }}
                   >
-                    <PhotoCameraIcon sx={{ color: "#94a3b8", fontSize: 36, mb: 1.5 }} />
+                    <PhotoCameraIcon sx={{ color: "#94a3b8", fontSize: { xs: 28, sm: 36 }, mb: 1.5 }} />
                     <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 600, mb: 0.5 }}>
                       Take a Selfie
                     </Typography>
@@ -433,29 +437,29 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               </Box>
               <Box
                 sx={{
-                  p: 1.5,
+                  p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
                   background: alpha("#f8fafc", 0.8),
                   border: "1px solid rgba(15, 23, 42, 0.1)",
                 }}
               >
-                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.875rem", fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.875rem" }, fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
                   <PhotoCameraIcon fontSize="small" sx={{ color: "#64748b" }} />
                   Take a Selfie
                 </Typography>
-                <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                <Typography variant="body2" sx={{ color: "#475569", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, lineHeight: 1.6 }}>
                   Capture a photo using your device camera and use <strong>"Make Presentable"</strong> to enhance it into a professional presenter using AI.
                 </Typography>
               </Box>
               <Box
                 sx={{
-                  p: 1.5,
+                  p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
                   background: alpha("#f0f4ff", 0.5),
                   border: "1px solid rgba(99, 102, 241, 0.15)",
                 }}
               >
-                <Typography variant="caption" sx={{ color: "#6366f1", fontSize: "0.8125rem", fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="caption" sx={{ color: "#6366f1", fontSize: { xs: "0.7rem", sm: "0.8125rem" }, fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
                   <InfoIcon fontSize="inherit" />
                   Camera access required for selfie capture
                 </Typography>
@@ -467,15 +471,15 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             <Stack spacing={2}>
               <Box>
                 {avatarFile && avatarPreview ? (
-                  <Stack spacing={2} alignItems="center" sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: 2 }}>
+                  <Stack spacing={2} alignItems="center" sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: { xs: 1.5, sm: 2 } }}>
                     <Box sx={{ position: "relative", display: "inline-block" }}>
                       <Box
                         component="img"
                         src={avatarPreviewBlobUrl || (avatarPreview.startsWith("data:") ? avatarPreview : "")}
                         alt="Avatar preview"
                         sx={{
-                          width: 160,
-                          height: 160,
+                          width: { xs: 120, sm: 160 },
+                          height: { xs: 120, sm: 160 },
                           objectFit: "cover",
                           borderRadius: 2.5,
                           border: "2px solid #e2e8f0",
@@ -509,7 +513,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                         arrow
                         placement="top"
                       >
-                        <Box>
+                        <Box sx={{ width: "100%", maxWidth: { xs: 200, sm: 280 } }}>
                           <SecondaryButton
                             onClick={handleMakePresentable}
                             disabled={makingPresentable}
@@ -532,7 +536,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                       alignItems: "center",
                       justifyContent: "center",
                       width: "100%",
-                      minHeight: 200,
+                      minHeight: { xs: 160, sm: 200 },
                       border: "2px dashed #cbd5e1",
                       borderRadius: 2.5,
                       bgcolor: "#f8fafc",
@@ -552,7 +556,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                       onChange={handleAvatarChange}
                       style={{ display: "none" }}
                     />
-                    <CloudUploadIcon sx={{ color: "#94a3b8", fontSize: 36, mb: 1.5 }} />
+                    <CloudUploadIcon sx={{ color: "#94a3b8", fontSize: { xs: 28, sm: 36 }, mb: 1.5 }} />
                     <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 600, mb: 0.5 }}>
                       Upload Your Photo
                     </Typography>
@@ -564,29 +568,29 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               </Box>
               <Box
                 sx={{
-                  p: 1.5,
+                  p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
                   background: alpha("#f8fafc", 0.8),
                   border: "1px solid rgba(15, 23, 42, 0.1)",
                 }}
               >
-                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: "0.875rem", fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.875rem" }, fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
                   <CloudUploadIcon fontSize="small" sx={{ color: "#64748b" }} />
                   Upload Your Photo
                 </Typography>
-                <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                <Typography variant="body2" sx={{ color: "#475569", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, lineHeight: 1.6 }}>
                   Upload a new photo and use <strong>"Make Presentable"</strong> to enhance it into a professional presenter using AI.
                 </Typography>
               </Box>
               <Box
                 sx={{
-                  p: 1.5,
+                  p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
                   background: alpha("#f0f4ff", 0.5),
                   border: "1px solid rgba(99, 102, 241, 0.15)",
                 }}
               >
-                <Typography variant="caption" sx={{ color: "#6366f1", fontSize: "0.8125rem", fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="caption" sx={{ color: "#6366f1", fontSize: { xs: "0.7rem", sm: "0.8125rem" }, fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
                   <InfoIcon fontSize="inherit" />
                   Supported formats: JPG, PNG, WebP (max 5MB)
                 </Typography>
