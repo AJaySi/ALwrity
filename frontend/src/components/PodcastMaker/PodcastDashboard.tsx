@@ -95,7 +95,8 @@ const PodcastDashboard: React.FC = () => {
       sx={{
         minHeight: "100vh",
         background: "#f8fafc",
-        p: { xs: 2, md: 4 },
+        p: { xs: 1, md: 4 },
+        overflow: "hidden",
       }}
     >
       <Paper
@@ -107,7 +108,7 @@ const PodcastDashboard: React.FC = () => {
           border: "1px solid rgba(0,0,0,0.08)",
           background: "#ffffff",
           boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-          p: { xs: 3, md: 4 },
+          p: { xs: 2, md: 4 },
         }}
       >
         <Stack spacing={3}>
