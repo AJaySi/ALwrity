@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { showToastNotification } from '../utils/toastNotifications';
 import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../api/schedulerDashboard';
 import { isBackendCooldownActive, logBackendCooldownSkipOnce } from '../api/client';
+import { isPodcastOnlyDemoMode } from '../utils/demoMode';
 
 /**
  * Hook to poll for tasks needing intervention and show toast notifications
@@ -19,6 +20,11 @@ export function useSchedulerTaskAlerts(options: {
   const shownTaskIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
+    // Skip scheduler alerts in podcast-only mode (endpoint not available)
+    if (isPodcastOnlyDemoMode()) {
+      return;
+    }
+
     if (!enabled || !userId) {
       return;
     }
