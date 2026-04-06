@@ -1,8 +1,9 @@
 import React from "react";
-import { Stack, Box, Typography, Chip, TextField, IconButton } from "@mui/material";
-import { ListAlt as ListAltIcon, Add as AddIcon } from "@mui/icons-material";
+import { Stack, Box, Typography, Chip } from "@mui/material";
+import { ListAlt as ListAltIcon } from "@mui/icons-material";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
+import { TextToSpeechButton } from "../../../shared/TextToSpeechButton";
 
 interface OutlineTabProps {
   analysis: PodcastAnalysis;
@@ -11,6 +12,11 @@ interface OutlineTabProps {
 }
 
 export const OutlineTab: React.FC<OutlineTabProps> = ({ analysis, isEditing, onUpdateOutline }) => {
+  const outlineText = analysis.suggestedOutlines?.map((outline, idx) => {
+    const segments = outline.segments?.map((s, sIdx) => `${sIdx + 1}. ${s}`).join(" ");
+    return `Option ${idx + 1}: ${outline.title}. ${segments}`;
+  }).join(" ") || "";
+
   return (
     <AnalysisTabContent title="Episode Outline" icon={<ListAltIcon />}>
       <Stack spacing={3}>
@@ -20,6 +26,10 @@ export const OutlineTab: React.FC<OutlineTabProps> = ({ analysis, isEditing, onU
               <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 700 }}>
                 Option {idx + 1}: {outline.title}
               </Typography>
+              <TextToSpeechButton 
+                text={`Option ${idx + 1}: ${outline.title}. ${outline.segments?.map((s, sIdx) => `Step ${sIdx + 1}: ${s}`).join(" ")}`}
+                size="small" 
+              />
             </Stack>
             <Stack spacing={1}>
               {outline.segments?.map((segment: string, sIdx: number) => (

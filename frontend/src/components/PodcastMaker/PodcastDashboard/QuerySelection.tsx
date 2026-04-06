@@ -23,7 +23,7 @@ import {
   TextField,
   IconButton,
 } from "@mui/material";
-import { Search as SearchIcon, AutoAwesome as AutoAwesomeIcon, Refresh as RefreshIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon } from "@mui/icons-material";
+import { Search as SearchIcon, AutoAwesome as AutoAwesomeIcon, Refresh as RefreshIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Help as HelpIcon } from "@mui/icons-material";
 import { ResearchProvider } from "../../../services/blogWriterApi";
 import { Query } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton, SecondaryButton } from "../ui";
@@ -113,6 +113,24 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
               <SearchIcon />
               Research Queries
             </Typography>
+            <Tooltip
+              title={
+                <Box sx={{ maxWidth: 320 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                    How it works:
+                  </Typography>
+                  <Typography variant="body2" component="div" sx={{ fontSize: "0.8125rem", lineHeight: 1.5 }}>
+                    1. Select one or more research queries to focus your research.<br/><br/>
+                    2. Click "Run Research" to gather web and semantic insights.<br/><br/>
+                    3. The research results will be used to generate a factual, relevant podcast script.
+                  </Typography>
+                </Box>
+              }
+              arrow
+              placement="top"
+            >
+              <HelpIcon fontSize="small" sx={{ color: "#94a3b8", cursor: "help", ml: 0.5 }} />
+            </Tooltip>
             <Tooltip title="Regenerate research queries with custom feedback">
               <PrimaryButton
                 size="small"
@@ -256,7 +274,12 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
           ))}
         </List>
 
-        <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+        <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+          {selectedCount === 0 && (
+            <Typography variant="caption" sx={{ color: "#64748b", fontStyle: "italic" }}>
+              Select a query to continue
+            </Typography>
+          )}
           <PrimaryButton
             onClick={onRunResearch}
             disabled={selectedCount === 0 || isResearching}
@@ -268,7 +291,7 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
                 : `Run research with ${selectedCount} selected ${selectedCount === 1 ? "query" : "queries"}`
             }
           >
-            {isResearching ? "Running Research..." : "Run Research"}
+            {isResearching ? "Running Research..." : selectedCount === 0 ? "Next: Select Query" : "Run Research"}
           </PrimaryButton>
         </Box>
       </Stack>

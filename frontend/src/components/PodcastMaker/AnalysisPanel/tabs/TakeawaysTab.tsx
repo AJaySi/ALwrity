@@ -3,12 +3,15 @@ import { Stack, Box, Typography, Chip, Paper } from "@mui/material";
 import { Lightbulb as TipsIcon } from "@mui/icons-material";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
+import { TextToSpeechButton } from "../../../shared/TextToSpeechButton";
 
 interface TakeawaysTabProps {
   analysis: PodcastAnalysis;
 }
 
 export const TakeawaysTab: React.FC<TakeawaysTabProps> = ({ analysis }) => {
+  const takeawaysText = analysis.key_takeaways?.map((t, idx) => `Takeaway ${idx + 1}: ${t}`).join(" ") || "";
+
   if (!analysis.key_takeaways || analysis.key_takeaways.length === 0) {
     return (
       <AnalysisTabContent title="Key Takeaways" icon={<TipsIcon />}>
@@ -22,6 +25,9 @@ export const TakeawaysTab: React.FC<TakeawaysTabProps> = ({ analysis }) => {
   return (
     <AnalysisTabContent title="Key Takeaways" icon={<TipsIcon />}>
       <Stack spacing={2}>
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}>
+          <TextToSpeechButton text={takeawaysText} size="small" showSettings />
+        </Box>
         {analysis.key_takeaways.map((takeaway: string, idx: number) => (
           <Paper key={idx} elevation={0} sx={{ p: 2, bgcolor: "#f0fdf4", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 2, display: "flex", alignItems: "flex-start", gap: 1.5 }}>
             <Chip label={idx + 1} size="small" sx={{ minWidth: 24, bgcolor: "#22c55e", color: "#fff" }} />
