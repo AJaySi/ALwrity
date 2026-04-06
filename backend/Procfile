@@ -1,1 +1,3 @@
-web: gunicorn -c gunicorn_config.py app:app
+# Use start_alwrity_backend.py for deployment
+# This script handles all bootstrap logic and starts uvicorn
+web: python start_alwrity_backend.py

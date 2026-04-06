@@ -26,9 +26,10 @@ errorlog = "-"
 loglevel = os.getenv("LOG_LEVEL", "info").lower()
 
 # Don't preload - bind to port FIRST, then load worker
-# This fixes "No open ports detected" on Render
 preload_app = False
 
+# Use the startup script that handles all the logic
+factory = False  # app:app is not a factory, it's the app object
 
 def on_starting(server):
     """Called just before the master process is initialized."""
