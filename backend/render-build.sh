@@ -31,6 +31,7 @@ httpx>=0.27.2,<0.28.0
 aiohttp>=3.9.0
 openai>=1.3.0
 google-genai>=1.0.0
+exa-py==1.9.1
 gtts>=2.4.0
 pyttsx3>=2.90
 markdown>=3.5.0
@@ -51,6 +52,13 @@ requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 psutil>=5.9.0
+sentence-transformers>=2.2.2
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.0.0
+pydantic-settings>=2.0.0
+python-dateutil>=2.8.0
+jinja2>=3.1.0
 EOF
     python -m pip install --retries 10 --timeout 120 -r requirements_min.txt
 else
