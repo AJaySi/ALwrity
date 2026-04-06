@@ -376,6 +376,7 @@ def start_backend(enable_reload=False, production_mode=False):
             return False
         
         print(f"[DEBUG] Starting uvicorn with host={host} port={port}", flush=True)
+        print("[DEBUG] >>> ABOUT TO CALL UVICORN.RUN() <<<", flush=True)
         
         # Skip video preflight in podcast-only mode to save memory/time
         is_podcast = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast"
