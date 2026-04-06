@@ -10,6 +10,9 @@ __pycache__/
 workspace/ 
 workspace/*
 
+.windsurf
+artifacts
+
 .opencode
 
 data/
@@ -21,7 +24,7 @@ backend/*.db
 backend\youtube_audio
 youtube_avatars
 backend\youtube_images
-
+data/media/podcast_videos/AI_Videos
 backend/.trae_*
 
 # Onboarding progress files
