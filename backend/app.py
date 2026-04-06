@@ -159,15 +159,15 @@ else:
 from api.research_config import router as research_config_router
 
 # Import user data endpoints
-# Import content planning endpoints
-from api.content_planning.api.router import router as content_planning_router
+# Import content planning endpoints (skip in podcast-only mode)
+if not is_podcast_only_demo_mode():
+    from api.content_planning.api.router import router as content_planning_router
+    from api.content_planning.strategy_copilot import router as strategy_copilot_router
+else:
+    content_planning_router = None
+    strategy_copilot_router = None
+
 from api.user_data import router as user_data_router
-
-# Import user environment endpoints
-from api.user_environment import router as user_environment_router
-
-# Import strategy copilot endpoints
-from api.content_planning.strategy_copilot import router as strategy_copilot_router
 
 # Import database service
 from services.database import close_database

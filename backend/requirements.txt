@@ -37,6 +37,7 @@ exa-py==1.9.1
 markdown>=3.5.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
+advertools>=0.14.0
 
 # Data processing
 pandas>=2.0.0
