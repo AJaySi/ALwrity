@@ -1,3 +1,2 @@
-# Use Gunicorn with uvicorn worker for faster port binding on Render
-# Gunicorn binds immediately, then loads app in background
-web: gunicorn app:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 600
+# Use start_alwrity_backend.py for deployment
+web: python start_alwrity_backend.py --production
