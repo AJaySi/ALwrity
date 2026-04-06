@@ -1,3 +1,3 @@
-# Use start_alwrity_backend.py for deployment
-# This script handles all bootstrap logic and starts uvicorn
-web: python start_alwrity_backend.py
+# Use gunicorn with app:app for faster startup
+# Gunicorn binds to port immediately, then loads app in background
+web: gunicorn app:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 600
