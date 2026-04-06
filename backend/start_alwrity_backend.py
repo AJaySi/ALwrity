@@ -9,9 +9,16 @@ import os
 import sys
 import json
 import argparse
+import platform
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Optional
+
+# Detect platform
+IS_WINDOWS = platform.system() == "Windows"
+IS_LINUX = platform.system() == "Linux"
+
+import uvicorn
 
 
 @dataclass
