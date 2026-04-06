@@ -1,5 +1,11 @@
 # Ensure typing constructs and models are available globally for FastAPI type annotation evaluation
+import os
+
+# Print env vars immediately - BEFORE any imports
+print(f"[app.py] EARLY - PORT={os.getenv('PORT')}, HOST={os.getenv('HOST')}", flush=True)
+
 import typing
+import builtins
 import builtins
 
 # Make common typing constructs available globally

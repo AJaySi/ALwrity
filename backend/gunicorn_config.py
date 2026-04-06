@@ -25,8 +25,9 @@ accesslog = "-"
 errorlog = "-"
 loglevel = os.getenv("LOG_LEVEL", "info").lower()
 
-# Preload app (set to False for faster startup if needed)
-preload_app = True
+# Don't preload - bind to port FIRST, then load worker
+# This fixes "No open ports detected" on Render
+preload_app = False
 
 
 def on_starting(server):
