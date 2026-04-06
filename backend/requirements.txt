@@ -1,4 +1,4 @@
-# Core dependencies
+# Core dependencies - needed for all modes
 fastapi>=0.115.14
 starlette>=0.40.0,<0.47.0
 sse-starlette<3.0.0
@@ -9,87 +9,70 @@ python-multipart>=0.0.6
 python-dotenv>=1.0.0
 loguru>=0.7.2
 tenacity>=8.2.3
+pydantic>=2.5.2,<3.0.0
+typing-extensions>=4.8.0
 
-# Authentication and security
+# Auth
 PyJWT>=2.8.0
 cryptography>=41.0.0
 fastapi-clerk-auth>=0.0.7
 
-# Database dependencies   
+# Database
 sqlalchemy>=2.0.25
 
-# Payment processing
+# Payment
 stripe>=8.0.0
 
-# CopilotKit and Research
-copilotkit
-exa-py==1.9.1
-httpx>=0.27.2,<0.28.0
+# HTTP clients
+httpx>=0.28.1
+aiohttp>=3.9.0
+requests>=2.31.0
 
-# AI/ML dependencies - Windows-compatible versions
+# AI - needed for podcast
 openai>=1.3.0
 google-genai>=1.0.0
-sentence-transformers>=2.2.2
+exa-py==1.9.1
 
-# txtai with Windows-compatible dependencies
-txtai[agent]>=7.0.0
-
-
-google-api-python-client>=2.100.0
-google-auth>=2.23.0
-google-auth-oauthlib>=1.0.0
-
-# Web scraping and content processing
+# Text processing
+markdown>=3.5.0
 beautifulsoup4>=4.12.0
-requests>=2.31.0
-urllib3<2.0.0
-chardet>=5.0.0
-charset-normalizer<3.0.0
 lxml>=4.9.0
-html5lib>=1.1
-aiohttp>=3.9.0
 
 # Data processing
 pandas>=2.0.0
 numpy>=1.24.0
-markdown>=3.5.0
 
-# SEO Analysis dependencies
-advertools>=0.14.0
-textstat>=0.7.3
-pyspellchecker>=0.7.2
-aiofiles>=23.2.0
-crawl4ai>=0.2.0
-
-# Linguistic Analysis dependencies (Required for persona generation)
-spacy>=3.7.0
-nltk>=3.8.0
-
-# Image and audio processing for Stability AI
+# Image/media for podcast
 Pillow>=10.0.0
 huggingface_hub>=1.1.4
 
-# Text-to-Speech (TTS) dependencies
+# TTS for podcast
 gtts>=2.4.0
-pyttsx3>=2.90
 
-# Video composition dependencies
+# Video composition
 moviepy==2.1.2
 imageio>=2.31.0
 imageio-ffmpeg>=0.4.9
 
-# Testing dependencies
+# Testing
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
-
-# Utilities
-pydantic>=2.5.2,<3.0.0
-typing-extensions>=4.8.0
 
 # Task scheduling
 apscheduler>=3.10.0
 
-# Optional dependencies (for enhanced features)
+# Utilities
 redis>=5.0.0
-schedule>=1.2.0 
-pytrends>=4.9.0
+schedule>=1.2.0
+aiofiles>=23.2.0
+psutil>=5.9.0
+
+# Google APIs
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.0.0
+
+# Other utilities
+python-dateutil>=2.8.0
+jinja2>=3.1.0
+pydantic-settings>=2.0.0
