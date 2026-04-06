@@ -18,6 +18,7 @@ loguru>=0.7.2
 tenacity>=8.2.3
 pydantic>=2.5.2,<3.0.0
 typing-extensions>=4.8.0
+setuptools>=65.0.0
 
 # Auth & Database
 fastapi-clerk-auth>=0.0.7
