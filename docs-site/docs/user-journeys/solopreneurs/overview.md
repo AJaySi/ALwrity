@@ -106,6 +106,13 @@ journey
 - Leverage social media for growth
 - Convert followers into customers
 
+### Bonus: Authority Podcast Workflow (50-90 minutes)
+**[Podcast Maker Journey →](podcast-maker-journey.md)**
+
+- Produce authority-building episodes that support your offer
+- Run analysis → research → script → render → export in one flow
+- Add clear CTA and repurposing outputs for social and email
+
 ## 🎯 Success Stories
 
 ### Sarah - Business Coach
@@ -137,6 +144,7 @@ Once you've established your foundation, explore these next steps:
 - **[Content Monetization](content-monetization.md)** - Turn your content into revenue
 - **[Community Building](community-building.md)** - Build a loyal following
 - **[Business Growth](business-growth.md)** - Scale your solopreneur business
+- **[Podcast Maker Journey](podcast-maker-journey.md)** - Build repeatable podcast episodes for lead generation
 
 ## 🔧 Technical Requirements
 

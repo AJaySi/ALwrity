@@ -116,6 +116,13 @@ journey
 - Help improve documentation
 - Participate in the community
 
+### Bonus: Automated Podcast Pipeline (60-120 minutes)
+**[Podcast Maker Journey →](podcast-maker-journey.md)**
+
+- Implement analysis → research → script → render → export as a pipeline
+- Add schema validation, retries, and stage-level observability
+- Export artifacts with metadata for downstream integrations
+
 ## 🎯 Success Stories
 
 ### Alex - Full-Stack Developer
@@ -147,6 +154,7 @@ Once you've completed your first integration, explore these next steps:
 - **[Production Deployment](deployment.md)** - Deploy to production
 - **[Team Collaboration](team-collaboration.md)** - Work with your team
 - **[Contributing](contributing.md)** - Contribute to ALwrity
+- **[Podcast Maker Journey](podcast-maker-journey.md)** - Build and automate podcast generation workflows
 
 ## 🔧 Technical Requirements
 

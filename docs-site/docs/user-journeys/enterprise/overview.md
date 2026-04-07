@@ -106,6 +106,13 @@ journey
 - Implement performance monitoring
 - Establish business impact measurement
 
+### Bonus: Governed Podcast Operations (1.5-3 hours)
+**[Podcast Maker Journey →](podcast-maker-journey.md)**
+
+- Run compliant episode workflows from analysis to export
+- Apply legal/compliance checkpoints before publication
+- Archive governed outputs for audit and KPI reporting
+
 ## 🎯 Success Stories
 
 ### Sarah - CMO at Fortune 500 Company
@@ -137,6 +144,7 @@ Once you've completed your enterprise setup, explore these next steps:
 - **[Performance Optimization](performance-optimization.md)** - Optimize system performance
 - **[Custom Solutions](custom-solutions.md)** - Develop custom enterprise solutions
 - **[Strategic Planning](strategic-planning.md)** - Align content strategy with business goals
+- **[Podcast Maker Journey](podcast-maker-journey.md)** - Launch compliant, scalable enterprise podcast production
 
 ## 🔧 Technical Requirements
 

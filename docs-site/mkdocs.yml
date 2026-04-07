@@ -131,6 +131,7 @@ nav:
       - Performance Tracking: user-journeys/non-tech-creators/performance-tracking.md
       - Workflow Optimization: user-journeys/non-tech-creators/workflow-optimization.md
       - Audience Growth: user-journeys/non-tech-creators/audience-growth.md
+      - Podcast Maker Journey: user-journeys/non-tech-creators/podcast-maker-journey.md
       - Troubleshooting: user-journeys/non-tech-creators/troubleshooting.md
       - Advanced Features: user-journeys/non-tech-creators/advanced-features.md
       - Community & Support: user-journeys/non-tech-creators/community-support.md
@@ -147,6 +148,7 @@ nav:
       - Codebase Exploration: user-journeys/developers/codebase-exploration.md
       - Customization: user-journeys/developers/customization.md
       - Team Collaboration: user-journeys/developers/team-collaboration.md
+      - Podcast Maker Journey: user-journeys/developers/podcast-maker-journey.md
       - Scaling: user-journeys/developers/scaling.md
     - Tech Marketers:
       - Overview: user-journeys/tech-marketers/overview.md
@@ -163,6 +165,7 @@ nav:
       - ROI Optimization: user-journeys/tech-marketers/roi-optimization.md
       - Competitive Analysis: user-journeys/tech-marketers/competitive-analysis.md
       - Team Management: user-journeys/tech-marketers/team-management.md
+      - Podcast Maker Journey: user-journeys/tech-marketers/podcast-maker-journey.md
       - Troubleshooting: user-journeys/tech-marketers/troubleshooting.md
     - Solopreneurs:
       - Overview: user-journeys/solopreneurs/overview.md
@@ -171,6 +174,7 @@ nav:
       - Social Media Setup: user-journeys/solopreneurs/social-media-setup.md
       - Email Marketing: user-journeys/solopreneurs/email-marketing.md
       - Content Production: user-journeys/solopreneurs/content-production.md
+      - Podcast Maker Journey: user-journeys/solopreneurs/podcast-maker-journey.md
       - Audience Growth: user-journeys/solopreneurs/audience-growth.md
       - Community Building: user-journeys/solopreneurs/community-building.md
       - Performance Tracking: user-journeys/solopreneurs/performance-tracking.md
@@ -191,6 +195,7 @@ nav:
       - Team Scaling: user-journeys/content-teams/team-scaling.md
       - Troubleshooting: user-journeys/content-teams/troubleshooting.md
       - Content Production: user-journeys/content-teams/content-production.md
+      - Podcast Maker Journey: user-journeys/content-teams/podcast-maker-journey.md
       - Workflow Optimization: user-journeys/content-teams/workflow-optimization.md
       - Scaling: user-journeys/content-teams/scaling.md
       - Performance Tracking: user-journeys/content-teams/performance-tracking.md
@@ -205,6 +210,7 @@ nav:
       - Team Training: user-journeys/enterprise/team-training.md
       - Scaling: user-journeys/enterprise/scaling.md
       - Monitoring: user-journeys/enterprise/monitoring.md
+      - Podcast Maker Journey: user-journeys/enterprise/podcast-maker-journey.md
       - Troubleshooting: user-journeys/enterprise/troubleshooting.md
       - Advanced Security: user-journeys/enterprise/advanced-security.md
   - Features:

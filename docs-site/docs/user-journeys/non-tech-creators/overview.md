@@ -109,6 +109,13 @@ journey
 - Build your content library
 - Develop your content strategy
 
+### Bonus: Launch Your Podcast (45-75 minutes)
+**[Podcast Maker Journey →](podcast-maker-journey.md)**
+
+- Turn your topic into a complete podcast episode
+- Follow analysis → research → script → render → export
+- Publish polished audio without technical editing complexity
+
 ## 🎯 Success Stories
 
 ### Sarah - Lifestyle Blogger
@@ -140,6 +147,7 @@ Once you've completed your first content creation, explore these next steps:
 - **[SEO Basics](seo-basics.md)** - Learn simple SEO techniques
 - **[Content Strategy](content-strategy.md)** - Plan your content calendar
 - **[Performance Tracking](performance-tracking.md)** - Monitor your success
+- **[Podcast Maker Journey](podcast-maker-journey.md)** - Create and publish episodes with guided defaults
 
 ---
 
