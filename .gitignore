@@ -16,6 +16,7 @@ artifacts
 .opencode
 
 data/
+data/*
 
 .trae/
 /backend/database/migrations/*
