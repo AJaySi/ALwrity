@@ -344,12 +344,24 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     }
   }, [isResearching, project, selectedQueries, queries, researchProvider, preflightCheck, analysis, setResearch, setRawResearch, setScriptData, setShowScriptEditor, setShowRenderQueue, projectState.bible]);
 
+  // Add a ref to track if we're currently generating to prevent double calls
+  const isGeneratingRef = React.useRef(false);
+  
   const handleGenerateScript = useCallback(async () => {
+    // Guard against double calls
+    if (isGeneratingRef.current) {
+      console.log('[ScriptGen] Already generating, skipping duplicate call');
+      return;
+    }
+    
     if (showScriptEditor) return;
     if (!project || !research) {
       setAnnouncement("Project or research missing — cannot generate script");
       return;
     }
+
+    // Mark as generating immediately
+    isGeneratingRef.current = true;
 
     setPreflightOperationName("Script Generation");
     const preflightResult = await preflightCheck.check({
@@ -360,6 +372,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     });
 
     if (!preflightResult.can_proceed) {
+      isGeneratingRef.current = false; // Reset on preflight failure
       return;
     }
 
@@ -401,8 +414,10 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     } catch (error) {
       setIsGeneratingScript(false);
       announceError(setAnnouncement, setAnnouncementSeverityFn, error);
+    } finally {
+      isGeneratingRef.current = false; // Reset when done
     }
-  }, [showScriptEditor, project, research, preflightCheck, setScriptData, setShowRenderQueue, setShowScriptEditor, rawResearch, projectState.knobs, projectState.bible])
+  }, [showScriptEditor, project, research, preflightCheck, setScriptData, setShowRenderQueue, setShowScriptEditor, rawResearch, projectState.knobs, projectState.bible, analysis])
 
   const handleProceedToRendering = useCallback((script: Script) => {
     // Clear media cache for all scenes before proceeding to remove old blobs
