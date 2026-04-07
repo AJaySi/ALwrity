@@ -305,7 +305,14 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream);
+      // Use a widely supported MIME type
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+        ? 'audio/webm;codecs=opus' 
+        : MediaRecorder.isTypeSupported('audio/webm') 
+          ? 'audio/webm' 
+          : 'audio/mp4';
+      
+      const recorder = new MediaRecorder(stream, { mimeType });
       recorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -315,7 +322,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
 
       recorder.onstop = async () => {
         try {
-          const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+          const chunks = [...chunksRef.current];
+          const blob = new Blob(chunks, { type: mimeType });
           const file = new File([blob], `voice_sample_${Date.now()}.webm`, { type: blob.type });
           if (file.size > 15 * 1024 * 1024) {
             setError('Recorded file is too large. Please keep it short (5–20 seconds).');
@@ -323,7 +331,11 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
           }
           setAudioFile(file);
           const url = URL.createObjectURL(blob);
+          console.log('[VoiceClone] Created audio preview URL:', url, 'size:', file.size, 'type:', blob.type);
           setAudioPreviewUrl(url);
+        } catch (err) {
+          console.error('[VoiceClone] Error creating audio blob:', err);
+          setError('Failed to create audio preview. Please try again.');
         } finally {
           cleanupRecording();
         }
@@ -745,7 +757,18 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                               <Typography variant="caption" sx={{ fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>
                                  Source Sample:
                               </Typography>
-                              <audio controls src={audioPreviewUrl} style={{ height: '30px', width: '100%' }} />
+                              <Box sx={{ flex: 1 }}>
+                                <audio 
+                                  key={audioPreviewUrl} 
+                                  controls 
+                                  src={audioPreviewUrl} 
+                                  style={{ height: '30px', width: '100%' }}
+                                  onError={(e) => {
+                                    console.error('[VoiceClone] Audio playback error:', e);
+                                    setError('Failed to play recording. Please try again.');
+                                  }}
+                                />
+                              </Box>
                            </Stack>
                         ) : null}
                     </Box>
@@ -975,7 +998,15 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                         <Typography variant="caption" fontWeight="800" sx={{ color: '#7C3AED', textTransform: 'uppercase', mb: 0.25, display: 'block', fontSize: '0.65rem' }}>
                           Source Recording
                         </Typography>
-                        <audio controls src={audioPreviewUrl} style={{ width: '100%', height: '28px' }} />
+                        <audio 
+                          key={audioPreviewUrl} 
+                          controls 
+                          src={audioPreviewUrl} 
+                          style={{ width: '100%', height: '28px' }}
+                          onError={(e) => {
+                            console.error('[VoiceClone] Source audio playback error:', e);
+                          }}
+                        />
                       </Box>
                     )}
                     {resultAudioUrl && (
