@@ -108,6 +108,13 @@ journey
 - Optimize based on data insights
 - Report results to stakeholders
 
+### Bonus: Campaign Podcast Execution (60-100 minutes)
+**[Podcast Maker Journey →](podcast-maker-journey.md)**
+
+- Build campaign-aligned episodes with measurable CTA attribution
+- Use analysis → research → script → render → export workflow
+- Ship show notes with trackable links and KPI-ready metadata
+
 ## 🎯 Success Stories
 
 ### Sarah - Marketing Director at Tech Startup
@@ -139,6 +146,7 @@ Once you've completed your initial setup, explore these next steps:
 - **[ROI Optimization](roi-optimization.md)** - Maximize your content marketing ROI
 - **[Team Management](team-management.md)** - Scale your content operations
 - **[Competitive Analysis](competitive-analysis.md)** - Stay ahead of the competition
+- **[Podcast Maker Journey](podcast-maker-journey.md)** - Run data-backed podcast campaigns with tracking
 
 ## 🔧 Technical Requirements
 

@@ -106,6 +106,13 @@ journey
 - Set up quality control processes
 - Train team on brand standards
 
+### Bonus: Team Podcast Production (75-120 minutes)
+**[Podcast Maker Journey →](podcast-maker-journey.md)**
+
+- Coordinate analysis, research, script, render, and export across team roles
+- Maintain brand voice through review checkpoints
+- Publish episodes on schedule with reusable assets
+
 ## 🎯 Success Stories
 
 ### Sarah - Marketing Team Lead
@@ -137,6 +144,7 @@ Once you've established your team workflow, explore these next steps:
 - **[Performance Analytics](performance-analytics.md)** - Track team and content performance
 - **[Client Management](client-management.md)** - Manage multiple clients efficiently
 - **[Team Scaling](team-scaling.md)** - Grow your content team
+- **[Podcast Maker Journey](podcast-maker-journey.md)** - Add a standardized podcast lane to team workflows
 
 ## 🔧 Technical Requirements
 
