@@ -74,81 +74,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     isInitializingRef.current = false;
   }, [stream]);
 
-  // Initialize camera - only gets the stream, doesn't attach to video
-  const initializeCamera = useCallback(async () => {
-    // Prevent double initialization
-    if (isInitializingRef.current) {
-      console.log('[RobustCamera] Already initializing, skipping');
-      return;
-    }
-    
-    if (!isMountedRef.current) {
-      console.log('[RobustCamera] Component not mounted, skipping');
-      return;
-    }
-    
-    console.log('[RobustCamera] Starting camera initialization');
-    isInitializingRef.current = true;
-    setLoading(true);
-    setError(null);
-    setCameraReady(false);
-    
-    // Clean up any existing stream first
-    if (stream) {
-      console.log('[RobustCamera] Cleaning up existing stream first');
-      stream.getTracks().forEach(track => track.stop());
-    }
-
-    try {
-      const constraints = {
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-        },
-        audio: false,
-      };
-
-      console.log('[RobustCamera] Requesting camera with constraints:', constraints);
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      if (!isMountedRef.current) {
-        // Component unmounted while awaiting, clean up
-        console.log('[RobustCamera] Component unmounted, stopping stream');
-        mediaStream.getTracks().forEach(track => track.stop());
-        return;
-      }
-      
-      console.log('[RobustCamera] Camera stream obtained:', mediaStream.id, 'Tracks:', mediaStream.getTracks().length);
-      setStream(mediaStream);
-      setLoading(false);
-      
-    } catch (err) {
-      console.error('[RobustCamera] Camera access error:', err);
-      
-      if (!isMountedRef.current) return;
-      
-      setLoading(false);
-      isInitializingRef.current = false;
-      
-      if (err instanceof Error) {
-        if (err.name === 'NotAllowedError') {
-          setError('Camera access denied. Please allow camera permissions in your browser settings.');
-        } else if (err.name === 'NotFoundError') {
-          setError('No camera found on this device.');
-        } else if (err.name === 'NotReadableError') {
-          setError('Camera is already in use by another application. Please close other apps using the camera.');
-        } else if (err.name === 'OverconstrainedError') {
-          setError('Camera does not support the requested resolution. Please try again.');
-        } else {
-          setError(`Failed to access camera: ${err.message}`);
-        }
-      } else {
-        setError('Failed to access camera. Please try again.');
-      }
-    }
-  }, [facingMode, stream]);
-
   // SINGLE useEffect to handle stream attachment to video
   useEffect(() => {
     const video = videoElementRef.current;
@@ -211,60 +136,170 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     };
   }, [stream]);
 
-  // Track previous open state to detect actual open/close changes
-  const prevOpenRef = useRef(open);
-  
-  // Initialize camera when dialog opens
+  // Initialize camera when dialog opens - using isCancelled pattern
   useEffect(() => {
-    // Only initialize if dialog is opening (transition from false to true)
-    if (open && !prevOpenRef.current) {
-      console.log('[RobustCamera] Dialog opening');
+    let isCancelled = false;
+    
+    if (open) {
+      console.log('[RobustCamera] Dialog opened');
       isMountedRef.current = true;
+      
+      const initCamera = async () => {
+        // Prevent double initialization
+        if (isInitializingRef.current) {
+          console.log('[RobustCamera] Already initializing, skipping');
+          return;
+        }
+        
+        if (isCancelled) {
+          console.log('[RobustCamera] Cancelled before initialization');
+          return;
+        }
+        
+        console.log('[RobustCamera] Starting camera initialization');
+        isInitializingRef.current = true;
+        setLoading(true);
+        setError(null);
+        setCameraReady(false);
+        
+        // Clean up any existing stream first
+        if (stream) {
+          console.log('[RobustCamera] Cleaning up existing stream first');
+          stream.getTracks().forEach(track => track.stop());
+          setStream(null);
+        }
+
+        try {
+          const constraints = {
+            video: {
+              facingMode: facingMode,
+              width: { ideal: 1280, min: 640 },
+              height: { ideal: 720, min: 480 },
+            },
+            audio: false,
+          };
+
+          console.log('[RobustCamera] Requesting camera with constraints:', constraints);
+          const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+          
+          // Check if cancelled or unmounted after await
+          if (isCancelled || !isMountedRef.current) {
+            console.log('[RobustCamera] Cancelled after stream obtained, stopping stream');
+            mediaStream.getTracks().forEach(track => track.stop());
+            isInitializingRef.current = false;
+            return;
+          }
+          
+          console.log('[RobustCamera] Camera stream obtained:', mediaStream.id, 'Tracks:', mediaStream.getTracks().length);
+          setStream(mediaStream);
+          setLoading(false);
+          
+        } catch (err) {
+          console.error('[RobustCamera] Camera access error:', err);
+          
+          if (isCancelled || !isMountedRef.current) return;
+          
+          setLoading(false);
+          isInitializingRef.current = false;
+          
+          if (err instanceof Error) {
+            if (err.name === 'NotAllowedError') {
+              setError('Camera access denied. Please allow camera permissions in your browser settings.');
+            } else if (err.name === 'NotFoundError') {
+              setError('No camera found on this device.');
+            } else if (err.name === 'NotReadableError') {
+              setError('Camera is already in use by another application. Please close other apps using the camera.');
+            } else if (err.name === 'OverconstrainedError') {
+              setError('Camera does not support the requested resolution. Please try again.');
+            } else {
+              setError(`Failed to access camera: ${err.message}`);
+            }
+          } else {
+            setError('Failed to access camera. Please try again.');
+          }
+        }
+      };
       
       // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
-        initializeCamera();
+        if (!isCancelled) {
+          initCamera();
+        }
       }, 100);
       
       return () => {
+        console.log('[RobustCamera] Cleanup from open effect');
+        isCancelled = true;
         clearTimeout(timer);
       };
-    }
-    
-    // Only cleanup if dialog is closing (transition from true to false)
-    if (!open && prevOpenRef.current) {
-      console.log('[RobustCamera] Dialog closing, cleaning up');
+    } else {
+      // Dialog closed - cleanup
+      console.log('[RobustCamera] Dialog closed, cleaning up');
       cleanupCamera();
     }
-    
-    // Update ref
-    prevOpenRef.current = open;
-  }, [open]); // Remove other dependencies - only react to open prop changes
+  }, [open]); // Only depend on open to prevent re-runs
 
-  // Track previous facing mode to detect actual changes
-  const prevFacingModeRef = useRef(facingMode);
-  
   // Handle facing mode changes
   useEffect(() => {
-    // Only reinitialize if facing mode actually changed AND we have an active stream
-    if (facingMode !== prevFacingModeRef.current && open && stream) {
-      console.log('[RobustCamera] Facing mode changed from', prevFacingModeRef.current, 'to', facingMode);
+    let isCancelled = false;
+    
+    if (open && stream) {
+      console.log('[RobustCamera] Facing mode changed to', facingMode, ', reinitializing');
       
-      cleanupCamera();
-      
-      const timer = setTimeout(() => {
+      const reinitCamera = async () => {
+        cleanupCamera();
+        
+        // Small delay to let cleanup complete
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        if (isCancelled || !isMountedRef.current) return;
+        
         isInitializingRef.current = false;
-        initializeCamera();
-      }, 300);
+        
+        // Re-initialize with new facing mode
+        isInitializingRef.current = true;
+        setLoading(true);
+        setError(null);
+        setCameraReady(false);
+        
+        try {
+          const constraints = {
+            video: {
+              facingMode: facingMode,
+              width: { ideal: 1280, min: 640 },
+              height: { ideal: 720, min: 480 },
+            },
+            audio: false,
+          };
+
+          const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+          
+          if (isCancelled || !isMountedRef.current) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            isInitializingRef.current = false;
+            return;
+          }
+          
+          setStream(mediaStream);
+          setLoading(false);
+          
+        } catch (err) {
+          console.error('[RobustCamera] Camera error during flip:', err);
+          if (!isCancelled && isMountedRef.current) {
+            setLoading(false);
+            isInitializingRef.current = false;
+            setError('Failed to flip camera. Please try again.');
+          }
+        }
+      };
       
-      prevFacingModeRef.current = facingMode;
-      
-      return () => clearTimeout(timer);
+      reinitCamera();
     }
     
-    // Update ref if it hasn't been set yet
-    prevFacingModeRef.current = facingMode;
-  }, [facingMode, open, stream]); // Dependencies are fine - we check for actual changes inside
+    return () => {
+      isCancelled = true;
+    };
+  }, [facingMode]); // Only re-run when facingMode changes
 
   // Cleanup on unmount
   useEffect(() => {
@@ -273,7 +308,7 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
       isMountedRef.current = false;
       cleanupCamera();
     };
-  }, [cleanupCamera]);
+  }, []);
 
   // Capture photo
   const capturePhoto = useCallback(() => {

@@ -25,9 +25,10 @@ interface CreateModalProps {
   open: boolean;
   defaultKnobs: Knobs;
   isSubmitting?: boolean;
+  announcement?: string;
 }
 
-export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaultKnobs, isSubmitting = false }) => {
+export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaultKnobs, isSubmitting = false, announcement }) => {
   const { subscription } = useSubscription();
   const [topicInput, setTopicInput] = useState("");
   const [showAIDetailsButton, setShowAIDetailsButton] = useState(false);
@@ -365,7 +366,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     setAvatarUrl(url);
   }, []);
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       // Validate file type
@@ -396,9 +397,9 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
         // Continue with local preview - upload will happen on submit
       }
     }
-  };
+  }, []);
 
-  const handleCameraSelfie = async (imageDataUrl: string) => {
+  const handleCameraSelfie = React.useCallback(async (imageDataUrl: string) => {
     try {
       // Convert dataURL to File object
       const response = await fetch(imageDataUrl);
@@ -424,9 +425,9 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     } catch (error) {
       console.error('Failed to process selfie:', error);
     }
-  };
+  }, []);
 
-  const handleRemoveAvatar = () => {
+  const handleRemoveAvatar = React.useCallback(() => {
     setAvatarFile(null);
     setAvatarPreview(null);
     setAvatarUrl(null);
@@ -435,9 +436,9 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     }
     setAvatarPreviewBlobUrl(null);
     setMakingPresentable(false);
-  };
+  }, [avatarPreviewBlobUrl]);
 
-  const handleUseBrandAvatar = async () => {
+  const handleUseBrandAvatar = React.useCallback(async () => {
     if (brandAvatarFromDb) {
       setAvatarFile(null);
       setAvatarPreview(brandAvatarFromDb);
@@ -466,7 +467,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     } finally {
       setLoadingBrandAvatar(false);
     }
-  };
+  }, [brandAvatarFromDb, brandAvatarBlobUrl, loadingBrandAvatar]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setAvatarTab(newValue);
@@ -492,7 +493,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleMakePresentable = async () => {
+  const handleMakePresentable = React.useCallback(async () => {
     if (!avatarUrl || makingPresentable) return;
     
     try {
@@ -512,7 +513,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     } finally {
       setMakingPresentable(false);
     }
-  };
+  }, [avatarUrl, makingPresentable]);
 
   return (
     <Paper
@@ -586,6 +587,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
           submit={submit}
           canSubmit={canSubmit}
           isSubmitting={isSubmitting}
+          announcement={announcement}
         />
 
         {/* Enhanced Topic Choices Modal */}
