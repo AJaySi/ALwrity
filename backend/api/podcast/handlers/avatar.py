@@ -115,11 +115,14 @@ async def make_avatar_presentable(
     Uses AI image editing to convert the uploaded photo into a professional podcast presenter.
     """
     user_id = require_authenticated_user(current_user)
+    logger.info(f"[Podcast] Make presentable request received - user_id={user_id}, avatar_url={avatar_url}, project_id={project_id}")
     
     try:
         # Load the uploaded avatar image
         from ..utils import load_podcast_image_bytes
+        logger.info(f"[Podcast] Loading avatar image from {avatar_url}")
         avatar_bytes = load_podcast_image_bytes(avatar_url)
+        logger.info(f"[Podcast] Avatar loaded successfully - size={len(avatar_bytes)} bytes")
         
         logger.info(f"[Podcast] Transforming avatar to podcast presenter for project {project_id}")
         
@@ -141,12 +144,18 @@ async def make_avatar_presentable(
             "model": None,  # Use default model
         }
         
-        result = edit_image(
-            input_image_bytes=avatar_bytes,
-            prompt=transformation_prompt,
-            options=image_options,
-            user_id=user_id
-        )
+        logger.info(f"[Podcast] Calling edit_image with user_id={user_id}")
+        try:
+            result = edit_image(
+                input_image_bytes=avatar_bytes,
+                prompt=transformation_prompt,
+                options=image_options,
+                user_id=user_id
+            )
+            logger.info(f"[Podcast] edit_image completed successfully - provider={result.provider}, model={result.model}")
+        except Exception as edit_err:
+            logger.error(f"[Podcast] edit_image failed: {edit_err}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Image editing failed: {str(edit_err)}")
         
         # Save transformed avatar
         unique_id = str(uuid.uuid4())[:8]
