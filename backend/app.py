@@ -421,9 +421,18 @@ async def onboarding_status():
 
 # Include routers using modular utilities
 if PODCAST_ONLY_DEMO_MODE:
+    # In podcast-only mode, include only podcast-enabled routers from core registry
+    from alwrity_utils.router_manager import CORE_ROUTER_REGISTRY
+    podcast_routers = [r for r in CORE_ROUTER_REGISTRY if "podcast" in r.get("features", set())]
+    for entry in podcast_routers:
+        try:
+            router = router_manager._load_router_from_registry(entry)
+            router_manager.include_router_safely(router, entry["name"], entry.get("include_kwargs"))
+        except Exception as e:
+            logger.warning(f"{entry['name']} router not mounted: {e}")
     router_group_status["modular_core"] = {
-        "mounted": False,
-        "reason": "Skipped in podcast-only demo mode",
+        "mounted": True,
+        "reason": "Podcast routers only in podcast-only mode",
     }
     router_group_status["modular_optional"] = {
         "mounted": False,
