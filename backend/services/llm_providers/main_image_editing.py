@@ -55,6 +55,9 @@ def _select_provider(explicit: Optional[str]) -> str:
 def _get_provider_client(provider_name: str, api_key: Optional[str] = None):
     """Get the client for the specified provider."""
     if provider_name == "wavespeed":
+        api_key = api_key or os.getenv("WAVESPEED_API_KEY")
+        if not api_key:
+            raise RuntimeError("WAVESPEED_API_KEY is required for WaveSpeed image editing. Set it in your .env file.")
         return WaveSpeedEditProvider(api_key=api_key)
         
     if not HF_HUB_AVAILABLE:
@@ -63,7 +66,7 @@ def _get_provider_client(provider_name: str, api_key: Optional[str] = None):
     if provider_name == "huggingface":
         api_key = api_key or os.getenv("HF_TOKEN")
         if not api_key:
-            raise RuntimeError("HF_TOKEN is required for Hugging Face image editing")
+            raise RuntimeError("HF_TOKEN is required for Hugging Face image editing. Set it in your .env file.")
         # Use fal-ai provider for fast inference via HF Inference API
         return InferenceClient(provider="fal-ai", api_key=api_key)
     
@@ -99,17 +102,23 @@ def edit_image(
     """
     # PRE-FLIGHT VALIDATION: Validate image editing before API call
     # MUST happen BEFORE any API calls - return immediately if validation fails
-    if user_id:
+    # Skip validation in podcast-only demo mode or if explicitly disabled
+    skip_validation = os.getenv("ALWRITY_SKIP_IMAGE_EDITING_VALIDATION", "false").lower() in ("true", "1", "yes")
+    
+    if user_id and not skip_validation:
         from services.database import get_db
         from services.subscription import PricingService
         from services.subscription.preflight_validator import validate_image_editing_operations
         from fastapi import HTTPException
         
         logger.info(f"[Image Editing] 🔍 Starting pre-flight validation for user_id={user_id}")
-        # Note: get_db() is a generator, so we need to use next() to get the session
-        # and ensure we close it in the finally block
-        db = next(get_db())
+        
+        db = None
         try:
+            # Properly handle the generator
+            db_gen = get_db()
+            db = next(db_gen)
+            
             pricing_service = PricingService(db)
             # Raises HTTPException immediately if validation fails - frontend gets immediate response
             validate_image_editing_operations(
@@ -123,11 +132,22 @@ def edit_image(
             raise
         except Exception as e:
             logger.error(f"[Image Editing] ❌ Unexpected error during pre-flight validation: {e}")
-            raise HTTPException(status_code=500, detail=f"Image editing validation failed: {str(e)}")
+            # In podcast-only mode, allow the operation to continue on validation errors
+            if os.getenv("ALWRITY_ENABLED_FEATURES") == "podcast":
+                logger.warning(f"[Image Editing] ⚠️ Validation error in podcast mode - allowing operation to continue")
+            else:
+                raise HTTPException(status_code=500, detail=f"Image editing validation failed: {str(e)}")
         finally:
-            db.close()
+            if db:
+                try:
+                    db.close()
+                except Exception as close_err:
+                    logger.warning(f"[Image Editing] Error closing DB session: {close_err}")
     else:
-        logger.warning(f"[Image Editing] ⚠️ No user_id provided - skipping pre-flight validation (this should not happen in production)")
+        if skip_validation:
+            logger.info(f"[Image Editing] ⚡ Skipping pre-flight validation (ALWRITY_SKIP_IMAGE_EDITING_VALIDATION=true)")
+        else:
+            logger.warning(f"[Image Editing] ⚠️ No user_id provided - skipping pre-flight validation")
     
     # Validate input
     if not input_image_bytes:

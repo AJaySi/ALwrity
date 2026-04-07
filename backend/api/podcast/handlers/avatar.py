@@ -203,6 +203,16 @@ async def make_avatar_presentable(
             "avatar_filename": transformed_filename,
             "message": "Avatar transformed into podcast presenter successfully"
         }
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except RuntimeError as rt_err:
+        # Handle missing API keys or configuration errors
+        logger.error(f"[Podcast] Avatar transformation configuration error: {rt_err}")
+        raise HTTPException(
+            status_code=503,  # Service Unavailable
+            detail=f"Image editing service not configured: {str(rt_err)}. Please contact support."
+        )
     except Exception as exc:
         logger.error(f"[Podcast] Avatar transformation failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Avatar transformation failed: {str(exc)}")
