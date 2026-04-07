@@ -69,7 +69,21 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
       }}
     >
       <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 1, sm: 1.5 }} alignItems={{ xs: "flex-start", sm: "center" }} sx={{ mb: 2 }}>
-        <Stack direction="row" spacing={1.5} alignItems="center">
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Box
+            sx={{
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 2px 8px rgba(102, 126, 234, 0.25)",
+            }}
+          >
+            <Typography sx={{ color: "#fff", fontSize: "0.75rem", fontWeight: 700 }}>3</Typography>
+          </Box>
           <Box
             sx={{
               width: 36,
@@ -439,30 +453,16 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                 sx={{
                   p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
-                  background: alpha("#f8fafc", 0.8),
-                  border: "1px solid rgba(15, 23, 42, 0.1)",
+                  background: alpha("#f0f4ff", 0.6),
+                  border: "1px solid rgba(99, 102, 241, 0.2)",
                 }}
               >
-                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.875rem" }, fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
-                  <PhotoCameraIcon fontSize="small" sx={{ color: "#64748b" }} />
-                  Take a Selfie
-                </Typography>
-                <Typography variant="body2" sx={{ color: "#475569", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, lineHeight: 1.6 }}>
-                  Capture a photo using your device camera and use <strong>"Make Presentable"</strong> to enhance it into a professional presenter using AI.
-                </Typography>
-              </Box>
-              <Box
-                sx={{
-                  p: { xs: 1, sm: 1.5 },
-                  borderRadius: 1.5,
-                  background: alpha("#f0f4ff", 0.5),
-                  border: "1px solid rgba(99, 102, 241, 0.15)",
-                }}
-              >
-                <Typography variant="caption" sx={{ color: "#6366f1", fontSize: { xs: "0.7rem", sm: "0.8125rem" }, fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
-                  <InfoIcon fontSize="inherit" />
-                  Camera access required for selfie capture
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <PhotoCameraIcon fontSize="small" sx={{ color: "#667eea" }} />
+                  <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, fontWeight: 600 }}>
+                    Capture a photo using your device camera and use "Make Presentable" to enhance it. Camera access required.
+                  </Typography>
+                </Stack>
               </Box>
             </Stack>
           )}
@@ -570,30 +570,16 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                 sx={{
                   p: { xs: 1, sm: 1.5 },
                   borderRadius: 1.5,
-                  background: alpha("#f8fafc", 0.8),
-                  border: "1px solid rgba(15, 23, 42, 0.1)",
+                  background: alpha("#f0f4ff", 0.6),
+                  border: "1px solid rgba(99, 102, 241, 0.2)",
                 }}
               >
-                <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.875rem" }, fontWeight: 600, mb: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
-                  <CloudUploadIcon fontSize="small" sx={{ color: "#64748b" }} />
-                  Upload Your Photo
-                </Typography>
-                <Typography variant="body2" sx={{ color: "#475569", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, lineHeight: 1.6 }}>
-                  Upload a new photo and use <strong>"Make Presentable"</strong> to enhance it into a professional presenter using AI.
-                </Typography>
-              </Box>
-              <Box
-                sx={{
-                  p: { xs: 1, sm: 1.5 },
-                  borderRadius: 1.5,
-                  background: alpha("#f0f4ff", 0.5),
-                  border: "1px solid rgba(99, 102, 241, 0.15)",
-                }}
-              >
-                <Typography variant="caption" sx={{ color: "#6366f1", fontSize: { xs: "0.7rem", sm: "0.8125rem" }, fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
-                  <InfoIcon fontSize="inherit" />
-                  Supported formats: JPG, PNG, WebP (max 5MB)
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <CloudUploadIcon fontSize="small" sx={{ color: "#667eea" }} />
+                  <Typography variant="body2" sx={{ color: "#0f172a", fontSize: { xs: "0.75rem", sm: "0.8125rem" }, fontWeight: 600 }}>
+                    Upload a photo and use "Make Presentable" to enhance it into a professional presenter. Supported: JPG, PNG, WebP (max 5MB)
+                  </Typography>
+                </Stack>
               </Box>
             </Stack>
           )}

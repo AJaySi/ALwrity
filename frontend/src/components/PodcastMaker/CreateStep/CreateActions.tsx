@@ -225,7 +225,7 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
           disabled={!canSubmit || isSubmitting}
           loading={isSubmitting}
           startIcon={<AutoAwesomeIcon />}
-          tooltip={!canSubmit ? "Enter an idea/URL and add a podcast avatar to continue" : "We'll start AI analysis after this click"}
+          tooltip={!canSubmit ? "Complete all steps: 1) Enter topic/URL, 2) Configure duration & speakers, 3) Add avatar, 4) Select voice" : "We'll start AI analysis after this click"}
         >
           {isSubmitting ? "Analyzing..." : "Analyze & Continue"}
         </PrimaryButton>

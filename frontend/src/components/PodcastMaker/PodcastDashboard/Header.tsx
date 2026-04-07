@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack, Typography } from "@mui/material";
+import { Stack, Typography, Box } from "@mui/material";
 import {
   Mic as MicIcon,
   Info as InfoIcon,
@@ -19,7 +19,27 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode }) 
   const navigate = useNavigate();
 
   return (
-    <Stack sx={{ width: "100%", minWidth: 0 }} spacing={1.5}>
+    <Box
+      sx={{
+        width: "100%",
+        minWidth: 0,
+        background: "linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%)",
+        borderRadius: 3,
+        p: { xs: 2, md: 2.5 },
+        border: "1px solid rgba(102, 126, 234, 0.15)",
+        position: "relative",
+        overflow: "hidden",
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: "3px",
+          background: "linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%)",
+        },
+      }}
+    >
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -27,20 +47,35 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode }) 
         flexWrap="wrap"
         gap={2}
       >
-        <Typography
-          variant="h3"
-          sx={{
-            color: "#1e293b",
-            fontWeight: 800,
-            display: "flex",
-            alignItems: "center",
-            gap: 1.5,
-            fontSize: { xs: "1.5rem", md: "2rem" },
-          }}
-        >
-          <MicIcon fontSize="large" sx={{ color: "#667eea" }} />
-          AI Podcast Maker
-        </Typography>
+        <Stack direction="row" alignItems="center" gap={1.5}>
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: 2,
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 4px 12px rgba(102, 126, 234, 0.3)",
+            }}
+          >
+            <MicIcon sx={{ color: "#fff", fontSize: 24 }} />
+          </Box>
+          <Typography
+            variant="h5"
+            sx={{
+              background: "linear-gradient(135deg, #1e293b 0%, #334155 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              fontWeight: 700,
+              fontSize: { xs: "1.25rem", md: "1.5rem" },
+              letterSpacing: "-0.02em",
+            }}
+          >
+            ALwrity Podcast Maker
+          </Typography>
+        </Stack>
         <Stack
           direction="row"
           spacing={1}
@@ -114,14 +149,7 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode }) 
           </PrimaryButton>
         </Stack>
       </Stack>
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={{ display: { xs: "none", sm: "block" } }}
-      >
-        Create professional podcast episodes with AI-powered research, smart scriptwriting, and natural voice narration
-      </Typography>
-    </Stack>
+    </Box>
   );
 };
 

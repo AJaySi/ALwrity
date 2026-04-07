@@ -26,20 +26,28 @@ export const ANALYSIS_TABS: TabConfig[] = [
 const getTabButtonStyles = (isActive: boolean) => ({
   background: isActive
     ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-    : "transparent",
-  color: isActive ? "#fff" : "#64748b",
-  border: isActive ? "none" : "1px solid rgba(0,0,0,0.1)",
+    : "rgba(255, 255, 255, 0.8)",
+  color: isActive ? "#fff" : "#475569",
+  border: isActive ? "none" : "1px solid rgba(102, 126, 234, 0.2)",
   borderRadius: 2,
-  px: 2,
-  py: 1,
-  fontSize: "0.75rem",
+  px: 2.5,
+  py: 1.25,
+  fontSize: "0.8125rem",
   fontWeight: 600,
   textTransform: "none" as const,
   transition: "all 0.2s ease",
+  boxShadow: isActive
+    ? "0 4px 12px rgba(102, 126, 234, 0.35)"
+    : "0 2px 4px rgba(0, 0, 0, 0.04)",
   "&:hover": {
     background: isActive
       ? "linear-gradient(135deg, #764ba2 0%, #667eea 100%)"
-      : "rgba(102,126,234,0.08)",
+      : "rgba(102, 126, 234, 0.12)",
+    border: isActive ? "none" : "1px solid rgba(102, 126, 234, 0.35)",
+    boxShadow: isActive
+      ? "0 6px 16px rgba(102, 126, 234, 0.4)"
+      : "0 4px 8px rgba(102, 126, 234, 0.15)",
+    transform: "translateY(-1px)",
   },
 });
 
@@ -50,18 +58,27 @@ interface AnalysisTabNavProps {
 
 export const AnalysisTabNav: React.FC<AnalysisTabNavProps> = ({ activeTab, onTabChange }) => {
   return (
-    <Stack direction="row" flexWrap="wrap" gap={1}>
-      {ANALYSIS_TABS.map((tab) => (
-        <Button
-          key={tab.id}
-          onClick={() => onTabChange(tab.id)}
-          startIcon={tab.icon}
-          sx={getTabButtonStyles(activeTab === tab.id)}
-        >
-          {tab.label}
-        </Button>
-      ))}
-    </Stack>
+    <Box
+      sx={{
+        background: "linear-gradient(135deg, rgba(102, 126, 234, 0.04) 0%, rgba(118, 75, 162, 0.04) 100%)",
+        borderRadius: 2.5,
+        p: 1.5,
+        border: "1px solid rgba(102, 126, 234, 0.1)",
+      }}
+    >
+      <Stack direction="row" flexWrap="wrap" gap={1}>
+        {ANALYSIS_TABS.map((tab) => (
+          <Button
+            key={tab.id}
+            onClick={() => onTabChange(tab.id)}
+            startIcon={tab.icon}
+            sx={getTabButtonStyles(activeTab === tab.id)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </Stack>
+    </Box>
   );
 };
 

@@ -8,7 +8,6 @@ import { getLatestBrandAvatar } from "../../api/brandAssets";
 import { VoiceSelector } from "../shared/VoiceSelector";
 
 // Imported Components
-import { CreateHeader } from "./CreateStep/CreateHeader";
 import { TopicUrlInput, TOPIC_PLACEHOLDERS } from "./CreateStep/TopicUrlInput";
 import { PodcastConfiguration } from "./CreateStep/PodcastConfiguration";
 import { AvatarSelector } from "./CreateStep/AvatarSelector";
@@ -280,7 +279,13 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     brandAvatarBlobUrl                    // Brand avatar blob URL
   );
 
-  const canSubmit = Boolean(topicInput.trim() && hasAvatar);
+  // Check if all required inputs are provided
+  const hasTopic = Boolean(topicInput.trim());
+  const hasVoice = Boolean(selectedVoiceId);
+  const hasDuration = Boolean(duration > 0 && duration <= 10);
+  const hasSpeakers = Boolean(speakers >= 1 && speakers <= 2);
+
+  const canSubmit = Boolean(hasTopic && hasAvatar && hasVoice && hasDuration && hasSpeakers);
 
   const submit = async () => {
     if (!canSubmit || isSubmitting) return;
@@ -521,14 +526,6 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
       }}
     >
       <Stack spacing={3.5}>
-        <CreateHeader
-          subscription={subscription}
-          duration={duration}
-          speakers={speakers}
-          knobs={knobs}
-          estimatedCost={estimatedCost}
-        />
-
         <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="stretch">
           <Box sx={{ flex: 1 }}>
             <TopicUrlInput
@@ -540,6 +537,10 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
               placeholderIndex={placeholderIndex}
               loading={enhancingTopic}
               loadingMessage={enhanceTopicMessage}
+              estimatedCost={estimatedCost}
+              duration={duration}
+              speakers={speakers}
+              knobs={knobs}
             />
           </Box>
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Box, Typography, TextField, ToggleButton, ToggleButtonGroup, alpha } from "@mui/material";
-import { Person as PersonIcon, Group as GroupIcon } from "@mui/icons-material";
+import { Person as PersonIcon, Group as GroupIcon, Settings as SettingsIcon } from "@mui/icons-material";
 
 interface PodcastConfigurationProps {
   duration: number;
@@ -35,22 +35,72 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
         flex: { xs: "1 1 auto", lg: "0 0 320px" },
         width: { xs: "100%", lg: "320px" },
         p: 3,
-        borderRadius: 2,
-        background: alpha("#f8fafc", 0.5),
-        border: "1px solid rgba(15, 23, 42, 0.06)",
+        borderRadius: 3,
+        background: "#ffffff",
+        border: "1px solid rgba(102, 126, 234, 0.15)",
         height: "100%",
         display: "flex",
         flexDirection: "column",
+        boxShadow: "0 4px 20px rgba(102, 126, 234, 0.08)",
+        position: "relative",
+        overflow: "hidden",
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: "3px",
+          background: "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
+        },
       }}
     >
-      <Typography variant="subtitle2" sx={{ mb: 2.5, color: "#0f172a", fontWeight: 600, fontSize: "0.9375rem" }}>
-        Basic Configuration
-      </Typography>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2.5 }}>
+        <Box
+          sx={{
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 2px 8px rgba(102, 126, 234, 0.25)",
+          }}
+        >
+          <Typography sx={{ color: "#fff", fontSize: "0.75rem", fontWeight: 700 }}>2</Typography>
+        </Box>
+        <Box
+          sx={{
+            width: 32,
+            height: 32,
+            borderRadius: 1.5,
+            background: "linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 2px 8px rgba(102, 126, 234, 0.15)",
+          }}
+        >
+          <SettingsIcon sx={{ color: "#667eea", fontSize: "1rem" }} />
+        </Box>
+        <Typography 
+          variant="subtitle1" 
+          sx={{ 
+            color: "#0f172a", 
+            fontWeight: 700, 
+            fontSize: "1rem",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          Basic Configuration
+        </Typography>
+      </Stack>
       
       <Stack spacing={3}>
         {/* Duration Input */}
         <Box>
-          <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#64748b", fontWeight: 500 }}>
+          <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#64748b", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
             Duration (minutes)
           </Typography>
           <TextField
@@ -64,27 +114,30 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
             fullWidth
             sx={{
               "& .MuiOutlinedInput-root": {
-                backgroundColor: "#ffffff",
-                border: "1px solid rgba(15, 23, 42, 0.12)",
+                backgroundColor: "#f8fafc",
+                border: "2px solid rgba(102, 126, 234, 0.2)",
                 borderRadius: 2,
                 transition: "all 0.2s",
                 "&:hover": { 
-                  borderColor: "rgba(102, 126, 234, 0.6)",
+                  borderColor: "rgba(102, 126, 234, 0.4)",
+                  boxShadow: "0 2px 8px rgba(102, 126, 234, 0.1)",
                 },
                 "&.Mui-focused": {
                   borderColor: "#667eea",
-                  boxShadow: "0 0 0 3px rgba(102, 126, 234, 0.1)",
+                  boxShadow: "0 0 0 4px rgba(102, 126, 234, 0.1)",
+                  backgroundColor: "#ffffff",
                 },
               },
               "& .MuiOutlinedInput-input": {
-                color: "#0f172a",
+                color: "#1e293b",
                 fontWeight: 600,
-                fontSize: "0.9375rem",
+                fontSize: "1rem",
               },
               "& .MuiFormHelperText-root": {
                 color: duration > 10 ? "#dc2626" : "#64748b",
                 fontSize: "0.75rem",
-                mt: 0.75,
+                mt: 1,
+                fontWeight: 500,
               },
             }}
           />
@@ -92,7 +145,7 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
 
         {/* Speakers Toggle */}
         <Box>
-          <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#64748b", fontWeight: 500 }}>
+          <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#64748b", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
             Number of Speakers
           </Typography>
           <ToggleButtonGroup
@@ -102,8 +155,8 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
             fullWidth
             size="small"
             sx={{
-              backgroundColor: "#ffffff",
-              border: "1px solid rgba(15, 23, 42, 0.12)",
+              backgroundColor: "#f8fafc",
+              border: "2px solid rgba(102, 126, 234, 0.2)",
               borderRadius: 2,
               p: 0.5,
               "& .MuiToggleButton-root": {
@@ -116,14 +169,15 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
                 py: 1,
                 transition: "all 0.2s ease",
                 "&:hover": {
-                  backgroundColor: alpha("#64748b", 0.05),
+                  backgroundColor: alpha("#667eea", 0.08),
                 },
                 "&.Mui-selected": {
-                  backgroundColor: alpha("#667eea", 0.1),
-                  color: "#667eea",
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  color: "#ffffff",
                   fontWeight: 600,
+                  boxShadow: "0 4px 12px rgba(102, 126, 234, 0.3)",
                   "&:hover": {
-                    backgroundColor: alpha("#667eea", 0.15),
+                    background: "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
                   },
                 },
               },
@@ -142,7 +196,7 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
               </Stack>
             </ToggleButton>
           </ToggleButtonGroup>
-          <Typography variant="caption" sx={{ display: "block", mt: 0.75, color: "#64748b", fontSize: "0.75rem" }}>
+          <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#64748b", fontSize: "0.75rem", fontWeight: 500 }}>
             {speakers === 1 ? "Single host format" : "Host and guest conversation"}
           </Typography>
         </Box>

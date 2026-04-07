@@ -16,7 +16,7 @@ CORE_ROUTER_REGISTRY = [
     {"name": "component_logic", "module": "api.component_logic", "attr": "router", "features": {"all", "core"}},
     {"name": "subscription", "module": "api.subscription", "attr": "router", "features": {"all", "core", "podcast", "blog-writer", "youtube"}},
     {"name": "step3_research", "module": "api.onboarding_utils.step3_routes", "attr": "router", "features": {"all", "core"}},
-    {"name": "step4_assets", "module": "api.onboarding_utils.step4_asset_routes", "attr": "router", "features": {"all", "core"}},
+    {"name": "step4_assets", "module": "api.onboarding_utils.step4_asset_routes", "attr": "router", "features": {"all", "core", "podcast"}},
     {"name": "step4_persona", "module": "api.onboarding_utils.step4_persona_routes_optimized", "attr": "router", "features": {"all", "core"}},
     {"name": "gsc_auth", "module": "routers.gsc_auth", "attr": "router", "features": {"all", "core", "seo"}},
     {"name": "wordpress_oauth", "module": "routers.wordpress_oauth", "attr": "router", "features": {"all", "core"}},
@@ -115,10 +115,6 @@ class RouterManager:
         # If "all" is enabled, include everything
         if "all" in enabled_features:
             return True
-        
-        # Skip core routers in podcast-only mode (they require non-podcast features)
-        if enabled_features == {"podcast"}:
-            return False
         
         # If no required features specified, include by default
         if not required_features:
