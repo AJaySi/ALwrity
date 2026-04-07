@@ -178,25 +178,83 @@ COST OPTIMIZATION:
     scenes_data = data.get("scenes") or []
     if not isinstance(scenes_data, list):
         raise HTTPException(status_code=500, detail="LLM response missing scenes array")
+    
+    if len(scenes_data) == 0:
+        logger.warning("[ScriptGen] LLM returned empty scenes array")
+        raise HTTPException(status_code=500, detail="LLM returned no scenes - please try again")
+
+    logger.warning(f"[ScriptGen] Processing {len(scenes_data)} scenes from LLM response")
 
     valid_emotions = {"neutral", "happy", "excited", "serious", "curious", "confident"}
 
     # Normalize scenes
     scenes: list[PodcastScene] = []
+    total_lines_input = 0
+    total_lines_output = 0
+    dropped_empty_lines = 0
+    
     for idx, scene in enumerate(scenes_data):
+        if not isinstance(scene, dict):
+            logger.warning(f"[ScriptGen] Scene {idx} is not a dict, skipping")
+            continue
+            
         title = scene.get("title") or f"Scene {idx + 1}"
         duration = int(scene.get("duration") or max(30, (request.duration_minutes * 60) // max(1, len(scenes_data))))
         emotion = scene.get("emotion") or "neutral"
         if emotion not in valid_emotions:
+            logger.warning(f"[ScriptGen] Invalid emotion '{emotion}' in scene {idx}, defaulting to 'neutral'")
             emotion = "neutral"
         lines_raw = scene.get("lines") or []
+        total_lines_input += len(lines_raw)
         lines: list[PodcastSceneLine] = []
-        for line in lines_raw:
+        
+        for line_idx, line in enumerate(lines_raw):
+            if not isinstance(line, dict):
+                logger.warning(f"[ScriptGen] Line {line_idx} in scene {idx} is not a dict, skipping")
+                continue
+                
             speaker = line.get("speaker") or ("Host" if len(lines) % request.speakers == 0 else "Guest")
             text = line.get("text") or ""
-            emphasis = line.get("emphasis", False)
+            
+            # Handle emphasis - convert various values to boolean
+            emphasis_raw = line.get("emphasis", False)
+            if isinstance(emphasis_raw, bool):
+                emphasis = emphasis_raw
+            elif isinstance(emphasis_raw, str):
+                emphasis = emphasis_raw.lower() in ("true", "yes", "1")
+                if emphasis_raw.lower() not in ("true", "false", "yes", "no", "1", "0"):
+                    logger.debug(f"[ScriptGen] Unusual emphasis value '{emphasis_raw}' converted to {emphasis}")
+            else:
+                emphasis = bool(emphasis_raw)
+            
+            # Generate line ID if not provided
+            line_id = line.get("id") or f"line-{idx + 1}-{line_idx + 1}"
+            
+            # Get used fact IDs if provided
+            used_fact_ids = line.get("usedFactIds") or line.get("used_fact_ids") or None
+            
             if text:
-                lines.append(PodcastSceneLine(speaker=speaker, text=text, emphasis=emphasis))
+                lines.append(PodcastSceneLine(
+                    speaker=speaker, 
+                    text=text, 
+                    emphasis=emphasis,
+                    id=line_id,
+                    usedFactIds=used_fact_ids
+                ))
+                total_lines_output += 1
+            else:
+                dropped_empty_lines += 1
+                logger.debug(f"[ScriptGen] Dropped empty line {line_idx} in scene {idx}")
+                
+        # Log scene status
+        if scenes_data and isinstance(scene, dict):
+            image_url_raw = scene.get("imageUrl") or scene.get("image_url")
+            audio_url_raw = scene.get("audioUrl") or scene.get("audio_url")
+            if image_url_raw:
+                logger.warning(f"[ScriptGen] Scene {idx} has imageUrl - will be reset to None")
+            if audio_url_raw:
+                logger.warning(f"[ScriptGen] Scene {idx} has audioUrl - will be reset to None")
+                
         scenes.append(
             PodcastScene(
                 id=scene.get("id") or f"scene-{idx + 1}",
@@ -205,8 +263,16 @@ COST OPTIMIZATION:
                 lines=lines,
                 approved=False,
                 emotion=emotion,
+                imageUrl=None,  # Will be generated later
+                audioUrl=None,  # Will be generated later
+                imagePrompt=None,  # Will be generated during image generation
             )
         )
+    
+    # Summary logging
+    logger.warning(f"[ScriptGen] Script generated: {len(scenes)} scenes, {total_lines_output}/{total_lines_input} lines")
+    if dropped_empty_lines > 0:
+        logger.warning(f"[ScriptGen] Dropped {dropped_empty_lines} empty lines")
 
     return PodcastScriptResponse(scenes=scenes)
 

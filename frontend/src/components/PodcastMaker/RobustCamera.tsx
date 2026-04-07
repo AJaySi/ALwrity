@@ -47,8 +47,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
   
   // Cleanup function - stops all tracks and clears video
   const cleanupCamera = useCallback(() => {
-    console.log('[RobustCamera] Cleaning up camera');
-    
     // Reset attachment tracking
     streamAttachedRef.current = false;
     
@@ -62,7 +60,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     // Stop all tracks in the stream
     if (stream) {
       stream.getTracks().forEach(track => {
-        console.log('[RobustCamera] Stopping track:', track.kind, track.label);
         track.stop();
       });
     }
@@ -80,28 +77,23 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     
     // Early exit conditions
     if (!video || !stream) {
-      console.log('[RobustCamera] Cannot attach - video:', !!video, 'stream:', !!stream);
       streamAttachedRef.current = false;
       return;
     }
     
     // Skip if already attached to this stream
     if (video.srcObject === stream && streamAttachedRef.current) {
-      console.log('[RobustCamera] Stream already attached to video');
       return;
     }
     
-    console.log('[RobustCamera] Attaching stream to video element');
     streamAttachedRef.current = true;
     
     // Set up event handlers
     const handleLoadedMetadata = () => {
-      console.log('[RobustCamera] Video metadata loaded, playing...');
       if (!isMountedRef.current) return;
       
       video.play()
         .then(() => {
-          console.log('[RobustCamera] Video playing successfully');
           if (isMountedRef.current) {
             setCameraReady(true);
           }
@@ -130,7 +122,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     
     // Cleanup function - only remove listeners, don't detach stream
     return () => {
-      console.log('[RobustCamera] Cleaning up video event listeners');
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('error', handleError);
     };
@@ -141,22 +132,18 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     let isCancelled = false;
     
     if (open) {
-      console.log('[RobustCamera] Dialog opened');
       isMountedRef.current = true;
       
       const initCamera = async () => {
         // Prevent double initialization
         if (isInitializingRef.current) {
-          console.log('[RobustCamera] Already initializing, skipping');
           return;
         }
         
         if (isCancelled) {
-          console.log('[RobustCamera] Cancelled before initialization');
           return;
         }
         
-        console.log('[RobustCamera] Starting camera initialization');
         isInitializingRef.current = true;
         setLoading(true);
         setError(null);
@@ -164,7 +151,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
         
         // Clean up any existing stream first
         if (stream) {
-          console.log('[RobustCamera] Cleaning up existing stream first');
           stream.getTracks().forEach(track => track.stop());
           setStream(null);
         }
@@ -179,18 +165,15 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
             audio: false,
           };
 
-          console.log('[RobustCamera] Requesting camera with constraints:', constraints);
           const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
           
           // Check if cancelled or unmounted after await
           if (isCancelled || !isMountedRef.current) {
-            console.log('[RobustCamera] Cancelled after stream obtained, stopping stream');
             mediaStream.getTracks().forEach(track => track.stop());
             isInitializingRef.current = false;
             return;
           }
           
-          console.log('[RobustCamera] Camera stream obtained:', mediaStream.id, 'Tracks:', mediaStream.getTracks().length);
           setStream(mediaStream);
           setLoading(false);
           
@@ -228,13 +211,11 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
       }, 100);
       
       return () => {
-        console.log('[RobustCamera] Cleanup from open effect');
         isCancelled = true;
         clearTimeout(timer);
       };
     } else {
       // Dialog closed - cleanup
-      console.log('[RobustCamera] Dialog closed, cleaning up');
       cleanupCamera();
     }
   }, [open]); // Only depend on open to prevent re-runs
@@ -244,8 +225,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     let isCancelled = false;
     
     if (open && stream) {
-      console.log('[RobustCamera] Facing mode changed to', facingMode, ', reinitializing');
-      
       const reinitCamera = async () => {
         cleanupCamera();
         
@@ -304,7 +283,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      console.log('[RobustCamera] Component unmounting');
       isMountedRef.current = false;
       cleanupCamera();
     };
@@ -313,7 +291,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
   // Capture photo
   const capturePhoto = useCallback(() => {
     if (!videoElementRef.current || !canvasRef.current || !cameraReady) {
-      console.log('[RobustCamera] Cannot capture: not ready');
       return;
     }
 
@@ -323,8 +300,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     // Set canvas dimensions to match video
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
-    
-    console.log('[RobustCamera] Capturing photo:', canvas.width, 'x', canvas.height);
     
     // Draw video frame to canvas
     const context = canvas.getContext('2d');
@@ -339,7 +314,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
       
       // Convert to data URL
       const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      console.log('[RobustCamera] Photo captured');
       
       onCapture(imageDataUrl);
       onClose();
@@ -348,7 +322,6 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
 
   // Flip camera
   const flipCamera = useCallback(() => {
-    console.log('[RobustCamera] Flipping camera');
     setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
   }, []);
 

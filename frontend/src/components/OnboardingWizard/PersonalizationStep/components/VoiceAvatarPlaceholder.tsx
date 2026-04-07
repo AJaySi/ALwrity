@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Box, Typography, Paper, Stack, Button, Alert, TextField, CircularProgress, Slider, FormControlLabel, Checkbox, MenuItem, Tooltip, Chip, Divider, Grid, IconButton, Modal, Fade, Backdrop } from '@mui/material';
+import { Box, Typography, Paper, Stack, Button, Alert, TextField, CircularProgress, Slider, FormControlLabel, Checkbox, MenuItem, Tooltip, Chip, Divider, Grid, IconButton, Modal, Fade, Backdrop, LinearProgress } from '@mui/material';
 import { keyframes } from '@mui/system';
-import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo } from '@mui/icons-material';
+import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo, Headphones, Article, VideoLibrary, TrendingUp, CheckCircle, RecordVoiceOver } from '@mui/icons-material';
 import { createVoiceClone, createVoiceDesign, getLatestVoiceClone, setBrandVoice } from '../../../../api/brandAssets';
 import { OperationButton } from '../../../shared/OperationButton';
 
@@ -10,6 +10,38 @@ const pulse = keyframes`
   50% { transform: scale(1.15); }
   100% { transform: scale(1); }
 `;
+
+// Sequential educational messages - displayed one after another during cloning
+const VOICE_CLONE_PROGRESS_MESSAGES = [
+  { title: "Audio Analysis", message: "Extracting audio features from your sample recording..." },
+  { title: "Voice Fingerprint", message: "Creating a unique voice fingerprint with 100+ characteristics..." },
+  { title: "Neural Training", message: "Training neural networks to understand your voice patterns..." },
+  { title: "Prosody Mapping", message: "Mapping rhythm, stress, and intonation for natural speech..." },
+  { title: "Voice Synthesis", message: "Building the text-to-speech engine with your voice model..." },
+  { title: "Quality Assurance", message: "Validating audio quality and natural voice characteristics..." },
+  { title: "Final Touches", message: "Optimizing for clarity and preparing your voice clone..." },
+];
+
+const VOICE_USE_CASES = [
+  { icon: <Podcasts />, title: "Podcasts", description: "Episode intros, narration, and voice-overs" },
+  { icon: <Article />, title: "Blog to Audio", description: "Convert articles into engaging audio" },
+  { icon: <VideoLibrary />, title: "YouTube Videos", description: "Video voice-overs and tutorials" },
+  { icon: <Headphones />, title: "Audio Content", description: "Audiobooks, courses, and guides" },
+];
+
+const BRAND_VOICE_BENEFITS = [
+  { icon: <RecordVoiceOver />, title: "Brand Consistency", description: "Same voice across all content channels" },
+  { icon: <TrendingUp />, title: "Time Efficient", description: "Hours of audio from minutes of recording" },
+  { icon: <CheckCircle />, title: "Professional Quality", description: "Studio-quality output without studio costs" },
+  { icon: <AutoAwesome />, title: "Instant Generation", description: "Generate speech from text instantly" },
+];
+
+const WHY_BRAND_VOICE_MATTERS = [
+  "Studies show consistent audio branding increases brand recognition by 80%",
+  "Voice cloning saves an average of 15+ hours per month vs traditional recording",
+  "Professional voice actors cost $200-500/hour – your clone is always available",
+  "Consistent voice builds trust and authority with your audience",
+];
 
 export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?: () => void }> = ({ domainName, onVoiceSet }) => {
   const [recording, setRecording] = useState(false);
@@ -31,8 +63,9 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
   const [voiceDescription, setVoiceDescription] = useState('');
 
   // Debounce text inputs for token calculation to prevent button flickering
-  const [debouncedPreviewText, setDebouncedPreviewText] = useState(previewText);
-  const [debouncedVoiceDescription, setDebouncedVoiceDescription] = useState(voiceDescription);
+  // Initialize with the actual default values, not the state variables (to avoid closure issues)
+  const [debouncedPreviewText, setDebouncedPreviewText] = useState('Hello! Welcome to Alwrity! This is a preview of your cloned voice. I hope you enjoy it!');
+  const [debouncedVoiceDescription, setDebouncedVoiceDescription] = useState('');
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -50,6 +83,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
 
   const [cloning, setCloning] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [progressMessageIndex, setProgressMessageIndex] = useState(0);
   const STORAGE_KEY = 'voice_clone_result_url';
   const STORAGE_BACKUP_KEY = 'voice_clone_result_url_backup';
 
@@ -178,6 +212,23 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
           return () => clearTimeout(timer);
       }
   }, [success, error]);
+
+  // Cycle progress messages during cloning - sequential, not repeating
+  useEffect(() => {
+    if (!cloning) {
+      setProgressMessageIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setProgressMessageIndex((prev) => {
+        if (prev < VOICE_CLONE_PROGRESS_MESSAGES.length - 1) {
+          return prev + 1;
+        }
+        return prev; // Stay at last message
+      });
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [cloning]);
 
   const handleSetAsBrandVoice = async () => {
       if (!resultAudioUrl) return;
@@ -1179,6 +1230,165 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                   Got it, let's create!
                 </Button>
               </Box>
+            </Stack>
+          </Box>
+        </Fade>
+      </Modal>
+
+      {/* Voice Cloning Progress Modal */}
+      <Modal
+        open={cloning}
+        closeAfterTransition
+        BackdropComponent={Backdrop}
+        BackdropProps={{ timeout: 500 }}
+      >
+        <Fade in={cloning}>
+          <Box sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '95%', sm: '90%', md: 520 },
+            maxWidth: '95vw',
+            bgcolor: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            borderRadius: { xs: '16px', md: '24px' },
+            boxShadow: 24,
+            p: { xs: 2, sm: 2.5, md: 3 },
+            outline: 'none',
+            maxHeight: { xs: '90vh', md: '85vh' },
+            overflowY: 'auto',
+          }}>
+            <Stack spacing={2}>
+              {/* Progress Header */}
+              <Box sx={{ textAlign: 'center', py: 1 }}>
+                <Box sx={{ position: 'relative', display: 'inline-flex', mb: 1.5 }}>
+                  <CircularProgress size={60} thickness={3} sx={{ color: '#7C3AED' }} />
+                  <Box sx={{ position: 'absolute', top: 0, left: 0, bottom: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <GraphicEq sx={{ color: '#7C3AED', fontSize: 24 }} />
+                  </Box>
+                </Box>
+                <Typography variant="subtitle1" sx={{ color: '#a78bfa', fontWeight: 600 }}>
+                  {VOICE_CLONE_PROGRESS_MESSAGES[Math.min(progressMessageIndex, VOICE_CLONE_PROGRESS_MESSAGES.length - 1)].title}
+                </Typography>
+              </Box>
+
+              {/* Sequential Progress Steps */}
+              <Box sx={{ width: '100%', px: 1 }}>
+                <Stack spacing={0.5}>
+                  {VOICE_CLONE_PROGRESS_MESSAGES.slice(0, progressMessageIndex + 1).map((msg, idx) => {
+                    const isCompleted = idx < progressMessageIndex;
+                    const isCurrent = idx === progressMessageIndex;
+                    return (
+                      <Stack key={idx} direction="row" spacing={1} alignItems="flex-start">
+                        <Box sx={{ 
+                          width: 20, 
+                          height: 20, 
+                          borderRadius: '50%', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          bgcolor: isCompleted ? '#10b981' : isCurrent ? '#7C3AED' : 'rgba(255,255,255,0.1)',
+                          flexShrink: 0,
+                        }}>
+                          {isCompleted ? (
+                            <CheckCircle sx={{ fontSize: 14, color: '#fff' }} />
+                          ) : isCurrent ? (
+                            <CircularProgress size={12} sx={{ color: '#fff' }} />
+                          ) : (
+                            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.3)' }} />
+                          )}
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="caption" sx={{ 
+                            color: isCompleted ? 'rgba(255,255,255,0.5)' : isCurrent ? '#a78bfa' : 'rgba(255,255,255,0.4)', 
+                            fontWeight: isCurrent ? 600 : 400,
+                            fontSize: '0.75rem',
+                            textDecoration: isCompleted ? 'line-through' : 'none',
+                          }}>
+                            {msg.title}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    );
+                  })}
+                </Stack>
+              </Box>
+
+              <LinearProgress
+                sx={{
+                  height: 4,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(124, 58, 237, 0.2)',
+                  '& .MuiLinearProgress-bar': { bgcolor: '#7C3AED', borderRadius: 2 },
+                }}
+              />
+
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+
+              {/* Use Cases Section */}
+              <Box>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.65rem', mb: 1, display: 'block' }}>
+                  Where You'll Use Your Voice
+                </Typography>
+                <Grid container spacing={1}>
+                  {VOICE_USE_CASES.map((useCase, idx) => (
+                    <Grid item xs={6} key={idx}>
+                      <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.05)', height: '100%' }}>
+                        <Box sx={{ color: '#7C3AED', mb: 0.5, fontSize: '1.25rem' }}>{useCase.icon}</Box>
+                        <Typography variant="caption" sx={{ color: '#fff', fontWeight: 600, display: 'block', fontSize: '0.75rem' }}>
+                          {useCase.title}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.65rem', lineHeight: 1.3 }}>
+                          {useCase.description}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+
+              {/* Benefits Section */}
+              <Box>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.65rem', mb: 1, display: 'block' }}>
+                  Why Brand Voice Matters
+                </Typography>
+                <Stack spacing={0.5}>
+                  {BRAND_VOICE_BENEFITS.map((benefit, idx) => (
+                    <Stack key={idx} direction="row" spacing={1} alignItems="flex-start">
+                      <Box sx={{ color: '#10b981', mt: 0.25, fontSize: 16 }}>{benefit.icon}</Box>
+                      <Box>
+                        <Typography variant="caption" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.75rem' }}>
+                          {benefit.title}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', display: 'block' }}>
+                          {benefit.description}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+
+              {/* Marketing Insights */}
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(124, 58, 237, 0.15)', border: '1px solid rgba(124, 58, 237, 0.3)' }}>
+                <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                  💡 Did You Know?
+                </Typography>
+                <Stack spacing={0.5}>
+                  {WHY_BRAND_VOICE_MATTERS.slice(0, 2).map((fact, idx) => (
+                    <Typography key={idx} variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.7rem', lineHeight: 1.5 }}>
+                      • {fact}
+                    </Typography>
+                  ))}
+                </Stack>
+              </Box>
+
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontSize: '0.7rem' }}>
+                This usually takes 10-30 seconds depending on your sample length
+              </Typography>
             </Stack>
           </Box>
         </Fade>

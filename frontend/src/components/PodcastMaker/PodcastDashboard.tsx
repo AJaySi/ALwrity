@@ -26,7 +26,7 @@ const PodcastDashboard: React.FC = () => {
   useEffect(() => {
     try {
       const skip = shouldSkipOnboarding();
-      console.log('PodcastDashboard entry: shouldSkipOnboarding =', skip);
+      // Skip onboarding in podcast-only mode
     } catch (e) {
       console.warn('PodcastDashboard entry: gating log error', e);
     }
@@ -224,6 +224,7 @@ const PodcastDashboard: React.FC = () => {
                 onCreate={workflow.handleCreate}
                 defaultKnobs={DEFAULT_KNOBS}
                 isSubmitting={workflow.isAnalyzing}
+                announcement={workflow.announcement}
               />
               <RecentEpisodesPreview onSelectEpisode={() => {}} />
             </>

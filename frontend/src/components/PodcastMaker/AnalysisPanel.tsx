@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { Stack, Box, Typography, Divider, Chip, alpha, Button } from "@mui/material";
-import { Psychology as PsychologyIcon, Insights as InsightsIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Add as AddIcon, EditNote as EditNoteIcon, Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, RecordVoiceOver as VoiceIcon, Lightbulb as TipsIcon, Quiz as TalkIcon } from "@mui/icons-material";
+import { Psychology as PsychologyIcon, Person as PersonIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, Lightbulb as TipsIcon, Article as ArticleIcon } from "@mui/icons-material";
 import { PodcastAnalysis, PodcastEstimate } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
 import { aiApiClient } from "../../api/client";
-import { InputsTab, AudienceTab, OutlineTab, TitlesTab, HookTab, TakeawaysTab, GuestTab, CTATab } from "./AnalysisPanel/tabs";
+import { InputsTab, AudienceTab, OutlineTab, EpisodeDetailsTab, TakeawaysTab, GuestTab } from "./AnalysisPanel/tabs";
 
 interface AnalysisPanelProps {
   analysis: PodcastAnalysis | null;
@@ -19,7 +19,7 @@ interface AnalysisPanelProps {
   onUpdateAnalysis?: (updatedAnalysis: PodcastAnalysis) => void;
 }
 
-type TabId = 'inputs' | 'audience' | 'content' | 'outline' | 'titles' | 'hook' | 'takeaways' | 'cta' | 'guest';
+type TabId = 'inputs' | 'audience' | 'outline' | 'details' | 'takeaways' | 'guest';
 
 interface TabConfig {
   id: TabId;
@@ -76,33 +76,42 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
   const tabs: TabConfig[] = [
     { id: 'inputs', label: 'Your Inputs', icon: <InputIcon /> },
-    { id: 'audience', label: 'Audience', icon: <GroupsIcon /> },
-    { id: 'content', label: 'Content', icon: <ListAltIcon /> },
+    { id: 'audience', label: 'Audience & Keywords', icon: <GroupsIcon /> },
     { id: 'outline', label: 'Outline', icon: <ListAltIcon /> },
-    { id: 'titles', label: 'Titles', icon: <EditNoteIcon /> },
-    { id: 'hook', label: 'Hook', icon: <AutoAwesomeIcon /> },
+    { id: 'details', label: 'Titles, Hook & CTA', icon: <ArticleIcon /> },
     { id: 'takeaways', label: 'Takeaways', icon: <TipsIcon /> },
-    { id: 'guest', label: 'Guest', icon: <PersonIcon /> },
-    { id: 'cta', label: 'CTA', icon: <VoiceIcon /> },
+    { id: 'guest', label: 'Guest Talking Points', icon: <PersonIcon /> },
   ];
 
   const tabButtonStyles = (isActive: boolean) => ({
     background: isActive 
       ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" 
-      : "transparent",
-    color: isActive ? "#fff" : "#64748b",
-    border: isActive ? "none" : "1px solid rgba(0,0,0,0.1)",
-    borderRadius: 2,
-    px: 2,
-    py: 1,
-    fontSize: "0.75rem",
+      : "#f8fafc",
+    color: isActive ? "#fff" : "#475569",
+    border: isActive 
+      ? "none" 
+      : "1px solid #e2e8f0",
+    borderRadius: 2.5,
+    px: 2.5,
+    py: 1.25,
+    fontSize: "0.8rem",
     fontWeight: 600,
     textTransform: "none" as const,
-    transition: "all 0.2s ease",
+    transition: "all 0.25s ease",
+    boxShadow: isActive 
+      ? "0 4px 12px rgba(102, 126, 234, 0.3)" 
+      : "0 1px 2px rgba(0, 0, 0, 0.05)",
     "&:hover": {
       background: isActive 
         ? "linear-gradient(135deg, #764ba2 0%, #667eea 100%)" 
-        : "rgba(102,126,234,0.08)",
+        : "#e2e8f0",
+      transform: isActive ? "translateY(-1px)" : "none",
+      boxShadow: isActive 
+        ? "0 6px 16px rgba(102, 126, 234, 0.35)" 
+        : "0 2px 4px rgba(0, 0, 0, 0.08)",
+    },
+    "&:active": {
+      transform: "translateY(0)",
     },
   });
 
@@ -115,7 +124,6 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
   const handleSave = () => {
     if (editedAnalysis && onUpdateAnalysis) {
-      console.log('[AnalysisPanel] Saving updated analysis:', editedAnalysis);
       onUpdateAnalysis(JSON.parse(JSON.stringify(editedAnalysis)));
     }
     setIsEditing(false);
@@ -253,8 +261,6 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
   if (!analysis) return null;
   const currentAnalysis = isEditing && editedAnalysis ? editedAnalysis : analysis;
-
-  console.log('[AnalysisPanel] Rendering:', { isEditing, hasEditedAnalysis: !!editedAnalysis });
 
   return (
     <GlassyCard
@@ -419,17 +425,13 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             />
           )}
 
-          {activeTab === 'titles' && (
-            <TitlesTab 
+          {activeTab === 'details' && (
+            <EpisodeDetailsTab 
               analysis={currentAnalysis} 
               isEditing={isEditing}
               handleRemoveTitle={handleRemoveTitle}
               handleAddTitle={handleAddTitle}
             />
-          )}
-
-          {activeTab === 'hook' && (
-            <HookTab analysis={currentAnalysis} />
           )}
 
           {activeTab === 'takeaways' && (
@@ -438,10 +440,6 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
           {activeTab === 'guest' && (
             <GuestTab analysis={currentAnalysis} />
-          )}
-
-          {activeTab === 'cta' && (
-            <CTATab analysis={currentAnalysis} />
           )}
         </Box>
       </Stack>

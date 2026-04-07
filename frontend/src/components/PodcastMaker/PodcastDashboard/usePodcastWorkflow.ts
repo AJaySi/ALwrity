@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { podcastApi } from "../../../services/podcastApi";
 import { usePreflightCheck } from "../../../hooks/usePreflightCheck";
 import { useBudgetTracking } from "../../../hooks/useBudgetTracking";
@@ -344,8 +344,8 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     }
   }, [isResearching, project, selectedQueries, queries, researchProvider, preflightCheck, analysis, setResearch, setRawResearch, setScriptData, setShowScriptEditor, setShowRenderQueue, projectState.bible]);
 
-  // Add a ref to track if we're currently generating to prevent double calls
-  const isGeneratingRef = React.useRef(false);
+// Add a ref to track if we're currently generating to prevent double calls
+  const isGeneratingRef = useRef(false);
   
   const handleGenerateScript = useCallback(async () => {
     // Guard against double calls
@@ -360,8 +360,9 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       return;
     }
 
-    // Mark as generating immediately
+    // Mark as generating immediately (both ref and state)
     isGeneratingRef.current = true;
+    setIsGeneratingScript(true);
 
     setPreflightOperationName("Script Generation");
     const preflightResult = await preflightCheck.check({
@@ -373,13 +374,13 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
 
     if (!preflightResult.can_proceed) {
       isGeneratingRef.current = false; // Reset on preflight failure
+      setIsGeneratingScript(false); // Reset loading state on preflight failure
       return;
     }
 
     setScriptData(null);
     setShowRenderQueue(false);
     setShowScriptEditor(true);
-    setIsGeneratingScript(true);
     setAnnouncement("Generating script with AI... Creating scenes and dialogue based on your research...");
 
     try {

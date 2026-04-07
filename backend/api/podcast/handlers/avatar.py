@@ -114,6 +114,9 @@ async def make_avatar_presentable(
     Transform an uploaded avatar image into a podcast-appropriate presenter.
     Uses AI image editing to convert the uploaded photo into a professional podcast presenter.
     """
+    # CRITICAL: Log at the very start before any logic
+    logger.info(f"[Podcast] ===== MAKE PRESENTABLE ENDPOINT START =====")
+    
     user_id = require_authenticated_user(current_user)
     logger.info(f"[Podcast] Make presentable request received - user_id={user_id}, avatar_url={avatar_url}, project_id={project_id}")
     

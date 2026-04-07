@@ -501,19 +501,28 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
       const { podcastApi } = await import("../../services/podcastApi");
       const result = await podcastApi.makeAvatarPresentable(avatarUrl);
       
-      // Fetch the transformed image as blob to display
-      const { aiApiClient } = await import("../../api/client");
-      const response = await aiApiClient.get(result.avatar_url, { responseType: 'blob' });
-      const blobUrl = URL.createObjectURL(response.data);
-      setAvatarPreview(blobUrl);
-      setAvatarUrl(result.avatar_url);
+      if (result.avatar_url) {
+        // Fetch the transformed image as blob to display
+        const { aiApiClient } = await import("../../api/client");
+        const response = await aiApiClient.get(result.avatar_url, { responseType: 'blob' });
+        const blobUrl = URL.createObjectURL(response.data);
+        
+        // Revoke old blob URL if exists
+        if (avatarPreviewBlobUrl && avatarPreviewBlobUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(avatarPreviewBlobUrl);
+        }
+        
+        setAvatarPreviewBlobUrl(blobUrl);
+        setAvatarPreview(result.avatar_url);
+        setAvatarUrl(result.avatar_url);
+      }
     } catch (error) {
       console.error('Failed to make avatar presentable:', error);
       // Could show error message to user
     } finally {
       setMakingPresentable(false);
     }
-  }, [avatarUrl, makingPresentable]);
+  }, [avatarUrl, makingPresentable, avatarPreviewBlobUrl]);
 
   return (
     <Paper

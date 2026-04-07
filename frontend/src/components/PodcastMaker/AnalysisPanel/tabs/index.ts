@@ -7,3 +7,4 @@ export { TitlesTab } from "./TitlesTab";
 export { OutlineTab } from "./OutlineTab";
 export { AudienceTab } from "./AudienceTab";
 export { InputsTab } from "./InputsTab";
+export { EpisodeDetailsTab } from "./EpisodeDetailsTab";

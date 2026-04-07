@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack, Box, Typography, Tabs, Tab, CircularProgress, Button, IconButton, Tooltip, alpha } from "@mui/material";
+import { Stack, Box, Typography, Tabs, Tab, CircularProgress, Button, IconButton, Tooltip, alpha, useTheme, useMediaQuery } from "@mui/material";
 import {
   Person as PersonIcon,
   Info as InfoIcon,
@@ -56,6 +56,15 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
   cameraSelfieOpen,
   setCameraSelfieOpen,
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Shorter tab labels for mobile
+  const tabLabels = isMobile 
+    ? ["Brand", "Library", "Selfie", "Upload"]
+    : ["Use Brand Avatar", "Asset Library", "Take Selfie", "Upload Your Photo"];
+
   return (
     <Box
       sx={{
@@ -130,23 +139,28 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             value={avatarTab} 
             onChange={setAvatarTab}
             variant="scrollable"
-            scrollButtons="auto"
+            scrollButtons={isMobile ? "auto" : false}
+            allowScrollButtonsMobile={isMobile}
             sx={{ 
               mb: { xs: 2, sm: 3 },
-              minHeight: { xs: 40, sm: 48 },
+              minHeight: { xs: 36, sm: 48 },
+              "& .MuiTabs-scrollButtons": {
+                color: "#64748b",
+                "&.Mui-disabled": { opacity: 0.3 },
+              },
               "& .MuiTabs-indicator": {
                 display: "none",
               },
               "& .MuiTabs-flexContainer": {
-                gap: { xs: 1, sm: 1.5 },
+                gap: { xs: 0.5, sm: 1.5 },
               },
               "& .MuiTab-root": {
                 textTransform: "none",
-                minHeight: { xs: 36, sm: 44 },
+                minHeight: { xs: 32, sm: 44 },
                 fontWeight: 600,
-                fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                borderRadius: { xs: "8px", sm: "12px" },
-                px: { xs: 1.5, sm: 2.5 },
+                fontSize: { xs: "0.7rem", sm: "0.875rem" },
+                borderRadius: { xs: "6px", sm: "12px" },
+                px: { xs: 1, sm: 2.5 },
                 minWidth: { xs: "auto", sm: 0 },
                 color: "#64748b",
                 border: "1.5px solid #e2e8f0",
@@ -155,7 +169,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                 "&:hover": {
                   borderColor: "#cbd5e1",
                   backgroundColor: "#f8fafc",
-                  transform: "translateY(-1px)",
+                  transform: { xs: "none", sm: "translateY(-1px)" },
                 },
                 "&.Mui-selected": {
                   color: "#ffffff",
@@ -166,10 +180,9 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               },
             }}
           >
-            <Tab label="Use Brand Avatar" />
-            <Tab label="Asset Library" />
-            <Tab label="Take Selfie" />
-            <Tab label="Upload Your Photo" />
+            {tabLabels.map((label, index) => (
+              <Tab key={index} label={label} />
+            ))}
           </Tabs>
 
           {avatarTab === 0 && (
@@ -340,7 +353,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                     <Box sx={{ position: "relative", display: "inline-block", width: "100%", maxWidth: { xs: 220, sm: 280 } }}>
                       <Box
                         component="img"
-                        src={avatarPreviewBlobUrl || (avatarPreview.startsWith("data:") ? avatarPreview : "")}
+                        src={avatarPreviewBlobUrl || avatarPreview || ""}
                         alt="Selfie preview"
                         sx={{
                           width: "100%",
@@ -475,7 +488,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                     <Box sx={{ position: "relative", display: "inline-block" }}>
                       <Box
                         component="img"
-                        src={avatarPreviewBlobUrl || (avatarPreview.startsWith("data:") ? avatarPreview : "")}
+                        src={avatarPreviewBlobUrl || avatarPreview || ""}
                         alt="Avatar preview"
                         sx={{
                           width: { xs: 120, sm: 160 },

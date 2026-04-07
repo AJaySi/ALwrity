@@ -106,7 +106,7 @@ def edit_image(
     skip_validation = os.getenv("ALWRITY_SKIP_IMAGE_EDITING_VALIDATION", "false").lower() in ("true", "1", "yes")
     
     if user_id and not skip_validation:
-        from services.database import get_db
+        from services.database import get_session_for_user
         from services.subscription import PricingService
         from services.subscription.preflight_validator import validate_image_editing_operations
         from fastapi import HTTPException
@@ -115,17 +115,18 @@ def edit_image(
         
         db = None
         try:
-            # Properly handle the generator
-            db_gen = get_db()
-            db = next(db_gen)
-            
-            pricing_service = PricingService(db)
-            # Raises HTTPException immediately if validation fails - frontend gets immediate response
-            validate_image_editing_operations(
-                pricing_service=pricing_service,
-                user_id=user_id
-            )
-            logger.info(f"[Image Editing] ✅ Pre-flight validation passed for user_id={user_id} - proceeding with image editing")
+            # Use get_session_for_user instead of get_db() since we're outside FastAPI DI
+            db = get_session_for_user(user_id)
+            if not db:
+                logger.warning(f"[Image Editing] ⚠️ Could not get DB session for user {user_id} - skipping validation")
+            else:
+                pricing_service = PricingService(db)
+                # Raises HTTPException immediately if validation fails - frontend gets immediate response
+                validate_image_editing_operations(
+                    pricing_service=pricing_service,
+                    user_id=user_id
+                )
+                logger.info(f"[Image Editing] ✅ Pre-flight validation passed for user_id={user_id} - proceeding with image editing")
         except HTTPException as http_ex:
             # Re-raise immediately - don't proceed with API call
             logger.error(f"[Image Editing] ❌ Pre-flight validation failed for user_id={user_id} - blocking API call: {http_ex.detail}")

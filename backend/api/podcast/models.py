@@ -101,6 +101,8 @@ class PodcastSceneLine(BaseModel):
     speaker: str
     text: str
     emphasis: Optional[bool] = False
+    id: Optional[str] = None  # Optional line ID for frontend tracking
+    usedFactIds: Optional[List[str]] = None  # Facts referenced in this line
 
 
 class PodcastScene(BaseModel):
@@ -111,6 +113,8 @@ class PodcastScene(BaseModel):
     approved: bool = False
     emotion: Optional[str] = None
     imageUrl: Optional[str] = None  # Generated image URL for video generation
+    audioUrl: Optional[str] = None  # Generated audio URL for this scene
+    imagePrompt: Optional[str] = None  # Original image generation prompt for video context
 
 
 class PodcastExaConfig(BaseModel):
