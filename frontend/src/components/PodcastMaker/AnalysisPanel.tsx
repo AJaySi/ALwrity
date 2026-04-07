@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Stack, Box, Typography, Divider, Chip, alpha, Button } from "@mui/material";
-import { Psychology as PsychologyIcon, Person as PersonIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, Lightbulb as TipsIcon, Article as ArticleIcon } from "@mui/icons-material";
-import { PodcastAnalysis, PodcastEstimate } from "./types";
+import { Stack, Box, Typography, Divider, Chip, alpha, Button, IconButton, Popover, TextField, Tooltip } from "@mui/material";
+import { Psychology as PsychologyIcon, Person as PersonIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, Lightbulb as TipsIcon, Article as ArticleIcon, AutoFixHigh as BibleIcon } from "@mui/icons-material";
+import { PodcastAnalysis, PodcastEstimate, PodcastBible } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
 import { aiApiClient } from "../../api/client";
@@ -15,8 +15,10 @@ interface AnalysisPanelProps {
   speakers?: number;
   avatarUrl?: string | null;
   avatarPrompt?: string | null;
+  bible?: PodcastBible | null;
   onRegenerate?: () => void;
   onUpdateAnalysis?: (updatedAnalysis: PodcastAnalysis) => void;
+  onUpdateBible?: (updatedBible: PodcastBible) => void;
 }
 
 type TabId = 'inputs' | 'audience' | 'outline' | 'details' | 'takeaways' | 'guest';
@@ -62,17 +64,21 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   speakers, 
   avatarUrl, 
   avatarPrompt, 
+  bible,
   onRegenerate,
-  onUpdateAnalysis
+  onUpdateAnalysis,
+  onUpdateBible
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('inputs');
   const [avatarBlobUrl, setAvatarBlobUrl] = useState<string | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [bibleAnchorEl, setBibleAnchorEl] = useState<HTMLElement | null>(null);
   
   // Edit states
   const [isEditing, setIsEditing] = useState(false);
   const [editedAnalysis, setEditedAnalysis] = useState<PodcastAnalysis | null>(null);
+  const [editedBible, setEditedBible] = useState<PodcastBible | null>(null);
 
   const tabs: TabConfig[] = [
     { id: 'inputs', label: 'Your Inputs', icon: <InputIcon /> },
@@ -326,6 +332,29 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           </Stack>
 
           <Stack direction="row" spacing={1}>
+            {/* Bible Button */}
+            {bible && (
+              <Tooltip title="Podcast Bible - Hyper-personalized context">
+                <IconButton
+                  onClick={(e) => setBibleAnchorEl(e.currentTarget)}
+                  sx={{
+                    bgcolor: bibleAnchorEl ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "rgba(102, 126, 234, 0.1)",
+                    border: "1px solid",
+                    borderColor: bibleAnchorEl ? "transparent" : "rgba(102, 126, 234, 0.3)",
+                    borderRadius: 2,
+                    p: 1,
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                      borderColor: "transparent",
+                    },
+                  }}
+                >
+                  <BibleIcon sx={{ color: bibleAnchorEl ? "#fff" : "#667eea", fontSize: 20 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            
             {isEditing ? (
               <>
                 <SecondaryButton 
@@ -442,6 +471,81 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             <GuestTab analysis={currentAnalysis} />
           )}
         </Box>
+
+        {/* Bible Popover */}
+        <Popover
+          open={Boolean(bibleAnchorEl)}
+          anchorEl={bibleAnchorEl}
+          onClose={() => setBibleAnchorEl(null)}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+          PaperProps={{
+            sx: {
+              mt: 1,
+              maxWidth: 420,
+              borderRadius: 3,
+              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              border: "1px solid rgba(102, 126, 234, 0.3)",
+              boxShadow: "0 10px 40px rgba(102, 126, 234, 0.25)",
+            },
+          }}
+        >
+          <Box sx={{ p: 2.5 }}>
+            <Stack spacing={2}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <BibleIcon sx={{ color: "#a78bfa", fontSize: 24 }} />
+                <Typography variant="h6" sx={{ color: "#fff", fontWeight: 700 }}>
+                  Podcast Bible
+                </Typography>
+                <Tooltip title="Hyper-personalized context derived from your onboarding data. This grounds all research and script generation.">
+                  <IconButton size="small" sx={{ ml: 'auto' }}>
+                    <Typography variant="caption" sx={{ color: "#94a3b8" }}>ℹ️</Typography>
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+
+              {/* Host Persona */}
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(99, 102, 241, 0.1)", border: "1px solid rgba(99, 102, 241, 0.2)" }}>
+                <Typography variant="caption" sx={{ color: "#a78bfa", fontWeight: 600, mb: 0.5, display: "block" }}>
+                  Host Persona
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.8)", fontSize: "0.8rem" }}>
+                  {bible?.host?.name || "Not set"} • {bible?.host?.background || "No background"} • {bible?.host?.vocal_style || "No style"}
+                </Typography>
+              </Box>
+
+              {/* Audience DNA */}
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.2)" }}>
+                <Typography variant="caption" sx={{ color: "#22c55e", fontWeight: 600, mb: 0.5, display: "block" }}>
+                  Audience DNA
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.8)", fontSize: "0.8rem" }}>
+                  {bible?.audience?.expertise_level || "General"} • {(bible?.audience?.interests || []).slice(0, 3).join(", ") || "Various interests"}
+                </Typography>
+              </Box>
+
+              {/* Brand DNA */}
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(249, 115, 22, 0.1)", border: "1px solid rgba(249, 115, 22, 0.2)" }}>
+                <Typography variant="caption" sx={{ color: "#f97316", fontWeight: 600, mb: 0.5, display: "block" }}>
+                  Brand DNA
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.8)", fontSize: "0.8rem" }}>
+                  {bible?.brand?.industry || "No industry"} • {bible?.brand?.tone || "No tone"} • {bible?.brand?.communication_style || "No style"}
+                </Typography>
+              </Box>
+
+              <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.5)", textAlign: "center", fontSize: "0.7rem" }}>
+                Podcast Bible personalizes all AI generation for your unique voice
+              </Typography>
+            </Stack>
+          </Box>
+        </Popover>
       </Stack>
     </GlassyCard>
   );

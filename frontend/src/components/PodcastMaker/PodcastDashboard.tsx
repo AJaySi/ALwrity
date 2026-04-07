@@ -9,7 +9,6 @@ import { RenderQueue } from "./RenderQueue";
 import { RecentEpisodesPreview } from "./RecentEpisodesPreview";
 import { ProjectList } from "./ProjectList";
 import { PreflightBlockDialog } from "./PreflightBlockDialog";
-import { PodcastBiblePanel } from "./PodcastBiblePanel";
 import {
   Header,
   ProgressStepper,
@@ -199,14 +198,8 @@ const PodcastDashboard: React.FC = () => {
             </Alert>
           )}
 
-          {/* Podcast Bible */}
-          {project && bible && (currentStep === 'analysis' || (currentStep === 'research' && !research)) && !showScriptEditor && !showRenderQueue && (
-            <PodcastBiblePanel 
-              bible={bible} 
-              onUpdate={(updated) => setBible(updated)} 
-            />
-          )}
-
+          {/* Podcast Bible - now in AnalysisPanel header */}
+          
           {(workflow.isAnalyzing || workflow.isResearching || workflow.isGeneratingScript) && (
             <Stack direction="row" spacing={2} alignItems="center" sx={{ py: 1.5 }}>
               <CircularProgress size={20} sx={{ color: "#667eea" }} />
@@ -241,8 +234,10 @@ const PodcastDashboard: React.FC = () => {
                 speakers={project?.speakers}
                 avatarUrl={project?.avatarUrl}
                 avatarPrompt={project?.avatarPrompt}
+                bible={bible}
                 onRegenerate={() => setShowRegenModal(true)}
                 onUpdateAnalysis={(updated) => projectState.setAnalysis(updated)}
+                onUpdateBible={(updated) => setBible(updated)}
               />
             )}
 
