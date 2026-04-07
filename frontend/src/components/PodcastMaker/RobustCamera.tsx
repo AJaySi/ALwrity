@@ -42,9 +42,15 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
   const isInitializingRef = useRef(false);
   const isMountedRef = useRef(true);
 
+  // Track attachment state
+  const streamAttachedRef = useRef(false);
+  
   // Cleanup function - stops all tracks and clears video
   const cleanupCamera = useCallback(() => {
     console.log('[RobustCamera] Cleaning up camera');
+    
+    // Reset attachment tracking
+    streamAttachedRef.current = false;
     
     // Stop video playback
     if (videoElementRef.current) {
@@ -144,23 +150,26 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
   }, [facingMode, stream]);
 
   // SINGLE useEffect to handle stream attachment to video
-  // This runs whenever stream changes or video element becomes available
   useEffect(() => {
     const video = videoElementRef.current;
     
+    // Early exit conditions
     if (!video || !stream) {
       console.log('[RobustCamera] Cannot attach - video:', !!video, 'stream:', !!stream);
+      streamAttachedRef.current = false;
       return;
     }
     
-    if (video.srcObject === stream) {
+    // Skip if already attached to this stream
+    if (video.srcObject === stream && streamAttachedRef.current) {
       console.log('[RobustCamera] Stream already attached to video');
       return;
     }
     
     console.log('[RobustCamera] Attaching stream to video element');
+    streamAttachedRef.current = true;
     
-    // Set up event handlers before attaching
+    // Set up event handlers
     const handleLoadedMetadata = () => {
       console.log('[RobustCamera] Video metadata loaded, playing...');
       if (!isMountedRef.current) return;
@@ -194,7 +203,7 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     // Attach the stream
     video.srcObject = stream;
     
-    // Cleanup function
+    // Cleanup function - only remove listeners, don't detach stream
     return () => {
       console.log('[RobustCamera] Cleaning up video event listeners');
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -202,10 +211,14 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
     };
   }, [stream]);
 
+  // Track previous open state to detect actual open/close changes
+  const prevOpenRef = useRef(open);
+  
   // Initialize camera when dialog opens
   useEffect(() => {
-    if (open) {
-      console.log('[RobustCamera] Dialog opened');
+    // Only initialize if dialog is opening (transition from false to true)
+    if (open && !prevOpenRef.current) {
+      console.log('[RobustCamera] Dialog opening');
       isMountedRef.current = true;
       
       // Small delay to ensure DOM is ready
@@ -216,27 +229,42 @@ export const RobustCamera: React.FC<RobustCameraProps> = ({ onCapture, onClose, 
       return () => {
         clearTimeout(timer);
       };
-    } else {
-      // Dialog closed - cleanup
-      console.log('[RobustCamera] Dialog closed, cleaning up');
+    }
+    
+    // Only cleanup if dialog is closing (transition from true to false)
+    if (!open && prevOpenRef.current) {
+      console.log('[RobustCamera] Dialog closing, cleaning up');
       cleanupCamera();
     }
-  }, [open, initializeCamera, cleanupCamera]);
+    
+    // Update ref
+    prevOpenRef.current = open;
+  }, [open]); // Remove other dependencies - only react to open prop changes
 
+  // Track previous facing mode to detect actual changes
+  const prevFacingModeRef = useRef(facingMode);
+  
   // Handle facing mode changes
   useEffect(() => {
-    if (!open || !stream) return;
+    // Only reinitialize if facing mode actually changed AND we have an active stream
+    if (facingMode !== prevFacingModeRef.current && open && stream) {
+      console.log('[RobustCamera] Facing mode changed from', prevFacingModeRef.current, 'to', facingMode);
+      
+      cleanupCamera();
+      
+      const timer = setTimeout(() => {
+        isInitializingRef.current = false;
+        initializeCamera();
+      }, 300);
+      
+      prevFacingModeRef.current = facingMode;
+      
+      return () => clearTimeout(timer);
+    }
     
-    console.log('[RobustCamera] Facing mode changed, reinitializing');
-    cleanupCamera();
-    
-    const timer = setTimeout(() => {
-      isInitializingRef.current = false;
-      initializeCamera();
-    }, 300);
-    
-    return () => clearTimeout(timer);
-  }, [facingMode, open]); // Only re-run when facingMode actually changes
+    // Update ref if it hasn't been set yet
+    prevFacingModeRef.current = facingMode;
+  }, [facingMode, open, stream]); // Dependencies are fine - we check for actual changes inside
 
   // Cleanup on unmount
   useEffect(() => {
