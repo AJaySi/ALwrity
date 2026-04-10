@@ -185,3 +185,13 @@ The following enhancements are now implemented:
      - collaborative write path (`write_shared_note`) and append-only activity logging.
    - Test module: `backend/tests/test_agent_context_vfs.py`.
    - These tests provide a baseline regression harness for VFS retrieval quality and shared-memory safety.
+
+11. **Static + Structural retrieval hardening**
+   - Added a **static triage layer** in `search_context`:
+     - keyword-density scoring,
+     - `low_probability` flags for likely-noisy hits,
+     - `triage_top5` shortlist for router-style pre-filtering.
+   - Added `read_struct(filename, path_query)`:
+     - resolves dot/bracket JSON paths to return node-level data only,
+     - includes lightweight dependency injection (e.g., Step 4 persona reads include Step 2 brand voice context when available),
+     - keeps output token-efficient for downstream agents.

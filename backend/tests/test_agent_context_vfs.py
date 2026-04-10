@@ -1,10 +1,38 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
+import importlib.util
 from pathlib import Path
 
-from services.intelligence.agent_flat_context import AgentFlatContextStore
-from services.intelligence.agent_context_vfs import AgentContextVFS
+# Lightweight fallback for environments missing loguru.
+if "loguru" not in sys.modules:
+    stub = types.ModuleType("loguru")
+    stub.logger = types.SimpleNamespace(
+        info=lambda *a, **k: None,
+        warning=lambda *a, **k: None,
+        error=lambda *a, **k: None,
+        debug=lambda *a, **k: None,
+    )
+    sys.modules["loguru"] = stub
+
+def _load_module(name: str, rel_path: str):
+    base = Path(__file__).resolve().parents[1]
+    path = base / rel_path
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
+
+
+flat_mod = _load_module("agent_flat_context_under_test", "services/intelligence/agent_flat_context.py")
+sys.modules.setdefault("services.intelligence.agent_flat_context", flat_mod)
+vfs_mod = _load_module("agent_context_vfs_under_test", "services/intelligence/agent_context_vfs.py")
+
+AgentFlatContextStore = flat_mod.AgentFlatContextStore
+AgentContextVFS = vfs_mod.AgentContextVFS
 
 
 def _cleanup_workspace(user_id: str, project_id: str | None = None) -> None:
@@ -45,6 +73,9 @@ def test_search_context_query_variants_and_can_answer():
     assert result['attempted_queries'][0] == 'tone'
     assert result['can_answer'] is True
     assert len(result['results']) >= 1
+    assert 'triage_top5' in result
+    assert len(result['triage_top5']) >= 1
+    assert 'low_probability' in result['results'][0]
 
 
 def test_inspect_file_large_document_summary_plus_keys():
@@ -96,3 +127,30 @@ def test_write_shared_note_and_activity_log_created():
 
     lines = [json.loads(l) for l in log_file.read_text(encoding='utf-8').splitlines() if l.strip()]
     assert any(entry.get('event_type') == 'shared_note_written' for entry in lines)
+
+
+def test_read_struct_path_resolution_and_dependency_context():
+    user_id = 'pytest_struct_user'
+    _cleanup_workspace(user_id)
+
+    store = AgentFlatContextStore(user_id)
+    assert store.save_step2_website_analysis(
+        {
+            'website_url': 'https://struct.example.com',
+            'brand_analysis': {'brand_voice': 'Pragmatic'},
+            'recommended_settings': {'writing_tone': 'Clear'},
+        }
+    )
+    assert store.save_step4_persona_data(
+        {
+            'core_persona': {'name': 'Ops Leader', 'goal': 'Scale ops'},
+            'selected_platforms': ['linkedin'],
+        }
+    )
+
+    vfs = AgentContextVFS(user_id)
+    out = vfs.read_struct('step4_persona_data.json', 'data.core_persona.name')
+
+    assert out['ok'] is True
+    assert out['data'] == 'Ops Leader'
+    assert out['dependency_context']['brand_voice'] == 'Pragmatic'
