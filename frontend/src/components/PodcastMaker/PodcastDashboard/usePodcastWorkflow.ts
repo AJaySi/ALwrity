@@ -354,7 +354,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       try {
         console.log('[Research] Starting research with:', { topic: project.idea, approvedQueries, provider: researchProvider });
         console.log('[Research] Calling podcastApi.runResearch...');
-        const { research: mapped, raw } = await podcastApi.runResearch({
+        const { research: mapped, raw, estimate } = await podcastApi.runResearch({
           projectId: project.id,
           topic: project.idea,
           approvedQueries,
@@ -369,6 +369,9 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
         console.log('[Research] Response received:', { mapped, raw });
         setResearch(mapped);
         setRawResearch(raw);
+        if (estimate) {
+          setEstimate(estimate);
+        }
         setAnnouncement("Research complete — review fact cards below");
       } catch (researchError) {
         const errorMessage = researchError instanceof Error
@@ -392,7 +395,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     } finally {
       setIsResearching(false);
     }
-  }, [isResearching, project, selectedQueries, queries, researchProvider, preflightCheck, analysis, setResearch, setRawResearch, setScriptData, setShowScriptEditor, setShowRenderQueue, projectState.bible]);
+  }, [isResearching, project, selectedQueries, queries, researchProvider, preflightCheck, analysis, setResearch, setRawResearch, setEstimate, setScriptData, setShowScriptEditor, setShowRenderQueue, projectState.bible]);
 
 // Add a ref to track if we're currently generating to prevent double calls
   const isGeneratingRef = useRef(false);
@@ -625,4 +628,3 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     handleDeleteQuery,
   };
 };
-

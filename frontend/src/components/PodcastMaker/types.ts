@@ -186,7 +186,7 @@ export type CreateProjectPayload = {
 export type CreateProjectResult = {
   projectId: string;
   analysis: PodcastAnalysis;
-  estimate: PodcastEstimate;
+  estimate: PodcastEstimate | null;
   queries: Query[];
   bible?: PodcastBible;
   avatar_url?: string | null;
@@ -222,4 +222,3 @@ export type TaskStatus = {
   created_at?: string;
   updated_at?: string;
 };
-

@@ -9,13 +9,16 @@ from typing import Dict, Any, List
 from types import SimpleNamespace
 import json
 import re
+from sqlalchemy.orm import Session
 
 from middleware.auth_middleware import get_current_user
 from api.story_writer.utils.auth import require_authenticated_user
+from services.database import get_db
 from services.blog_writer.research.exa_provider import ExaResearchProvider
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.podcast_bible_service import PodcastBibleService
 from loguru import logger
+from ..cost_estimator import estimate_podcast_cost
 from ..models import (
     PodcastExaResearchRequest,
     PodcastExaResearchResponse,
@@ -32,6 +35,7 @@ router = APIRouter()
 async def podcast_research_exa(
     request: PodcastExaResearchRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Run podcast research via Exa and then use LLM to extract deep insights.
@@ -297,6 +301,20 @@ QUALITY STANDARDS:
                 "credibility_score": src.get("credibility_score"),
             }))
 
+    duration_minutes = 10
+    speakers = 1
+    if request.analysis:
+        duration_minutes = int(request.analysis.get("duration", 10) or 10)
+        speakers = int(request.analysis.get("speakers", 1) or 1)
+
+    estimate = estimate_podcast_cost(
+        db=db,
+        duration_minutes=duration_minutes,
+        speakers=speakers,
+        query_count=len(queries),
+        include_avatar_phase=True,
+    )
+
     return PodcastExaResearchResponse(
         sources=sources_payload,
         search_queries=result.get("search_queries", queries) if isinstance(result, dict) else queries,
@@ -306,5 +324,5 @@ QUALITY STANDARDS:
         search_type=result.get("search_type") if isinstance(result, dict) else None,
         provider=result.get("provider", "exa") if isinstance(result, dict) else "exa",
         content=raw_content,
+        estimate=estimate,
     )
-
