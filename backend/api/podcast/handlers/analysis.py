@@ -17,6 +17,8 @@ from api.story_writer.utils.auth import require_authenticated_user
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.llm_providers.main_image_generation import generate_image
 from services.podcast_bible_service import PodcastBibleService
+from services.subscription import PricingService
+from models.subscription_models import APIProvider
 from utils.asset_tracker import save_asset_to_library
 from loguru import logger
 import os
@@ -32,6 +34,82 @@ from ..models import (
 def _is_podcast_only_mode() -> bool:
     """Check if podcast-only demo mode is enabled."""
     return os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast"
+
+
+def _estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def _build_analysis_estimate(
+    db: Session,
+    idea: str,
+    duration: int,
+    speakers: int,
+    has_avatar: bool,
+) -> Dict[str, Any]:
+    """
+    Build a user-facing estimate from pricing catalog and phase-level assumptions.
+    """
+    # Defaults if catalog lookup fails
+    gemini_in_token = 0.00000015
+    gemini_out_token = 0.0000006
+    exa_per_request = 0.005
+    image_per_request = 0.01
+    video_per_request = 0.01
+    audio_per_request = 0.005
+
+    try:
+        pricing_service = PricingService(db)
+        gemini_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.GEMINI, "gemini-2.5-flash") or {}
+        gemini_in_token = float(gemini_pricing.get("cost_per_input_token") or gemini_in_token)
+        gemini_out_token = float(gemini_pricing.get("cost_per_output_token") or gemini_out_token)
+        exa_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.EXA, "exa-search") or {}
+        exa_per_request = float(exa_pricing.get("cost_per_request") or exa_per_request)
+        img_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.STABILITY, "stable-image-ultra") or {}
+        image_per_request = float(img_pricing.get("cost_per_request") or image_per_request)
+        video_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.VIDEO, "minimax-video-01") or {}
+        video_per_request = float(video_pricing.get("cost_per_request") or video_per_request)
+        audio_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.AUDIO, "gemini-2.5-flash-preview-tts") or {}
+        audio_per_request = float(audio_pricing.get("cost_per_request") or audio_per_request)
+    except Exception as exc:
+        logger.warning(f"[Podcast Analyze] Pricing catalog lookup failed, using defaults: {exc}")
+
+    # Phase assumptions
+    query_count = 5
+    analyze_in = _estimate_tokens(idea) + 240
+    analyze_out = 750
+    analyze_cost = (analyze_in * gemini_in_token) + (analyze_out * gemini_out_token)
+
+    gather_cost = query_count * exa_per_request
+
+    script_chars = max(1000, duration * 900)
+    write_in = _estimate_tokens(idea) + _estimate_tokens(str(script_chars)) + 320
+    write_out = max(900, int(duration * 220))
+    write_cost = (write_in * gemini_in_token) + (write_out * gemini_out_token)
+
+    tts_cost = max(1, speakers) * audio_per_request
+    avatar_cost = 0.0 if has_avatar else image_per_request
+    video_cost = max(1, duration) * video_per_request
+    produce_cost = tts_cost + avatar_cost + video_cost
+
+    breakdown = [
+        {"phase": "Analyze", "cost": round(analyze_cost, 6)},
+        {"phase": "Gather", "cost": round(gather_cost, 6)},
+        {"phase": "Write", "cost": round(write_cost, 6)},
+        {"phase": "Produce", "cost": round(produce_cost, 6)},
+    ]
+    total = round(sum(item["cost"] for item in breakdown), 6)
+    return {
+        "ttsCost": round(tts_cost, 6),
+        "avatarCost": round(avatar_cost, 6),
+        "videoCost": round(video_cost, 6),
+        "researchCost": round(gather_cost, 6),
+        "total": total,
+        "breakdown": breakdown,
+        "currency": "USD",
+    }
 
 router = APIRouter()
 
@@ -388,6 +466,13 @@ Requirements:
         bible=bible_obj.model_dump() if bible_obj else None,
         avatar_url=final_avatar_url,
         avatar_prompt=final_avatar_prompt,
+        estimate=_build_analysis_estimate(
+            db=db,
+            idea=request.idea,
+            duration=request.duration,
+            speakers=request.speakers,
+            has_avatar=bool(final_avatar_url),
+        ),
     )
 
 
@@ -492,4 +577,3 @@ Requirements:
     except Exception as exc:
         logger.error(f"[Regenerate Queries] Failed for user {user_id}: {exc}")
         raise HTTPException(status_code=500, detail=f"Regenerate queries failed: {exc}")
-
