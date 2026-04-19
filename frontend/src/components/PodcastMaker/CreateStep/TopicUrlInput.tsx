@@ -27,7 +27,7 @@ interface TopicUrlInputProps {
     videoCost: number;
     researchCost: number;
     total: number;
-  };
+  } | null;
   duration?: number;
   speakers?: number;
   knobs?: Knobs;
@@ -115,9 +115,9 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
             </Typography>
           </Stack>
           
-          {estimatedCost && (
-            <Tooltip
-              title={
+          <Tooltip
+            title={
+              estimatedCost ? (
                 <Box>
                   <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
                     Estimated Cost Breakdown:
@@ -135,43 +135,49 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
                     </Typography>
                   </Typography>
                 </Box>
-              }
-              arrow
-              placement="top"
-              componentsProps={{
-                tooltip: {
-                  sx: {
-                    bgcolor: "#0f172a",
-                    color: "#ffffff",
-                    maxWidth: 280,
-                    fontSize: "0.875rem",
-                    p: 1.5,
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                  },
+              ) : (
+                "Estimate unavailable until returned by the server."
+              )
+            }
+            arrow
+            placement="top"
+            componentsProps={{
+              tooltip: {
+                sx: {
+                  bgcolor: "#0f172a",
+                  color: "#ffffff",
+                  maxWidth: 280,
+                  fontSize: "0.875rem",
+                  p: 1.5,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                 },
-                arrow: {
-                  sx: {
-                    color: "#0f172a",
-                  },
+              },
+              arrow: {
+                sx: {
+                  color: "#0f172a",
                 },
+              },
+            }}
+          >
+            <Chip
+              icon={<AttachMoneyIcon sx={{ fontSize: "0.875rem !important" }} />}
+              label={estimatedCost ? `Est. $${estimatedCost.total}` : "Est. Unavailable"}
+              size="small"
+              sx={{
+                background: estimatedCost
+                  ? "linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.12) 100%)"
+                  : "rgba(100, 116, 139, 0.12)",
+                color: estimatedCost ? "#059669" : "#475569",
+                fontWeight: 600,
+                border: estimatedCost
+                  ? "1px solid rgba(16, 185, 129, 0.2)"
+                  : "1px solid rgba(100, 116, 139, 0.25)",
+                fontSize: "0.75rem",
+                height: 26,
+                cursor: "help",
               }}
-            >
-              <Chip 
-                icon={<AttachMoneyIcon sx={{ fontSize: "0.875rem !important" }} />}
-                label={`Est. $${estimatedCost.total}`} 
-                size="small"
-                sx={{
-                  background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.12) 100%)",
-                  color: "#059669",
-                  fontWeight: 600,
-                  border: "1px solid rgba(16, 185, 129, 0.2)",
-                  fontSize: "0.75rem",
-                  height: 26,
-                  cursor: "help",
-                }}
-              />
-            </Tooltip>
-          )}
+            />
+          </Tooltip>
         </Stack>
         <Tooltip
           title={

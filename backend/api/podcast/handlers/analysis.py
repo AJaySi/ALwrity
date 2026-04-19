@@ -27,6 +27,7 @@ from ..models import (
     PodcastEnhanceIdeaRequest,
     PodcastEnhanceIdeaResponse
 )
+from ..cost_estimator import estimate_podcast_cost
 
 # Check if running in podcast-only demo mode
 def _is_podcast_only_mode() -> bool:
@@ -372,6 +373,13 @@ Requirements:
     listener_cta = data.get("listener_cta") or ""
     research_queries = data.get("research_queries") or []
     exa_suggested_config = data.get("exa_suggested_config") or None
+    estimate = estimate_podcast_cost(
+        db=db,
+        duration_minutes=request.duration,
+        speakers=request.speakers,
+        query_count=len(research_queries) if isinstance(research_queries, list) else 0,
+        include_avatar_phase=podcast_mode != "audio_only",
+    )
 
     return PodcastAnalyzeResponse(
         audience=audience,
@@ -388,6 +396,7 @@ Requirements:
         bible=bible_obj.model_dump() if bible_obj else None,
         avatar_url=final_avatar_url,
         avatar_prompt=final_avatar_prompt,
+        estimate=estimate,
     )
 
 
@@ -492,4 +501,3 @@ Requirements:
     except Exception as exc:
         logger.error(f"[Regenerate Queries] Failed for user {user_id}: {exc}")
         raise HTTPException(status_code=500, detail=f"Regenerate queries failed: {exc}")
-

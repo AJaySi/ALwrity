@@ -73,6 +73,7 @@ class PodcastAnalyzeResponse(BaseModel):
     bible: Optional[Dict[str, Any]] = None
     avatar_url: Optional[str] = None
     avatar_prompt: Optional[str] = None
+    estimate: Optional[Dict[str, Any]] = None
 
 
 class PodcastEnhanceIdeaRequest(BaseModel):
@@ -205,6 +206,7 @@ class PodcastExaResearchResponse(BaseModel):
     mapped_angles: List[Dict[str, Any]] = []  # Content angles for the episode
     expert_quotes: List[Dict[str, Any]] = []  # Expert quotes from research
     listener_cta_suggestions: List[str] = []  # CTA suggestions
+    estimate: Optional[Dict[str, Any]] = None
 
 
 class PodcastScriptResponse(BaseModel):
