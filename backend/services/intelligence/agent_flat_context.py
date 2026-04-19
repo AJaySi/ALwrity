@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import hmac
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -25,6 +27,14 @@ class AgentFlatContextStore:
     STEP4_FILENAME = "step4_persona_data.json"
     STEP5_FILENAME = "step5_integrations.json"
     MANIFEST_FILENAME = "context_manifest.json"
+    WORKSPACE_README = "README.md"
+    ALLOWED_CONTEXT_FILES = {
+        STEP2_FILENAME,
+        STEP3_FILENAME,
+        STEP4_FILENAME,
+        STEP5_FILENAME,
+        MANIFEST_FILENAME,
+    }
 
     SCHEMA_VERSION = "1.3"
     DEFAULT_MAX_BYTES = 300_000
@@ -33,11 +43,52 @@ class AgentFlatContextStore:
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.safe_user_id = self._sanitize_user_id(user_id)
+        self._ensure_workspace_permissions()
+
+    def _ensure_workspace_permissions(self) -> None:
+        """Ensure workspace and context directories exist with owner-only permissions."""
+        workspace_dir = self._workspace_dir()
+        context_dir = workspace_dir / self.CONTEXT_DIRNAME
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+        context_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(workspace_dir, 0o700)
+        os.chmod(context_dir, 0o700)
+
+    @staticmethod
+    def _safe_resolve_under(base_dir: Path, requested_path: str) -> Path:
+        """Resolve path and ensure it remains inside base_dir (path sandboxing)."""
+        base_real = base_dir.resolve()
+        candidate = (base_dir / requested_path).resolve()
+        if candidate == base_real or base_real in candidate.parents:
+            return candidate
+        raise ValueError("Unsafe path access attempt outside sandbox")
 
     @staticmethod
     def _sanitize_user_id(user_id: str) -> str:
         safe = "".join(c for c in str(user_id) if c.isalnum() or c in ("-", "_"))
         return safe or "unknown_user"
+
+    def _master_salt(self) -> str:
+        return os.getenv("FILE_ENCRYPTION_SALT", "")
+
+    def derive_user_secret(self) -> bytes:
+        """Derive deterministic per-user secret from env salt + safe user id."""
+        salt = self._master_salt()
+        if not salt:
+            return b""
+        return hmac.new(salt.encode("utf-8"), self.safe_user_id.encode("utf-8"), hashlib.sha256).digest()
+
+    def user_secret_fingerprint(self) -> str:
+        """Short fingerprint used for diagnostics/audit only (not a key)."""
+        secret = self.derive_user_secret()
+        if not secret:
+            return "salt_not_configured"
+        return hashlib.sha256(secret).hexdigest()[:16]
+
+    def _audit_event(self, action: str, target: str, status: str) -> None:
+        logger.info(
+            f"[flat_context_audit] user={self.safe_user_id} action={action} target={target} status={status}"
+        )
 
     def _workspace_dir(self) -> Path:
         root_dir = Path(__file__).resolve().parents[3]
@@ -47,7 +98,10 @@ class AgentFlatContextStore:
         return self._workspace_dir() / self.CONTEXT_DIRNAME
 
     def _context_file(self, filename: str) -> Path:
-        return self._context_dir() / filename
+        return self._safe_resolve_under(self._context_dir(), str(filename))
+
+    def _workspace_file(self, filename: str) -> Path:
+        return self._safe_resolve_under(self._workspace_dir(), str(filename))
 
     @staticmethod
     def _estimate_size_bytes(value: Any) -> int:
@@ -55,6 +109,10 @@ class AgentFlatContextStore:
             return len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
         except Exception:
             return 0
+
+    def estimate_size_bytes(self, value: Any) -> int:
+        """Public size estimate helper for adapter layers."""
+        return self._estimate_size_bytes(value)
 
     @staticmethod
     def _to_context_list(value: Any) -> Any:
@@ -142,6 +200,12 @@ class AgentFlatContextStore:
             "retrieval_contract": {
                 "preferred": "flat_file",
                 "fallback_order": fallback_order,
+            },
+            "security": {
+                "path_sandboxing": True,
+                "file_permissions": "0600",
+                "directory_permissions": "0700",
+                "user_secret_fingerprint": self.user_secret_fingerprint(),
             },
             "context_window_guidance": {
                 "max_raw_bytes": self.DEFAULT_MAX_BYTES,
@@ -343,6 +407,7 @@ class AgentFlatContextStore:
 
     def _atomic_write_json(self, target_file: Path, data: Dict[str, Any]) -> None:
         target_file.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(target_file.parent, 0o700)
         fd, tmp_path = tempfile.mkstemp(dir=str(target_file.parent), prefix=f".{target_file.name}.", suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -360,6 +425,108 @@ class AgentFlatContextStore:
             except Exception:
                 pass
             raise
+
+    def _atomic_write_text(self, target_file: Path, content: str) -> None:
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(target_file.parent, 0o700)
+        fd, tmp_path = tempfile.mkstemp(dir=str(target_file.parent), prefix=f".{target_file.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, target_file)
+            try:
+                os.chmod(target_file, 0o600)
+            except Exception:
+                pass
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            raise
+
+    @staticmethod
+    def _collect_signal_terms(doc: Dict[str, Any], limit: int = 6) -> list:
+        summary = doc.get("agent_summary") if isinstance(doc, dict) else {}
+        hints = summary.get("retrieval_hints") if isinstance(summary, dict) else {}
+        terms = hints.get("high_signal_terms") if isinstance(hints, dict) else []
+        if not isinstance(terms, list):
+            return []
+        normalized = [str(t).strip() for t in terms if str(t).strip()]
+        return normalized[:limit]
+
+    @staticmethod
+    def _extract_journey_stage(doc: Dict[str, Any]) -> str:
+        dctx = doc.get("document_context") if isinstance(doc, dict) else {}
+        journey = dctx.get("journey") if isinstance(dctx, dict) else {}
+        stage = journey.get("stage") if isinstance(journey, dict) else ""
+        return str(stage or "").strip()
+
+    @staticmethod
+    def _context_description(filename: str) -> str:
+        descriptions = {
+            AgentFlatContextStore.STEP2_FILENAME: "Primary SEO and site structure context",
+            AgentFlatContextStore.STEP3_FILENAME: "Research depth, competitors, and content preferences",
+            AgentFlatContextStore.STEP4_FILENAME: "Persona profiles, voice adaptation, and platform strategy",
+            AgentFlatContextStore.STEP5_FILENAME: "Connected integrations and provider readiness",
+        }
+        return descriptions.get(filename, "Context document")
+
+    def _generate_workspace_readme(self, manifest: Dict[str, Any]) -> str:
+        docs = manifest.get("documents") if isinstance(manifest, dict) and isinstance(manifest.get("documents"), list) else []
+
+        lines = [
+            "# Agent Workspace Map",
+            "",
+            "You are in a restricted read-only VFS. Use `list_context`, `read_context_file`, and `search_context` to navigate.",
+            "",
+            "## Core Context Files",
+        ]
+
+        for item in sorted(docs, key=lambda d: str((d or {}).get("path", ""))):
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path") or ""
+            if not path:
+                continue
+            doc = self._load_context_document(path) or {}
+            signals = self._collect_signal_terms(doc)
+            journey_stage = self._extract_journey_stage(doc)
+            updated_at = str(item.get("updated_at") or "")
+            lines.append(f"- `{path}`: {self._context_description(path)}.")
+            if signals:
+                lines.append(f"  - **Key Signals:** {', '.join(signals)}")
+            if journey_stage:
+                lines.append(f"  - **Journey Stage:** {journey_stage}")
+            if updated_at:
+                lines.append(f"  - **Updated:** {updated_at}")
+
+        lines.extend(
+            [
+                "",
+                "## Retrieval Strategy",
+                "1. Run `list_context` to check which onboarding steps are available.",
+                "2. Run `search_context` for targeted terms (for example: \"competitor\", \"tone\", \"integrations\").",
+                "3. Run `read_context_file` and ingest `agent_summary` before expanding full `data`.",
+                "",
+                "## Virtual Paths",
+                "- `/env/summary` -> consolidated summary generated from all available context docs",
+                f"- `/steps/website` -> `{self.STEP2_FILENAME}`",
+                f"- `/steps/research` -> `{self.STEP3_FILENAME}`",
+                f"- `/steps/persona` -> `{self.STEP4_FILENAME}`",
+                f"- `/steps/integrations` -> `{self.STEP5_FILENAME}`",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+
+    def _update_workspace_readme(self, manifest: Dict[str, Any]) -> None:
+        try:
+            content = self._generate_workspace_readme(manifest)
+            self._atomic_write_text(self._workspace_file(self.WORKSPACE_README), content)
+        except Exception as exc:
+            logger.warning(f"Failed to update workspace README for user {self.user_id}: {exc}")
 
     def _update_manifest(self, context_type: str, filename: str, doc: Dict[str, Any]) -> None:
         manifest_file = self._context_file(self.MANIFEST_FILENAME)
@@ -390,6 +557,7 @@ class AgentFlatContextStore:
             "documents": items,
         }
         self._atomic_write_json(manifest_file, manifest)
+        self._update_workspace_readme(manifest)
 
     def _save_context_document(
         self,
@@ -436,9 +604,11 @@ class AgentFlatContextStore:
 
             self._atomic_write_json(target_file, context_doc)
             self._update_manifest(context_type, filename, context_doc)
+            self._audit_event("write_context", filename, "success")
             return True
         except Exception as exc:
             logger.error(f"Failed to save context for user {self.user_id} ({context_type}): {exc}")
+            self._audit_event("write_context", filename, "error")
             return False
 
     def save_step2_website_analysis(self, payload: Dict[str, Any], *, source: str = "onboarding_step2") -> bool:
@@ -483,18 +653,30 @@ class AgentFlatContextStore:
 
     def _load_context_document(self, filename: str) -> Optional[Dict[str, Any]]:
         try:
+            if str(filename) not in self.ALLOWED_CONTEXT_FILES:
+                logger.warning(f"Rejected non-allowed context filename for user {self.user_id}: {filename}")
+                self._audit_event("read_context", str(filename), "rejected_filename")
+                return None
             target_file = self._context_file(filename)
             if not target_file.exists():
+                self._audit_event("read_context", str(filename), "not_found")
                 return None
             with open(target_file, "r", encoding="utf-8") as f:
                 doc = json.load(f)
             if isinstance(doc, dict) and str(doc.get("user_id")) != str(self.user_id):
                 logger.warning(f"Context user mismatch for {filename} (expected {self.user_id})")
+                self._audit_event("read_context", str(filename), "user_mismatch")
                 return None
+            self._audit_event("read_context", str(filename), "success")
             return doc if isinstance(doc, dict) else None
         except Exception as exc:
             logger.warning(f"Failed to load context document for user {self.user_id} ({filename}): {exc}")
+            self._audit_event("read_context", str(filename), "error")
             return None
+
+    def load_context_document(self, filename: str) -> Optional[Dict[str, Any]]:
+        """Public loader for a named context document file."""
+        return self._load_context_document(filename)
 
     def load_context_manifest(self) -> Optional[Dict[str, Any]]:
         return self._load_context_document(self.MANIFEST_FILENAME)
@@ -526,3 +708,35 @@ class AgentFlatContextStore:
     def load_step5_integrations(self) -> Optional[Dict[str, Any]]:
         doc = self.load_step5_context_document()
         return doc.get("data") if isinstance(doc, dict) and isinstance(doc.get("data"), dict) else None
+
+    def generate_total_summary(self) -> Dict[str, Any]:
+        """Build a lightweight consolidated summary across available context documents."""
+        manifest = self.load_context_manifest() or {"documents": []}
+        docs = manifest.get("documents") if isinstance(manifest.get("documents"), list) else []
+        overview = []
+        for item in docs:
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get("path") or "")
+            if not path:
+                continue
+            doc = self._load_context_document(path) or {}
+            summary = doc.get("agent_summary") if isinstance(doc.get("agent_summary"), dict) else {}
+            quick_facts = summary.get("quick_facts") if isinstance(summary.get("quick_facts"), dict) else {}
+            hints = summary.get("retrieval_hints") if isinstance(summary.get("retrieval_hints"), dict) else {}
+            overview.append(
+                {
+                    "path": path,
+                    "context_type": doc.get("context_type"),
+                    "updated_at": doc.get("updated_at") or item.get("updated_at"),
+                    "journey_stage": self._extract_journey_stage(doc),
+                    "high_signal_terms": hints.get("high_signal_terms") if isinstance(hints.get("high_signal_terms"), list) else [],
+                    "quick_facts": quick_facts,
+                }
+            )
+        return {
+            "user_id": str(self.user_id),
+            "generated_at": datetime.utcnow().isoformat(),
+            "document_count": len(overview),
+            "documents": overview,
+        }

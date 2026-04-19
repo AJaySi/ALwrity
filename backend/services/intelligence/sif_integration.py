@@ -340,6 +340,46 @@ class SIFIntegrationService:
             logger.warning(f"Failed to load flat context manifest for user {self.user_id}: {e}")
         return {"source": "none", "data": {"documents": []}}
 
+    async def get_merged_flat_context(self) -> Dict[str, Any]:
+        """Return merged onboarding context from all available flat context documents.
+
+        This is an aggregation helper; step-specific APIs still return one-by-one files.
+        """
+        store = AgentFlatContextStore(self.user_id)
+        manifest = store.load_context_manifest() or {"documents": []}
+        docs = manifest.get("documents") if isinstance(manifest.get("documents"), list) else []
+
+        merged: Dict[str, Any] = {
+            "source": "flat_file",
+            "user_id": self.user_id,
+            "manifest_updated_at": manifest.get("updated_at"),
+            "steps": {},
+            "agent_summaries": {},
+            "documents": [],
+        }
+
+        for item in docs:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            if not path:
+                continue
+            doc = store.load_context_document(str(path)) or {}
+            context_type = str(doc.get("context_type") or item.get("type") or path)
+            merged["documents"].append(
+                {
+                    "path": path,
+                    "context_type": context_type,
+                    "updated_at": doc.get("updated_at") or item.get("updated_at"),
+                    "size_bytes": item.get("size_bytes"),
+                }
+            )
+            merged["steps"][context_type] = doc.get("data") if isinstance(doc.get("data"), dict) else {}
+            merged["agent_summaries"][context_type] = doc.get("agent_summary") if isinstance(doc.get("agent_summary"), dict) else {}
+
+        merged["document_count"] = len(merged["documents"])
+        return merged
+
     async def index_market_trends_run(self, trends_result: Dict[str, Any], run_id: str) -> bool:
         try:
             latest_id = f"market_trends_latest:{self.user_id}"
