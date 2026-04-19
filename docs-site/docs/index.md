@@ -42,6 +42,14 @@
 
     [:octicons-arrow-right-24: Persona System](features/persona/overview.md)
 
+-   :material-microphone:{ .lg .middle } **Podcast Maker**
+
+    ---
+
+    Plan, script, and package podcast episodes with AI workflows
+
+    [:octicons-arrow-right-24: Podcast Maker](features/podcast-maker/overview.md)
+
 -   :material-account-group:{ .lg .middle } **User Journeys**
 
     ---
@@ -62,6 +70,7 @@ ALwrity is an AI-powered digital marketing platform that revolutionizes content 
 - **👤 Personalized Writing Personas**: AI-powered writing assistants tailored to your unique voice and style
 - **📊 SEO Dashboard**: Comprehensive SEO analysis with Google Search Console integration
 - **🎯 Content Strategy**: AI-driven persona generation and content planning
+- **🎙️ Podcast Maker**: AI-assisted episode planning, scripting, and narration workflows
 - **🔍 Research Integration**: Automated research and fact-checking capabilities
 - **📈 Performance Analytics**: Track content performance and optimize strategies
 - **🔒 Enterprise Security**: Secure, scalable platform for teams of all sizes
@@ -78,6 +87,7 @@ ALwrity is an AI-powered digital marketing platform that revolutionizes content 
 - [Troubleshooting Common Issues](guides/troubleshooting.md)
 - [API Integration Guide](api/overview.md)
 - [Content Strategy Best Practices](features/content-strategy/overview.md)
+- [Podcast Maker Overview](features/podcast-maker/overview.md)
 - [SEO Optimization Tips](features/seo-dashboard/overview.md)
 
 ### Community & Support

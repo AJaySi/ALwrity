@@ -219,6 +219,12 @@ For detailed cost information, see the [Cost Guide](cost-guide.md).
 - **Template Library**: Available templates and presets
 - **Best Practices**: Tips for optimal results
 
+
+## Related Features
+
+- [Podcast Maker Overview](../podcast-maker/overview.md) to pair episode scripts with thumbnail and social asset creation.
+- [Blog Writer Overview](../blog-writer/overview.md) to repurpose podcast transcripts into SEO blog posts.
+
 ---
 
 *For more information, explore the module-specific documentation or check the [API Reference](api-reference.md).*

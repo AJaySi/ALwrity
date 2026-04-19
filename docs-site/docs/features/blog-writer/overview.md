@@ -253,6 +253,12 @@ The Blog Writer leverages sophisticated AI orchestration to ensure quality at ev
 - **Multi-Platform Publishing**: One workflow, multiple destinations (WordPress, Wix, Medium)
 - **Scheduling & Automation**: Strategic content distribution and timing optimization
 
+
+## Related Features
+
+- [Podcast Maker Overview](../podcast-maker/overview.md) for audio-first content workflows and show-note repurposing.
+- [Image Studio Overview](../image-studio/overview.md) for episode cover art and social-ready creative assets.
+
 ### For Digital Marketing & SEO Professionals
 - **Comprehensive SEO**: Multi-dimensional scoring with actionable insights
 - **Competitive Intelligence**: AI-powered competitor analysis and content gap identification
@@ -328,6 +334,7 @@ flowchart LR
 - **[Content Strategy](../content-strategy/overview.md)** - Strategic planning
 - **[LinkedIn Writer](../linkedin-writer/overview.md)** - Social content
 - **[AI Features](../ai/assistive-writing.md)** - Advanced AI capabilities
+- **[Podcast Maker](../podcast-maker/overview.md)** - Extend blog ideas into episode scripts and repurpose audio back into articles.
 
 ---
 

@@ -45,6 +45,20 @@ This guide provides a comprehensive overview of all ALwrity features available t
 - Identify content gaps and opportunities
 - Optimize your content mix for better results
 
+
+### Podcast Maker
+**AI-Assisted Audio Content Production**
+- **Episode Planning**: Turn ideas into structured episode outlines
+- **Script Generation**: Produce host-ready scripts by segment
+- **Voice Production**: Create narration-ready outputs with style controls
+- **Distribution Packaging**: Generate show notes, chapters, and metadata
+
+**Key Benefits**:
+- Expand into audio content without a full production team
+- Repurpose episodes into blogs and social posts
+- Maintain consistent brand voice across channels
+- Increase content cadence with reusable workflows
+
 ### LinkedIn Writer
 **Professional Content Creation**
 - **LinkedIn-Optimized Content**: Create content specifically for LinkedIn

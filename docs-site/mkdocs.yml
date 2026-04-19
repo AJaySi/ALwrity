@@ -258,16 +258,23 @@ nav:
       - Create Studio: features/image-studio/create-studio.md
       - Edit Studio: features/image-studio/edit-studio.md
       - Upscale Studio: features/image-studio/upscale-studio.md
-      - Social Optimizer: features/image-studio/social-optimizer.md
-      - Asset Library: features/image-studio/asset-library.md
       - Transform Studio: features/image-studio/transform-studio.md
       - Control Studio: features/image-studio/control-studio.md
-      - Workflow Guide: features/image-studio/workflow-guide.md
-      - Providers: features/image-studio/providers.md
+      - Social Optimizer: features/image-studio/social-optimizer.md
+      - Asset Library: features/image-studio/asset-library.md
       - Templates: features/image-studio/templates.md
+      - Providers: features/image-studio/providers.md
       - Cost Guide: features/image-studio/cost-guide.md
+      - Implementation Overview: features/image-studio/implementation-overview.md
+      - Workflow Guide: features/image-studio/workflow-guide.md
       - API Reference: features/image-studio/api-reference.md
-      - Implementation: features/image-studio/implementation-overview.md
+    - Podcast Maker:
+      - Overview: features/podcast-maker/overview.md
+      - Implementation Overview: features/podcast-maker/implementation-overview.md
+      - Workflow Guide: features/podcast-maker/workflow-guide.md
+      - API Reference: features/podcast-maker/api-reference.md
+      - Best Practices: features/podcast-maker/best-practices.md
+      - Troubleshooting: features/podcast-maker/troubleshooting.md
   - API Reference:
     - Overview: api/overview.md
     - Authentication: api/authentication.md
