@@ -4,6 +4,10 @@ __pycache__/
 *.db
 *.sqlite*
 
+nul
+LICENSE
+CHANGELOG.md
+
 .trae/
 .trae
 
