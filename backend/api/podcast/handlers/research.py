@@ -218,6 +218,9 @@ Listener CTA: {request.analysis.get('listener_cta', 'N/A')}
     
     summary = ""
     key_insights = []
+    expert_quotes = []
+    listener_cta_suggestions = []
+    mapped_angles = []
     
     if raw_content and sources:
         logger.warning(f"[Podcast Research] Extracting insights from {len(sources)} sources for user {user_id}")
@@ -337,13 +340,22 @@ QUALITY STANDARDS:
                 try:
                     summary = data.get("summary", "")
                     key_insights = [PodcastResearchInsight(**insight) for insight in data.get("key_insights", [])]
+                    expert_quotes = data.get("expert_quotes", [])
+                    listener_cta_suggestions = data.get("listener_cta_suggestions", [])
+                    mapped_angles = data.get("mapped_angles", [])
                 except Exception as insight_err:
                     logger.warning(f"[Podcast Research] Failed to parse insights: {insight_err}. Data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
                     summary = data.get("summary", "") if isinstance(data, dict) else ""
                     key_insights = []
+                    expert_quotes = data.get("expert_quotes", []) if isinstance(data, dict) else []
+                    listener_cta_suggestions = data.get("listener_cta_suggestions", []) if isinstance(data, dict) else []
+                    mapped_angles = data.get("mapped_angles", []) if isinstance(data, dict) else []
             else:
                 summary = ""
                 key_insights = []
+                expert_quotes = []
+                listener_cta_suggestions = []
+                mapped_angles = []
         except HTTPException:
             raise
         except Exception as exc:
@@ -423,5 +435,8 @@ QUALITY STANDARDS:
         search_type=result.get("search_type") if isinstance(result, dict) else None,
         provider=result.get("provider", "exa") if isinstance(result, dict) else "exa",
         content=raw_content,
+        mapped_angles=mapped_angles,
+        expert_quotes=expert_quotes,
+        listener_cta_suggestions=listener_cta_suggestions,
         estimate=estimate,
     )

@@ -285,6 +285,78 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
              )
           )}
 
+          {/* Expert Quotes */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700 }}>
+              Expert Quotes
+            </Typography>
+            {research.expertQuotes && research.expertQuotes.length > 0 ? (
+              <Stack spacing={1}>
+                {research.expertQuotes.slice(0, 4).map((quote, idx) => (
+                  <Paper key={`${quote.source_index}-${idx}`} elevation={0} sx={{ p: 1.5, border: "1px solid rgba(0,0,0,0.06)", borderRadius: 2 }}>
+                    <Typography variant="body2" sx={{ color: "#334155", lineHeight: 1.55 }}>
+                      “{quote.quote}”
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#64748b", display: "block", mt: 0.5 }}>
+                      Source S{quote.source_index}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2" sx={{ color: "#64748b" }}>
+                No expert quotes extracted yet.
+              </Typography>
+            )}
+          </Box>
+
+          {/* Listener CTAs */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700 }}>
+              Listener CTAs
+            </Typography>
+            {research.listenerCta && research.listenerCta.length > 0 ? (
+              <Stack spacing={1}>
+                {research.listenerCta.slice(0, 4).map((cta, idx) => (
+                  <Paper key={`cta-${idx}`} elevation={0} sx={{ p: 1.5, border: "1px solid rgba(0,0,0,0.06)", borderRadius: 2 }}>
+                    <Typography variant="body2" sx={{ color: "#334155", lineHeight: 1.55 }}>
+                      {cta}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2" sx={{ color: "#64748b" }}>
+                No listener CTAs suggested yet.
+              </Typography>
+            )}
+          </Box>
+
+          {/* Mapped Angles */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700 }}>
+              Mapped Angles
+            </Typography>
+            {research.mappedAngles && research.mappedAngles.length > 0 ? (
+              <Stack spacing={1}>
+                {research.mappedAngles.slice(0, 4).map((angle, idx) => (
+                  <Paper key={`angle-${idx}`} elevation={0} sx={{ p: 1.5, border: "1px solid rgba(0,0,0,0.06)", borderRadius: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 700, mb: 0.5 }}>
+                      {angle.title || `Angle ${idx + 1}`}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#334155", lineHeight: 1.55 }}>
+                      {angle.why || "No rationale provided."}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2" sx={{ color: "#64748b" }}>
+                No mapped angles available yet.
+              </Typography>
+            )}
+          </Box>
+
           {/* Search Queries Used */}
           {research.searchQueries && research.searchQueries.length > 0 && (
             <Box sx={{ mt: 4, pt: 3, borderTop: "1px solid rgba(0,0,0,0.04)" }}>

@@ -198,6 +198,8 @@ const mapExaResearchResponse = (response: any): Research => {
     source_indices: insight.source_indices || []
   }));
 
+  // Backend keys must match PodcastExaResearchResponse exactly:
+  // expert_quotes, listener_cta_suggestions, mapped_angles
   const expertQuotes = (response.expert_quotes || []).map((eq: any) => ({
     quote: eq.quote || eq.text || "",
     source_index: eq.source_index ?? 0
