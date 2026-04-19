@@ -4,6 +4,7 @@ Handles subscription limit checking and validation logic.
 Extracted from pricing_service.py for better modularity.
 """
 
+import time
 from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta
 from sqlalchemy import text
@@ -32,8 +33,10 @@ class LimitValidator:
         self.db = pricing_service.db
     
     def check_usage_limits(self, user_id: str, provider: APIProvider, 
-                          tokens_requested: int = 0, actual_provider_name: Optional[str] = None) -> Tuple[bool, str, Dict[str, Any]]:
+                           tokens_requested: int = 0, actual_provider_name: Optional[str] = None) -> Tuple[bool, str, Dict[str, Any]]:
         """Check if user can make an API call within their limits.
+        
+        Delegates to LimitValidator for actual validation logic.
         
         Args:
             user_id: User ID
@@ -44,6 +47,7 @@ class LimitValidator:
         Returns:
             (can_proceed, error_message, usage_info)
         """
+        start_time = time.time()
         try:
             # Use actual_provider_name if provided, otherwise use enum value
             # This fixes cases where HuggingFace maps to MISTRAL enum but should show as "huggingface" in errors
@@ -51,12 +55,14 @@ class LimitValidator:
             
             logger.debug(f"[Subscription Check] Starting limit check for user {user_id}, provider {display_provider_name}, tokens {tokens_requested}")
             
+            logger.warning(f"[Subscription Check] START for user {user_id}, provider {provider.value}")
             # Short TTL cache to reduce DB reads under sustained traffic
             cache_key = f"{user_id}:{provider.value}"
             now = datetime.utcnow()
             cached = self.pricing_service._limits_cache.get(cache_key)
             if cached and cached.get('expires_at') and cached['expires_at'] > now:
-                logger.debug(f"[Subscription Check] Using cached result for {user_id}:{provider.value}")
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.warning(f"[Subscription Check] Cache hit for {user_id}:{provider.value} — completed in {elapsed_ms:.0f}ms")
                 return tuple(cached['result'])  # type: ignore
 
             # Get user subscription first to check expiration
@@ -139,12 +145,15 @@ class LimitValidator:
                     return False, "No subscription plan found. Please subscribe to a plan.", {}
             
             # Get current usage for this billing period with error handling
-            # CRITICAL: Use fresh queries to avoid SQLAlchemy cache after renewal
+            # Use targeted expiry instead of expire_all() to avoid nuking the entire session cache
             try:
                 current_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
                 
-                # Expire all objects to force fresh read from DB (critical after renewal)
-                self.db.expire_all()
+                # Only expire specific objects that might have changed after renewal
+                # (subscription was already checked above; plan was expired above)
+                # The usage record is the main object we need fresh, and we query it directly below
+                if subscription:
+                    self.db.expire(subscription)
                 
                 # Use raw SQL query first to bypass ORM cache, fallback to ORM if SQL fails
                 usage = None
@@ -367,14 +376,18 @@ class LimitValidator:
                     'result': result,
                     'expires_at': now + timedelta(seconds=30)
                 }
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.warning(f"[Subscription Check] Completed in {elapsed_ms:.0f}ms for user {user_id}, provider {display_provider_name} — within limits (calls: {current_call_count}/{call_limit_value})")
                 return result
             except Exception as e:
                 logger.error(f"Error calculating usage percentages: {e}")
-                # Return basic success
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.warning(f"[Subscription Check] Completed in {elapsed_ms:.0f}ms for user {user_id}, provider {display_provider_name} — within limits (basic check)")
                 return True, "Within limits", {}
         
         except Exception as e:
-            logger.error(f"Unexpected error in check_usage_limits for {user_id}: {e}")
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.error(f"[Subscription Check] Failed for user {user_id} after {elapsed_ms:.0f}ms: {e}")
             # STRICT: Fail closed - deny requests if subscription system fails
             return False, f"Subscription check error: {str(e)}", {}
     
@@ -417,9 +430,7 @@ class LimitValidator:
             except Exception as schema_err:
                 logger.warning(f"Schema check failed, will retry on query error: {schema_err}")
             
-            # Explicitly expire any cached objects and refresh from DB to ensure fresh data
-            self.db.expire_all()
-            
+            # Explicitly refresh usage from DB to ensure fresh data (targeted instead of expire_all)
             try:
                 usage = self.db.query(UsageSummary).filter(
                     UsageSummary.user_id == user_id,
@@ -438,7 +449,12 @@ class LimitValidator:
                     schema_utils._checked_usage_summaries_columns = False
                     from services.subscription.schema_utils import ensure_usage_summaries_columns
                     ensure_usage_summaries_columns(self.db)
-                    self.db.expire_all()
+                    # After schema migration, only expire UsageSummary to force re-query
+                    # (no need to expire the entire session)
+                    for obj in self.db.query(UsageSummary).filter(
+                        UsageSummary.user_id == user_id
+                    ).all():
+                        self.db.expire(obj)
                     # Retry the query
                     usage = self.db.query(UsageSummary).filter(
                         UsageSummary.user_id == user_id,
@@ -594,8 +610,9 @@ class LimitValidator:
                             # Method 2: Fallback to fresh ORM query if raw SQL fails
                             if not query_succeeded:
                                 try:
-                                    # Expire all cached objects and do fresh query
-                                    self.db.expire_all()
+                                    # Only refresh usage object, don't expire entire session
+                                    if usage:
+                                        self.db.refresh(usage)
                                     fresh_usage = self.db.query(UsageSummary).filter(
                                         UsageSummary.user_id == user_id,
                                         UsageSummary.billing_period == current_period
@@ -792,7 +809,11 @@ class LimitValidator:
                         schema_utils._checked_usage_summaries_columns = False
                         from services.subscription.schema_utils import ensure_usage_summaries_columns
                         ensure_usage_summaries_columns(self.db)
-                        self.db.expire_all()
+                        # Only expire UsageSummary after schema migration, not entire session
+                        for obj in self.db.query(UsageSummary).filter(
+                            UsageSummary.user_id == user_id
+                        ).all():
+                            self.db.expire(obj)
                         
                         # Retry the query
                         usage = self.db.query(UsageSummary).filter(

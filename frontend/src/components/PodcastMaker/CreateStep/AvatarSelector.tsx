@@ -14,6 +14,7 @@ import {
 import { AvatarAssetBrowser } from "../AvatarAssetBrowser";
 import { CameraSelfie } from "../CameraSelfie";
 import { SecondaryButton } from "../ui";
+import { PodcastMode } from "../types";
 
 interface AvatarSelectorProps {
   avatarTab: number;
@@ -34,6 +35,7 @@ interface AvatarSelectorProps {
   brandAvatarBlobUrl?: string | null;
   cameraSelfieOpen: boolean;
   setCameraSelfieOpen: (open: boolean) => void;
+  podcastMode?: PodcastMode;
 }
 
 export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
@@ -55,6 +57,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
   brandAvatarBlobUrl,
   cameraSelfieOpen,
   setCameraSelfieOpen,
+  podcastMode,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -64,6 +67,35 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
   const tabLabels = isMobile 
     ? ["Brand", "Library", "Selfie", "Upload"]
     : ["Use Brand Avatar", "Asset Library", "Take Selfie", "Upload Your Photo"];
+
+  if (podcastMode === "audio_only") {
+    return (
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          p: { xs: 1.5, sm: 2.5 },
+          borderRadius: 2,
+          background: "#f8fafc",
+          border: "1px dashed rgba(15, 23, 42, 0.12)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 200,
+        }}
+      >
+        <Stack spacing={1} alignItems="center" sx={{ textAlign: "center" }}>
+          <PersonIcon sx={{ color: "#94a3b8", fontSize: 40 }} />
+          <Typography variant="subtitle2" sx={{ color: "#64748b", fontWeight: 600 }}>
+            No avatar needed for audio-only
+          </Typography>
+          <Typography variant="caption" sx={{ color: "#94a3b8" }}>
+            Avatar is only used for video podcasts. Switch to Video or Both to enable.
+          </Typography>
+        </Stack>
+      </Box>
+    );
+  }
 
   return (
     <Box

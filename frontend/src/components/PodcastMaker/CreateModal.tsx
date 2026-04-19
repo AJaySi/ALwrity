@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Stack, Paper, Box } from "@mui/material";
-import { CreateProjectPayload, Knobs } from "./types";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Stack, Paper, Box, Chip, Typography } from "@mui/material";
+import { CreateProjectPayload, Knobs, PodcastMode } from "./types";
 import { useSubscription } from "../../contexts/SubscriptionContext";
 import { podcastApi } from "../../services/podcastApi";
 import { fetchMediaBlobUrl, clearMediaCache } from "../../utils/fetchMediaBlobUrl";
@@ -26,9 +26,10 @@ interface CreateModalProps {
   defaultKnobs: Knobs;
   isSubmitting?: boolean;
   announcement?: string;
+  onAnnouncementClear?: () => void;
 }
 
-export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaultKnobs, isSubmitting = false, announcement }) => {
+export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaultKnobs, isSubmitting = false, announcement, onAnnouncementClear }) => {
   const { subscription } = useSubscription();
   const [topicInput, setTopicInput] = useState("");
   const [showAIDetailsButton, setShowAIDetailsButton] = useState(false);
@@ -50,6 +51,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const [loadingBrandAvatar, setLoadingBrandAvatar] = useState(false);
   const [brandAvatarFromDb, setBrandAvatarFromDb] = useState<string | null>(null);
   const [cameraSelfieOpen, setCameraSelfieOpen] = useState(false);
+  const [podcastMode, setPodcastMode] = useState<PodcastMode>("audio_video");
   
   // Enhanced topic choices state
   const [enhancedChoices, setEnhancedChoices] = useState<string[]>([]);
@@ -286,10 +288,14 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const hasDuration = Boolean(duration > 0 && duration <= 10);
   const hasSpeakers = Boolean(speakers >= 1 && speakers <= 2);
 
-  const canSubmit = Boolean(hasTopic && hasAvatar && hasVoice && hasDuration && hasSpeakers);
+  const canSubmit = Boolean(hasTopic && (podcastMode === "audio_only" || hasAvatar) && hasVoice && hasDuration && hasSpeakers);
 
-  const submit = async () => {
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const submit = useCallback(async () => {
     if (!canSubmit || isSubmitting) return;
+    
+    setSubmitError(null);
     
     // Determine if input is idea or URL
     // For URL, we extract the first URL found or use the whole string if it's a direct URL
@@ -332,16 +338,22 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
       voice_id: selectedVoiceId,
     };
     
-    onCreate({
-      ideaOrUrl: finalUrl || finalIdea,
-      speakers,
-      duration,
-      knobs: finalKnobs,
-      budgetCap,
-      files: { voiceFile, avatarFile },
-      avatarUrl: finalAvatarUrl,
-    });
-  };
+    try {
+      await onCreate({
+        ideaOrUrl: finalUrl || finalIdea,
+        speakers,
+        duration,
+        knobs: finalKnobs,
+        budgetCap,
+        files: { voiceFile, avatarFile },
+        avatarUrl: finalAvatarUrl,
+        podcastMode,
+      });
+    } catch (err: any) {
+      console.error("[CreateModal] Submit error:", err);
+      setSubmitError(err?.message || String(err) || "Failed to create project");
+    }
+  }, [canSubmit, isSubmitting, isUrl, topicInput, avatarFile, avatarUrl, knobs, selectedVoiceId, speakers, duration, budgetCap, podcastMode, onCreate]);
 
   const reset = () => {
     setTopicInput("");
@@ -358,6 +370,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     setKnobs({ ...defaultKnobs });
     setSelectedVoiceId("Wise_Woman");
     setPlaceholderIndex(0);
+    setPodcastMode("audio_video");
   };
 
   const handleAvatarSelectFromLibrary = React.useCallback((url: string) => {
@@ -560,6 +573,8 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
               setDuration={setDuration}
               speakers={speakers}
               setSpeakers={setSpeakers}
+              podcastMode={podcastMode}
+              setPodcastMode={setPodcastMode}
             />
           </Box>
         </Stack>
@@ -583,6 +598,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
           brandAvatarBlobUrl={brandAvatarBlobUrl}
           cameraSelfieOpen={cameraSelfieOpen}
           setCameraSelfieOpen={setCameraSelfieOpen}
+          podcastMode={podcastMode}
         />
 
         <VoiceSelector
@@ -597,6 +613,8 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
           canSubmit={canSubmit}
           isSubmitting={isSubmitting}
           announcement={announcement}
+          onAnnouncementClear={onAnnouncementClear}
+          error={submitError}
         />
 
         {/* Enhanced Topic Choices Modal */}

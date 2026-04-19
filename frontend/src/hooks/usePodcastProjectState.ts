@@ -20,6 +20,7 @@ export interface PodcastProjectState {
     idea: string;
     duration: number;
     speakers: number;
+    podcastMode?: "audio_only" | "video_only" | "audio_video";
     avatarUrl?: string | null;
     avatarPrompt?: string | null;
     avatarPersonaId?: string | null;
@@ -56,6 +57,9 @@ export interface PodcastProjectState {
   // Timestamps
   createdAt?: string;
   updatedAt?: string;
+
+  // Backend project creation status — prevents 404 sync calls before project exists
+  backendProjectCreated?: boolean;
 }
 
 const DEFAULT_KNOBS: Knobs = {
@@ -86,6 +90,7 @@ const DEFAULT_STATE: PodcastProjectState = {
   showScriptEditor: false,
   showRenderQueue: false,
   currentStep: null,
+  backendProjectCreated: false,
 };
 
 const STORAGE_KEY = 'podcast_project_state';
@@ -134,7 +139,7 @@ export const usePodcastProjectState = () => {
 
   // Sync to database after major steps (debounced)
   useEffect(() => {
-    if (!state.project || !state.project.id) return;
+    if (!state.project || !state.project.id || !state.backendProjectCreated) return;
 
     // Capture project ID to avoid closure issues
     const projectId = state.project.id;
@@ -319,6 +324,10 @@ export const usePodcastProjectState = () => {
     setState((prev) => ({ ...prev, currentStep: step, updatedAt: new Date().toISOString() }));
   }, []);
 
+  const setBackendProjectCreated = useCallback((created: boolean) => {
+    setState((prev) => ({ ...prev, backendProjectCreated: created }));
+  }, []);
+
   // Reset state
   const resetState = useCallback(() => {
     setState(DEFAULT_STATE);
@@ -407,6 +416,7 @@ export const usePodcastProjectState = () => {
         finalVideoUrl: dbProject.final_video_url || null,
         createdAt: dbProject.created_at,
         updatedAt: dbProject.updated_at,
+        backendProjectCreated: true,
       }));
     } catch (error) {
       console.error('Error loading project from database:', error);
@@ -436,6 +446,7 @@ export const usePodcastProjectState = () => {
     setShowScriptEditor,
     setShowRenderQueue,
     setCurrentStep,
+    setBackendProjectCreated,
 
     // Helpers
     resetState,

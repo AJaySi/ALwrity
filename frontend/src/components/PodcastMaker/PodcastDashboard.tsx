@@ -112,7 +112,20 @@ const PodcastDashboard: React.FC = () => {
       >
         <Stack spacing={3}>
           {/* Header */}
-          <Header onShowProjects={() => setShowProjectList(true)} onNewEpisode={handleNewEpisode} />
+          <Header 
+              onShowProjects={() => setShowProjectList(true)} 
+              onNewEpisode={handleNewEpisode}
+              activeStep={workflow.activeStep}
+              completedSteps={[
+                ...(analysis ? [0] : []),
+                ...(research ? [1] : []),
+                ...(scriptData ? [2] : []),
+                ...(renderJobs.some(j => j.status === "completed") ? [3] : []),
+              ]}
+              onStepClick={(step) => {
+                // Handle step clicks - could navigate to different views
+              }}
+            />
 
           <Divider sx={{ borderColor: "rgba(0,0,0,0.08)" }} />
 
@@ -232,6 +245,8 @@ const PodcastDashboard: React.FC = () => {
                 idea={project?.idea}
                 duration={project?.duration}
                 speakers={project?.speakers}
+                voiceName={estimate?.voiceName}
+                podcastMode={project?.podcastMode}
                 avatarUrl={project?.avatarUrl}
                 avatarPrompt={project?.avatarPrompt}
                 bible={bible}

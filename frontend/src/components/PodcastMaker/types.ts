@@ -47,6 +47,8 @@ export type Research = {
   provider?: string;
   cost?: number;
   sourceCount?: number;
+  expertQuotes?: { quote: string; source_index: number }[];
+  listenerCta?: string[];
 };
 
 export type Line = {
@@ -63,14 +65,18 @@ export type Scene = {
   duration: number;
   lines: Line[];
   approved?: boolean;
-  emotion?: string; // Scene-specific emotion
-  audioUrl?: string; // Generated audio URL for this scene
-  imageUrl?: string; // Generated image URL for this scene (for video generation)
-  imagePrompt?: string; // Original image generation prompt for video context
+  emotion?: string;
+  audioUrl?: string;
+  imageUrl?: string;
+  imagePrompt?: string;
+  chart_data?: Record<string, any>;
+  broll_preview_url?: string;
 };
 
 export type Script = {
   scenes: Scene[];
+  audioScript?: Scene[];
+  videoScript?: Scene[];
 };
 
 export type JobStatus =
@@ -129,7 +135,11 @@ export type PodcastEstimate = {
   videoCost: number;
   researchCost: number;
   total: number;
+  voiceName?: string;
+  isCustomVoice?: boolean;
 };
+
+export type PodcastMode = "audio_only" | "video_only" | "audio_video";
 
 export type HostPersona = {
   name: string;
@@ -170,6 +180,7 @@ export type CreateProjectPayload = {
   budgetCap: number;
   files: { voiceFile?: File | null; avatarFile?: File | null };
   avatarUrl?: string | null;
+  podcastMode?: PodcastMode;
 };
 
 export type CreateProjectResult = {

@@ -54,6 +54,7 @@ class PodcastAnalyzeRequest(BaseModel):
     bible: Optional[Dict[str, Any]] = Field(None, description="Optional Podcast Bible for context")
     avatar_url: Optional[str] = Field(None, description="Current avatar URL if selected")
     feedback: Optional[str] = Field(None, description="User feedback for regeneration")
+    podcast_mode: Optional[str] = Field(None, description="Podcast mode: audio_only, video_only, or audio_video")
 
 
 class PodcastAnalyzeResponse(BaseModel):
@@ -171,6 +172,15 @@ class PodcastResearchInsight(BaseModel):
     listener_cta_suggestions: Optional[List[str]] = []  # CTA suggestions
 
 
+class PodcastResearchOutput(BaseModel):
+    """Structured JSON output for LLM research extraction using json_struct."""
+    summary: str = ""
+    key_insights: List[PodcastResearchInsight] = []
+    expert_quotes: List[Dict[str, Any]] = []  # [{"quote": str, "source_index": int, "context": str}]
+    listener_cta_suggestions: List[str] = []  # List of CTA suggestions
+    mapped_angles: List[Dict[str, Any]] = []  # [{"title": str, "why": str, "mapped_fact_ids": []}]
+
+
 class PodcastExaResearchResponse(BaseModel):
     sources: List[PodcastExaSource]
     search_queries: List[str] = []
@@ -180,6 +190,9 @@ class PodcastExaResearchResponse(BaseModel):
     search_type: Optional[str] = None
     provider: str = "exa"
     content: Optional[str] = None  # Raw aggregated content (deprecated)
+    mapped_angles: List[Dict[str, Any]] = []  # Content angles for the episode
+    expert_quotes: List[Dict[str, Any]] = []  # Expert quotes from research
+    listener_cta_suggestions: List[str] = []  # CTA suggestions
 
 
 class PodcastScriptResponse(BaseModel):

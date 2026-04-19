@@ -66,15 +66,15 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [audioSettings, setAudioSettings] = useState<AudioGenerationSettings>({
-    voiceId: "Wise_Woman",
-    customVoiceId: undefined,
-    speed: 1.0,
+    voiceId: knobs.voice_id || "Wise_Woman",
+    customVoiceId: knobs.custom_voice_id || undefined,
+    speed: knobs.voice_speed ?? 1.0,
     volume: 1.0,
     pitch: 0.0,
-    emotion: scene.emotion || "neutral",
+    emotion: scene.emotion || knobs.voice_emotion || "neutral",
     englishNormalization: true,
-    sampleRate: 24000,
-    bitrate: 64000,
+    sampleRate: knobs.sample_rate || 24000,
+    bitrate: knobs.bitrate === 'hd' ? 128000 : 64000,
     channel: "1",
     format: "mp3",
     languageBoost: "auto",

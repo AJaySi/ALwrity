@@ -2,6 +2,7 @@
 Pre-flight check endpoints for operation validation and cost estimation.
 """
 
+import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any
@@ -34,6 +35,7 @@ async def preflight_check(
     
     Uses caching to minimize DB load (< 100ms with cache hit).
     """
+    start_time = time.time()
     try:
         user_id = get_user_id_from_token(current_user)
         
@@ -229,13 +231,19 @@ async def preflight_check(
                 'remaining': max(0, video_limit - video_current) if video_limit > 0 else float('inf')
             }
         
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.warning(f"[PreflightCheck] Completed in {elapsed_ms:.0f}ms for user {user_id}")
+        
         return {
             "success": True,
             "data": response_data
         }
     
     except HTTPException:
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.warning(f"[PreflightCheck] HTTP error after {elapsed_ms:.0f}ms")
         raise
     except Exception as e:
-        logger.error(f"Error in pre-flight check: {e}", exc_info=True)
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.error(f"[PreflightCheck] Error after {elapsed_ms:.0f}ms: {e}")
         raise HTTPException(status_code=500, detail=f"Pre-flight check failed: {str(e)}")

@@ -4,11 +4,11 @@ Podcast Service
 Service layer for managing podcast project persistence.
 """
 
+import os
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, or_
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-import uuid
 
 from models.podcast_models import PodcastProject
 from services.podcast_bible_service import PodcastBibleService
@@ -32,8 +32,14 @@ class PodcastService:
         **kwargs
     ) -> PodcastProject:
         """Create a new podcast project."""
-        # Generate Podcast Bible automatically from onboarding data
-        bible = self.bible_service.generate_bible(user_id, project_id)
+        # Generate Podcast Bible in full mode only — skip in podcast-only mode
+        bible_data = None
+        if os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() != "podcast":
+            try:
+                bible = self.bible_service.generate_bible(user_id, project_id)
+                bible_data = bible.model_dump() if bible else None
+            except Exception:
+                pass  # Bible is optional, project creation continues regardless
         
         project = PodcastProject(
             project_id=project_id,
@@ -42,7 +48,7 @@ class PodcastService:
             duration=duration,
             speakers=speakers,
             budget_cap=budget_cap,
-            bible=bible.model_dump() if bible else None,
+            bible=bible_data,
             status="draft",
             current_step="create",
             **kwargs

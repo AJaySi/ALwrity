@@ -1,25 +1,27 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Stack,
-  Alert,
   Typography,
+  Chip,
+  Tooltip,
+  Alert,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  ListItemIcon,
+  Box,
   alpha,
-  Collapse,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   CircularProgress,
-  Box,
   LinearProgress,
-  Chip,
   Divider,
   useMediaQuery,
   useTheme,
+  Collapse,
 } from "@mui/material";
 import {
   Info as InfoIcon,
@@ -38,8 +40,9 @@ import {
   Headphones as HeadphonesIcon,
   Article as ArticleIcon,
   Campaign as CampaignIcon,
- Groups as GroupsIcon,
+  Groups as GroupsIcon,
   School as SchoolIcon,
+  Error as ErrorIcon,
 } from "@mui/icons-material";
 import { PrimaryButton, SecondaryButton } from "../ui";
 
@@ -49,6 +52,8 @@ interface CreateActionsProps {
   canSubmit: boolean;
   isSubmitting: boolean;
   announcement?: string;
+  onAnnouncementClear?: () => void;
+  error?: string | null;
 }
 
 const ANALYSIS_FEATURES = [
@@ -374,7 +379,7 @@ const WhatYoullGetView: React.FC<{ isMobile?: boolean }> = ({ isMobile }) => (
   </>
 );
 
-export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, canSubmit, isSubmitting, announcement }) => {
+export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, canSubmit, isSubmitting, announcement, onAnnouncementClear, error }) => {
   const [showInfo, setShowInfo] = useState(true);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false);
@@ -386,6 +391,31 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
     const timer = setTimeout(() => setShowInfo(false), 8000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Close modal when analysis completes OR when there's an error
+  // Use a ref to track previous isSubmitting to detect the transition from true to false
+  const prevIsSubmittingRef = useRef(isSubmitting);
+  useEffect(() => {
+    // Detect transition from submitting to not submitting (analysis complete)
+    const wasSubmitting = prevIsSubmittingRef.current;
+    const nowNotSubmitting = !isSubmitting;
+    
+    if (showAnalysisModal && analysisStarted && wasSubmitting && nowNotSubmitting) {
+      console.warn('[CreateActions] Analysis complete — closing modal and clearing announcement');
+      setTimeout(() => {
+        setShowAnalysisModal(false);
+        onAnnouncementClear?.();
+      }, 100);
+    }
+    
+    // Update ref for next render
+    prevIsSubmittingRef.current = isSubmitting;
+    
+    // If there's an error, also ensure modal is usable
+    if (error && showAnalysisModal) {
+      console.warn('[CreateActions] Error detected:', error);
+    }
+  }, [isSubmitting, showAnalysisModal, analysisStarted, onAnnouncementClear, error]);
 
   // Sequential progress - increment every few seconds
   useEffect(() => {
@@ -408,11 +438,11 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
     if (canSubmit && !isSubmitting) setShowAnalysisModal(true);
   };
 
-  const handleStartAnalysis = () => {
+  const handleStartAnalysis = useCallback(() => {
     setAnalysisStarted(true);
     setProgressIndex(0);
     submit();
-  };
+  }, [submit]);
 
   const showProgressInModal = showAnalysisModal && (analysisStarted || isSubmitting);
 
@@ -465,6 +495,22 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
         <DialogContent sx={{ ...styles.dialogContent, ...(isMobile ? { px: 2, py: 2 } : {}) }}>
           {showProgressInModal ? (
             <AnalysisProgressView currentMessage={announcement} progressIndex={progressIndex} />
+          ) : error ? (
+            <Stack spacing={2}>
+              <Alert 
+                severity="error" 
+                icon={<ErrorIcon />}
+                sx={{ bgcolor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#fecaca" }}
+              >
+                <Typography variant="body2" fontWeight={600} sx={{ color: "#fecaca" }}>
+                  Error creating project
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#fecaca", display: "block", mt: 1 }}>
+                  {error}
+                </Typography>
+              </Alert>
+              <WhatYoullGetView isMobile={isMobile} />
+            </Stack>
           ) : (
             <WhatYoullGetView isMobile={isMobile} />
           )}

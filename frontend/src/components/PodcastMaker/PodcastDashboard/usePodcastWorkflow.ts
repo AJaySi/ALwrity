@@ -47,6 +47,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     setRenderJobs,
     initializeProject,
     setBible,
+    setBackendProjectCreated,
   } = projectState;
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -123,21 +124,55 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       
       let dbProject: any = null;
       try {
-        dbProject = project ? null : await initializeProject(payload, projectId, avatarUrl);
-      } catch (initError: any) {
-        const errorStr = initError?.message || "";
-        if (errorStr.includes("DUPLICATE_IDEA")) {
-          try {
-            const dupData = JSON.parse(errorStr);
-            const existingId = dupData.existing_project_id;
-          const existingIdea = dupData.existing_idea;
-            setAnnouncement("");
-            // Throw error to trigger UI modal
-            throw new Error(`DUPLICATE_IDEA:${existingId}:${existingIdea}`);
-          } catch (parseErr) {
-            console.error("Failed to parse duplicate idea error:", parseErr);
-          }
+        if (project) {
+          // Existing project - mark as DB-created (it was loaded from DB)
+          setBackendProjectCreated(true);
+          dbProject = null;
+        } else {
+          dbProject = await initializeProject(payload, projectId, avatarUrl);
         }
+      } catch (initError: any) {
+        setBackendProjectCreated(false);
+        const errorStr = initError?.message || initError?.toString() || "";
+        if (errorStr.includes("DUPLICATE_IDEA") || errorStr.includes("existing_project_id") || errorStr.includes("409")) {
+          setAnnouncement("");
+          // Parse error message to extract existing project info
+          // Format: "DUPLICATE_IDEA:podcast_123:Some idea..." or the full error response
+          let existingId = "";
+          let existingIdea = "";
+          
+          // Try extracting from "DUPLICATE_IDEA:projectid:idea" format
+          if (errorStr.includes("DUPLICATE_IDEA:")) {
+            const parts = errorStr.split("DUPLICATE_IDEA:")[1];
+            if (parts) {
+              const colonIdx = parts.indexOf(":");
+              if (colonIdx > 0) {
+                existingId = parts.substring(0, colonIdx).trim();
+                existingIdea = parts.substring(colonIdx + 1).trim();
+              }
+            }
+          }
+          
+          // If still empty, try regex on full error response
+          if (!existingId) {
+            const idMatch = errorStr.match(/project_id["']?\s*[:=]\s*["']?([^"'$,\s]+)/);
+            existingId = idMatch ? idMatch[1].trim() : "";
+          }
+          if (!existingIdea) {
+            const ideaMatch = errorStr.match(/idea["']?\s*[:=]\s*["']([^"']+)["']/);
+            existingIdea = ideaMatch ? ideaMatch[1].trim() : "Similar project already exists";
+          }
+          
+          console.error("[handleCreate] Duplicate project found:", existingId, existingIdea);
+          // Set the dialog info and show the dialog
+          setShowDuplicateDialog(true);
+          setDuplicateProjectInfo({ 
+            projectId: existingId || "unknown", 
+            idea: existingIdea || "Similar project already exists" 
+          });
+          return;
+        }
+        // Re-throw other errors to be handled by the outer catch
         throw initError;
       }
       
@@ -153,24 +188,37 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       }
       
       // Update the project in database with the analysis results
-      try {
-        await podcastApi.updateProject(projectId, {
-          analysis: result.analysis,
-          estimate: result.estimate,
-          queries: result.queries,
-          selected_queries: [], // Don't auto-select - user must choose manually
-          avatar_url: result.avatar_url,
-          avatar_prompt: result.avatar_prompt,
-        });
-      } catch (error) {
-        console.error('Failed to update project with analysis results:', error);
+      // If dbProject exists, update it. Otherwise use localStorage fallback
+      if (dbProject) {
+        try {
+          await podcastApi.updateProject(projectId, {
+            analysis: result.analysis,
+            estimate: result.estimate,
+            queries: result.queries,
+            selected_queries: [],
+            avatar_url: result.avatar_url,
+            avatar_prompt: result.avatar_prompt,
+          });
+          setBackendProjectCreated(true);
+          console.log("[handleCreate] DB project created and updated successfully");
+        } catch (updateErr) {
+          console.warn("[handleCreate] updateProject failed, using localStorage fallback:", updateErr);
+          // Fall back to localStorage only
+        }
+      } else {
+        // DB not created (initializeProject failed or returned null) - use localStorage only
+        console.warn("[handleCreate] DB project not created - using localStorage only");
       }
+
+      // Mark as created in local state so sync doesn't try to create later
+      setBackendProjectCreated(true);
 
       setProject({ 
         id: projectId, 
         idea: payload.ideaOrUrl, 
         duration: payload.duration, 
         speakers: payload.speakers, 
+        podcastMode: payload.podcastMode,
         avatarUrl: result.avatar_url || avatarUrl,
         avatarPrompt: result.avatar_prompt || null,
         avatarPersonaId: null,
@@ -184,8 +232,8 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       setBudgetCap(payload.budgetCap);
       
       // Generate presenters AFTER analysis completes (to use analysis insights)
-      // This happens only if no avatar was uploaded
-      if (!avatarUrl && payload.speakers > 0 && result.analysis) {
+      // Only if no avatar was uploaded AND analysis didn't already generate one AND not audio_only
+      if (payload.podcastMode !== "audio_only" && !avatarUrl && !result.avatar_url && payload.speakers > 0 && result.analysis) {
         try {
           setAnnouncement("Generating presenter avatars using AI insights...");
           const presentersResponse = await podcastApi.generatePresenters(
@@ -204,6 +252,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
               idea: payload.ideaOrUrl, 
               duration: payload.duration, 
               speakers: payload.speakers, 
+              podcastMode: payload.podcastMode,
               avatarUrl: firstAvatar.avatar_url,
               avatarPrompt: prompt,
               avatarPersonaId: firstAvatar.persona_id || presentersResponse.persona_id || null,
@@ -216,7 +265,8 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
           // Continue without presenters - can generate later
         }
       } else {
-        setAnnouncement("Analysis complete");
+        const audioOnlyNote = payload.podcastMode === "audio_only" ? " (audio-only mode)" : "";
+        setAnnouncement(`Analysis complete${audioOnlyNote}`);
       }
     } catch (error: any) {
       // Handle duplicate idea error

@@ -1,12 +1,16 @@
-import React from "react";
-import { Stack, Box, Typography, TextField, ToggleButton, ToggleButtonGroup, alpha } from "@mui/material";
-import { Person as PersonIcon, Group as GroupIcon, Settings as SettingsIcon } from "@mui/icons-material";
+import React, { useState } from "react";
+import { Stack, Box, Typography, TextField, ToggleButton, ToggleButtonGroup, alpha, IconButton, Tooltip } from "@mui/material";
+import { Person as PersonIcon, Group as GroupIcon, Settings as SettingsIcon, HelpOutline as HelpOutlineIcon, Headphones as HeadphonesIcon, Videocam as VideocamIcon } from "@mui/icons-material";
+import { PodcastMode } from "../types";
+import { PodcastModeInfoModal } from "./PodcastModeInfoModal";
 
 interface PodcastConfigurationProps {
   duration: number;
   setDuration: (value: number) => void;
   speakers: number;
   setSpeakers: (value: number) => void;
+  podcastMode: PodcastMode;
+  setPodcastMode: (mode: PodcastMode) => void;
 }
 
 export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
@@ -14,7 +18,11 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
   setDuration,
   speakers,
   setSpeakers,
+  podcastMode,
+  setPodcastMode,
 }) => {
+  const [modeInfoOpen, setModeInfoOpen] = useState(false);
+
   const handleDurationChange = (value: number) => {
     const clamped = Math.min(10, Math.max(1, value));
     setDuration(clamped);
@@ -28,6 +36,21 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
       setSpeakers(newValue);
     }
   };
+
+  const handleModeChange = (
+    event: React.MouseEvent<HTMLElement>,
+    newValue: PodcastMode | null
+  ) => {
+    if (newValue !== null) {
+      setPodcastMode(newValue);
+    }
+  };
+
+  const podcastModes: { value: PodcastMode; label: string; icon: React.ReactNode; color: string; desc: string }[] = [
+    { value: "audio_only", label: "Audio", icon: <HeadphonesIcon fontSize="small" />, color: "#10b981", desc: "Audio podcast only" },
+    { value: "video_only", label: "Video", icon: <VideocamIcon fontSize="small" />, color: "#f97316", desc: "AI avatar video" },
+    { value: "audio_video", label: "Both", icon: <><HeadphonesIcon fontSize="small" /><VideocamIcon fontSize="small" /></>, color: "#8b5cf6", desc: "Audio + Video" },
+  ];
 
   return (
     <Box
@@ -98,6 +121,70 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
       </Stack>
       
       <Stack spacing={3}>
+        {/* Podcast Mode */}
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="caption" sx={{ display: "block", color: "#64748b", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Podcast Mode
+            </Typography>
+            <Tooltip title="Learn about podcast modes">
+              <IconButton size="small" onClick={() => setModeInfoOpen(true)} sx={{ color: "#94a3b8", p: 0.25, "&:hover": { color: "#667eea" } }}>
+                <HelpOutlineIcon sx={{ fontSize: "0.9rem" }} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <ToggleButtonGroup
+            value={podcastMode}
+            exclusive
+            onChange={handleModeChange}
+            fullWidth
+            size="small"
+            sx={{
+              backgroundColor: "#f8fafc",
+              border: "2px solid rgba(102, 126, 234, 0.2)",
+              borderRadius: 2,
+              p: 0.5,
+              "& .MuiToggleButton-root": {
+                border: "none",
+                borderRadius: 1.5,
+                color: "#64748b",
+                textTransform: "none",
+                fontWeight: 500,
+                fontSize: "0.875rem",
+                py: 1,
+                transition: "all 0.2s ease",
+                "&:hover": {
+                  backgroundColor: alpha("#667eea", 0.08),
+                },
+                "&.Mui-selected": {
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  color: "#ffffff",
+                  fontWeight: 600,
+                  boxShadow: "0 4px 12px rgba(102, 126, 234, 0.3)",
+                  "&:hover": {
+                    background: "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+                  },
+                },
+              },
+            }}
+          >
+            {podcastModes.map((mode) => (
+              <ToggleButton key={mode.value} value={mode.value} aria-label={mode.label}>
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  {mode.icon}
+                  <Typography variant="body2">{mode.label}</Typography>
+                </Stack>
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+          <Typography variant="caption" sx={{ display: "block", mt: 1, color: podcastModes.find(m => m.value === podcastMode)?.color || "#64748b", fontSize: "0.75rem", fontWeight: 500 }}>
+            {podcastModes.find(m => m.value === podcastMode)?.desc}
+            {podcastMode === "audio_only" && " • No avatar needed • Lowest cost"}
+            {podcastMode === "video_only" && " • Requires avatar • Medium cost"}
+            {podcastMode === "audio_video" && " • Both formats • Highest cost"}
+          </Typography>
+        </Box>
+
         {/* Duration Input */}
         <Box>
           <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#64748b", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -201,6 +288,8 @@ export const PodcastConfiguration: React.FC<PodcastConfigurationProps> = ({
           </Typography>
         </Box>
       </Stack>
+
+      <PodcastModeInfoModal open={modeInfoOpen} onClose={() => setModeInfoOpen(false)} />
     </Box>
   );
 };

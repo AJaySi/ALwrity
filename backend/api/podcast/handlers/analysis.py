@@ -51,6 +51,7 @@ async def enhance_podcast_idea(
     # In podcast-only mode, skip bible generation since onboarding is disabled
     bible_context = ""
     if not _is_podcast_only_mode():
+        logger.warning(f"[Podcast Enhance] Podcast mode=full — attempting Bible generation for user {user_id}")
         try:
             bible_service = PodcastBibleService()
             if request.bible:
@@ -65,6 +66,7 @@ async def enhance_podcast_idea(
             logger.warning(f"[Podcast Enhance] Failed to parse or generate bible context: {exc}")
     else:
         # In podcast mode, use the provided bible directly if available
+        logger.warning(f"[Podcast Enhance] Podcast mode=podcast_only — skipping Bible generation for user {user_id}")
         if request.bible:
             try:
                 from models.podcast_bible_models import PodcastBible
@@ -209,7 +211,11 @@ async def analyze_podcast_idea(
     final_avatar_url = request.avatar_url
     final_avatar_prompt = None
     
-    if not final_avatar_url:
+    # Skip avatar generation for audio_only mode
+    podcast_mode = getattr(request, 'podcast_mode', None) or 'video_only'
+    should_generate_avatar = not final_avatar_url and podcast_mode != 'audio_only'
+    
+    if should_generate_avatar:
         logger.info(f"[Podcast Analyze] No avatar_url provided, generating one for user {user_id}")
         try:
             # 1. PRE-FLIGHT VALIDATION: Check subscription limits for image generation
@@ -240,8 +246,9 @@ async def analyze_podcast_idea(
             if image_result and image_result.image_bytes:
                 img_id = str(uuid.uuid4())[:8]
                 filename = f"presenter_podcast_{user_id}_{img_id}.png"
-                output_path = PODCAST_IMAGES_DIR / filename
-                PODCAST_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+                avatars_dir = PODCAST_IMAGES_DIR / "avatars"
+                avatars_dir.mkdir(parents=True, exist_ok=True)
+                output_path = avatars_dir / filename
                 
                 with open(output_path, "wb") as f:
                     f.write(image_result.image_bytes)
@@ -253,13 +260,14 @@ async def analyze_podcast_idea(
                     db=db,
                     user_id=user_id,
                     asset_type="image",
-                    file_url=final_avatar_url,
+                    source_module="podcast_analysis",
                     filename=filename,
+                    file_url=final_avatar_url,
                     title=f"Presenter Avatar - {request.idea[:40]}",
                     description=f"AI-generated podcast presenter for: {request.idea}",
                     provider=image_result.provider,
                     model=image_result.model,
-                    cost=image_result.cost
+                    cost=0.0  # Cost tracked in generate_image
                 )
                 logger.info(f"[Podcast Analyze] ✅ Generated and saved avatar to {final_avatar_url}")
         except Exception as e:

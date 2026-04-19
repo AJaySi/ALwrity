@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Box, Stack, Typography, Alert, Paper, LinearProgress, CircularProgress, alpha, Collapse, IconButton, Divider } from "@mui/material";
-import { EditNote as EditNoteIcon, CheckCircle as CheckCircleIcon, PlayArrow as PlayArrowIcon, ArrowBack as ArrowBackIcon, Info as InfoIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Download as DownloadIcon, Refresh as RefreshIcon } from "@mui/icons-material";
+import { Box, Stack, Typography, Alert, Paper, LinearProgress, CircularProgress, alpha, Collapse, IconButton, Divider, Chip, Tooltip } from "@mui/material";
+  import { EditNote as EditNoteIcon, CheckCircle as CheckCircleIcon, PlayArrow as PlayArrowIcon, ArrowBack as ArrowBackIcon, Info as InfoIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Download as DownloadIcon, Refresh as RefreshIcon, Mic as MicIcon } from "@mui/icons-material";
 import { Script, Knobs, Scene } from "../types";
 import { BlogResearchResponse } from "../../../services/blogWriterApi";
 import { podcastApi } from "../../../services/podcastApi";
@@ -300,6 +300,27 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           >
             <EditNoteIcon sx={{ fontSize: "2rem" }} />
             Script Editor
+            {knobs.voice_id && (() => {
+              const vid = knobs.voice_id;
+              const isCustom = Boolean(vid && !vid.startsWith("builtin:") && !["Wise_Woman", "Friendly_Person", "Inspirational_girl", "Deep_Voice_Man", "Calm_Woman", "Casual_Guy", "Lively_Girl", "Patient_Man", "Young_Knight", "Determined_Man", "Lovely_Girl", "Decent_Boy", "Imposing_Manner", "Elegant_Man", "Abbess", "Sweet_Girl_2", "Exuberant_Girl"].includes(vid));
+              const vName = isCustom ? "My Voice Clone" : (vid === "Wise_Woman" ? "Wise Woman" : vid === "Friendly_Person" ? "Friendly Person" : vid === "Deep_Voice_Man" ? "Deep Voice Man" : vid?.replace(/_/g, " ") || "Default");
+              return (
+                <Chip
+                  icon={<MicIcon sx={{ fontSize: "14px !important" }} />}
+                  label={`Active Voice: ${vName}`}
+                  size="small"
+                  sx={{
+                    ml: 2,
+                    background: isCustom ? "rgba(16, 185, 129, 0.1)" : "rgba(99, 102, 241, 0.1)",
+                    color: isCustom ? "#10b981" : "#6366f1",
+                    border: `1px solid ${isCustom ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.2)"}`,
+                    '& .MuiChip-icon': { color: isCustom ? "#10b981" : "#6366f1" },
+                    fontWeight: 600,
+                    fontSize: "0.75rem",
+                  }}
+                />
+              );
+            })()}
           </Typography>
           <Typography variant="body2" sx={{ color: "#64748b", mt: 0.5, ml: 5.5 }}>
             Review and refine your podcast script before rendering

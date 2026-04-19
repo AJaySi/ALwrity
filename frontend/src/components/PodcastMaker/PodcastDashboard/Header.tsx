@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Stack, Typography, Box, IconButton, Menu, MenuItem, Divider, ListItemIcon, ListItemText } from "@mui/material";
+import { Stack, Typography, Box, IconButton, Menu, MenuItem, Divider, ListItemIcon, ListItemText, Collapse } from "@mui/material";
 import {
   Mic as MicIcon,
   Menu as MenuIcon,
@@ -14,13 +14,17 @@ import {
 import { useNavigate } from "react-router-dom";
 import { PrimaryButton } from "../ui";
 import HeaderControls from "../../shared/HeaderControls";
+import { ProgressStepper } from "./ProgressStepper";
 
 interface HeaderProps {
   onShowProjects: () => void;
   onNewEpisode: () => void;
+  activeStep?: number;
+  completedSteps?: number[];
+  onStepClick?: (stepIndex: number) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode }) => {
+export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode, activeStep = -1, completedSteps = [], onStepClick }) => {
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const isMenuOpen = Boolean(anchorEl);
@@ -230,6 +234,17 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode }) 
           </Menu>
         </Stack>
       </Stack>
+
+      {/* Progress Stepper - integrated into header when active */}
+      <Collapse in={activeStep >= 0} timeout={400}>
+        <Box sx={{ mt: 1.5 }}>
+          <ProgressStepper
+            activeStep={activeStep}
+            completedSteps={completedSteps}
+            onStepClick={onStepClick}
+          />
+        </Box>
+      </Collapse>
     </Box>
   );
 };

@@ -20,6 +20,7 @@ import {
 } from "../components/PodcastMaker/types";
 import { checkPreflight, PreflightOperation } from "./billingService";
 import { TaskStatus } from "./storyWriterApi";
+import { isPodcastOnlyDemoMode } from "../utils/demoMode";
 
 const DEFAULT_KNOBS: Knobs = {
   voice_emotion: "neutral",
@@ -65,6 +66,7 @@ const estimateCosts = ({
   quality,
   avatars,
   queryCount = 3,
+  voiceId,
 }: {
   minutes: number;
   scenes: number;
@@ -72,6 +74,7 @@ const estimateCosts = ({
   quality: string;
   avatars: number;
   queryCount?: number;
+  voiceId?: string;
 }): PodcastEstimate => {
   const secs = Math.max(60, minutes * 60);
   const ttsCost = (chars / 1000) * 0.05;
@@ -80,12 +83,16 @@ const estimateCosts = ({
   const videoCost = secs * videoRate;
   const researchCost = +(Math.max(1, queryCount) * 0.1).toFixed(2);
   const total = +(ttsCost + avatarCost + videoCost + researchCost).toFixed(2);
+  const isCustomVoice = Boolean(voiceId && !["Wise_Woman", "Friendly_Person", "Inspirational_girl", "Deep_Voice_Man", "Calm_Woman", "Casual_Guy", "Lively_Girl", "Patient_Man", "Young_Knight", "Determined_Man", "Lovely_Girl", "Decent_Boy", "Imposing_Manner", "Elegant_Man", "Abbess", "Sweet_Girl_2", "Exuberant_Girl"].includes(voiceId));
+  const voiceName = isCustomVoice ? "My Voice Clone" : (!voiceId ? "Wise Woman" : voiceId.replace(/_/g, " "));
   return {
     ttsCost: +ttsCost.toFixed(2),
     avatarCost: +avatarCost.toFixed(2),
     videoCost: +videoCost.toFixed(2),
     researchCost,
     total,
+    voiceName,
+    isCustomVoice,
   };
 };
 
@@ -174,7 +181,6 @@ type ExaResearchResult = {
 
 const mapExaResearchResponse = (response: any): Research => {
   const factCards = mapSourcesToFacts(response.sources);
-  // Use backend summary if available, otherwise use full content (no truncation) or fallback text
   const summary = response.summary || response.content || "Research completed.";
   
   const keyInsights = (response.key_insights || []).map((insight: any) => ({
@@ -183,11 +189,26 @@ const mapExaResearchResponse = (response: any): Research => {
     source_indices: insight.source_indices || []
   }));
 
+  const expertQuotes = (response.expert_quotes || []).map((eq: any) => ({
+    quote: eq.quote || eq.text || "",
+    source_index: eq.source_index ?? 0
+  }));
+
+  const listenerCta = response.listener_cta_suggestions || response.listener_cta || [];
+
+  const mappedAngles = (response.mapped_angles || []).map((angle: any) => ({
+    title: angle.title || "",
+    why: angle.why || angle.rationale || "",
+    mappedFactIds: angle.mapped_fact_ids || angle.mappedFactIds || []
+  }));
+
   return {
     summary,
     keyInsights,
     factCards,
-    mappedAngles: [],
+    mappedAngles,
+    expertQuotes,
+    listenerCta,
     searchQueries: response.search_queries,
     searchType: response.search_type,
     provider: response.provider || "exa",
@@ -225,7 +246,8 @@ export const podcastApi = {
       speakers: payload.speakers,
       bible: bible,
       avatar_url: payload.avatarUrl,
-      feedback: feedback, // Pass feedback to backend
+      feedback: feedback,
+      podcast_mode: payload.podcastMode, // Pass mode to skip avatar for audio_only
     });
 
     const outlines = (analysisResp.data?.suggested_outlines || []).map((o: any, idx: number) => ({
@@ -249,7 +271,7 @@ export const podcastApi = {
       exaSuggestedConfig: analysisResp.data?.exa_suggested_config || undefined,
     };
 
-    const researchConfig = await getResearchConfig().catch(() => null);
+    const researchConfig = isPodcastOnlyDemoMode() ? null : await getResearchConfig();
     
     // Use AI-generated queries if available, fallback to legacy mapping
     let queries: Query[] = [];
@@ -275,6 +297,7 @@ export const podcastApi = {
       quality: payload.knobs.bitrate || "standard",
       avatars: payload.speakers,
       queryCount: queries.length || 3,
+      voiceId: payload.knobs.voice_id,
     });
 
     return {
@@ -897,6 +920,34 @@ export const podcastApi = {
     const response = await aiApiClient.post('/api/podcast/avatar/make-presentable', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response.data;
+  },
+
+  async generateBatchAudio(params: {
+    scenes: { id: string; title: string; lines: { text: string }[] }[];
+    voiceId: string;
+    customVoiceId?: string;
+    speed: number;
+    emotion: string;
+    englishNormalization?: boolean;
+    projectId?: string;
+  }): Promise<{ results: any[] }> {
+    await ensurePreflight({
+      provider: "wavespeed",
+      operation_type: "tts_generation",
+      tokens_requested: 1000,
+      actual_provider_name: "wavespeed",
+    });
+    const response = await aiApiClient.post('/api/podcast/audio/batch', params);
+    return response.data;
+  },
+
+  async generateChartPreview(params: {
+    chart_data: Record<string, any>;
+    chart_type: string;
+    title: string;
+  }): Promise<{ image_url: string; preview_url: string; chart_id: string }> {
+    const response = await aiApiClient.post('/api/podcast/chart/preview', params);
     return response.data;
   },
 };

@@ -274,10 +274,6 @@ def wavespeed_text_response(
         
         logger.info("🚀 Making WaveSpeed API call (chat completion)...")
         
-        # Add rate limiting to prevent expensive API calls
-        import time
-        time.sleep(1)  # 1 second delay between API calls
-        
         # Call exactly the requested model; no retries, no fallbacks, no variants
         response = client.chat.completions.create(
             model=model,
@@ -425,10 +421,6 @@ def wavespeed_structured_json_response(
         # Add JSON schema to prompt for guidance
         json_schema_str = json.dumps(schema, indent=2)
         messages[-1]["content"] += f"\n\nJSON Schema:\n{json_schema_str}"
-        
-        # Add rate limiting to prevent expensive API calls
-        import time
-        time.sleep(1)  # 1 second delay between API calls
         
         try:
             response = None

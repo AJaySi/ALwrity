@@ -5,6 +5,7 @@
 
 import { ResearchMode, ResearchProvider } from '../services/blogWriterApi';
 import { apiClient } from './client';
+import { isPodcastOnlyDemoMode } from '../utils/demoMode';
 
 export interface ProviderAvailability {
   google_available: boolean;
@@ -129,6 +130,11 @@ let pendingConfigRequest: Promise<ResearchConfigResponse> | null = null;
  * and research persona from the unified /api/research/config endpoint.
  */
 export const getResearchConfig = async (): Promise<ResearchConfigResponse> => {
+  // Skip in podcast-only mode — backend always provides AI-generated research_queries
+  if (isPodcastOnlyDemoMode()) {
+    throw new Error('Research config not available in podcast-only mode');
+  }
+
   // If a request is already in flight, return the same promise
   if (pendingConfigRequest) {
     console.log('[researchConfig] Reusing pending request to avoid duplicate API call');

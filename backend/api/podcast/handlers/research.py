@@ -22,6 +22,7 @@ from ..models import (
     PodcastExaSource,
     PodcastExaConfig,
     PodcastResearchInsight,
+    PodcastResearchOutput,
 )
 
 router = APIRouter()
@@ -159,43 +160,50 @@ As a podcast research expert, analyze this data and create content that will:
 4. Include a compelling call-to-action for listeners
 
 REQUIRED OUTPUT (JSON):
-=======================
+======================
 {{
-  "summary": "2-3 paragraph comprehensive summary in Markdown. Start with a hook that matches the episode intro. Include specific data points, expert quotes, and trends.",
+  "summary": "2-3 paragraph comprehensive summary in Markdown. Start with a hook that matches the episode intro.",
   "key_insights": [
     {{
-      "title": "Catchy, engaging title for this insight",
-      "content": "3-4 sentences with specific facts, quotes, or data. Write in a conversational tone suitable for a podcast host to discuss.",
-      "source_indices": [1, 2, 3],
-      "podcast_talking_points": ["Point 1 host can expand on", "Counter-point or follow-up", "Question to ask guest"]
+      "title": "Insight title",
+      "content": "3-4 sentences with specific facts, quotes, or data for podcast host.",
+      "source_indices": [1, 2],
+      "podcast_talking_points": ["Point host can expand on", "Counter-point"]
     }}
   ],
   "expert_quotes": [
     {{
-      "quote": "Direct quote from source",
+      "quote": "Direct quote from source text",
       "source_index": 1,
       "context": "Why this quote matters for the podcast"
     }}
   ],
-  "listener_cta_suggestions": ["Specific action listener can take", "Resource to share", "Next episode preview"]
+  "listener_cta_suggestions": ["Action listener can take", "Resource to share", "Next episode preview"],
+  "mapped_angles": [
+    {{
+      "title": "Content angle title",
+      "why": "Why compelling for audience",
+      "mapped_fact_ids": [1, 2]
+    }}
+  ]
 }}
 
+IMPORTANT: You must include ALL fields above with valid data. expert_quotes, listener_cta_suggestions, and mapped_angles must have content - do NOT leave them empty!
+
 QUALITY STANDARDS:
-==================
-- INSIGHTS MUST BE DEEP, not superficial - avoid generic statements
-- Include SPECIFIC DATA POINTS, percentages, statistics when available
-- Extract EXPERT QUOTES that hosts can reference
-- Identify GAPS in the research where more depth is needed
-- Make content naturally flow into the planned episode hook and CTA
-- Write in a CONVERSATIONAL tone - how a host would actually speak
-- Flag any CONTROVERSIAL or debatable claims for host to address
+=================
+- Include at least 2 expert_quotes with source_index
+- Include at least 2 listener_cta_suggestions 
+- Include at least 2 mapped_angles
+- Include specific data points, percentages, statistics
+- Write in conversational tone
 """
         try:
-            logger.warning(f"[Podcast Research] Calling LLM for insight extraction...")
+            logger.warning(f"[Podcast Research] Calling LLM with json_struct...")
             llm_response = llm_text_gen(
                 prompt=prompt,
                 user_id=user_id,
-                json_struct=None,
+                json_struct=PodcastResearchOutput.model_json_schema(),
                 preferred_provider=None,
                 flow_type="premium_tool",
             )

@@ -7,6 +7,8 @@ interface InputsTabProps {
   idea?: string;
   duration?: number;
   speakers?: number;
+  voiceName?: string;
+  podcastMode?: "audio_only" | "video_only" | "audio_video";
   avatarUrl?: string | null;
   avatarPrompt?: string | null;
   avatarBlobUrl?: string | null;
@@ -14,8 +16,8 @@ interface InputsTabProps {
   avatarError?: boolean;
 }
 
-export const InputsTab: React.FC<InputsTabProps> = ({ idea, duration, speakers, avatarUrl, avatarPrompt, avatarBlobUrl, avatarLoading, avatarError }) => {
-  if (!idea && !duration && !speakers && !avatarUrl && !avatarPrompt) {
+export const InputsTab: React.FC<InputsTabProps> = ({ idea, duration, speakers, voiceName, podcastMode, avatarUrl, avatarPrompt, avatarBlobUrl, avatarLoading, avatarError }) => {
+  if (!idea && !duration && !speakers && !voiceName && !podcastMode && !avatarUrl && !avatarPrompt) {
     return null;
   }
 
@@ -24,7 +26,7 @@ export const InputsTab: React.FC<InputsTabProps> = ({ idea, duration, speakers, 
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: avatarUrl ? "1fr 1fr" : "1fr" },
+          gridTemplateColumns: { xs: "1fr", md: avatarUrl && podcastMode !== "audio_only" ? "1fr 1fr" : "1fr" },
           gap: 3,
           alignItems: "flex-start",
         }}
@@ -62,6 +64,38 @@ export const InputsTab: React.FC<InputsTabProps> = ({ idea, duration, speakers, 
                   label={`${speakers} ${speakers === 1 ? "speaker" : "speakers"}`}
                   size="small"
                   sx={{ background: "#f1f5f9", color: "#0f172a", border: "1px solid rgba(0,0,0,0.08)" }}
+                />
+              </Box>
+            )}
+            {voiceName && (
+              <Box>
+                <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 600, display: "block", mb: 0.5 }}>
+                  Voice
+                </Typography>
+                <Chip
+                  label={voiceName}
+                  size="small"
+                  sx={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "#fff", fontWeight: 600 }}
+                />
+              </Box>
+            )}
+            {podcastMode && (
+              <Box>
+                <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 600, display: "block", mb: 0.5 }}>
+                  Podcast Mode
+                </Typography>
+                <Chip
+                  label={podcastMode === "audio_only" ? "Audio Only" : podcastMode === "video_only" ? "Video" : "Audio + Video"}
+                  size="small"
+                  sx={{
+                    background: podcastMode === "audio_only"
+                      ? "#10b981"
+                      : podcastMode === "video_only"
+                      ? "#f97316"
+                      : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    color: "#fff",
+                    fontWeight: 600,
+                  }}
                 />
               </Box>
             )}
@@ -112,7 +146,7 @@ export const InputsTab: React.FC<InputsTabProps> = ({ idea, duration, speakers, 
           )}
         </Stack>
 
-        {avatarUrl && (
+        {podcastMode !== "audio_only" && avatarUrl && (
           <Box>
             <Typography
               variant="caption"

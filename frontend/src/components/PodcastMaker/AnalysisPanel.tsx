@@ -13,6 +13,8 @@ interface AnalysisPanelProps {
   idea?: string;
   duration?: number;
   speakers?: number;
+  voiceName?: string;
+  podcastMode?: "audio_only" | "video_only" | "audio_video";
   avatarUrl?: string | null;
   avatarPrompt?: string | null;
   bible?: PodcastBible | null;
@@ -62,6 +64,8 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   idea, 
   duration, 
   speakers, 
+  voiceName,
+  podcastMode,
   avatarUrl, 
   avatarPrompt, 
   bible,
@@ -423,6 +427,8 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
               idea={idea} 
               duration={duration} 
               speakers={speakers} 
+              voiceName={voiceName}
+              podcastMode={podcastMode}
               avatarUrl={avatarUrl} 
               avatarPrompt={avatarPrompt}
               avatarBlobUrl={avatarBlobUrl}

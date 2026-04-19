@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Stack,
   Typography,
@@ -9,6 +9,7 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
+  ListItemIcon,
   Checkbox,
   FormControl,
   InputLabel,
@@ -22,11 +23,32 @@ import {
   DialogActions,
   TextField,
   IconButton,
+  CircularProgress,
+  LinearProgress,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
-import { Search as SearchIcon, AutoAwesome as AutoAwesomeIcon, Refresh as RefreshIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Help as HelpIcon } from "@mui/icons-material";
+import { Search as SearchIcon, AutoAwesome as AutoAwesomeIcon, Refresh as RefreshIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Help as HelpIcon, TrendingUp as TrendingUpIcon, Psychology as PsychologyIcon, FactCheck as FactCheckIcon, MenuBook as MenuBookIcon } from "@mui/icons-material";
 import { ResearchProvider } from "../../../services/blogWriterApi";
 import { Query } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton, SecondaryButton } from "../ui";
+
+const RESEARCH_FEATURES = [
+  { icon: <TrendingUpIcon />, text: "Latest trends & statistics from the web" },
+  { icon: <FactCheckIcon />, text: "Verified facts with source citations" },
+  { icon: <MenuBookIcon />, text: "Case studies & real-world examples" },
+  { icon: <PsychologyIcon />, text: "Audience insights & pain points" },
+];
+
+const RESEARCH_MESSAGES = [
+  { title: "Connecting to Research Engine", message: "Initializing neural search to gather fresh insights..." },
+  { title: "Searching the Web", message: "Scanning thousands of sources for relevant data..." },
+  { title: "Analyzing Content", message: "Extracting key facts, statistics, and trends..." },
+  { title: "Verifying Information", message: "Cross-referencing sources to ensure accuracy..." },
+  { title: "Synthesizing Insights", message: "Compiling findings into actionable research cards..." },
+  { title: "Finalizing Research", message: "Organizing insights for your podcast episode..." },
+];
 
 interface QuerySelectionProps {
   queries: Query[];
@@ -41,6 +63,7 @@ interface QuerySelectionProps {
   onDeleteQuery: (id: string) => void;
   analysis: any;
   idea: string;
+  researchAnnouncement?: string;
 }
 
 export const QuerySelection: React.FC<QuerySelectionProps> = ({
@@ -56,7 +79,46 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
   onDeleteQuery,
   analysis,
   idea,
+  researchAnnouncement,
 }) => {
+  const [showResearchModal, setShowResearchModal] = useState(false);
+  const [researchStarted, setResearchStarted] = useState(false);
+  const [progressIndex, setProgressIndex] = useState(0);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const prevIsResearchingRef = useRef(isResearching);
+
+  // Close modal only when research actually completes (transitions from true to false)
+  useEffect(() => {
+    const wasResearching = prevIsResearchingRef.current;
+    const nowNotResearching = !isResearching;
+    
+    if (showResearchModal && researchStarted && wasResearching && nowNotResearching) {
+      setTimeout(() => setShowResearchModal(false), 1000);
+    }
+    
+    prevIsResearchingRef.current = isResearching;
+  }, [isResearching, showResearchModal, researchStarted]);
+
+  // Progress message cycling
+  useEffect(() => {
+    if (!isResearching || !researchStarted) {
+      setProgressIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setProgressIndex((prev) => (prev < RESEARCH_MESSAGES.length - 1 ? prev + 1 : prev));
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isResearching, researchStarted]);
+
+  const handleStartResearch = () => {
+    setResearchStarted(true);
+    setProgressIndex(0);
+    onRunResearch();
+  };
+
+  const showProgressInModal = showResearchModal && (researchStarted || isResearching);
   const [showRegenDialog, setShowRegenDialog] = useState(false);
   const [regenFeedback, setRegenFeedback] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -281,7 +343,7 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
             </Typography>
           )}
           <PrimaryButton
-            onClick={onRunResearch}
+            onClick={() => setShowResearchModal(true)}
             disabled={selectedCount === 0 || isResearching}
             loading={isResearching}
             startIcon={<SearchIcon />}
@@ -291,7 +353,7 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
                 : `Run research with ${selectedCount} selected ${selectedCount === 1 ? "query" : "queries"}`
             }
           >
-            {isResearching ? "Running Research..." : selectedCount === 0 ? "Next: Select Query" : "Run Research"}
+            {isResearching ? "Running Research..." : selectedCount === 0 ? "Next: Select Query" : "Start Neural Research"}
           </PrimaryButton>
         </Box>
       </Stack>
@@ -357,8 +419,152 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
             Generate New Queries
           </PrimaryButton>
         </DialogActions>
+</Dialog>
+
+      {/* Research Progress Modal */}
+      <Dialog
+        open={showResearchModal}
+        onClose={() => !isResearching && setShowResearchModal(false)}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+        PaperProps={{
+          sx: {
+            background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+            border: "1px solid rgba(96, 165, 250, 0.3)",
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: "#fff", display: "flex", alignItems: "center", gap: 1, fontSize: isMobile ? "1rem" : "1.25rem" }}>
+          {isResearching ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CircularProgress size={20} sx={{ color: "#60a5fa" }} />
+              Neural Research in Progress
+            </Box>
+          ) : (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <SearchIcon sx={{ color: "#60a5fa" }} />
+              What You'll Get
+            </Box>
+          )}
+        </DialogTitle>
+
+        <DialogContent sx={{ color: "rgba(255,255,255,0.8)", minHeight: 200, py: 2, px: { xs: 2, sm: 3 }, maxHeight: { xs: "80vh", sm: "70vh" }, overflowY: "auto" }}>
+          {showProgressInModal ? (
+            <Stack spacing={2}>
+              <Box sx={{ textAlign: "center" }}>
+                <Box sx={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", mb: 2 }}>
+                  <CircularProgress size={isMobile ? 50 : 60} thickness={3} sx={{ color: "#60a5fa" }} />
+                  <Box sx={{ position: "absolute", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <SearchIcon sx={{ color: "#60a5fa", fontSize: isMobile ? 20 : 24 }} />
+                  </Box>
+                </Box>
+
+                <Typography variant="subtitle1" sx={{ color: "#60a5fa", fontWeight: 600, mt: 1, fontSize: isMobile ? "0.85rem" : "0.95rem" }}>
+                  {RESEARCH_MESSAGES[Math.min(progressIndex, RESEARCH_MESSAGES.length - 1)].title}
+                </Typography>
+                
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.7)", mt: 0.5, fontSize: isMobile ? "0.75rem" : "0.85rem", px: 1 }}>
+                  {RESEARCH_MESSAGES[Math.min(progressIndex, RESEARCH_MESSAGES.length - 1)].message}
+                </Typography>
+
+                {researchAnnouncement && researchAnnouncement !== RESEARCH_MESSAGES[Math.min(progressIndex, RESEARCH_MESSAGES.length - 1)].message && (
+                  <Typography variant="caption" sx={{ color: "#10b981", mt: 0.5, display: "block", fontSize: "0.75rem" }}>
+                    {researchAnnouncement}
+                  </Typography>
+                )}
+
+                <LinearProgress
+                  sx={{
+                    width: "100%",
+                    height: 4,
+                    borderRadius: 2,
+                    bgcolor: "rgba(255,255,255,0.1)",
+                    mt: 2,
+                    "& .MuiLinearProgress-bar": { bgcolor: "#60a5fa", borderRadius: 2 },
+                  }}
+                />
+                
+                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.4)", mt: 0.5, display: "block" }}>
+                  Step {Math.min(progressIndex, RESEARCH_MESSAGES.length - 1) + 1} of {RESEARCH_MESSAGES.length}
+                </Typography>
+              </Box>
+
+              <Divider sx={{ borderColor: "rgba(255,255,255,0.15)" }} />
+
+              <Box>
+                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.65rem", mb: 1, display: "block" }}>
+                  Why Neural Research?
+                </Typography>
+                <Stack spacing={1}>
+                  {[
+                    "Fresh web data — bypasses LLM training cutoff",
+                    "Reduces AI hallucinations with verified sources",
+                    "Real-time trends and current statistics",
+                    "Citation-backed facts for credibility",
+                  ].map((item, idx) => (
+                    <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <CheckCircleIcon sx={{ fontSize: 14, color: "#10b981" }} />
+                      <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.7)", fontSize: "0.75rem" }}>
+                        {item}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            </Stack>
+          ) : (
+            <Stack spacing={2}>
+              <Typography variant="body2" sx={{ mb: 2, color: "rgba(255,255,255,0.7)", fontSize: isMobile ? "0.85rem" : "0.9rem" }}>
+                Click "Start Research" to gather AI-powered insights. Here's what we'll find for you:
+              </Typography>
+              <List>
+                {RESEARCH_FEATURES.map((feature, index) => (
+                  <ListItem key={index} sx={{ px: 0, py: 0.5 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "#60a5fa" }}>{feature.icon}</ListItemIcon>
+                    <ListItemText
+                      primary={feature.text}
+                      primaryTypographyProps={{ sx: { color: "rgba(255,255,255,0.9)", fontSize: isMobile ? "0.8rem" : "0.9rem" } }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+
+              <Divider sx={{ borderColor: "rgba(255,255,255,0.15)" }} />
+
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                  <CheckCircleIcon sx={{ color: "#10b981", fontSize: 18, mt: 0.25 }} />
+                  <Box>
+                    <Typography variant="body2" sx={{ color: "#10b981", fontWeight: 600, fontSize: "0.85rem" }}>
+                      Research Benefits
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.7)", fontSize: "0.75rem", display: "block", mt: 0.5 }}>
+                      • Up-to-date information beyond LLM training data<br/>
+                      • Reduces fact-checking time significantly<br/>
+                      • Credible sources boost listener trust<br/>
+                      • Helps AI script sound expert and authoritative
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          {showProgressInModal ? null : (
+            <>
+              <SecondaryButton onClick={() => setShowResearchModal(false)}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={handleStartResearch} startIcon={<SearchIcon />}>
+                Start Research
+              </PrimaryButton>
+            </>
+          )}
+        </DialogActions>
       </Dialog>
     </GlassyCard>
-  );
-};
+    );
+  };
 

@@ -6,6 +6,7 @@ migrated from the legacy lib/gpt_providers/text_generation/main_text_generation.
 
 import os
 import json
+import time
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from loguru import logger
@@ -211,7 +212,7 @@ def llm_text_gen(
             provider_enum = APIProvider.MISTRAL  # HuggingFace maps to Mistral enum for usage tracking
             actual_provider_name = "huggingface"  # Keep actual provider name for logs
         elif gpt_provider == "wavespeed":
-            provider_enum = APIProvider.OPENAI  # Map to OpenAI for tracking purposes
+            provider_enum = APIProvider.WAVESPEED
             actual_provider_name = "wavespeed"
         elif gpt_provider == "openai":
             provider_enum = APIProvider.OPENAI
@@ -225,6 +226,8 @@ def llm_text_gen(
         if not user_id:
             raise RuntimeError("user_id is required for subscription checking. Please provide Clerk user ID.")
         
+        sub_check_start = time.time()
+        logger.warning(f"[llm_text_gen][{flow_tag}] Subscription check START for user {user_id}")
         try:
             from services.database import get_session_for_user
             from services.subscription import UsageTrackingService, PricingService
@@ -286,6 +289,8 @@ def llm_text_gen(
                     logger.info(f"[llm_text_gen] Subscription check passed for user {user_id}: provider={actual_provider_name or gpt_provider}, tokens_requested={estimated_total_tokens}, new_user_no_usage_record")
                 
             finally:
+                sub_check_ms = (time.time() - sub_check_start) * 1000
+                logger.warning(f"[llm_text_gen][{flow_tag}] Subscription check took {sub_check_ms:.0f}ms for user {user_id}")
                 db.close()
         except HTTPException:
             # Re-raise HTTPExceptions (e.g., 429 subscription limit) - preserve error details
@@ -295,7 +300,8 @@ def llm_text_gen(
             raise
         except Exception as sub_error:
             # STRICT: Fail on subscription check errors
-            logger.error(f"[llm_text_gen] Subscription check failed for user {user_id}: {sub_error}")
+            sub_check_ms = (time.time() - sub_check_start) * 1000
+            logger.error(f"[llm_text_gen][{flow_tag}] Subscription check FAILED after {sub_check_ms:.0f}ms for user {user_id}: {sub_error}")
             raise RuntimeError(f"Subscription check failed: {str(sub_error)}")
 
         # Construct the system prompt if not provided
@@ -366,6 +372,7 @@ def llm_text_gen(
                     )
             elif gpt_provider == "wavespeed":
                 from services.llm_providers.wavespeed_provider import wavespeed_text_response
+                llm_start = time.time()
                 response_text = wavespeed_text_response(
                     prompt=prompt,
                     model=model or "openai/gpt-oss-120b",
@@ -374,6 +381,8 @@ def llm_text_gen(
                     top_p=top_p,
                     system_prompt=system_instructions
                 )
+                llm_ms = (time.time() - llm_start) * 1000
+                logger.warning(f"[llm_text_gen][{flow_tag}] LLM API call took {llm_ms:.0f}ms for user {user_id} (wavespeed)")
             else:
                 logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")
                 raise RuntimeError(f"Unknown LLM provider: {gpt_provider}. Supported providers: google, huggingface, wavespeed")

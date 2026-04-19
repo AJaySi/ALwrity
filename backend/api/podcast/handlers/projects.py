@@ -119,7 +119,7 @@ async def update_project(
         project = service.update_project(user_id, project_id, **updates)
         
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
         
         return PodcastProjectResponse.model_validate(project)
     except HTTPException:

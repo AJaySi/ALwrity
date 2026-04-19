@@ -1,4 +1,6 @@
 from typing import Dict, Any, Optional
+from datetime import datetime, timedelta
+import time
 from loguru import logger
 from services.product_marketing.personalization_service import PersonalizationService
 from models.podcast_bible_models import (
@@ -11,8 +13,13 @@ from models.podcast_bible_models import (
     ShowRules
 )
 
+_BIBLE_CACHE_TTL_SECONDS = 120
+
+
 class PodcastBibleService:
     """Service for generating and managing the Podcast Bible."""
+
+    _bible_cache: Dict[str, Dict[str, Any]] = {}
 
     def __init__(self):
         try:
@@ -22,19 +29,40 @@ class PodcastBibleService:
             logger.warning(f"Failed to initialize PersonalizationService: {e}")
             self.personalization_service = None
 
+    @classmethod
+    def clear_user_cache(cls, user_id: str) -> int:
+        """Clear cached Bible data for a specific user. Returns number of entries cleared."""
+        keys_to_remove = [key for key in cls._bible_cache if key.startswith(f"{user_id}:")]
+        for key in keys_to_remove:
+            del cls._bible_cache[key]
+        if keys_to_remove:
+            logger.info(f"[BibleCache] Cleared {len(keys_to_remove)} cache entries for user {user_id}")
+        return len(keys_to_remove)
+
     def generate_bible(self, user_id: str, project_id: str) -> PodcastBible:
         """Generate a Podcast Bible from onboarding data."""
+        bible_start = time.time()
+        
+        cache_key = f"{user_id}:{project_id}"
+        cached = self._bible_cache.get(cache_key)
+        if cached and cached.get('expires_at') and cached['expires_at'] > datetime.utcnow():
+            elapsed_ms = (time.time() - bible_start) * 1000
+            logger.warning(f"[BibleCache] HIT for {user_id} — saved 7 DB queries, overhead {elapsed_ms:.0f}ms")
+            return cached['bible']
+        
         logger.info(f"Generating Podcast Bible for user {user_id}")
         
         try:
             if not self.personalization_service:
-                logger.warning("PersonalizationService not available, using default bible")
+                elapsed_ms = (time.time() - bible_start) * 1000
+                logger.warning(f"[BibleCache] MISS (fallback) for {user_id} — PersonalizationService unavailable, {elapsed_ms:.0f}ms")
                 return self._get_default_bible(project_id)
             
             try:
                 preferences = self.personalization_service.get_user_preferences(user_id)
             except Exception as pref_err:
-                logger.warning(f"Failed to get user preferences: {pref_err}, using defaults")
+                elapsed_ms = (time.time() - bible_start) * 1000
+                logger.warning(f"[BibleCache] MISS (fallback) for {user_id} — get_user_preferences failed ({pref_err}), {elapsed_ms:.0f}ms")
                 return self._get_default_bible(project_id)
             
             if not preferences:
@@ -131,6 +159,12 @@ class PodcastBibleService:
             )
             
             logger.info(f"Podcast Bible generated successfully for project {project_id}")
+            elapsed_ms = (time.time() - bible_start) * 1000
+            logger.warning(f"[BibleCache] MISS — generated in {elapsed_ms:.0f}ms (7 DB queries), cached for {_BIBLE_CACHE_TTL_SECONDS}s")
+            self._bible_cache[cache_key] = {
+                'bible': bible,
+                'expires_at': datetime.utcnow() + timedelta(seconds=_BIBLE_CACHE_TTL_SECONDS),
+            }
             return bible
             
         except Exception as e:
@@ -176,8 +210,12 @@ class PodcastBibleService:
         )
 
     def serialize_bible(self, bible: PodcastBible) -> str:
-        """Serialize the Bible into a prompt-friendly text block."""
-        return f"""
+        """Serialize the Bible into a prompt-friendly text block. Results are cached by project_id."""
+        cache_key = f"serialized:{bible.project_id}"
+        cached = self._bible_cache.get(cache_key)
+        if cached and cached.get('expires_at') and cached['expires_at'] > datetime.utcnow() and isinstance(cached.get('serialized'), str):
+            return cached['serialized']
+        serialized = f"""
 <podcast_bible>
 HOST PERSONA:
 - Name: {bible.host.name}
@@ -212,3 +250,8 @@ SHOW RULES & STRUCTURE:
 - Constraints: {', '.join(bible.show_rules.constraints)}
 </podcast_bible>
 """
+        self._bible_cache[cache_key] = {
+            'serialized': serialized,
+            'expires_at': datetime.utcnow() + timedelta(seconds=_BIBLE_CACHE_TTL_SECONDS),
+        }
+        return serialized

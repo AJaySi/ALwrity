@@ -5,6 +5,7 @@ import { CopilotKit } from "@copilotkit/react-core";
 import { CopilotKitHealthProvider } from '../../contexts/CopilotKitHealthContext';
 import CopilotKitDegradedBanner from '../shared/CopilotKitDegradedBanner';
 import ErrorBoundary from '../shared/ErrorBoundary';
+import { isPodcastOnlyDemoMode } from '../../utils/demoMode';
 
 interface ConditionalCopilotKitProps {
   children: React.ReactNode;
@@ -23,7 +24,8 @@ export const AuthenticatedCopilotWrapper: React.FC<AuthenticatedCopilotWrapperPr
   const { isSignedIn } = useAuth();
   const location = useLocation();
   
-  const shouldExcludeCopilot = !isSignedIn || location.pathname.startsWith('/onboarding');
+  const isPodcastOnly = isPodcastOnlyDemoMode();
+  const shouldExcludeCopilot = !isSignedIn || location.pathname.startsWith('/onboarding') || isPodcastOnly;
   
   if (shouldExcludeCopilot) {
     return <>{children}</>;
