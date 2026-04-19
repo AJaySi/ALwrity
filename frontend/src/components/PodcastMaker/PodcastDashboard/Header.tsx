@@ -1,18 +1,18 @@
 import React, { useState } from "react";
-import { Stack, Typography, Box, IconButton, Menu, MenuItem, Divider, ListItemIcon, ListItemText, Collapse } from "@mui/material";
+import { Stack, Typography, Box, IconButton, Menu, MenuItem, Divider, ListItemIcon, ListItemText, Collapse, Chip, Popover, ButtonBase, useMediaQuery } from "@mui/material";
 import {
   Mic as MicIcon,
   Menu as MenuIcon,
   Close as CloseIcon,
-  AutoAwesome as AutoAwesomeIcon,
+  AttachMoney as AttachMoneyIcon,
   LibraryMusic as LibraryMusicIcon,
   Folder as FolderIcon,
   Help as HelpIcon,
   Add as AddIcon,
-  BarChart as BarChartIcon,
 } from "@mui/icons-material";
+import { useTheme } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
-import { PrimaryButton } from "../ui";
+import { PodcastCostEst } from "../types";
 import HeaderControls from "../../shared/HeaderControls";
 import { ProgressStepper } from "./ProgressStepper";
 
@@ -22,12 +22,22 @@ interface HeaderProps {
   activeStep?: number;
   completedSteps?: number[];
   onStepClick?: (stepIndex: number) => void;
+  costEst?: PodcastCostEst | null;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode, activeStep = -1, completedSteps = [], onStepClick }) => {
+const COST_PHASE_ORDER: PodcastCostEst["breakdown"][number]["phase"][] = ["Analyze", "Gather", "Write", "Produce"];
+
+export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode, activeStep = -1, completedSteps = [], onStepClick, costEst }) => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [costAnchorEl, setCostAnchorEl] = useState<null | HTMLElement>(null);
+  const [isMobileCostOpen, setIsMobileCostOpen] = useState(false);
   const isMenuOpen = Boolean(anchorEl);
+  const isCostOpen = Boolean(costAnchorEl);
+  const costTriggerId = "podcast-cost-est-trigger";
+  const costBreakdownId = "podcast-cost-est-breakdown";
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -55,6 +65,35 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode, ac
   const handleNewEpisode = () => {
     handleMenuClose();
     onNewEpisode();
+  };
+
+  const handleCostToggle = (event: React.MouseEvent<HTMLElement>) => {
+    if (!costEst) return;
+    if (isMobile) {
+      setIsMobileCostOpen((prev) => !prev);
+      return;
+    }
+    setCostAnchorEl((prev) => (prev ? null : event.currentTarget));
+  };
+
+  const handleCostKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!costEst) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (isMobile) {
+        setIsMobileCostOpen((prev) => !prev);
+      } else {
+        setCostAnchorEl((prev) => (prev ? null : event.currentTarget));
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setCostAnchorEl(null);
+      setIsMobileCostOpen(false);
+    }
+  };
+
+  const handleCloseCostPopover = () => {
+    setCostAnchorEl(null);
   };
 
   return (
@@ -118,7 +157,35 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode, ac
         </Stack>
 
         {/* Right side - Hamburger Menu + HeaderControls + Create */}
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
+          {costEst && (
+            <ButtonBase
+              id={costTriggerId}
+              onClick={handleCostToggle}
+              onKeyDown={handleCostKeyDown}
+              aria-label={`Cost Est total ${costEst.total.toFixed(2)} dollars. ${isMobile ? "Press to expand cost breakdown." : "Press to open cost breakdown."}`}
+              aria-describedby={costBreakdownId}
+              aria-expanded={isMobile ? isMobileCostOpen : isCostOpen}
+              sx={{ borderRadius: 999 }}
+            >
+              <Chip
+                icon={<AttachMoneyIcon sx={{ fontSize: "0.95rem !important" }} />}
+                label={`Cost Est $${costEst.total.toFixed(2)}`}
+                size="small"
+                sx={{
+                  cursor: "pointer",
+                  background: "rgba(245, 158, 11, 0.12)",
+                  color: "#92400e",
+                  fontWeight: 700,
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  "& .MuiChip-label": {
+                    px: 1.2,
+                  },
+                }}
+              />
+            </ButtonBase>
+          )}
+
           {/* Header Controls (alerts + user) */}
           <HeaderControls colorMode="light" showAlerts={true} showUser={true} />
 
@@ -234,6 +301,74 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode, ac
           </Menu>
         </Stack>
       </Stack>
+
+      {costEst && (
+        <>
+          <Popover
+            open={!isMobile && isCostOpen}
+            anchorEl={costAnchorEl}
+            onClose={handleCloseCostPopover}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
+            PaperProps={{
+              id: costBreakdownId,
+              sx: {
+                mt: 1,
+                p: 1.5,
+                minWidth: 220,
+                borderRadius: 2,
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                background: "#fffbeb",
+              },
+            }}
+          >
+            <Stack spacing={1}>
+              {COST_PHASE_ORDER.map((phase) => {
+                const phaseCost = costEst.breakdown.find((item) => item.phase === phase)?.cost || 0;
+                return (
+                  <Stack key={phase} direction="row" justifyContent="space-between" gap={2}>
+                    <Typography variant="body2" sx={{ color: "#78350f", fontWeight: 600 }}>
+                      {phase}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#92400e", fontWeight: 700 }}>
+                      ${phaseCost.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          </Popover>
+
+          <Collapse in={isMobile && isMobileCostOpen} timeout={250}>
+            <Box
+              id={costBreakdownId}
+              sx={{
+                mt: 1.5,
+                p: 1.5,
+                borderRadius: 2,
+                border: "1px solid rgba(245, 158, 11, 0.2)",
+                bgcolor: "#fffbeb",
+              }}
+            >
+              <Stack spacing={0.75}>
+                {COST_PHASE_ORDER.map((phase) => {
+                  const phaseCost = costEst.breakdown.find((item) => item.phase === phase)?.cost || 0;
+                  return (
+                    <Stack key={phase} direction="row" justifyContent="space-between" gap={2}>
+                      <Typography variant="body2" sx={{ color: "#78350f", fontWeight: 600 }}>
+                        {phase}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "#92400e", fontWeight: 700 }}>
+                        ${phaseCost.toFixed(2)}
+                      </Typography>
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            </Box>
+          </Collapse>
+        </>
+      )}
 
       {/* Progress Stepper - integrated into header when active */}
       <Collapse in={activeStep >= 0} timeout={400}>

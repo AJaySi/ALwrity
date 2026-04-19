@@ -3,7 +3,6 @@ import { Stack, Typography, Chip, Divider, Box, alpha, Paper, Stepper, Step, Ste
 import {
   Insights as InsightsIcon,
   Search as SearchIcon,
-  AttachMoney as AttachMoneyIcon,
   EditNote as EditNoteIcon,
   Article as ArticleIcon,
   AutoAwesome as AutoAwesomeIcon,
@@ -127,19 +126,6 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
                     color: "#4f46e5",
                     fontWeight: 600,
                     border: "1px solid rgba(99, 102, 241, 0.2)",
-                  }}
-                />
-              )}
-              {research.costEst?.total !== undefined && (
-                <Chip
-                  icon={<AttachMoneyIcon sx={{ fontSize: "0.875rem !important" }} />}
-                  label={`$${research.costEst.total.toFixed(3)}`}
-                  size="small"
-                  sx={{
-                    background: alpha("#f59e0b", 0.1),
-                    color: "#d97706",
-                    fontWeight: 600,
-                    border: "1px solid rgba(245, 158, 11, 0.2)",
                   }}
                 />
               )}

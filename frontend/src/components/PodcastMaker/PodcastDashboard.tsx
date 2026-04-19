@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { shouldSkipOnboarding } from '../../utils/demoMode';
 import { Box, Paper, Stack, Alert, Divider, CircularProgress, alpha, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from "@mui/material";
 import { usePodcastProjectState } from "../../hooks/usePodcastProjectState";
+import { PodcastCostEst } from "./types";
 import { CreateModal } from "./CreateModal";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { ScriptEditor } from "./ScriptEditor";
@@ -68,6 +69,50 @@ const PodcastDashboard: React.FC = () => {
   });
 
   const [showRegenModal, setShowRegenModal] = useState(false);
+  const headerCostEst = useMemo<PodcastCostEst | null>(() => {
+    const defaultBreakdown: PodcastCostEst["breakdown"] = [
+      { phase: "Analyze", cost: 0 },
+      { phase: "Gather", cost: 0 },
+      { phase: "Write", cost: 0 },
+      { phase: "Produce", cost: 0 },
+    ];
+
+    if (!estimate && !research?.costEst) {
+      return null;
+    }
+
+    const breakdownMap = new Map(defaultBreakdown.map((item) => [item.phase, item.cost]));
+
+    if (research?.costEst?.breakdown?.length) {
+      research.costEst.breakdown.forEach((item) => {
+        breakdownMap.set(item.phase, Number(item.cost) || 0);
+      });
+    }
+
+    if (estimate) {
+      const gatherCost = breakdownMap.get("Gather") || 0;
+      const produceCost = breakdownMap.get("Produce") || 0;
+      if (gatherCost === 0 && estimate.researchCost > 0) {
+        breakdownMap.set("Gather", estimate.researchCost);
+      }
+      if (produceCost === 0) {
+        breakdownMap.set("Produce", estimate.ttsCost + estimate.avatarCost + estimate.videoCost);
+      }
+    }
+
+    const breakdown: PodcastCostEst["breakdown"] = defaultBreakdown.map((item) => ({
+      phase: item.phase,
+      cost: breakdownMap.get(item.phase) || 0,
+    }));
+    const total = breakdown.reduce((sum, item) => sum + item.cost, 0);
+
+    return {
+      total,
+      breakdown,
+      currency: "USD",
+      last_updated: research?.costEst?.last_updated || new Date().toISOString(),
+    };
+  }, [estimate, research?.costEst]);
 
   const handleSelectProject = useCallback(async (projectId: string) => {
     try {
@@ -122,6 +167,7 @@ const PodcastDashboard: React.FC = () => {
                 ...(scriptData ? [2] : []),
                 ...(renderJobs.some(j => j.status === "completed") ? [3] : []),
               ]}
+              costEst={headerCostEst}
               onStepClick={(step) => {
                 // Handle step clicks - could navigate to different views
               }}
