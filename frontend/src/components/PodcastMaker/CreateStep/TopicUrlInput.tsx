@@ -27,7 +27,7 @@ interface TopicUrlInputProps {
     videoCost: number;
     researchCost: number;
     total: number;
-  };
+  } | null;
   duration?: number;
   speakers?: number;
   knobs?: Knobs;
@@ -115,7 +115,7 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
             </Typography>
           </Stack>
           
-          {estimatedCost && (
+          {estimatedCost ? (
             <Tooltip
               title={
                 <Box>
@@ -171,6 +171,20 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
                 }}
               />
             </Tooltip>
+          ) : (
+            <Chip
+              icon={<AttachMoneyIcon sx={{ fontSize: "0.875rem !important" }} />}
+              label="Est. Unavailable"
+              size="small"
+              sx={{
+                background: "rgba(148, 163, 184, 0.12)",
+                color: "#64748b",
+                fontWeight: 600,
+                border: "1px solid rgba(148, 163, 184, 0.2)",
+                fontSize: "0.75rem",
+                height: 26,
+              }}
+            />
           )}
         </Stack>
         <Tooltip

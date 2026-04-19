@@ -253,26 +253,6 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     setShowAIDetailsButton(topicInput.trim().length > 0 && !isUrl);
   }, [topicInput, isUrl]);
 
-  // Calculate estimated cost
-  const estimatedCost = useMemo(() => {
-    const chars = Math.max(1000, duration * 900); // ~900 chars per minute
-    const secs = duration * 60;
-    
-    const ttsCost = (chars / 1000) * 0.05;
-    const avatarCost = speakers * 0.15;
-    const videoRate = knobs.bitrate === 'hd' ? 0.06 : 0.03;
-    const videoCost = secs * videoRate;
-    const researchCost = 0.3; // Fixed research cost
-    
-    return {
-      ttsCost: +ttsCost.toFixed(2),
-      avatarCost: +avatarCost.toFixed(2),
-      videoCost: +videoCost.toFixed(2),
-      researchCost: +researchCost.toFixed(2),
-      total: +(ttsCost + avatarCost + videoCost + researchCost).toFixed(2),
-    };
-  }, [duration, speakers, knobs.bitrate, knobs.scene_length_target]);
-
   // Check if avatar is present (from any source: upload, brand avatar, or generated)
   const hasAvatar = Boolean(
     avatarFile ||                         // User uploaded an image
@@ -560,7 +540,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
               placeholderIndex={placeholderIndex}
               loading={enhancingTopic}
               loadingMessage={enhanceTopicMessage}
-              estimatedCost={estimatedCost}
+              estimatedCost={null}
               duration={duration}
               speakers={speakers}
               knobs={knobs}

@@ -73,6 +73,7 @@ class PodcastAnalyzeResponse(BaseModel):
     bible: Optional[Dict[str, Any]] = None
     avatar_url: Optional[str] = None
     avatar_prompt: Optional[str] = None
+    estimate: Optional[Dict[str, Any]] = None
 
 
 class PodcastEnhanceIdeaRequest(BaseModel):

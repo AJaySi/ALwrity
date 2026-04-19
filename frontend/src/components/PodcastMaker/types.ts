@@ -145,6 +145,9 @@ export type PodcastEstimate = {
   videoCost: number;
   researchCost: number;
   total: number;
+  breakdown?: Array<{ phase: "Analyze" | "Gather" | "Write" | "Produce"; cost: number }>;
+  currency?: "USD";
+  lastUpdated?: string;
   voiceName?: string;
   isCustomVoice?: boolean;
 };
@@ -196,7 +199,7 @@ export type CreateProjectPayload = {
 export type CreateProjectResult = {
   projectId: string;
   analysis: PodcastAnalysis;
-  estimate: PodcastEstimate;
+  estimate: PodcastEstimate | null;
   queries: Query[];
   bible?: PodcastBible;
   avatar_url?: string | null;

@@ -59,43 +59,6 @@ const deriveSegments = (option?: OptionLike): string[] => {
   return segments.slice(0, 5);
 };
 
-const estimateCosts = ({
-  minutes,
-  scenes,
-  chars,
-  quality,
-  avatars,
-  queryCount = 3,
-  voiceId,
-}: {
-  minutes: number;
-  scenes: number;
-  chars: number;
-  quality: string;
-  avatars: number;
-  queryCount?: number;
-  voiceId?: string;
-}): PodcastEstimate => {
-  const secs = Math.max(60, minutes * 60);
-  const ttsCost = (chars / 1000) * 0.05;
-  const avatarCost = avatars * 0.15;
-  const videoRate = quality === "hd" ? 0.06 : 0.03;
-  const videoCost = secs * videoRate;
-  const researchCost = +(Math.max(1, queryCount) * 0.1).toFixed(2);
-  const total = +(ttsCost + avatarCost + videoCost + researchCost).toFixed(2);
-  const isCustomVoice = Boolean(voiceId && !["Wise_Woman", "Friendly_Person", "Inspirational_girl", "Deep_Voice_Man", "Calm_Woman", "Casual_Guy", "Lively_Girl", "Patient_Man", "Young_Knight", "Determined_Man", "Lovely_Girl", "Decent_Boy", "Imposing_Manner", "Elegant_Man", "Abbess", "Sweet_Girl_2", "Exuberant_Girl"].includes(voiceId));
-  const voiceName = isCustomVoice ? "My Voice Clone" : (!voiceId ? "Wise Woman" : voiceId.replace(/_/g, " "));
-  return {
-    ttsCost: +ttsCost.toFixed(2),
-    avatarCost: +avatarCost.toFixed(2),
-    videoCost: +videoCost.toFixed(2),
-    researchCost,
-    total,
-    voiceName,
-    isCustomVoice,
-  };
-};
-
 const mapPersonaQueries = (persona: ResearchPersona | undefined, seed: string): Query[] => {
   const baseIdea = seed || "AI marketing for small businesses";
   const personaKeywords = persona?.suggested_keywords?.filter(Boolean) || [];
@@ -302,15 +265,21 @@ export const podcastApi = {
     // so users can manually choose which queries to run
 
     const projectId = createId("podcast");
-    const estimate = estimateCosts({
-      minutes: payload.duration,
-      scenes: Math.ceil((payload.duration * 60) / (payload.knobs.scene_length_target || DEFAULT_KNOBS.scene_length_target)),
-      chars: Math.max(1000, payload.duration * 900),
-      quality: payload.knobs.bitrate || "standard",
-      avatars: payload.speakers,
-      queryCount: queries.length || 3,
-      voiceId: payload.knobs.voice_id,
-    });
+    const estimateData = analysisResp.data?.estimate;
+    const estimate: PodcastEstimate | null = estimateData
+      ? {
+          ttsCost: Number(estimateData.ttsCost ?? 0),
+          avatarCost: Number(estimateData.avatarCost ?? 0),
+          videoCost: Number(estimateData.videoCost ?? 0),
+          researchCost: Number(estimateData.researchCost ?? 0),
+          total: Number(estimateData.total ?? 0),
+          breakdown: Array.isArray(estimateData.breakdown) ? estimateData.breakdown : [],
+          currency: estimateData.currency || "USD",
+          lastUpdated: estimateData.last_updated || estimateData.lastUpdated,
+          voiceName: estimateData.voiceName,
+          isCustomVoice: estimateData.isCustomVoice,
+        }
+      : null;
 
     return {
       projectId,
