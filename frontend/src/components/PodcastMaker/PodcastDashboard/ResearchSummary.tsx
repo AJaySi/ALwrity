@@ -130,10 +130,10 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
                   }}
                 />
               )}
-              {research.cost !== undefined && (
+              {research.costEst?.total !== undefined && (
                 <Chip
                   icon={<AttachMoneyIcon sx={{ fontSize: "0.875rem !important" }} />}
-                  label={`$${research.cost.toFixed(3)}`}
+                  label={`$${research.costEst.total.toFixed(3)}`}
                   size="small"
                   sx={{
                     background: alpha("#f59e0b", 0.1),
@@ -356,4 +356,3 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
     </GlassyCard>
   );
 };
-

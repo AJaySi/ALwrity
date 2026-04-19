@@ -95,6 +95,30 @@ const DEFAULT_STATE: PodcastProjectState = {
 
 const STORAGE_KEY = 'podcast_project_state';
 
+const normalizeResearchCostEst = (research: any): Research | null => {
+  if (!research) return research;
+
+  const fromSnakeCase = research.cost_est;
+  const fromCamelCase = research.costEst;
+  const legacyCost = typeof research.cost === "number" ? research.cost : undefined;
+  const normalizedCostEst = fromCamelCase || (fromSnakeCase ? {
+    total: Number(fromSnakeCase.total || 0),
+    breakdown: Array.isArray(fromSnakeCase.breakdown) ? fromSnakeCase.breakdown : [],
+    currency: fromSnakeCase.currency || "USD",
+    last_updated: fromSnakeCase.last_updated || new Date().toISOString(),
+  } : undefined);
+
+  return {
+    ...research,
+    costEst: normalizedCostEst || (legacyCost !== undefined ? {
+      total: legacyCost,
+      breakdown: [],
+      currency: "USD",
+      last_updated: new Date().toISOString(),
+    } : undefined),
+  };
+};
+
 export const usePodcastProjectState = () => {
   const [state, setState] = useState<PodcastProjectState>(() => {
     // Initialize from localStorage if available
@@ -107,6 +131,7 @@ export const usePodcastProjectState = () => {
         const restoredState: PodcastProjectState = {
           ...DEFAULT_STATE,
           ...parsed,
+          research: normalizeResearchCostEst(parsed.research),
           selectedQueries: parsed.selectedQueries ? new Set(parsed.selectedQueries) : new Set(),
           renderJobs: parsed.renderJobs || [],
         };
@@ -401,7 +426,7 @@ export const usePodcastProjectState = () => {
         analysis: dbProject.analysis,
         queries: dbProject.queries || [],
         selectedQueries: new Set(dbProject.selected_queries || []),
-        research: dbProject.research,
+        research: normalizeResearchCostEst(dbProject.research),
         rawResearch: dbProject.raw_research,
         estimate: dbProject.estimate,
         scriptData: dbProject.script_data,
@@ -454,4 +479,3 @@ export const usePodcastProjectState = () => {
     loadProjectFromDb,
   };
 };
-

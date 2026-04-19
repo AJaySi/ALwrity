@@ -5,7 +5,7 @@ All Pydantic request/response models for podcast endpoints.
 """
 
 from pydantic import BaseModel, Field, model_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -181,12 +181,24 @@ class PodcastResearchOutput(BaseModel):
     mapped_angles: List[Dict[str, Any]] = []  # [{"title": str, "why": str, "mapped_fact_ids": []}]
 
 
+class PodcastCostBreakdownItem(BaseModel):
+    phase: Literal["Analyze", "Gather", "Write", "Produce"]
+    cost: float
+
+
+class PodcastCostEst(BaseModel):
+    total: float
+    breakdown: List[PodcastCostBreakdownItem]
+    currency: Literal["USD"] = "USD"
+    last_updated: datetime
+
+
 class PodcastExaResearchResponse(BaseModel):
     sources: List[PodcastExaSource]
     search_queries: List[str] = []
     summary: str = ""
     key_insights: List[PodcastResearchInsight] = []
-    cost: Optional[Dict[str, Any]] = None
+    cost_est: PodcastCostEst
     search_type: Optional[str] = None
     provider: str = "exa"
     content: Optional[str] = None  # Raw aggregated content (deprecated)
@@ -450,4 +462,3 @@ class VoiceCloneResult(BaseModel):
     file_size: int
     task_id: str
     status: str = "completed"
-

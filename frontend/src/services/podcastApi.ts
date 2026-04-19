@@ -173,7 +173,12 @@ const mapSourcesToFacts = (sources: ExaSource[]): Fact[] => {
 type ExaResearchResult = {
   sources: ExaSource[];
   search_queries?: string[];
-  cost?: { total?: number };
+  cost_est?: {
+    total?: number;
+    breakdown?: { phase: "Analyze" | "Gather" | "Write" | "Produce"; cost: number }[];
+    currency?: "USD";
+    last_updated?: string;
+  };
   search_type?: string;
   provider?: string;
   content?: string;
@@ -212,7 +217,14 @@ const mapExaResearchResponse = (response: any): Research => {
     searchQueries: response.search_queries,
     searchType: response.search_type,
     provider: response.provider || "exa",
-    cost: response.cost?.total,
+    costEst: response.cost_est
+      ? {
+          total: Number(response.cost_est.total || 0),
+          breakdown: Array.isArray(response.cost_est.breakdown) ? response.cost_est.breakdown : [],
+          currency: response.cost_est.currency || "USD",
+          last_updated: response.cost_est.last_updated || new Date().toISOString(),
+        }
+      : undefined,
     sourceCount: response.sources?.length || 0,
   };
 };
@@ -953,4 +965,3 @@ export const podcastApi = {
 };
 
 export type PodcastApi = typeof podcastApi;
-

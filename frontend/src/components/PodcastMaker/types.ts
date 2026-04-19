@@ -33,6 +33,16 @@ export type ResearchInsight = {
   source_indices: number[];
 };
 
+export type PodcastCostEst = {
+  total: number;
+  breakdown: {
+    phase: "Analyze" | "Gather" | "Write" | "Produce";
+    cost: number;
+  }[];
+  currency: "USD";
+  last_updated: string;
+};
+
 export type Research = {
   summary: string;
   keyInsights: ResearchInsight[];
@@ -45,7 +55,7 @@ export type Research = {
   searchQueries?: string[];
   searchType?: string;
   provider?: string;
-  cost?: number;
+  costEst?: PodcastCostEst;
   sourceCount?: number;
   expertQuotes?: { quote: string; source_index: number }[];
   listenerCta?: string[];
@@ -222,4 +232,3 @@ export type TaskStatus = {
   created_at?: string;
   updated_at?: string;
 };
-

@@ -9,12 +9,16 @@ from typing import Dict, Any, List
 from types import SimpleNamespace
 import json
 import re
+from datetime import datetime, timezone
 
 from middleware.auth_middleware import get_current_user
 from api.story_writer.utils.auth import require_authenticated_user
 from services.blog_writer.research.exa_provider import ExaResearchProvider
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.podcast_bible_service import PodcastBibleService
+from services.database import get_db
+from services.subscription import PricingService
+from models.subscription_models import APIProvider
 from loguru import logger
 from ..models import (
     PodcastExaResearchRequest,
@@ -23,9 +27,99 @@ from ..models import (
     PodcastExaConfig,
     PodcastResearchInsight,
     PodcastResearchOutput,
+    PodcastCostEst,
+    PodcastCostBreakdownItem,
 )
 
 router = APIRouter()
+
+
+def _estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def _get_price_from_catalog(
+    pricing_service: PricingService,
+    provider: APIProvider,
+    model_name: str,
+    key: str,
+    fallback: float = 0.0,
+) -> float:
+    try:
+        pricing = pricing_service.get_pricing_for_provider_model(provider, model_name) or {}
+        value = pricing.get(key)
+        return float(value or fallback)
+    except Exception:
+        return fallback
+
+
+def _build_research_cost_estimate(
+    request: PodcastExaResearchRequest,
+    raw_content: str,
+    sources_count: int,
+    provider_result: Dict[str, Any],
+) -> PodcastCostEst:
+    # Fallback defaults mirror current catalog defaults.
+    exa_per_request = 0.005
+    gemini_in_token = 0.00000015
+    gemini_out_token = 0.0000006
+
+    try:
+        db = next(get_db())
+        try:
+            pricing_service = PricingService(db)
+            exa_per_request = _get_price_from_catalog(
+                pricing_service, APIProvider.EXA, "exa-search", "cost_per_request", exa_per_request
+            )
+            gemini_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.GEMINI, "gemini-2.5-flash") or {}
+            gemini_in_token = float(gemini_pricing.get("cost_per_input_token") or gemini_in_token)
+            gemini_out_token = float(gemini_pricing.get("cost_per_output_token") or gemini_out_token)
+        finally:
+            db.close()
+    except Exception as pricing_err:
+        logger.warning(f"[Podcast Research] Failed loading pricing catalog; using defaults: {pricing_err}")
+
+    query_count = max(1, len(request.queries or []))
+    source_count = max(1, sources_count)
+
+    analyze_tokens = _estimate_tokens(request.topic) + sum(_estimate_tokens(q) for q in request.queries or [])
+    gather_search_calls = max(1, query_count)
+    gather_cost = gather_search_calls * exa_per_request
+
+    write_input_tokens = _estimate_tokens(raw_content) + _estimate_tokens(request.topic) + (query_count * 40)
+    write_output_tokens = max(500, int(write_input_tokens * 0.22))
+    write_cost = (write_input_tokens * gemini_in_token) + (write_output_tokens * gemini_out_token)
+
+    # "Produce" is shaping the final API payload and mapped artifacts.
+    produce_tokens = max(120, source_count * 30)
+    produce_cost = (produce_tokens * gemini_in_token) + (produce_tokens * 0.5 * gemini_out_token)
+
+    analyze_cost = analyze_tokens * gemini_in_token
+
+    provider_total = 0.0
+    if isinstance(provider_result, dict):
+        provider_total = float((provider_result.get("cost") or {}).get("total") or 0.0)
+
+    # Prefer transparent estimate built from catalog + usage. If provider reports a higher measured value, keep it.
+    estimated_total = analyze_cost + gather_cost + write_cost + produce_cost
+    scale = (provider_total / estimated_total) if estimated_total > 0 and provider_total > estimated_total else 1.0
+
+    breakdown = [
+        PodcastCostBreakdownItem(phase="Analyze", cost=round(analyze_cost * scale, 6)),
+        PodcastCostBreakdownItem(phase="Gather", cost=round(gather_cost * scale, 6)),
+        PodcastCostBreakdownItem(phase="Write", cost=round(write_cost * scale, 6)),
+        PodcastCostBreakdownItem(phase="Produce", cost=round(produce_cost * scale, 6)),
+    ]
+    total = round(sum(item.cost for item in breakdown), 6)
+
+    return PodcastCostEst(
+        total=total,
+        breakdown=breakdown,
+        currency="USD",
+        last_updated=datetime.now(timezone.utc),
+    )
 
 
 @router.post("/research/exa", response_model=PodcastExaResearchResponse)
@@ -302,9 +396,13 @@ QUALITY STANDARDS:
         search_queries=result.get("search_queries", queries) if isinstance(result, dict) else queries,
         summary=summary,
         key_insights=key_insights,
-        cost=result.get("cost") if isinstance(result, dict) else None,
+        cost_est=_build_research_cost_estimate(
+            request=request,
+            raw_content=raw_content,
+            sources_count=len(sources_payload),
+            provider_result=result if isinstance(result, dict) else {},
+        ),
         search_type=result.get("search_type") if isinstance(result, dict) else None,
         provider=result.get("provider", "exa") if isinstance(result, dict) else "exa",
         content=raw_content,
     )
-
