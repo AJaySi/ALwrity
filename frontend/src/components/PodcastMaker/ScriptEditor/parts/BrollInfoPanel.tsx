@@ -14,27 +14,22 @@ interface BrollInfoPanelProps {
 }
 
 export const BrollInfoPanel: React.FC<BrollInfoPanelProps> = (props) => {
-  let contextValue: ReturnType<typeof useScriptEditor> | null = null;
-  try {
-    contextValue = useScriptEditor();
-  } catch {
-    contextValue = null;
-  }
+  const ctx = useScriptEditor();
 
   const { 
-    activeScript, 
-    generatingChartId, 
-    generateChartPreviews,
-    regenerateChart,
-    removeChart,
-    scenesWithCharts 
-  } = contextValue ?? {};
+    activeScript: ctxActiveScript, 
+    generatingChartId: ctxGeneratingChartId, 
+    generateChartPreviews: ctxGenerateChartPreviews,
+    regenerateChart: ctxRegenerateChart,
+    removeChart: ctxRemoveChart,
+    scenesWithCharts: ctxScenesWithCharts 
+  } = ctx;
 
-  const resolvedActiveScript = props.activeScript ?? activeScript;
-  const resolvedGeneratingChartId = props.generatingChartId ?? generatingChartId;
-  const resolvedGenerateChartPreviews = props.generateChartPreviews ?? generateChartPreviews;
-  const resolvedRegenerateChart = props.regenerateChart ?? regenerateChart;
-  const resolvedRemoveChart = props.removeChart ?? removeChart;
+  const resolvedActiveScript = props.activeScript ?? ctxActiveScript;
+  const resolvedGeneratingChartId = props.generatingChartId ?? ctxGeneratingChartId;
+  const resolvedGenerateChartPreviews = props.generateChartPreviews ?? ctxGenerateChartPreviews;
+  const resolvedRegenerateChart = props.regenerateChart ?? ctxRegenerateChart;
+  const resolvedRemoveChart = props.removeChart ?? ctxRemoveChart;
 
   if (!resolvedActiveScript || resolvedActiveScript.scenes.length === 0) {
     return null;
@@ -42,7 +37,7 @@ export const BrollInfoPanel: React.FC<BrollInfoPanelProps> = (props) => {
 
   const scenesWithData = resolvedActiveScript.scenes.filter(s => s.chart_data && Object.keys(s.chart_data).length > 0);
   const hasChartData = scenesWithData.length > 0;
-  const resolvedScenesWithCharts = props.scenesWithCharts ?? scenesWithCharts ?? scenesWithData.length;
+  const resolvedScenesWithCharts = props.scenesWithCharts ?? ctxScenesWithCharts ?? scenesWithData.length;
 
   return (
     <Paper

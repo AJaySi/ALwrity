@@ -86,6 +86,8 @@ async def get_latest_avatar(
     try:
         user_id = _extract_user_id(current_user)
         
+        logger.info(f"[latest-avatar] Looking for avatar for user_id: {user_id}")
+        
         # Search for assets that are either:
         # 1. Saved with source_module=BRAND_AVATAR_GENERATOR (new)
         # 2. Saved with source_module=STORY_WRITER but have metadata category='brand_avatar' (legacy)
@@ -99,6 +101,8 @@ async def get_latest_avatar(
                 AssetSource.STORY_WRITER
             ])
         ).order_by(desc(ContentAsset.created_at)).limit(50).all()
+        
+        logger.info(f"[latest-avatar] Found {len(candidates)} candidate(s)")
         
         asset = None
         for candidate in candidates:

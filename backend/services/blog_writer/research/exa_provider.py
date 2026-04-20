@@ -314,11 +314,14 @@ class ExaResearchProvider(BaseProvider):
     
     def track_exa_usage(self, user_id: str, cost: float):
         """Track Exa API usage after successful call."""
-        from services.database import get_db
+        from services.database import get_session_for_user
         from services.subscription import PricingService
         from sqlalchemy import text
         
-        db = next(get_db())
+        db = get_session_for_user(user_id)
+        if not db:
+            logger.warning(f"[track_exa_usage] Could not get DB session for user {user_id}")
+            return
         try:
             pricing_service = PricingService(db)
             current_period = pricing_service.get_current_billing_period(user_id)

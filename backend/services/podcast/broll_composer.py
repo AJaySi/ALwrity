@@ -8,11 +8,11 @@ import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+from PIL import Image, ImageDraw, ImageFont
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from PIL import Image, ImageDraw, ImageFont
 from moviepy import (
     VideoFileClip, ImageClip, CompositeVideoClip,
     concatenate_videoclips,

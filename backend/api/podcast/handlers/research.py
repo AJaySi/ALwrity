@@ -63,6 +63,7 @@ def _build_research_cost_estimate(
     raw_content: str,
     sources_count: int,
     provider_result: Dict[str, Any],
+    user_id: str = "default",
 ) -> PodcastCostEst:
     # Fallback defaults mirror current catalog defaults.
     exa_per_request = 0.005
@@ -70,17 +71,19 @@ def _build_research_cost_estimate(
     gemini_out_token = 0.0000006
 
     try:
-        db = next(get_db())
-        try:
-            pricing_service = PricingService(db)
-            exa_per_request = _get_price_from_catalog(
-                pricing_service, APIProvider.EXA, "exa-search", "cost_per_request", exa_per_request
-            )
-            gemini_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.GEMINI, "gemini-2.5-flash") or {}
-            gemini_in_token = float(gemini_pricing.get("cost_per_input_token") or gemini_in_token)
-            gemini_out_token = float(gemini_pricing.get("cost_per_output_token") or gemini_out_token)
-        finally:
-            db.close()
+        from services.database import get_session_for_user
+        db = get_session_for_user(user_id)
+        if db:
+            try:
+                pricing_service = PricingService(db)
+                exa_per_request = _get_price_from_catalog(
+                    pricing_service, APIProvider.EXA, "exa-search", "cost_per_request", exa_per_request
+                )
+                gemini_pricing = pricing_service.get_pricing_for_provider_model(APIProvider.GEMINI, "gemini-2.5-flash") or {}
+                gemini_in_token = float(gemini_pricing.get("cost_per_input_token") or gemini_in_token)
+                gemini_out_token = float(gemini_pricing.get("cost_per_output_token") or gemini_out_token)
+            finally:
+                db.close()
     except Exception as pricing_err:
         logger.warning(f"[Podcast Research] Failed loading pricing catalog; using defaults: {pricing_err}")
 
@@ -431,6 +434,7 @@ QUALITY STANDARDS:
             raw_content=raw_content,
             sources_count=len(sources_payload),
             provider_result=result if isinstance(result, dict) else {},
+            user_id=user_id,
         ),
         search_type=result.get("search_type") if isinstance(result, dict) else None,
         provider=result.get("provider", "exa") if isinstance(result, dict) else "exa",
