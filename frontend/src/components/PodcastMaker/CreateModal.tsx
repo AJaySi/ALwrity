@@ -253,7 +253,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     setShowAIDetailsButton(topicInput.trim().length > 0 && !isUrl);
   }, [topicInput, isUrl]);
 
-  // Check if avatar is present (from any source: upload, brand avatar, or generated)
+  // Check if avatar is present (from any source: upload, selfie, brand avatar, or asset library)
   const hasAvatar = Boolean(
     avatarFile ||                         // User uploaded an image
     avatarUrl ||                         // Already processed avatar URL
@@ -267,8 +267,11 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const hasVoice = Boolean(selectedVoiceId);
   const hasDuration = Boolean(duration > 0 && duration <= 10);
   const hasSpeakers = Boolean(speakers >= 1 && speakers <= 2);
+  const hasPodcastMode = Boolean(podcastMode);
 
-  const canSubmit = Boolean(hasTopic && (podcastMode === "audio_only" || hasAvatar) && hasVoice && hasDuration && hasSpeakers);
+  // Required: topic, duration, speakers, voice, podcastMode, presenter avatar
+  // Avatar required for video modes; for audio_only, still require avatar for presenter display
+  const canSubmit = Boolean(hasTopic && hasVoice && hasDuration && hasSpeakers && hasPodcastMode && hasAvatar);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
