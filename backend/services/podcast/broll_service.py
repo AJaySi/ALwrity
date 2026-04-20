@@ -48,6 +48,14 @@ class BrollService:
     def get_output_path(self, filename: str) -> Path:
         """Get output path for a file."""
         return self.output_dir / filename
+
+    def get_chart_preview_filename(self, chart_id: str) -> str:
+        """Build deterministic chart preview filename from chart ID."""
+        return f"chart_preview_{chart_id}.png"
+
+    def get_chart_preview_path(self, chart_id: str) -> Path:
+        """Get deterministic chart preview path from chart ID."""
+        return self.get_output_path(self.get_chart_preview_filename(chart_id))
     
     def generate_chart_preview(
         self,
@@ -55,6 +63,7 @@ class BrollService:
         chart_type: str = "bar_comparison",
         title: str = "",
         subtitle: str = "",
+        chart_id: Optional[str] = None,
     ) -> str:
         """
         Generate a chart PNG preview (static, for Write phase).
@@ -68,8 +77,8 @@ class BrollService:
         Returns:
             Path to generated PNG file
         """
-        chart_id = uuid.uuid4().hex[:8]
-        out_path = str(self.get_output_path(f"chart_preview_{chart_id}.png"))
+        resolved_chart_id = chart_id or uuid.uuid4().hex[:8]
+        out_path = str(self.get_chart_preview_path(resolved_chart_id))
         
         try:
             if chart_type == "bar_comparison":

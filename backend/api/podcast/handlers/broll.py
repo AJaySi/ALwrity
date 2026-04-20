@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
+from pathlib import Path
 import uuid
 
 from middleware.auth_middleware import get_current_user
@@ -84,19 +85,21 @@ async def generate_chart_preview(
     
     try:
         broll_service = get_broll_service()
+        chart_id = uuid.uuid4().hex[:8]
         
         preview_path = broll_service.generate_chart_preview(
             chart_data=request.chart_data,
             chart_type=request.chart_type,
             title=request.title,
             subtitle=request.subtitle or "",
+            chart_id=chart_id,
         )
         
         if not preview_path:
             raise HTTPException(status_code=500, detail="Failed to generate chart preview")
         
-        chart_id = uuid.uuid4().hex[:8]
-        preview_url = f"/api/podcast/broll/preview/{chart_id}/{preview_path.split('/')[-1]}"
+        preview_filename = Path(preview_path).name
+        preview_url = f"/api/podcast/broll/preview/{chart_id}/{preview_filename}"
         
         return ChartPreviewResponse(
             preview_url=preview_url,
@@ -197,12 +200,14 @@ async def serve_chart_preview(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Serve chart preview PNG files."""
-    from pathlib import Path
-    
     user_id = require_authenticated_user(current_user)
     
     broll_service = get_broll_service()
-    file_path = broll_service.output_dir / f"chart_preview_{chart_id}.png"
+    expected_filename = broll_service.get_chart_preview_filename(chart_id)
+    if filename != expected_filename:
+        raise HTTPException(status_code=404, detail="Chart preview not found")
+
+    file_path = broll_service.get_output_path(filename)
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Chart preview not found")
