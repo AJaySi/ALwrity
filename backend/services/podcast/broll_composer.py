@@ -4,6 +4,8 @@ Layered composition pipeline: Background + Chart + Avatar Circle + Text Overlays
 """
 
 import json
+import tempfile
+import uuid
 import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -40,7 +42,7 @@ def crossfade_concat(scenes: list, fade_dur: float = 0.5):
         if i > 0:
             c = c.fx(vfx.CrossFadeIn, fade_dur)
         faded.append(c)
-    return concatenate_videoclips(faded, padding=-int(fade_dur), method="compose")
+    return concatenate_videoclips(faded, padding=-fade_dur, method="compose")
 
 
 # ---------------------------------------------------------------------------
@@ -302,28 +304,6 @@ def make_stacked_bar(data: dict, out_path: str, title: str = "",
     return out_path
 
 
-def make_line_trend(data: dict, out_path: str, title: str = "") -> str:
-    """Render a trend line chart. Returns output path."""
-    x_vals = data.get("x", [])
-    y_vals = data.get("y", [])
-
-    fig, ax = plt.subplots(figsize=(8, 4.5), facecolor="none")
-    ax.set_facecolor("none")
-    ax.plot(x_vals, y_vals, color=CHART_STYLE["accent"],
-            linewidth=2.5, marker="o", markersize=7, zorder=3)
-    ax.fill_between(x_vals, y_vals, alpha=0.12, color=CHART_STYLE["accent"])
-    ax.spines[:].set_visible(False)
-    ax.tick_params(colors=CHART_STYLE["text"])
-    ax.yaxis.grid(True, color=CHART_STYLE["grid"], linewidth=0.6, zorder=0)
-    if title:
-        ax.set_title(title, color=CHART_STYLE["text"], fontsize=13,
-                     fontweight="bold", pad=12)
-    fig.tight_layout(pad=0.5)
-    fig.savefig(out_path, dpi=150, transparent=True, bbox_inches="tight")
-    plt.close(fig)
-    return out_path
-
-
 # ---------------------------------------------------------------------------
 # Text / Bullet overlay (Pillow → PNG)
 # ---------------------------------------------------------------------------
@@ -420,7 +400,7 @@ def ken_burns(clip: ImageClip, zoom_ratio: float = 0.08) -> ImageClip:
 # Scene builders  (one per visual_cue type)
 # ---------------------------------------------------------------------------
 
-def build_data_scene(assets: SceneAssets, insight: Insight) -> CompositeVideoClip:
+def build_data_scene(assets: SceneAssets, insight: Insight, temp_dir: Path) -> CompositeVideoClip:
     """
     Layout: Background (Ken Burns) + Chart (fade-in) + Avatar circle (corner) + Insight card
     """
@@ -444,7 +424,7 @@ def build_data_scene(assets: SceneAssets, insight: Insight) -> CompositeVideoCli
                  .fx(vfx.fadeout, 0.4))
         layers.append(chart)
 
-    card_path = "/tmp/insight_card.png"
+    card_path = str(temp_dir / f"insight_card_{uuid.uuid4().hex}.png")
     make_insight_card(insight.key_insight, insight.supporting_stat, card_path)
     card = (ImageClip(card_path)
             .set_duration(d - 1)
@@ -463,7 +443,7 @@ def build_data_scene(assets: SceneAssets, insight: Insight) -> CompositeVideoCli
 
 
 def build_bullet_scene(assets: SceneAssets, insight: Insight,
-                       bullets: list[str]) -> CompositeVideoClip:
+                       bullets: list[str], temp_dir: Path) -> CompositeVideoClip:
     """
     Layout: AI image (Ken Burns) + Bullet overlay + Avatar circle
     """
@@ -477,7 +457,7 @@ def build_bullet_scene(assets: SceneAssets, insight: Insight,
     bg = bg.fx(vfx.lum_contrast, 0, -50)
     layers.append(bg)
 
-    bullet_path = "/tmp/bullets.png"
+    bullet_path = str(temp_dir / f"bullets_{uuid.uuid4().hex}.png")
     make_bullet_overlay(bullets, bullet_path, width=860)
     bullets_clip = (ImageClip(bullet_path)
                     .set_duration(d - 1)
@@ -507,15 +487,20 @@ def build_full_avatar_scene(assets: SceneAssets, insight: Insight) -> VideoFileC
 # ---------------------------------------------------------------------------
 
 def dispatch_scene(insight: Insight, assets: SceneAssets,
-                   bullet_lines: Optional[list[str]] = None):
+                   bullet_lines: Optional[list[str]] = None,
+                   temp_dir: Optional[str | Path] = None):
     """Dispatch scene based on visual_cue type."""
     cue = insight.visual_cue
+    scene_temp_dir = Path(temp_dir) if temp_dir else Path(
+        tempfile.mkdtemp(prefix=f"broll_{cue}_")
+    )
+    scene_temp_dir.mkdir(parents=True, exist_ok=True)
 
     if cue == "full_avatar":
         return build_full_avatar_scene(assets, insight)
 
     elif cue in ("bar_chart_comparison", "line_trend"):
-        chart_path = "/tmp/chart.png"
+        chart_path = str(scene_temp_dir / f"chart_{uuid.uuid4().hex}.png")
         if cue == "bar_chart_comparison":
             make_bar_chart(insight.chart_data, chart_path,
                            title=insight.key_insight)
@@ -523,14 +508,14 @@ def dispatch_scene(insight: Insight, assets: SceneAssets,
             make_line_trend(insight.chart_data, chart_path,
                            title=insight.key_insight)
         assets.chart_img = chart_path
-        return build_data_scene(assets, insight)
+        return build_data_scene(assets, insight, scene_temp_dir)
 
     elif cue == "bullet_points":
         lines = bullet_lines or [insight.key_insight, insight.supporting_stat]
-        return build_bullet_scene(assets, insight, lines)
+        return build_bullet_scene(assets, insight, lines, scene_temp_dir)
 
     else:
-        return build_data_scene(assets, insight)
+        return build_data_scene(assets, insight, scene_temp_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -571,8 +556,10 @@ def pipeline_from_json(insight_json: str,
     data = json.loads(insight_json)
     insight = Insight(**{k: data[k] for k in Insight.__dataclass_fields__ if k in data})
     assets = SceneAssets(background_img=background_img, avatar_video=avatar_video)
+    scene_temp_dir = Path(tempfile.mkdtemp(prefix=f"scene_{insight.visual_cue}_"))
     scene = dispatch_scene(insight, assets,
-                           bullet_lines=data.get("bullet_lines"))
+                           bullet_lines=data.get("bullet_lines"),
+                           temp_dir=scene_temp_dir)
     out = f"/tmp/scene_{insight.visual_cue}.mp4"
     compose_video([scene], output_path=out)
     return out
