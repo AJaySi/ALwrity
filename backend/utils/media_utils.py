@@ -97,13 +97,22 @@ def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
             # Prioritize YouTube paths
             pass # Already first in list
         elif "/api/podcast/" in media_url_or_path:
-            # Prioritize Podcast paths
-            search_paths = [
-                PODCAST_AVATARS_DIR / filename,
-                PODCAST_IMAGES_DIR / filename,
-                YOUTUBE_AVATARS_DIR / filename,
-                YOUTUBE_IMAGES_DIR / filename
-            ]
+            # Prioritize Podcast paths: use centralized podcast media resolution
+            try:
+                # Import the centralized function that checks tenant workspace first
+                from api.podcast.constants import get_podcast_media_read_dirs
+                podcast_dirs = get_podcast_media_read_dirs("image")
+                search_paths = []
+                for pod_dir in podcast_dirs:
+                    # Add both avatar and image subdirectories
+                    search_paths.append(pod_dir / "avatars" / filename)
+                    search_paths.append(pod_dir / filename)
+            except ImportError:
+                # Fallback if podcast constants not available
+                search_paths = [
+                    PODCAST_AVATARS_DIR / filename,
+                    PODCAST_IMAGES_DIR / filename,
+                ]
             
         # Iterate and find first existing file
         for path in search_paths:

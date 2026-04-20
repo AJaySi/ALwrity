@@ -9,8 +9,21 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from loguru import logger
-from .step4_persona_routes import _extract_user_id
 from middleware.auth_middleware import get_current_user
+
+
+def _extract_user_id(user: Dict[str, Any]) -> str:
+    """Extract a stable user ID from Clerk-authenticated user payloads.
+    Prefers 'clerk_user_id' or 'id', falls back to 'user_id', else 'unknown'.
+    """
+    if not isinstance(user, dict):
+        return 'unknown'
+    return (
+        user.get('clerk_user_id')
+        or user.get('id')
+        or user.get('user_id')
+        or 'unknown'
+    )
 import base64
 import os
 from pathlib import Path

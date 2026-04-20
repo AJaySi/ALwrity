@@ -426,13 +426,15 @@ if PODCAST_ONLY_DEMO_MODE:
     podcast_routers = [r for r in CORE_ROUTER_REGISTRY if "podcast" in r.get("features", set())]
     logger.info(f"[PODCAST-ONLY] Found {len(podcast_routers)} podcast routers: {[r['name'] for r in podcast_routers]}")
     
-    # Force include step4_assets for voice cloning
+    # Try to include step4_assets for voice cloning (may fail if nltk not installed)
     step4_entry = next((r for r in CORE_ROUTER_REGISTRY if r.get("name") == "step4_assets"), None)
     if step4_entry:
         try:
-            logger.info(f"[PODCAST-ONLY] Forcing load of step4_assets for voice cloning")
+            logger.info(f"[PODCAST-ONLY] Attempting to load step4_assets for voice cloning")
             router = router_manager._load_router_from_registry(step4_entry)
             router_manager.include_router_safely(router, step4_entry["name"], step4_entry.get("include_kwargs"))
+        except ImportError as e:
+            logger.warning(f"[PODCAST-ONLY] Skipping step4_assets (missing optional dependency): {e}")
         except Exception as e:
             logger.error(f"[PODCAST-ONLY] Failed to mount step4_assets: {e}")
     
