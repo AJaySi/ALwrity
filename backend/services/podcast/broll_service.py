@@ -17,6 +17,10 @@ from loguru import logger
 
 # Import chart generators directly
 from services.podcast.broll_composer import (
+    Insight,
+    SceneAssets,
+    dispatch_scene,
+    compose_video,
     make_bar_chart,
     make_horizontal_bar,
     make_line_trend,
@@ -226,7 +230,7 @@ class BrollService:
             logger.error(f"[BrollService] Failed to compose final video: {e}")
             raise
     
-    def cleanup(self, file_paths: List[str] = None):
+    def cleanup(self, file_paths: Optional[List[str]] = None):
         """
         Clean up temporary B-roll files.
         
