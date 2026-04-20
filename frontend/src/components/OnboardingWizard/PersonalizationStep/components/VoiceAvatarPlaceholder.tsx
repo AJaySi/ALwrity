@@ -827,19 +827,13 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
 
                   <Box sx={{ width: '100%' }}>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: '#4B5563', mb: 1, display: 'block', fontSize: '0.7rem' }}>
-                      Read one of these scripts to capture your voice:
+                      Read this script to capture your voice:
                     </Typography>
-                    <Stack spacing={1}>
-                      {[
-                        "Hi, I'm excited to use AI to scale my content creation. This voice clone will help me stay consistent across all my channels.",
-                        "At our company, we value transparency and innovation. We strive to deliver the best solutions for our clients every single day.",
-                        "Imagine a world where creativity knows no bounds. Where your ideas can take flight and reach millions of people instantly."
-                      ].map((text, i) => (
-                        <Paper key={i} elevation={0} sx={{ p: 1, bgcolor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', '&:hover': { borderColor: '#7C3AED', bgcolor: '#F9FAFB', transform: 'translateY(-1px)' } }}>
-                           <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#374151', lineHeight: 1.4, fontStyle: 'italic' }}>"{text}"</Typography>
-                        </Paper>
-                      ))}
-                    </Stack>
+                    <Paper elevation={0} sx={{ p: 2, bgcolor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', '&:hover': { borderColor: '#7C3AED', bgcolor: '#F9FAFB', transform: 'translateY(-1px)' } }}>
+                       <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#374151', lineHeight: 1.5, fontStyle: 'italic' }}>
+                         "Hi, I'm excited to use AI to scale my content creation. This voice clone will help me stay consistent across all my channels. At our company, we value transparency and innovation, and we strive to deliver the best solutions for our clients every single day. Imagine a world where creativity knows no bounds, where your ideas can take flight and reach millions of people instantly."
+                       </Typography>
+                    </Paper>
                   </Box>
                   </Stack>
                 )}

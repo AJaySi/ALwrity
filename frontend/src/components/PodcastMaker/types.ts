@@ -47,6 +47,7 @@ export type Research = {
   summary: string;
   keyInsights: ResearchInsight[];
   factCards: Fact[];
+  sources?: { title: string; url: string; excerpt?: string }[];
   mappedAngles: {
     title: string;
     why: string;

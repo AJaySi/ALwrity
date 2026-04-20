@@ -213,10 +213,17 @@ const mapExaResearchResponse = (response: any): Research => {
     mappedFactIds: angle.mapped_fact_ids || angle.mappedFactIds || []
   }));
 
+  const sources = (response.sources || []).map((source: any) => ({
+    title: source.title || "",
+    url: source.url || "",
+    excerpt: source.excerpt || source.highlights?.[0] || ""
+  }));
+
   return {
     summary,
     keyInsights,
     factCards,
+    sources,
     mappedAngles,
     expertQuotes,
     listenerCta,

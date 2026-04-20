@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from "react";
-import { Stack, Typography, Chip, Divider, Box, alpha, Paper, Stepper, Step, StepLabel, CircularProgress } from "@mui/material";
+import { Stack, Typography, Chip, Divider, Box, alpha, Paper, CircularProgress } from "@mui/material";
 import {
   Insights as InsightsIcon,
   Search as SearchIcon,
@@ -7,7 +7,6 @@ import {
   Article as ArticleIcon,
   AutoAwesome as AutoAwesomeIcon,
   ArrowForward as ArrowForwardIcon,
-  CheckCircle as CheckCircleIcon,
 } from "@mui/icons-material";
 import { Research, ResearchInsight } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
@@ -55,34 +54,6 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
   return (
     <GlassyCard sx={glassyCardSx}>
       <Stack spacing={3}>
-        {/* Step Indicator */}
-        <Box sx={{ mb: 1 }}>
-          <Stepper activeStep={1} alternativeLabel>
-            <Step completed>
-              <StepLabel 
-                StepIconComponent={() => <CheckCircleIcon sx={{ color: "#22c55e", fontSize: 24 }} />}
-              >
-                Analysis
-              </StepLabel>
-            </Step>
-            <Step active>
-              <StepLabel>
-                Research
-              </StepLabel>
-            </Step>
-            <Step>
-              <StepLabel>
-                Script
-              </StepLabel>
-            </Step>
-            <Step>
-              <StepLabel>
-                Render
-              </StepLabel>
-            </Step>
-          </Stepper>
-        </Box>
-
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
           <Stack direction="row" alignItems="center" spacing={2} sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1, color: "#0f172a", fontWeight: 700 }}>
@@ -285,27 +256,153 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
              )
           )}
 
-          {/* Expert Quotes */}
+{/* Expert Quotes */}
           <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700 }}>
+            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ 
+                px: 1.5, py: 0.5, 
+                borderRadius: 2, 
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+                color: '#fff',
+                fontSize: '0.75rem',
+                fontWeight: 700
+              }}>
+                NEW
+              </Box>
               Expert Quotes
             </Typography>
             {research.expertQuotes && research.expertQuotes.length > 0 ? (
-              <Stack spacing={1}>
-                {research.expertQuotes.slice(0, 4).map((quote, idx) => (
-                  <Paper key={`${quote.source_index}-${idx}`} elevation={0} sx={{ p: 1.5, border: "1px solid rgba(0,0,0,0.06)", borderRadius: 2 }}>
-                    <Typography variant="body2" sx={{ color: "#334155", lineHeight: 1.55 }}>
-                      “{quote.quote}”
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#64748b", display: "block", mt: 0.5 }}>
-                      Source S{quote.source_index}
+              <Stack spacing={1.5}>
+                {research.expertQuotes.slice(0, 4).map((quote, idx) => {
+                  const sourceUrl = research.sources?.[quote.source_index - 1]?.url;
+                  return (
+                    <Paper key={`${quote.source_index}-${idx}`} elevation={0} sx={{ 
+                      p: 2, 
+                      borderRadius: 2, 
+                      background: 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)',
+                      border: '1px solid rgba(139, 92, 246, 0.15)'
+                    }}>
+                      <Typography variant="body2" sx={{ color: "#1E1B4B", lineHeight: 1.65, fontStyle: 'italic', fontWeight: 500 }}>
+                        "{quote.quote}"
+                      </Typography>
+                      <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {sourceUrl ? (
+                          <Chip 
+                            label={`Source S${quote.source_index}`}
+                            size="small"
+                            clickable
+                            component="a"
+                            href={sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            sx={{
+                              background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
+                              color: '#fff',
+                              fontWeight: 600,
+                              fontSize: '0.7rem',
+                              cursor: 'pointer',
+                              '&:hover': {
+                                background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                              },
+                            }}
+                          />
+                        ) : (
+                          <Chip 
+                            label={`Source S${quote.source_index}`}
+                            size="small"
+                            sx={{
+                              background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
+                              color: '#fff',
+                              fontWeight: 600,
+                              fontSize: '0.7rem',
+                            }}
+                          />
+                        )}
+                      </Box>
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            ) : (
+              <Typography variant="body2" sx={{ color: "#64748b" }}>
+                No expert quotes extracted yet.
+              </Typography>
+            )}
+          </Box>
+
+          {/* Listener CTAs */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ 
+                px: 1.5, py: 0.5, 
+                borderRadius: 2, 
+                background: 'linear-gradient(135deg, #10B981 0%, #14B8A6 100%)',
+                color: '#fff',
+                fontSize: '0.75rem',
+                fontWeight: 700
+              }}>
+                NEW
+              </Box>
+              Listener CTAs
+            </Typography>
+            {research.listenerCta && research.listenerCta.length > 0 ? (
+              <Stack spacing={1.5}>
+                {research.listenerCta.slice(0, 4).map((cta, idx) => (
+                  <Paper key={`cta-${idx}`} elevation={0} sx={{ 
+                    p: 2, 
+                    borderRadius: 2, 
+                    background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                    border: '1px solid rgba(16, 185, 129, 0.15)'
+                  }}>
+                    <Typography variant="body2" sx={{ color: "#064E3B", lineHeight: 1.65, fontWeight: 500 }}>
+                      {cta}
                     </Typography>
                   </Paper>
                 ))}
               </Stack>
             ) : (
               <Typography variant="body2" sx={{ color: "#64748b" }}>
-                No expert quotes extracted yet.
+                No listener CTAs suggested yet.
+              </Typography>
+            )}
+          </Box>
+
+          {/* Mapped Angles */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ 
+                px: 1.5, py: 0.5, 
+                borderRadius: 2, 
+                background: 'linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%)',
+                color: '#fff',
+                fontSize: '0.75rem',
+                fontWeight: 700
+              }}>
+                NEW
+              </Box>
+              Mapped Angles
+            </Typography>
+            {research.mappedAngles && research.mappedAngles.length > 0 ? (
+              <Stack spacing={1.5}>
+                {research.mappedAngles.slice(0, 4).map((angle, idx) => (
+                  <Paper key={`angle-${idx}`} elevation={0} sx={{ 
+                    p: 2, 
+                    borderRadius: 2, 
+                    background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
+                    border: '1px solid rgba(14, 165, 233, 0.15)'
+                  }}>
+                    <Typography variant="subtitle2" sx={{ color: "#0C4A6E", fontWeight: 700, mb: 0.5 }}>
+                      {angle.title || `Angle ${idx + 1}`}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#075985", lineHeight: 1.65 }}>
+                      {angle.why || "No rationale provided."}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="body2" sx={{ color: "#64748b" }}>
+                No mapped angles available yet.
               </Typography>
             )}
           </Box>

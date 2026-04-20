@@ -982,28 +982,32 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
             startIcon={showVoiceClonePanel ? <ExpandLess /> : redoingClone ? <RestartAlt /> : <AutoAwesome />}
             endIcon={showVoiceClonePanel ? <ExpandLess /> : <ExpandMore />}
             sx={{
-              py: 1.5,
-              px: 2,
+              py: 2,
+              px: 3,
               width: "100%",
               background: showVoiceClonePanel 
-                ? "linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%)"
-                : "linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%)",
+                ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                : "linear-gradient(135deg, #8B5CF6 0%, #EC4899 50%, #F59E0B 100%)",
               border: showVoiceClonePanel 
-                ? "1px solid rgba(102, 126, 234, 0.3)"
-                : "1px dashed rgba(102, 126, 234, 0.4)",
-              borderRadius: 2,
-              color: "#667eea",
-              fontWeight: 600,
+                ? "1px solid rgba(102, 126, 234, 0.5)"
+                : "none",
+              borderRadius: 2.5,
+              color: "#fff",
+              fontWeight: 700,
               textTransform: "none",
-              fontSize: "0.875rem",
+              fontSize: "0.95rem",
+              boxShadow: showVoiceClonePanel 
+                ? "0 4px 15px rgba(102, 126, 234, 0.35)"
+                : "0 4px 20px rgba(139, 92, 246, 0.4), 0 0 30px rgba(236, 72, 153, 0.2)",
               "&:hover": {
-                background: "linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%)",
-                borderColor: "#667eea",
-                boxShadow: "0 2px 8px rgba(102, 126, 234, 0.15)",
+                background: "linear-gradient(135deg, #7C3AED 0%, #9333EA 50%, #D97706 100%)",
+                boxShadow: "0 6px 25px rgba(139, 92, 246, 0.5)",
+                transform: "translateY(-1px)",
               },
+              transition: "all 0.3s ease",
             }}
           >
-            {redoingClone ? "Redo Voice Clone" : showVoiceClonePanel ? "Hide Voice Cloning" : "Create Your Voice Clone"}
+            {redoingClone ? "Redo Voice Clone" : showVoiceClonePanel ? "Hide Voice Cloning" : "Create Your Voice Clone ✨"}
           </Button>
 
           <Collapse in={showVoiceClonePanel}>

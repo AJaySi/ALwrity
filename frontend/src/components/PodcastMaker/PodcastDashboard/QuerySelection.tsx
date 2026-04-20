@@ -424,7 +424,13 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
       {/* Research Progress Modal */}
       <Dialog
         open={showResearchModal}
-        onClose={() => !isResearching && setShowResearchModal(false)}
+        disableEscapeKeyDown={isResearching}
+        onClose={(event, reason) => {
+          // Only allow closing if NOT researching and research hasn't started
+          if (!isResearching && !researchStarted) {
+            setShowResearchModal(false);
+          }
+        }}
         maxWidth="sm"
         fullWidth
         fullScreen={isMobile}

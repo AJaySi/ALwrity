@@ -12,7 +12,6 @@ import { ProjectList } from "./ProjectList";
 import { PreflightBlockDialog } from "./PreflightBlockDialog";
 import {
   Header,
-  ProgressStepper,
   EstimateCard,
   QuerySelection,
   ResearchSummary,
@@ -175,55 +174,7 @@ const PodcastDashboard: React.FC = () => {
 
           <Divider sx={{ borderColor: "rgba(0,0,0,0.08)" }} />
 
-          {/* Progress Stepper */}
-          {project && workflow.activeStep >= 0 && (
-            <ProgressStepper
-              activeStep={workflow.activeStep}
-              completedSteps={[
-                ...(analysis ? [0] : []), // Analysis step
-                ...(research ? [1] : []), // Research step
-                ...(scriptData ? [2] : []), // Script step
-                ...(scriptData && renderJobs.length > 0 ? [3] : []), // Render step (if script exists and has jobs)
-              ]}
-              onStepClick={(stepIndex) => {
-                // Navigate to the clicked step
-                // Step indices: 0 = Analysis, 1 = Research, 2 = Script, 3 = Render
-                if (stepIndex === 0) {
-                  // Navigate to Analysis
-                  setShowScriptEditor(false);
-                  setShowRenderQueue(false);
-                  setCurrentStep('analysis');
-                } else if (stepIndex === 1) {
-                  // Navigate to Research
-                  if (!analysis) {
-                    workflow.setAnnouncement("Complete Analysis first to access Research.");
-                    return;
-                  }
-                  setShowScriptEditor(false);
-                  setShowRenderQueue(false);
-                  setCurrentStep('research');
-                } else if (stepIndex === 2) {
-                  // Navigate to Script
-                  if (!research) {
-                    workflow.setAnnouncement("Complete Research first to access Script Editor.");
-                    return;
-                  }
-                  setShowRenderQueue(false);
-                  setShowScriptEditor(true);
-                  setCurrentStep('script');
-                } else if (stepIndex === 3) {
-                  // Navigate to Render
-                  if (!scriptData) {
-                    workflow.setAnnouncement("Generate and approve script first to access Render Queue.");
-                    return;
-                  }
-                  setShowScriptEditor(false);
-                  setShowRenderQueue(true);
-                  setCurrentStep('render');
-                }
-              }}
-            />
-          )}
+          {/* Progress stepper is in Header - keeping UI clean */}
 
           {/* Resume Alert */}
           {workflow.showResumeAlert && project && (

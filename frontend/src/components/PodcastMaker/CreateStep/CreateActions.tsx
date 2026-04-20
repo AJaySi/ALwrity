@@ -392,30 +392,39 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
     return () => clearTimeout(timer);
   }, []);
 
-  // Close modal when analysis completes OR when there's an error
+  // Close modal only AFTER analysis fully completes (wait for project/analysis to be set)
   // Use a ref to track previous isSubmitting to detect the transition from true to false
   const prevIsSubmittingRef = useRef(isSubmitting);
+  const [analysisCompleteRef, setAnalysisCompleteRef] = useState(false);
+  
   useEffect(() => {
-    // Detect transition from submitting to not submitting (analysis complete)
+    // Track if analysis transitioned from true to false (completed)
     const wasSubmitting = prevIsSubmittingRef.current;
     const nowNotSubmitting = !isSubmitting;
     
-    if (showAnalysisModal && analysisStarted && wasSubmitting && nowNotSubmitting) {
-      console.warn('[CreateActions] Analysis complete — closing modal and clearing announcement');
+    // Only close modal if:
+    // 1. Modal is still shown
+    // 2. analysisStarted is true  
+    // 3. isSubmitting transitioned from true to false
+    // 4. AND we're not showing an error
+    if (showAnalysisModal && analysisStarted && wasSubmitting && nowNotSubmitting && !error) {
+      // Mark analysis as complete and close after a delay
+      setAnalysisCompleteRef(true);
+      console.warn('[CreateActions] Analysis complete — will close modal after delay');
       setTimeout(() => {
         setShowAnalysisModal(false);
         onAnnouncementClear?.();
-      }, 100);
+      }, 500);
     }
     
     // Update ref for next render
     prevIsSubmittingRef.current = isSubmitting;
     
-    // If there's an error, also ensure modal is usable
+    // If there's an error, keep modal open so user can see error message
     if (error && showAnalysisModal) {
-      console.warn('[CreateActions] Error detected:', error);
+      console.warn('[CreateActions] Error detected — keeping modal open:', error);
     }
-  }, [isSubmitting, showAnalysisModal, analysisStarted, onAnnouncementClear, error]);
+  }, [isSubmitting, showAnalysisModal, analysisStarted, onAnnouncementClear, error, analysisCompleteRef]);
 
   // Sequential progress - increment every few seconds
   useEffect(() => {
@@ -472,7 +481,14 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
 
       <Dialog
         open={showAnalysisModal}
-        onClose={() => !isSubmitting && setShowAnalysisModal(false)}
+        disableEscapeKeyDown={isSubmitting}
+        onClose={(event, reason) => {
+          // Only allow closing if NOT submitting and analysis hasn't started
+          // This prevents modal from closing when user clicks outside while analysis runs
+          if (!isSubmitting && !analysisStarted) {
+            setShowAnalysisModal(false);
+          }
+        }}
         maxWidth="sm"
         fullWidth
         fullScreen={isMobile}

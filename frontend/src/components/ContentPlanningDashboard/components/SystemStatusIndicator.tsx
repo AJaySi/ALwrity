@@ -131,6 +131,12 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
   };
 
   const fetchDetailedStats = async () => {
+    // Skip detailed stats in podcast-only mode (endpoint not available)
+    if (isPodcastOnlyDemoMode()) {
+      setChartData([]);
+      return;
+    }
+
     try {
       const response = await apiClient.get('/api/content-planning/monitoring/api-stats');
       const result = response?.data;
@@ -176,8 +182,10 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
 
   useEffect(() => {
     fetchStatus();
-    // Prime cache performance occasionally even when dashboard is closed
-    fetchDetailedStats();
+    // Skip detailed stats in podcast-only mode
+    if (!isPodcastOnlyDemoMode()) {
+      fetchDetailedStats();
+    }
 
     // Refresh every 120 seconds
     const interval = setInterval(fetchStatus, 120000);

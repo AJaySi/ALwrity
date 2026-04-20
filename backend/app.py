@@ -424,12 +424,28 @@ if PODCAST_ONLY_DEMO_MODE:
     # In podcast-only mode, include only podcast-enabled routers from core registry
     from alwrity_utils.router_manager import CORE_ROUTER_REGISTRY
     podcast_routers = [r for r in CORE_ROUTER_REGISTRY if "podcast" in r.get("features", set())]
-    for entry in podcast_routers:
+    logger.info(f"[PODCAST-ONLY] Found {len(podcast_routers)} podcast routers: {[r['name'] for r in podcast_routers]}")
+    
+    # Force include step4_assets for voice cloning
+    step4_entry = next((r for r in CORE_ROUTER_REGISTRY if r.get("name") == "step4_assets"), None)
+    if step4_entry:
         try:
+            logger.info(f"[PODCAST-ONLY] Forcing load of step4_assets for voice cloning")
+            router = router_manager._load_router_from_registry(step4_entry)
+            router_manager.include_router_safely(router, step4_entry["name"], step4_entry.get("include_kwargs"))
+        except Exception as e:
+            logger.error(f"[PODCAST-ONLY] Failed to mount step4_assets: {e}")
+    
+    # Load other podcast routers
+    for entry in podcast_routers:
+        if entry.get("name") == "step4_assets":
+            continue  # Already loaded above
+        try:
+            logger.info(f"[PODCAST-ONLY] Loading router: {entry['name']}")
             router = router_manager._load_router_from_registry(entry)
             router_manager.include_router_safely(router, entry["name"], entry.get("include_kwargs"))
         except Exception as e:
-            logger.warning(f"{entry['name']} router not mounted: {e}")
+            logger.error(f"[PODCAST-ONLY] Failed to mount {entry.get('name', 'unknown')}: {e}")
     router_group_status["modular_core"] = {
         "mounted": True,
         "reason": "Podcast routers only in podcast-only mode",
