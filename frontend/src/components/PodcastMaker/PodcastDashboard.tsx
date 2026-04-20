@@ -289,6 +289,7 @@ const PodcastDashboard: React.FC = () => {
                 knobs={knobsState}
                 speakers={project.speakers}
                 durationMinutes={project.duration}
+                podcastMode={project?.podcastMode || "video_only"}
                 script={scriptData}
                 analysis={analysis}
                 outline={analysis?.suggestedOutlines?.[0]}

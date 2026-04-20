@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 import json
+import re
 
 from middleware.auth_middleware import get_current_user
 from api.story_writer.utils.auth import require_authenticated_user
@@ -23,6 +24,8 @@ from ..models import (
 )
 
 router = APIRouter()
+MAX_TTS_CHARS_PER_REQUEST = 10_000
+TARGET_TTS_CHARS_PER_SCENE = 8_500
 
 
 class SceneApprovalRequest(BaseModel):
@@ -60,28 +63,43 @@ async def generate_podcast_script(
     logger.warning(f"[ScriptGen] ========== SCRIPT GENERATION START ==========")
     logger.warning(f"[ScriptGen] Topic: {request.idea[:60]}...")
     logger.warning(f"[ScriptGen] Duration: {request.duration_minutes} min, Speakers: {request.speakers}")
-    logger.warning(f"[ScriptGen] Has research: {bool(request.research)}, Has bible: {bool(request.bible)}, Has analysis: {bool(request.analysis)}")
+    podcast_mode = (request.podcast_mode or "video_only").strip().lower()
+    logger.warning(f"[ScriptGen] Has research: {bool(request.research)}, Has bible: {bool(request.bible)}, Has analysis: {bool(request.analysis)}, Mode: {podcast_mode}")
+    research_fact_cards = request.research.get("factCards", []) if request.research else []
 
     # Build comprehensive research context for higher-quality scripts
     research_context = ""
     if request.research:
         try:
             key_insights = request.research.get("keyword_analysis", {}).get("key_insights") or []
-            fact_cards = request.research.get("factCards", []) or []
+            fact_cards = research_fact_cards or []
             mapped_angles = request.research.get("mappedAngles", []) or []
             sources = request.research.get("sources", []) or []
 
-            top_facts = [f.get("quote", "") for f in fact_cards[:5] if f.get("quote")]
+            top_facts = [
+                f"[{f.get('id') or f'fact_{idx + 1}'}] {f.get('quote', '')}"
+                for idx, f in enumerate(fact_cards[:10])
+                if f.get("quote")
+            ]
             angles_summary = [
                 f"{a.get('title', '')}: {a.get('why', '')}" for a in mapped_angles[:3] if a.get("title") or a.get("why")
             ]
             top_sources = [s.get("url") for s in sources[:3] if s.get("url")]
+            numeric_signals = []
+            for f in fact_cards[:12]:
+                quote = (f.get("quote") or "").strip()
+                if any(ch.isdigit() for ch in quote):
+                    numeric_signals.append(quote[:180])
+                if len(numeric_signals) >= 5:
+                    break
 
             research_parts = []
             if key_insights:
                 research_parts.append(f"Key Insights: {', '.join(key_insights[:5])}")
             if top_facts:
                 research_parts.append(f"Key Facts: {', '.join(top_facts)}")
+            if numeric_signals:
+                research_parts.append(f"Numeric Signals (prefer for chart scenes): {' | '.join(numeric_signals)}")
             if angles_summary:
                 research_parts.append(f"Research Angles: {' | '.join(angles_summary)}")
             if top_sources:
@@ -91,6 +109,51 @@ async def generate_podcast_script(
         except Exception as exc:
             logger.warning(f"Failed to parse research context: {exc}")
             research_context = ""
+
+    def _normalize_fact_ids(value: Any) -> Optional[list[str]]:
+        if not value:
+            return None
+        if isinstance(value, list):
+            cleaned = [str(v).strip() for v in value if str(v).strip()]
+            return cleaned or None
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        return None
+
+    def _default_chart_data(scene_title: str) -> Dict[str, Any]:
+        numeric_pairs: list[tuple[str, float]] = []
+        for fact in research_fact_cards[:12]:
+            quote = (fact.get("quote") or "").strip()
+            if not quote:
+                continue
+            nums = re.findall(r"\d+(?:\.\d+)?", quote.replace(",", ""))
+            if not nums:
+                continue
+            label = quote[:48] + ("…" if len(quote) > 48 else "")
+            try:
+                numeric_pairs.append((label, float(nums[0])))
+            except ValueError:
+                continue
+            if len(numeric_pairs) >= 5:
+                break
+
+        if numeric_pairs:
+            labels = [p[0] for p in numeric_pairs]
+            values = [p[1] for p in numeric_pairs]
+            return {
+                "type": "bar_comparison",
+                "title": scene_title,
+                "labels": labels,
+                "values": values,
+                "takeaway": "Data points sourced from research facts used in this scene.",
+            }
+
+        return {
+            "type": "bullet",
+            "title": scene_title,
+            "bullet_points": ["Key point 1", "Key point 2", "Key point 3"],
+            "takeaway": "Narration summary for this scene.",
+        }
 
     # Extract Podcast Bible context for hyper-personalization
     bible_context = ""
@@ -122,25 +185,58 @@ async def generate_podcast_script(
         except:
             pass
 
+    mode_instructions = ""
+    if podcast_mode == "audio_only":
+        mode_instructions = f"""
+AUDIO-ONLY MODE RULES (CRITICAL):
+- This is an audio-only episode. Do NOT include avatar/image/camera instructions.
+- Keep each scene's total dialogue under {TARGET_TTS_CHARS_PER_SCENE} chars to stay below TTS max request size ({MAX_TTS_CHARS_PER_REQUEST}).
+- For every scene include chart_data so B-roll charts can be generated while narration plays.
+- Build script STRICTLY from RESEARCH context and cite fact linkage via usedFactIds.
+- If evidence is weak, say uncertainty explicitly rather than inventing facts.
+- Add natural TTS pacing in dialogue with markers like [pause:300ms], [pause:700ms], [emote:curious], [emote:serious].
+"""
+    elif podcast_mode == "audio_video":
+        mode_instructions = """
+AUDIO+VIDEO MODE:
+- Include rich narration that works for both listening and visual storytelling.
+- Use a balanced pace suitable for TTS and scene visuals.
+"""
+    else:
+        mode_instructions = """
+VIDEO-ONLY MODE:
+- Prioritize visual rhythm and concise narration per scene.
+"""
+
     prompt = f"""Create a podcast script with scenes and dialogue.
 
 {f"BIBLE: {bible_context[:1500]}" if bible_context else ""}
 {f"{analysis_context}" if analysis_context else ""}
 {f"{outline_context}" if outline_context else ""}
-{f"RESEARCH: {research_context[:1200]}" if research_context else ""}
+{f"RESEARCH: {research_context[:2500]}" if research_context else ""}
+{mode_instructions}
 
 Topic: "{request.idea}"
 Duration: {request.duration_minutes} min | Speakers: {request.speakers}
+Podcast mode: {podcast_mode}
 
 Return JSON with scenes array. Each scene:
 - id: string
 - title: short title (<=50 chars)
 - duration: seconds (total/5)
 - emotion: neutral|happy|excited|serious|curious|confident
-- lines: array of {{speaker, text, emphasis}}
+- lines: array of {{speaker, text, emphasis, usedFactIds, ttsHints}}
   - Use 2-4 LINES PER SCENE (shorter script = lower TTS costs)
   - Each line: 1-3 sentences, conversational
+  - usedFactIds: include related fact ids when research facts are available (example: ["fact_1", "fact_3"])
+  - ttsHints: optional list from [pause_300ms, pause_700ms, smile, serious_tone, emphasize_data]
   - Plain text only, no markdown
+- chart_data: object for B-roll mapping (required in audio_only)
+  - type: bar_comparison|line_trend|bullet_points
+  - title: short chart title
+  - labels: list
+  - values: list (same length as labels)
+  - takeaway: one sentence tying chart to narration
 
 COST OPTIMIZATION:
 - 5-6 scenes max for {request.duration_minutes} min episode
@@ -231,7 +327,8 @@ COST OPTIMIZATION:
             line_id = line.get("id") or f"line-{idx + 1}-{line_idx + 1}"
             
             # Get used fact IDs if provided
-            used_fact_ids = line.get("usedFactIds") or line.get("used_fact_ids") or None
+            used_fact_ids = _normalize_fact_ids(line.get("usedFactIds") or line.get("used_fact_ids"))
+            tts_hints = line.get("ttsHints") or line.get("tts_hints") or None
             
             if text:
                 lines.append(PodcastSceneLine(
@@ -239,7 +336,8 @@ COST OPTIMIZATION:
                     text=text, 
                     emphasis=emphasis,
                     id=line_id,
-                    usedFactIds=used_fact_ids
+                    usedFactIds=used_fact_ids,
+                    ttsHints=tts_hints if isinstance(tts_hints, list) else None,
                 ))
                 total_lines_output += 1
             else:
@@ -255,6 +353,33 @@ COST OPTIMIZATION:
             if audio_url_raw:
                 logger.warning(f"[ScriptGen] Scene {idx} has audioUrl - will be reset to None")
                 
+        # Keep each scene under TTS request size to prevent failures
+        scene_char_count = sum(len((l.text or "").strip()) for l in lines)
+        if scene_char_count > TARGET_TTS_CHARS_PER_SCENE and lines:
+            logger.warning(
+                f"[ScriptGen] Scene {idx} text too long ({scene_char_count} chars). "
+                f"Trimming to {TARGET_TTS_CHARS_PER_SCENE} target."
+            )
+            trimmed_lines: list[PodcastSceneLine] = []
+            remaining = TARGET_TTS_CHARS_PER_SCENE
+            for l in lines:
+                if remaining <= 0:
+                    break
+                line_text = (l.text or "").strip()
+                if len(line_text) <= remaining:
+                    trimmed_lines.append(l)
+                    remaining -= len(line_text)
+                    continue
+                l.text = f"{line_text[:max(0, remaining - 1)].rstrip()}…"
+                trimmed_lines.append(l)
+                remaining = 0
+            lines = trimmed_lines
+
+        chart_data = scene.get("chart_data") or scene.get("chartData") or None
+        if podcast_mode == "audio_only" and not chart_data:
+            # Ensure audio-only always has a B-roll mapping fallback
+            chart_data = _default_chart_data(title)
+
         scenes.append(
             PodcastScene(
                 id=scene.get("id") or f"scene-{idx + 1}",
@@ -266,6 +391,7 @@ COST OPTIMIZATION:
                 imageUrl=None,  # Will be generated later
                 audioUrl=None,  # Will be generated later
                 imagePrompt=None,  # Will be generated during image generation
+                chart_data=chart_data if isinstance(chart_data, dict) else None,
             )
         )
     
@@ -275,4 +401,3 @@ COST OPTIMIZATION:
         logger.warning(f"[ScriptGen] Dropped {dropped_empty_lines} empty lines")
 
     return PodcastScriptResponse(scenes=scenes)
-

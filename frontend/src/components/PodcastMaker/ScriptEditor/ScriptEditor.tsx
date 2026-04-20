@@ -26,6 +26,7 @@ interface ScriptEditorProps {
   avatarUrl?: string | null; // Base avatar URL for consistent scene image generation
   analysis?: any;
   outline?: any;
+  podcastMode?: "audio_only" | "video_only" | "audio_video";
 }
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -44,6 +45,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   avatarUrl,
   analysis,
   outline,
+  podcastMode = "video_only",
 }) => {
   const [script, setScript] = useState<Script | null>(initialScript);
   const [loading, setLoading] = useState(false);
@@ -95,6 +97,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
         knobs,
         speakers,
         durationMinutes,
+        podcastMode,
         analysis,
         outline,
       })
@@ -114,7 +117,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     return () => {
       mounted = false;
     };
-  }, [projectId, rawResearch, idea, knobs, speakers, durationMinutes, analysis, outline, emitScriptChange, onError, script]);
+  }, [projectId, rawResearch, idea, knobs, speakers, durationMinutes, podcastMode, analysis, outline, emitScriptChange, onError, script]);
 
   const updateScene = (updated: Scene) => {
     // Use functional update to ensure we're working with latest state

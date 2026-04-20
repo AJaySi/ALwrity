@@ -97,6 +97,7 @@ class PodcastScriptRequest(BaseModel):
     bible: Optional[Dict[str, Any]] = Field(None, description="Podcast Bible for hyper-personalization")
     outline: Optional[Dict[str, Any]] = Field(None, description="The refined episode outline to follow")
     analysis: Optional[Dict[str, Any]] = Field(None, description="The full analysis context (audience, keywords, etc.)")
+    podcast_mode: Optional[str] = Field(default="video_only", description="Podcast mode: audio_only, video_only, or audio_video")
 
 
 class PodcastSceneLine(BaseModel):
@@ -105,6 +106,7 @@ class PodcastSceneLine(BaseModel):
     emphasis: Optional[bool] = False
     id: Optional[str] = None  # Optional line ID for frontend tracking
     usedFactIds: Optional[List[str]] = None  # Facts referenced in this line
+    ttsHints: Optional[List[str]] = None  # Optional TTS hints, e.g. pause_300ms, smile, emphasize_data
 
 
 class PodcastScene(BaseModel):
@@ -117,6 +119,7 @@ class PodcastScene(BaseModel):
     imageUrl: Optional[str] = None  # Generated image URL for video generation
     audioUrl: Optional[str] = None  # Generated audio URL for this scene
     imagePrompt: Optional[str] = None  # Original image generation prompt for video context
+    chart_data: Optional[Dict[str, Any]] = None  # Optional chart mapping for B-roll scenes
 
 
 class PodcastExaConfig(BaseModel):
