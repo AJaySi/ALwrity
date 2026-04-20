@@ -647,6 +647,7 @@ else:
 
 # Include Podcast Maker router (always needed for podcast mode)
 from api.podcast.router import router as podcast_router
+logger.info(f"[PODCAST] Including podcast_router with prefixes: {podcast_router.routes}")
 app.include_router(podcast_router)
 router_group_status["podcast_maker"] = {
     "mounted": True,
