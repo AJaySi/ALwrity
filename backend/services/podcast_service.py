@@ -85,18 +85,26 @@ class PodcastService:
         **updates
     ) -> Optional[PodcastProject]:
         """Update project fields."""
+        from loguru import logger
+        logger.warning(f"[PodcastService] update_project: user_id={user_id}, project_id={project_id}")
+        logger.warning(f"[PodcastService] update_project: updates={updates}")
+        
         project = self.get_project(user_id, project_id)
         if not project:
+            logger.warning(f"[PodcastService] update_project: project not found")
             return None
         
         # Update fields
         for key, value in updates.items():
             if hasattr(project, key):
                 setattr(project, key, value)
+            else:
+                logger.warning(f"[PodcastService] update_project: field '{key}' not in model")
         
         project.updated_at = datetime.utcnow()
         self.db.commit()
         self.db.refresh(project)
+        logger.warning(f"[PodcastService] update_project: success")
         return project
     
     def list_projects(

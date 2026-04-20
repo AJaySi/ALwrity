@@ -112,7 +112,8 @@ async def update_project(
             logger.error(f"[Podcast] update_project: No user_id found in current_user: {current_user}")
             raise HTTPException(status_code=401, detail="User ID not found")
         
-        logger.info(f"[Podcast] update_project: project_id={project_id}, user_id={user_id}")
+        logger.warning(f"[Podcast] update_project: project_id={project_id}, user_id={user_id}")
+        logger.warning(f"[Podcast] update_project: request data: {request.model_dump()}")
         
         service = PodcastService(db)
         
