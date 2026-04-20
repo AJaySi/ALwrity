@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Box, Typography, Paper, Stack, Button, Alert, TextField, CircularProgress, Slider, FormControlLabel, Checkbox, MenuItem, Tooltip, Chip, Divider, Grid, IconButton, Modal, Fade, Backdrop, LinearProgress } from '@mui/material';
 import { keyframes } from '@mui/system';
-import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo, Headphones, Article, VideoLibrary, TrendingUp, CheckCircle, RecordVoiceOver } from '@mui/icons-material';
+import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo, Headphones, Article, VideoLibrary, TrendingUp, CheckCircle, RecordVoiceOver, Settings } from '@mui/icons-material';
 import { createVoiceClone, createVoiceDesign, getLatestVoiceClone, setBrandVoice } from '../../../../api/brandAssets';
 import { OperationButton } from '../../../shared/OperationButton';
 
@@ -58,6 +58,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
   const [accuracy, setAccuracy] = useState(0.7);
   const [languageBoost, setLanguageBoost] = useState('auto');
   const [qualityPreset, setQualityPreset] = useState<'clean' | 'noisy' | 'accent'>('clean');
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [qwenLanguage, setQwenLanguage] = useState('auto');
   const [referenceText, setReferenceText] = useState('');
   const [voiceDescription, setVoiceDescription] = useState('');
@@ -826,12 +827,40 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                   </Stack>
 
                   <Box sx={{ width: '100%' }}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#4B5563', mb: 1, display: 'block', fontSize: '0.7rem' }}>
-                      Read this script to capture your voice:
-                    </Typography>
-                    <Paper elevation={0} sx={{ p: 2, bgcolor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', '&:hover': { borderColor: '#7C3AED', bgcolor: '#F9FAFB', transform: 'translateY(-1px)' } }}>
-                       <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#374151', lineHeight: 1.5, fontStyle: 'italic' }}>
-                         "Hi, I'm excited to use AI to scale my content creation. This voice clone will help me stay consistent across all my channels. At our company, we value transparency and innovation, and we strive to deliver the best solutions for our clients every single day. Imagine a world where creativity knows no bounds, where your ideas can take flight and reach millions of people instantly."
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#1F2937', display: 'block', fontSize: '0.75rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                        Read this script to capture your voice:
+                      </Typography>
+                      <IconButton 
+                        size="small" 
+                        onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                        sx={{ 
+                          color: showAdvancedOptions ? '#7C3AED' : '#9CA3AF',
+                          bgcolor: showAdvancedOptions ? 'rgba(124, 58, 237, 0.1)' : 'transparent',
+                          '&:hover': { bgcolor: 'rgba(124, 58, 237, 0.15)' }
+                        }}
+                      >
+                        <Settings fontSize="small" />
+                      </IconButton>
+                    </Box>
+                    <Paper 
+                      elevation={0} 
+                      sx={{ 
+                        p: 2.5, 
+                        bgcolor: '#FFFFFF', 
+                        borderRadius: '12px', 
+                        cursor: 'pointer', 
+                        transition: 'all 0.3s ease',
+                        border: '2px solid transparent',
+                        background: 'linear-gradient(#FFFFFF, #FFFFFF) padding-box, linear-gradient(135deg, #7C3AED 0%, #EC4899 50%, #3B82F6 100%) border-box',
+                        '&:hover': { 
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 8px 20px rgba(124, 58, 237, 0.15)'
+                        } 
+                      }}
+                    >
+                       <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#374151', lineHeight: 1.7, fontStyle: 'italic' }}>
+                         "Hi, I'm excited to use AI to scale my content creation. This voice clone will help me stay consistent across all my channels. At our company, we value transparency and innovation, and we strive to deliver the best solutions for our clients every single day."
                        </Typography>
                     </Paper>
                   </Box>
@@ -893,7 +922,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                 {(audioPreviewUrl || audioFile || (inputType === 'text' && voiceDescription?.trim().length > 0)) && <Divider sx={{ borderColor: '#F3F4F6' }} />}
                 
                 {/* Inputs for Voice Cloning (Mic/Upload) - Shown only after sample available */}
-                {inputType !== 'text' && (audioPreviewUrl || audioFile) && (
+                {inputType !== 'text' && (audioPreviewUrl || audioFile) && showAdvancedOptions && (
                   <Grid container spacing={1.5}>
                     <Grid item xs={12} md={4}>
                       <TextField
@@ -970,7 +999,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                 )}
 
                 {/* Inputs for Voice Design (Text) - Shown only after description provided */}
-                {inputType === 'text' && voiceDescription?.trim().length > 0 && (
+                {inputType === 'text' && voiceDescription?.trim().length > 0 && showAdvancedOptions && (
                    <Grid container spacing={1.5}>
                      <Grid item xs={12} md={6}>
                           <TextField
