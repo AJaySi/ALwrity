@@ -17,6 +17,10 @@ from loguru import logger
 
 # Import chart generators directly
 from services.podcast.broll_composer import (
+    Insight,
+    SceneAssets,
+    dispatch_scene,
+    compose_video,
     make_bar_chart,
     make_horizontal_bar,
     make_line_trend,
@@ -146,9 +150,13 @@ class BrollService:
                 background_img=background_img_path,
                 avatar_video=avatar_video_path,
             )
+            scene_temp_dir = self.get_output_path(
+                f"scene_assets_{scene_id_safe}_{uuid.uuid4().hex[:8]}"
+            )
+            scene_temp_dir.mkdir(parents=True, exist_ok=True)
             
             # Generate the scene
-            scene = dispatch_scene(insight, assets)
+            scene = dispatch_scene(insight, assets, temp_dir=scene_temp_dir)
             
             # Write video
             compose_video([scene], output_path=out_path)
