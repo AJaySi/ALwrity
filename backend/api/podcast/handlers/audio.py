@@ -391,7 +391,10 @@ async def serve_podcast_audio(
         raise HTTPException(status_code=400, detail="Invalid filename")
     
     user_id = require_authenticated_user(current_user)
-    logger.debug(f"[Podcast] serve_podcast_audio called: user_id={user_id}, filename={filename}")
+    logger.info(f"[Podcast] serve_podcast_audio: filename={filename}, user_id={user_id}")
+    
+    audio_path = _resolve_podcast_media_file(filename, "audio", user_id)
+    logger.info(f"[Podcast] Audio resolved path: {audio_path}, exists={audio_path.exists()}")
     audio_path = _resolve_podcast_media_file(filename, "audio", user_id)
     logger.debug(f"[Podcast] Resolved audio path: {audio_path}")
     
