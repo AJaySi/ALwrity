@@ -547,7 +547,12 @@ async def create_voice_clone(
             saved_preview_path, error = save_file_safely(preview_audio_bytes, user_voice_dir, preview_filename)
             
             if not error and saved_preview_path:
-                preview_url = f"/api/assets/{user_id}/voice_samples/{preview_filename}"
+                # Use actual saved filename (may have UUID suffix added by save_file_safely)
+                actual_filename = saved_preview_path.name
+                preview_url = f"/api/assets/{user_id}/voice_samples/{actual_filename}"
+                logger.info(f"[VoiceClone] Saved preview audio to: {saved_preview_path}")
+            else:
+                logger.error(f"[VoiceClone] Failed to save preview audio: {error}")
             
         # 4. Save to Asset Library
         asset_id = save_asset_to_library(
