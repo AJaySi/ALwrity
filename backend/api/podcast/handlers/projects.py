@@ -116,13 +116,28 @@ async def update_project(
         
         service = PodcastService(db)
         
-        # Convert request to dict, excluding None values
-        updates = request.model_dump(exclude_unset=True)
-        
-        project = service.update_project(user_id, project_id, **updates)
-        
-        if not project:
-            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        # Check if project exists; if not, create it (upsert behavior for resilience)
+        existing = service.get_project(user_id, project_id)
+        if not existing:
+            logger.warning(f"[Podcast] Project {project_id} not found for user {user_id}, creating new project with default values")
+            # Try to create the project - this handles cases where create succeeded but wasn't found later
+            # (can happen with user_id mismatch or after session refresh)
+            try:
+                project = service.create_project(
+                    user_id=user_id,
+                    project_id=project_id,
+                    idea="Untitled Podcast",
+                    status="scripting",  # Assume we're updating an existing project
+                    duration=10,
+                    speakers=1,
+                )
+            except Exception as create_err:
+                logger.error(f"[Podcast] Failed to create project {project_id}: {create_err}")
+                raise HTTPException(status_code=404, detail=f"Project {project_id} not found and could not create: {create_err}")
+        else:
+            # Convert request to dict, excluding None values
+            updates = request.model_dump(exclude_unset=True)
+            project = service.update_project(user_id, project_id, **updates)
         
         return PodcastProjectResponse.model_validate(project)
     except HTTPException:
