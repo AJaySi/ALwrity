@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { Script, Knobs, Scene, PodcastMode } from "../types";
 import { podcastApi } from "../../../services/podcastApi";
+import { getApiUrl } from "../../../api/client";
 
 interface ScriptEditorContextType {
   // State
@@ -57,6 +58,13 @@ interface ScriptEditorContextType {
 }
 
 const ScriptEditorContext = createContext<ScriptEditorContextType | undefined>(undefined);
+
+const toUsablePreviewUrl = (previewUrl?: string): string | undefined => {
+  if (!previewUrl) return undefined;
+  if (/^https?:\/\//i.test(previewUrl)) return previewUrl;
+  const cleanPath = previewUrl.startsWith("/") ? previewUrl : `/${previewUrl}`;
+  return `${getApiUrl()}${cleanPath}`;
+};
 
 interface ScriptEditorProviderProps {
   children: ReactNode;
@@ -413,7 +421,7 @@ export const ScriptEditorProvider: React.FC<ScriptEditorProviderProps> = ({
             
             return {
               ...scene,
-              broll_preview_url: result.preview_url,
+              broll_preview_url: toUsablePreviewUrl(result.preview_url),
               chart_id: result.chart_id,
             };
           } catch (err) {
@@ -451,7 +459,7 @@ export const ScriptEditorProvider: React.FC<ScriptEditorProviderProps> = ({
       
       const updatedScenes = activeScript.scenes.map((s) =>
         s.id === sceneId
-          ? { ...s, broll_preview_url: result.preview_url, chart_id: result.chart_id }
+          ? { ...s, broll_preview_url: toUsablePreviewUrl(result.preview_url), chart_id: result.chart_id }
           : s
       );
       

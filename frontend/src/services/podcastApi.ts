@@ -967,8 +967,10 @@ export const podcastApi = {
     chart_data: Record<string, any>;
     chart_type: string;
     title: string;
-  }): Promise<{ image_url: string; preview_url: string; chart_id: string }> {
-    const response = await aiApiClient.post('/api/podcast/chart/preview', params);
+  }): Promise<{ preview_url: string; chart_id: string }> {
+    // Canonical backend endpoint from api/podcast/handlers/broll.py after router prefix composition:
+    // /api/podcast (main router) + /broll (handler prefix) + /preview/chart (endpoint)
+    const response = await aiApiClient.post('/api/podcast/broll/preview/chart', params);
     return response.data;
   },
 };
