@@ -208,6 +208,7 @@ export const ScriptEditorProvider: React.FC<ScriptEditorProviderProps> = ({
         knobs,
         speakers,
         durationMinutes,
+        podcastMode,
         analysis,
         outline,
       })

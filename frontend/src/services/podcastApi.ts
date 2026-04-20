@@ -12,6 +12,7 @@ import {
   Knobs,
   PodcastAnalysis,
   PodcastEstimate,
+  PodcastMode,
   Query,
   RenderJobResult,
   Research,
@@ -403,6 +404,7 @@ export const podcastApi = {
     knobs: Knobs;
     speakers: number;
     durationMinutes: number;
+    podcastMode?: PodcastMode;
     bible?: any;
     outline?: any;
     analysis?: PodcastAnalysis | null;
@@ -427,6 +429,7 @@ export const podcastApi = {
       bible: params.bible,
       outline: params.outline,
       analysis: params.analysis,
+      podcast_mode: params.podcastMode || "video_only",
     });
 
     if (params.onProgress) {
@@ -453,6 +456,7 @@ export const podcastApi = {
               },
             ],
       approved: false,
+      chart_data: scene.chart_data || scene.chartData || undefined,
     }));
 
     return { scenes: scriptScenes };

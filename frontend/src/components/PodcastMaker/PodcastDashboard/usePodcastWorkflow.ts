@@ -452,6 +452,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
         knobs: projectState.knobs,
         speakers: project.speakers,
         durationMinutes: project.duration,
+        podcastMode: (project as any)?.podcastMode || "video_only",
         bible: projectState.bible,
         outline: analysis?.suggestedOutlines?.[0],
         analysis: analysis,
