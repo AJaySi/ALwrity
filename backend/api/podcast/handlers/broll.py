@@ -4,6 +4,9 @@ B-Roll Handlers
 API endpoints for B-roll chart preview and video generation.
 """
 
+from pathlib import Path
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from typing import Dict, Any, Optional, List
@@ -13,11 +16,113 @@ import uuid
 
 from middleware.auth_middleware import get_current_user
 from api.story_writer.utils.auth import require_authenticated_user
+from api.story_writer.task_manager import task_manager
+from api.podcast.utils import _resolve_podcast_media_file
 from services.podcast.broll_service import get_broll_service
+from utils.media_utils import resolve_media_path
 from loguru import logger
 
 
 router = APIRouter()
+
+
+def _resolve_broll_background_image_path(background_image_url: str) -> str:
+    """Resolve background image URL/path to a local file path."""
+    resolved = resolve_media_path(background_image_url)
+    if not resolved:
+        raise HTTPException(status_code=404, detail=f"Background image not found: {background_image_url}")
+    return str(resolved)
+
+
+def _resolve_broll_avatar_video_path(avatar_video_url: Optional[str], user_id: str) -> Optional[str]:
+    """Resolve optional avatar video URL/path to a local file path."""
+    if not avatar_video_url:
+        return None
+
+    parsed = urlparse(avatar_video_url)
+    path = parsed.path if parsed.scheme else avatar_video_url
+
+    if "/api/podcast/videos/" in path:
+        filename = path.split("/api/podcast/videos/", 1)[1].split("?", 1)[0].strip()
+        if not filename:
+            raise HTTPException(status_code=400, detail="Invalid avatar video URL")
+        return str(_resolve_podcast_media_file(filename, "video", user_id))
+
+    local_path = Path(path).expanduser().resolve()
+    if local_path.exists() and local_path.is_file():
+        return str(local_path)
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Unsupported avatar video URL format. "
+            "Use /api/podcast/videos/{filename} or a valid local file path."
+        ),
+    )
+
+
+def _execute_broll_scene_task(
+    task_id: str,
+    *,
+    scene_id: str,
+    key_insight: str,
+    supporting_stat: str,
+    chart_data: Optional[Dict[str, Any]],
+    visual_cue: str,
+    duration: float,
+    background_img_path: str,
+    avatar_video_path: Optional[str],
+):
+    """Background task for rendering a B-roll scene."""
+    try:
+        task_manager.update_task_status(
+            task_id,
+            "processing",
+            progress=10.0,
+            message="Starting B-roll scene render...",
+        )
+
+        broll_service = get_broll_service()
+        task_manager.update_task_status(
+            task_id,
+            "processing",
+            progress=35.0,
+            message="Composing scene layers and overlays...",
+        )
+
+        video_path = broll_service.generate_scene_broll(
+            scene_id=scene_id,
+            key_insight=key_insight,
+            supporting_stat=supporting_stat,
+            chart_data=chart_data,
+            visual_cue=visual_cue,
+            duration=duration,
+            background_img_path=background_img_path,
+            avatar_video_path=avatar_video_path,
+        )
+
+        filename = Path(video_path).name
+        video_url = f"/api/podcast/broll/final/{filename}"
+
+        task_manager.update_task_status(
+            task_id,
+            "completed",
+            progress=100.0,
+            message="B-roll scene render completed.",
+            result={
+                "scene_id": scene_id,
+                "broll_video_path": video_path,
+                "broll_video_url": video_url,
+            },
+        )
+    except Exception as exc:
+        logger.error(f"[Broll] Task {task_id} failed: {exc}")
+        task_manager.update_task_status(
+            task_id,
+            "failed",
+            error=f"B-roll scene render failed: {str(exc)}",
+            error_status=500,
+        )
 
 
 class ChartPreviewRequest(BaseModel):
@@ -52,8 +157,11 @@ class BrollSceneRequest(BaseModel):
 class BrollSceneResponse(BaseModel):
     """Response for B-roll scene generation."""
     scene_id: str
-    broll_video_url: str
-    broll_video_path: str
+    broll_video_url: str = ""
+    broll_video_path: str = ""
+    task_id: Optional[str] = None
+    status: str = "completed"
+    message: Optional[str] = None
 
 
 class BrollComposeRequest(BaseModel):
@@ -139,16 +247,35 @@ async def generate_broll_scene(
                 detail=f"Invalid visual_cue. Must be one of: {valid_cues}"
             )
         
-        # For now, return a placeholder - full video generation requires
-        # resolving image/video URLs to actual file paths
-        # In V2, this will integrate with the actual video generation
-        
+        background_img_path = _resolve_broll_background_image_path(request.background_image_url)
+        avatar_video_path = _resolve_broll_avatar_video_path(request.avatar_video_url, user_id)
+
         logger.info(f"[Broll] B-roll scene request for scene: {request.scene_id}")
-        
+
+        # Scene rendering can be expensive, so use task manager/background execution.
+        task_id = task_manager.create_task(
+            "podcast_broll_scene_generation",
+            metadata={"owner_user_id": user_id, "scene_id": request.scene_id},
+        )
+
+        background_tasks.add_task(
+            _execute_broll_scene_task,
+            task_id=task_id,
+            scene_id=request.scene_id,
+            key_insight=request.key_insight,
+            supporting_stat=request.supporting_stat,
+            chart_data=request.chart_data,
+            visual_cue=request.visual_cue,
+            duration=request.duration,
+            background_img_path=background_img_path,
+            avatar_video_path=avatar_video_path,
+        )
+
         return BrollSceneResponse(
             scene_id=request.scene_id,
-            broll_video_url="",
-            broll_video_path="",
+            task_id=task_id,
+            status="pending",
+            message="B-roll scene render started. Poll /api/podcast/task/{task_id}/status for progress.",
         )
         
     except HTTPException:
