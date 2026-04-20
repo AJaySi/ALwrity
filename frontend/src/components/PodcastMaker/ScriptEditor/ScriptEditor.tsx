@@ -8,6 +8,7 @@ import { GlassyCard, PrimaryButton, SecondaryButton } from "../ui";
 import { SceneEditor } from "./SceneEditor";
 import { InlineAudioPlayer } from "../InlineAudioPlayer";
 import { aiApiClient } from "../../../api/client";
+import { BrollInfoPanel } from "./parts/BrollInfoPanel";
 
 interface ScriptEditorProps {
   projectId: string;
@@ -50,6 +51,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const [approvingSceneId, setApprovingSceneId] = useState<string | null>(null);
   const [generatingAudioId, setGeneratingAudioId] = useState<string | null>(null);
   const [showScriptFormatInfo, setShowScriptFormatInfo] = useState(false);
+  const [generatingChartId, setGeneratingChartId] = useState<string | null>(null);
   const [combiningAudio, setCombiningAudio] = useState(false);
   const [combinedAudioResult, setCombinedAudioResult] = useState<{
     url: string;
@@ -276,6 +278,102 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       setCombiningAudio(false);
     }
   }, [script, projectId, onError]);
+
+  const generateChartPreviews = useCallback(async () => {
+    if (!script) return;
+
+    const scenesWithData = script.scenes.filter(
+      (scene) => scene.chart_data && Object.keys(scene.chart_data).length > 0
+    );
+
+    if (scenesWithData.length === 0) {
+      onError("No scenes have chart data to generate previews.");
+      return;
+    }
+
+    try {
+      setGeneratingChartId("all");
+
+      const updatedScenes = await Promise.all(
+        script.scenes.map(async (scene) => {
+          if (!scene.chart_data || Object.keys(scene.chart_data).length === 0) {
+            return scene;
+          }
+
+          try {
+            const result = await podcastApi.generateChartPreview({
+              chart_data: scene.chart_data,
+              chart_type: scene.chart_data.type || "bar_comparison",
+              title: scene.title,
+            });
+
+            return {
+              ...scene,
+              broll_preview_url: result.preview_url,
+              chart_id: result.chart_id,
+            };
+          } catch (error) {
+            console.error(`Failed to generate chart preview for scene ${scene.id}:`, error);
+            return scene;
+          }
+        })
+      );
+
+      const updatedScript = { ...script, scenes: updatedScenes };
+      setScript(updatedScript);
+      emitScriptChange(updatedScript);
+    } catch (error: any) {
+      console.error("Chart preview generation failed:", error);
+      onError(`Failed to generate chart previews: ${error.message || error}`);
+    } finally {
+      setGeneratingChartId(null);
+    }
+  }, [script, emitScriptChange, onError]);
+
+  const regenerateChart = useCallback(async (sceneId: string) => {
+    if (!script) return;
+    const scene = script.scenes.find((s) => s.id === sceneId);
+    if (!scene?.chart_data) return;
+
+    try {
+      setGeneratingChartId(sceneId);
+      const result = await podcastApi.generateChartPreview({
+        chart_data: scene.chart_data,
+        chart_type: scene.chart_data.type || "bar_comparison",
+        title: scene.title,
+      });
+
+      const updatedScript = {
+        ...script,
+        scenes: script.scenes.map((s) =>
+          s.id === sceneId
+            ? { ...s, broll_preview_url: result.preview_url, chart_id: result.chart_id }
+            : s
+        ),
+      };
+      setScript(updatedScript);
+      emitScriptChange(updatedScript);
+    } catch (error: any) {
+      console.error("Chart regeneration failed:", error);
+      onError(`Failed to regenerate chart: ${error.message || error}`);
+    } finally {
+      setGeneratingChartId(null);
+    }
+  }, [script, emitScriptChange, onError]);
+
+  const removeChart = useCallback((sceneId: string) => {
+    if (!script) return;
+    const updatedScript = {
+      ...script,
+      scenes: script.scenes.map((scene) =>
+        scene.id === sceneId
+          ? { ...scene, chart_data: undefined, broll_preview_url: undefined, broll_video_url: undefined }
+          : scene
+      ),
+    };
+    setScript(updatedScript);
+    emitScriptChange(updatedScript);
+  }, [script, emitScriptChange]);
 
   return (
     <Box sx={{ mt: 4 }}>
@@ -607,6 +705,15 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             </Typography>
           </Alert>
 
+          <BrollInfoPanel
+            activeScript={script}
+            generatingChartId={generatingChartId}
+            generateChartPreviews={generateChartPreviews}
+            regenerateChart={regenerateChart}
+            removeChart={removeChart}
+            scenesWithCharts={script.scenes.filter((s) => s.chart_data && Object.keys(s.chart_data).length > 0).length}
+          />
+
           <Stack spacing={2}>
             {script.scenes.map((scene, idx) => (
               <GlassyCard
@@ -837,4 +944,3 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     </Box>
   );
 };
-
