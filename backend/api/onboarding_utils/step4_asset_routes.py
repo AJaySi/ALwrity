@@ -463,7 +463,7 @@ async def create_voice_clone(
     """Create a voice clone from an audio file."""
     try:
         user_id = _extract_user_id(current_user)
-        logger.info(f"Creating voice clone '{voice_name}' (engine={engine}) for user {user_id}")
+        logger.warning(f"[VoiceClone] Creating voice clone '{voice_name}' (engine={engine}) for user {user_id}")
         
         # 1. Save uploaded audio file
         file_content = await file.read()
@@ -544,15 +544,25 @@ async def create_voice_clone(
                 preview_filename = str(Path(preview_filename).with_suffix('.wav'))
             
             user_voice_dir = Path(WORKSPACE_DIR) / f"workspace_{user_id}" / "assets" / "voice_samples"
+            logger.warning(f"[VoiceClone] user_id: {user_id}")
+            logger.warning(f"[VoiceClone] user_voice_dir: {user_voice_dir}")
+            logger.warning(f"[VoiceClone] directory exists: {user_voice_dir.exists()}")
             saved_preview_path, error = save_file_safely(preview_audio_bytes, user_voice_dir, preview_filename)
             
             if not error and saved_preview_path:
                 # Use actual saved filename (may have UUID suffix added by save_file_safely)
                 actual_filename = saved_preview_path.name
                 preview_url = f"/api/assets/{user_id}/voice_samples/{actual_filename}"
-                logger.info(f"[VoiceClone] Saved preview audio to: {saved_preview_path}")
+                logger.warning(f"[VoiceClone] Saved preview audio to: {saved_preview_path}")
+                
+                # Verify file exists
+                if not saved_preview_path.exists():
+                    logger.warning(f"[VoiceClone] Preview file does not exist after save: {saved_preview_path}")
+                    preview_url = None
+                else:
+                    logger.warning(f"[VoiceClone] Preview file size: {saved_preview_path.stat().st_size} bytes")
             else:
-                logger.error(f"[VoiceClone] Failed to save preview audio: {error}")
+                logger.warning(f"[VoiceClone] Failed to save preview audio: {error}")
             
         # 4. Save to Asset Library
         asset_id = save_asset_to_library(
@@ -573,6 +583,9 @@ async def create_voice_clone(
                 "category": "voice_clone"
             }
         )
+        
+        logger.warning(f"[VoiceClone] Response preview_url: {preview_url}")
+        logger.warning(f"[VoiceClone] Response filename: {filename}")
         
         return {
             "success": True,
