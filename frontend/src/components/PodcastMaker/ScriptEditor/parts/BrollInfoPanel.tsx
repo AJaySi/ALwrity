@@ -2,24 +2,47 @@ import React from "react";
 import { Stack, Box, Typography, Alert, Paper, Button, CircularProgress, Chip } from "@mui/material";
 import { BarChart as BarChartIcon, AutoAwesome as AutoAwesomeIcon, Refresh as RefreshIcon, DeleteOutline as DeleteIcon } from "@mui/icons-material";
 import { useScriptEditor } from "../ScriptEditorContext";
+import { Script } from "../../types";
 
-export const BrollInfoPanel: React.FC = () => {
+interface BrollInfoPanelProps {
+  activeScript?: Script | null;
+  generatingChartId?: string | null;
+  generateChartPreviews?: () => Promise<void>;
+  regenerateChart?: (sceneId: string) => Promise<void>;
+  removeChart?: (sceneId: string) => void;
+  scenesWithCharts?: number;
+}
+
+export const BrollInfoPanel: React.FC<BrollInfoPanelProps> = (props) => {
+  let contextValue: ReturnType<typeof useScriptEditor> | null = null;
+  try {
+    contextValue = useScriptEditor();
+  } catch {
+    contextValue = null;
+  }
+
   const { 
     activeScript, 
     generatingChartId, 
-    setGeneratingChartId,
     generateChartPreviews,
     regenerateChart,
     removeChart,
     scenesWithCharts 
-  } = useScriptEditor();
+  } = contextValue ?? {};
 
-  if (!activeScript || activeScript.scenes.length === 0) {
+  const resolvedActiveScript = props.activeScript ?? activeScript;
+  const resolvedGeneratingChartId = props.generatingChartId ?? generatingChartId;
+  const resolvedGenerateChartPreviews = props.generateChartPreviews ?? generateChartPreviews;
+  const resolvedRegenerateChart = props.regenerateChart ?? regenerateChart;
+  const resolvedRemoveChart = props.removeChart ?? removeChart;
+
+  if (!resolvedActiveScript || resolvedActiveScript.scenes.length === 0) {
     return null;
   }
 
-  const scenesWithData = activeScript.scenes.filter(s => s.chart_data && Object.keys(s.chart_data).length > 0);
+  const scenesWithData = resolvedActiveScript.scenes.filter(s => s.chart_data && Object.keys(s.chart_data).length > 0);
   const hasChartData = scenesWithData.length > 0;
+  const resolvedScenesWithCharts = props.scenesWithCharts ?? scenesWithCharts ?? scenesWithData.length;
 
   return (
     <Paper
@@ -45,7 +68,7 @@ export const BrollInfoPanel: React.FC = () => {
         
         {hasChartData && (
           <Chip 
-            label={`${scenesWithData.length} scene${scenesWithData.length > 1 ? 's' : ''} with charts`}
+            label={`${resolvedScenesWithCharts} scene${resolvedScenesWithCharts > 1 ? 's' : ''} with charts`}
             size="small"
             sx={{ background: "rgba(34, 197, 94, 0.1)", color: "#16a34a", fontWeight: 600 }}
           />
@@ -68,9 +91,9 @@ export const BrollInfoPanel: React.FC = () => {
           <Stack direction="row" spacing={2}>
             <Button
               variant="contained"
-              startIcon={generatingChartId ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-              onClick={generateChartPreviews}
-              disabled={!!generatingChartId}
+              startIcon={resolvedGeneratingChartId ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+              onClick={resolvedGenerateChartPreviews}
+              disabled={!!resolvedGeneratingChartId || !resolvedGenerateChartPreviews}
               sx={{
                 background: "linear-gradient(135deg, #22c55e 0%, #10b981 100%)",
                 "&:hover": { background: "linear-gradient(135deg, #16a34a 0%, #059669 100%)" },
@@ -78,7 +101,7 @@ export const BrollInfoPanel: React.FC = () => {
                 fontWeight: 600,
               }}
             >
-              {generatingChartId ? "Generating..." : "Generate Chart Previews"}
+              {resolvedGeneratingChartId ? "Generating..." : "Generate Chart Previews"}
             </Button>
           </Stack>
 
@@ -104,7 +127,7 @@ export const BrollInfoPanel: React.FC = () => {
               </Box>
               
               <Stack direction="row" spacing={1}>
-                {generatingChartId === scene.id ? (
+                {resolvedGeneratingChartId === scene.id ? (
                   <CircularProgress size={20} />
                 ) : scene.broll_preview_url ? (
                   <>
@@ -116,14 +139,16 @@ export const BrollInfoPanel: React.FC = () => {
                     <Button 
                       size="small" 
                       startIcon={<RefreshIcon />}
-                      onClick={() => regenerateChart(scene.id)}
+                      onClick={() => resolvedRegenerateChart?.(scene.id)}
+                      disabled={!resolvedRegenerateChart}
                     >
                       Regenerate
                     </Button>
                     <Button 
                       size="small" 
                       startIcon={<DeleteIcon />}
-                      onClick={() => removeChart(scene.id)}
+                      onClick={() => resolvedRemoveChart?.(scene.id)}
+                      disabled={!resolvedRemoveChart}
                       sx={{ color: "#ef4444" }}
                     >
                       Remove
