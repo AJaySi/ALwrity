@@ -16,7 +16,7 @@ import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
 import { LineEditor } from "./LineEditor";
 import { ImageRegenerateModal, ImageGenerationSettings } from "./ImageRegenerateModal";
 import { AudioRegenerateModal, AudioGenerationSettings } from "./AudioRegenerateModal";
-import { podcastApi } from "../../../services/podcastApi";
+import { podcastApi, getCachedVoiceCloneInfo } from "../../../services/podcastApi";
 import { aiApiClient } from "../../../api/client";
 import { getCachedMedia, setCachedMedia } from "../../../utils/mediaCache";
 
@@ -68,6 +68,9 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   const [audioSettings, setAudioSettings] = useState<AudioGenerationSettings>({
     voiceId: knobs.voice_id || "Wise_Woman",
     customVoiceId: knobs.custom_voice_id || undefined,
+    useVoiceClone: knobs.is_voice_clone || false,
+    voiceSampleUrl: knobs.voice_sample_url || undefined,
+    voiceCloneEngine: knobs.voice_clone_engine || undefined,
     speed: knobs.voice_speed ?? 1.0,
     volume: 1.0,
     pitch: 0.0,
@@ -308,10 +311,14 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
       
       // Generate audio
       const effectiveSettings = settings || audioSettings;
+      const cachedClone = getCachedVoiceCloneInfo();
       const result = await podcastApi.renderSceneAudio({
         scene: currentScene,
         voiceId: effectiveSettings.voiceId || knobs.voice_id || "Wise_Woman",
-        customVoiceId: effectiveSettings.customVoiceId || knobs.custom_voice_id,
+        customVoiceId: effectiveSettings.customVoiceId || knobs.custom_voice_id || cachedClone?.customVoiceId,
+        useVoiceClone: effectiveSettings.useVoiceClone || knobs.is_voice_clone || cachedClone?.isVoiceClone || false,
+        voiceSampleUrl: effectiveSettings.voiceSampleUrl || knobs.voice_sample_url || cachedClone?.voiceSampleUrl || undefined,
+        voiceCloneEngine: effectiveSettings.voiceCloneEngine || knobs.voice_clone_engine || cachedClone?.engine || undefined,
         emotion: effectiveSettings.emotion || scene.emotion || knobs.voice_emotion || "neutral",
         speed: effectiveSettings.speed ?? knobs.voice_speed ?? 1.0,
         volume: effectiveSettings.volume ?? 1.0,

@@ -86,8 +86,8 @@ class PodcastService:
     ) -> Optional[PodcastProject]:
         """Update project fields."""
         from loguru import logger
-        logger.warning(f"[PodcastService] update_project: user_id={user_id}, project_id={project_id}")
-        logger.warning(f"[PodcastService] update_project: updates={updates}")
+        updated_fields = list(updates.keys()) if isinstance(updates, dict) else []
+        logger.warning(f"[PodcastService] update_project: user_id={user_id}, project_id={project_id}, fields={updated_fields}")
         
         project = self.get_project(user_id, project_id)
         if not project:

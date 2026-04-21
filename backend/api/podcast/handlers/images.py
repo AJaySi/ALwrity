@@ -17,7 +17,7 @@ from api.story_writer.utils.auth import require_authenticated_user
 from services.llm_providers.main_image_generation import generate_image, generate_character_image
 from utils.asset_tracker import save_asset_to_library
 from loguru import logger
-from ..constants import PODCAST_IMAGES_DIR
+from ..constants import get_podcast_media_dir
 from ..models import PodcastImageRequest, PodcastImageResponse
 
 router = APIRouter()
@@ -377,14 +377,14 @@ async def generate_podcast_scene_image(
                 user_id=user_id
             )
 
-        # Save image to podcast images directory
-        PODCAST_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        # Save image to podcast images directory (workspace-aware)
+        images_dir = get_podcast_media_dir("image", user_id, ensure_exists=True)
 
         # Generate filename
         clean_title = "".join(c if c.isalnum() or c in ('-', '_') else '_' for c in request.scene_title[:30])
         unique_id = str(uuid.uuid4())[:8]
         image_filename = f"scene_{request.scene_id}_{clean_title}_{unique_id}.png"
-        image_path = PODCAST_IMAGES_DIR / image_filename
+        image_path = images_dir / image_filename
 
         # Save image
         with open(image_path, "wb") as f:
@@ -470,16 +470,17 @@ async def serve_podcast_image(
     Query parameter is useful for HTML elements like <img> that cannot send custom headers.
     Supports subdirectories like avatars/
     """
-    require_authenticated_user(current_user)
+    user_id = require_authenticated_user(current_user)
     
     # Security check: ensure path doesn't contain path traversal or absolute paths
     if ".." in path or path.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid path")
     
-    image_path = (PODCAST_IMAGES_DIR / path).resolve()
+    images_dir = get_podcast_media_dir("image", user_id)
+    image_path = (images_dir / path).resolve()
     
-    # Security check: ensure resolved path is within PODCAST_IMAGES_DIR
-    if not str(image_path).startswith(str(PODCAST_IMAGES_DIR)):
+    # Security check: ensure resolved path is within images_dir
+    if not str(image_path).startswith(str(images_dir)):
         raise HTTPException(status_code=403, detail="Access denied")
     
     if not image_path.exists():

@@ -136,7 +136,7 @@ const PREDEFINED_VOICES: VoiceOption[] = [
   { id: "Exuberant_Girl", name: "Exuberant Girl", personality: "Joyful, expressive female voice - ideal for celebrations", previewUrl: VOICE_PREVIEW_MAP.Exuberant_Girl, gender: "female", category: "creative" },
 ];
 
-const VOICE_CLONE_ID = "MY_VOICE_CLONE";
+export const VOICE_CLONE_ID = "MY_VOICE_CLONE";
 
 export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   value,

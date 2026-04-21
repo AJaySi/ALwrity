@@ -191,8 +191,11 @@ async def generate_chart_preview(
     """
     user_id = require_authenticated_user(current_user)
     
+    # Debug logging
+    logger.warning(f"[Broll] Chart preview request: type={request.chart_type}, title={request.title}, chart_data keys={list(request.chart_data.keys())}, user_id={user_id}")
+    
     try:
-        broll_service = get_broll_service()
+        broll_service = get_broll_service(user_id=user_id)
         chart_id = uuid.uuid4().hex[:8]
         
         preview_path = broll_service.generate_chart_preview(
@@ -203,11 +206,17 @@ async def generate_chart_preview(
             chart_id=chart_id,
         )
         
+        # If chart generation failed (empty path), return a placeholder instead of 500
         if not preview_path:
-            raise HTTPException(status_code=500, detail="Failed to generate chart preview")
+            # Return a fallback response so frontend doesn't crash
+            logger.warning(f"[Broll] Chart preview skipped - invalid data for type: {request.chart_type}")
+            return ChartPreviewResponse(
+                preview_url="",
+                chart_id=chart_id,
+            )
         
         preview_filename = Path(preview_path).name
-        preview_url = f"/api/podcast/broll/preview/{chart_id}/{preview_filename}"
+        preview_url = f"/api/podcast/preview/{chart_id}/{preview_filename}"
         
         return ChartPreviewResponse(
             preview_url=preview_url,
@@ -324,17 +333,29 @@ async def compose_broll_videos(
 async def serve_chart_preview(
     chart_id: str,
     filename: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    user_id: Optional[str] = None,
 ):
-    """Serve chart preview PNG files."""
-    user_id = require_authenticated_user(current_user)
+    """
+    Serve chart preview PNG files.
     
-    broll_service = get_broll_service()
+    - user_id passed as query param for multi-tenant workspace resolution
+    - endpoint is public (no auth) to allow direct image loading in browser
+    """
+    # Validate filename to prevent directory traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    logger.warning(f"[Broll] serve_chart_preview: chart_id={chart_id}, filename={filename}, user_id={user_id}")
+    
+    broll_service = get_broll_service(user_id=user_id)
     expected_filename = broll_service.get_chart_preview_filename(chart_id)
     if filename != expected_filename:
         raise HTTPException(status_code=404, detail="Chart preview not found")
 
-    file_path = broll_service.get_output_path(filename)
+    # Use expected_filename to get the correct path
+    file_path = broll_service.get_output_path(expected_filename)
+    
+    logger.warning(f"[Broll] serve_chart_preview: resolved path={file_path}, exists={file_path.exists()}")
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Chart preview not found")
@@ -342,7 +363,7 @@ async def serve_chart_preview(
     return FileResponse(
         path=str(file_path),
         media_type="image/png",
-        filename=filename,
+        filename=expected_filename,
     )
 
 

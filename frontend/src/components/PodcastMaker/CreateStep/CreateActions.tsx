@@ -384,6 +384,11 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false);
   const [progressIndex, setProgressIndex] = useState(0);
+  
+  // Track previous isSubmitting value at component level (not inside effect)
+  const prevIsSubmittingRef = useRef(isSubmitting);
+  const [analysisCompleteRef, setAnalysisCompleteRef] = useState(false);
+  
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -393,10 +398,6 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
   }, []);
 
   // Close modal only AFTER analysis fully completes (wait for project/analysis to be set)
-  // Use a ref to track previous isSubmitting to detect the transition from true to false
-  const prevIsSubmittingRef = useRef(isSubmitting);
-  const [analysisCompleteRef, setAnalysisCompleteRef] = useState(false);
-  
   useEffect(() => {
     // Track if analysis transitioned from true to false (completed)
     const wasSubmitting = prevIsSubmittingRef.current;
@@ -424,7 +425,7 @@ export const CreateActions: React.FC<CreateActionsProps> = ({ reset, submit, can
     if (error && showAnalysisModal) {
       console.warn('[CreateActions] Error detected — keeping modal open:', error);
     }
-  }, [isSubmitting, showAnalysisModal, analysisStarted, onAnnouncementClear, error, analysisCompleteRef]);
+  }, [isSubmitting, showAnalysisModal, analysisStarted, onAnnouncementClear, error]);
 
   // Sequential progress - increment every few seconds
   useEffect(() => {

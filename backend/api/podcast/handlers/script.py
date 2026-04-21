@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 import json
 import re
+import time
 
 from middleware.auth_middleware import get_current_user
 from api.story_writer.utils.auth import require_authenticated_user
@@ -60,11 +61,11 @@ async def generate_podcast_script(
     Generate a podcast script outline (scenes + lines) using podcast-oriented prompting.
     """
     user_id = require_authenticated_user(current_user)
-    logger.warning(f"[ScriptGen] ========== SCRIPT GENERATION START ==========")
-    logger.warning(f"[ScriptGen] Topic: {request.idea[:60]}...")
-    logger.warning(f"[ScriptGen] Duration: {request.duration_minutes} min, Speakers: {request.speakers}")
+    start_time = time.time()
+    logger.warning(f"[ScriptGen] ===== SCRIPT_GEN_START =====")
+    logger.warning(f"[ScriptGen] user={user_id}, topic='{request.idea[:50]}...', duration={request.duration_minutes}min, speakers={request.speakers}")
     podcast_mode = (request.podcast_mode or "video_only").strip().lower()
-    logger.warning(f"[ScriptGen] Has research: {bool(request.research)}, Has bible: {bool(request.bible)}, Has analysis: {bool(request.analysis)}, Mode: {podcast_mode}")
+    logger.warning(f"[ScriptGen] research={bool(request.research)}, bible={bool(request.bible)}, analysis={bool(request.analysis)}, mode={podcast_mode}")
     research_fact_cards = request.research.get("factCards", []) if request.research else []
 
     # Build comprehensive research context for higher-quality scripts
@@ -399,5 +400,8 @@ COST OPTIMIZATION:
     logger.warning(f"[ScriptGen] Script generated: {len(scenes)} scenes, {total_lines_output}/{total_lines_input} lines")
     if dropped_empty_lines > 0:
         logger.warning(f"[ScriptGen] Dropped {dropped_empty_lines} empty lines")
+    
+    duration_ms = int((time.time() - start_time) * 1000)
+    logger.warning(f"[ScriptGen] ===== SCRIPT_GEN_END (took {duration_ms}ms) =====")
 
     return PodcastScriptResponse(scenes=scenes)

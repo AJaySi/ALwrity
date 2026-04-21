@@ -61,6 +61,11 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
   const [preflightOperationName, setPreflightOperationName] = useState<string>("");
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [duplicateProjectInfo, setDuplicateProjectInfo] = useState<{projectId: string; idea: string}>({ projectId: "", idea: "" });
+  
+  // Script Generation Modal State
+  const [showScriptGenModal, setShowScriptGenModal] = useState(false);
+  const [scriptGenStarted, setScriptGenStarted] = useState(false);
+  const [scriptGenProgressIndex, setScriptGenProgressIndex] = useState(0);
 
   const budgetTracking = useBudgetTracking(budgetCap || 50);
   const preflightCheck = usePreflightCheck({
@@ -93,6 +98,47 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     }
     return undefined;
   }, [announcement]);
+
+  const prevIsGeneratingScriptRef = useRef(false);
+  
+  // Sequential progress for script generation modal
+  useEffect(() => {
+    if (!showScriptGenModal || !scriptGenStarted) {
+      setScriptGenProgressIndex(0);
+      return;
+    }
+    
+    const interval = setInterval(() => {
+      setScriptGenProgressIndex((prev) => {
+        if (prev < 3) { // 4 steps total (0-3)
+          return prev + 1;
+        }
+        return prev;
+      });
+    }, 3000);
+    
+    return () => clearInterval(interval);
+  }, [showScriptGenModal, scriptGenStarted]);
+
+  // Handle modal close when script generation completes
+  useEffect(() => {
+    const wasSubmitting = prevIsGeneratingScriptRef.current;
+    const nowNotSubmitting = !isGeneratingScript;
+    
+    // Only close modal if:
+    // 1. Modal is still shown
+    // 2. scriptGenStarted is true  
+    // 3. isGeneratingScript transitioned from true to false
+    // 4. AND we're not showing an error (scriptData is set on success)
+    if (showScriptGenModal && scriptGenStarted && wasSubmitting && nowNotSubmitting && !announcement.includes("failed")) {
+      setTimeout(() => {
+        setShowScriptGenModal(false);
+      }, 500);
+    }
+    
+    // Update ref for next render
+    prevIsGeneratingScriptRef.current = isGeneratingScript;
+  }, [isGeneratingScript, showScriptGenModal, scriptGenStarted, announcement]);
 
   const handleCreate = useCallback(async (payload: CreateProjectPayload, feedback?: string) => {
     if (isAnalyzing) return;
@@ -327,20 +373,12 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
       return;
     }
 
-    setPreflightOperationName("Research");
+    // Note: Preflight is handled inside podcastApi.runExaResearch (ensurePreflight)
+    // No need to call it twice here
+    
     const approvedQueries = queries.filter((q) => selectedQueries.has(q.id));
     console.log('[Research] User selected queries:', Array.from(selectedQueries));
     console.log('[Research] Filtered approvedQueries for API:', approvedQueries.map(q => q.query));
-    const preflightResult = await preflightCheck.check({
-      provider: researchProvider === "exa" ? "exa" : "gemini",
-      operation_type: researchProvider === "exa" ? "exa_neural_search" : "google_grounding",
-      tokens_requested: researchProvider === "exa" ? 0 : 1200,
-      actual_provider_name: researchProvider || "exa",
-    });
-
-    if (!preflightResult.can_proceed) {
-      return;
-    }
 
     try {
       setIsResearching(true);
@@ -395,45 +433,44 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     } finally {
       setIsResearching(false);
     }
-  }, [isResearching, project, selectedQueries, queries, researchProvider, preflightCheck, analysis, setResearch, setRawResearch, setEstimate, setScriptData, setShowScriptEditor, setShowRenderQueue, projectState.bible]);
+  }, [isResearching, project, selectedQueries, queries, researchProvider, analysis, setResearch, setRawResearch, setEstimate, setScriptData, setShowScriptEditor, setShowRenderQueue, projectState.bible]);
 
 // Add a ref to track if we're currently generating to prevent double calls
   const isGeneratingRef = useRef(false);
   
   const handleGenerateScript = useCallback(async () => {
-    // Guard against double calls
-    if (isGeneratingRef.current) {
+    // CRITICAL: Guard against double calls - set IMMEDIATELY to prevent concurrent clicks
+    if (isGeneratingRef.current || isGeneratingScript) {
       console.log('[ScriptGen] Already generating, skipping duplicate call');
       return;
     }
     
-    if (showScriptEditor) return;
+    // Prevent if script already exists or render phase started
+    if (showScriptEditor || projectState.scriptData) {
+      console.log('[ScriptGen] Script already exists, skipping');
+      return;
+    }
+    
     if (!project || !research) {
       setAnnouncement("Project or research missing — cannot generate script");
       return;
     }
 
-    // Mark as generating immediately (both ref and state)
+    // Mark as generating immediately BEFORE any async calls (both ref and state)
     isGeneratingRef.current = true;
     setIsGeneratingScript(true);
+    
+    // Show modal IMMEDIATELY to prevent duplicate clicks
+    setShowScriptGenModal(true);
+    setScriptGenStarted(true);
+    setScriptGenProgressIndex(0);
+    console.log('[ScriptGen] Modal shown, generating ref set');
 
-    setPreflightOperationName("Script Generation");
-    const preflightResult = await preflightCheck.check({
-      provider: "gemini",
-      operation_type: "script_generation",
-      tokens_requested: 2000,
-      actual_provider_name: "gemini",
-    });
-
-    if (!preflightResult.can_proceed) {
-      isGeneratingRef.current = false; // Reset on preflight failure
-      setIsGeneratingScript(false); // Reset loading state on preflight failure
-      return;
-    }
-
+    // Note: Preflight is also called inside podcastApi.generateScript (ensurePreflight)
+    // No need to call it twice - the API layer handles it
+    
     setScriptData(null);
     setShowRenderQueue(false);
-    setShowScriptEditor(true);
     setAnnouncement("Generating script with AI... Creating scenes and dialogue based on your research...");
 
     try {
@@ -464,6 +501,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
 
       console.log('[ScriptGen] Script generated:', { sceneCount: result.scenes?.length });
       setScriptData(result);
+      setShowScriptEditor(true); // Open editor after successful generation
       setIsGeneratingScript(false);
       setAnnouncement("Script generated! Review and edit your scenes below.");
     } catch (error) {
@@ -472,7 +510,7 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     } finally {
       isGeneratingRef.current = false; // Reset when done
     }
-  }, [showScriptEditor, project, research, preflightCheck, setScriptData, setShowRenderQueue, setShowScriptEditor, rawResearch, projectState.knobs, projectState.bible, analysis])
+  }, [showScriptEditor, project, research, setScriptData, setShowRenderQueue, setShowScriptEditor, rawResearch, projectState.knobs, projectState.bible, analysis, setShowScriptGenModal, scriptGenStarted, setScriptGenProgressIndex, isGeneratingScript, projectState.scriptData, currentStep])
 
   const handleProceedToRendering = useCallback((script: Script) => {
     // Clear media cache for all scenes before proceeding to remove old blobs
@@ -608,6 +646,11 @@ export const usePodcastWorkflow = ({ projectState, onError }: UsePodcastWorkflow
     duplicateProjectInfo,
     activeStep,
     canGenerateScript,
+    // Script Generation Modal
+    showScriptGenModal,
+    setShowScriptGenModal,
+    scriptGenStarted,
+    scriptGenProgressIndex,
     // Handlers
     handleCreate,
     handleRegenerate,

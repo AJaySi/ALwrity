@@ -10,22 +10,32 @@ from loguru import logger
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
 
 # Directory paths
-# router.py is at: backend/api/podcast/router.py
-# parents[0] = backend/api/podcast/
-# parents[1] = backend/api/
-# parents[2] = backend/
-# parents[3] = root/
-ROOT_DIR = Path(__file__).resolve().parents[3]  # root/
-DATA_MEDIA_DIR = ROOT_DIR / "data" / "media"
+# Find root by looking for 'data' or 'backend' folder
+def _find_root() -> Path:
+    """Find project root by searching up for data directory."""
+    current = Path(__file__).resolve()
+    for _ in range(10):  # max 10 levels up
+        if (current / "data").exists() and (current / "data" / "media").exists():
+            return current
+        if (current / "backend").exists():
+            return current / "backend"
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    # Fallback: assume backend is root
+    return Path(__file__).resolve().parents[1]
 
-PODCAST_AUDIO_DIR = (DATA_MEDIA_DIR / "podcast_audio").resolve()
-PODCAST_IMAGES_DIR = (DATA_MEDIA_DIR / "podcast_images").resolve()
-PODCAST_VIDEOS_DIR = (DATA_MEDIA_DIR / "podcast_videos").resolve()
+ROOT_DIR = _find_root()
 
-# Video subdirectory
+# Video subdirectory (relative to workspace media dir)
 AI_VIDEO_SUBDIR = Path("AI_Videos")
 
-MediaType = Literal["audio", "image", "video"]
+# Legacy constants - DEPRECATED, use get_podcast_media_dir() instead
+# Kept for backward compatibility with some handlers
+PODCAST_AVATARS_SUBDIR = Path("avatars")
+
+MediaType = Literal["audio", "image", "video", "chart"]
 
 
 def _sanitize_user_id(user_id: str) -> str:
@@ -38,21 +48,31 @@ def get_podcast_media_dir(
     *,
     ensure_exists: bool = False,
 ) -> Path:
-    """Resolve podcast media directory (tenant workspace first, legacy global fallback)."""
+    """
+    Resolve podcast media directory (workspace-only for multi-tenant isolation).
+    
+    Always requires user_id for tenant isolation. Falls back to default workspace
+    only if no user_id provided (for backward compat in development).
+    """
     media_subdir = {
         "audio": "podcast_audio",
         "image": "podcast_images",
         "video": "podcast_videos",
+        "chart": "podcast_charts",
     }[media_type]
 
     if user_id:
         sanitized = _sanitize_user_id(user_id)
-        tenant_media_dir = ROOT_DIR / "workspace" / f"workspace_{sanitized}" / "media" / media_subdir
-        resolved_dir = tenant_media_dir.resolve()
+        resolved_dir = (
+            ROOT_DIR / "workspace" / f"workspace_{sanitized}" / "media" / media_subdir
+        ).resolve()
     else:
-        resolved_dir = (DATA_MEDIA_DIR / media_subdir).resolve()
+        # Development fallback: use a default workspace
+        resolved_dir = (
+            ROOT_DIR / "workspace" / "workspace_alwrity" / "media" / media_subdir
+        ).resolve()
 
-    logger.debug(f"[Podcast] get_podcast_media_dir: type={media_type}, user_id={user_id}, sanitized={user_id and _sanitize_user_id(user_id)}, resolved={resolved_dir}")
+    logger.warning(f"[Podcast] get_podcast_media_dir: type={media_type}, user_id={user_id}, resolved={resolved_dir}")
 
     if ensure_exists:
         resolved_dir.mkdir(parents=True, exist_ok=True)
@@ -61,14 +81,11 @@ def get_podcast_media_dir(
 
 
 def get_podcast_media_read_dirs(media_type: MediaType, user_id: str | None = None) -> list[Path]:
-    """Return ordered directories to search (tenant path first, then legacy global path)."""
-    dirs: list[Path] = []
-    if user_id:
-        dirs.append(get_podcast_media_dir(media_type, user_id))
-        logger.debug(f"[Podcast] get_podcast_media_read_dirs: added user dir for {user_id}")
-    dirs.append(get_podcast_media_dir(media_type, None))
-    logger.debug(f"[Podcast] get_podcast_media_read_dirs: dirs={dirs}")
-    return dirs
+    """
+    Return directories to search for podcast media.
+    Now workspace-only (no legacy fallback).
+    """
+    return [get_podcast_media_dir(media_type, user_id)]
 
 
 def get_podcast_audio_service(user_id: str | None = None) -> StoryAudioGenerationService:

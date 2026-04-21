@@ -5,7 +5,9 @@ import { useSubscription } from "../../contexts/SubscriptionContext";
 import { podcastApi } from "../../services/podcastApi";
 import { fetchMediaBlobUrl, clearMediaCache } from "../../utils/fetchMediaBlobUrl";
 import { getLatestBrandAvatar } from "../../api/brandAssets";
-import { VoiceSelector } from "../shared/VoiceSelector";
+import { VoiceSelector, VOICE_CLONE_ID } from "../shared/VoiceSelector";
+import { getLatestVoiceClone } from "../../api/brandAssets";
+import { setCachedVoiceCloneInfo } from "../../services/podcastApi";
 
 // Imported Components
 import { TopicUrlInput, TOPIC_PLACEHOLDERS } from "./CreateStep/TopicUrlInput";
@@ -316,9 +318,43 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     }
     
     // Include selected voice in knobs
-    const finalKnobs = {
+    // If voice clone is selected, include voice clone metadata
+    const isVoiceClone = selectedVoiceId === VOICE_CLONE_ID || knobs.custom_voice_id === selectedVoiceId;
+    
+    let voiceSampleUrl: string | undefined;
+    let voiceCloneEngine: string | undefined;
+    let customVoiceId: string | undefined;
+    
+    if (isVoiceClone) {
+      try {
+        const voiceCloneInfo = await getLatestVoiceClone();
+        if (voiceCloneInfo?.success && voiceCloneInfo.custom_voice_id) {
+          customVoiceId = voiceCloneInfo.custom_voice_id;
+          voiceSampleUrl = voiceCloneInfo.preview_audio_url;
+          voiceCloneEngine = voiceCloneInfo.engine || "qwen3";
+          // Cache for reuse across scenes
+          setCachedVoiceCloneInfo({
+            customVoiceId,
+            voiceSampleUrl,
+            engine: voiceCloneEngine,
+            isVoiceClone: true,
+          });
+        }
+      } catch (e) {
+        console.warn("[CreateModal] Could not fetch voice clone info:", e);
+      }
+    } else {
+      // Clear cache if system voice selected
+      setCachedVoiceCloneInfo({ isVoiceClone: false });
+    }
+    
+    const finalKnobs: Knobs = {
       ...knobs,
-      voice_id: selectedVoiceId,
+      voice_id: isVoiceClone ? "Wise_Woman" : selectedVoiceId,
+      custom_voice_id: customVoiceId,
+      is_voice_clone: isVoiceClone,
+      voice_sample_url: voiceSampleUrl,
+      voice_clone_engine: voiceCloneEngine,
     };
     
     try {

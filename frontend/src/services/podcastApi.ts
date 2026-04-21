@@ -1,3 +1,4 @@
+import { noteBackendRecovered } from "../api/client";
 import { ResearchProvider, ResearchConfig } from "./blogWriterApi";
 import {
   storyWriterApi,
@@ -28,11 +29,41 @@ const DEFAULT_KNOBS: Knobs = {
   voice_speed: 1,
   voice_id: "Wise_Woman",
   custom_voice_id: undefined,
+  is_voice_clone: undefined,
+  voice_sample_url: undefined,
+  voice_clone_engine: undefined,
   resolution: "720p",
   scene_length_target: 45,
   sample_rate: 24000,
   bitrate: "standard",
 };
+
+// In-memory cache for voice clone info to avoid re-fetching per scene
+let _voiceCloneCache: {
+  customVoiceId?: string;
+  voiceSampleUrl?: string;
+  engine?: string;
+  isVoiceClone?: boolean;
+  timestamp: number;
+} | null = null;
+const VOICE_CLONE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+export function getCachedVoiceCloneInfo() {
+  if (_voiceCloneCache && Date.now() - _voiceCloneCache.timestamp < VOICE_CLONE_CACHE_TTL) {
+    return _voiceCloneCache;
+  }
+  _voiceCloneCache = null;
+  return null;
+}
+
+export function setCachedVoiceCloneInfo(info: {
+  customVoiceId?: string;
+  voiceSampleUrl?: string;
+  engine?: string;
+  isVoiceClone?: boolean;
+}) {
+  _voiceCloneCache = { ...info, timestamp: Date.now() };
+}
 
 // const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -244,9 +275,9 @@ const mapExaResearchResponse = (response: any): Research => {
 };
 
 const ensurePreflight = async (operation: PreflightOperation) => {
-  console.log('[podcastApi] Running preflight for:', operation);
+  console.log('[podcastApi] Running preflight for:', operation.operation_type);
   const result = await checkPreflight(operation);
-  console.log('[podcastApi] Preflight result:', result);
+  console.log('[podcastApi] Preflight result: can_proceed=', result.can_proceed);
   if (!result.can_proceed) {
     const message = result.operations[0]?.message || "Pre-flight validation failed";
     throw new Error(message);
@@ -379,7 +410,9 @@ export const podcastApi = {
         bible: params.bible,
         analysis: params.analysis,
       }, { timeout: 300000 }); // 5 minute timeout for research
-      console.log('[podcastApi] Exa research response received:', response.status, response.data);
+      const sourceCount = response.data?.sources?.length || 0;
+      const insightCount = response.data?.key_insights?.length || 0;
+      console.log(`[podcastApi] Exa research response: status=${response.status}, sources=${sourceCount}, insights=${insightCount}`);
     } catch (error: any) {
       console.error('[podcastApi] Exa research error:', error?.response?.status, error?.response?.data, error?.message);
       throw error;
@@ -497,6 +530,9 @@ export const podcastApi = {
     scene: Scene;
     voiceId?: string;
     customVoiceId?: string;
+    useVoiceClone?: boolean;
+    voiceSampleUrl?: string;
+    voiceCloneEngine?: string;
     emotion?: string; // Fallback if scene doesn't have emotion
     speed?: number;
     volume?: number;
@@ -600,7 +636,7 @@ export const podcastApi = {
       channel: params.channel || null,
       format: params.format || null,
       language_boost: params.languageBoost || null,
-    });
+    }, { timeout: 300000 }); // 5 minute timeout for voice clone / TTS
 
     return {
       audioUrl: response.data.audio_url,
@@ -623,12 +659,14 @@ export const podcastApi = {
   },
 
   // Project persistence endpoints
-  async saveProject(projectId: string, state: any): Promise<void> {
+  async saveProject(projectId: string, state: any): Promise<boolean> {
     try {
       await aiApiClient.put(`/api/podcast/projects/${projectId}`, state);
+      return true;
     } catch (error) {
       console.error("Failed to save project to database:", error);
-      // Don't throw - localStorage fallback is acceptable
+      noteBackendRecovered();
+      return false;
     }
   },
 
@@ -952,6 +990,9 @@ export const podcastApi = {
     scenes: { id: string; title: string; lines: { text: string }[] }[];
     voiceId: string;
     customVoiceId?: string;
+    useVoiceClone?: boolean;
+    voiceSampleUrl?: string;
+    voiceCloneEngine?: string;
     speed: number;
     emotion: string;
     englishNormalization?: boolean;

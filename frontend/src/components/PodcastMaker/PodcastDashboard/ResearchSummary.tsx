@@ -1,5 +1,5 @@
-import React, { useMemo, useCallback } from "react";
-import { Stack, Typography, Chip, Divider, Box, alpha, Paper, CircularProgress } from "@mui/material";
+import React, { useCallback } from "react";
+import { Stack, Typography, Chip, Divider, Box, alpha, Paper, CircularProgress, Tooltip } from "@mui/material";
 import {
   Insights as InsightsIcon,
   Search as SearchIcon,
@@ -7,8 +7,9 @@ import {
   Article as ArticleIcon,
   AutoAwesome as AutoAwesomeIcon,
   ArrowForward as ArrowForwardIcon,
+  HelpOutline as HelpOutlineIcon,
 } from "@mui/icons-material";
-import { Research, ResearchInsight } from "../types";
+import { Research, ResearchInsight, Fact } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
 import { FactCard } from "../FactCard";
 import { TextToSpeechButton } from "../../shared/TextToSpeechButton";
@@ -26,6 +27,27 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
   onGenerateScript,
   isGeneratingScript = false,
 }) => {
+  const getSourceFact = (idx: number): Fact | undefined => {
+    const factCards = research.factCards || [];
+    return factCards.find(f => f.id === `source-${idx}`);
+  };
+
+  // Strip markdown for text-to-speech
+  const stripMarkdown = (text: string): string => {
+    if (!text) return '';
+    return text
+      .replace(/#{1,6}\s+/g, '') // Headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+      .replace(/\*(.*?)\*/g, '$1') // Italic
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
+      .replace(/`{1,3}(.*?)`{1,3}/g, '$1') // Code
+      .replace(/^\s*[-*+]\s+/gm, '') // List items
+      .replace(/^\s*\d+\.\s+/gm, '') // Numbered list
+      .replace(/\n{2,}/g, '. ') // Multiple newlines to periods
+      .replace(/\n/g, ' ') // Single newlines to spaces
+      .trim();
+  };
+
   // Simple markdown-to-HTML converter
   const renderMarkdown = useCallback((text: string) => {
     if (!text) return null;
@@ -150,7 +172,7 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
                 <AutoAwesomeIcon fontSize="small" sx={{ color: "#667eea", fontSize: "1rem" }} />
                 Executive Summary
                 <Box sx={{ ml: 'auto' }}>
-                  <TextToSpeechButton text={research.summary} size="small" showSettings />
+                  <TextToSpeechButton text={stripMarkdown(research.summary)} size="small" showSettings />
                 </Box>
               </Typography>
               <Box sx={{ 
@@ -187,28 +209,75 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
                       borderRadius: 2,
                     }}
                   >
-                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5 }}>
-                      <Typography variant="subtitle1" sx={{ color: "#0f172a", fontWeight: 700 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5, width: '100%' }}>
+                      <Typography variant="subtitle1" sx={{ color: "#0f172a", fontWeight: 700, flex: 1 }}>
                         {insight.title}
                       </Typography>
+                      <TextToSpeechButton text={stripMarkdown(insight.content)} size="small" />
                       {insight.source_indices && insight.source_indices.length > 0 && (
                         <Stack direction="row" spacing={0.5}>
-                          {insight.source_indices.map(sIdx => (
-                            <Chip 
-                              key={sIdx}
-                              label={`S${sIdx}`} 
-                              size="small" 
-                              variant="outlined"
-                              sx={{ 
-                                height: 18, 
-                                fontSize: '0.65rem', 
-                                fontWeight: 700,
-                                borderColor: alpha("#667eea", 0.3),
-                                color: "#667eea",
-                                bgcolor: alpha("#667eea", 0.05)
-                              }} 
-                            />
-                          ))}
+                          {insight.source_indices.map(sIdx => {
+                            const source = research.sources?.[sIdx - 1];
+                            const fact = getSourceFact(sIdx);
+                            return (
+                              <Tooltip 
+                                key={sIdx}
+                                title={
+                                  <Box sx={{ p: 0.5 }}>
+                                    {fact ? (
+                                      <Box>
+                                        <Typography variant="caption" display="block" fontWeight={700} sx={{ color: '#A5B4FC', mb: 0.5 }}>
+                                          Source S{sIdx}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: '#fff', fontStyle: 'italic', mb: 1, lineHeight: 1.4 }}>
+                                          "{fact.quote}"
+                                        </Typography>
+                                        {fact.author && (
+                                          <Typography variant="caption" sx={{ color: '#A5B4FC' }}>
+                                            {fact.author}
+                                          </Typography>
+                                        )}
+                                      </Box>
+                                    ) : source ? (
+                                      <Box>
+                                        <Typography variant="caption" display="block" fontWeight={700} sx={{ color: '#A5B4FC', mb: 0.5 }}>
+                                          Source S{sIdx}
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight={600} sx={{ color: '#fff' }}>
+                                          {source.title}
+                                        </Typography>
+                                      </Box>
+                                    ) : (
+                                      <Typography variant="body2" sx={{ color: '#A5B4FC' }}>No source details</Typography>
+                                    )}
+                                  </Box>
+                                }
+                                placement="right"
+                                arrow
+                                followCursor
+                              >
+                                <Chip 
+                                  label={`S${sIdx}`} 
+                                  size="small" 
+                                  variant="outlined"
+                                  component="a"
+                                  href={source?.url || undefined}
+                                  target={source?.url ? "_blank" : undefined}
+                                  rel={source?.url ? "noopener noreferrer" : undefined}
+                                  sx={{ 
+                                    height: 18, 
+                                    fontSize: '0.65rem', 
+                                    fontWeight: 700,
+                                    borderColor: alpha("#667eea", 0.3),
+                                    color: "#667eea",
+                                    bgcolor: alpha("#667eea", 0.05),
+                                    cursor: source?.url ? 'pointer' : 'default',
+                                    textDecoration: 'none',
+                                  }} 
+                                />
+                              </Tooltip>
+                            );
+                          })}
                         </Stack>
                       )}
                     </Stack>
@@ -259,17 +328,10 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
 {/* Expert Quotes */}
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ 
-                px: 1.5, py: 0.5, 
-                borderRadius: 2, 
-                background: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
-                color: '#fff',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}>
-                NEW
-              </Box>
               Expert Quotes
+              <Tooltip title="Expert quotes extracted from research sources - factual statements from industry experts, studies, or authoritative sources that add credibility to your podcast content." placement="right">
+                <HelpOutlineIcon sx={{ fontSize: 18, color: "#94A3B8", cursor: 'pointer' }} />
+              </Tooltip>
             </Typography>
             {research.expertQuotes && research.expertQuotes.length > 0 ? (
               <Stack spacing={1.5}>
@@ -286,38 +348,69 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
                         "{quote.quote}"
                       </Typography>
                       <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        {sourceUrl ? (
+                        <Tooltip 
+                          title={
+                            <Box sx={{ p: 0.5 }}>
+                              {(() => {
+                                const source = research.sources?.[quote.source_index - 1];
+                                const fact = getSourceFact(quote.source_index);
+                                if (fact) {
+                                  return (
+                                    <Box>
+                                      <Typography variant="caption" display="block" fontWeight={700} sx={{ color: '#C4B5FD', mb: 0.5 }}>
+                                        Source S{quote.source_index}
+                                      </Typography>
+                                      <Typography variant="body2" sx={{ color: '#fff', fontStyle: 'italic', mb: 1, lineHeight: 1.4 }}>
+                                        "{fact.quote}"
+                                      </Typography>
+                                      {fact.author && (
+                                        <Typography variant="caption" sx={{ color: '#A78BFA' }}>
+                                          {fact.author}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  );
+                                }
+                                if (source) {
+                                  return (
+                                    <Box>
+                                      <Typography variant="caption" display="block" fontWeight={700} sx={{ color: '#C4B5FD', mb: 0.5 }}>
+                                        Source S{quote.source_index}
+                                      </Typography>
+                                      <Typography variant="body2" fontWeight={600} sx={{ color: '#fff', mb: 0.5 }}>
+                                        {source.title}
+                                      </Typography>
+                                    </Box>
+                                  );
+                                }
+                                return <Typography variant="body2" sx={{ color: '#A78BFA' }}>No source details</Typography>;
+                              })()}
+                            </Box>
+                          }
+                          placement="right"
+                          arrow
+                          followCursor
+                        >
                           <Chip 
                             label={`Source S${quote.source_index}`}
                             size="small"
-                            clickable
                             component="a"
-                            href={sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href={sourceUrl || undefined}
+                            target={sourceUrl ? "_blank" : undefined}
+                            rel={sourceUrl ? "noopener noreferrer" : undefined}
                             sx={{
                               background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
                               color: '#fff',
                               fontWeight: 600,
                               fontSize: '0.7rem',
-                              cursor: 'pointer',
+                              cursor: sourceUrl ? 'pointer' : 'default',
+                              textDecoration: 'none',
                               '&:hover': {
                                 background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
                               },
                             }}
                           />
-                        ) : (
-                          <Chip 
-                            label={`Source S${quote.source_index}`}
-                            size="small"
-                            sx={{
-                              background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
-                              color: '#fff',
-                              fontWeight: 600,
-                              fontSize: '0.7rem',
-                            }}
-                          />
-                        )}
+                        </Tooltip>
                       </Box>
                     </Paper>
                   );
@@ -333,17 +426,10 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
           {/* Listener CTAs */}
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ 
-                px: 1.5, py: 0.5, 
-                borderRadius: 2, 
-                background: 'linear-gradient(135deg, #10B981 0%, #14B8A6 100%)',
-                color: '#fff',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}>
-                NEW
-              </Box>
               Listener CTAs
+              <Tooltip title="Call-to-action suggestions for your listeners - what action should they take after listening to your podcast (e.g., visit a website, subscribe, download resources)." placement="right">
+                <HelpOutlineIcon sx={{ fontSize: 18, color: "#94A3B8", cursor: 'pointer' }} />
+              </Tooltip>
             </Typography>
             {research.listenerCta && research.listenerCta.length > 0 ? (
               <Stack spacing={1.5}>
@@ -370,17 +456,10 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
           {/* Mapped Angles */}
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ 
-                px: 1.5, py: 0.5, 
-                borderRadius: 2, 
-                background: 'linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%)',
-                color: '#fff',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}>
-                NEW
-              </Box>
               Mapped Angles
+              <Tooltip title="Content angles derived from research - specific topics or viewpoints mapped to your target audience's interests and pain points to create engaging episodes." placement="right">
+                <HelpOutlineIcon sx={{ fontSize: 18, color: "#94A3B8", cursor: 'pointer' }} />
+              </Tooltip>
             </Typography>
             {research.mappedAngles && research.mappedAngles.length > 0 ? (
               <Stack spacing={1.5}>
@@ -405,54 +484,7 @@ export const ResearchSummary: React.FC<ResearchSummaryProps> = ({
                 No mapped angles available yet.
               </Typography>
             )}
-          </Box>
-
-          {/* Listener CTAs */}
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700 }}>
-              Listener CTAs
-            </Typography>
-            {research.listenerCta && research.listenerCta.length > 0 ? (
-              <Stack spacing={1}>
-                {research.listenerCta.slice(0, 4).map((cta, idx) => (
-                  <Paper key={`cta-${idx}`} elevation={0} sx={{ p: 1.5, border: "1px solid rgba(0,0,0,0.06)", borderRadius: 2 }}>
-                    <Typography variant="body2" sx={{ color: "#334155", lineHeight: 1.55 }}>
-                      {cta}
-                    </Typography>
-                  </Paper>
-                ))}
-              </Stack>
-            ) : (
-              <Typography variant="body2" sx={{ color: "#64748b" }}>
-                No listener CTAs suggested yet.
-              </Typography>
-            )}
-          </Box>
-
-          {/* Mapped Angles */}
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a", fontWeight: 700 }}>
-              Mapped Angles
-            </Typography>
-            {research.mappedAngles && research.mappedAngles.length > 0 ? (
-              <Stack spacing={1}>
-                {research.mappedAngles.slice(0, 4).map((angle, idx) => (
-                  <Paper key={`angle-${idx}`} elevation={0} sx={{ p: 1.5, border: "1px solid rgba(0,0,0,0.06)", borderRadius: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 700, mb: 0.5 }}>
-                      {angle.title || `Angle ${idx + 1}`}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: "#334155", lineHeight: 1.55 }}>
-                      {angle.why || "No rationale provided."}
-                    </Typography>
-                  </Paper>
-                ))}
-              </Stack>
-            ) : (
-              <Typography variant="body2" sx={{ color: "#64748b" }}>
-                No mapped angles available yet.
-              </Typography>
-            )}
-          </Box>
+</Box>
 
           {/* Search Queries Used */}
           {research.searchQueries && research.searchQueries.length > 0 && (

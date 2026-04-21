@@ -5,12 +5,40 @@ interface GlassyCardProps {
   children?: React.ReactNode;
   sx?: SxProps<Theme>;
   onClick?: () => void;
-  [key: string]: any; // Allow other props for framer-motion
+  // Allow motion props (framer-motion) - they'll be filtered out to avoid DOM warnings
+  whileHover?: any;
+  whileTap?: any;
+  initial?: any;
+  animate?: any;
+  exit?: any;
+  transition?: any;
+  variants?: any;
+  layout?: any;
+  layoutId?: any;
+  className?: string;
+  'aria-label'?: string;
 }
 
 export const GlassyCard: React.FC<GlassyCardProps> = ({ children, sx, ...props }) => {
+  // Filter out motion props to avoid DOM warnings - these won't work with MUI Paper anyway
+  const { 
+    whileHover, 
+    whileTap, 
+    initial, 
+    animate, 
+    exit, 
+    transition, 
+    variants, 
+    layout, 
+    layoutId,
+    className,
+    'aria-label': ariaLabel,
+    ...filteredProps 
+  } = props;
   return (
     <Paper 
+      className={className}
+      aria-label={ariaLabel}
       sx={{ 
         borderRadius: 3, 
         border: "1px solid rgba(15, 23, 42, 0.06)", 
@@ -25,7 +53,7 @@ export const GlassyCard: React.FC<GlassyCardProps> = ({ children, sx, ...props }
         },
         ...sx 
       }}
-      {...props}
+      {...filteredProps}
     >
       {children}
     </Paper>

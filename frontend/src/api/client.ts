@@ -461,9 +461,11 @@ aiApiClient.interceptors.response.use(
     }
 
     if (error.response.status >= 500) {
-      openBackendCooldown(`http_${error.response.status}`);
+      // Do NOT trigger cooldown for application-level 500 errors (e.g. TTS failures).
+      // Cooldown should only block for network connectivity issues (handled above).
+      // Application 500s should be handled by individual callers.
       return Promise.reject(
-        new ConnectionError('Backend server is experiencing issues. Please try again later.')
+        new ConnectionError(`Server error ${error.response.status}: ${error.response.statusText || 'Internal Server Error'}`)
       );
     }
     

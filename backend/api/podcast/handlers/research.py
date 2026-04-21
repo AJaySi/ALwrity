@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 from types import SimpleNamespace
 import json
 import re
+import time
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
@@ -138,10 +139,12 @@ async def podcast_research_exa(
     Run podcast research via Exa and then use LLM to extract deep insights.
     Uses Podcast Bible and Analysis context for hyper-personalization.
     """
+    start_time = time.time()
     user_id = require_authenticated_user(current_user)
-    logger.warning(f"[Podcast Research] ========== REQUEST START ==========")
-    logger.warning(f"[Podcast Research] User: {user_id}, Topic: {request.topic[:80]}...")
-    logger.warning(f"[Podcast Research] Queries count: {len(request.queries) if request.queries else 0}")
+    
+    # Log only essential info, not full request data
+    logger.warning(f"[Podcast Research] ===== RESEARCH_START =====")
+    logger.warning(f"[Podcast Research] user={user_id}, topic='{request.topic[:50]}...', queries={len(request.queries) if request.queries else 0}")
 
 
     queries = [q.strip() for q in request.queries if q and q.strip()]
@@ -423,6 +426,10 @@ QUALITY STANDARDS:
         query_count=len(queries),
         include_avatar_phase=True,
     )
+
+    duration_ms = int((time.time() - start_time) * 1000)
+    logger.warning(f"[Podcast Research] ===== RESEARCH_END (took {duration_ms}ms) =====")
+    logger.warning(f"[Podcast Research] sources={len(sources_payload)}, insights={len(key_insights)}, summary_len={len(summary)}")
 
     return PodcastExaResearchResponse(
         sources=sources_payload,

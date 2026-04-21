@@ -20,6 +20,7 @@ import {
   DEFAULT_KNOBS,
   getStepLabel,
 } from "./PodcastDashboard/index";
+import { ScriptGenerationProgressView } from "./PodcastDashboard/ScriptGenerationProgressView";
 
 const PodcastDashboard: React.FC = () => {
   useEffect(() => {
@@ -398,6 +399,69 @@ const PodcastDashboard: React.FC = () => {
           >
             Create New (Overwrite)
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Script Generation Progress Modal */}
+      <Dialog
+        open={workflow.showScriptGenModal}
+        disableEscapeKeyDown={workflow.isGeneratingScript}
+        onClose={(event, reason) => {
+          // Only allow closing if NOT generating and generation hasn't started
+          if (!workflow.isGeneratingScript && !workflow.scriptGenStarted) {
+            workflow.setShowScriptGenModal(false);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+            border: "1px solid rgba(52, 211, 153, 0.3)",
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: "#fff", display: "flex", alignItems: "center", gap: 1, fontSize: "1.25rem" }}>
+          {workflow.isGeneratingScript ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CircularProgress size={20} sx={{ color: "#34d399" }} />
+              Generating Your Script
+            </Box>
+          ) : (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              Script Complete
+            </Box>
+          )}
+        </DialogTitle>
+        <DialogContent sx={{ color: "rgba(255,255,255,0.8)" }}>
+          <ScriptGenerationProgressView
+            currentMessage={workflow.announcement}
+            progressIndex={workflow.scriptGenProgressIndex}
+            idea={projectState.project?.idea}
+            analysis={projectState.analysis}
+            research={projectState.research}
+            sourceCount={projectState.research?.sourceCount}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          {workflow.isGeneratingScript ? (
+            <Button 
+              onClick={() => workflow.setShowScriptGenModal(false)}
+              disabled={workflow.isGeneratingScript}
+              sx={{ color: "rgba(255,255,255,0.6)" }}
+            >
+              Cancel
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => workflow.setShowScriptGenModal(false)}
+              variant="contained"
+              sx={{ bgcolor: "#34d399", "&:hover": { bgcolor: "#10b981" } }}
+            >
+              Continue to Editor
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

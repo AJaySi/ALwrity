@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Script, Knobs, Job, RenderJobResult, TaskStatus, VideoGenerationSettings } from "../types";
-import { podcastApi } from "../../../services/podcastApi";
+import { podcastApi, getCachedVoiceCloneInfo } from "../../../services/podcastApi";
 
 interface UseRenderQueueProps {
   script: Script;
@@ -427,9 +427,14 @@ export const useRenderQueue = ({
     });
 
     try {
+      const cachedClone = getCachedVoiceCloneInfo();
       const result: RenderJobResult = await podcastApi.renderSceneAudio({
         scene,
-        voiceId: "Wise_Woman",
+        voiceId: knobs.voice_id || "Wise_Woman",
+        customVoiceId: knobs.custom_voice_id || cachedClone?.customVoiceId,
+        useVoiceClone: knobs.is_voice_clone || cachedClone?.isVoiceClone || false,
+        voiceSampleUrl: knobs.voice_sample_url || cachedClone?.voiceSampleUrl || undefined,
+        voiceCloneEngine: knobs.voice_clone_engine || cachedClone?.engine || undefined,
         emotion: scene.emotion || getSceneVoiceEmotion(knobs),
         speed: knobs.voice_speed,
       });

@@ -17,6 +17,7 @@ export interface VoiceCloneResponse {
   voice_name?: string;
   preview_audio_url?: string;
   asset_id?: number;
+  engine?: string;
   message?: string;
   error?: string;
 }

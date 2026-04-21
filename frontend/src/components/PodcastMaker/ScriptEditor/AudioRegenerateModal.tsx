@@ -26,6 +26,9 @@ import { VoiceSelector } from "../../shared/VoiceSelector";
 export type AudioGenerationSettings = {
   voiceId: string;
   customVoiceId?: string;
+  useVoiceClone?: boolean;
+  voiceSampleUrl?: string;
+  voiceCloneEngine?: string;
   speed: number;
   volume: number;
   pitch: number;

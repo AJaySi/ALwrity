@@ -20,7 +20,7 @@ from services.podcast_bible_service import PodcastBibleService
 from utils.asset_tracker import save_asset_to_library
 from loguru import logger
 import os
-from ..constants import PODCAST_IMAGES_DIR
+from ..constants import get_podcast_media_dir
 from ..models import (
     PodcastAnalyzeRequest, 
     PodcastAnalyzeResponse,
@@ -247,7 +247,8 @@ async def analyze_podcast_idea(
             if image_result and image_result.image_bytes:
                 img_id = str(uuid.uuid4())[:8]
                 filename = f"presenter_podcast_{user_id}_{img_id}.png"
-                avatars_dir = PODCAST_IMAGES_DIR / "avatars"
+                images_dir = get_podcast_media_dir("image", user_id, ensure_exists=True)
+                avatars_dir = images_dir / "avatars"
                 avatars_dir.mkdir(parents=True, exist_ok=True)
                 output_path = avatars_dir / filename
                 

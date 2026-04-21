@@ -223,6 +223,9 @@ class PodcastAudioRequest(BaseModel):
     text: str
     voice_id: Optional[str] = "Wise_Woman"
     custom_voice_id: Optional[str] = None  # Voice clone ID for custom voice
+    use_voice_clone: Optional[bool] = False  # If True, use voice clone with voice_sample_url
+    voice_sample_url: Optional[str] = None  # URL to user's voice sample for cloning
+    voice_clone_engine: Optional[str] = None  # Engine: "qwen3", "minimax", "cosyvoice"
     speed: Optional[float] = 1.0
     volume: Optional[float] = 1.0
     pitch: Optional[float] = 0.0

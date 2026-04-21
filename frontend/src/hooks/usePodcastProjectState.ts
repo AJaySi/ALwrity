@@ -60,6 +60,9 @@ export interface PodcastProjectState {
 
   // Backend project creation status — prevents 404 sync calls before project exists
   backendProjectCreated?: boolean;
+  
+  // Track last synced phase to prevent duplicate syncs
+  lastSyncedPhase?: string | null;
 }
 
 const DEFAULT_KNOBS: Knobs = {
@@ -162,21 +165,28 @@ export const usePodcastProjectState = () => {
     }
   }, [state]);
 
-  // Sync to database after major steps (debounced)
+  // Sync to database ONLY on phase transitions (not on every state change)
+  // This ensures we sync at: Create → Analyze → Research → Script → Render
   useEffect(() => {
     if (!state.project || !state.project.id || !state.backendProjectCreated) return;
+    if (!state.currentStep) return;
 
-    // Capture project ID to avoid closure issues
+    // Skip if already synced this phase (handles duplicate calls from handleCreate/etc)
+    if (state.currentStep === state.lastSyncedPhase) {
+      return;
+    }
+
     const projectId = state.project.id;
 
-    // Clear existing timeout
+    // Debounce - wait for state to settle before syncing
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
     }
 
-    // Debounce database sync (wait 2 seconds after last change)
     syncTimeoutRef.current = setTimeout(async () => {
       try {
+        console.log(`[Sync] Saving project at phase: ${state.currentStep}`);
+        
         const dbState = {
           analysis: state.analysis,
           queries: state.queries,
@@ -195,39 +205,37 @@ export const usePodcastProjectState = () => {
           status: state.currentStep === 'render' && state.renderJobs.every(j => j.status === 'completed') ? 'completed' : 'in_progress',
         };
 
-        await podcastApi.saveProject(projectId, dbState);
+        const saved = await podcastApi.saveProject(projectId, dbState);
+        
+        if (saved) {
+          setState((prev) => ({ ...prev, lastSyncedPhase: prev.currentStep }));
+          console.log(`[Sync] Project saved successfully at phase: ${state.currentStep}`);
+        } else {
+          console.warn(`[Sync] Failed to save project at phase: ${state.currentStep} - will retry on next phase change`);
+        }
       } catch (error) {
-        console.error('Error syncing project to database:', error);
-        // Don't throw - localStorage is still working
+        console.error('[Sync] Error saving project:', error);
       }
-    }, 2000);
+    }, 1500);
 
     return () => {
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
     };
-  }, [
-    state.project,
-    state.analysis,
-    state.queries,
-    state.selectedQueries,
-    state.research,
-    state.rawResearch,
-    state.estimate,
-    state.scriptData,
-    state.renderJobs,
-    state.knobs,
-    state.bible,
-    state.researchProvider,
-    state.showScriptEditor,
-    state.showRenderQueue,
-    state.currentStep,
-  ]);
+  // Only sync when phase changes - not on every state field change
+  }, [state.currentStep, state.backendProjectCreated]);
 
   // Setters
   const setProject = useCallback((project: PodcastProjectState['project']) => {
-    setState((prev) => ({ ...prev, project, currentStep: project ? 'analysis' : null, updatedAt: new Date().toISOString() }));
+    const newStep = project ? 'analysis' : null;
+    setState((prev) => ({ 
+      ...prev, 
+      project, 
+      currentStep: newStep, 
+      lastSyncedPhase: prev.currentStep, // Mark previous phase as synced
+      updatedAt: new Date().toISOString() 
+    }));
   }, []);
 
   const setAnalysis = useCallback((analysis: PodcastProjectState['analysis']) => {
@@ -235,6 +243,7 @@ export const usePodcastProjectState = () => {
       ...prev, 
       analysis, 
       currentStep: analysis ? 'research' : prev.currentStep,
+      lastSyncedPhase: prev.currentStep, // Mark previous phase as synced
       updatedAt: new Date().toISOString() 
     }));
   }, []);
@@ -255,6 +264,7 @@ export const usePodcastProjectState = () => {
       ...prev, 
       research, 
       currentStep: research ? 'script' : prev.currentStep,
+      lastSyncedPhase: prev.currentStep, // Mark previous phase as synced
       updatedAt: new Date().toISOString() 
     }));
   }, []);
@@ -272,6 +282,7 @@ export const usePodcastProjectState = () => {
       ...prev, 
       scriptData, 
       currentStep: scriptData ? 'render' : prev.currentStep,
+      lastSyncedPhase: prev.currentStep, // Mark previous phase as synced
       updatedAt: new Date().toISOString() 
     }));
   }, []);

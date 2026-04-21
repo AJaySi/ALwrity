@@ -19,15 +19,18 @@ from services.llm_providers.main_image_generation import generate_image
 from services.llm_providers.main_image_editing import edit_image
 from utils.asset_tracker import save_asset_to_library
 from loguru import logger
-from ..constants import PODCAST_IMAGES_DIR
+from ..constants import get_podcast_media_dir, PODCAST_AVATARS_SUBDIR
 from ..presenter_personas import choose_persona_id, get_persona
 
 router = APIRouter()
 
 # Avatar subdirectory
-AVATAR_SUBDIR = "avatars"
-PODCAST_AVATARS_DIR = PODCAST_IMAGES_DIR / AVATAR_SUBDIR
-PODCAST_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+AVATAR_SUBDIR = PODCAST_AVATARS_SUBDIR
+
+
+def _get_podcast_avatars_dir(user_id: str) -> Path:
+    """Get podcast avatars directory for a user (workspace-aware)."""
+    return get_podcast_media_dir("image", user_id, ensure_exists=True) / AVATAR_SUBDIR
 
 
 @router.post("/avatar/upload")
@@ -57,7 +60,8 @@ async def upload_podcast_avatar(
         file_ext = Path(file.filename).suffix or '.png'
         unique_id = str(uuid.uuid4())[:8]
         avatar_filename = f"avatar_{project_id or 'temp'}_{unique_id}{file_ext}"
-        avatar_path = PODCAST_AVATARS_DIR / avatar_filename
+        avatars_dir = _get_podcast_avatars_dir(user_id)
+        avatar_path = avatars_dir / avatar_filename
         
         # Save file
         with open(avatar_path, "wb") as f:
@@ -163,7 +167,8 @@ async def make_avatar_presentable(
         # Save transformed avatar
         unique_id = str(uuid.uuid4())[:8]
         transformed_filename = f"presenter_transformed_{project_id or 'temp'}_{unique_id}.png"
-        transformed_path = PODCAST_AVATARS_DIR / transformed_filename
+        avatars_dir = _get_podcast_avatars_dir(user_id)
+        transformed_path = avatars_dir / transformed_filename
         
         with open(transformed_path, "wb") as f:
             f.write(result.image_bytes)
@@ -345,7 +350,8 @@ async def generate_podcast_presenters(
             # Save avatar
             unique_id = str(uuid.uuid4())[:8]
             avatar_filename = f"presenter_{project_id or 'temp'}_{i+1}_{unique_id}.png"
-            avatar_path = PODCAST_AVATARS_DIR / avatar_filename
+            avatars_dir = _get_podcast_avatars_dir(user_id)
+            avatar_path = avatars_dir / avatar_filename
             
             with open(avatar_path, "wb") as f:
                 f.write(result.image_bytes)

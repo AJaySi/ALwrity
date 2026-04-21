@@ -3,6 +3,9 @@ export type Knobs = {
   voice_speed: number;
   voice_id: string;
   custom_voice_id?: string;
+  is_voice_clone?: boolean;
+  voice_sample_url?: string;
+  voice_clone_engine?: string;
   resolution: string;
   scene_length_target: number;
   sample_rate: number;

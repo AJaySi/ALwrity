@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any
 from services.database import get_db
 from middleware.auth_middleware import get_current_user
 from services.podcast_service import PodcastService
+from loguru import logger
 from ..models import (
     PodcastProjectResponse,
     CreateProjectRequest,
@@ -106,14 +107,21 @@ async def update_project(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Update a podcast project state."""
+    import time
+    start_time = time.time()
+    
     try:
         user_id = current_user.get("user_id") or current_user.get("id")
         if not user_id:
             logger.error(f"[Podcast] update_project: No user_id found in current_user: {current_user}")
             raise HTTPException(status_code=401, detail="User ID not found")
         
-        logger.warning(f"[Podcast] update_project: project_id={project_id}, user_id={user_id}")
-        logger.warning(f"[Podcast] update_project: request data: {request.model_dump()}")
+        # Get only field names being updated (not full data to avoid console flooding)
+        request_dict = request.model_dump(exclude_none=True)
+        updated_fields = list(request_dict.keys())
+        
+        logger.warning(f"[Podcast] ===== UPDATE_PROJECT_START =====")
+        logger.warning(f"[Podcast] project_id={project_id}, user_id={user_id}, fields={updated_fields}")
         
         service = PodcastService(db)
         
@@ -140,10 +148,15 @@ async def update_project(
             updates = request.model_dump(exclude_unset=True)
             project = service.update_project(user_id, project_id, **updates)
         
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.warning(f"[Podcast] ===== UPDATE_PROJECT_END (took {duration_ms}ms) =====")
+        
         return PodcastProjectResponse.model_validate(project)
     except HTTPException:
         raise
     except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.error(f"[Podcast] ===== UPDATE_PROJECT_ERROR (took {duration_ms}ms): {str(e)} =====")
         raise HTTPException(status_code=500, detail=f"Error updating project: {str(e)}")
 
 

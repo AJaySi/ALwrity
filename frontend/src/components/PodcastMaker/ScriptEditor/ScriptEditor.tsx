@@ -7,8 +7,9 @@ import { podcastApi } from "../../../services/podcastApi";
 import { GlassyCard, PrimaryButton, SecondaryButton } from "../ui";
 import { SceneEditor } from "./SceneEditor";
 import { InlineAudioPlayer } from "../InlineAudioPlayer";
-import { aiApiClient } from "../../../api/client";
+import { aiApiClient, getApiUrl } from "../../../api/client";
 import { BrollInfoPanel } from "./parts/BrollInfoPanel";
+import { ScriptEditorProvider } from "./ScriptEditorContext";
 
 interface ScriptEditorProps {
   projectId: string;
@@ -75,49 +76,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     }
   }, [initialScript]);
 
-  useEffect(() => {
-    // If script already exists, don't regenerate
-    if (script) {
-      return;
-    }
-
-    // Only generate if we have research data
-    if (!rawResearch) {
-      return;
-    }
-
-    let mounted = true;
-    setLoading(true);
-    setError(null);
-    podcastApi
-      .generateScript({
-        projectId,
-        idea,
-        research: rawResearch,
-        knobs,
-        speakers,
-        durationMinutes,
-        podcastMode,
-        analysis,
-        outline,
-      })
-      .then((res) => {
-        if (mounted) {
-          setScript(res);
-          emitScriptChange(res);
-          setError(null);
-        }
-      })
-      .catch((err) => {
-        const message = err instanceof Error ? err.message : "Failed to generate script";
-        setError(message);
-        onError(message);
-      })
-      .finally(() => mounted && setLoading(false));
-    return () => {
-      mounted = false;
-    };
-  }, [projectId, rawResearch, idea, knobs, speakers, durationMinutes, podcastMode, analysis, outline, emitScriptChange, onError, script]);
+  // Note: Script generation is now handled by ScriptEditorProvider
+  // to ensure BrollInfoPanel and other child components have access to context
 
   const updateScene = (updated: Scene) => {
     // Use functional update to ensure we're working with latest state
@@ -309,14 +269,20 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
               chart_type: scene.chart_data.type || "bar_comparison",
               title: scene.title,
             });
+            console.log(`[ChartPreview] Scene ${scene.id}: type=${scene.chart_data.type || 'bar_comparison'}, data=`, scene.chart_data);
+
+            const toFullUrl = (url: string) => {
+              if (/^https?:\/\//i.test(url)) return url;
+              return `${getApiUrl()}${url.startsWith("/") ? url : `/${url}`}`;
+            };
 
             return {
               ...scene,
-              broll_preview_url: result.preview_url,
+              broll_preview_url: toFullUrl(result.preview_url),
               chart_id: result.chart_id,
             };
           } catch (error) {
-            console.error(`Failed to generate chart preview for scene ${scene.id}:`, error);
+            console.error(`[ChartPreview] Failed for scene ${scene.id}:`, error);
             return scene;
           }
         })
@@ -379,11 +345,28 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   }, [script, emitScriptChange]);
 
   return (
-    <Box sx={{ mt: 4 }}>
-      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 4 }}>
-        <SecondaryButton onClick={onBackToResearch} startIcon={<ArrowBackIcon />}>
-          Back to Research
-        </SecondaryButton>
+    <ScriptEditorProvider
+      projectId={projectId}
+      idea={idea}
+      rawResearch={rawResearch}
+      knobs={knobs}
+      speakers={speakers}
+      durationMinutes={durationMinutes}
+      initialScript={script}
+      podcastMode={podcastMode}
+      analysis={analysis}
+      outline={outline}
+      onScriptChange={(s) => {
+        setScript(s);
+        onScriptChange(s);
+      }}
+      onError={onError}
+    >
+      <Box sx={{ mt: 4 }}>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 4 }}>
+          <SecondaryButton onClick={onBackToResearch} startIcon={<ArrowBackIcon />}>
+            Back to Research
+          </SecondaryButton>
         <Box sx={{ flex: 1 }}>
           <Typography
             variant="h4"
@@ -945,5 +928,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
         </Stack>
       )}
     </Box>
+    </ScriptEditorProvider>
   );
 };

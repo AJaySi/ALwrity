@@ -93,9 +93,14 @@ billingAPI.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
-    // Handle network errors
+    // Handle network errors - but NOT timeouts (backend might just be slow)
     if (!error.response) {
-      noteBackendUnavailable(error?.message || 'billing_network_error');
+      const errorMsg = error?.message || '';
+      const isTimeout = errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT');
+      
+      if (!isTimeout) {
+        noteBackendUnavailable(errorMsg || 'billing_network_error');
+      }
       console.error('Billing API Network Error:', error.message);
       return Promise.reject(error);
     }
