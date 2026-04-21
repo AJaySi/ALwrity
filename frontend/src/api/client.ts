@@ -224,8 +224,10 @@ apiClient.interceptors.request.use(
       if (token) {
             config.headers = config.headers || {};
             (config.headers as any)['Authorization'] = `Bearer ${token}`;
-            const safeUrlWithToken = sanitizeUrlForLogging(config.url);
-            console.log(`[apiClient] ✅ Auth token attached for request to ${safeUrlWithToken}`);
+            if (process.env.NODE_ENV === 'development') {
+              const safeUrlWithToken = sanitizeUrlForLogging(config.url);
+              console.log(`[apiClient] ✅ Auth token attached for request to ${safeUrlWithToken}`);
+            }
           } else {
             // Token getter returned null - reject request to prevent 401 errors
             // ProtectedRoute should ensure user is authenticated before components render

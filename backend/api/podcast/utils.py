@@ -67,15 +67,32 @@ def load_podcast_audio_bytes(audio_url: str, user_id: str | None = None) -> byte
         raise HTTPException(status_code=500, detail=f"Failed to load audio: {str(exc)}")
 
 
-def load_podcast_image_bytes(image_url: str) -> bytes:
-    """Load podcast image bytes from URL. Uses centralized media loader."""
+def load_podcast_image_bytes(image_url: str, user_id: str | None = None) -> bytes:
+    """Load podcast image bytes from URL. Resolves from workspace first."""
     if not image_url:
         raise HTTPException(status_code=400, detail="Image URL is required")
     
     logger.info(f"[Podcast] Loading image from URL: {image_url}")
     
     try:
-        # REUSE: Use centralized media loader which handles cross-module lookups
+        # Extract filename from URL path
+        prefix = "/api/podcast/images/"
+        if prefix in image_url:
+            filename = image_url.split(prefix, 1)[1].split("?", 1)[0].strip()
+            # Handle subdirectories like avatars/
+            subdir = None
+            if "/" in filename:
+                subdir_part = filename.rsplit("/", 1)[0]
+                subdir = Path(subdir_part)
+                filename = filename.rsplit("/", 1)[1]
+            
+            try:
+                image_path = _resolve_podcast_media_file(filename, "image", user_id, subdir=subdir)
+                return image_path.read_bytes()
+            except HTTPException:
+                pass  # Fall through to centralized loader
+        
+        # Fall back to centralized media loader
         image_bytes = load_media_bytes(image_url)
         
         if not image_bytes:

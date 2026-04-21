@@ -69,7 +69,7 @@ async def generate_podcast_scene_image(
             from ..utils import load_podcast_image_bytes
             try:
                 logger.info(f"[Podcast] Attempting to load base avatar from: {request.base_avatar_url}")
-                base_avatar_bytes = load_podcast_image_bytes(request.base_avatar_url)
+                base_avatar_bytes = load_podcast_image_bytes(request.base_avatar_url, user_id=user_id)
                 logger.info(f"[Podcast] ✅ Successfully loaded base avatar ({len(base_avatar_bytes)} bytes) for scene {request.scene_id}")
             except Exception as e:
                 logger.error(f"[Podcast] ❌ Failed to load base avatar from {request.base_avatar_url}: {e}", exc_info=True)

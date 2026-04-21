@@ -102,9 +102,11 @@ class MediaCache {
       this.evictOldest();
     }
 
-    console.log(`[MediaCache] Cached ${mediaType}:`, url, 
-      sceneId ? `(scene: ${sceneId})` : '', 
-      projectId ? `(project: ${projectId})` : '');
+if (process.env.NODE_ENV === 'development') {
+      console.log(`[MediaCache] Cached ${mediaType}:`, url.split('?')[0],
+        sceneId ? `(scene: ${sceneId})` : '',
+        projectId ? `(project: ${projectId})` : '');
+    }
   }
 
   /**

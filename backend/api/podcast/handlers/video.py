@@ -321,7 +321,7 @@ async def generate_podcast_video(
 
     # Load image bytes (scene image is required for video generation)
     if body.avatar_image_url:
-        image_bytes = load_podcast_image_bytes(body.avatar_image_url)
+        image_bytes = load_podcast_image_bytes(body.avatar_image_url, user_id=user_id)
     else:
         # Scene-specific image should be generated before video generation
         raise HTTPException(
@@ -332,7 +332,7 @@ async def generate_podcast_video(
     mask_image_bytes = None
     if body.mask_image_url:
         try:
-            mask_image_bytes = load_podcast_image_bytes(body.mask_image_url)
+            mask_image_bytes = load_podcast_image_bytes(body.mask_image_url, user_id=user_id)
         except Exception as e:
             logger.error(f"[Podcast] Failed to load mask image: {e}")
             raise HTTPException(

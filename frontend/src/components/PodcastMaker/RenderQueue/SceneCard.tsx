@@ -140,7 +140,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
     // Check cache first with scene context
     const cachedUrl = getCachedMedia(imageUrl, scene.id);
     if (cachedUrl) {
-      console.log('[SceneCard] Using cached image:', imageUrl, `(scene: ${scene.id})`);
+      if (process.env.NODE_ENV === 'development') console.log('[SceneCard] Using cached image:', imageUrl, `(scene: ${scene.id})`);
       setImageBlobUrl(cachedUrl);
       setImageLoading(false);
       setImageError(null);
@@ -167,7 +167,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
       try {
         setImageLoading(true);
         setImageError(null);
-        console.log('[SceneCard] Loading image blob for:', currentImageUrl);
+        if (process.env.NODE_ENV === 'development') console.log('[SceneCard] Loading image blob for:', currentImageUrl.split('?')[0]);
         
         // Check cache again in case it was loaded while we were waiting
         const cachedUrl = getCachedMedia(currentImageUrl, scene.id);
@@ -219,7 +219,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           }
           return newBlobUrl;
         });
-        console.log('[SceneCard] Image blob loaded and cached successfully:', currentImageUrl);
+        if (process.env.NODE_ENV === 'development') console.log('[SceneCard] Image blob loaded and cached successfully:', currentImageUrl.split('?')[0]);
       } catch (err) {
         console.error('[SceneCard] Failed to load image blob:', err);
         if (isMounted && imageUrl === currentImageUrl) {
@@ -287,7 +287,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
     // Check cache first with scene context
     const cachedUrl = getCachedMedia(job.videoUrl, scene.id);
     if (cachedUrl) {
-      console.log('[SceneCard] Using cached video:', job.videoUrl, `(scene: ${scene.id})`);
+      if (process.env.NODE_ENV === 'development') console.log('[SceneCard] Using cached video:', job.videoUrl?.split('?')[0], `(scene: ${scene.id})`);
       setVideoBlobUrl(cachedUrl);
       setVideoLoading(false);
       setVideoError(null);
@@ -312,7 +312,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           return;
         }
         
-        console.log('[SceneCard] Loading video blob for:', job.videoUrl);
+        if (process.env.NODE_ENV === 'development') console.log('[SceneCard] Loading video blob for:', (job.videoUrl || '').split('?')[0]);
         const blobUrl = await fetchMediaBlobUrl(job.videoUrl!);
         
         if (blobUrl) {
@@ -332,7 +332,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
               
               testVideo.onloadedmetadata = () => {
                 clearTimeout(timeout);
-                console.log('[SceneCard] Video blob validation successful:', {
+                if (process.env.NODE_ENV === 'development') console.log('[SceneCard] Video blob validation successful:', {
                   duration: testVideo.duration,
                   videoWidth: testVideo.videoWidth,
                   videoHeight: testVideo.videoHeight,
@@ -353,7 +353,7 @@ export const SceneCard: React.FC<SceneCardProps> = ({
             // Cache the validated blob URL with scene context
             setCachedMedia(job.videoUrl!, blobUrl, 'video', undefined, scene.id);
             
-            console.log('[SceneCard] Video blob loaded, validated, and cached successfully:', job.videoUrl);
+            if (process.env.NODE_ENV === 'development') console.log('[SceneCard] Video blob loaded, validated, and cached successfully:', (job.videoUrl || '').split('?')[0]);
           } else {
             // Direct URL fallback
             setVideoBlobUrl(blobUrl);

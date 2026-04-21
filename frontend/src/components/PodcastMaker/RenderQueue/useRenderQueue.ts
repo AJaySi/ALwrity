@@ -132,7 +132,7 @@ export const useRenderQueue = ({
 
           // Skip if job already has imageUrl from script phase - don't override with old video
           if (job?.imageUrl) {
-            console.log("[useRenderQueue] Skipping old video - job has imageUrl from script phase:", scene.id, "imageUrl:", job.imageUrl);
+            if (process.env.NODE_ENV === 'development') console.log("[useRenderQueue] Skipping old video - job has imageUrl from script phase:", scene.id, "imageUrl:", (job.imageUrl || '').split('?')[0]);
             return;
           }
 
@@ -143,7 +143,7 @@ export const useRenderQueue = ({
           // If job has finalUrl (audio) or imageUrl from script phase, don't attach old video
           const isJobEmpty = !job || (!job.imageUrl && !job.videoUrl && !job.finalUrl);
           if (!isJobEmpty) {
-            console.log("[useRenderQueue] Skipping old video - job has content already:", scene.id, "job:", job);
+            if (process.env.NODE_ENV === 'development') console.log("[useRenderQueue] Skipping old video - job has content already:", scene.id);
             return;
           }
 
@@ -581,15 +581,10 @@ export const useRenderQueue = ({
       });
 
       try {
-        console.log("[useRenderQueue] Starting video generation", {
+        if (process.env.NODE_ENV === 'development') console.log("[useRenderQueue] Starting video generation", {
           sceneId,
           sceneTitle: scene.title,
-          audioUrl,
-          avatarImageUrl: sceneImageUrl,
           resolution: targetResolution,
-          prompt: settings?.prompt,
-          seed: settings?.seed,
-          maskImageUrl: settings?.maskImageUrl,
         });
 
         const result = await podcastApi.generateVideo({
@@ -708,7 +703,7 @@ export const useRenderQueue = ({
         sceneVideoUrls.push(videoUrl);
       }
 
-      console.log("[combineFinalVideo] Starting combination with", sceneVideoUrls.length, "videos");
+      if (process.env.NODE_ENV === 'development') console.log("[combineFinalVideo] Starting combination with", sceneVideoUrls.length, "videos");
 
       // Start combination task
       const result = await podcastApi.combineVideos({

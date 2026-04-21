@@ -141,11 +141,11 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         // Continue anyway - apiClient interceptor will handle missing token gracefully
       }
 
-      console.log('SubscriptionContext: Checking subscription for user:', userId);
+      if (process.env.NODE_ENV === 'development') console.log('SubscriptionContext: Checking subscription for user:', userId);
       const response = await apiClient.get(`/api/subscription/status/${userId}`);
       const subscriptionData = response.data.data;
 
-      console.log('SubscriptionContext: Received subscription data from backend:', subscriptionData);
+      if (process.env.NODE_ENV === 'development') console.log('SubscriptionContext: Subscription data received:', { active: subscriptionData?.active, plan: subscriptionData?.plan });
       setSubscription(subscriptionData);
       // Update ref immediately so callbacks can access latest value
       subscriptionRef.current = subscriptionData;

@@ -128,7 +128,7 @@ async def make_avatar_presentable(
         # Load the uploaded avatar image
         from ..utils import load_podcast_image_bytes
         logger.info(f"[Podcast] Loading avatar image from {avatar_url}")
-        avatar_bytes = load_podcast_image_bytes(avatar_url)
+        avatar_bytes = load_podcast_image_bytes(avatar_url, user_id=user_id)
         logger.info(f"[Podcast] Avatar loaded successfully - size={len(avatar_bytes)} bytes")
         
         logger.info(f"[Podcast] Transforming avatar to podcast presenter for project {project_id}")
