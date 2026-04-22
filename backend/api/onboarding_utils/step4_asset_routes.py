@@ -539,6 +539,7 @@ async def create_voice_clone(
         # 3. Save Preview Audio (if generated)
         preview_url = None
         preview_mime_type = "audio/wav"
+        actual_filename = None  # Default if preview save fails
         if preview_audio_bytes:
             from utils.media_utils import detect_audio_format, ensure_audio_extension
             
@@ -579,14 +580,16 @@ async def create_voice_clone(
                 logger.warning(f"[VoiceClone] Failed to save preview audio: {error}")
             
         # 4. Save to Asset Library
+        # Use the preview file (with corrected .wav extension) as the main asset file
+        stored_filename = actual_filename if preview_audio_bytes and saved_preview_path else filename
         asset_id = save_asset_to_library(
             db=db,
             user_id=user_id,
             file_path=file_path,
             asset_type="audio",
             source_module="voice_cloner",
-            filename=filename,
-            file_url=f"/api/assets/{user_id}/voice_samples/{filename}",
+            filename=stored_filename,
+            file_url=f"/api/assets/{user_id}/voice_samples/{stored_filename}",
             asset_metadata={
                 "voice_name": voice_name,
                 "engine": engine,
@@ -599,12 +602,12 @@ async def create_voice_clone(
         )
         
         logger.warning(f"[VoiceClone] Response preview_url: {preview_url}")
-        logger.warning(f"[VoiceClone] Response filename: {filename}")
+        logger.warning(f"[VoiceClone] Response stored_filename: {stored_filename}")
         
         return {
             "success": True,
             "custom_voice_id": custom_voice_id,
-            "preview_audio_url": preview_url or f"/api/assets/{user_id}/voice_samples/{filename}",
+            "preview_audio_url": preview_url or f"/api/assets/{user_id}/voice_samples/{stored_filename}",
             "asset_id": asset_id,
             "message": "Voice clone created successfully"
         }

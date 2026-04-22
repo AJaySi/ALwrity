@@ -29,10 +29,12 @@ def ensure_subscription_plan_columns(db: Session) -> None:
 
         # Columns we may reference in models but might be missing in older DBs
         required_columns = {
+            "ai_text_generation_calls_limit": "INTEGER DEFAULT 0",
             "exa_calls_limit": "INTEGER DEFAULT 0",
             "video_calls_limit": "INTEGER DEFAULT 0",
             "image_edit_calls_limit": "INTEGER DEFAULT 0",
             "audio_calls_limit": "INTEGER DEFAULT 0",
+            "wavespeed_calls_limit": "INTEGER DEFAULT 0",
         }
 
         for col_name, ddl in required_columns.items():

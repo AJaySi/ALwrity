@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from loguru import logger
 import json
+from api.subscription.cache import clear_dashboard_cache
 
 from models.subscription_models import (
     APIUsageLog, UsageSummary, APIProvider, UsageAlert, 
@@ -169,6 +170,12 @@ class UsageTrackingService:
             await self._check_usage_alerts(user_id, provider, billing_period)
             
             self.db.commit()
+            
+            # Invalidate dashboard cache so header stats update immediately
+            try:
+                clear_dashboard_cache(user_id)
+            except Exception as cache_err:
+                logger.debug(f"Could not clear dashboard cache: {cache_err}")
             
             logger.info(f"Tracked API usage: {user_id} -> {provider.value} -> ${cost_data['cost_total']:.6f}")
             
@@ -521,20 +528,26 @@ class UsageTrackingService:
     
     async def reset_current_billing_period(self, user_id: str) -> Dict[str, Any]:
         """Reset usage status and counters for the current billing period (after plan renewal/change)."""
+        period_keys = self._get_authoritative_billing_period_keys(user_id)
+        billing_period = period_keys["billing_period"]
+        summary = self.db.query(UsageSummary).filter(
+            UsageSummary.user_id == user_id,
+            UsageSummary.billing_period.in_(period_keys["lookup_periods"])
+        ).first()
+
+        if not summary:
+            return {"reset": False, "reason": "no_summary"}
+
         try:
-            period_keys = self._get_authoritative_billing_period_keys(user_id)
-            billing_period = period_keys["billing_period"]
-            summary = self.db.query(UsageSummary).filter(
-                UsageSummary.user_id == user_id,
-                UsageSummary.billing_period.in_(period_keys["lookup_periods"])
-            ).first()
-
-            if not summary:
-                return {"reset": False, "reason": "no_summary"}
-
             reset_usage_summary_counters(summary)
             self.db.commit()
-
+            
+            # Invalidate dashboard cache so header stats update after reset
+            try:
+                clear_dashboard_cache(user_id)
+            except Exception as cache_err:
+                logger.debug(f"Could not clear dashboard cache: {cache_err}")
+            
             logger.info(f"Reset usage counters for user {user_id} in billing period {billing_period} after renewal")
             return {"reset": True, "counters_reset": True}
         except Exception as e:

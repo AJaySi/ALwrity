@@ -58,6 +58,7 @@ interface UsageLimits {
     video_calls: number;
     image_edit_calls: number;
     audio_calls: number;
+    wavespeed_calls: number;
     monthly_cost: number;
   };
 }
@@ -107,10 +108,13 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     checkInterval: 120000, // Check every 2 minutes
   });
 
-  const fetchUsageData = useCallback(async (period?: string) => {
+  const fetchUsageData = useCallback(async (period?: string, silent = false) => {
     if (!userId) return;
     
-    setLoading(true);
+    // Don't block UI for silent background refreshes (menu open, visibility change)
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const url = period 
@@ -136,10 +140,14 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
         throw new Error(response.data?.error || 'Failed to fetch usage data');
       }
     } catch (err: any) {
-      console.error('Error fetching usage data:', err);
-      setError(err.message || 'Failed to load usage statistics');
+      if (!silent) {
+        console.error('Error fetching usage data:', err);
+        setError(err.message || 'Failed to load usage statistics');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [userId]);
 
@@ -154,13 +162,30 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     if (userId) {
       fetchUsageData();
     }
-  }, [userId, fetchUsageData]); // Added fetchUsageData to deps since it's memoized
+  }, [userId, fetchUsageData]);
+
+  // Refresh on visibility change (user returns to tab) - only if data is stale (>60s old)
+  useEffect(() => {
+    const STALE_THRESHOLD_MS = 60000; // 60 seconds
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && userId && lastUpdated) {
+        const ageMs = Date.now() - lastUpdated.getTime();
+        if (ageMs > STALE_THRESHOLD_MS) {
+          fetchUsageData(selectedPeriod, true);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [userId, fetchUsageData, selectedPeriod, lastUpdated]);
 
   const handleRefresh = () => {
     fetchUsageData(selectedPeriod);
   };
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    // Show cached data immediately, don't wait for fetch
+    // Data will refresh when user clicks the manual refresh button
     setAnchorEl(event.currentTarget);
   };
 
@@ -265,6 +290,10 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     // Research calls (exa + tavily + serper + firecrawl)
     const researchCalls = (providerBreakdown.exa?.calls || 0) + (providerBreakdown.tavily?.calls || 0) + (providerBreakdown.serper?.calls || 0) + (providerBreakdown.firecrawl?.calls || 0);
     const researchCallLimit = (providerLimits.exa_calls || 0) + (providerLimits.tavily_calls || 0) + (providerLimits.serper_calls || 0) + (providerLimits.firecrawl_calls || 0);
+
+    // WaveSpeed calls (all WaveSpeed API calls)
+    const wavespeedCalls = providerBreakdown.wavespeed?.calls || 0;
+    const wavespeedCallLimit = providerLimits.wavespeed_calls || 0;
 
     const formatLimit = (used: number, limit: number) => {
       if (limit === 0) return `${used} / ∞`;
@@ -466,6 +495,21 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
                 />
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(researchCalls, researchCallLimit), minWidth: 55, textAlign: 'right' }}>
                   {formatLimit(researchCalls, researchCallLimit)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+          {wavespeedCallLimit > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 500, color: '#6b7280', minWidth: 60 }}>WaveSpeed</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, ml: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={wavespeedCallLimit > 0 ? Math.min((wavespeedCalls / wavespeedCallLimit) * 100, 100) : 0}
+                  sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(wavespeedCalls, wavespeedCallLimit), borderRadius: 2 } }}
+                />
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(wavespeedCalls, wavespeedCallLimit), minWidth: 55, textAlign: 'right' }}>
+                  {formatLimit(wavespeedCalls, wavespeedCallLimit)}
                 </Typography>
               </Box>
             </Box>

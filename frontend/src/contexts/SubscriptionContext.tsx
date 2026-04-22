@@ -24,6 +24,7 @@ export interface SubscriptionLimits {
   video_calls: number;
   image_edit_calls: number;
   audio_calls: number;
+  wavespeed_calls: number;
   monthly_cost: number;
 }
 

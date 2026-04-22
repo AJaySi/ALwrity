@@ -786,6 +786,14 @@ export const podcastApi = {
     seed?: number;
     maskImageUrl?: string;
   }): Promise<{ taskId: string; status: string; message: string }> {
+    // Preflight check for video generation
+    await ensurePreflight({
+      provider: 'video',
+      model: 'kling-v2.5-turbo-5s',
+      operation_type: 'video_generation',
+      actual_provider_name: 'wavespeed',
+    });
+    
     const response = await aiApiClient.post("/api/podcast/render/video", {
       project_id: params.projectId,
       scene_id: params.sceneId,
@@ -884,6 +892,14 @@ export const podcastApi = {
     cost: number;
     image_prompt?: string;
   }> {
+    // Preflight check for image generation
+    await ensurePreflight({
+      provider: 'stability',
+      model: 'stability-ai',
+      operation_type: 'image_generation',
+      actual_provider_name: 'wavespeed',
+    });
+    
     const response = await aiApiClient.post("/api/podcast/image", {
       scene_id: params.sceneId,
       scene_title: params.sceneTitle,

@@ -90,6 +90,8 @@ export const useSubscriptionGuard = (options: SubscriptionGuardOptions = {}) => 
         return subscription.limits.ai_text_generation_calls || 0;
       case 'exa_calls':
         return subscription.limits.exa_calls || 0;
+      case 'wavespeed_calls':
+        return subscription.limits.wavespeed_calls || 0;
       case 'monthly_cost':
         return subscription.limits.monthly_cost;
       default:

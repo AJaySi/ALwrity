@@ -63,6 +63,7 @@ export interface SubscriptionLimits {
     video_calls: number;
     image_edit_calls: number;
     audio_calls: number;
+    wavespeed_calls: number;
     gemini_tokens: number;
     openai_tokens: number;
     anthropic_tokens: number;
@@ -224,6 +225,7 @@ export const SubscriptionLimitsSchema = z.object({
     video_calls: z.number().optional().default(0),
     image_edit_calls: z.number().optional().default(0),
     audio_calls: z.number().optional().default(0),
+    wavespeed_calls: z.number().optional().default(0),
     gemini_tokens: z.number(),
     openai_tokens: z.number(),
     anthropic_tokens: z.number(),

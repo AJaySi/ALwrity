@@ -80,6 +80,7 @@ class SubscriptionPlan(Base):
     video_calls_limit = Column(Integer, default=0)  # AI video generation
     image_edit_calls_limit = Column(Integer, default=0)  # AI image editing
     audio_calls_limit = Column(Integer, default=0)  # AI audio generation (text-to-speech)
+    wavespeed_calls_limit = Column(Integer, default=0)  # WaveSpeed API calls (LLM + TTS + video + image)
     
     # Token Limits (for LLM providers)
     gemini_tokens_limit = Column(Integer, default=0)
