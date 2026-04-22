@@ -43,9 +43,16 @@ def _resolve_asset_path(user_id: str, category: str, filename: str) -> Path:
     safe_user_id = sanitize_user_id(user_id)
     repo_root = get_repo_root()
 
+    logger.warning(f"[Assets] repo_root: {repo_root}")
+    logger.warning(f"[Assets] user_id: {user_id}, safe_user_id: {safe_user_id}")
+    
     file_path = (repo_root / "workspace" / f"workspace_{safe_user_id}" / "assets" / category / filename).resolve()
 
     workspace_dir = (repo_root / "workspace" / f"workspace_{safe_user_id}").resolve()
+    logger.warning(f"[Assets] resolved path: {file_path}")
+    logger.warning(f"[Assets] workspace_dir: {workspace_dir}")
+    logger.warning(f"[Assets] path exists: {file_path.exists()}")
+    
     if not str(file_path).startswith(str(workspace_dir)):
         raise HTTPException(status_code=403, detail="Access denied")
 
