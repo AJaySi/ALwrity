@@ -7,6 +7,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
+from fastapi import HTTPException
 from loguru import logger
 from typing import Optional, List
 
@@ -386,12 +387,15 @@ def get_db(current_user: dict = Depends(get_current_user)):
     """
     user_id = current_user.get('id') or current_user.get('clerk_user_id')
     if not user_id:
-        # Fallback or error? For now log error
         logger.error("No user ID found in context for DB connection")
-        # Could raise exception, but let's try to be safe
-        raise Exception("User ID required for database access")
+        raise HTTPException(status_code=401, detail="User ID required for database access")
         
-    engine = get_engine_for_user(user_id)
+    try:
+        engine = get_engine_for_user(user_id)
+    except Exception as e:
+        logger.error(f"[DB] Failed to create engine for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
     try:

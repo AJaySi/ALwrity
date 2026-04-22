@@ -28,7 +28,8 @@ import base64
 import os
 from pathlib import Path
 from utils.file_storage import save_file_safely, generate_unique_filename
-from services.database import get_db, WORKSPACE_DIR
+from services.database import get_db
+from utils.storage_paths import get_user_workspace, sanitize_user_id
 from utils.asset_tracker import save_asset_to_library
 from models.content_asset_models import ContentAsset, AssetType, AssetSource
 from sqlalchemy import desc
@@ -234,7 +235,7 @@ async def generate_avatar(
             content_to_save = base64.b64decode(image_data) if isinstance(image_data, str) else image_data
             
             # Construct user assets directory
-            user_assets_dir = Path(WORKSPACE_DIR) / f"workspace_{user_id}" / "assets" / "avatars"
+            user_assets_dir = get_user_workspace(user_id) / "assets" / "avatars"
             
             saved_path, error = save_file_safely(
                 content_to_save,
@@ -332,7 +333,7 @@ async def create_variation_route(
             content_to_save = base64.b64decode(image_data)
             
             # Construct user assets directory
-            user_assets_dir = Path(WORKSPACE_DIR) / f"workspace_{user_id}" / "assets" / "avatars"
+            user_assets_dir = get_user_workspace(user_id) / "assets" / "avatars"
             
             saved_path, error = save_file_safely(
                 content_to_save,
@@ -406,7 +407,7 @@ async def enhance_avatar_route(
             content_to_save = base64.b64decode(image_data)
             
             # Construct user assets directory
-            user_assets_dir = Path(WORKSPACE_DIR) / f"workspace_{user_id}" / "assets" / "avatars"
+            user_assets_dir = get_user_workspace(user_id) / "assets" / "avatars"
             
             saved_path, error = save_file_safely(
                 content_to_save,
@@ -469,7 +470,7 @@ async def create_voice_clone(
         file_content = await file.read()
         filename = generate_unique_filename("voice_sample", Path(file.filename).suffix.lstrip("."))
         
-        user_voice_dir = Path(WORKSPACE_DIR) / f"workspace_{user_id}" / "assets" / "voice_samples"
+        user_voice_dir = get_user_workspace(user_id) / "assets" / "voice_samples"
         saved_path, error = save_file_safely(file_content, user_voice_dir, filename)
         
         if error or not saved_path:
@@ -537,16 +538,21 @@ async def create_voice_clone(
 
         # 3. Save Preview Audio (if generated)
         preview_url = None
+        preview_mime_type = "audio/wav"
         if preview_audio_bytes:
-            preview_filename = f"preview_{filename}"
-            # Ensure it ends with .wav
-            if not preview_filename.endswith(".wav"):
-                preview_filename = str(Path(preview_filename).with_suffix('.wav'))
+            from utils.media_utils import detect_audio_format, ensure_audio_extension
+            detected_fmt, preview_mime_type = detect_audio_format(preview_audio_bytes)
+            logger.info(f"[VoiceClone] Detected preview audio format: {detected_fmt} ({preview_mime_type}), {len(preview_audio_bytes)} bytes")
+
+            # Build filename with correct extension based on actual content format
+            preview_filename = f"preview_{Path(filename).stem}"
+            preview_filename = ensure_audio_extension(preview_filename, preview_audio_bytes)
+            logger.info(f"[VoiceClone] Preview filename (corrected ext): {preview_filename}")
             
-            user_voice_dir = Path(WORKSPACE_DIR) / f"workspace_{user_id}" / "assets" / "voice_samples"
-            logger.warning(f"[VoiceClone] user_id: {user_id}")
-            logger.warning(f"[VoiceClone] user_voice_dir: {user_voice_dir}")
-            logger.warning(f"[VoiceClone] directory exists: {user_voice_dir.exists()}")
+            user_voice_dir = get_user_workspace(user_id) / "assets" / "voice_samples"
+            logger.info(f"[VoiceClone] user_id: {user_id}")
+            logger.info(f"[VoiceClone] user_voice_dir: {user_voice_dir}")
+            logger.info(f"[VoiceClone] directory exists: {user_voice_dir.exists()}")
             saved_preview_path, error = save_file_safely(preview_audio_bytes, user_voice_dir, preview_filename)
             
             if not error and saved_preview_path:
@@ -623,9 +629,15 @@ async def create_voice_design(
             )
         )
         
-        # Save the result to a temporary file
-        filename = generate_unique_filename("voice_design_preview", "wav")
-        user_voice_dir = Path(WORKSPACE_DIR) / f"workspace_{user_id}" / "assets" / "voice_samples"
+        # Save the result to a file with correct extension based on content
+        from utils.media_utils import detect_audio_format, ensure_audio_extension
+        detected_fmt, mime_type = detect_audio_format(result.preview_audio_bytes)
+        logger.info(f"[VoiceDesign] Detected audio format: {detected_fmt} ({mime_type})")
+
+        filename = generate_unique_filename("voice_design_preview", detected_fmt)
+        filename = ensure_audio_extension(filename, result.preview_audio_bytes)
+
+        user_voice_dir = get_user_workspace(user_id) / "assets" / "voice_samples"
         saved_path, error = save_file_safely(result.preview_audio_bytes, user_voice_dir, filename)
         
         if error or not saved_path:

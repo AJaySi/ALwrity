@@ -154,3 +154,89 @@ def load_media_bytes(media_url_or_path: str) -> Optional[bytes]:
             logger.error(f"[MediaUtils] Error reading file {path}: {e}")
             return None
     return None
+
+
+# Audio format magic bytes signatures
+_AUDIO_SIGNATURES = [
+    (b"\xff\xfb", "mp3"),       # MP3 (MPEG-1 Layer 3, common)
+    (b"\xff\xf3", "mp3"),       # MP3 (MPEG-2.5 Layer 3)
+    (b"\xff\xf2", "mp3"),       # MP3 (MPEG-2 Layer 3)
+    (b"\xff\xfa", "mp3"),       # MP3 (MPEG-2 Layer 3 variant)
+    (b"ID3", "mp3"),            # MP3 with ID3 tag
+    (b"RIFF", "wav"),           # WAV (RIFF header)
+    (b"OggS", "ogg"),           # OGG
+    (b"fLaC", "flac"),          # FLAC
+    (b"\x1a\x45\xdf\xa3", "webm"),  # WebM / Matroska
+    (b"ftyp", "m4a"),           # MP4/M4A (ftyp box follows offset 4)
+]
+
+
+def detect_audio_format(audio_bytes: bytes) -> tuple[str, str]:
+    """Detect the actual audio format from content magic bytes.
+
+    Returns:
+        Tuple of (format_name, mime_type).
+        Falls back to ('wav', 'audio/wav') if no signature matches.
+    """
+    if not audio_bytes or len(audio_bytes) < 4:
+        return "wav", "audio/wav"
+
+    for signature, fmt in _AUDIO_SIGNATURES:
+        if signature == b"ftyp":
+            # M4A/MP4: 'ftyp' appears at offset 4
+            if len(audio_bytes) > 8 and audio_bytes[4:8] == b"ftyp":
+                return "m4a", "audio/mp4"
+        elif audio_bytes[:len(signature)] == signature:
+            mime_map = {
+                "mp3": "audio/mpeg",
+                "wav": "audio/wav",
+                "ogg": "audio/ogg",
+                "flac": "audio/flac",
+                "webm": "audio/webm",
+                "m4a": "audio/mp4",
+            }
+            return fmt, mime_map.get(fmt, "audio/wav")
+
+    # Check for Opus-in-OGG (Opus magic after OGG pages)
+    if b"OpusHead" in audio_bytes[:100]:
+        return "ogg", "audio/ogg"
+
+    # Check for MP4/M4A container (atoms starting with size + type)
+    if len(audio_bytes) > 8:
+        atom_type = audio_bytes[4:8]
+        if atom_type in (b"moov", b"mdat", b"free", b"skip"):
+            return "m4a", "audio/mp4"
+
+    return "wav", "audio/wav"
+
+
+def ensure_audio_extension(filename: str, audio_bytes: bytes) -> str:
+    """Adjust filename extension to match the actual audio format in audio_bytes.
+
+    Args:
+        filename: Original filename (may have wrong extension like .wav for mp3 data)
+        audio_bytes: The actual audio data bytes
+
+    Returns:
+        Filename with corrected extension based on content format.
+    """
+    fmt, _ = detect_audio_format(audio_bytes)
+    ext_map = {
+        "mp3": ".mp3",
+        "wav": ".wav",
+        "ogg": ".ogg",
+        "flac": ".flac",
+        "webm": ".webm",
+        "m4a": ".m4a",
+        "opus": ".ogg",
+    }
+
+    correct_ext = ext_map.get(fmt, ".wav")
+    path = Path(filename)
+    current_ext = path.suffix.lower()
+
+    if current_ext != correct_ext:
+        logger.info(f"[MediaUtils] Correcting audio extension: {filename} -> {path.stem}{correct_ext} (detected format: {fmt})")
+        return f"{path.stem}{correct_ext}"
+
+    return filename

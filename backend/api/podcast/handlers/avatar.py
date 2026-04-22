@@ -12,7 +12,7 @@ from pathlib import Path
 import uuid
 import hashlib
 
-from services.database import get_db
+from services.database import get_db, get_session_for_user
 from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from api.story_writer.utils.auth import require_authenticated_user
 from services.llm_providers.main_image_generation import generate_image
@@ -26,6 +26,18 @@ router = APIRouter()
 
 # Avatar subdirectory
 AVATAR_SUBDIR = PODCAST_AVATARS_SUBDIR
+
+
+async def _get_db_or_none(current_user: Dict[str, Any]):
+    """Try to get a database session, returning None on failure (non-fatal for uploads)."""
+    try:
+        user_id = current_user.get('id') or current_user.get('clerk_user_id')
+        if not user_id:
+            return None
+        return get_session_for_user(user_id)
+    except Exception as e:
+        logger.warning(f"[Podcast] DB session unavailable (non-fatal): {e}")
+        return None
 
 
 def _get_podcast_avatars_dir(user_id: str) -> Path:
@@ -44,8 +56,16 @@ async def upload_podcast_avatar(
     Upload a presenter avatar image for a podcast project.
     Returns the avatar URL for use in scene image generation.
     """
-    user_id = require_authenticated_user(current_user)
-    
+    try:
+        user_id = require_authenticated_user(current_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Podcast] Avatar upload auth failed: {e}", exc_info=True)
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
+    logger.info(f"[Podcast] Avatar upload request - user_id={user_id}, project_id={project_id}, content_type={file.content_type}")
+
     # Validate file type
     if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -61,19 +81,20 @@ async def upload_podcast_avatar(
         unique_id = str(uuid.uuid4())[:8]
         avatar_filename = f"avatar_{project_id or 'temp'}_{unique_id}{file_ext}"
         avatars_dir = _get_podcast_avatars_dir(user_id)
+        logger.info(f"[Podcast] Saving avatar to: {avatars_dir / avatar_filename}")
         avatar_path = avatars_dir / avatar_filename
         
         # Save file
         with open(avatar_path, "wb") as f:
             f.write(file_content)
         
-        logger.info(f"[Podcast] Avatar uploaded: {avatar_path}")
+        logger.info(f"[Podcast] Avatar uploaded successfully: {avatar_path}")
         
         # Create avatar URL
         avatar_url = f"/api/podcast/images/{AVATAR_SUBDIR}/{avatar_filename}"
         
-        # Save to asset library if project_id provided
-        if project_id:
+        # Save to asset library if project_id provided and DB session available
+        if project_id and db:
             try:
                 save_asset_to_library(
                     db=db,
@@ -95,13 +116,17 @@ async def upload_podcast_avatar(
                     },
                 )
             except Exception as e:
-                logger.warning(f"[Podcast] Failed to save avatar asset: {e}")
+                logger.warning(f"[Podcast] Failed to save avatar asset (non-fatal): {e}")
+        elif project_id and not db:
+            logger.warning(f"[Podcast] DB session unavailable, skipping asset library save for avatar")
         
         return {
             "avatar_url": avatar_url,
             "avatar_filename": avatar_filename,
             "message": "Avatar uploaded successfully"
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"[Podcast] Avatar upload failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Avatar upload failed: {str(exc)}")
