@@ -87,17 +87,34 @@ export const QuerySelection: React.FC<QuerySelectionProps> = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const prevIsResearchingRef = useRef(isResearching);
+  const modalCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Close modal only when research actually completes (transitions from true to false)
+  // Prevent closing while research is in progress
   useEffect(() => {
+    // Clear any pending close timeout when research starts
+    if (researchStarted && isResearching) {
+      if (modalCloseTimeoutRef.current) {
+        clearTimeout(modalCloseTimeoutRef.current);
+        modalCloseTimeoutRef.current = null;
+      }
+      return;
+    }
+
     const wasResearching = prevIsResearchingRef.current;
     const nowNotResearching = !isResearching;
     
     if (showResearchModal && researchStarted && wasResearching && nowNotResearching) {
-      setTimeout(() => setShowResearchModal(false), 1000);
+      modalCloseTimeoutRef.current = setTimeout(() => setShowResearchModal(false), 1000);
     }
     
     prevIsResearchingRef.current = isResearching;
+
+    return () => {
+      if (modalCloseTimeoutRef.current) {
+        clearTimeout(modalCloseTimeoutRef.current);
+      }
+    };
   }, [isResearching, showResearchModal, researchStarted]);
 
   // Progress message cycling

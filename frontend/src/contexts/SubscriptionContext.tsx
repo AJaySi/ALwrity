@@ -10,6 +10,7 @@ import { saveNavigationState, getCurrentPhaseForTool } from '../utils/navigation
 import { showSubscriptionExpiredToast, showUsageLimitToast, showSubscriptionToast } from '../utils/toastNotifications';
 
 export interface SubscriptionLimits {
+  ai_text_generation_calls: number;
   gemini_calls: number;
   openai_calls: number;
   anthropic_calls: number;
@@ -17,8 +18,12 @@ export interface SubscriptionLimits {
   tavily_calls: number;
   serper_calls: number;
   metaphor_calls: number;
+  exa_calls: number;
   firecrawl_calls: number;
   stability_calls: number;
+  video_calls: number;
+  image_edit_calls: number;
+  audio_calls: number;
   monthly_cost: number;
 }
 

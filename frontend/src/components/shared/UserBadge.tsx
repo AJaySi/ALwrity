@@ -172,54 +172,60 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         PaperProps={{
           sx: {
-            minWidth: 320,
-            maxWidth: 400,
-            maxHeight: '80vh',
-            overflow: 'auto'
+            minWidth: 340,
+            maxWidth: 420,
+            maxHeight: '85vh',
+            overflow: 'auto',
+            bgcolor: '#ffffff',
+            border: '1px solid rgba(0,0,0,0.08)',
+            borderRadius: 3,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)',
           }
         }}
       >
-        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+        {/* User Info Header */}
+        <Box sx={{ px: 2.5, py: 2, bgcolor: '#f8f9fb', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1a1a2e', fontSize: '0.9rem' }}>
             {user?.fullName || user?.username || 'User'}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: '#6b7280', fontSize: '0.75rem' }}>
             {user?.primaryEmailAddress?.emailAddress}
           </Typography>
         </Box>
         
-        {/* Subscription Info in Menu */}
-        <Box sx={{ px: 2, py: 1.5, bgcolor: 'rgba(0,0,0,0.02)' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+        {/* Subscription Info */}
+        <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#f8f9fb' }}>
+          <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 600, color: '#6b7280', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Current Plan
           </Typography>
           <Chip
             label={getPlanLabel()}
             size="small"
             sx={{
-              bgcolor: `${getPlanColor()}20`,
-              border: `1px solid ${getPlanColor()}`,
+              bgcolor: `${getPlanColor()}15`,
+              border: `1.5px solid ${getPlanColor()}40`,
               color: getPlanColor(),
               fontWeight: 700,
               fontSize: '0.75rem',
+              height: 26,
             }}
           />
         </Box>
         
-        <Divider sx={{ my: 1 }} />
+        <Divider sx={{ mx: 2 }} />
         
         {/* System Status Indicator */}
         <Box 
           sx={{ 
-            px: 2, 
+            px: 2.5, 
             py: 1.5, 
-            bgcolor: 'rgba(0,0,0,0.02)',
+            bgcolor: '#f8f9fb',
             maxWidth: '100%',
             overflow: 'hidden'
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
+          <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 600, color: '#6b7280', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             System Health
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'center', '& > *': { transform: 'scale(0.85)' } }}>
@@ -227,33 +233,33 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
           </Box>
         </Box>
         
-        <Divider sx={{ my: 1 }} />
+        <Divider sx={{ mx: 2 }} />
         
         {/* Usage Dashboard */}
         <Box 
           sx={{ 
-            px: 2, 
+            px: 2.5, 
             py: 1.5, 
-            bgcolor: 'rgba(0,0,0,0.02)',
+            bgcolor: '#ffffff',
             maxWidth: '100%',
             overflow: 'auto'
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
+          <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 600, color: '#6b7280', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Usage Statistics
           </Typography>
-          <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 0.5 }}>
-            <UsageDashboard compact={true} />
-          </Box>
+          <UsageDashboard compact={true} />
         </Box>
         
-        <Divider sx={{ my: 1 }} />
+        <Divider sx={{ mx: 2 }} />
         
-        <MenuItem onClick={() => { handleClose(); window.location.href = '/pricing'; }}>
+        <MenuItem onClick={() => { handleClose(); window.location.href = '/pricing'; }} sx={{ mx: 1, borderRadius: 1, color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
           Manage Subscription
         </MenuItem>
-        <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
+        <MenuItem onClick={handleSignOut} sx={{ mx: 1, borderRadius: 1, color: '#6b7280', '&:hover': { bgcolor: '#fef2f2', color: '#ef4444' } }}>
+          Sign out
+        </MenuItem>
       </Menu>
     </Box>
   );

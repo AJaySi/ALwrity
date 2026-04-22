@@ -49,6 +49,7 @@ export interface SubscriptionLimits {
   plan_name: string;
   tier: 'free' | 'basic' | 'pro' | 'enterprise';
   limits: {
+    ai_text_generation_calls: number;
     gemini_calls: number;
     openai_calls: number;
     anthropic_calls: number;
@@ -56,10 +57,12 @@ export interface SubscriptionLimits {
     tavily_calls: number;
     serper_calls: number;
     metaphor_calls: number;
+    exa_calls: number;
     firecrawl_calls: number;
     stability_calls: number;
     video_calls: number;
     image_edit_calls: number;
+    audio_calls: number;
     gemini_tokens: number;
     openai_tokens: number;
     anthropic_tokens: number;
@@ -207,6 +210,7 @@ export const SubscriptionLimitsSchema = z.object({
   plan_name: z.string(),
   tier: z.enum(['free', 'basic', 'pro', 'enterprise']),
   limits: z.object({
+    ai_text_generation_calls: z.number().optional().default(0),
     gemini_calls: z.number(),
     openai_calls: z.number(),
     anthropic_calls: z.number(),
@@ -214,10 +218,12 @@ export const SubscriptionLimitsSchema = z.object({
     tavily_calls: z.number(),
     serper_calls: z.number(),
     metaphor_calls: z.number(),
+    exa_calls: z.number().optional().default(0),
     firecrawl_calls: z.number(),
     stability_calls: z.number(),
     video_calls: z.number().optional().default(0),
     image_edit_calls: z.number().optional().default(0),
+    audio_calls: z.number().optional().default(0),
     gemini_tokens: z.number(),
     openai_tokens: z.number(),
     anthropic_tokens: z.number(),

@@ -80,6 +80,16 @@ export const useSubscriptionGuard = (options: SubscriptionGuardOptions = {}) => 
         return subscription.limits.firecrawl_calls;
       case 'stability_calls':
         return subscription.limits.stability_calls;
+      case 'video_calls':
+        return subscription.limits.video_calls || 0;
+      case 'image_edit_calls':
+        return subscription.limits.image_edit_calls || 0;
+      case 'audio_calls':
+        return subscription.limits.audio_calls || 0;
+      case 'ai_text_generation_calls':
+        return subscription.limits.ai_text_generation_calls || 0;
+      case 'exa_calls':
+        return subscription.limits.exa_calls || 0;
       case 'monthly_cost':
         return subscription.limits.monthly_cost;
       default:

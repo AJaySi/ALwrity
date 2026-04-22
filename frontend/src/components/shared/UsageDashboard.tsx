@@ -44,6 +44,7 @@ interface UsageStats {
 
 interface UsageLimits {
   limits: {
+    ai_text_generation_calls: number;
     gemini_calls: number;
     openai_calls: number;
     anthropic_calls: number;
@@ -51,8 +52,12 @@ interface UsageLimits {
     tavily_calls: number;
     serper_calls: number;
     metaphor_calls: number;
+    exa_calls: number;
     firecrawl_calls: number;
     stability_calls: number;
+    video_calls: number;
+    image_edit_calls: number;
+    audio_calls: number;
     monthly_cost: number;
   };
 }
@@ -169,11 +174,11 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
   };
 
   const getUsageColor = (current: number, max: number) => {
-    if (max === 0) return '#757575';
+    if (max === 0) return '#9ca3af';
     const percentage = (current / max) * 100;
-    if (percentage >= 100) return '#d32f2f'; // error
-    if (percentage >= 80) return '#ed6c02'; // warning
-    return '#2e7d32'; // success
+    if (percentage >= 100) return '#dc2626';
+    if (percentage >= 80) return '#ea580c';
+    return '#16a34a';
   };
 
   const getProviderDisplayName = (provider: string) => {
@@ -237,6 +242,35 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     const monthlyLimit = dashboardData?.limits?.limits?.monthly_cost || 0;
     const usagePercentage = monthlyLimit > 0 ? (totalCost / monthlyLimit) * 100 : 0;
 
+    // Build per-category usage summaries from provider_breakdown and limits
+    const providerBreakdown = usageData.provider_breakdown || {};
+    const providerLimits = dashboardData?.limits?.limits || {};
+
+    // Aggregate AI text calls (gemini + openai + anthropic + mistral)
+    const aiCalls = (providerBreakdown.gemini?.calls || 0) + (providerBreakdown.openai?.calls || 0) + (providerBreakdown.anthropic?.calls || 0) + (providerBreakdown.mistral?.calls || 0) + (providerBreakdown.huggingface?.calls || 0) + (providerBreakdown.wavespeed?.calls || 0);
+    const aiCallLimit = providerLimits.ai_text_generation_calls || providerLimits.gemini_calls || 0;
+
+    // Image calls (stability + wavespeed image)
+    const imageCalls = (providerBreakdown.stability?.calls || 0) + (providerBreakdown.image_edit?.calls || 0);
+    const imageCallLimit = providerLimits.stability_calls || 0;
+
+    // Audio calls
+    const audioCalls = providerBreakdown.audio?.calls || 0;
+    const audioCallLimit = providerLimits.audio_calls || 0;
+
+    // Video calls
+    const videoCalls = providerBreakdown.video?.calls || 0;
+    const videoCallLimit = providerLimits.video_calls || 0;
+
+    // Research calls (exa + tavily + serper + firecrawl)
+    const researchCalls = (providerBreakdown.exa?.calls || 0) + (providerBreakdown.tavily?.calls || 0) + (providerBreakdown.serper?.calls || 0) + (providerBreakdown.firecrawl?.calls || 0);
+    const researchCallLimit = (providerLimits.exa_calls || 0) + (providerLimits.tavily_calls || 0) + (providerLimits.serper_calls || 0) + (providerLimits.firecrawl_calls || 0);
+
+    const formatLimit = (used: number, limit: number) => {
+      if (limit === 0) return `${used} / ∞`;
+      return `${used} / ${limit}`;
+    };
+
     return (
       <Box sx={{ width: '100%' }}>
         {/* Priority 2 Alert Banner (Usage limits) */}
@@ -261,10 +295,10 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
               sx={{ 
                 fontSize: '0.875rem', 
                 fontWeight: 500,
-                color: 'text.secondary',
+                color: '#374151',
                 '& .MuiSelect-select': { py: 0.5 }
               }}
-              IconComponent={() => <CalendarMonth sx={{ fontSize: 16, color: 'action.active', ml: 0.5 }} />}
+              IconComponent={() => <CalendarMonth sx={{ fontSize: 16, color: '#6b7280', ml: 0.5 }} />}
             >
               {availablePeriods.map((period) => (
                 <MenuItem key={period} value={period} dense>
@@ -295,8 +329,8 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             size="small"
             variant="outlined"
             sx={{
-              bgcolor: `${getUsageColor(totalCost, monthlyLimit)}20`,
-              borderColor: getUsageColor(totalCost, monthlyLimit),
+              bgcolor: `${getUsageColor(totalCost, monthlyLimit)}10`,
+              borderColor: `${getUsageColor(totalCost, monthlyLimit)}60`,
               color: getUsageColor(totalCost, monthlyLimit),
               fontWeight: 600,
               '& .MuiChip-icon': {
@@ -315,14 +349,14 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
               width: 40,
               height: 6,
               borderRadius: 3,
-              bgcolor: 'rgba(0,0,0,0.1)',
+              bgcolor: '#e5e7eb',
               '& .MuiLinearProgress-bar': {
                 bgcolor: getUsageColor(totalCost, monthlyLimit),
                 borderRadius: 3
               }
             }}
           />
-          <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600 }}>
+          <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#374151' }}>
             {usagePercentage.toFixed(0)}%
           </Typography>
         </Box>
@@ -335,7 +369,8 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             disabled={loading}
             sx={{ 
               p: 0.5,
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' }
+              color: '#6b7280',
+              '&:hover': { bgcolor: '#f3f4f6' }
             }}
           >
             <Refresh sx={{ fontSize: 16 }} />
@@ -349,12 +384,93 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
             onClick={handleMenuOpen}
             sx={{ 
               p: 0.5,
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' }
+              color: '#6b7280',
+              '&:hover': { bgcolor: '#f3f4f6' }
             }}
           >
             <MoreVert sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>
+        </Box>
+
+        {/* Per-Provider Usage Breakdown */}
+        <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          {aiCallLimit > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 500, color: '#6b7280', minWidth: 60 }}>AI Calls</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, ml: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={aiCallLimit > 0 ? Math.min((aiCalls / aiCallLimit) * 100, 100) : 0}
+                  sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(aiCalls, aiCallLimit), borderRadius: 2 } }}
+                />
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(aiCalls, aiCallLimit), minWidth: 55, textAlign: 'right' }}>
+                  {formatLimit(aiCalls, aiCallLimit)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+          {imageCallLimit > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 500, color: '#6b7280', minWidth: 60 }}>Images</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, ml: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={imageCallLimit > 0 ? Math.min((imageCalls / imageCallLimit) * 100, 100) : 0}
+                  sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(imageCalls, imageCallLimit), borderRadius: 2 } }}
+                />
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(imageCalls, imageCallLimit), minWidth: 55, textAlign: 'right' }}>
+                  {formatLimit(imageCalls, imageCallLimit)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+          {audioCallLimit > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 500, color: '#6b7280', minWidth: 60 }}>Audio</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, ml: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={audioCallLimit > 0 ? Math.min((audioCalls / audioCallLimit) * 100, 100) : 0}
+                  sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(audioCalls, audioCallLimit), borderRadius: 2 } }}
+                />
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(audioCalls, audioCallLimit), minWidth: 55, textAlign: 'right' }}>
+                  {formatLimit(audioCalls, audioCallLimit)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+          {videoCallLimit > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 500, color: '#6b7280', minWidth: 60 }}>Video</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, ml: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={videoCallLimit > 0 ? Math.min((videoCalls / videoCallLimit) * 100, 100) : 0}
+                  sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(videoCalls, videoCallLimit), borderRadius: 2 } }}
+                />
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(videoCalls, videoCallLimit), minWidth: 55, textAlign: 'right' }}>
+                  {formatLimit(videoCalls, videoCallLimit)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+          {researchCallLimit > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 500, color: '#6b7280', minWidth: 60 }}>Research</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, ml: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={researchCallLimit > 0 ? Math.min((researchCalls / researchCallLimit) * 100, 100) : 0}
+                  sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(researchCalls, researchCallLimit), borderRadius: 2 } }}
+                />
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(researchCalls, researchCallLimit), minWidth: 55, textAlign: 'right' }}>
+                  {formatLimit(researchCalls, researchCallLimit)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </Box>
 
         <Menu
           anchorEl={anchorEl}
@@ -362,24 +478,31 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
           onClose={handleMenuClose}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
           transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          PaperProps={{
+            sx: {
+              bgcolor: '#ffffff',
+              border: '1px solid rgba(0,0,0,0.08)',
+              borderRadius: 2,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+            }
+          }}
         >
-          <MenuItem onClick={handleViewFullDashboard}>
+          <MenuItem onClick={handleViewFullDashboard} sx={{ color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
             <Dashboard sx={{ mr: 1, fontSize: 18 }} />
             View Full Dashboard
           </MenuItem>
-          <MenuItem onClick={handleRefresh}>
+          <MenuItem onClick={handleRefresh} sx={{ color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
             <Refresh sx={{ mr: 1, fontSize: 18 }} />
             Refresh Data
           </MenuItem>
           {lastUpdated && (
             <Box sx={{ px: 2, py: 1 }}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: '#9ca3af' }}>
                 Last updated: {lastUpdated.toLocaleTimeString()}
               </Typography>
             </Box>
           )}
         </Menu>
-        </Box>
       </Box>
     );
   }

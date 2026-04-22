@@ -68,16 +68,16 @@ export const UsageLimitRings: React.FC<UsageLimitRingsProps> = ({
     {
       label: 'AI Calls',
       used: currentUsage.total_calls,
-      limit: limits.limits.gemini_calls || limits.limits.openai_calls || 50,
+      limit: limits.limits.ai_text_generation_calls || limits.limits.gemini_calls || limits.limits.openai_calls || 50,
       color: '#3b82f6',
-      unlimited: false,
+      unlimited: limits.limits.ai_text_generation_calls === 0 && limits.limits.gemini_calls === 0 && limits.limits.openai_calls === 0,
     },
     {
       label: 'Images',
       used: imageCalls,
       limit: limits.limits.stability_calls || 50,
       color: '#a855f7',
-      unlimited: false,
+      unlimited: limits.limits.stability_calls === 0,
     },
     {
       label: 'Videos',
@@ -85,6 +85,13 @@ export const UsageLimitRings: React.FC<UsageLimitRingsProps> = ({
       limit: limits.limits.video_calls,
       color: '#ec4899',
       unlimited: limits.limits.video_calls === 0,
+    },
+    {
+      label: 'Audio',
+      used: currentUsage.provider_breakdown?.audio?.calls ?? 0,
+      limit: limits.limits.audio_calls,
+      color: '#22c55e',
+      unlimited: limits.limits.audio_calls === 0,
     }
   ].filter(item => item.unlimited || item.limit > 0);
 

@@ -14,7 +14,7 @@ interface PrimaryButtonProps {
   size?: "small" | "medium" | "large";
 }
 
-export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
+export const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonProps>(({
   children,
   onClick,
   disabled = false,
@@ -25,7 +25,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   ariaLabel,
   sx,
   size = "medium",
-}) => {
+}, ref) => {
   const sizeStyles = {
     small: { px: 1.5, py: 0.5, fontSize: "0.75rem" },
     medium: { px: 3, py: 1, fontSize: "0.875rem" },
@@ -34,6 +34,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 
   const button = (
     <Button
+      ref={ref}
       variant="contained"
       onClick={onClick}
       disabled={disabled || loading}
@@ -62,10 +63,12 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 
   return tooltip ? (
     <Tooltip title={tooltip} arrow>
-      <span>{button}</span>
+      {button}
     </Tooltip>
   ) : (
     button
   );
-};
+});
+
+PrimaryButton.displayName = "PrimaryButton";
 
