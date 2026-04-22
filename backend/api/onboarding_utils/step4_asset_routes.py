@@ -540,7 +540,10 @@ async def create_voice_clone(
         preview_url = None
         preview_mime_type = "audio/wav"
         actual_filename = None  # Default if preview save fails
-        if preview_audio_bytes:
+        
+        logger.warning(f"[VoiceClone] qwen3 result preview_audio_bytes type: {type(preview_audio_bytes)}, length: {len(preview_audio_bytes) if preview_audio_bytes else 0}")
+        
+        if preview_audio_bytes and len(preview_audio_bytes) > 0:
             from utils.media_utils import detect_audio_format, ensure_audio_extension
             
             # Log first few bytes for debugging
@@ -581,7 +584,9 @@ async def create_voice_clone(
             
         # 4. Save to Asset Library
         # Use the preview file (with corrected .wav extension) as the main asset file
-        stored_filename = actual_filename if preview_audio_bytes and saved_preview_path else filename
+        has_valid_preview = preview_audio_bytes and len(preview_audio_bytes) > 0 and saved_preview_path
+        stored_filename = actual_filename if has_valid_preview else filename
+        logger.warning(f"[VoiceClone] stored_filename: {stored_filename}, has_valid_preview: {has_valid_preview}")
         asset_id = save_asset_to_library(
             db=db,
             user_id=user_id,
