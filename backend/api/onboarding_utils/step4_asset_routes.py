@@ -87,7 +87,7 @@ async def get_latest_avatar(
     try:
         user_id = _extract_user_id(current_user)
         
-        logger.info(f"[latest-avatar] Looking for avatar for user_id: {user_id}")
+        logger.warning(f"[latest-avatar] Looking for avatar for user_id: {user_id}")
         
         # Search for assets that are either:
         # 1. Saved with source_module=BRAND_AVATAR_GENERATOR (new)
@@ -103,7 +103,7 @@ async def get_latest_avatar(
             ])
         ).order_by(desc(ContentAsset.created_at)).limit(50).all()
         
-        logger.info(f"[latest-avatar] Found {len(candidates)} candidate(s)")
+        logger.warning(f"[latest-avatar] Found {len(candidates)} candidate(s)")
         
         asset = None
         for candidate in candidates:
@@ -185,7 +185,7 @@ async def generate_avatar(
     try:
         user_id = _extract_user_id(current_user)
         
-        logger.info(f"Generating avatar for user {user_id} with prompt: {request.prompt}")
+        logger.warning(f"Generating avatar for user {user_id} with prompt: {request.prompt}")
         
         # 1. Generate Image
         result = await generate_image_with_provider(
@@ -288,7 +288,7 @@ async def enhance_prompt_route(
     """Enhance a simple prompt into a detailed midjourney-style prompt."""
     try:
         user_id = _extract_user_id(current_user)
-        logger.info(f"Enhancing prompt for user {user_id}: {request.prompt}")
+        logger.warning(f"Enhancing prompt for user {user_id}: {request.prompt}")
         
         enhanced_prompt = await enhance_image_prompt(request.prompt, user_id=user_id)
         
@@ -312,7 +312,7 @@ async def create_variation_route(
     """Generate a variation of an existing avatar."""
     try:
         user_id = _extract_user_id(current_user)
-        logger.info(f"Creating variation for user {user_id} with prompt: {prompt}")
+        logger.warning(f"Creating variation for user {user_id} with prompt: {prompt}")
         
         # Read file
         file_content = await file.read()
@@ -387,7 +387,7 @@ async def enhance_avatar_route(
     """Enhance/Upscale an existing avatar."""
     try:
         user_id = _extract_user_id(current_user)
-        logger.info(f"Enhancing avatar for user {user_id}")
+        logger.warning(f"Enhancing avatar for user {user_id}")
         
         # Read file
         file_content = await file.read()
@@ -492,7 +492,7 @@ async def create_voice_clone(
             random_suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
             custom_voice_id = f"vc_{random_suffix}"
             
-            logger.info(f"Cloning voice with Minimax, ID: {custom_voice_id}")
+            logger.warning(f"Cloning voice with Minimax, ID: {custom_voice_id}")
             
             # Run blocking call in executor
             result = await loop.run_in_executor(
@@ -507,7 +507,7 @@ async def create_voice_clone(
             preview_audio_bytes = result.preview_audio_bytes
             
         elif engine.lower() == "cosyvoice":
-            logger.info("Cloning voice with CosyVoice")
+            logger.warning("Cloning voice with CosyVoice")
             result = await loop.run_in_executor(
                 None,
                 lambda: cosyvoice_voice_clone(
@@ -522,7 +522,7 @@ async def create_voice_clone(
             custom_voice_id = f"vc_cosy_{asset_uuid}"
             
         else: # qwen3 (default)
-            logger.info("Cloning voice with Qwen3")
+            logger.warning("Cloning voice with Qwen3")
             result = await loop.run_in_executor(
                 None,
                 lambda: qwen3_voice_clone(
@@ -558,9 +558,9 @@ async def create_voice_clone(
             logger.warning(f"[VoiceClone] Preview filename (corrected ext): {preview_filename}")
             
             user_voice_dir = get_user_workspace(user_id) / "assets" / "voice_samples"
-            logger.info(f"[VoiceClone] user_id: {user_id}")
-            logger.info(f"[VoiceClone] user_voice_dir: {user_voice_dir}")
-            logger.info(f"[VoiceClone] directory exists: {user_voice_dir.exists()}")
+            logger.warning(f"[VoiceClone] user_id: {user_id}")
+            logger.warning(f"[VoiceClone] user_voice_dir: {user_voice_dir}")
+            logger.warning(f"[VoiceClone] directory exists: {user_voice_dir.exists()}")
             saved_preview_path, error = save_file_safely(preview_audio_bytes, user_voice_dir, preview_filename)
             
             if not error and saved_preview_path:
@@ -623,7 +623,7 @@ async def create_voice_design(
     """Create a voice from text description (Voice Design)."""
     try:
         user_id = _extract_user_id(current_user)
-        logger.info(f"Designing voice for user {user_id}")
+        logger.warning(f"Designing voice for user {user_id}")
         
         loop = asyncio.get_event_loop()
         
@@ -640,7 +640,7 @@ async def create_voice_design(
         # Save the result to a file with correct extension based on content
         from utils.media_utils import detect_audio_format, ensure_audio_extension
         detected_fmt, mime_type = detect_audio_format(result.preview_audio_bytes)
-        logger.info(f"[VoiceDesign] Detected audio format: {detected_fmt} ({mime_type})")
+        logger.warning(f"[VoiceDesign] Detected audio format: {detected_fmt} ({mime_type})")
 
         filename = generate_unique_filename("voice_design_preview", detected_fmt)
         filename = ensure_audio_extension(filename, result.preview_audio_bytes)

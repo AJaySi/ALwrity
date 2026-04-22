@@ -195,6 +195,8 @@ export const createVoiceClone = async (
   params: VoiceCloneParams
 ): Promise<VoiceCloneResponse> => {
   try {
+    console.log('[VoiceClone] Creating voice clone with engine:', params.engine);
+    
     const formData = new FormData();
     formData.append('file', params.audioFile);
     formData.append('engine', params.engine);
@@ -214,14 +216,16 @@ export const createVoiceClone = async (
     // We might want to remove this if backend doesn't need it
     formData.append('voice_name', 'My Voice Clone'); 
 
+    console.log('[VoiceClone] Sending request to /onboarding/assets/create-voice-clone');
     const response = await apiClient.post('/onboarding/assets/create-voice-clone', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
+    console.log('[VoiceClone] Response received:', response.data);
     return response.data;
   } catch (error: any) {
-    console.error('Voice cloning error:', error);
+    console.error('[VoiceClone] Error creating voice clone:', error.response?.data || error.message);
     return {
       success: false,
       error: error.response?.data?.detail || 'Failed to create voice clone'

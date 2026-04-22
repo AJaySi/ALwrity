@@ -100,7 +100,9 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
   const [authenticatedAudioUrl, setAuthenticatedAudioUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('[VoiceClone] resultAudioUrl changed:', resultAudioUrl);
     if (!resultAudioUrl || !resultAudioUrl.includes('/api/')) {
+      console.log('[VoiceClone] Using resultAudioUrl directly (no API auth needed)');
       setAuthenticatedAudioUrl(resultAudioUrl);
       return;
     }
@@ -110,14 +112,22 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
         const tokenGetter = getAuthTokenGetter();
         if (tokenGetter) {
           const token = await tokenGetter();
+          console.log('[VoiceClone] Got token:', token ? 'yes' : 'no');
           if (token && !cancelled) {
             const sep = resultAudioUrl.includes('?') ? '&' : '?';
-            setAuthenticatedAudioUrl(`${resultAudioUrl}${sep}token=${encodeURIComponent(token)}`);
+            const authUrl = `${resultAudioUrl}${sep}token=${encodeURIComponent(token)}`;
+            console.log('[VoiceClone] Setting authenticatedAudioUrl:', authUrl);
+            setAuthenticatedAudioUrl(authUrl);
             return;
           }
         }
-      } catch { /* fallback to unauthenticated */ }
-      if (!cancelled) setAuthenticatedAudioUrl(resultAudioUrl);
+      } catch (e) { 
+        console.warn('[VoiceClone] Token fetch error:', e); 
+      }
+      if (!cancelled) {
+        console.log('[VoiceClone] Falling back to unauthenticated URL');
+        setAuthenticatedAudioUrl(resultAudioUrl);
+      }
     })();
     return () => { cancelled = true; };
   }, [resultAudioUrl]);
@@ -1123,8 +1133,13 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                           src={authenticatedAudioUrl || undefined}
                           preload="auto"
                           style={{ width: '100%', height: '28px' }}
+                          onLoadedMetadata={(e) => {
+                            console.log('[VoiceClone] Audio duration loaded:', (e.target as HTMLAudioElement).duration);
+                          }}
                           onError={(e) => {
-                            console.error('[VoiceClone] Generated audio playback error:', e);
+                            const audioEl = e.target as HTMLAudioElement;
+                            const errorMsg = audioEl?.error ? `code=${audioEl.error.code}, message=${audioEl.error.message}` : 'unknown';
+                            console.error('[VoiceClone] Generated audio playback error:', errorMsg, 'URL:', authenticatedAudioUrl);
                           }}
                         />
                         <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
