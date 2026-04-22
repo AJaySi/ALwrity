@@ -481,7 +481,9 @@ class SpeechGenerator:
             raise HTTPException(status_code=502, detail="WaveSpeed Qwen3 voice clone returned no outputs")
 
         audio_url = self._extract_audio_url(outputs)
-        return self._download_audio(audio_url, timeout)
+        downloaded_audio = self._download_audio(audio_url, timeout)
+        logger.warning(f"[WaveSpeed] qwen3_voice_clone downloaded {len(downloaded_audio)} bytes, first_16hex: {downloaded_audio[:16].hex()}")
+        return downloaded_audio
     
     def cosyvoice_voice_clone(
         self,
