@@ -541,13 +541,21 @@ async def create_voice_clone(
         preview_mime_type = "audio/wav"
         if preview_audio_bytes:
             from utils.media_utils import detect_audio_format, ensure_audio_extension
+            
+            # Log first few bytes for debugging
+            first_bytes = preview_audio_bytes[:16].hex()
+            logger.warning(f"[VoiceClone] Preview audio first 16 bytes (hex): {first_bytes}")
+            
             detected_fmt, preview_mime_type = detect_audio_format(preview_audio_bytes)
-            logger.info(f"[VoiceClone] Detected preview audio format: {detected_fmt} ({preview_mime_type}), {len(preview_audio_bytes)} bytes")
+            logger.warning(f"[VoiceClone] Detected preview audio format: {detected_fmt} ({preview_mime_type}), {len(preview_audio_bytes)} bytes")
 
             # Build filename with correct extension based on actual content format
-            preview_filename = f"preview_{Path(filename).stem}"
+            original_stem = Path(filename).stem
+            preview_filename = f"preview_{original_stem}"
+            logger.warning(f"[VoiceClone] Original filename stem: {original_stem}, preview before: {preview_filename}")
+            
             preview_filename = ensure_audio_extension(preview_filename, preview_audio_bytes)
-            logger.info(f"[VoiceClone] Preview filename (corrected ext): {preview_filename}")
+            logger.warning(f"[VoiceClone] Preview filename (corrected ext): {preview_filename}")
             
             user_voice_dir = get_user_workspace(user_id) / "assets" / "voice_samples"
             logger.info(f"[VoiceClone] user_id: {user_id}")
