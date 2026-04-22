@@ -43,7 +43,7 @@ import {
   Category,
 } from "@mui/icons-material";
 import { getLatestVoiceClone, VoiceCloneResponse } from "../../api/brandAssets";
-import { getAuthTokenGetter } from "../../api/client";
+import { getAuthTokenGetter, getApiUrl } from "../../api/client";
 import { VoiceAvatarPlaceholder } from "../OnboardingWizard/PersonalizationStep/components/VoiceAvatarPlaceholder";
 
 export type VoiceOption = {
@@ -250,6 +250,10 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
     // Append auth token for endpoints that require it (e.g. /api/assets/)
     let previewUrl = voice.previewUrl;
+    // Convert relative URLs to absolute (pointing to backend, not Vercel)
+    if (previewUrl.startsWith('/')) {
+      previewUrl = `${getApiUrl()}${previewUrl}`;
+    }
     try {
       const tokenGetter = getAuthTokenGetter();
       if (tokenGetter) {

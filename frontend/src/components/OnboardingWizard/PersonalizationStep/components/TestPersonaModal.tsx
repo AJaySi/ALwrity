@@ -10,7 +10,7 @@ import {
 import { createAvatarVideoAsync } from '../../../../api/videoStudioApi';
 import { useVideoGenerationPolling } from '../../../../hooks/usePolling';
 import { fetchMediaBlobUrl } from '../../../../utils/fetchMediaBlobUrl';
-import { getAuthTokenGetter } from '../../../../api/client';
+import { getAuthTokenGetter, getApiUrl } from '../../../../api/client';
 import { VideoCameraFront, SkipNext, PlayArrow, InfoOutlined, Close as CloseIcon, HelpOutline, Refresh, RestartAlt, Undo } from '@mui/icons-material';
 import { VideoGenerationLoader } from '../../../shared/VideoGenerationLoader';
 import { OperationButton } from '../../../shared/OperationButton';
@@ -49,8 +49,9 @@ export const TestPersonaModal: React.FC<TestPersonaModalProps> = ({
         if (tokenGetter) {
           const token = await tokenGetter();
           if (token && !cancelled) {
-            const sep = voiceUrl.includes('?') ? '&' : '?';
-            setAuthenticatedVoiceUrl(`${voiceUrl}${sep}token=${encodeURIComponent(token)}`);
+            const absoluteUrl = voiceUrl.startsWith('/') ? `${getApiUrl()}${voiceUrl}` : voiceUrl;
+            const sep = absoluteUrl.includes('?') ? '&' : '?';
+            setAuthenticatedVoiceUrl(`${absoluteUrl}${sep}token=${encodeURIComponent(token)}`);
             return;
           }
         }

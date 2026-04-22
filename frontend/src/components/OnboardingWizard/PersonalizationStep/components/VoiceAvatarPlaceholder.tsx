@@ -3,7 +3,7 @@ import { Box, Typography, Paper, Stack, Button, Alert, TextField, CircularProgre
 import { keyframes } from '@mui/system';
 import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo, Headphones, Article, VideoLibrary, TrendingUp, CheckCircle, RecordVoiceOver, Settings } from '@mui/icons-material';
 import { createVoiceClone, createVoiceDesign, getLatestVoiceClone, setBrandVoice } from '../../../../api/brandAssets';
-import { getAuthTokenGetter } from '../../../../api/client';
+import { getAuthTokenGetter, getApiUrl } from '../../../../api/client';
 import { OperationButton } from '../../../shared/OperationButton';
 
 const pulse = keyframes`
@@ -114,8 +114,9 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
           const token = await tokenGetter();
           console.log('[VoiceClone] Got token:', token ? 'yes' : 'no');
           if (token && !cancelled) {
-            const sep = resultAudioUrl.includes('?') ? '&' : '?';
-            const authUrl = `${resultAudioUrl}${sep}token=${encodeURIComponent(token)}`;
+            const absoluteUrl = resultAudioUrl.startsWith('/') ? `${getApiUrl()}${resultAudioUrl}` : resultAudioUrl;
+            const sep = absoluteUrl.includes('?') ? '&' : '?';
+            const authUrl = `${absoluteUrl}${sep}token=${encodeURIComponent(token)}`;
             console.log('[VoiceClone] Setting authenticatedAudioUrl:', authUrl);
             setAuthenticatedAudioUrl(authUrl);
             return;
