@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Iterable
+
+from loguru import logger
 
 _SAFE_CHARS = {"-", "_"}
 
@@ -16,9 +19,46 @@ def _sanitize_segment(value: str, fallback: str) -> str:
     return cleaned or fallback
 
 
+def find_repo_root() -> Path:
+    """Find the project repository root directory.
+
+    Resolution order:
+    1. ALWRITY_ROOT_DIR environment variable (explicit override for production)
+    2. Deterministic path from this file (storage_paths.py is at utils/)
+    3. Walk-up fallback looking for a 'backend/' directory at project root
+
+    Returns an absolute, resolved Path.
+    """
+    env_root = os.environ.get("ALWRITY_ROOT_DIR")
+    if env_root:
+        root = Path(env_root).resolve()
+        if root.is_dir():
+            return root
+
+    # storage_paths.py is at backend/utils/storage_paths.py
+    # project root is parents[2] (utils -> backend -> root)
+    this_file = Path(__file__).resolve()
+    candidate = this_file.parents[2]
+
+    if (candidate / "backend").is_dir():
+        return candidate
+
+    # Walk-up fallback for unusual deployments
+    current = this_file.parent
+    for _ in range(10):
+        if (current / "backend").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    return this_file.parents[2]
+
+
 def get_repo_root() -> Path:
     """Return repository root as an absolute canonical path."""
-    return Path(__file__).resolve().parents[2]
+    return find_repo_root()
 
 
 def get_workspace_root() -> Path:
@@ -67,3 +107,7 @@ def get_legacy_video_studio_upload_dirs() -> list[Path]:
         (repo_root / "backend" / "data" / "video_studio" / "uploads").resolve(),
         (repo_root / "backend" / "backend" / "data" / "video_studio" / "uploads").resolve(),
     ]
+
+
+# Log resolved root at import time for production debugging
+logger.info(f"[StoragePaths] Repository root resolved to: {get_repo_root()}")

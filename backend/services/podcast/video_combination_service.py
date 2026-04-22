@@ -17,20 +17,26 @@ from loguru import logger
 class PodcastVideoCombinationService:
     """Service for combining podcast scene videos into final episodes."""
     
-    def __init__(self, output_dir: Optional[str] = None):
+    def __init__(self, output_dir: Optional[str] = None, user_id: Optional[str] = None):
         """
         Initialize the podcast video combination service.
         
         Parameters:
             output_dir (str, optional): Directory to save combined videos.
-                                      Defaults to 'backend/podcast_videos/Final_Videos' if not provided.
+            user_id (str, optional): User ID for workspace-scoped output.
+        
+        Either output_dir or user_id must be provided for workspace isolation.
         """
         if output_dir:
             self.output_dir = Path(output_dir)
+        elif user_id:
+            from api.podcast.constants import get_podcast_media_dir
+            self.output_dir = get_podcast_media_dir("video", user_id, ensure_exists=True) / "Final_Videos"
         else:
-            # Default to root/data/media/podcast_videos/Final_Videos directory
-            base_dir = Path(__file__).resolve().parents[3]
-            self.output_dir = base_dir / "data" / "media" / "podcast_videos" / "Final_Videos"
+            from utils.storage_paths import get_user_workspace, sanitize_user_id
+            logger.warning("[PodcastVideoCombination] No output_dir or user_id provided — using default workspace. This should not happen in production.")
+            default_user = sanitize_user_id("alwrity")
+            self.output_dir = get_user_workspace(default_user) / "media" / "podcast_videos" / "Final_Videos"
         
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"[PodcastVideoCombination] Initialized with output directory: {self.output_dir}")

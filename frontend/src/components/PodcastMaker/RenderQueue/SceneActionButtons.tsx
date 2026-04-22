@@ -12,7 +12,8 @@ import {
 } from "@mui/icons-material";
 import { Scene, Job } from "../types";
 import { PrimaryButton, SecondaryButton } from "../ui";
-import { Typography } from "@mui/material"; // Import Typography
+import { Typography } from "@mui/material";
+import { OperationButton } from "../../shared/OperationButton";
 
 interface SceneActionButtonsProps {
   scene: Scene;
@@ -94,14 +95,37 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
         >
           Preview Sample
         </SecondaryButton>
-        <PrimaryButton
+        <OperationButton
+          operation={{
+            provider: "audio",
+            model: "minimax/speech-02-hd",
+            tokens_requested: scene.lines.reduce((sum, l) => sum + l.text.length, 0),
+            operation_type: "tts_full_render",
+            actual_provider_name: "wavespeed",
+          }}
+          label="Generate Audio"
+          variant="contained"
+          size="medium"
+          startIcon={<PlayArrowIcon />}
+          showCost={true}
+          checkOnHover={true}
+          checkOnMount={false}
           onClick={() => onRender(scene.id, "full")}
           disabled={isBusy}
-          startIcon={<PlayArrowIcon />}
-          tooltip="Generate the complete, production-ready audio for this scene"
-        >
-          Generate Audio
-        </PrimaryButton>
+          sx={{
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            color: "white",
+            fontWeight: 600,
+            textTransform: "none",
+            "&:hover": {
+              background: "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+            },
+            "&:disabled": {
+              background: alpha("#9ca3af", 0.3),
+              color: alpha("#fff", 0.5),
+            },
+          }}
+        />
       </Stack>
     );
   }
@@ -221,58 +245,77 @@ export const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
       </Tooltip>
       
       {/* Generate/Regenerate Image - ALWAYS visible if we have audio */}
-      <PrimaryButton
+      <OperationButton
+        operation={{
+          provider: "stability",
+          operation_type: "image_generation",
+          actual_provider_name: "wavespeed",
+        }}
+        label={isGeneratingImage ? "Generating..." : hasImage ? "Regenerate Image" : "Generate Image"}
+        variant="contained"
+        size="medium"
+        startIcon={<ImageIcon />}
+        showCost={true}
+        checkOnHover={true}
+        checkOnMount={false}
         onClick={() => onImageGenerate(scene.id)}
         disabled={isGeneratingImage}
         loading={isGeneratingImage}
-        startIcon={<ImageIcon />}
-        tooltip={
-          isGeneratingImage
-            ? "Generating image..."
-            : hasImage
-            ? "Regenerate image for this scene"
-            : "Generate image for video (optional)"
-        }
-        sx={{ 
+        sx={{
           minWidth: 160,
-          // Use secondary style if image exists (to de-emphasize), primary if needed
-          background: hasImage ? alpha("#667eea", 0.1) : undefined,
-          color: hasImage ? "#667eea" : undefined,
+          background: hasImage ? alpha("#667eea", 0.1) : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          color: hasImage ? "#667eea" : "white",
           border: hasImage ? "1px solid rgba(102,126,234,0.3)" : undefined,
+          fontWeight: 600,
+          textTransform: "none",
           "&:hover": {
-             background: hasImage ? alpha("#667eea", 0.2) : undefined,
-          }
+            background: hasImage ? alpha("#667eea", 0.2) : "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+          },
+          "&:disabled": {
+            background: alpha("#9ca3af", 0.3),
+            color: alpha("#fff", 0.5),
+          },
         }}
-      >
-        {isGeneratingImage ? "Generating..." : hasImage ? "Regenerate Image" : "Generate Image"}
-      </PrimaryButton>
+      />
 
       {/* Generate Video - ALWAYS visible if we have audio */}
-      <PrimaryButton
-        onClick={() => {
-          onVideoRender(scene.id);
+      <OperationButton
+        operation={{
+          provider: "video",
+          model: "kling-v2.5-turbo-5s",
+          operation_type: "video_generation",
+          actual_provider_name: "wavespeed",
         }}
-        disabled={isBusy || videoInProgress || !hasImage}
-        startIcon={<VideocamIcon />}
-        tooltip={
-          !hasImage
-            ? "Generate an image first to create video"
-            : videoInProgress
-            ? "A video generation is already running. Please wait..."
-            : isBusy
-            ? "Another operation in progress"
-            : hasVideo 
-            ? "Regenerate video"
-            : "Generate video for this scene"
+        label={
+          videoInProgress && isCurrentVideo
+            ? "Generating Video..."
+            : hasVideo
+            ? "Regenerate Video"
+            : "Generate Video"
         }
-        sx={{ minWidth: 180 }}
-      >
-        {videoInProgress && isCurrentVideo
-          ? "Generating Video..."
-          : hasVideo
-          ? "Regenerate Video"
-          : "Generate Video"}
-      </PrimaryButton>
+        variant="contained"
+        size="medium"
+        startIcon={<VideocamIcon />}
+        showCost={true}
+        checkOnHover={true}
+        checkOnMount={false}
+        onClick={() => onVideoRender(scene.id)}
+        disabled={isBusy || videoInProgress || !hasImage}
+        sx={{
+          minWidth: 180,
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          color: "white",
+          fontWeight: 600,
+          textTransform: "none",
+          "&:hover": {
+            background: "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+          },
+          "&:disabled": {
+            background: alpha("#9ca3af", 0.3),
+            color: alpha("#fff", 0.5),
+          },
+        }}
+      />
 
       {/* Download Video */}
       {hasVideo && job?.videoUrl && (

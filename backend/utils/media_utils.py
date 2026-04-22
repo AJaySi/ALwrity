@@ -3,6 +3,10 @@ Media Utility Functions
 
 Centralized helper functions for loading and managing media assets across modules.
 Promotes reuse between Podcast, YouTube, and other media-heavy modules.
+
+DEPRECATED: The global DATA_MEDIA_DIR paths below are legacy and will be removed.
+New code should use workspace-scoped paths via utils.storage_paths or module-specific
+resolvers (e.g., api.podcast.constants.get_podcast_media_dir).
 """
 
 import logging
@@ -12,16 +16,19 @@ from typing import Optional, List
 from urllib.parse import urlparse
 
 from services.database import WORKSPACE_DIR
+from utils.storage_paths import get_repo_root
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Base Directories
-# backend/utils/media_utils.py -> parents[2] = backend/.. = root
-ROOT_DIR = Path(__file__).resolve().parents[2]
+# Base Directories — use get_repo_root() for consistent resolution
+ROOT_DIR = get_repo_root()
+
+# DEPRECATED: Global data/media paths — kept for backward-compat read fallback only.
+# New writes must go to workspace-scoped paths. Do NOT add new consumers.
 DATA_MEDIA_DIR = ROOT_DIR / "data" / "media"
 
-# Module-specific directories
+# Module-specific directories (DEPRECATED — use workspace-scoped resolvers instead)
 YOUTUBE_AVATARS_DIR = DATA_MEDIA_DIR / "youtube_avatars"
 YOUTUBE_IMAGES_DIR = DATA_MEDIA_DIR / "youtube_images"
 PODCAST_IMAGES_DIR = DATA_MEDIA_DIR / "podcast_images"
@@ -33,7 +40,7 @@ def ensure_media_dirs() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
-def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
+def resolve_media_path(media_url_or_path: str, user_id: Optional[str] = None) -> Optional[Path]:
     """
     Resolve a media URL or filename to a concrete file path on disk.
     
@@ -41,6 +48,7 @@ def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
     
     Args:
         media_url_or_path: URL path (e.g. /api/youtube/avatars/foo.png) or filename
+        user_id: Optional user ID for tenant-scoped resolution (recommended)
         
     Returns:
         Path object if found, None otherwise
@@ -70,9 +78,9 @@ def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
                 parsed_path = urlparse(media_url_or_path).path
                 parts = parsed_path.split("/")
                 if len(parts) >= 6:
-                    user_id = parts[3]
-                    safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ("-", "_"))
-                    if safe_user_id == user_id:
+                    asset_user_id = parts[3]
+                    safe_user_id = "".join(c for c in asset_user_id if c.isalnum() or c in ("-", "_"))
+                    if safe_user_id == asset_user_id:
                         safe_filename = os.path.basename(filename)
                         assets_path = Path(WORKSPACE_DIR) / f"workspace_{safe_user_id}" / "assets" / "avatars" / safe_filename
                         if assets_path.exists() and assets_path.is_file():
@@ -82,7 +90,7 @@ def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
                 logger.error(f"[MediaUtils] Error resolving assets avatar path: {exc}")
 
         # Define search paths in order of likelihood
-        # We search all avatar/image directories
+        # We search all avatar/image directories (DEPRECATED: global paths — kept for backward-compat reads)
         search_paths: List[Path] = [
             YOUTUBE_AVATARS_DIR / filename,
             PODCAST_AVATARS_DIR / filename,
@@ -101,7 +109,7 @@ def resolve_media_path(media_url_or_path: str) -> Optional[Path]:
             try:
                 # Import the centralized function that checks tenant workspace first
                 from api.podcast.constants import get_podcast_media_read_dirs
-                podcast_dirs = get_podcast_media_read_dirs("image")
+                podcast_dirs = get_podcast_media_read_dirs("image", user_id=user_id)
                 search_paths = []
                 for pod_dir in podcast_dirs:
                     # Add both avatar and image subdirectories

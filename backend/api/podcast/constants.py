@@ -2,31 +2,17 @@
 Podcast API Constants
 
 Centralized constants and directory configuration for podcast module.
+All workspace paths use utils.storage_paths for root resolution.
 """
 
+import os
 from pathlib import Path
 from typing import Literal
 from loguru import logger
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
+from utils.storage_paths import get_repo_root, sanitize_user_id as _sanitize_user_id
 
-# Directory paths
-# Find root by looking for 'data' or 'backend' folder
-def _find_root() -> Path:
-    """Find project root by searching up for data directory."""
-    current = Path(__file__).resolve()
-    for _ in range(10):  # max 10 levels up
-        if (current / "data").exists() and (current / "data" / "media").exists():
-            return current
-        if (current / "backend").exists():
-            return current / "backend"
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    # Fallback: assume backend is root
-    return Path(__file__).resolve().parents[1]
-
-ROOT_DIR = _find_root()
+ROOT_DIR = get_repo_root()
 
 # Video subdirectory (relative to workspace media dir)
 AI_VIDEO_SUBDIR = Path("AI_Videos")
@@ -38,10 +24,6 @@ PODCAST_AVATARS_SUBDIR = Path("avatars")
 MediaType = Literal["audio", "image", "video", "chart"]
 
 
-def _sanitize_user_id(user_id: str) -> str:
-    return "".join(c for c in user_id if c.isalnum() or c in ("-", "_"))
-
-
 def get_podcast_media_dir(
     media_type: MediaType,
     user_id: str | None = None,
@@ -50,9 +32,10 @@ def get_podcast_media_dir(
 ) -> Path:
     """
     Resolve podcast media directory (workspace-only for multi-tenant isolation).
-    
-    Always requires user_id for tenant isolation. Falls back to default workspace
+
+    Requires user_id for tenant isolation. Falls back to default workspace
     only if no user_id provided (for backward compat in development).
+    Logs a warning in production when user_id is missing.
     """
     media_subdir = {
         "audio": "podcast_audio",
@@ -67,12 +50,10 @@ def get_podcast_media_dir(
             ROOT_DIR / "workspace" / f"workspace_{sanitized}" / "media" / media_subdir
         ).resolve()
     else:
-        # Development fallback: use a default workspace
+        logger.warning(f"[Podcast] get_podcast_media_dir called without user_id for {media_type} — using default workspace. This should not happen in production.")
         resolved_dir = (
             ROOT_DIR / "workspace" / "workspace_alwrity" / "media" / media_subdir
         ).resolve()
-
-    logger.warning(f"[Podcast] get_podcast_media_dir: type={media_type}, user_id={user_id}, resolved={resolved_dir}")
 
     if ensure_exists:
         resolved_dir.mkdir(parents=True, exist_ok=True)
