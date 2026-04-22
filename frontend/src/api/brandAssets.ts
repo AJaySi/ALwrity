@@ -217,7 +217,7 @@ export const createVoiceClone = async (
     formData.append('voice_name', 'My Voice Clone'); 
 
     console.log('[VoiceClone] Sending request to /onboarding/assets/create-voice-clone');
-    const response = await apiClient.post('/onboarding/assets/create-voice-clone', formData, {
+    const response = await aiApiClient.post('/onboarding/assets/create-voice-clone', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -243,7 +243,7 @@ export const createVoiceDesign = async (
   params: VoiceDesignParams
 ): Promise<VoiceCloneResponse> => {
   try {
-    const response = await apiClient.post('/onboarding/assets/create-voice-design', {
+    const response = await aiApiClient.post('/onboarding/assets/create-voice-design', {
       text: params.text,
       voice_description: params.voiceDescription,
       language: params.language || 'auto',
