@@ -383,7 +383,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
           }
           setAudioFile(file);
           const url = URL.createObjectURL(blob);
-          console.log('[VoiceClone] Created audio preview URL:', url, 'size:', file.size, 'type:', blob.type);
+          if (process.env.NODE_ENV === 'development') console.log('[VoiceClone] Created audio preview URL:', url.split('?')[0], 'size:', file.size, 'type:', blob.type);
           setAudioPreviewUrl(url);
         } catch (err) {
           console.error('[VoiceClone] Error creating audio blob:', err);
@@ -813,7 +813,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                                 <audio 
                                   key={audioPreviewUrl} 
                                   controls 
-                                  src={audioPreviewUrl} 
+                                  src={audioPreviewUrl}
+                                  preload="auto"
                                   style={{ height: '30px', width: '100%' }}
                                   onError={(e) => {
                                     console.error('[VoiceClone] Audio playback error:', e);
@@ -1075,7 +1076,8 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                         <audio 
                           key={audioPreviewUrl} 
                           controls 
-                          src={audioPreviewUrl} 
+                          src={audioPreviewUrl}
+                          preload="auto"
                           style={{ width: '100%', height: '28px' }}
                           onError={(e) => {
                             console.error('[VoiceClone] Source audio playback error:', e);

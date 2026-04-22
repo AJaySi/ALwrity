@@ -105,7 +105,12 @@ export const InlineAudioPlayer: React.FC<InlineAudioPlayerProps> = ({ audioUrl, 
     if (!audio || !blobUrl) return;
 
     const updateTime = () => setCurrentTime(audio.currentTime);
-    const updateDuration = () => setDuration(audio.duration);
+    const updateDuration = () => {
+      const d = audio.duration;
+      if (d && isFinite(d) && d > 0) {
+        setDuration(d);
+      }
+    };
     const handleEnd = () => setPlaying(false);
     const handleError = () => {
       setError('Audio playback error. Please try again.');
@@ -114,12 +119,14 @@ export const InlineAudioPlayer: React.FC<InlineAudioPlayerProps> = ({ audioUrl, 
 
     audio.addEventListener("timeupdate", updateTime);
     audio.addEventListener("loadedmetadata", updateDuration);
+    audio.addEventListener("durationchange", updateDuration);
     audio.addEventListener("ended", handleEnd);
     audio.addEventListener("error", handleError);
 
     return () => {
       audio.removeEventListener("timeupdate", updateTime);
       audio.removeEventListener("loadedmetadata", updateDuration);
+      audio.removeEventListener("durationchange", updateDuration);
       audio.removeEventListener("ended", handleEnd);
       audio.removeEventListener("error", handleError);
     };
@@ -239,7 +246,7 @@ export const InlineAudioPlayer: React.FC<InlineAudioPlayerProps> = ({ audioUrl, 
           </Tooltip>
         </Stack>
         {effectiveAudioUrl && (
-          <audio ref={audioRef} src={effectiveAudioUrl} preload="metadata" />
+          <audio ref={audioRef} src={effectiveAudioUrl} preload="auto" />
         )}
       </Stack>
     </Paper>
