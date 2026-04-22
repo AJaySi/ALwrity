@@ -42,7 +42,9 @@ async def _get_db_or_none(current_user: Dict[str, Any]):
 
 def _get_podcast_avatars_dir(user_id: str) -> Path:
     """Get podcast avatars directory for a user (workspace-aware)."""
-    return get_podcast_media_dir("image", user_id, ensure_exists=True) / AVATAR_SUBDIR
+    avatars_dir = get_podcast_media_dir("image", user_id, ensure_exists=True) / AVATAR_SUBDIR
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+    return avatars_dir
 
 
 @router.post("/avatar/upload")
