@@ -10,6 +10,7 @@ import {
 import { createAvatarVideoAsync } from '../../../../api/videoStudioApi';
 import { useVideoGenerationPolling } from '../../../../hooks/usePolling';
 import { fetchMediaBlobUrl } from '../../../../utils/fetchMediaBlobUrl';
+import { getAuthTokenGetter } from '../../../../api/client';
 import { VideoCameraFront, SkipNext, PlayArrow, InfoOutlined, Close as CloseIcon, HelpOutline, Refresh, RestartAlt, Undo } from '@mui/icons-material';
 import { VideoGenerationLoader } from '../../../shared/VideoGenerationLoader';
 import { OperationButton } from '../../../shared/OperationButton';
@@ -31,8 +32,33 @@ export const TestPersonaModal: React.FC<TestPersonaModalProps> = ({
   const [model, setModel] = useState<'infinitetalk' | 'hunyuan-avatar'>('infinitetalk');
   const [showCapabilities, setShowCapabilities] = useState(false);
   const [avatarBlobUrl, setAvatarBlobUrl] = useState<string | null>(null);
+  const [authenticatedVoiceUrl, setAuthenticatedVoiceUrl] = useState<string | null>(null);
   const STORAGE_KEY = 'test_persona_video_url';
   const STORAGE_BACKUP_KEY = 'test_persona_video_url_backup';
+
+  // Append auth token to /api/ asset URLs so <audio> can access them
+  useEffect(() => {
+    if (!voiceUrl || !voiceUrl.includes('/api/')) {
+      setAuthenticatedVoiceUrl(voiceUrl || null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const tokenGetter = getAuthTokenGetter();
+        if (tokenGetter) {
+          const token = await tokenGetter();
+          if (token && !cancelled) {
+            const sep = voiceUrl.includes('?') ? '&' : '?';
+            setAuthenticatedVoiceUrl(`${voiceUrl}${sep}token=${encodeURIComponent(token)}`);
+            return;
+          }
+        }
+      } catch { /* fallback */ }
+      if (!cancelled) setAuthenticatedVoiceUrl(voiceUrl);
+    })();
+    return () => { cancelled = true; };
+  }, [voiceUrl]);
   
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(() => {
     try {
@@ -527,7 +553,7 @@ export const TestPersonaModal: React.FC<TestPersonaModalProps> = ({
                         <Typography variant="caption" fontWeight="bold" sx={{ mb: 1, display: 'block', color: '#64748b' }}>
                             Voice Preview
                         </Typography>
-                        <audio controls src={voiceUrl} style={{ width: '100%', height: 36 }} />
+                        <audio controls src={authenticatedVoiceUrl || undefined} style={{ width: '100%', height: 36 }} />
                     </Box>
                 </Stack>
     

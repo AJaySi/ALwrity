@@ -43,6 +43,7 @@ import {
   Category,
 } from "@mui/icons-material";
 import { getLatestVoiceClone, VoiceCloneResponse } from "../../api/brandAssets";
+import { getAuthTokenGetter } from "../../api/client";
 import { VoiceAvatarPlaceholder } from "../OnboardingWizard/PersonalizationStep/components/VoiceAvatarPlaceholder";
 
 export type VoiceOption = {
@@ -235,7 +236,7 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
     }
   }, []);
 
-  const handlePreview = useCallback((voice: VoiceOption) => {
+  const handlePreview = useCallback(async (voice: VoiceOption) => {
     if (!voice.previewUrl) return;
 
     if (playingPreview === voice.id) {
@@ -247,7 +248,22 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
     stopCurrentAudio();
     setPlayingPreview(voice.id);
 
-    const audio = new Audio(voice.previewUrl);
+    // Append auth token for endpoints that require it (e.g. /api/assets/)
+    let previewUrl = voice.previewUrl;
+    try {
+      const tokenGetter = getAuthTokenGetter();
+      if (tokenGetter) {
+        const token = await tokenGetter();
+        if (token && previewUrl.includes('/api/')) {
+          const separator = previewUrl.includes('?') ? '&' : '?';
+          previewUrl = `${previewUrl}${separator}token=${encodeURIComponent(token)}`;
+        }
+      }
+    } catch (e) {
+      // Token retrieval failed — try URL without token
+    }
+
+    const audio = new Audio(previewUrl);
     audioRef.current = audio;
 
     audio.onerror = () => {

@@ -1,8 +1,9 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Box, Typography, Paper, Stack, Button, Alert, TextField, CircularProgress, Slider, FormControlLabel, Checkbox, MenuItem, Tooltip, Chip, Divider, Grid, IconButton, Modal, Fade, Backdrop, LinearProgress } from '@mui/material';
 import { keyframes } from '@mui/system';
 import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo, Headphones, Article, VideoLibrary, TrendingUp, CheckCircle, RecordVoiceOver, Settings } from '@mui/icons-material';
 import { createVoiceClone, createVoiceDesign, getLatestVoiceClone, setBrandVoice } from '../../../../api/brandAssets';
+import { getAuthTokenGetter } from '../../../../api/client';
 import { OperationButton } from '../../../shared/OperationButton';
 
 const pulse = keyframes`
@@ -94,6 +95,32 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
       return saved && saved.length > 0 ? saved : null;
     } catch { return null; }
   });
+
+  // Append auth token to /api/ asset URLs so <audio> elements can access them
+  const [authenticatedAudioUrl, setAuthenticatedAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!resultAudioUrl || !resultAudioUrl.includes('/api/')) {
+      setAuthenticatedAudioUrl(resultAudioUrl);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const tokenGetter = getAuthTokenGetter();
+        if (tokenGetter) {
+          const token = await tokenGetter();
+          if (token && !cancelled) {
+            const sep = resultAudioUrl.includes('?') ? '&' : '?';
+            setAuthenticatedAudioUrl(`${resultAudioUrl}${sep}token=${encodeURIComponent(token)}`);
+            return;
+          }
+        }
+      } catch { /* fallback to unauthenticated */ }
+      if (!cancelled) setAuthenticatedAudioUrl(resultAudioUrl);
+    })();
+    return () => { cancelled = true; };
+  }, [resultAudioUrl]);
 
   const [archivedResultAudioUrl, setArchivedResultAudioUrl] = useState<string | null>(() => {
     try {
@@ -1090,7 +1117,7 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                         <Typography variant="caption" fontWeight="800" sx={{ color: '#EC4899', textTransform: 'uppercase', mb: 0.25, display: 'block', fontSize: '0.65rem' }}>
                           Generated AI Voice Preview
                         </Typography>
-                        <audio controls src={resultAudioUrl} style={{ width: '100%', height: '28px' }} />
+                        <audio controls src={authenticatedAudioUrl || undefined} style={{ width: '100%', height: '28px' }} />
                         <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                           <Button
                             variant="outlined"
