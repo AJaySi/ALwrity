@@ -63,7 +63,7 @@ export const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonPr
 
   return tooltip ? (
     <Tooltip title={tooltip} arrow>
-      {button}
+      <span style={{ display: "inline-flex" }}>{button}</span>
     </Tooltip>
   ) : (
     button

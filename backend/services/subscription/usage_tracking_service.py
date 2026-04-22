@@ -45,12 +45,12 @@ class UsageTrackingService:
         self._enforce_cache: Dict[str, Dict[str, Any]] = {}
 
     def _get_authoritative_billing_period_keys(self, user_id: str, billing_period: Optional[str] = None) -> Dict[str, Any]:
-        """Return authoritative billing period lookup keys anchored to subscription period boundaries."""
+        """Return authoritative billing period lookup keys. Always uses calendar month for consistency."""
         subscription = self.db.query(UserSubscription).filter(
             UserSubscription.user_id == user_id
         ).first()
 
-        # If caller explicitly requested a billing period, keep it authoritative for that read.
+        # If caller explicitly requested a billing period, use it
         if billing_period:
             return {
                 "billing_period": billing_period,
@@ -59,23 +59,15 @@ class UsageTrackingService:
                 "period_end": subscription.current_period_end if subscription else None,
             }
 
-        if subscription and subscription.current_period_start and subscription.current_period_end:
-            start_key = subscription.current_period_start.strftime("%Y-%m")
-            end_key = subscription.current_period_end.strftime("%Y-%m")
-            lookup_periods = [start_key] if start_key == end_key else [start_key, end_key]
-            return {
-                "billing_period": start_key,
-                "lookup_periods": lookup_periods,
-                "period_start": subscription.current_period_start,
-                "period_end": subscription.current_period_end,
-            }
-
-        resolved_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
+        # ALWAYS use current calendar month for billing period to ensure consistency
+        # This prevents data loss when subscription spans month boundaries
+        current_period = datetime.now().strftime("%Y-%m")
+        
         return {
-            "billing_period": resolved_period,
-            "lookup_periods": [resolved_period],
-            "period_start": None,
-            "period_end": None,
+            "billing_period": current_period,
+            "lookup_periods": [current_period],
+            "period_start": subscription.current_period_start if subscription else None,
+            "period_end": subscription.current_period_end if subscription else None,
         }
     
     async def track_api_usage(self, user_id: str, provider: APIProvider, 
@@ -207,11 +199,14 @@ class UsageTrackingService:
         ).first()
         
         if not summary:
+            logger.info(f"[UsageTracking] Creating new UsageSummary for user={user_id}, period={period_keys['billing_period']}")
             summary = UsageSummary(
                 user_id=user_id,
                 billing_period=period_keys["billing_period"]
             )
             self.db.add(summary)
+        else:
+            logger.debug(f"[UsageTracking] Found existing UsageSummary for user={user_id}, period={summary.billing_period}, calls={summary.total_calls}")
         
         # Update provider-specific counters
         provider_name = provider.value
@@ -384,11 +379,18 @@ class UsageTrackingService:
         period_keys = self._get_authoritative_billing_period_keys(user_id, requested_billing_period)
         billing_period = period_keys["billing_period"]
         
+        logger.debug(f"[get_user_usage_stats] user={user_id}, billing_period={billing_period}, lookup_periods={period_keys['lookup_periods']}")
+        
         # Get usage summary
         summary = self.db.query(UsageSummary).filter(
             UsageSummary.user_id == user_id,
             UsageSummary.billing_period.in_(period_keys["lookup_periods"])
         ).first()
+        
+        if summary:
+            logger.debug(f"[get_user_usage_stats] Found summary: period={summary.billing_period}, calls={summary.total_calls}, cost={summary.total_cost}")
+        else:
+            logger.debug(f"[get_user_usage_stats] No summary found for user={user_id}, period={billing_period}")
         
         # Get user limits
         limits = self.pricing_service.get_user_limits(user_id)

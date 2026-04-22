@@ -541,14 +541,8 @@ async def create_voice_clone(
         preview_mime_type = "audio/wav"
         actual_filename = None  # Default if preview save fails
         
-        logger.warning(f"[VoiceClone] qwen3 result preview_audio_bytes type: {type(preview_audio_bytes)}, length: {len(preview_audio_bytes) if preview_audio_bytes else 0}")
-        
         if preview_audio_bytes and len(preview_audio_bytes) > 0:
             from utils.media_utils import detect_audio_format, ensure_audio_extension
-            
-            # Log first few bytes for debugging
-            first_bytes = preview_audio_bytes[:16].hex()
-            logger.warning(f"[VoiceClone] Preview audio first 16 bytes (hex): {first_bytes}")
             
             detected_fmt, preview_mime_type = detect_audio_format(preview_audio_bytes)
             logger.warning(f"[VoiceClone] Detected preview audio format: {detected_fmt} ({preview_mime_type}), {len(preview_audio_bytes)} bytes")
@@ -556,29 +550,21 @@ async def create_voice_clone(
             # Build filename with correct extension based on actual content format
             original_stem = Path(filename).stem
             preview_filename = f"preview_{original_stem}"
-            logger.warning(f"[VoiceClone] Original filename stem: {original_stem}, preview before: {preview_filename}")
-            
             preview_filename = ensure_audio_extension(preview_filename, preview_audio_bytes)
-            logger.warning(f"[VoiceClone] Preview filename (corrected ext): {preview_filename}")
             
             user_voice_dir = get_user_workspace(user_id) / "assets" / "voice_samples"
-            logger.warning(f"[VoiceClone] user_id: {user_id}")
-            logger.warning(f"[VoiceClone] user_voice_dir: {user_voice_dir}")
-            logger.warning(f"[VoiceClone] directory exists: {user_voice_dir.exists()}")
             saved_preview_path, error = save_file_safely(preview_audio_bytes, user_voice_dir, preview_filename)
             
             if not error and saved_preview_path:
                 # Use actual saved filename (may have UUID suffix added by save_file_safely)
                 actual_filename = saved_preview_path.name
                 preview_url = f"/api/assets/{user_id}/voice_samples/{actual_filename}"
-                logger.warning(f"[VoiceClone] Saved preview audio to: {saved_preview_path}")
+                logger.warning(f"[VoiceClone] Saved preview: {actual_filename} ({saved_preview_path.stat().st_size} bytes, {preview_mime_type})")
                 
                 # Verify file exists
                 if not saved_preview_path.exists():
                     logger.warning(f"[VoiceClone] Preview file does not exist after save: {saved_preview_path}")
                     preview_url = None
-                else:
-                    logger.warning(f"[VoiceClone] Preview file size: {saved_preview_path.stat().st_size} bytes")
             else:
                 logger.warning(f"[VoiceClone] Failed to save preview audio: {error}")
             
@@ -586,7 +572,6 @@ async def create_voice_clone(
         # Use the preview file (with corrected .wav extension) as the main asset file
         has_valid_preview = preview_audio_bytes and len(preview_audio_bytes) > 0 and saved_preview_path
         stored_filename = actual_filename if has_valid_preview else filename
-        logger.warning(f"[VoiceClone] stored_filename: {stored_filename}, has_valid_preview: {has_valid_preview}")
         asset_id = save_asset_to_library(
             db=db,
             user_id=user_id,
@@ -605,9 +590,6 @@ async def create_voice_clone(
                 "category": "voice_clone"
             }
         )
-        
-        logger.warning(f"[VoiceClone] Response preview_url: {preview_url}")
-        logger.warning(f"[VoiceClone] Response stored_filename: {stored_filename}")
         
         return {
             "success": True,

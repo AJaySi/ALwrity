@@ -100,9 +100,5 @@ async def serve_voice_sample(
 
     media_type = _get_media_type(safe_filename)
     file_size = file_path.stat().st_size
-    first_bytes_hex = "N/A"
-    if file_size > 0:
-        with open(file_path, 'rb') as f:
-            first_bytes_hex = f.read(16).hex()
-    logger.warning(f"[Assets] Serving voice sample: {safe_filename} ({media_type}, {file_size} bytes, first_16hex: {first_bytes_hex})")
+    logger.warning(f"[Assets] Serving voice sample: {safe_filename} ({media_type}, {file_size} bytes)")
     return FileResponse(file_path, media_type=media_type)

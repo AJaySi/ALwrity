@@ -16,9 +16,6 @@ import {
   ListItemIcon,
   ListItemText,
   Collapse,
-  FormControlLabel,
-  Checkbox,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -153,7 +150,6 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   const [showVoiceClonePanel, setShowVoiceClonePanel] = useState(false);
   const [voiceCreated, setVoiceCreated] = useState(false);
-  const [useCreatedVoice, setUseCreatedVoice] = useState(true);
   const [redoingClone, setRedoingClone] = useState(false);
   const [selectOpen, setSelectOpen] = useState(false);
   const [tuneModalOpen, setTuneModalOpen] = useState(false);
@@ -326,7 +322,6 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
   const handleVoiceSet = useCallback(() => {
     setVoiceCreated(true);
-    setUseCreatedVoice(true);
   }, []);
 
   const handleRedoClone = useCallback(() => {
@@ -335,18 +330,15 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
       setRedoingClone(true);
       setShowVoiceClonePanel(true);
       setVoiceCreated(false);
-      setUseCreatedVoice(true);
     }, 150);
   }, []);
 
   const handleDoneWithVoice = useCallback(() => {
-    if (useCreatedVoice) {
-      fetchVoiceClone();
-    }
+    fetchVoiceClone();
     setShowVoiceClonePanel(false);
     setVoiceCreated(false);
     setRedoingClone(false);
-  }, [useCreatedVoice]);
+  }, []);
 
   const handleCancelRedo = useCallback(() => {
     setShowVoiceClonePanel(false);
@@ -362,7 +354,6 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
     } else {
       setShowVoiceClonePanel(true);
       setVoiceCreated(false);
-      setUseCreatedVoice(true);
       setRedoingClone(false);
     }
   }, [showVoiceClonePanel]);
@@ -1056,7 +1047,7 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
                     border: "1px solid rgba(16, 185, 129, 0.3)",
                   }}
                 >
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                     <CheckCircle sx={{ color: "#10b981", fontSize: "1.25rem" }} />
                     <Typography variant="subtitle2" sx={{ color: "#10b981", fontWeight: 700 }}>
                       {redoingClone ? "Voice Clone Updated!" : "Voice Clone Created Successfully!"}
@@ -1064,28 +1055,8 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
                   </Stack>
 
                   <Typography variant="body2" sx={{ color: "#475569", mb: 1.5, fontSize: "0.875rem" }}>
-                    {redoingClone ? "Your voice clone has been updated." : "Your custom voice clone is ready. Would you like to use this voice for your podcast?"}
+                    {redoingClone ? "Your voice clone has been updated and will be used for your podcast." : "Your custom voice clone is ready and will be used for your podcast."}
                   </Typography>
-
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={useCreatedVoice}
-                        onChange={(e) => setUseCreatedVoice(e.target.checked)}
-                        sx={{
-                          color: "#10b981",
-                          "&.Mui-checked": { color: "#10b981" },
-                        }}
-                      />
-                    }
-                    label={
-                      <Typography sx={{ color: "#1e293b", fontWeight: 500, fontSize: "0.9375rem" }}>
-                        Use this voice for my podcast
-                      </Typography>
-                    }
-                  />
-
-                  <Divider sx={{ my: 2, borderColor: "rgba(0,0,0,0.08)" }} />
 
                   <Stack direction="row" spacing={1.5} justifyContent="flex-end">
                     <Button
@@ -1101,24 +1072,18 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
                       variant="contained"
                       onClick={handleDoneWithVoice}
                       sx={{
-                        background: useCreatedVoice
-                          ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                          : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                        background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                         color: "#fff",
                         fontWeight: 600,
                         textTransform: "none",
                         px: 3,
-                        boxShadow: useCreatedVoice
-                          ? "0 4px 12px rgba(16, 185, 129, 0.3)"
-                          : "0 4px 12px rgba(102, 126, 234, 0.3)",
+                        boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)",
                         "&:hover": {
-                          background: useCreatedVoice
-                            ? "linear-gradient(135deg, #059669 0%, #047857 100%)"
-                            : "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+                          background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
                         },
                       }}
                     >
-                      {useCreatedVoice ? "Use This Voice" : "Done"}
+                      Done
                     </Button>
                   </Stack>
                 </Box>

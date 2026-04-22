@@ -482,7 +482,7 @@ class SpeechGenerator:
 
         audio_url = self._extract_audio_url(outputs)
         downloaded_audio = self._download_audio(audio_url, timeout)
-        logger.warning(f"[WaveSpeed] qwen3_voice_clone downloaded {len(downloaded_audio)} bytes, first_16hex: {downloaded_audio[:16].hex()}")
+        logger.warning(f"[WaveSpeed] qwen3_voice_clone downloaded {len(downloaded_audio)} bytes")
         return downloaded_audio
     
     def cosyvoice_voice_clone(
