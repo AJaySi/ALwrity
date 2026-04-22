@@ -1117,7 +1117,16 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
                         <Typography variant="caption" fontWeight="800" sx={{ color: '#EC4899', textTransform: 'uppercase', mb: 0.25, display: 'block', fontSize: '0.65rem' }}>
                           Generated AI Voice Preview
                         </Typography>
-                        <audio controls src={authenticatedAudioUrl || undefined} style={{ width: '100%', height: '28px' }} />
+                        <audio 
+                          key={authenticatedAudioUrl}
+                          controls 
+                          src={authenticatedAudioUrl || undefined}
+                          preload="auto"
+                          style={{ width: '100%', height: '28px' }}
+                          onError={(e) => {
+                            console.error('[VoiceClone] Generated audio playback error:', e);
+                          }}
+                        />
                         <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                           <Button
                             variant="outlined"
