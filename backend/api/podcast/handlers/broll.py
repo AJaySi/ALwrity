@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import uuid
 
-from middleware.auth_middleware import get_current_user
+from middleware.auth_middleware import get_current_user, get_current_user_with_query_token
 from api.story_writer.utils.auth import require_authenticated_user
 from api.story_writer.task_manager import task_manager
 from api.podcast.utils import _resolve_podcast_media_file
@@ -23,7 +23,7 @@ from utils.media_utils import resolve_media_path
 from loguru import logger
 
 
-router = APIRouter()
+router = APIRouter(prefix="/broll", tags=["B-Roll"])
 
 
 def _resolve_broll_background_image_path(background_image_url: str) -> str:
@@ -148,7 +148,7 @@ class BrollSceneRequest(BaseModel):
     key_insight: str
     supporting_stat: str
     chart_data: Optional[Dict[str, Any]] = None
-    visual_cue: str = Field(default="bar_chart_comparison", description="bar_chart_comparison | bullet_points")
+    visual_cue: str = Field(default="bar_comparison", description="bar_comparison | bar_horizontal | line_trend | pie | stacked_bar | bullet_points | full_avatar")
     duration: float = Field(default=10.0, ge=3.0, le=60.0)
     background_image_url: str
     avatar_video_url: Optional[str] = None
@@ -216,7 +216,9 @@ async def generate_chart_preview(
             )
         
         preview_filename = Path(preview_path).name
-        preview_url = f"/api/podcast/preview/{chart_id}/{preview_filename}"
+        preview_url = f"/api/podcast/broll/preview/{chart_id}/{preview_filename}"
+        
+        logger.warning(f"[Broll] Chart preview generated: chart_id={chart_id}, path={preview_path}, url={preview_url}")
         
         return ChartPreviewResponse(
             preview_url=preview_url,
@@ -249,7 +251,7 @@ async def generate_broll_scene(
     
     try:
         # Validate visual_cue
-        valid_cues = ["bar_chart_comparison", "bullet_points", "full_avatar"]
+        valid_cues = ["bar_comparison", "bar_chart_comparison", "bar_horizontal", "line_trend", "pie", "stacked_bar", "bullet_points", "full_avatar"]
         if request.visual_cue not in valid_cues:
             raise HTTPException(
                 status_code=400,
@@ -333,37 +335,39 @@ async def compose_broll_videos(
 async def serve_chart_preview(
     chart_id: str,
     filename: str,
-    user_id: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
 ):
     """
     Serve chart preview PNG files.
     
-    - user_id passed as query param for multi-tenant workspace resolution
-    - endpoint is public (no auth) to allow direct image loading in browser
+    Uses authentication via Authorization header or token query parameter,
+    matching the pattern used by /api/podcast/images/ for browser <img> tags.
     """
+    from api.podcast.constants import get_podcast_media_dir
+    user_id = require_authenticated_user(current_user)
+    
     # Validate filename to prevent directory traversal
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     
     logger.warning(f"[Broll] serve_chart_preview: chart_id={chart_id}, filename={filename}, user_id={user_id}")
     
-    broll_service = get_broll_service(user_id=user_id)
-    expected_filename = broll_service.get_chart_preview_filename(chart_id)
-    if filename != expected_filename:
-        raise HTTPException(status_code=404, detail="Chart preview not found")
-
-    # Use expected_filename to get the correct path
-    file_path = broll_service.get_output_path(expected_filename)
+    charts_dir = get_podcast_media_dir("chart", user_id)
+    file_path = charts_dir / filename
     
     logger.warning(f"[Broll] serve_chart_preview: resolved path={file_path}, exists={file_path.exists()}")
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Chart preview not found")
     
+    # Security: ensure resolved path is within charts_dir
+    if not str(file_path.resolve()).startswith(str(charts_dir.resolve())):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     return FileResponse(
         path=str(file_path),
         media_type="image/png",
-        filename=expected_filename,
+        filename=filename,
     )
 
 

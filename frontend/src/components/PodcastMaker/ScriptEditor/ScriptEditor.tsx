@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Box, Stack, Typography, Alert, Paper, LinearProgress, CircularProgress, alpha, Collapse, IconButton, Divider, Chip, Tooltip } from "@mui/material";
-  import { EditNote as EditNoteIcon, CheckCircle as CheckCircleIcon, PlayArrow as PlayArrowIcon, ArrowBack as ArrowBackIcon, Info as InfoIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Download as DownloadIcon, Refresh as RefreshIcon, Mic as MicIcon } from "@mui/icons-material";
+import { Box, Stack, Typography, Alert, Paper, LinearProgress, CircularProgress, alpha, IconButton, Divider, Chip, Tooltip } from "@mui/material";
+  import { CheckCircle as CheckCircleIcon, PlayArrow as PlayArrowIcon, ArrowBack as ArrowBackIcon, Download as DownloadIcon, Refresh as RefreshIcon } from "@mui/icons-material";
 import { Script, Knobs, Scene } from "../types";
 import { BlogResearchResponse } from "../../../services/blogWriterApi";
 import { podcastApi } from "../../../services/podcastApi";
+import { aiApiClient } from "../../../api/client";
 import { GlassyCard, PrimaryButton, SecondaryButton } from "../ui";
 import { SceneEditor } from "./SceneEditor";
 import { InlineAudioPlayer } from "../InlineAudioPlayer";
-import { aiApiClient, getApiUrl } from "../../../api/client";
 import { BrollInfoPanel } from "./parts/BrollInfoPanel";
 import { ScriptEditorProvider } from "./ScriptEditorContext";
 
@@ -53,8 +53,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [approvingSceneId, setApprovingSceneId] = useState<string | null>(null);
   const [generatingAudioId, setGeneratingAudioId] = useState<string | null>(null);
-  const [showScriptFormatInfo, setShowScriptFormatInfo] = useState(false);
-  const [generatingChartId, setGeneratingChartId] = useState<string | null>(null);
   const [combiningAudio, setCombiningAudio] = useState(false);
   const [combinedAudioResult, setCombinedAudioResult] = useState<{
     url: string;
@@ -242,108 +240,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     }
   }, [script, projectId, onError]);
 
-  const generateChartPreviews = useCallback(async () => {
-    if (!script) return;
-
-    const scenesWithData = script.scenes.filter(
-      (scene) => scene.chart_data && Object.keys(scene.chart_data).length > 0
-    );
-
-    if (scenesWithData.length === 0) {
-      onError("No scenes have chart data to generate previews.");
-      return;
-    }
-
-    try {
-      setGeneratingChartId("all");
-
-      const updatedScenes = await Promise.all(
-        script.scenes.map(async (scene) => {
-          if (!scene.chart_data || Object.keys(scene.chart_data).length === 0) {
-            return scene;
-          }
-
-          try {
-            const result = await podcastApi.generateChartPreview({
-              chart_data: scene.chart_data,
-              chart_type: scene.chart_data.type || "bar_comparison",
-              title: scene.title,
-            });
-            console.log(`[ChartPreview] Scene ${scene.id}: type=${scene.chart_data.type || 'bar_comparison'}, data=`, scene.chart_data);
-
-            const toFullUrl = (url: string) => {
-              if (/^https?:\/\//i.test(url)) return url;
-              return `${getApiUrl()}${url.startsWith("/") ? url : `/${url}`}`;
-            };
-
-            return {
-              ...scene,
-              broll_preview_url: toFullUrl(result.preview_url),
-              chart_id: result.chart_id,
-            };
-          } catch (error) {
-            console.error(`[ChartPreview] Failed for scene ${scene.id}:`, error);
-            return scene;
-          }
-        })
-      );
-
-      const updatedScript = { ...script, scenes: updatedScenes };
-      setScript(updatedScript);
-      emitScriptChange(updatedScript);
-    } catch (error: any) {
-      console.error("Chart preview generation failed:", error);
-      onError(`Failed to generate chart previews: ${error.message || error}`);
-    } finally {
-      setGeneratingChartId(null);
-    }
-  }, [script, emitScriptChange, onError]);
-
-  const regenerateChart = useCallback(async (sceneId: string) => {
-    if (!script) return;
-    const scene = script.scenes.find((s) => s.id === sceneId);
-    if (!scene?.chart_data) return;
-
-    try {
-      setGeneratingChartId(sceneId);
-      const result = await podcastApi.generateChartPreview({
-        chart_data: scene.chart_data,
-        chart_type: scene.chart_data.type || "bar_comparison",
-        title: scene.title,
-      });
-
-      const updatedScript = {
-        ...script,
-        scenes: script.scenes.map((s) =>
-          s.id === sceneId
-            ? { ...s, broll_preview_url: result.preview_url, chart_id: result.chart_id }
-            : s
-        ),
-      };
-      setScript(updatedScript);
-      emitScriptChange(updatedScript);
-    } catch (error: any) {
-      console.error("Chart regeneration failed:", error);
-      onError(`Failed to regenerate chart: ${error.message || error}`);
-    } finally {
-      setGeneratingChartId(null);
-    }
-  }, [script, emitScriptChange, onError]);
-
-  const removeChart = useCallback((sceneId: string) => {
-    if (!script) return;
-    const updatedScript = {
-      ...script,
-      scenes: script.scenes.map((scene) =>
-        scene.id === sceneId
-          ? { ...scene, chart_data: undefined, broll_preview_url: undefined, broll_video_url: undefined }
-          : scene
-      ),
-    };
-    setScript(updatedScript);
-    emitScriptChange(updatedScript);
-  }, [script, emitScriptChange]);
-
   return (
     <ScriptEditorProvider
       projectId={projectId}
@@ -367,50 +263,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           <SecondaryButton onClick={onBackToResearch} startIcon={<ArrowBackIcon />}>
             Back to Research
           </SecondaryButton>
-        <Box sx={{ flex: 1 }}>
-          <Typography
-            variant="h4"
-            sx={{
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-              display: "flex",
-              alignItems: "center",
-              gap: 1.5,
-              fontSize: { xs: "1.75rem", md: "2rem" },
-            }}
-          >
-            <EditNoteIcon sx={{ fontSize: "2rem" }} />
-            Script Editor
-            {knobs.voice_id && (() => {
-              const vid = knobs.voice_id;
-              const isCustom = Boolean(vid && !vid.startsWith("builtin:") && !["Wise_Woman", "Friendly_Person", "Inspirational_girl", "Deep_Voice_Man", "Calm_Woman", "Casual_Guy", "Lively_Girl", "Patient_Man", "Young_Knight", "Determined_Man", "Lovely_Girl", "Decent_Boy", "Imposing_Manner", "Elegant_Man", "Abbess", "Sweet_Girl_2", "Exuberant_Girl"].includes(vid));
-              const vName = isCustom ? "My Voice Clone" : (vid === "Wise_Woman" ? "Wise Woman" : vid === "Friendly_Person" ? "Friendly Person" : vid === "Deep_Voice_Man" ? "Deep Voice Man" : vid?.replace(/_/g, " ") || "Default");
-              return (
-                <Chip
-                  icon={<MicIcon sx={{ fontSize: "14px !important" }} />}
-                  label={`Active Voice: ${vName}`}
-                  size="small"
-                  sx={{
-                    ml: 2,
-                    background: isCustom ? "rgba(16, 185, 129, 0.1)" : "rgba(99, 102, 241, 0.1)",
-                    color: isCustom ? "#10b981" : "#6366f1",
-                    border: `1px solid ${isCustom ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.2)"}`,
-                    '& .MuiChip-icon': { color: isCustom ? "#10b981" : "#6366f1" },
-                    fontWeight: 600,
-                    fontSize: "0.75rem",
-                  }}
-                />
-              );
-            })()}
-          </Typography>
-          <Typography variant="body2" sx={{ color: "#64748b", mt: 0.5, ml: 5.5 }}>
-            Review and refine your podcast script before rendering
-          </Typography>
-        </Box>
-      </Stack>
+        </Stack>
 
       {loading && (
         <Alert 
@@ -455,225 +308,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
 
       {script && (
         <Stack spacing={3}>
-          {/* Script Format Explanation Panel */}
-          <Paper
-            sx={{
-              p: 3,
-              background: "linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%)",
-              border: "1px solid rgba(99, 102, 241, 0.15)",
-              borderRadius: 2,
-              boxShadow: "0 2px 8px rgba(99, 102, 241, 0.08)",
-            }}
-          >
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: showScriptFormatInfo ? 2 : 0 }}>
-              <Stack direction="row" alignItems="center" spacing={1.5}>
-                <Box
-                  sx={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: "50%",
-                    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxShadow: "0 2px 8px rgba(102, 126, 234, 0.3)",
-                  }}
-                >
-                  <InfoIcon sx={{ color: "#ffffff", fontSize: "1.5rem" }} />
-                </Box>
-                <Box>
-                  <Typography variant="h6" sx={{ color: "#0f172a", fontWeight: 600, fontSize: "1.1rem" }}>
-                    Why This Script Format?
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: "#64748b", mt: 0.25 }}>
-                    Understanding how your script creates natural, human-like audio
-                  </Typography>
-                </Box>
-              </Stack>
-              <IconButton
-                onClick={() => setShowScriptFormatInfo(!showScriptFormatInfo)}
-                sx={{
-                  color: "#6366f1",
-                  "&:hover": {
-                    background: "rgba(99, 102, 241, 0.1)",
-                  },
-                }}
-              >
-                {showScriptFormatInfo ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              </IconButton>
-            </Stack>
-
-            <Collapse in={showScriptFormatInfo}>
-              <Stack spacing={2.5}>
-                <Box>
-                  <Typography variant="body2" sx={{ color: "#0f172a", lineHeight: 1.8, mb: 2 }}>
-                    Our AI script generator creates scripts specifically optimized for <strong style={{ fontWeight: 600 }}>high-quality text-to-speech</strong>. 
-                    The format you see here is designed to produce audio that sounds natural and human-like, not robotic.
-                  </Typography>
-                </Box>
-
-                <Stack spacing={2}>
-                  <Box sx={{ display: "flex", gap: 2 }}>
-                    <Box
-                      sx={{
-                        minWidth: 32,
-                        height: 32,
-                        borderRadius: "8px",
-                        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ color: "#6366f1", fontWeight: 700 }}>
-                        1
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, mb: 0.5 }}>
-                        Natural Pauses & Rhythm
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "#475569", lineHeight: 1.7 }}>
-                        The script includes strategic pauses between lines and when speakers change. This creates natural breathing patterns 
-                        and conversation flow, just like real human speech. Without these pauses, the audio would sound rushed and robotic.
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: "flex", gap: 2 }}>
-                    <Box
-                      sx={{
-                        minWidth: 32,
-                        height: 32,
-                        borderRadius: "8px",
-                        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ color: "#6366f1", fontWeight: 700 }}>
-                        2
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, mb: 0.5 }}>
-                        Emphasis Markers
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "#475569", lineHeight: 1.7 }}>
-                        Lines marked with emphasis help highlight important points, statistics, or key insights. The AI voice will naturally 
-                        stress these parts, making your podcast more engaging and easier to follow—just like a real host would emphasize important information.
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: "flex", gap: 2 }}>
-                    <Box
-                      sx={{
-                        minWidth: 32,
-                        height: 32,
-                        borderRadius: "8px",
-                        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ color: "#6366f1", fontWeight: 700 }}>
-                        3
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, mb: 0.5 }}>
-                        Short, Conversational Sentences
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "#475569", lineHeight: 1.7 }}>
-                        The script uses shorter sentences (15-20 words) written in a conversational style. This matches how people actually 
-                        speak, making the audio sound more natural. Long, complex sentences would sound awkward when spoken aloud.
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: "flex", gap: 2 }}>
-                    <Box
-                      sx={{
-                        minWidth: 32,
-                        height: 32,
-                        borderRadius: "8px",
-                        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ color: "#6366f1", fontWeight: 700 }}>
-                        4
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, mb: 0.5 }}>
-                        Scene-Specific Emotions
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "#475569", lineHeight: 1.7 }}>
-                        Each scene has an emotional tone (excited, serious, curious, etc.) that guides the AI voice's delivery. This creates 
-                        variety and keeps listeners engaged, just like a real podcast host would vary their tone based on the topic.
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: "flex", gap: 2 }}>
-                    <Box
-                      sx={{
-                        minWidth: 32,
-                        height: 32,
-                        borderRadius: "8px",
-                        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ color: "#6366f1", fontWeight: 700 }}>
-                        5
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ color: "#0f172a", fontWeight: 600, mb: 0.5 }}>
-                        Optimized for Podcast Narration
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "#475569", lineHeight: 1.7 }}>
-                        The script is optimized with slightly slower pacing and natural pronunciation settings specifically for podcast narration. 
-                        This ensures clarity and makes the content easy to understand, even when listeners are multitasking.
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Stack>
-
-                <Alert
-                  severity="info"
-                  sx={{
-                    mt: 1,
-                    background: "rgba(99, 102, 241, 0.06)",
-                    border: "1px solid rgba(99, 102, 241, 0.15)",
-                    "& .MuiAlert-icon": {
-                      color: "#6366f1",
-                    },
-                  }}
-                >
-                  <Typography variant="body2" sx={{ color: "#0f172a", lineHeight: 1.7 }}>
-                    <strong style={{ fontWeight: 600 }}>Tip:</strong> You can edit any line or scene to match your preferences. 
-                    The format will be preserved when rendering, ensuring your audio still sounds natural and professional.
-                  </Typography>
-                </Alert>
-              </Stack>
-            </Collapse>
-          </Paper>
-
           <Alert 
             severity="info" 
             sx={{ 
@@ -693,10 +327,10 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
 
           <BrollInfoPanel
             activeScript={script}
-            generatingChartId={generatingChartId}
-            generateChartPreviews={generateChartPreviews}
-            regenerateChart={regenerateChart}
-            removeChart={removeChart}
+            generatingChartId={undefined}
+            generateChartPreviews={undefined}
+            regenerateChart={undefined}
+            removeChart={undefined}
             scenesWithCharts={script.scenes.filter((s) => s.chart_data && Object.keys(s.chart_data).length > 0).length}
           />
 
@@ -717,6 +351,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
                   approvingSceneId={approvingSceneId}
                   generatingAudioId={generatingAudioId}
                   totalScenes={script.scenes.length}
+                  sceneIndex={idx}
                   onAudioGenerationStart={(sceneId) => {
                     setGeneratingAudioId(sceneId);
                   }}

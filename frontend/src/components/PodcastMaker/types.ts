@@ -85,6 +85,8 @@ export type Scene = {
   imagePrompt?: string;
   chart_data?: Record<string, any>;
   broll_preview_url?: string;
+  broll_video_url?: string;
+  chart_id?: string;
 };
 
 export type Script = {

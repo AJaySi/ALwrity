@@ -280,10 +280,11 @@ async def generate_podcast_audio(
 
             if voice_sample_url:
                 from services.llm_providers.main_audio_generation import qwen3_voice_clone, cosyvoice_voice_clone
+                from utils.media_utils import detect_audio_format
                 
                 engine = (request.voice_clone_engine or "qwen3").lower()
                 logger.warning(f"[Podcast] 🔊 Voice clone path: engine={engine}, scene='{request.scene_title}', voice_sample_url={voice_sample_url[:80]}...")
-
+                
                 # Download voice sample from URL (with caching)
                 logger.warning(f"[Podcast] Fetching voice sample from: {voice_sample_url}")
                 try:
@@ -294,6 +295,11 @@ async def generate_podcast_audio(
                 logger.warning(f"[Podcast] Voice sample fetch result: {len(voice_sample_bytes) if voice_sample_bytes else 0} bytes")
                 if not voice_sample_bytes:
                     raise HTTPException(status_code=400, detail=f"Could not fetch voice sample from {voice_sample_url}")
+                
+                # Detect actual audio format from bytes (may differ from file extension)
+                detected_fmt, detected_mime = detect_audio_format(voice_sample_bytes)
+                logger.warning(f"[Podcast] 🔊 Detected voice sample format: {detected_fmt} ({detected_mime}), {len(voice_sample_bytes)} bytes")
+                voice_mime_type = detected_mime or "audio/wav"
 
                 scene_text = request.text.strip()
                 if len(scene_text) > 4000:
@@ -329,6 +335,7 @@ async def generate_podcast_audio(
                                 audio_bytes=voice_sample_bytes,
                                 text=scene_text,
                                 user_id=user_id,
+                                audio_mime_type=voice_mime_type,
                             ),
                         )
                         audio_bytes = result_obj.preview_audio_bytes
@@ -341,6 +348,7 @@ async def generate_podcast_audio(
                                 audio_bytes=voice_sample_bytes,
                                 text=scene_text,
                                 user_id=user_id,
+                                audio_mime_type=voice_mime_type,
                             ),
                         )
                         audio_bytes = result_obj.preview_audio_bytes
@@ -419,9 +427,14 @@ async def generate_podcast_audio(
                 result["audio_url"] = f"/api/podcast/audio/{audio_filename}"
             
             logger.warning(f"[Podcast] Audio generated - path: {result.get('audio_path')}, url: {result.get('audio_url')}")
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.error(f"[Podcast] ❌ Audio generation failed: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Audio generation failed: {exc}")
+        exc_type = type(exc).__name__
+        exc_msg = str(exc)[:500]
+        logger.error(f"[Podcast] Audio generation failed ({exc_type}): {exc_msg}")
+        logger.error(f"[Podcast] Audio generation traceback:", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Audio generation failed ({exc_type}): {exc_msg}")
 
     # Save to asset library (podcast module)
     try:

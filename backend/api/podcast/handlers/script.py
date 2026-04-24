@@ -141,16 +141,18 @@ async def generate_podcast_script(
         if numeric_pairs:
             labels = [p[0] for p in numeric_pairs]
             values = [p[1] for p in numeric_pairs]
+            sources = [f.get("url", f.get("source", "")) for f in research_fact_cards[:12] if f.get("url") or f.get("source")]
             return {
                 "type": "bar_comparison",
                 "title": scene_title,
                 "labels": labels,
                 "values": values,
                 "takeaway": "Data points sourced from research facts used in this scene.",
+                "source": sources[0] if sources else "",
             }
 
         return {
-            "type": "bullet",
+            "type": "bullet_points",
             "title": scene_title,
             "bullet_points": ["Key point 1", "Key point 2", "Key point 3"],
             "takeaway": "Narration summary for this scene.",
@@ -233,11 +235,15 @@ Return JSON with scenes array. Each scene:
   - ttsHints: optional list from [pause_300ms, pause_700ms, smile, serious_tone, emphasize_data]
   - Plain text only, no markdown
 - chart_data: object for B-roll mapping (required in audio_only)
-  - type: bar_comparison|line_trend|bullet_points
+  - type: bar_comparison|bar_horizontal|line_trend|pie|stacked_bar|bullet_points
   - title: short chart title
   - labels: list
-  - values: list (same length as labels)
+  - values: list (same length as labels, required for bar/line/pie)
+  - before/after: parallel lists of numbers (for bar_comparison only)
+  - segments: list of {{name, values}} (for stacked_bar only)
+  - bullet_points: list of strings (for bullet_points only)
   - takeaway: one sentence tying chart to narration
+  - source: URL or citation for the data (e.g. "Research fact #3" or a URL from the research context)
 
 COST OPTIMIZATION:
 - 5-6 scenes max for {request.duration_minutes} min episode

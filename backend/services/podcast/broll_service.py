@@ -48,7 +48,7 @@ class BrollService:
             self.output_dir = self._get_chart_dir(user_id)
         
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"[BrollService] Initialized with output directory: {self.output_dir}")
+        logger.warning(f"[BrollService] Initialized with output directory: {self.output_dir}")
     
     def _get_chart_dir(self, user_id: Optional[str] = None) -> Path:
         """Get chart directory from podcast constants (workspace-aware)."""
@@ -103,9 +103,11 @@ class BrollService:
                 if not before and not after:
                     values = chart_data.get("values", [])
                     if values:
-                        # Use original labels, set before to zeros, values go to after
-                        before = [0] * len(labels)
-                        after = values[:len(labels)]
+                        # Normalize to same length, truncating or padding as needed
+                        n = min(len(labels), len(values))
+                        labels = labels[:n]
+                        before = [0] * n
+                        after = values[:n]
                         # Create modified data dict with proper format for make_bar_chart
                         chart_data_for_render = {
                             "labels": labels,
@@ -123,6 +125,7 @@ class BrollService:
                     logger.warning(f"[BrollService] Data shape mismatch: labels={len(labels)}, before={len(before)}, after={len(after)}")
                     return ""
                 make_bar_chart(chart_data_for_render, out_path, title, subtitle=subtitle)
+                logger.warning(f"[BrollService] bar_comparison rendered: {out_path}, exists={os.path.exists(out_path)}")
             elif chart_type == "bar_horizontal":
                 labels = chart_data.get("labels", [])
                 values = chart_data.get("values", [])
@@ -130,6 +133,7 @@ class BrollService:
                     logger.warning("[BrollService] Missing required data for bar_horizontal")
                     return ""
                 make_horizontal_bar(chart_data, out_path, title)
+                logger.warning(f"[BrollService] bar_horizontal rendered: {out_path}, exists={os.path.exists(out_path)}")
             elif chart_type == "line_trend":
                 labels = chart_data.get("labels", [])
                 values = chart_data.get("values", [])
@@ -137,6 +141,7 @@ class BrollService:
                     logger.warning("[BrollService] Missing required data for line_trend")
                     return ""
                 make_line_trend(chart_data, out_path, title)
+                logger.warning(f"[BrollService] line_trend rendered: {out_path}, exists={os.path.exists(out_path)}")
             elif chart_type == "pie":
                 labels = chart_data.get("labels", [])
                 values = chart_data.get("values", [])
@@ -144,6 +149,7 @@ class BrollService:
                     logger.warning("[BrollService] Missing required data for pie")
                     return ""
                 make_pie_chart(chart_data, out_path, title)
+                logger.warning(f"[BrollService] pie rendered: {out_path}, exists={os.path.exists(out_path)}")
             elif chart_type == "stacked_bar":
                 labels = chart_data.get("labels", [])
                 segments = chart_data.get("segments", [])
@@ -151,6 +157,7 @@ class BrollService:
                     logger.warning("[BrollService] Missing required data for stacked_bar")
                     return ""
                 make_stacked_bar(chart_data, out_path, title)
+                logger.warning(f"[BrollService] stacked_bar rendered: {out_path}, exists={os.path.exists(out_path)}")
             elif chart_type == "bullet" or chart_type == "bullet_points":
                 # Accept both: bullet_points OR labels
                 bullet_points = chart_data.get("bullet_points", [])
@@ -163,6 +170,7 @@ class BrollService:
                         bullet_points = labels_fallback
                 if bullet_points:
                     make_bullet_overlay(bullet_points, out_path)
+                    logger.warning(f"[BrollService] bullet_points rendered: {out_path}, exists={os.path.exists(out_path)}")
                 else:
                     logger.warning("[BrollService] No bullet points provided")
                     return ""
@@ -176,7 +184,34 @@ class BrollService:
                     logger.warning(f"[BrollService] Fallback also failed: {fallback_err}")
                     return ""
             
-            logger.info(f"[BrollService] Chart preview generated: {out_path}")
+            logger.warning(f"[BrollService] Chart preview generated: {out_path}, exists={os.path.exists(out_path) if out_path else 'N/A'}")
+            
+            # Add source attribution overlay if present
+            source = chart_data.get("source", "").strip()
+            if source and out_path and os.path.exists(out_path):
+                try:
+                    from PIL import Image as PILImage, ImageDraw, ImageFont
+                    img = PILImage.open(out_path).convert("RGBA")
+                    draw = ImageDraw.Draw(img)
+                    source_text = f"Source: {source[:80]}"
+                    try:
+                        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
+                    except (OSError, IOError):
+                        try:
+                            font = ImageFont.truetype("arial.ttf", 11)
+                        except (OSError, IOError):
+                            font = ImageFont.load_default()
+                    text_bbox = draw.textbbox((0, 0), source_text, font=font)
+                    text_w = text_bbox[2] - text_bbox[0]
+                    text_h = text_bbox[3] - text_bbox[1]
+                    x = img.width - text_w - 12
+                    y = img.height - text_h - 8
+                    draw.rectangle([x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill=(0, 0, 0, 140))
+                    draw.text((x, y), source_text, fill=(200, 200, 200, 220), font=font)
+                    img.save(out_path)
+                except Exception as src_err:
+                    logger.warning(f"[BrollService] Source overlay failed (non-fatal): {src_err}")
+            
             return out_path
             
         except Exception as e:
@@ -189,7 +224,7 @@ class BrollService:
         key_insight: str,
         supporting_stat: str,
         chart_data: Optional[Dict[str, Any]],
-        visual_cue: str,  # bar_chart_comparison, bullet_points, full_avatar
+        visual_cue: str,  # bar_comparison, bar_horizontal, line_trend, pie, stacked_bar, bullet_points, full_avatar
         duration: float,
         background_img_path: str,
         avatar_video_path: Optional[str] = None,

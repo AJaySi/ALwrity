@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { Script, Knobs, Scene, PodcastMode } from "../types";
-import { podcastApi } from "../../../services/podcastApi";
-import { getApiUrl } from "../../../api/client";
+import { podcastApi, getCachedVoiceCloneInfo } from "../../../services/podcastApi";
+import { getApiUrl, getAuthTokenGetter } from "../../../api/client";
 
 interface ScriptEditorContextType {
   // State
@@ -63,7 +63,21 @@ const toUsablePreviewUrl = (previewUrl?: string): string | undefined => {
   if (!previewUrl) return undefined;
   if (/^https?:\/\//i.test(previewUrl)) return previewUrl;
   const cleanPath = previewUrl.startsWith("/") ? previewUrl : `/${previewUrl}`;
+  // Build base URL — auth token will be appended lazily when the URL is used
   return `${getApiUrl()}${cleanPath}`;
+};
+
+const appendAuthToken = async (url: string): Promise<string> => {
+  const tokenGetter = getAuthTokenGetter();
+  if (!tokenGetter) return url;
+  try {
+    const token = await tokenGetter();
+    if (token) {
+      const separator = url.includes("?") ? "&" : "?";
+      return `${url}${separator}token=${encodeURIComponent(token)}`;
+    }
+  } catch {}
+  return url;
 };
 
 interface ScriptEditorProviderProps {
@@ -316,13 +330,14 @@ export const ScriptEditorProvider: React.FC<ScriptEditorProviderProps> = ({
         lines: scene.lines.map((line) => ({ text: line.text })),
       }));
 
+      const cachedClone = getCachedVoiceCloneInfo();
       const result = await podcastApi.generateBatchAudio({
         scenes: sceneData,
         voiceId: knobs.voice_id,
-        customVoiceId: knobs.custom_voice_id,
-        useVoiceClone: knobs.is_voice_clone,
-        voiceSampleUrl: knobs.voice_sample_url,
-        voiceCloneEngine: knobs.voice_clone_engine,
+        customVoiceId: knobs.custom_voice_id || cachedClone?.customVoiceId,
+        useVoiceClone: knobs.is_voice_clone || cachedClone?.isVoiceClone || false,
+        voiceSampleUrl: knobs.voice_sample_url || cachedClone?.voiceSampleUrl || undefined,
+        voiceCloneEngine: knobs.voice_clone_engine || cachedClone?.engine || undefined,
         speed: knobs.voice_speed,
         emotion: knobs.voice_emotion,
         englishNormalization: true,
@@ -423,9 +438,12 @@ export const ScriptEditorProvider: React.FC<ScriptEditorProviderProps> = ({
               title: scene.title,
             });
             
+            const baseUrl = toUsablePreviewUrl(result.preview_url);
+            const authUrl = baseUrl ? await appendAuthToken(baseUrl) : undefined;
+            
             return {
               ...scene,
-              broll_preview_url: toUsablePreviewUrl(result.preview_url),
+              broll_preview_url: authUrl,
               chart_id: result.chart_id,
             };
           } catch (err) {
@@ -461,9 +479,12 @@ export const ScriptEditorProvider: React.FC<ScriptEditorProviderProps> = ({
         title: scene.title,
       });
       
+      const baseUrl = toUsablePreviewUrl(result.preview_url);
+      const authUrl = baseUrl ? await appendAuthToken(baseUrl) : undefined;
+      
       const updatedScenes = activeScript.scenes.map((s) =>
         s.id === sceneId
-          ? { ...s, broll_preview_url: toUsablePreviewUrl(result.preview_url), chart_id: result.chart_id }
+          ? { ...s, broll_preview_url: authUrl, chart_id: result.chart_id }
           : s
       );
       

@@ -626,11 +626,14 @@ export const podcastApi = {
       text: textToUse,
       voice_id: params.voiceId || "Wise_Woman",
       custom_voice_id: params.customVoiceId || null,
-      speed: params.speed ?? 1.0, // Normal speed (was 0.9, but too slow - causing duration issues)
+      use_voice_clone: params.useVoiceClone || false,
+      voice_sample_url: params.voiceSampleUrl || null,
+      voice_clone_engine: params.voiceCloneEngine || null,
+      speed: params.speed ?? 1.0,
       volume: params.volume ?? 1.0,
       pitch: params.pitch ?? 0.0,
       emotion: sceneEmotion,
-      english_normalization: params.englishNormalization ?? true, // Better number reading for statistics
+      english_normalization: params.englishNormalization ?? true,
       sample_rate: params.sampleRate || null,
       bitrate: params.bitrate || null,
       channel: params.channel || null,

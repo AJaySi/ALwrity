@@ -10,9 +10,14 @@ import {
   Delete as DeleteIcon,
   Fullscreen as FullscreenIcon,
   Close as CloseIcon,
+  Refresh as RefreshIcon,
+  Info as InfoIcon,
+  Mic as MicIcon,
+  HelpOutline as HelpOutlineIcon,
 } from "@mui/icons-material";
 import { Scene, Line, Knobs } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton } from "../ui";
+import { OperationButton } from "../../shared/OperationButton";
 import { LineEditor } from "./LineEditor";
 import { ImageRegenerateModal, ImageGenerationSettings } from "./ImageRegenerateModal";
 import { AudioRegenerateModal, AudioGenerationSettings } from "./AudioRegenerateModal";
@@ -33,6 +38,7 @@ interface SceneEditorProps {
   idea?: string; // Podcast idea for image generation context
   avatarUrl?: string | null; // Base avatar URL for consistent scene image generation
   totalScenes?: number; // Total number of scenes in the script
+  sceneIndex?: number; // Current scene index (0-based) for 1/N numbering
   analysis?: {
     audience?: string;
     contentType?: string;
@@ -53,6 +59,7 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   idea,
   avatarUrl,
   totalScenes,
+  sceneIndex,
   analysis,
 }) => {
   const [localGenerating, setLocalGenerating] = useState(false);
@@ -65,6 +72,8 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
+  const [showApprovalInfo, setShowApprovalInfo] = useState(false);
+  const [showWhyScript, setShowWhyScript] = useState(false);
   const [audioSettings, setAudioSettings] = useState<AudioGenerationSettings>({
     voiceId: knobs.voice_id || "Wise_Woman",
     customVoiceId: knobs.custom_voice_id || undefined,
@@ -283,6 +292,15 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   const generating = generatingAudioId === scene.id || localGenerating;
   const hasAudio = Boolean(scene.audioUrl && audioBlobUrl);
   const hasImage = Boolean(scene.imageUrl);
+  
+  // Completion status for visual feedback
+  const isComplete = hasAudio && hasImage;
+  const completionPercent = (hasAudio ? 50 : 0) + (hasImage ? 50 : 0);
+
+  // Scene order for 1/N badge display
+  const sceneOrder = sceneIndex != null ? sceneIndex + 1 : null;
+  const totalScenesInline = totalScenes ?? null;
+  const showOrderBadge = sceneOrder != null && totalScenesInline != null;
 
   const handleApproveAndGenerate = async (settings?: AudioGenerationSettings) => {
     const wasAlreadyApproved = scene.approved;
@@ -507,124 +525,402 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
   };
 
   return (
-    <GlassyCard sx={glassyCardSx}>
-      <Stack spacing={2.5}>
-        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-          <Box sx={{ flex: 1 }}>
+    <GlassyCard 
+      sx={{
+        ...glassyCardSx,
+        border: isComplete 
+          ? "2px solid #10b981" 
+          : completionPercent > 0 
+            ? "2px solid #f59e0b" 
+            : "1px solid rgba(15, 23, 42, 0.08)",
+        background: isComplete
+          ? "linear-gradient(135deg, rgba(16, 185, 129, 0.03) 0%, rgba(255, 255, 255, 0.9) 100%)"
+          : completionPercent > 0
+            ? "linear-gradient(135deg, rgba(245, 158, 11, 0.03) 0%, rgba(255, 255, 255, 0.9) 100%)"
+            : glassyCardSx.background,
+        boxShadow: isComplete
+          ? "0 4px 20px rgba(16, 185, 129, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1)"
+          : completionPercent > 0
+            ? "0 4px 20px rgba(245, 158, 11, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1)"
+            : glassyCardSx.boxShadow,
+      }}
+    >
+      {/* Completion Progress Bar */}
+      <Box sx={{ position: "relative", height: 4, mb: 2, borderRadius: 2, overflow: "hidden", backgroundColor: "rgba(0,0,0,0.04)" }}>
+        <Box 
+          sx={{ 
+            position: "absolute", 
+            left: 0, 
+            top: 0, 
+            bottom: 0, 
+            width: `${completionPercent}%`,
+            background: isComplete 
+              ? "linear-gradient(90deg, #10b981 0%, #059669 100%)" 
+              : "linear-gradient(90deg, #f59e0b 0%, #d97706 100%)",
+            transition: "width 0.5s ease",
+          }} 
+        />
+      </Box>
+      
+      <Stack spacing={{ xs: 2, sm: 2.5 }}>
+        <Stack 
+          direction={{ xs: 'column', sm: 'row' }} 
+          justifyContent="space-between" 
+          alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+          spacing={{ xs: 2, sm: 0 }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography 
               variant="h6" 
               sx={{ 
                 display: "flex", 
                 alignItems: "center", 
-                gap: 1.5, 
-                mb: 1, 
+                gap: { xs: 1, sm: 1.5 }, 
+                mb: { xs: 0.75, sm: 1 }, 
                 color: "#0f172a", 
                 fontWeight: 600,
-                fontSize: "1.25rem",
+                fontSize: { xs: "1.1rem", sm: "1.25rem" },
                 letterSpacing: "-0.01em",
+                flexWrap: 'wrap',
               }}
             >
-              <EditNoteIcon fontSize="small" sx={{ color: "#667eea", fontSize: "1.5rem" }} />
-              {scene.title}
+              <EditNoteIcon fontSize="small" sx={{ color: isComplete ? "#059669" : completionPercent > 0 ? "#d97706" : "#667eea", fontSize: { xs: "1.25rem", sm: "1.5rem" } }} />
+              <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: { xs: 'normal', sm: 'nowrap' } }}>
+                {scene.title}
+              </Box>
+              {showOrderBadge && (
+                <Chip 
+                  label={`${sceneOrder}/${totalScenesInline}`} 
+                  size="small" 
+                  sx={{ 
+                    ml: { xs: 0, sm: 0.5 }, 
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none',
+                    height: { xs: 20, sm: 24 }, 
+                    fontSize: { xs: '0.65rem', sm: '0.7rem' }, 
+                    fontWeight: 700, 
+                    color: '#ffffff',
+                    borderRadius: '12px',
+                    boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+                    '& .MuiChip-label': {
+                      px: { xs: 0.75, sm: 1 },
+                    },
+                  }} 
+                />
+              )}
             </Typography>
-            <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.5 }} alignItems="center" flexWrap="wrap">
+              {/* Completion Status Chip */}
               <Chip
-                icon={scene.approved ? <CheckCircleIcon /> : <RadioButtonUncheckedIcon />}
-                label={scene.approved ? "Approved" : "Pending Approval"}
+                icon={isComplete ? <CheckCircleIcon /> : completionPercent > 0 ? <RefreshIcon /> : <RadioButtonUncheckedIcon />}
+                label={isComplete ? "Complete" : completionPercent > 0 ? `In Progress ${completionPercent}%` : "Pending"}
                 size="small"
-                color={scene.approved ? "success" : "warning"}
                 sx={{
-                  background: scene.approved 
-                    ? "linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.12) 100%)"
-                    : "linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.12) 100%)",
-                  color: scene.approved ? "#059669" : "#d97706",
-                  border: scene.approved 
-                    ? "1px solid rgba(16, 185, 129, 0.25)" 
-                    : "1px solid rgba(245, 158, 11, 0.25)",
-                  fontWeight: 600,
+                  background: isComplete 
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                    : completionPercent > 0
+                      ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                      : "linear-gradient(135deg, #64748b 0%, #475569 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  fontWeight: 700,
                   fontSize: "0.75rem",
                   height: 26,
-                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+                  borderRadius: "12px",
+                  px: 1,
+                  boxShadow: isComplete 
+                    ? "0 3px 12px rgba(16, 185, 129, 0.4)" 
+                    : completionPercent > 0
+                      ? "0 3px 12px rgba(245, 158, 11, 0.4)"
+                      : "0 2px 6px rgba(100, 116, 139, 0.3)",
+                  '& .MuiChip-icon': {
+                    fontSize: '1rem',
+                    color: '#ffffff',
+                  },
+                  '& .MuiChip-label': {
+                    pl: 0.5,
+                  },
                 }}
               />
-              <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 500, fontSize: "0.8125rem" }}>
+              
+              {/* Audio Status */}
+              <Chip
+                icon={hasAudio ? <CheckCircleIcon sx={{ fontSize: '0.875rem !important' }} /> : <VolumeUpIcon sx={{ fontSize: '0.875rem !important' }} />}
+                label={hasAudio ? "Audio Ready" : "No Audio"}
+                size="small"
+                sx={{
+                  background: hasAudio 
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                    : "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: "0.7rem",
+                  height: 22,
+                  borderRadius: "10px",
+                  px: 0.75,
+                  boxShadow: hasAudio ? "0 2px 8px rgba(16, 185, 129, 0.35)" : "0 1px 4px rgba(100, 116, 139, 0.25)",
+                  '& .MuiChip-icon': {
+                    color: '#ffffff',
+                  },
+                  '& .MuiChip-label': {
+                    pl: 0.5,
+                  },
+                }}
+              />
+              
+              {/* Image Status */}
+              <Chip
+                icon={hasImage ? <CheckCircleIcon sx={{ fontSize: '0.875rem !important' }} /> : <ImageIcon sx={{ fontSize: '0.875rem !important' }} />}
+                label={hasImage ? "Image Ready" : "No Image"}
+                size="small"
+                sx={{
+                  background: hasImage 
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                    : "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: "0.7rem",
+                  height: 22,
+                  borderRadius: "10px",
+                  px: 0.75,
+                  boxShadow: hasImage ? "0 2px 8px rgba(16, 185, 129, 0.35)" : "0 1px 4px rgba(100, 116, 139, 0.25)",
+                  '& .MuiChip-icon': {
+                    color: '#ffffff',
+                  },
+                  '& .MuiChip-label': {
+                    pl: 0.5,
+                  },
+                }}
+              />
+              
+              <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 500, fontSize: "0.8125rem", ml: 1 }}>
                 Duration: {scene.duration}s
               </Typography>
             </Stack>
+            
+            {/* Approval Info Panel - Inline chips for guidance */}
+            <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" sx={{ mt: 1 }}>
+              {/* Active Voice indicator */}
+              <Chip
+                icon={<MicIcon sx={{ fontSize: '0.875rem !important' }} />}
+                label={`Voice: ${knobs.voice_id === "Wise_Woman" ? "Wise Woman" : knobs.voice_id?.replace(/_/g, " ") || "Default"}`}
+                size="small"
+                sx={{
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: "0.7rem",
+                  height: 22,
+                  borderRadius: "10px",
+                  px: 0.75,
+                  boxShadow: "0 2px 8px rgba(102, 126, 234, 0.3)",
+                  '& .MuiChip-icon': { color: '#ffffff' },
+                  '& .MuiChip-label': {
+                    pl: 0.5,
+                  },
+                }}
+              />
+              
+              {/* Why Script chip - opens modal with guidance */}
+              <Chip
+                icon={<HelpOutlineIcon sx={{ fontSize: '0.875rem !important' }} />}
+                label="Why Script?"
+                size="small"
+                onClick={() => setShowWhyScript(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setShowWhyScript(true);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label="Learn why scene approval is required"
+                sx={{
+                  background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: "0.7rem",
+                  height: 22,
+                  borderRadius: "10px",
+                  px: 0.75,
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(245, 158, 11, 0.35)",
+                  '& .MuiChip-icon': { color: '#ffffff' },
+                  '& .MuiChip-label': {
+                    pl: 0.5,
+                  },
+                  '&:hover': {
+                    background: "linear-gradient(135deg, #d97706 0%, #b45309 100%)",
+                    boxShadow: "0 3px 10px rgba(245, 158, 11, 0.45)",
+                  },
+                  '&:focus': {
+                    outline: '2px solid rgba(245, 158, 11, 0.6)',
+                    outlineOffset: '2px',
+                  },
+                }}
+              />
+            </Stack>
           </Box>
-          <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-            <PrimaryButton
-              onClick={handleAudioRegenerateClick}
-              disabled={approving || generating}
-              loading={approving || generating}
-              startIcon={
-                hasAudio && !generating ? (
-                  <VolumeUpIcon />
-                ) : generating ? (
-                  <CircularProgress size={16} sx={{ color: "white" }} />
-                ) : (
-                  <PlayArrowIcon />
-                )
-              }
-              tooltip={
+          <Stack 
+            direction={{ xs: 'column', sm: 'row' }} 
+            spacing={{ xs: 1, sm: 1.5 }} 
+            flexWrap="wrap" 
+            useFlexGap
+            sx={{ 
+              width: { xs: '100%', sm: 'auto' },
+              '& > *': { width: { xs: '100%', sm: 'auto' } }
+            }}
+          >
+            <Tooltip 
+              title={
                 hasAudio && !generating
-                  ? "Regenerate audio for this scene with custom settings"
+                  ? "✓ Audio generated! Click to regenerate with different settings"
                   : generating
-                  ? "Generating audio..."
+                  ? "Generating audio... please wait"
                   : scene.approved
                   ? "Generate audio for this scene"
                   : "Approve scene and generate audio"
               }
-              sx={{
-                minWidth: 200,
-              }}
             >
-              {hasAudio && !generating
-                ? "Regenerate Audio"
-                : generating
-                ? "Generating Audio..."
-                : scene.approved
-                ? "Generate Audio"
-                : "Approve & Generate Audio"}
-            </PrimaryButton>
-            <PrimaryButton
-              onClick={hasImage ? handleRegenerateClick : () => handleGenerateImage()}
-              disabled={generatingImage}
-              loading={generatingImage}
-              startIcon={
-                hasImage && !generatingImage ? (
-                  <ImageIcon />
-                ) : generatingImage ? (
-                  <CircularProgress size={16} sx={{ color: "white" }} />
-                ) : (
-                  <ImageIcon />
-                )
-              }
-              tooltip={
-                hasImage
-                  ? "Regenerate image for this scene"
+              <Box>
+                <OperationButton
+                  operation={{
+                    provider: "audio",
+                    model: "minimax/speech-02-hd",
+                    tokens_requested: scene.lines.reduce((sum, l) => sum + l.text.length, 0),
+                    operation_type: "tts_full_render",
+                    actual_provider_name: "wavespeed",
+                  }}
+                  label={
+                    hasAudio && !generating
+                      ? "✓ Regenerate Audio"
+                      : generating
+                      ? "Generating Audio..."
+                      : scene.approved
+                      ? "Generate Audio"
+                      : "Approve & Generate Audio"
+                  }
+                  variant="contained"
+                  size="medium"
+                  startIcon={
+                    hasAudio && !generating ? (
+                      <RefreshIcon />
+                    ) : generating ? (
+                      <CircularProgress size={16} sx={{ color: "white" }} />
+                    ) : (
+                      <PlayArrowIcon />
+                    )
+                  }
+                  showCost={true}
+                  checkOnHover={true}
+                  checkOnMount={false}
+                  onClick={handleAudioRegenerateClick}
+                  disabled={approving || generating}
+                  loading={approving || generating}
+                  sx={{
+                    minWidth: { xs: '100%', sm: 200 },
+                    background: hasAudio
+                      ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                      : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    color: "white",
+                    fontWeight: 600,
+                    textTransform: "none",
+                    fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                    py: { xs: 0.75, sm: 1 },
+                    boxShadow: hasAudio 
+                      ? "0 4px 14px rgba(16, 185, 129, 0.35)"
+                      : "0 4px 14px rgba(102, 126, 234, 0.35)",
+                    "&:hover": {
+                      background: hasAudio
+                        ? "linear-gradient(135deg, #059669 0%, #047857 100%)"
+                        : "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+                      boxShadow: hasAudio 
+                        ? "0 6px 20px rgba(16, 185, 129, 0.45)"
+                        : "0 6px 20px rgba(102, 126, 234, 0.45)",
+                    },
+                    "&:disabled": {
+                      background: alpha("#9ca3af", 0.3),
+                      color: alpha("#fff", 0.5),
+                    },
+                  }}
+                />
+              </Box>
+            </Tooltip>
+            
+            <Tooltip 
+              title={
+                hasImage && !generatingImage
+                  ? "✓ Image generated! Click to regenerate with different settings"
                   : generatingImage
-                  ? "Generating image..."
-                  : "Generate image for video (optional)"
+                  ? "Generating image... please wait"
+                  : "Generate image for video (optional but recommended)"
               }
-              sx={{
-                minWidth: 180,
-                background: hasImage 
-                  ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                  : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                "&:hover": {
-                  background: hasImage
-                    ? "linear-gradient(135deg, #059669 0%, #047857 100%)"
-                    : "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
-                },
-              }}
             >
-              {hasImage && !generatingImage
-                ? "Regenerate Image"
-                : generatingImage
-                ? "Generating Image..."
-                : "Generate Image"}
-            </PrimaryButton>
+              <Box>
+                <OperationButton
+                  operation={{
+                    provider: "stability",
+                    operation_type: "image_generation",
+                    actual_provider_name: "wavespeed",
+                  }}
+                  label={
+                    hasImage && !generatingImage
+                      ? "✓ Regenerate Image"
+                      : generatingImage
+                      ? "Generating Image..."
+                      : "Generate Image"
+                  }
+                  variant="contained"
+                  size="medium"
+                  startIcon={
+                    hasImage && !generatingImage ? (
+                      <RefreshIcon />
+                    ) : generatingImage ? (
+                      <CircularProgress size={16} sx={{ color: "white" }} />
+                    ) : (
+                      <ImageIcon />
+                    )
+                  }
+                  showCost={true}
+                  checkOnHover={true}
+                  checkOnMount={false}
+                  onClick={hasImage ? handleRegenerateClick : () => handleGenerateImage()}
+                  disabled={generatingImage}
+                  loading={generatingImage}
+                  sx={{
+                    minWidth: { xs: '100%', sm: 180 },
+                    background: hasImage 
+                      ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                      : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    color: "white",
+                    fontWeight: 600,
+                    textTransform: "none",
+                    fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                    py: { xs: 0.75, sm: 1 },
+                    boxShadow: hasImage 
+                      ? "0 4px 14px rgba(16, 185, 129, 0.35)"
+                      : "0 4px 14px rgba(102, 126, 234, 0.35)",
+                    "&:hover": {
+                      background: hasImage
+                        ? "linear-gradient(135deg, #059669 0%, #047857 100%)"
+                        : "linear-gradient(135deg, #764ba2 0%, #667eea 100%)",
+                      boxShadow: hasImage 
+                        ? "0 6px 20px rgba(16, 185, 129, 0.45)"
+                        : "0 6px 20px rgba(102, 126, 234, 0.45)",
+                    },
+                    "&:disabled": {
+                      background: alpha("#9ca3af", 0.3),
+                      color: alpha("#fff", 0.5),
+                    },
+                  }}
+                />
+              </Box>
+            </Tooltip>
             
             <Tooltip title={totalScenes && totalScenes <= 1 ? "Cannot delete the last scene" : "Delete this scene"}>
               <IconButton
@@ -635,7 +931,8 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
                   backgroundColor: "rgba(239, 68, 68, 0.1)",
                   border: "1px solid rgba(239, 68, 68, 0.2)",
                   borderRadius: 2,
-                  padding: 1.5,
+                  padding: { xs: 1, sm: 1.5 },
+                  alignSelf: { xs: 'center', sm: 'auto' },
                   "&:hover": {
                     backgroundColor: "rgba(239, 68, 68, 0.15)",
                     borderColor: "rgba(239, 68, 68, 0.3)",
@@ -647,7 +944,7 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
                   },
                 }}
               >
-                <DeleteIcon sx={{ fontSize: "1.25rem" }} />
+                <DeleteIcon sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }} />
               </IconButton>
             </Tooltip>
           </Stack>
@@ -901,6 +1198,70 @@ export const SceneEditor: React.FC<SceneEditorProps> = ({
               display: "block",
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Why Script Modal - Guidance for scene approval */}
+      <Dialog
+        open={showWhyScript}
+        onClose={() => setShowWhyScript(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            p: 2,
+          }
+        }}
+      >
+        <DialogContent>
+          <Stack spacing={2}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <HelpOutlineIcon sx={{ color: '#d97706', fontSize: '1.5rem' }} />
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#0f172a' }}>
+                Why Approve This Scene?
+              </Typography>
+            </Box>
+            <Divider />
+            <Typography variant="body2" sx={{ color: '#475569', lineHeight: 1.7 }}>
+              Each scene requires <strong>approval</strong> before audio can be generated. Here&apos;s why the approval process matters:
+            </Typography>
+            <Box sx={{ 
+              p: 2, 
+              background: 'rgba(245, 158, 11, 0.08)', 
+              borderRadius: 2,
+              border: '1px solid rgba(245, 158, 11, 0.2)',
+            }}>
+              <Stack spacing={1.5}>
+                <Box sx={{ display: 'flex', gap: 1.5 }}>
+                  <CheckCircleIcon sx={{ color: '#10b981', fontSize: '1.25rem' }} />
+                  <Typography variant="body2" sx={{ color: '#059669', flex: 1 }}>
+                    <strong>Script Accuracy:</strong> The AI generates audio based on the script text. Once approved, the text is locked to ensure consistency.
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1.5 }}>
+                  <CheckCircleIcon sx={{ color: '#10b981', fontSize: '1.25rem' }} />
+                  <Typography variant="body2" sx={{ color: '#059669', flex: 1 }}>
+                    <strong>Cost Control:</strong> Audio generation uses your subscription credits. Approving ensures you only pay for scenes you intend to render.
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1.5 }}>
+                  <CheckCircleIcon sx={{ color: '#10b981', fontSize: '1.25rem' }} />
+                  <Typography variant="body2" sx={{ color: '#059669', flex: 1 }}>
+                    <strong>Quality Check:</strong> Review your script for tone, pacing, and accuracy before spending credits on audio generation.
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+            <Typography variant="body2" sx={{ color: '#64748b', fontStyle: 'italic' }}>
+              Pro tip: You can always regenerate audio later with different voice settings after approval.
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <PrimaryButton onClick={() => setShowWhyScript(false)}>
+                Got it
+              </PrimaryButton>
+            </Box>
+          </Stack>
         </DialogContent>
       </Dialog>
     </GlassyCard>

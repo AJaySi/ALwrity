@@ -51,7 +51,7 @@ def crossfade_concat(scenes: list, fade_dur: float = 0.5):
 class Insight:
     key_insight: str
     supporting_stat: str
-    visual_cue: str          # bar_chart_comparison | line_trend | bullet_points | full_avatar
+    visual_cue: str          # bar_comparison|bar_horizontal|line_trend|pie|stacked_bar|bullet_points|full_avatar
     audio_tone: str
     chart_data: dict = field(default_factory=dict)
     duration: float = 10.0
@@ -173,39 +173,6 @@ def make_horizontal_bar(data: dict, out_path: str, title: str = "",
     return out_path
 
 
-def make_line_trend(data: dict, out_path: str, title: str = "",
-                    show_area: bool = True, show_markers: bool = True) -> str:
-    """Render a trend line chart."""
-    x_vals = data.get("x", [])
-    y_vals = data.get("y", [])
-
-    fig, ax = plt.subplots(figsize=(8, 4.5), facecolor="none")
-    ax.set_facecolor("none")
-    
-    line_style = data.get("line_style", "-")
-    line_width = data.get("line_width", 2.5)
-    
-    ax.plot(x_vals, y_vals, color=CHART_STYLE["accent"],
-            linewidth=line_width, linestyle=line_style,
-            marker="o" if show_markers else None, markersize=7, zorder=3)
-    
-    if show_area:
-        ax.fill_between(x_vals, y_vals, alpha=0.12, color=CHART_STYLE["accent"])
-    
-    ax.spines[:].set_visible(False)
-    ax.tick_params(colors=CHART_STYLE["text"])
-    ax.yaxis.grid(True, color=CHART_STYLE["grid"], linewidth=0.6, zorder=0)
-    
-    if title:
-        ax.set_title(title, color=CHART_STYLE["text"], fontsize=13,
-                     fontweight="bold", pad=12)
-
-    fig.tight_layout(pad=0.5)
-    fig.savefig(out_path, dpi=150, transparent=True, bbox_inches="tight")
-    plt.close(fig)
-    return out_path
-
-
 def make_pie_chart(data: dict, out_path: str, title: str = "",
                    show_labels: bool = True, show_percent: bool = True,
                    donut: bool = False) -> str:
@@ -304,17 +271,33 @@ def make_stacked_bar(data: dict, out_path: str, title: str = "",
 
 def make_line_trend(data: dict, out_path: str, title: str = "") -> str:
     """Render a trend line chart. Returns output path."""
-    x_vals = data.get("x", [])
-    y_vals = data.get("y", [])
+    x_labels = data.get("labels", data.get("x", []))
+    y_vals = data.get("values", data.get("y", []))
+
+    if not x_labels or not y_vals:
+        return ""
 
     fig, ax = plt.subplots(figsize=(8, 4.5), facecolor="none")
     ax.set_facecolor("none")
+
+    try:
+        x_vals = [float(v) for v in x_labels]
+    except (ValueError, TypeError):
+        x_vals = list(range(len(x_labels)))
+
     ax.plot(x_vals, y_vals, color=CHART_STYLE["accent"],
             linewidth=2.5, marker="o", markersize=7, zorder=3)
     ax.fill_between(x_vals, y_vals, alpha=0.12, color=CHART_STYLE["accent"])
     ax.spines[:].set_visible(False)
     ax.tick_params(colors=CHART_STYLE["text"])
     ax.yaxis.grid(True, color=CHART_STYLE["grid"], linewidth=0.6, zorder=0)
+
+    try:
+        x_labels_f = [float(v) for v in x_labels]
+    except (ValueError, TypeError):
+        ax.set_xticks(x_vals)
+        ax.set_xticklabels(x_labels, color=CHART_STYLE["text"], fontsize=10)
+
     if title:
         ax.set_title(title, color=CHART_STYLE["text"], fontsize=13,
                      fontweight="bold", pad=12)
@@ -514,14 +497,31 @@ def dispatch_scene(insight: Insight, assets: SceneAssets,
     if cue == "full_avatar":
         return build_full_avatar_scene(assets, insight)
 
-    elif cue in ("bar_chart_comparison", "line_trend"):
+    elif cue in ("bar_comparison", "bar_chart_comparison", "bar_horizontal", "line_trend", "pie", "stacked_bar"):
         chart_path = "/tmp/chart.png"
-        if cue == "bar_chart_comparison":
-            make_bar_chart(insight.chart_data, chart_path,
+        chart_data = insight.chart_data or {}
+        if cue in ("bar_comparison", "bar_chart_comparison"):
+            # Normalize {labels, values} -> {labels, before, after} for make_bar_chart
+            if not chart_data.get("before") and not chart_data.get("after"):
+                values = chart_data.get("values", [])
+                labels = chart_data.get("labels", [])
+                if values and labels:
+                    n = min(len(labels), len(values))
+                    chart_data = {**chart_data, "labels": labels[:n], "before": [0] * n, "after": values[:n]}
+            make_bar_chart(chart_data, chart_path,
                            title=insight.key_insight)
-        else:
-            make_line_trend(insight.chart_data, chart_path,
+        elif cue == "bar_horizontal":
+            make_horizontal_bar(chart_data, chart_path,
+                                title=insight.key_insight)
+        elif cue == "line_trend":
+            make_line_trend(chart_data, chart_path,
+                            title=insight.key_insight)
+        elif cue == "pie":
+            make_pie_chart(chart_data, chart_path,
                            title=insight.key_insight)
+        elif cue == "stacked_bar":
+            make_stacked_bar(chart_data, chart_path,
+                             title=insight.key_insight)
         assets.chart_img = chart_path
         return build_data_scene(assets, insight)
 
