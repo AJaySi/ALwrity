@@ -136,9 +136,10 @@ async def update_project(
                     user_id=user_id,
                     project_id=project_id,
                     idea="Untitled Podcast",
-                    status="scripting",  # Assume we're updating an existing project
+                    status="scripting",
                     duration=10,
                     speakers=1,
+                    budget_cap=0.0,
                 )
             except Exception as create_err:
                 logger.error(f"[Podcast] Failed to create project {project_id}: {create_err}")
