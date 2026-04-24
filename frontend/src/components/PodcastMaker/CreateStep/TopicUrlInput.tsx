@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Typography, TextField, Tooltip, Button, CircularProgress, alpha, Stack, Chip } from "@mui/material";
-import { AutoAwesome as AutoAwesomeIcon, AttachMoney as AttachMoneyIcon } from "@mui/icons-material";
+import { AutoAwesome as AutoAwesomeIcon, AttachMoney as AttachMoneyIcon, TrendingUp as TrendingUpIcon } from "@mui/icons-material";
 import { Knobs } from "../types";
 
 export const TOPIC_PLACEHOLDERS = [
@@ -18,9 +18,11 @@ interface TopicUrlInputProps {
   isUrl: boolean;
   showAIDetailsButton: boolean;
   onAIDetailsClick?: () => void;
+  onTrendingTopicsClick?: () => void;
   placeholderIndex: number;
   loading?: boolean;
   loadingMessage?: string;
+  trendingLoading?: boolean;
   estimatedCost?: {
     ttsCost: number;
     avatarCost: number;
@@ -39,9 +41,11 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
   isUrl,
   showAIDetailsButton,
   onAIDetailsClick,
+  onTrendingTopicsClick,
   placeholderIndex,
   loading = false,
   loadingMessage,
+  trendingLoading = false,
   estimatedCost,
   duration = 1,
   speakers = 1,
@@ -249,9 +253,47 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
           />
         </Tooltip>
         
-        {/* Enhance topic with AI button - appears when user types (and not a URL) */}
+        {/* Enhance topic with AI button + Get Trending Topics - appears when user types (and not a URL) */}
         {showAIDetailsButton && !isUrl && (
-          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1.5, flexDirection: "column", alignItems: "flex-end", gap: 0.6 }}>
+          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1.5, flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "flex-end" }, gap: 1 }}>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={
+                trendingLoading ? (
+                  <CircularProgress size={14} thickness={5} sx={{ color: "rgba(255,255,255,0.92)" }} />
+                ) : (
+                  <TrendingUpIcon />
+                )
+              }
+              onClick={onTrendingTopicsClick}
+              disabled={trendingLoading || loading}
+              sx={{
+                textTransform: "none",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                borderRadius: 2.5,
+                color: "#f8fbff",
+                px: 2,
+                py: 0.75,
+                border: "1px solid rgba(16, 185, 129, 0.4)",
+                background: "linear-gradient(120deg, #10b981 0%, #059669 55%, #047857 100%)",
+                boxShadow: "0 8px 18px rgba(16, 185, 129, 0.28), inset 0 1px 0 rgba(255,255,255,0.22)",
+                "&:hover": {
+                  background: "linear-gradient(120deg, #34d399 0%, #10b981 50%, #059669 100%)",
+                  boxShadow: "0 12px 24px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255,255,255,0.26)",
+                  transform: "translateY(-1px)",
+                },
+                "&.Mui-disabled": {
+                  color: "#e2e8f0",
+                  borderColor: "rgba(110, 231, 183, 0.7)",
+                  background: "linear-gradient(120deg, #10b981 0%, #059669 55%, #047857 100%)",
+                  opacity: 0.78,
+                },
+              }}
+            >
+              {trendingLoading ? "Fetching Trends..." : "Get Trending Topics"}
+            </Button>
             <Button
               size="small"
               variant="contained"
@@ -263,7 +305,7 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
                 )
               }
               onClick={onAIDetailsClick}
-              disabled={loading}
+              disabled={loading || trendingLoading}
               sx={{
                 textTransform: "none",
                 fontSize: "0.875rem",
@@ -290,12 +332,12 @@ export const TopicUrlInput: React.FC<TopicUrlInputProps> = ({
             >
               {loading ? "Enhancing Topic With AI..." : "Enhance Topic With AI"}
             </Button>
-            {loading && (
-              <Typography sx={{ fontSize: "0.75rem", color: "#1d4ed8", fontWeight: 600 }}>
-                {loadingMessage || "Analyzing your topic and improving clarity..."}
-              </Typography>
-            )}
           </Box>
+        )}
+        {loading && (
+          <Typography sx={{ fontSize: "0.75rem", color: "#1d4ed8", fontWeight: 600, mt: 0.5, textAlign: "right" }}>
+            {loadingMessage || "Analyzing your topic and improving clarity..."}
+          </Typography>
         )}
       </Box>
     </Box>

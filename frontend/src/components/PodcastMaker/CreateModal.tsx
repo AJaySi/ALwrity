@@ -15,6 +15,7 @@ import { PodcastConfiguration } from "./CreateStep/PodcastConfiguration";
 import { AvatarSelector } from "./CreateStep/AvatarSelector";
 import { CreateActions } from "./CreateStep/CreateActions";
 import { EnhancedTopicChoicesModal } from "./EnhancedTopicChoicesModal";
+import { TrendingTopicsModal } from "./CreateStep/TrendingTopicsModal";
 
 const ENHANCE_TOPIC_PROGRESS_MESSAGES = [
   "Analyzing your topic idea...",
@@ -60,6 +61,10 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
   const [enhancedRationales, setEnhancedRationales] = useState<string[]>([]);
   const [choicesModalOpen, setChoicesModalOpen] = useState(false);
   const [editedChoices, setEditedChoices] = useState<string[]>([]);
+
+  // Trending topics state
+  const [trendingModalOpen, setTrendingModalOpen] = useState(false);
+  const [trendingLoading, setTrendingLoading] = useState(false);
 
   // Rotate placeholder every 3 seconds
   useEffect(() => {
@@ -582,9 +587,11 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
               isUrl={isUrl}
               showAIDetailsButton={showAIDetailsButton}
               onAIDetailsClick={handleAIDetailsClick}
+              onTrendingTopicsClick={() => setTrendingModalOpen(true)}
               placeholderIndex={placeholderIndex}
               loading={enhancingTopic}
               loadingMessage={enhanceTopicMessage}
+              trendingLoading={trendingLoading}
               estimatedCost={null}
               duration={duration}
               speakers={speakers}
@@ -650,6 +657,14 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
           enhancedRationales={enhancedRationales}
           onSelectChoice={handleChoiceSelection}
           loading={enhancingTopic}
+        />
+
+        {/* Trending Topics Modal */}
+        <TrendingTopicsModal
+          open={trendingModalOpen}
+          onClose={() => setTrendingModalOpen(false)}
+          onSelectTopic={(topic) => setTopicInput(topic)}
+          initialKeywords={topicInput}
         />
       </Stack>
     </Paper>
