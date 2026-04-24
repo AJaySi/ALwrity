@@ -319,13 +319,19 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onCreate, open, defaul
     
     // Include selected voice in knobs
     // If voice clone is selected, include voice clone metadata
-    const isVoiceClone = selectedVoiceId === VOICE_CLONE_ID || knobs.custom_voice_id === selectedVoiceId;
+    // VoiceSelector may pass VOICE_CLONE_ID, the actual clone ID (vc_*), or a system voice ID
+    const selectedLooksLikeClone = selectedVoiceId?.startsWith("vc_") || selectedVoiceId === "MY_VOICE_CLONE";
+    const isVoiceClone = selectedVoiceId === VOICE_CLONE_ID || selectedLooksLikeClone || knobs.custom_voice_id === selectedVoiceId;
     
     let voiceSampleUrl: string | undefined;
     let voiceCloneEngine: string | undefined;
     let customVoiceId: string | undefined;
     
     if (isVoiceClone) {
+      // If VoiceSelector already gave us the real clone ID, use it as fallback
+      if (selectedLooksLikeClone && selectedVoiceId !== VOICE_CLONE_ID) {
+        customVoiceId = selectedVoiceId;
+      }
       try {
         const voiceCloneInfo = await getLatestVoiceClone();
         if (voiceCloneInfo?.success && voiceCloneInfo.custom_voice_id) {

@@ -3,6 +3,7 @@ import { Box, Typography, Paper, Stack, Button, Alert, TextField, CircularProgre
 import { keyframes } from '@mui/system';
 import { Mic, GraphicEq, Timer, CloudUpload, Stop, PlayArrow, InfoOutlined, TextFields, HelpOutline, AutoAwesome, Campaign, MicNone, Podcasts, RestartAlt, Undo, Headphones, Article, VideoLibrary, TrendingUp, CheckCircle, RecordVoiceOver, Settings } from '@mui/icons-material';
 import { createVoiceClone, createVoiceDesign, getLatestVoiceClone, setBrandVoice } from '../../../../api/brandAssets';
+import { setCachedVoiceCloneInfo } from '../../../../services/podcastApi';
 import { getAuthTokenGetter, getApiUrl } from '../../../../api/client';
 import { OperationButton } from '../../../shared/OperationButton';
 
@@ -292,6 +293,13 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
               } catch (e) {
                 console.warn('Failed to save voice selection to storage', e);
               }
+              // Also persist to cross-phase cache for Write phase
+              setCachedVoiceCloneInfo({
+                customVoiceId: customVoiceId || undefined,
+                voiceSampleUrl: resultAudioUrl || undefined,
+                engine: engine || 'qwen3',
+                isVoiceClone: true,
+              });
               if (onVoiceSet) onVoiceSet();
           } else {
               setError(resp.error || 'Failed to set brand voice');
@@ -510,6 +518,13 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
             if (resp.success) {
                 setSuccess(resp.message || 'Voice generated successfully');
                 setResultAudioUrl(resp.preview_audio_url || null);
+                // Persist to cross-phase cache so Write phase can use it immediately
+                setCachedVoiceCloneInfo({
+                  customVoiceId: resp.custom_voice_id || undefined,
+                  voiceSampleUrl: resp.preview_audio_url || undefined,
+                  engine: resp.engine || 'qwen3',
+                  isVoiceClone: true,
+                });
             } else {
                 setError(resp.error || 'Voice generation failed');
             }
@@ -557,6 +572,13 @@ export const VoiceAvatarPlaceholder: React.FC<{ domainName?: string; onVoiceSet?
       if (resp.success) {
         setSuccess('Voice generated successfully. Use this for generating your Brand Voice.');
         setResultAudioUrl(resp.preview_audio_url || null);
+        // Persist to cross-phase cache so Write phase can use it immediately
+        setCachedVoiceCloneInfo({
+          customVoiceId: resp.custom_voice_id || customVoiceId || undefined,
+          voiceSampleUrl: resp.preview_audio_url || undefined,
+          engine: resp.engine || engine || 'qwen3',
+          isVoiceClone: true,
+        });
       } else {
         setError(resp.error || 'Voice clone failed');
       }

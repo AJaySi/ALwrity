@@ -38,31 +38,63 @@ const DEFAULT_KNOBS: Knobs = {
   bitrate: "standard",
 };
 
-// In-memory cache for voice clone info to avoid re-fetching per scene
-let _voiceCloneCache: {
+const VOICE_CLONE_STORAGE_KEY = "alwrity_voice_clone_info";
+const VOICE_CLONE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+function _readVoiceCloneCache() {
+  try {
+    const raw = localStorage.getItem(VOICE_CLONE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.timestamp === "number" && Date.now() - parsed.timestamp < VOICE_CLONE_CACHE_TTL) {
+      return parsed;
+    }
+  } catch {
+    /* ignore corrupt localStorage */
+  }
+  return null;
+}
+
+function _writeVoiceCloneCache(info: {
   customVoiceId?: string;
   voiceSampleUrl?: string;
   engine?: string;
   isVoiceClone?: boolean;
-  timestamp: number;
-} | null = null;
-const VOICE_CLONE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-
-export function getCachedVoiceCloneInfo() {
-  if (_voiceCloneCache && Date.now() - _voiceCloneCache.timestamp < VOICE_CLONE_CACHE_TTL) {
-    return _voiceCloneCache;
+}) {
+  try {
+    localStorage.setItem(VOICE_CLONE_STORAGE_KEY, JSON.stringify({ ...info, timestamp: Date.now() }));
+  } catch {
+    /* ignore localStorage errors (e.g. quota exceeded) */
   }
-  _voiceCloneCache = null;
-  return null;
 }
 
+function _clearVoiceCloneCache() {
+  try {
+    localStorage.removeItem(VOICE_CLONE_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Get cached voice clone info from localStorage (survives page refresh).
+ * Returns null if expired (>30 min) or not set.
+ */
+export function getCachedVoiceCloneInfo() {
+  return _readVoiceCloneCache();
+}
+
+/**
+ * Persist voice clone info to localStorage so it survives page refresh
+ * and is available across tabs.
+ */
 export function setCachedVoiceCloneInfo(info: {
   customVoiceId?: string;
   voiceSampleUrl?: string;
   engine?: string;
   isVoiceClone?: boolean;
 }) {
-  _voiceCloneCache = { ...info, timestamp: Date.now() };
+  _writeVoiceCloneCache(info);
 }
 
 // const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -362,6 +394,32 @@ export const podcastApi = {
 
   async enhanceIdea(params: { idea: string; bible?: any }): Promise<{ enhanced_ideas: string[]; rationales: string[] }> {
     const response = await aiApiClient.post("/api/podcast/idea/enhance", params);
+    return response.data;
+  },
+
+  async getTrendingTopics(params: {
+    keywords: string[];
+    timeframe?: string;
+    geo?: string;
+  }): Promise<{
+    success: boolean;
+    data?: {
+      interest_over_time: any[];
+      interest_by_region: any[];
+      related_topics: { top: any[]; rising: any[] };
+      related_queries: { top: any[]; rising: any[] };
+      timeframe: string;
+      geo: string;
+      keywords: string[];
+      cached: boolean;
+    };
+    error?: string;
+  }> {
+    const response = await aiApiClient.post("/api/podcast/trends", {
+      keywords: params.keywords,
+      timeframe: params.timeframe || "today 12-m",
+      geo: params.geo || "US",
+    });
     return response.data;
   },
 

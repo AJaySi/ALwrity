@@ -11,7 +11,7 @@ import {
   PodcastBible,
 } from '../components/PodcastMaker/types';
 import { BlogResearchResponse, ResearchProvider } from '../services/blogWriterApi';
-import { podcastApi } from '../services/podcastApi';
+import { podcastApi, getCachedVoiceCloneInfo } from '../services/podcastApi';
 
 export interface PodcastProjectState {
   // Project metadata
@@ -78,6 +78,30 @@ const DEFAULT_KNOBS: Knobs = {
   sample_rate: 24000,
   bitrate: "standard",
 };
+
+/**
+ * Merge voice clone cache into knobs if the project knobs don't already have it.
+ * This ensures projects created before voice clone, or after a new clone is made,
+ * automatically pick up the latest voice clone info.
+ */
+function mergeVoiceCloneCacheIntoKnobs(knobs: Knobs): Knobs {
+  // If knobs already has a custom voice ID, trust it (user explicitly set it)
+  if (knobs.custom_voice_id) {
+    return knobs;
+  }
+  const cached = getCachedVoiceCloneInfo();
+  if (!cached || !cached.isVoiceClone) {
+    return knobs;
+  }
+  return {
+    ...knobs,
+    voice_id: knobs.voice_id || "Wise_Woman",
+    custom_voice_id: cached.customVoiceId,
+    is_voice_clone: true,
+    voice_sample_url: cached.voiceSampleUrl,
+    voice_clone_engine: cached.engine || "qwen3",
+  };
+}
 
 const DEFAULT_STATE: PodcastProjectState = {
   project: null,
@@ -446,7 +470,7 @@ export const usePodcastProjectState = () => {
         scriptData: dbProject.script_data,
         bible: dbProject.bible,
         renderJobs: dbProject.render_jobs || [],
-        knobs: { ...DEFAULT_KNOBS, ...(dbProject.knobs || {}) },
+        knobs: mergeVoiceCloneCacheIntoKnobs({ ...DEFAULT_KNOBS, ...(dbProject.knobs || {}) }),
         researchProvider: dbProject.research_provider || 'exa',
         budgetCap: dbProject.budget_cap || 50,
         showScriptEditor: dbProject.show_script_editor || false,
