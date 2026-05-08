@@ -1,6 +1,7 @@
 import React from "react";
 import { Stack, Box, Typography, Chip, TextField, IconButton } from "@mui/material";
-import { EditNote as EditNoteIcon, Add as AddIcon } from "@mui/icons-material";
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import AddIcon from "@mui/icons-material/Add";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 

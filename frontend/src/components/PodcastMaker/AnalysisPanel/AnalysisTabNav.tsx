@@ -1,6 +1,14 @@
 import React from "react";
 import { Stack, Button, Typography, Box } from "@mui/material";
-import { Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, EditNote as EditNoteIcon, Search as SearchIcon, AutoAwesome as AutoAwesomeIcon, Lightbulb as TipsIcon, Quiz as TalkIcon, RecordVoiceOver as VoiceIcon } from "@mui/icons-material";
+import InputIcon from "@mui/icons-material/Input";
+import GroupsIcon from "@mui/icons-material/Groups";
+import ListAltIcon from "@mui/icons-material/ListAlt";
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import SearchIcon from "@mui/icons-material/Search";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import TipsIcon from "@mui/icons-material/Lightbulb";
+import TalkIcon from "@mui/icons-material/Quiz";
+import VoiceIcon from "@mui/icons-material/RecordVoiceOver";
 
 export type TabId = "inputs" | "audience" | "content" | "outline" | "titles" | "research" | "hook" | "takeaways" | "guest" | "cta";
 

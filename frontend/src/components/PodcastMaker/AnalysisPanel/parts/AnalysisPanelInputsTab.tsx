@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Stack, Typography, Chip, Paper, alpha } from "@mui/material";
-import { Input as InputIcon, Mic as MicIcon } from "@mui/icons-material";
+import InputIcon from "@mui/icons-material/Input";
+import MicIcon from "@mui/icons-material/Mic";
 import { useAnalysisPanel } from "../AnalysisPanelContext";
 
 interface AnalysisTabContentProps {

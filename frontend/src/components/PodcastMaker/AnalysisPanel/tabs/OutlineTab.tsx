@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Box, Typography, Chip } from "@mui/material";
-import { ListAlt as ListAltIcon } from "@mui/icons-material";
+import ListAltIcon from "@mui/icons-material/ListAlt";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 import { TextToSpeechButton } from "../../../shared/TextToSpeechButton";

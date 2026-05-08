@@ -1,6 +1,10 @@
 import React from "react";
 import { Stack, Box, Typography, Chip, TextField, IconButton, Paper, Divider } from "@mui/material";
-import { EditNote as EditNoteIcon, Add as AddIcon, AutoAwesome as AutoAwesomeIcon, CallToAction as CTAIcon, Edit as EditIcon } from "@mui/icons-material";
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import AddIcon from "@mui/icons-material/Add";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import CTAIcon from "@mui/icons-material/CallToAction";
+import EditIcon from "@mui/icons-material/Edit";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Typography, Paper } from "@mui/material";
-import { AutoAwesome as AutoAwesomeIcon } from "@mui/icons-material";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 

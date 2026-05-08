@@ -1,6 +1,11 @@
 import React from "react";
 import { Box, Stack, Typography, Chip, Button, Divider } from "@mui/material";
-import { Psychology as PsychologyIcon, Refresh as RefreshIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Mic as MicIcon } from "@mui/icons-material";
+import PsychologyIcon from "@mui/icons-material/Psychology";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import EditIcon from "@mui/icons-material/Edit";
+import SaveIcon from "@mui/icons-material/Save";
+import CloseIcon from "@mui/icons-material/Close";
+import MicIcon from "@mui/icons-material/Mic";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "../ui";
 import { useAnalysisPanel, TabId } from "./AnalysisPanelContext";
 import { PodcastEstimate } from "../types";

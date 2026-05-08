@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Typography, Paper } from "@mui/material";
-import { Psychology as PsychologyIcon } from "@mui/icons-material";
+import PsychologyIcon from "@mui/icons-material/Psychology";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 

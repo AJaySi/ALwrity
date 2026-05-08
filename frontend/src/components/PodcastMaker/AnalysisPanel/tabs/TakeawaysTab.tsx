@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Box, Typography, Chip, Paper } from "@mui/material";
-import { Lightbulb as TipsIcon } from "@mui/icons-material";
+import TipsIcon from "@mui/icons-material/Lightbulb";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 import { TextToSpeechButton } from "../../../shared/TextToSpeechButton";

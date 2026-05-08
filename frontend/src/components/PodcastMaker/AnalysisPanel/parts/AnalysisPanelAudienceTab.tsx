@@ -1,6 +1,7 @@
 import React from "react";
 import { Stack, Box, Typography, Chip, TextField, Divider } from "@mui/material";
-import { Groups as GroupsIcon, Search as SearchIcon } from "@mui/icons-material";
+import GroupsIcon from "@mui/icons-material/Groups";
+import SearchIcon from "@mui/icons-material/Search";
 import { useAnalysisPanel } from "../AnalysisPanelContext";
 
 const inputStyles = {

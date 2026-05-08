@@ -1,6 +1,10 @@
 import React from "react";
 import { Stack, Box, Typography, Chip, TextField, IconButton, Paper, Divider } from "@mui/material";
-import { Groups as GroupsIcon, Insights as InsightsIcon, Search as SearchIcon, EditNote as EditNoteIcon, Add as AddIcon } from "@mui/icons-material";
+import GroupsIcon from "@mui/icons-material/Groups";
+import InsightsIcon from "@mui/icons-material/Insights";
+import SearchIcon from "@mui/icons-material/Search";
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import AddIcon from "@mui/icons-material/Add";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 

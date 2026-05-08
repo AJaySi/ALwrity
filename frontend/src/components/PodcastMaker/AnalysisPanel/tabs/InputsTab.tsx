@@ -1,6 +1,8 @@
 import React from "react";
 import { Box, Stack, Typography, Chip, Paper, CircularProgress, alpha } from "@mui/material";
-import { Input as InputIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon } from "@mui/icons-material";
+import InputIcon from "@mui/icons-material/Input";
+import PersonIcon from "@mui/icons-material/Person";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 
 interface InputsTabProps {

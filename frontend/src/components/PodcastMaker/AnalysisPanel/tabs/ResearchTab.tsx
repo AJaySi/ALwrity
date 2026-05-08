@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Box, Typography, Chip, Paper } from "@mui/material";
-import { Search as SearchIcon } from "@mui/icons-material";
+import SearchIcon from "@mui/icons-material/Search";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 

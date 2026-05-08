@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Box, Typography, Chip, Paper } from "@mui/material";
-import { Quiz as TalkIcon } from "@mui/icons-material";
+import TalkIcon from "@mui/icons-material/Quiz";
 import { PodcastAnalysis } from "../../types";
 import { AnalysisTabContent } from "../AnalysisTabNav";
 import { TextToSpeechButton } from "../../../shared/TextToSpeechButton";

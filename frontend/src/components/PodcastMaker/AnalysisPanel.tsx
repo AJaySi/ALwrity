@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { Stack, Box, Typography, Divider, Chip, alpha, Button, IconButton, Popover, TextField, Tooltip } from "@mui/material";
-import { Psychology as PsychologyIcon, Person as PersonIcon, Edit as EditIcon, Save as SaveIcon, Close as CloseIcon, Input as InputIcon, Groups as GroupsIcon, ListAlt as ListAltIcon, Lightbulb as TipsIcon, Article as ArticleIcon, AutoFixHigh as BibleIcon } from "@mui/icons-material";
+import PsychologyIcon from "@mui/icons-material/Psychology";
+import PersonIcon from "@mui/icons-material/Person";
+import EditIcon from "@mui/icons-material/Edit";
+import SaveIcon from "@mui/icons-material/Save";
+import CloseIcon from "@mui/icons-material/Close";
+import InputIcon from "@mui/icons-material/Input";
+import GroupsIcon from "@mui/icons-material/Groups";
+import ListAltIcon from "@mui/icons-material/ListAlt";
+import TipsIcon from "@mui/icons-material/Lightbulb";
+import ArticleIcon from "@mui/icons-material/Article";
+import BibleIcon from "@mui/icons-material/AutoFixHigh";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { PodcastAnalysis, PodcastEstimate, PodcastBible } from "./types";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";
-import { Refresh as RefreshIcon } from "@mui/icons-material";
 import { aiApiClient } from "../../api/client";
 import { InputsTab, AudienceTab, OutlineTab, EpisodeDetailsTab, TakeawaysTab, GuestTab } from "./AnalysisPanel/tabs";
 
