@@ -1,6 +1,10 @@
 import React from 'react';
 import { Box, Typography, Chip, Button, Collapse, Link } from '@mui/material';
-import { ExpandMore, ExpandLess, CheckCircle, Cancel, Help } from '@mui/icons-material';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import Cancel from '@mui/icons-material/Cancel';
+import Help from '@mui/icons-material/Help';
 
 interface SourceDocument {
   title: string;

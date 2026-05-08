@@ -11,7 +11,15 @@ import { createAvatarVideoAsync } from '../../../../api/videoStudioApi';
 import { useVideoGenerationPolling } from '../../../../hooks/usePolling';
 import { fetchMediaBlobUrl } from '../../../../utils/fetchMediaBlobUrl';
 import { getAuthTokenGetter, getApiUrl } from '../../../../api/client';
-import { VideoCameraFront, SkipNext, PlayArrow, InfoOutlined, Close as CloseIcon, HelpOutline, Refresh, RestartAlt, Undo } from '@mui/icons-material';
+import VideoCameraFront from '@mui/icons-material/VideoCameraFront';
+import SkipNext from '@mui/icons-material/SkipNext';
+import PlayArrow from '@mui/icons-material/PlayArrow';
+import InfoOutlined from '@mui/icons-material/InfoOutlined';
+import CloseIcon from '@mui/icons-material/Close';
+import HelpOutline from '@mui/icons-material/HelpOutline';
+import Refresh from '@mui/icons-material/Refresh';
+import RestartAlt from '@mui/icons-material/RestartAlt';
+import Undo from '@mui/icons-material/Undo';
 import { VideoGenerationLoader } from '../../../shared/VideoGenerationLoader';
 import { OperationButton } from '../../../shared/OperationButton';
 

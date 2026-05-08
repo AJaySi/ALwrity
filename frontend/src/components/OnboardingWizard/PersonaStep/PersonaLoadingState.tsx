@@ -9,7 +9,7 @@ import {
   LinearProgress,
   Fade
 } from '@mui/material';
-import { Psychology as PsychologyIcon } from '@mui/icons-material';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import { PersonaGenerationProgress } from './PersonaGenerationProgress';
 import { type GenerationStep } from './PersonaGenerationProgress';
 

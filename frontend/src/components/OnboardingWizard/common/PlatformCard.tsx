@@ -1,6 +1,9 @@
 import React from 'react';
 import { Card, CardContent, Stack, Box, Typography, Chip, Button, CircularProgress } from '@mui/material';
-import { CheckCircle as CheckIcon, Launch as LaunchIcon, Schedule as ScheduleIcon, Error as ErrorIcon } from '@mui/icons-material';
+import CheckIcon from '@mui/icons-material/CheckCircle';
+import LaunchIcon from '@mui/icons-material/Launch';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import ErrorIcon from '@mui/icons-material/Error';
 
 export interface PlatformCardProps {
   id: string;

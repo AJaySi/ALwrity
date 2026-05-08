@@ -8,7 +8,8 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { Search, CalendarToday } from '@mui/icons-material';
+import Search from '@mui/icons-material/Search';
+import CalendarToday from '@mui/icons-material/CalendarToday';
 
 interface AssetFiltersProps {
   idSearch: string;

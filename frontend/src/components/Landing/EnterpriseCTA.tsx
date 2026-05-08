@@ -11,7 +11,7 @@ import {
 } from '@mui/material';
 import OptimizedImage from './OptimizedImage';
 import { useClerk } from '@clerk/clerk-react';
-import { RocketLaunch } from '@mui/icons-material';
+import RocketLaunch from '@mui/icons-material/RocketLaunch';
 import { motion } from 'framer-motion';
 import { ScrambleText } from '../ScrambleText';
 

@@ -6,7 +6,7 @@ import {
   Snackbar,
   useTheme
 } from '@mui/material';
-import { Lightbulb } from '@mui/icons-material';
+import Lightbulb from '@mui/icons-material/Lightbulb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';

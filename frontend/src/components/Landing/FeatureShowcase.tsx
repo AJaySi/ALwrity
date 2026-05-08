@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { Box, Container, Typography, Stack, IconButton, useTheme, alpha } from '@mui/material';
-import { ArrowBack, ArrowForward, Psychology, Search, FactCheck, Edit, Assistant, Verified } from '@mui/icons-material';
+import ArrowBack from '@mui/icons-material/ArrowBack';
+import ArrowForward from '@mui/icons-material/ArrowForward';
+import Psychology from '@mui/icons-material/Psychology';
+import Search from '@mui/icons-material/Search';
+import FactCheck from '@mui/icons-material/FactCheck';
+import Edit from '@mui/icons-material/Edit';
+import Assistant from '@mui/icons-material/Assistant';
+import Verified from '@mui/icons-material/Verified';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Feature {

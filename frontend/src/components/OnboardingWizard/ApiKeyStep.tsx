@@ -8,7 +8,7 @@ import {
   Grid,
   Snackbar,
 } from '@mui/material';
-import { Lock } from '@mui/icons-material';
+import Lock from '@mui/icons-material/Lock';
 import OnboardingButton from './common/OnboardingButton';
 import { 
   HelpSection, 

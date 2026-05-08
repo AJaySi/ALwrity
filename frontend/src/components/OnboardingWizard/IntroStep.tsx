@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Container, Typography, Grid, IconButton, Chip, Button } from '@mui/material';
-import { ArrowBack, ArrowForward } from '@mui/icons-material';
+import ArrowBack from '@mui/icons-material/ArrowBack';
+import ArrowForward from '@mui/icons-material/ArrowForward';
 import { motion, AnimatePresence } from 'framer-motion';
 import step1Img from '../../assets/onboarding/step1.png';
 import step2Img from '../../assets/onboarding/step2.png';

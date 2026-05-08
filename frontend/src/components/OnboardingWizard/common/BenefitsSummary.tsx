@@ -1,6 +1,8 @@
 import React from 'react';
 import { Paper, Typography, Grid, Stack, Box } from '@mui/material';
-import { AutoAwesome as AutoAwesomeIcon, TrendingUp as TrendingUpIcon, ContentPaste as ContentPasteIcon } from '@mui/icons-material';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 
 const BenefitsSummary: React.FC = () => {
   return (

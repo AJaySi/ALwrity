@@ -12,7 +12,9 @@ import Priority2AlertBanner from '../shared/Priority2AlertBanner';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { checkPreflight, PreflightOperation } from '../../services/billingService';
 import { showToastNotification } from '../../utils/toastNotifications';
-import { AttachMoney, Lightbulb, TrendingUp } from '@mui/icons-material';
+import AttachMoney from '@mui/icons-material/AttachMoney';
+import Lightbulb from '@mui/icons-material/Lightbulb';
+import TrendingUp from '@mui/icons-material/TrendingUp';
 
 interface CreateStudioCostAlertsProps {
   userId?: string;

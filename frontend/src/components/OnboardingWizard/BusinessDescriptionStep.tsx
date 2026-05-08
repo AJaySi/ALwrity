@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Button, TextField, Typography, Card, CardContent, CircularProgress, Alert, MenuItem, Divider } from '@mui/material';
-import { ArrowBack as ArrowBackIcon, Save as SaveIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import SaveIcon from '@mui/icons-material/Save';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { businessInfoApi, BusinessInfo } from '../../api/businessInfo';
 import { onboardingCache } from '../../services/onboardingCache';
 
