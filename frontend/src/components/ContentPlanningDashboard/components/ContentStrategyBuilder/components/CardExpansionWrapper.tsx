@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Paper } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 interface CardExpansionWrapperProps {
   children: React.ReactNode;

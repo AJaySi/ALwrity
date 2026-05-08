@@ -12,7 +12,7 @@ import {
   AccordionDetails,
   CircularProgress,
 } from '@mui/material';
-import { ExpandMore } from '@mui/icons-material';
+import ExpandMore from '@mui/icons-material/ExpandMore';
 import { motion } from 'framer-motion';
 import { 
   Info,

@@ -18,10 +18,11 @@ import {
   Backdrop,
   Snackbar,
 } from '@mui/material';
-import { Warning } from '@mui/icons-material';
+import Warning from '@mui/icons-material/Warning';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import { restoreNavigationState, saveCurrentPhaseForTool } from '../../utils/navigationState';
+import { getEnabledFeatures, getDefaultLandingRoute } from '../../utils/demoMode';
 import PlanCard from './PricingPage/PlanCard';
 
 export interface SubscriptionPlan {
@@ -97,14 +98,16 @@ const PricingPage: React.FC = () => {
     fetchPlans();
   }, []);
 
-  const isPodcastOnlyDemoMode = () => {
+  const isFeatureLimitedMode = (): boolean => {
     const appMode = (localStorage.getItem('app_mode') || '').toLowerCase();
     const demoMode = (localStorage.getItem('demo_mode') || '').toLowerCase();
     const podcastOnlyDemoMode = (localStorage.getItem('podcast_only_demo_mode') || '').toLowerCase();
     const envAppMode = (process.env.REACT_APP_APP_MODE || '').toLowerCase();
     const envDemoMode = (process.env.REACT_APP_DEMO_MODE || '').toLowerCase();
+    const enabledFeatures = getEnabledFeatures();
 
     return (
+      !enabledFeatures.has('all') ||
       podcastOnlyDemoMode === 'true' ||
       appMode === 'podcast-only' ||
       demoMode === 'podcast-only' ||
@@ -114,10 +117,9 @@ const PricingPage: React.FC = () => {
   };
 
   const redirectAfterSubscription = () => {
-    // In podcast-only demo mode, always force users into podcast flow.
-    // Never send demo users to onboarding.
-    if (isPodcastOnlyDemoMode()) {
-      navigate('/podcast-maker');
+    if (isFeatureLimitedMode()) {
+      const route = getDefaultLandingRoute();
+      navigate(route);
       return;
     }
 
@@ -235,8 +237,8 @@ const PricingPage: React.FC = () => {
         const response = await apiClient.post('/api/subscription/create-checkout-session', {
           tier: plan.tier,
           billing_cycle: yearlyBilling ? 'yearly' : 'monthly',
-          success_url: isPodcastOnlyDemoMode() 
-            ? `${window.location.origin}/podcast-maker?subscription=success`
+          success_url: isFeatureLimitedMode() 
+            ? `${window.location.origin}${getDefaultLandingRoute()}?subscription=success`
             : `${window.location.origin}/dashboard?subscription=success`,
           cancel_url: `${window.location.origin}/pricing?subscription=cancel`,
         });
@@ -254,9 +256,9 @@ const PricingPage: React.FC = () => {
           'Stripe checkout is required but REACT_APP_STRIPE_PUBLISHABLE_KEY is not configured.'
         );
       } else {
-        // Stripe not configured - warn in demo mode
-        if (isPodcastOnlyDemoMode()) {
-          console.warn('[PricingPage] ⚠️ DEMO MODE WARNING: Stripe is not configured. Using legacy subscription API.');
+        // Stripe not configured - warn in feature-limited mode
+        if (isFeatureLimitedMode()) {
+          console.warn('[PricingPage] ⚠️ FEATURE-LIMITED MODE WARNING: Stripe is not configured. Using legacy subscription API.');
         }
       }
 
@@ -311,9 +313,9 @@ const PricingPage: React.FC = () => {
       setTimeout(() => {
         clearInterval(countdownInterval);
         
-        // In podcast-only demo mode, always route users to podcast flow.
-        if (isPodcastOnlyDemoMode()) {
-          navigate('/podcast-maker');
+        // In feature-limited mode, route users to the feature's landing page.
+        if (isFeatureLimitedMode()) {
+          navigate(getDefaultLandingRoute());
         } else {
           const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
 

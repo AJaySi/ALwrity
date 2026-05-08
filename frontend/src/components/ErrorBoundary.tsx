@@ -7,7 +7,9 @@ import {
   Alert,
   AlertTitle
 } from '@mui/material';
-import { Refresh, BugReport, Home } from '@mui/icons-material';
+import Refresh from '@mui/icons-material/Refresh';
+import BugReport from '@mui/icons-material/BugReport';
+import Home from '@mui/icons-material/Home';
 
 interface Props {
   children: ReactNode;

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Container, Grid, Card, CardContent, Typography, Box, Stack, Chip } from '@mui/material';
-import { CheckCircle, AutoAwesome } from '@mui/icons-material';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
 
 interface PhaseFeature {
   title: string;

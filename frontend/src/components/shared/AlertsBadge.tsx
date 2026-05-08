@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Badge, IconButton, Menu, Typography, Box, Divider, Chip, Tooltip, List, ListItem, ListItemText, ListItemIcon, Button } from '@mui/material';
-import { Notifications as NotificationsIcon, NotificationsActive as NotificationsActiveIcon } from '@mui/icons-material';
-import { Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import NotificationsIcon from '@mui/icons-material/Notifications';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import WarningIcon from '@mui/icons-material/Warning';
+import ErrorIcon from '@mui/icons-material/Error';
+import InfoIcon from '@mui/icons-material/Info';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { billingService } from '../../services/billingService';
 import { useAuth } from '@clerk/clerk-react';
 import { getTasksNeedingIntervention, TaskNeedingIntervention } from '../../api/schedulerDashboard';
-import { isPodcastOnlyDemoMode } from '../../utils/demoMode';
+import { isFeatureOnlyMode } from '../../utils/demoMode';
 import {
   apiClient,
   isBackendCooldownActive,
@@ -107,8 +111,8 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
   const fetchAlerts = async () => {
     if (!userId || isPollingRef.current) return;
 
-    // Skip alerts fetching in podcast-only mode (endpoints not available)
-    if (isPodcastOnlyDemoMode()) {
+    // Skip alerts fetching in feature-limited mode (endpoints not available)
+    if (isFeatureOnlyMode()) {
       setLoading(false);
       return;
     }
@@ -222,8 +226,8 @@ const AlertsBadge: React.FC<AlertsBadgeProps> = ({ colorMode = 'light' }) => {
 
   // Poll for alerts
   useEffect(() => {
-    // Skip alerts polling entirely in podcast-only mode
-    if (isPodcastOnlyDemoMode()) {
+    // Skip alerts polling entirely in feature-limited mode
+    if (isFeatureOnlyMode()) {
       return;
     }
 
