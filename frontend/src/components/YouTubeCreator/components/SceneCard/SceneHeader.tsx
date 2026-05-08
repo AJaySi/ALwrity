@@ -9,7 +9,8 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import { Edit, HelpOutline } from '@mui/icons-material';
+import Edit from '@mui/icons-material/Edit';
+import HelpOutline from '@mui/icons-material/HelpOutline';
 import { Scene } from '../../../../services/youtubeApi';
 
 // Helper functions

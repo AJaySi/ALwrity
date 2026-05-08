@@ -4,7 +4,10 @@
 
 import React, { useState } from 'react';
 import { Box, Typography, Dialog, DialogContent, IconButton, Paper, Stack } from '@mui/material';
-import { Close, ZoomIn, Refresh, AutoAwesome } from '@mui/icons-material';
+import Close from '@mui/icons-material/Close';
+import ZoomIn from '@mui/icons-material/ZoomIn';
+import Refresh from '@mui/icons-material/Refresh';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { PlanDetailsCard } from './PlanDetailsCard';
 import { OperationButton } from '../../shared/OperationButton';
 

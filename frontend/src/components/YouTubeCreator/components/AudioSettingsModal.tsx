@@ -19,7 +19,9 @@ import {
   alpha,
   TextField,
 } from "@mui/material";
-import { HelpOutline as HelpOutlineIcon, Close as CloseIcon, VolumeUp } from "@mui/icons-material";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import CloseIcon from "@mui/icons-material/Close";
+import VolumeUp from "@mui/icons-material/VolumeUp";
 import { Button } from "@mui/material";
 
 export type YouTubeAudioGenerationSettings = {

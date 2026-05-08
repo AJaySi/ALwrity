@@ -6,7 +6,8 @@ import {
   LinearProgress,
   CircularProgress,
 } from '@mui/material';
-import { Image as ImageIcon, VolumeUp } from '@mui/icons-material';
+import ImageIcon from '@mui/icons-material/Image';
+import VolumeUp from '@mui/icons-material/VolumeUp';
 import { Scene } from '../../../../services/youtubeApi';
 import { AudioGenerationSettings } from '../../../../components/shared/AudioSettingsModal';
 import { YouTubeImageGenerationSettings } from '../../shared/YouTubeImageGenerationModal';

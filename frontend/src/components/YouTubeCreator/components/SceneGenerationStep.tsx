@@ -13,7 +13,10 @@ import {
   Box,
   Alert,
 } from '@mui/material';
-import { ArrowForward, ArrowBack, CheckCircle, Warning } from '@mui/icons-material';
+import ArrowForward from '@mui/icons-material/ArrowForward';
+import ArrowBack from '@mui/icons-material/ArrowBack';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import Warning from '@mui/icons-material/Warning';
 import { motion } from 'framer-motion';
 import { Scene, VideoPlan } from '../../../services/youtubeApi';
 import { YT_BG, YT_BORDER, YT_TEXT } from '../constants';

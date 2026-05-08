@@ -9,7 +9,8 @@ import {
   Button,
   Box,
 } from '@mui/material';
-import { PlayArrow, VideoLibrary } from '@mui/icons-material';
+import PlayArrow from '@mui/icons-material/PlayArrow';
+import VideoLibrary from '@mui/icons-material/VideoLibrary';
 import { motion } from 'framer-motion';
 import { VideoPlan, Scene } from '../../../services/youtubeApi';
 import { PlanDetails } from './PlanDetails';

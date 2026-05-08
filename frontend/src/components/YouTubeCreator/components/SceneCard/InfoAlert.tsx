@@ -3,7 +3,7 @@ import {
   Alert,
   Typography,
 } from '@mui/material';
-import { Info } from '@mui/icons-material';
+import Info from '@mui/icons-material/Info';
 import { Scene } from '../../../../services/youtubeApi';
 
 interface InfoAlertProps {

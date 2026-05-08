@@ -19,7 +19,12 @@ import {
   Grid,
   Button,
 } from '@mui/material';
-import { PlayArrow, CloudUpload, AutoAwesome, Delete, InfoOutlined, Collections } from '@mui/icons-material';
+import PlayArrow from '@mui/icons-material/PlayArrow';
+import CloudUpload from '@mui/icons-material/CloudUpload';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
+import Delete from '@mui/icons-material/Delete';
+import InfoOutlined from '@mui/icons-material/InfoOutlined';
+import Collections from '@mui/icons-material/Collections';
 import { motion } from 'framer-motion';
 import {
   inputSx,

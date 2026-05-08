@@ -8,7 +8,12 @@ import {
   IconButton,
   CircularProgress,
 } from '@mui/material';
-import { RecordVoiceOver, Videocam, AutoAwesome, Image as ImageIcon, VolumeUp, HelpOutline } from '@mui/icons-material';
+import RecordVoiceOver from '@mui/icons-material/RecordVoiceOver';
+import Videocam from '@mui/icons-material/Videocam';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
+import ImageIcon from '@mui/icons-material/Image';
+import VolumeUp from '@mui/icons-material/VolumeUp';
+import HelpOutline from '@mui/icons-material/HelpOutline';
 import { Scene } from '../../../../services/youtubeApi';
 
 interface SceneContentProps {

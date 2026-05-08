@@ -18,7 +18,15 @@ import {
   IconButton,
   Alert,
 } from '@mui/material';
-import { HelpOutline, Timeline, BarChart, AccessTime, Movie, Info, Image as ImageIcon, VolumeUp, CheckCircle } from '@mui/icons-material';
+import HelpOutline from '@mui/icons-material/HelpOutline';
+import Timeline from '@mui/icons-material/Timeline';
+import BarChart from '@mui/icons-material/BarChart';
+import AccessTime from '@mui/icons-material/AccessTime';
+import Movie from '@mui/icons-material/Movie';
+import Info from '@mui/icons-material/Info';
+import ImageIcon from '@mui/icons-material/Image';
+import VolumeUp from '@mui/icons-material/VolumeUp';
+import CheckCircle from '@mui/icons-material/CheckCircle';
 import { Scene } from '../../../services/youtubeApi';
 import { getSceneIcon, getSceneColor, getSceneTypeLabel, formatDuration } from '../utils/sceneHelpers';
 

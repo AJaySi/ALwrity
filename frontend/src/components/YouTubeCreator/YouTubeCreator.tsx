@@ -17,7 +17,7 @@ import {
   Button,
   Alert,
 } from '@mui/material';
-import { ArrowBack } from '@mui/icons-material';
+import ArrowBack from '@mui/icons-material/ArrowBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { youtubeApi, type VideoPlan, type Scene } from '../../services/youtubeApi';

@@ -5,7 +5,10 @@
  */
 
 import React from 'react';
-import { Movie, CallMade, Shuffle, PlayArrow } from '@mui/icons-material';
+import Movie from '@mui/icons-material/Movie';
+import CallMade from '@mui/icons-material/CallMade';
+import Shuffle from '@mui/icons-material/Shuffle';
+import PlayArrow from '@mui/icons-material/PlayArrow';
 
 /**
  * Get icon component for scene emphasis type

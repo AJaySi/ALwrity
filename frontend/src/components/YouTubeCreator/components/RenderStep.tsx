@@ -18,7 +18,13 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import { PlayArrow, CheckCircle, Warning, ArrowBack, Visibility, Image as ImageIcon, VolumeUp } from '@mui/icons-material';
+import PlayArrow from '@mui/icons-material/PlayArrow';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import Warning from '@mui/icons-material/Warning';
+import ArrowBack from '@mui/icons-material/ArrowBack';
+import Visibility from '@mui/icons-material/Visibility';
+import ImageIcon from '@mui/icons-material/Image';
+import VolumeUp from '@mui/icons-material/VolumeUp';
 import { motion } from 'framer-motion';
 import { TaskStatus, CostEstimate, VideoPlan, Scene } from '../../../services/youtubeApi';
 import { YT_BORDER, type Resolution } from '../constants';

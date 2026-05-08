@@ -15,7 +15,7 @@ import {
   Chip,
   Tooltip,
 } from '@mui/material';
-import { AccessTime } from '@mui/icons-material';
+import AccessTime from '@mui/icons-material/AccessTime';
 import { Scene } from '../../../services/youtubeApi';
 import { getSceneIcon, getSceneColor, getSceneTypeLabel, formatDuration } from '../utils/sceneHelpers';
 

@@ -13,7 +13,8 @@ import {
   LinearProgress,
   Button,
 } from '@mui/material';
-import { Download, Refresh } from '@mui/icons-material';
+import Download from '@mui/icons-material/Download';
+import Refresh from '@mui/icons-material/Refresh';
 import { TaskStatus } from '../../../services/youtubeApi';
 
 interface RenderStatusDisplayProps {

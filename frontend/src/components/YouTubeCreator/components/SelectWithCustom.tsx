@@ -18,7 +18,7 @@ import {
   Tooltip,
   IconButton,
 } from '@mui/material';
-import { InfoOutlined } from '@mui/icons-material';
+import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import { selectSx, labelSx, helperSx, inputSx, selectMenuProps } from '../styles';
 
 export interface SelectOption {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { TextField, MenuItem, Tooltip, IconButton, InputAdornment, Box, Typography } from '@mui/material';
-import { InfoOutlined } from '@mui/icons-material';
+import InfoOutlined from '@mui/icons-material/InfoOutlined';
 
 interface TooltipContent {
   title: string;

@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { Box, Paper, Stack, Typography, Button, LinearProgress, Alert, Chip } from '@mui/material';
-import { PlayArrow, VideoLibrary, CheckCircle, ErrorOutline } from '@mui/icons-material';
+import PlayArrow from '@mui/icons-material/PlayArrow';
+import VideoLibrary from '@mui/icons-material/VideoLibrary';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import { Scene, VideoPlan } from '../../../services/youtubeApi';
 import { useVideoRenderQueue, SceneVideoJob } from '../hooks/useVideoRenderQueue';
 

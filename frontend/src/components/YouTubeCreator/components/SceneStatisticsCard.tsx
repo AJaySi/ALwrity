@@ -15,7 +15,9 @@ import {
   Chip,
   Divider,
 } from '@mui/material';
-import { AccessTime, Movie, Timeline } from '@mui/icons-material';
+import AccessTime from '@mui/icons-material/AccessTime';
+import Movie from '@mui/icons-material/Movie';
+import Timeline from '@mui/icons-material/Timeline';
 import { Scene } from '../../../services/youtubeApi';
 
 interface SceneStatisticsCardProps {
