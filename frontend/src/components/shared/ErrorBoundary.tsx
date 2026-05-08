@@ -10,13 +10,11 @@ import {
   Collapse,
   Divider
 } from '@mui/material';
-import {
-  ErrorOutline as ErrorIcon,
-  Refresh as RefreshIcon,
-  Home as HomeIcon,
-  ExpandMore as ExpandMoreIcon,
-  BugReport as BugReportIcon
-} from '@mui/icons-material';
+import ErrorIcon from '@mui/icons-material/ErrorOutline';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import HomeIcon from '@mui/icons-material/Home';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import BugReportIcon from '@mui/icons-material/BugReport';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
