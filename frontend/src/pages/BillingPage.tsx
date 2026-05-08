@@ -12,9 +12,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import {
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { DollarSign, CreditCard } from 'lucide-react';
 import { styled } from '@mui/material/styles';
 import EnhancedBillingDashboard from '../components/billing/EnhancedBillingDashboard';
