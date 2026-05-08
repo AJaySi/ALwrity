@@ -10,11 +10,9 @@ import {
   Alert,
   Paper
 } from '@mui/material';
-import {
-  CreditCard,
-  Warning,
-  ArrowForward
-} from '@mui/icons-material';
+import CreditCard from '@mui/icons-material/CreditCard';
+import Warning from '@mui/icons-material/Warning';
+import ArrowForward from '@mui/icons-material/ArrowForward';
 
 interface SubscriptionExpiredModalProps {
   open: boolean;
