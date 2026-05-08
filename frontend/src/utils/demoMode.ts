@@ -2,8 +2,35 @@
  * Consolidated feature mode detection utilities.
  * 
  * Primary env var: REACT_APP_ENABLED_FEATURES
- * Format: "all" or comma-separated: "podcast,core"
+ * Format: "all" or comma-separated: "podcast,blog_writer"
  */
+
+/**
+ * Known feature keys for route gating with ALWRITY_ENABLED_FEATURES.
+ * These match the backend FEATURE_GROUPS in alwrity_utils/feature_registry.py.
+ * 
+ * Usage: isFeatureEnabled(FEATURE_KEYS.PODCAST) → true/false
+ */
+export const FEATURE_KEYS = {
+  CORE: 'core',
+  SEO: 'seo',
+  CONTENT_PLANNING: 'content-planning',
+  SOCIAL: 'social',
+  BLOG_WRITER: 'blog_writer',
+  STORY: 'story',
+  YOUTUBE: 'youtube',
+  PODCAST: 'podcast',
+  VIDEO: 'video',
+  IMAGE: 'image',
+  CAMPAIGN: 'campaign',
+  SCHEDULER: 'scheduler',
+  RESEARCH: 'research',
+  WIX: 'wix',
+  BING: 'bing',
+  ASSET_LIBRARY: 'asset-library',
+} as const;
+
+export type FeatureKey = typeof FEATURE_KEYS[keyof typeof FEATURE_KEYS];
 
 const PRIMARY_STORAGE_KEY = 'enabled_features';
 const PRIMARY_ENV_KEY = 'REACT_APP_ENABLED_FEATURES';
@@ -16,12 +43,10 @@ let cachedFeatures: Set<string> | null = null;
  * Returns a Set of enabled feature names.
  */
 export function getEnabledFeatures(): Set<string> {
-  // Return cached value if available
   if (cachedFeatures) {
     return cachedFeatures;
   }
 
-  // Check localStorage first
   const storageValue = localStorage.getItem(PRIMARY_STORAGE_KEY);
   if (storageValue) {
     const features = storageValue.toLowerCase().split(',').map(f => f.trim());
@@ -33,7 +58,6 @@ export function getEnabledFeatures(): Set<string> {
     return cachedFeatures;
   }
 
-  // Check environment variable
   const envValue = process.env[PRIMARY_ENV_KEY];
   if (envValue) {
     const features = envValue.toLowerCase().split(',').map(f => f.trim());
@@ -45,7 +69,6 @@ export function getEnabledFeatures(): Set<string> {
     return cachedFeatures;
   }
 
-  // Default: all features enabled
   cachedFeatures = new Set(['all']);
   return cachedFeatures;
 }
@@ -59,8 +82,16 @@ export function isFeatureEnabled(feature: string): boolean {
 }
 
 /**
+ * Check if running in feature-only mode (not "all").
+ * Returns true when a specific subset of features is enabled.
+ */
+export function isFeatureOnlyMode(): boolean {
+  const enabled = getEnabledFeatures();
+  return !enabled.has('all');
+}
+
+/**
  * Check if podcast-only mode is enabled.
- * Returns true when podcast is enabled but not "all".
  */
 export function isPodcastOnlyDemoMode(): boolean {
   const enabled = getEnabledFeatures();
@@ -68,10 +99,37 @@ export function isPodcastOnlyDemoMode(): boolean {
 }
 
 /**
+ * Get the single enabled feature name, or null if multiple or full mode.
+ */
+export function getSingleFeature(): string | null {
+  const enabled = getEnabledFeatures();
+  if (enabled.has('all')) return null;
+  if (enabled.size === 1) return [...enabled][0];
+  return null;
+}
+
+/**
+ * Get the default landing route based on enabled features.
+ */
+export function getDefaultLandingRoute(): string {
+  const enabled = getEnabledFeatures();
+  if (enabled.has('all')) return '/dashboard';
+  const singleFeature = getSingleFeature();
+  if (singleFeature) {
+    const routeMap: Record<string, string> = {
+      'podcast': '/podcast-maker',
+      'blog_writer': '/blog-writer',
+    };
+    return routeMap[singleFeature] || '/dashboard';
+  }
+  return '/dashboard';
+}
+
+/**
  * Check if the app should skip onboarding.
- * Returns true in podcast-only mode.
+ * Returns true in feature-only mode.
  */
 export function shouldSkipOnboarding(): boolean {
   const enabled = getEnabledFeatures();
-  return enabled.has('podcast') || !enabled.has('all');
+  return !enabled.has('all');
 }
