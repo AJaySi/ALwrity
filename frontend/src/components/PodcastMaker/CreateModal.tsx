@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Stack, Paper, Box, Chip, Typography, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress } from "@mui/material";
-import { AutoAwesome as AutoAwesomeIcon } from "@mui/icons-material";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import { CreateProjectPayload, Knobs, PodcastMode } from "./types";
 import { useSubscription } from "../../contexts/SubscriptionContext";
 import { podcastApi } from "../../services/podcastApi";

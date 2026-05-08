@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Tooltip, CircularProgress, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
-import { Psychology as BrainIcon, Settings as SettingsIcon, Info as InfoIcon } from '@mui/icons-material';
+import BrainIcon from '@mui/icons-material/Psychology';
+import SettingsIcon from '@mui/icons-material/Settings';
+import InfoIcon from '@mui/icons-material/Info';
 import { ResearchPurpose, ContentOutput, ResearchDepthLevel } from '../../types/intent.types';
 
 interface ResearchInputContainerProps {

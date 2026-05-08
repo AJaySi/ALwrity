@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Box, Stack, Typography, Alert, Paper, LinearProgress, CircularProgress, alpha, IconButton, Divider, Chip, Tooltip } from "@mui/material";
-  import { CheckCircle as CheckCircleIcon, PlayArrow as PlayArrowIcon, ArrowBack as ArrowBackIcon, Download as DownloadIcon, Refresh as RefreshIcon } from "@mui/icons-material";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import DownloadIcon from "@mui/icons-material/Download";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { Script, Knobs, Scene } from "../types";
 import { BlogResearchResponse } from "../../../services/blogWriterApi";
 import { podcastApi } from "../../../services/podcastApi";

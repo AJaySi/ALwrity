@@ -1,6 +1,16 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Box, Typography, TextField, Tooltip, Button, CircularProgress, alpha, Stack, Chip, IconButton, Collapse } from "@mui/material";
-import { AutoAwesome as AutoAwesomeIcon, AttachMoney as AttachMoneyIcon, TrendingUp as TrendingUpIcon, Mic as MicIcon, Stop as StopIcon, Language as LanguageIcon, Newspaper as NewspaperIcon, ShowChart as ShowChartIcon, School as SchoolIcon, Public as PublicIcon, Lightbulb as LightbulbIcon } from "@mui/icons-material";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import MicIcon from "@mui/icons-material/Mic";
+import StopIcon from "@mui/icons-material/Stop";
+import LanguageIcon from "@mui/icons-material/Language";
+import NewspaperIcon from "@mui/icons-material/Newspaper";
+import ShowChartIcon from "@mui/icons-material/ShowChart";
+import SchoolIcon from "@mui/icons-material/School";
+import PublicIcon from "@mui/icons-material/Public";
+import LightbulbIcon from "@mui/icons-material/Lightbulb";
 import { Knobs } from "../types";
 import { podcastApi } from "../../../services/podcastApi";
 import { WebsitePreviewModal } from "./WebsitePreviewModal";

@@ -1,6 +1,9 @@
 import React from 'react';
 import { Card, CardContent, Box, Typography, Tooltip, Chip, Button, List, ListItem, ListItemText, Paper } from '@mui/material';
-import { Info, Visibility, TrendingDown, BarChart } from '@mui/icons-material';
+import Info from '@mui/icons-material/Info';
+import Visibility from '@mui/icons-material/Visibility';
+import TrendingDown from '@mui/icons-material/TrendingDown';
+import BarChart from '@mui/icons-material/BarChart';
 import ChipLegend from './ChipLegend';
 
 interface Suggestion {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tooltip } from '@mui/material';
-import { AutoAwesome } from '@mui/icons-material';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { ResearchPreset } from '../types';
 
 interface PresetsCardProps {

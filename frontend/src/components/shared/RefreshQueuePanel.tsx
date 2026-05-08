@@ -1,6 +1,8 @@
 import React from 'react';
 import { Card, CardContent, Box, Typography, Tooltip, Chip, Button, Grid, List, ListItem, Paper } from '@mui/material';
-import { Info, MouseOutlined, Visibility } from '@mui/icons-material';
+import Info from '@mui/icons-material/Info';
+import MouseOutlined from '@mui/icons-material/MouseOutlined';
+import Visibility from '@mui/icons-material/Visibility';
 import ChipLegend from './ChipLegend';
 
 interface DeltaQuery {

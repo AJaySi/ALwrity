@@ -19,7 +19,8 @@ import {
   alpha,
   TextField,
 } from "@mui/material";
-import { HelpOutline as HelpOutlineIcon, Close as CloseIcon } from "@mui/icons-material";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import CloseIcon from "@mui/icons-material/Close";
 import { PrimaryButton, SecondaryButton } from "../ui";
 import { VoiceSelector } from "../../shared/VoiceSelector";
 

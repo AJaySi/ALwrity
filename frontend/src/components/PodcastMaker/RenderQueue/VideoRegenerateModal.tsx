@@ -15,7 +15,7 @@ import {
   Radio,
   Tooltip,
 } from "@mui/material";
-import { Info as InfoIcon } from "@mui/icons-material";
+import InfoIcon from "@mui/icons-material/Info";
 import { PrimaryButton, SecondaryButton } from "../ui";
 import type { VideoGenerationSettings } from "../types";
 

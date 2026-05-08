@@ -1,6 +1,7 @@
 import React from "react";
 import { Stack, Typography, Paper, Alert, alpha } from "@mui/material";
-import { Download as DownloadIcon, Refresh as RefreshIcon } from "@mui/icons-material";
+import DownloadIcon from "@mui/icons-material/Download";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { useScriptEditor } from "../ScriptEditorContext";
 import { PrimaryButton, SecondaryButton } from "../../ui";
 import { InlineAudioPlayer } from "../../InlineAudioPlayer";

@@ -1,6 +1,9 @@
 import React from 'react';
 import { IconButton, Tooltip, CircularProgress, Box, Menu, MenuItem, ListItemIcon, ListItemText, FormControl, Select, Slider, Typography } from '@mui/material';
-import { VolumeUp as VolumeUpIcon, Stop as StopIcon, PlayArrow as PlayArrowIcon, Settings as SettingsIcon } from '@mui/icons-material';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import StopIcon from '@mui/icons-material/Stop';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { useTextToSpeech, SpeechSynthesisOptions } from '../../hooks/useTextToSpeech';
 
 interface TextToSpeechButtonProps {

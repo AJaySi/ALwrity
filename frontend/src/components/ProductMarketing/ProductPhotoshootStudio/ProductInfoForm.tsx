@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, TextField, Stack, Typography, Tooltip, IconButton } from '@mui/material';
-import { Inventory2 as ProductIcon, Info as InfoIcon } from '@mui/icons-material';
+import ProductIcon from '@mui/icons-material/Inventory2';
+import InfoIcon from '@mui/icons-material/Info';
 import { getTooltipText } from '../../../utils/terminology';
 
 interface ProductInfoFormProps {

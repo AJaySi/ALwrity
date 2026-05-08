@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Button, Typography, Stack, Alert, Paper } from '@mui/material';
-import { BugReport as BugReportIcon } from '@mui/icons-material';
+import BugReportIcon from '@mui/icons-material/BugReport';
 import ErrorBoundary from './ErrorBoundary';
 import ComponentErrorBoundary from './ComponentErrorBoundary';
 

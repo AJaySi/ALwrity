@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 import { Stack, Box, Typography, TextField, ToggleButton, ToggleButtonGroup, alpha, IconButton, Tooltip } from "@mui/material";
-import { Person as PersonIcon, Group as GroupIcon, Settings as SettingsIcon, HelpOutline as HelpOutlineIcon, Headphones as HeadphonesIcon, Videocam as VideocamIcon } from "@mui/icons-material";
+import PersonIcon from "@mui/icons-material/Person";
+import GroupIcon from "@mui/icons-material/Group";
+import SettingsIcon from "@mui/icons-material/Settings";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import HeadphonesIcon from "@mui/icons-material/Headphones";
+import VideocamIcon from "@mui/icons-material/Videocam";
 import { PodcastMode } from "../types";
 import { PodcastModeInfoModal } from "./PodcastModeInfoModal";
 

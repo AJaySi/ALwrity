@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Box, Typography, Paper, LinearProgress } from "@mui/material";
-import { AudioFile as AudioFileIcon } from "@mui/icons-material";
+import AudioFileIcon from "@mui/icons-material/AudioFile";
 import { useScriptEditor } from "../ScriptEditorContext";
 import { PrimaryButton } from "../../ui";
 

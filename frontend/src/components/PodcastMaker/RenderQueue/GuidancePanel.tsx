@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Stack, Typography, Alert, Paper, alpha } from "@mui/material";
-import { PlayArrow as PlayArrowIcon } from "@mui/icons-material";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { Script } from "../types";
 
 interface GuidancePanelProps {

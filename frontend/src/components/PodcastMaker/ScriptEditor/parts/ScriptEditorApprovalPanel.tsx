@@ -1,6 +1,7 @@
 import React from "react";
 import { Stack, Box, Typography, Paper, LinearProgress } from "@mui/material";
-import { CheckCircle as CheckCircleIcon, PlayArrow as PlayArrowIcon } from "@mui/icons-material";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { Script } from "../../types";
 import { useScriptEditor } from "../ScriptEditorContext";
 import { PrimaryButton } from "../../ui";

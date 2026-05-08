@@ -10,7 +10,11 @@ import {
   Divider,
   alpha,
 } from "@mui/material";
-import { Close as CloseIcon, Mic as MicIcon, Person as PersonIcon, AutoAwesome as AutoAwesomeIcon, Settings as SettingsIcon } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
+import MicIcon from "@mui/icons-material/Mic";
+import PersonIcon from "@mui/icons-material/Person";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import SettingsIcon from "@mui/icons-material/Settings";
 
 export const DurationInfoModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
   return (

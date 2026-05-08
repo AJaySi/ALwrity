@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Stepper, Step, StepLabel, Typography, Chip } from '@mui/material';
-import { CheckCircle, RadioButtonUnchecked } from '@mui/icons-material';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
 
 interface CampaignFlowIndicatorProps {
   currentStep: 'blueprint' | 'proposals' | 'review' | 'generate' | 'complete';

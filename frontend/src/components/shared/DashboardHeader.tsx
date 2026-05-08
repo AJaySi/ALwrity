@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Chip, Button, Tooltip } from '@mui/material';
-import { PlayArrow } from '@mui/icons-material';
+import PlayArrow from '@mui/icons-material/PlayArrow';
 import { ShimmerHeader } from './styled';
 import HeaderControls from './HeaderControls';
 import { DashboardHeaderProps } from './types';

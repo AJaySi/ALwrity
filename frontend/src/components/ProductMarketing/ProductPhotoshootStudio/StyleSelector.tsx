@@ -10,7 +10,10 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { Palette, LightMode, Style as StyleIcon, PhotoCamera } from '@mui/icons-material';
+import Palette from '@mui/icons-material/Palette';
+import LightMode from '@mui/icons-material/LightMode';
+import StyleIcon from '@mui/icons-material/Style';
+import PhotoCamera from '@mui/icons-material/PhotoCamera';
 
 interface StyleSelectorProps {
   environment: string;

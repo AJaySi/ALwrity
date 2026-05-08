@@ -1,6 +1,8 @@
 import React from "react";
 import { Stack, Box, Typography, Alert, Paper } from "@mui/material";
-import { Info as InfoIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon } from "@mui/icons-material";
+import InfoIcon from "@mui/icons-material/Info";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useScriptEditor } from "../ScriptEditorContext";
 
 interface FormatItem {

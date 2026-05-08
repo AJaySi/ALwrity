@@ -29,7 +29,17 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { Search as SearchIcon, AutoAwesome as AutoAwesomeIcon, Refresh as RefreshIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Help as HelpIcon, TrendingUp as TrendingUpIcon, Psychology as PsychologyIcon, FactCheck as FactCheckIcon, MenuBook as MenuBookIcon } from "@mui/icons-material";
+import SearchIcon from "@mui/icons-material/Search";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import HelpIcon from "@mui/icons-material/Help";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import PsychologyIcon from "@mui/icons-material/Psychology";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
 import { ResearchProvider } from "../../../services/blogWriterApi";
 import { Query } from "../types";
 import { GlassyCard, glassyCardSx, PrimaryButton, SecondaryButton } from "../ui";

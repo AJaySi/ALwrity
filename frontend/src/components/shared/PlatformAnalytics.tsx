@@ -27,18 +27,16 @@ import {
   TextField,
   Stack,
 } from '@mui/material';
-import {
-  Visibility,
-  MouseOutlined,
-  Search,
-  Web,
-  Refresh,
-  Info,
-  CheckCircle,
-  Error as ErrorIcon,
-  Warning,
-} from '@mui/icons-material';
-import { TrendingUp } from '@mui/icons-material';
+import Visibility from '@mui/icons-material/Visibility';
+import MouseOutlined from '@mui/icons-material/MouseOutlined';
+import Search from '@mui/icons-material/Search';
+import Web from '@mui/icons-material/Web';
+import Refresh from '@mui/icons-material/Refresh';
+import Info from '@mui/icons-material/Info';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import Warning from '@mui/icons-material/Warning';
+import TrendingUp from '@mui/icons-material/TrendingUp';
 import { Button } from '@mui/material';
 import { PlatformAnalytics as PlatformAnalyticsType, AnalyticsSummary, PlatformConnectionStatus } from '../../api/analytics';
 import { cachedAnalyticsAPI } from '../../api/cachedAnalytics';

@@ -11,7 +11,8 @@ import {
   Divider,
   alpha,
 } from "@mui/material";
-import { Close as CloseIcon, HelpOutline as HelpOutlineIcon } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 
 export const PodcastModeInfoModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
   return (

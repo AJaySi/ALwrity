@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography, Button, Avatar } from '@mui/material';
-import { CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { AIInsightsPanel as StyledAIInsightsPanel } from '../../shared/styled';
 import { AIInsight } from '../../../api/seoDashboard';
 

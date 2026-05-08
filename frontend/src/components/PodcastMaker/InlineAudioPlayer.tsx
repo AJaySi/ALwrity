@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Paper, Stack, Typography, IconButton, Tooltip, alpha, Alert } from "@mui/material";
-import { VolumeUp as VolumeUpIcon, PlayCircle as PlayCircleIcon, PauseCircle as PauseCircleIcon, Download as DownloadIcon } from "@mui/icons-material";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import PlayCircleIcon from "@mui/icons-material/PlayCircle";
+import PauseCircleIcon from "@mui/icons-material/PauseCircle";
+import DownloadIcon from "@mui/icons-material/Download";
 import { aiApiClient } from "../../api/client";
 
 interface InlineAudioPlayerProps {

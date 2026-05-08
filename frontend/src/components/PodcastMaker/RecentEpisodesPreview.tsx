@@ -1,6 +1,8 @@
 import React from "react";
 import { Stack, Box, Typography, Paper, Chip, alpha } from "@mui/material";
-import { LibraryMusic as LibraryMusicIcon, OpenInNew as OpenInNewIcon, VolumeUp as VolumeUpIcon } from "@mui/icons-material";
+import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import { useNavigate } from "react-router-dom";
 import { useContentAssets } from "../../hooks/useContentAssets";
 import { GlassyCard, glassyCardSx, SecondaryButton } from "./ui";

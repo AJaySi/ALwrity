@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack, Typography, Chip, Divider } from "@mui/material";
-import { Insights as InsightsIcon } from "@mui/icons-material";
+import InsightsIcon from "@mui/icons-material/Insights";
 import { PodcastEstimate } from "../types";
 import { GlassyCard, glassyCardSx } from "../ui";
 

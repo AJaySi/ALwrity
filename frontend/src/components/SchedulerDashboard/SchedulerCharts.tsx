@@ -17,7 +17,8 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import { Box, Paper, CircularProgress, Modal, IconButton } from '@mui/material';
-import { Close as CloseIcon, OpenInFull as MaximizeIcon } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close';
+import MaximizeIcon from '@mui/icons-material/OpenInFull';
 import { TerminalTypography, TerminalPaper, terminalColors } from './terminalTheme';
 import { getSchedulerEventHistory, SchedulerEvent } from '../../api/schedulerDashboard';
 

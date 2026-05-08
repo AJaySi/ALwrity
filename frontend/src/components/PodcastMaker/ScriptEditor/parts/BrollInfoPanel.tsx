@@ -1,6 +1,13 @@
 import React, { useState } from "react";
 import { Stack, Box, Typography, Paper, Button, CircularProgress, Chip, IconButton, Tooltip, Accordion, AccordionSummary, AccordionDetails, Dialog, DialogContent, DialogTitle } from "@mui/material";
-import { BarChart as BarChartIcon, AutoAwesome as AutoAwesomeIcon, Refresh as RefreshIcon, DeleteOutline as DeleteIcon, Fullscreen as FullscreenIcon, ExpandMore as ExpandMoreIcon, Close as CloseIcon, ZoomOutMap as ZoomOutMapIcon } from "@mui/icons-material";
+import BarChartIcon from "@mui/icons-material/BarChart";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import DeleteIcon from "@mui/icons-material/DeleteOutline";
+import FullscreenIcon from "@mui/icons-material/Fullscreen";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import CloseIcon from "@mui/icons-material/Close";
+import ZoomOutMapIcon from "@mui/icons-material/ZoomOutMap";
 import { useScriptEditor } from "../ScriptEditorContext";
 import { Script } from "../../types";
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Divider, Stack, Typography, CircularProgress } from "@mui/material";
-import { VolumeUp as VolumeUpIcon } from "@mui/icons-material";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 
 interface SceneEditorMediaPanelProps {
   hasAudio: boolean;

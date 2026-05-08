@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { Stack, Typography, Divider, Chip, Tooltip, IconButton, alpha, Box } from "@mui/material";
-import { OpenInNew as OpenInNewIcon, ContentCopy as ContentCopyIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon } from "@mui/icons-material";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { Fact } from "./types";
 import { GlassyCard, glassyCardSx } from "./ui";
 import { TextToSpeechButton } from "../shared/TextToSpeechButton";

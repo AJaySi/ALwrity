@@ -1,6 +1,10 @@
 import React from 'react';
 import { Card, CardContent, Box, Typography, Tooltip, Chip, Button, List, ListItem, ListItemText, Paper, IconButton } from '@mui/material';
-import { Info, MouseOutlined, Visibility, TrendingUp, OpenInNew } from '@mui/icons-material';
+import Info from '@mui/icons-material/Info';
+import MouseOutlined from '@mui/icons-material/MouseOutlined';
+import Visibility from '@mui/icons-material/Visibility';
+import TrendingUp from '@mui/icons-material/TrendingUp';
+import OpenInNew from '@mui/icons-material/OpenInNew';
 import ChipLegend from './ChipLegend';
 
 type Query = { query: string; clicks: number; impressions: number; ctr: number };

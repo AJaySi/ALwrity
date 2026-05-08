@@ -10,7 +10,8 @@ import {
   Typography,
   Stack,
 } from '@mui/material';
-import { AspectRatio, Colorize } from '@mui/icons-material';
+import AspectRatio from '@mui/icons-material/AspectRatio';
+import Colorize from '@mui/icons-material/Colorize';
 
 interface ProductVariationsProps {
   productVariant: string;

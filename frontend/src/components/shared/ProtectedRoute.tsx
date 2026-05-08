@@ -2,9 +2,9 @@ import React, { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { Box, CircularProgress, Typography, Alert, Button } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { useOnboarding } from '../../contexts/OnboardingContext';
-import { shouldSkipOnboarding } from '../../utils/demoMode';
+import { shouldSkipOnboarding, getDefaultLandingRoute } from '../../utils/demoMode';
 import { useLocation } from 'react-router-dom';
 
 interface ProtectedRouteProps {
@@ -36,9 +36,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const localComplete = (() => {
     try { return localStorage.getItem('onboarding_complete') === 'true'; } catch { return false; }
   })();
-  const isPodcastMode = shouldSkipOnboarding();
-  const podcastMakerPath = typeof location?.pathname === 'string' && location.pathname.startsWith('/podcast-maker');
-  const allowAccess = isOnboardingComplete || localComplete || (isPodcastMode && podcastMakerPath);
+  const isFeatureLimited = shouldSkipOnboarding();
+  const defaultRoute = getDefaultLandingRoute();
+  const isOnDefaultRoute = typeof location?.pathname === 'string' && location.pathname.startsWith(defaultRoute);
+  const allowAccess = isOnboardingComplete || localComplete || (isFeatureLimited && isOnDefaultRoute);
 
   // Wait for Clerk to load before any redirect decisions
   if (!isLoaded) {

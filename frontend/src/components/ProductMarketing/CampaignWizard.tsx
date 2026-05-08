@@ -22,14 +22,12 @@ import {
   Tooltip,
   IconButton,
 } from '@mui/material';
-import {
-  ArrowBack,
-  ArrowForward,
-  CheckCircle,
-  Campaign,
-  AutoAwesome,
-  TrendingUp,
-} from '@mui/icons-material';
+import ArrowBack from '@mui/icons-material/ArrowBack';
+import ArrowForward from '@mui/icons-material/ArrowForward';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import Campaign from '@mui/icons-material/Campaign';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
+import TrendingUp from '@mui/icons-material/TrendingUp';
 import { motion } from 'framer-motion';
 import { ImageStudioLayout } from '../ImageStudio/ImageStudioLayout';
 import { GlassyCard } from '../ImageStudio/ui/GlassyCard';
@@ -39,7 +37,7 @@ import { PreflightValidationAlert } from './PreflightValidationAlert';
 import { CampaignPreview } from './CampaignPreview';
 import { useCampaignCreator } from '../../hooks/useCampaignCreator';
 import { getSimpleTerm, getTooltipText, getTermExamples, getTermDescription } from '../../utils/terminology';
-import { Info as InfoIcon } from '@mui/icons-material';
+import InfoIcon from '@mui/icons-material/Info';
 
 const MotionBox = motion.create(Box);
 

@@ -1,6 +1,10 @@
 import React from "react";
 import { Box, Stack, Typography, Tabs, Tab, Chip } from "@mui/material";
-import { EditNote as EditNoteIcon, ArrowBack as ArrowBackIcon, AudioFile as AudioFileIcon, Videocam as VideocamIcon, Mic as MicIcon } from "@mui/icons-material";
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import AudioFileIcon from "@mui/icons-material/AudioFile";
+import VideocamIcon from "@mui/icons-material/Videocam";
+import MicIcon from "@mui/icons-material/Mic";
 import { PodcastMode, Knobs } from "../types";
 import { SecondaryButton } from "../ui";
 import { useScriptEditor } from "./ScriptEditorContext";

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, AlertTitle, IconButton, Collapse } from '@mui/material';
-import { Close as CloseIcon, Warning as WarningIcon } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close';
+import WarningIcon from '@mui/icons-material/Warning';
 import { useCopilotKitHealth } from '../../hooks/useCopilotKitHealth';
 
 interface CopilotKitDegradedBannerProps {
