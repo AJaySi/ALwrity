@@ -1,6 +1,15 @@
 import { useState, useCallback } from 'react';
 import { aiApiClient } from '../api/client';
 
+const formatError = (err: any, fallback: string): string => {
+  if (err?.response?.status === 402 || err?.response?.status === 429) {
+    return 'Subscription limit reached. Upgrade your plan to continue using this feature.';
+  }
+  if (err?.response?.data?.detail) return String(err.response.data.detail);
+  if (err?.message) return String(err.message);
+  return fallback;
+};
+
 /**
  * useProductMarketing Hook
  * 
@@ -37,7 +46,7 @@ export const useProductMarketing = () => {
         setGeneratedProductImage(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to generate product image';
+        const errorMessage = formatError(err, 'Failed to generate product image');
         setProductImageError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -70,7 +79,7 @@ export const useProductMarketing = () => {
         setGeneratedAnimation(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to generate product animation';
+        const errorMessage = formatError(err, 'Failed to generate product animation');
         setAnimationError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -102,7 +111,7 @@ export const useProductMarketing = () => {
         setGeneratedVideo(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to generate product video';
+        const errorMessage = formatError(err, 'Failed to generate product video');
         setVideoError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -137,7 +146,7 @@ export const useProductMarketing = () => {
         setGeneratedAvatar(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to generate product avatar';
+        const errorMessage = formatError(err, 'Failed to generate product avatar');
         setAvatarError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -174,7 +183,7 @@ export const useProductMarketing = () => {
         setInferredConfig(response.data.configuration);
         return response.data.configuration;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to infer requirements';
+        const errorMessage = formatError(err, 'Failed to infer requirements');
         setInferenceError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -194,8 +203,8 @@ export const useProductMarketing = () => {
       setBrandDNA(response.data.brand_dna);
       return response.data.brand_dna;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get brand DNA';
-      setError(errorMessage);
+        const errorMessage = formatError(err, 'Failed to get brand DNA');
+        setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
       setIsLoadingBrandDNA(false);
@@ -210,8 +219,8 @@ export const useProductMarketing = () => {
       setUserPreferences(response.data.preferences);
       return response.data.preferences;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get user preferences';
-      setError(errorMessage);
+        const errorMessage = formatError(err, 'Failed to get user preferences');
+        setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
       setIsLoadingPreferences(false);
@@ -225,7 +234,7 @@ export const useProductMarketing = () => {
         const response = await aiApiClient.get(`/api/product-marketing/personalization/defaults/${formType}`);
         return response.data.defaults;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to get personalized defaults';
+        const errorMessage = formatError(err, 'Failed to get personalized defaults');
         setError(errorMessage);
         throw new Error(errorMessage);
       }
@@ -241,8 +250,8 @@ export const useProductMarketing = () => {
       setRecommendations(response.data.recommendations);
       return response.data.recommendations;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get recommendations';
-      setError(errorMessage);
+        const errorMessage = formatError(err, 'Failed to get recommendations');
+        setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
       setIsLoadingRecommendations(false);

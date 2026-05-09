@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
 
-from services.wavespeed.client import WaveSpeedClient
+from services.llm_providers.main_image_generation import generate_image
 from utils.asset_tracker import save_asset_to_library
 from services.database import SessionLocal
 from fastapi import HTTPException
@@ -113,12 +113,7 @@ class ProductImageService:
     
     def __init__(self):
         """Initialize Product Image Service."""
-        try:
-            self.wavespeed_client = WaveSpeedClient()
-            logger.info("[Product Image Service] Initialized")
-        except Exception as e:
-            logger.error(f"[Product Image Service] Failed to initialize WaveSpeed client: {str(e)}")
-            raise ProductImageServiceError(f"Failed to initialize service: {str(e)}") from e
+        logger.info("[Product Image Service] Initialized")
     
     def validate_request(self, request: ProductImageRequest) -> None:
         """
@@ -260,77 +255,7 @@ class ProductImageService:
         
         return full_prompt
     
-    def _generate_image_with_retry(
-        self,
-        model: str,
-        prompt: str,
-        width: int,
-        height: int,
-        max_retries: int = 3,
-        retry_delay: float = 2.0
-    ) -> bytes:
-        """
-        Generate image with retry logic for transient failures.
-        
-        Args:
-            model: Model to use
-            prompt: Generation prompt
-            width: Image width
-            height: Image height
-            max_retries: Maximum number of retries
-            retry_delay: Delay between retries in seconds
-            
-        Returns:
-            Generated image bytes
-            
-        Raises:
-            ImageGenerationError: If generation fails after retries
-        """
-        last_error = None
-        
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"[Product Image Service] Image generation attempt {attempt + 1}/{max_retries}")
-                
-                image_bytes = self.wavespeed_client.generate_image(
-                    model=model,
-                    prompt=prompt,
-                    width=width,
-                    height=height,
-                    enable_sync_mode=True,
-                    timeout=120,
-                )
-                
-                if not image_bytes:
-                    raise ValueError("Image generation returned empty result")
-                
-                if len(image_bytes) < 100:  # Sanity check: image should be at least 100 bytes
-                    raise ValueError(f"Generated image too small: {len(image_bytes)} bytes")
-                
-                logger.info(f"[Product Image Service] ✅ Image generated successfully: {len(image_bytes)} bytes")
-                return image_bytes
-                
-            except Exception as e:
-                last_error = e
-                error_msg = str(e)
-                logger.warning(f"[Product Image Service] Attempt {attempt + 1} failed: {error_msg}")
-                
-                # Don't retry on validation errors or client errors (4xx)
-                if "4" in error_msg or "validation" in error_msg.lower() or "invalid" in error_msg.lower():
-                    logger.error(f"[Product Image Service] Non-retryable error: {error_msg}")
-                    raise ImageGenerationError(f"Image generation failed: {error_msg}") from e
-                
-                # Retry on transient errors
-                if attempt < max_retries - 1:
-                    logger.info(f"[Product Image Service] Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 1.5  # Exponential backoff
-                else:
-                    logger.error(f"[Product Image Service] All retry attempts failed")
-        
-        raise ImageGenerationError(f"Image generation failed after {max_retries} attempts: {str(last_error)}") from last_error
-    
-    async def generate_product_image(
+    def generate_product_image(
         self,
         request: ProductImageRequest,
         user_id: str,
@@ -374,15 +299,18 @@ class ProductImageService:
             
             # Generate image using WaveSpeed with retry logic
             try:
-                image_bytes = self._generate_image_with_retry(
-                    model=model,
+                result = generate_image(
                     prompt=prompt,
-                    width=width,
-                    height=height,
-                    max_retries=3,
-                    retry_delay=2.0
+                    options={
+                        "provider": "wavespeed",
+                        "model": model,
+                        "width": width,
+                        "height": height,
+                    },
+                    user_id=user_id,
                 )
-            except ImageGenerationError as e:
+                image_bytes = result.image_bytes
+            except Exception as e:
                 logger.error(f"[Product Image Service] Image generation failed: {str(e)}")
                 generation_time = time.time() - start_time
                 return ProductImageResult(

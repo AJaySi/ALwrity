@@ -1,6 +1,15 @@
 import { useState, useCallback } from 'react';
 import { aiApiClient } from '../api/client';
 
+const formatError = (err: any, fallback: string): string => {
+  if (err?.response?.status === 402 || err?.response?.status === 429) {
+    return 'Subscription limit reached. Upgrade your plan to continue using this feature.';
+  }
+  if (err?.response?.data?.detail) return String(err.response.data.detail);
+  if (err?.message) return String(err.message);
+  return fallback;
+};
+
 export interface CampaignCreateRequest {
   campaign_name: string;
   goal: string;
@@ -211,7 +220,7 @@ export const useCampaignCreator = () => {
         setBlueprint(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to create campaign blueprint';
+        const errorMessage = formatError(err, 'Failed to create campaign blueprint');
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -236,7 +245,7 @@ export const useCampaignCreator = () => {
         setProposals(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to generate asset proposals';
+        const errorMessage = formatError(err, 'Failed to generate asset proposals');
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -258,7 +267,7 @@ export const useCampaignCreator = () => {
         setGeneratedAsset(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to generate asset';
+        const errorMessage = formatError(err, 'Failed to generate asset');
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -276,7 +285,7 @@ export const useCampaignCreator = () => {
       setBrandDNA(response.data.brand_dna);
       return response.data.brand_dna;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get brand DNA';
+      const errorMessage = formatError(err, 'Failed to get brand DNA');
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -294,7 +303,7 @@ export const useCampaignCreator = () => {
         );
         return response.data.brand_dna;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to get channel brand DNA';
+        const errorMessage = formatError(err, 'Failed to get channel brand DNA');
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -315,7 +324,7 @@ export const useCampaignCreator = () => {
         setChannelPack(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to get channel pack';
+        const errorMessage = formatError(err, 'Failed to get channel pack');
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -337,7 +346,7 @@ export const useCampaignCreator = () => {
         setAuditResult(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to audit asset';
+        const errorMessage = formatError(err, 'Failed to audit asset');
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -356,7 +365,7 @@ export const useCampaignCreator = () => {
       setCampaigns(response.data.campaigns);
       return response.data.campaigns;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to list campaigns';
+      const errorMessage = formatError(err, 'Failed to list campaigns');
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -370,7 +379,7 @@ export const useCampaignCreator = () => {
       const response = await aiApiClient.get<CampaignBlueprint>(`/api/campaign-creator/campaigns/${campaignId}`);
       return response.data;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get campaign';
+      const errorMessage = formatError(err, 'Failed to get campaign');
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -382,7 +391,7 @@ export const useCampaignCreator = () => {
       const response = await aiApiClient.get<AssetProposalsResponse>(`/api/campaign-creator/campaigns/${campaignId}/proposals`);
       return response.data;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get proposals';
+      const errorMessage = formatError(err, 'Failed to get proposals');
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -400,7 +409,7 @@ export const useCampaignCreator = () => {
         setPreflightResult(response.data);
         return response.data;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to validate campaign pre-flight';
+        const errorMessage = formatError(err, 'Failed to validate campaign pre-flight');
         setError(errorMessage);
         const errorResult: PreflightValidationResult = {
           can_proceed: false,
@@ -452,7 +461,7 @@ export const useCampaignCreator = () => {
         const response = await aiApiClient.get(`/api/product-marketing/personalization/defaults/${formType}`);
         return response.data.defaults;
       } catch (err: any) {
-        const errorMessage = err.response?.data?.detail || err.message || 'Failed to get personalized defaults';
+        const errorMessage = formatError(err, 'Failed to get personalized defaults');
         setError(errorMessage);
         throw new Error(errorMessage);
       }
@@ -468,7 +477,7 @@ export const useCampaignCreator = () => {
       setRecommendations(response.data.recommendations);
       return response.data.recommendations;
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get recommendations';
+      const errorMessage = formatError(err, 'Failed to get recommendations');
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
