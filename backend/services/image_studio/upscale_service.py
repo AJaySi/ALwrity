@@ -88,6 +88,20 @@ class UpscaleStudioService:
         image_bytes = self._extract_image_bytes(result)
         metadata = self._image_metadata(image_bytes)
 
+        # Track usage
+        if user_id:
+            from services.llm_providers.main_image_generation import _track_image_operation_usage
+            _track_image_operation_usage(
+                user_id=user_id,
+                provider="stability",
+                model=f"upscale-{mode}",
+                operation_type="image-upscale",
+                result_bytes=image_bytes,
+                cost=0.04,
+                endpoint="/image-studio/upscale",
+                log_prefix="[Upscale Studio]"
+            )
+
         return {
             "success": True,
             "mode": mode,

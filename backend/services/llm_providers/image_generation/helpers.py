@@ -77,17 +77,27 @@ def _track_image_operation_usage(
                 db_track.add(summary)
                 db_track.flush()
 
-            current_calls_before = getattr(summary, "stability_calls", 0) or 0
-            current_cost_before = getattr(summary, "stability_cost", 0.0) or 0.0
+            # Map provider to DB column names
+            provider_column_map = {
+                "stability": ("stability_calls", "stability_cost"),
+                "wavespeed": ("wavespeed_calls", "wavespeed_cost"),
+                "gemini": ("gemini_calls", "gemini_cost"),
+                "openai": ("openai_calls", "openai_cost"),
+                "huggingface": ("total_calls", "total_cost"),  # no dedicated columns
+            }
+            calls_col, cost_col = provider_column_map.get(provider, ("total_calls", "total_cost"))
+
+            current_calls_before = getattr(summary, calls_col, 0) or 0
+            current_cost_before = getattr(summary, cost_col, 0.0) or 0.0
 
             new_calls = current_calls_before + 1
             new_cost = current_cost_before + cost
 
             from sqlalchemy import text as sql_text
-            update_query = sql_text("""
+            update_query = sql_text(f"""
                 UPDATE usage_summaries
-                SET stability_calls = :new_calls,
-                    stability_cost = :new_cost
+                SET {calls_col} = :new_calls,
+                    {cost_col} = :new_cost
                 WHERE user_id = :user_id AND billing_period = :period
             """)
             db_track.execute(update_query, {
@@ -101,7 +111,17 @@ def _track_image_operation_usage(
             summary.total_calls = (summary.total_calls or 0) + 1
             summary.updated_at = datetime.utcnow()
 
-            api_provider = APIProvider.STABILITY
+            # Map provider to APIProvider enum
+            provider_api_map = {
+                "stability": APIProvider.STABILITY,
+                "wavespeed": APIProvider.WAVESPEED,
+                "gemini": APIProvider.GEMINI,
+                "openai": APIProvider.OPENAI,
+                "image_edit": APIProvider.IMAGE_EDIT,
+                "video": APIProvider.VIDEO,
+                "audio": APIProvider.AUDIO,
+            }
+            api_provider = provider_api_map.get(provider, APIProvider.STABILITY)
             actual_provider = detect_actual_provider(
                 provider_enum=api_provider,
                 model_name=model,
@@ -133,8 +153,8 @@ def _track_image_operation_usage(
             limits = pricing.get_user_limits(user_id)
             plan_name = limits.get('plan_name', 'unknown') if limits else 'unknown'
             tier = limits.get('tier', 'unknown') if limits else 'unknown'
-            image_limit = limits['limits'].get("stability_calls", 0) if limits else 0
-            image_limit_display = image_limit if (image_limit > 0 or tier != 'enterprise') else '∞'
+            provider_limit = limits['limits'].get(calls_col, 0) if limits else 0
+            provider_limit_display = provider_limit if (provider_limit > 0 or tier != 'enterprise') else '∞'
 
             current_audio_calls = getattr(summary, "audio_calls", 0) or 0
             audio_limit = limits['limits'].get("audio_calls", 0) if limits else 0
@@ -154,7 +174,7 @@ def _track_image_operation_usage(
 ├─ Provider: {provider}
 ├─ Actual Provider: {provider}
 ├─ Model: {model or 'unknown'}
-├─ Calls: {current_calls_before} → {new_calls} / {image_limit_display}
+├─ Calls: {current_calls_before} → {new_calls} / {provider_limit_display}
 ├─ Cost: ${current_cost_before:.4f} → ${new_cost:.4f}
 ├─ Audio: {current_audio_calls} / {audio_limit if audio_limit > 0 else '∞'}
 ├─ Image Editing: {current_image_edit_calls} / {image_edit_limit if image_edit_limit > 0 else '∞'}

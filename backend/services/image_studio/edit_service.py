@@ -514,6 +514,19 @@ class EditStudioService:
                 background_bytes=background_bytes,
                 lighting_bytes=lighting_bytes,
             )
+            # Track usage for Stability operations
+            if user_id:
+                from services.llm_providers.main_image_generation import _track_image_operation_usage
+                _track_image_operation_usage(
+                    user_id=user_id,
+                    provider="stability",
+                    model=f"edit-{operation}",
+                    operation_type="image-edit",
+                    result_bytes=image_bytes,
+                    cost=0.04,
+                    endpoint="/image-studio/edit/process",
+                    log_prefix="[Edit Studio]"
+                )
         else:
             image_bytes = await self._handle_general_edit(
                 request=request,

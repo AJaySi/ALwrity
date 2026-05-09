@@ -237,6 +237,21 @@ class ControlStudioService:
 
         image_bytes = self._extract_image_bytes(result)
         metadata = self._image_bytes_to_metadata(image_bytes)
+
+        # Track usage
+        if user_id:
+            from services.llm_providers.main_image_generation import _track_image_operation_usage
+            _track_image_operation_usage(
+                user_id=user_id,
+                provider="stability",
+                model=f"control-{operation}",
+                operation_type="image-control",
+                result_bytes=image_bytes,
+                cost=0.04,
+                endpoint="/image-studio/control/process",
+                log_prefix="[Control Studio]"
+            )
+
         metadata.update(
             {
                 "operation": operation,
