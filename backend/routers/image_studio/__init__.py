@@ -1,10 +1,10 @@
 """Image Studio API router package.
 
 Composed from modular sub-routers. Same prefix and tags as the original monolithic file.
-Legacy router is kept as an empty anchor for backward compatibility.
 """
 
-from ..image_studio_router import router as legacy_router
+from fastapi import APIRouter
+
 from .health import router as health_router
 from .upscale import router as upscale_router
 from .control import router as control_router
@@ -16,17 +16,17 @@ from .transform import router as transform_router
 from .compress import router as compress_router
 from .convert import router as convert_router
 
-legacy_router.include_router(health_router)
-legacy_router.include_router(upscale_router)
-legacy_router.include_router(control_router)
-legacy_router.include_router(social_router)
-legacy_router.include_router(edit_router)
-legacy_router.include_router(face_swap_router)
-legacy_router.include_router(create_router)
-legacy_router.include_router(transform_router)
-legacy_router.include_router(compress_router)
-legacy_router.include_router(convert_router)
+router = APIRouter(prefix="/api/image-studio", tags=["image-studio"])
 
-router = legacy_router
+router.include_router(health_router)
+router.include_router(upscale_router)
+router.include_router(control_router)
+router.include_router(social_router)
+router.include_router(edit_router)
+router.include_router(face_swap_router)
+router.include_router(create_router)
+router.include_router(transform_router)
+router.include_router(compress_router)
+router.include_router(convert_router)
 
 __all__ = ["router"]
