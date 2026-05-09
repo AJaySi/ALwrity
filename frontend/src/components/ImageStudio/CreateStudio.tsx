@@ -191,6 +191,7 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({ onImageGenerated }) 
     estimateCost,
     loadTemplates,
     loadProviders,
+    saveImageToLibrary,
   } = useImageStudio();
 
   // Load meta data on mount
@@ -316,6 +317,23 @@ export const CreateStudio: React.FC<CreateStudioProps> = ({ onImageGenerated }) 
         steps: providerForAdvanced ? steps : undefined,
         seed: providerForAdvanced ? parsedSeed : undefined,
       });
+
+      // Auto-save generated images to asset library
+      if (result?.results?.length) {
+        const resolvedProvider = result.request?.provider || provider;
+        const resolvedModel = result.request?.model || effectiveModel;
+        for (const imgResult of result.results) {
+          if (imgResult.image_base64) {
+            saveImageToLibrary({
+              imageBase64: imgResult.image_base64,
+              prompt,
+              provider: resolvedProvider,
+              model: resolvedModel,
+              operation: 'image-generation',
+            }).catch((e) => console.warn('Asset library save skipped:', e.message || e));
+          }
+        }
+      }
 
       if (onImageGenerated && (result?.results?.length ?? 0) > 0) {
         onImageGenerated(result);

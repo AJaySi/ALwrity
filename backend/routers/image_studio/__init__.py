@@ -15,6 +15,7 @@ from .create import router as create_router
 from .transform import router as transform_router
 from .compress import router as compress_router
 from .convert import router as convert_router
+from .save import router as save_router
 
 router = APIRouter(prefix="/api/image-studio", tags=["image-studio"])
 
@@ -28,5 +29,6 @@ router.include_router(create_router)
 router.include_router(transform_router)
 router.include_router(compress_router)
 router.include_router(convert_router)
+router.include_router(save_router)
 
 __all__ = ["router"]

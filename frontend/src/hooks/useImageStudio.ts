@@ -500,7 +500,7 @@ export const useImageStudio = () => {
       }
     } catch (err: any) {
       console.error('Failed to generate image:', err);
-      const errorMessage = err.response?.data?.detail || 'Failed to generate image';
+      const errorMessage = _formatErrorMessage(err, 'Failed to generate image');
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -568,7 +568,7 @@ export const useImageStudio = () => {
       return response.data as EditResult;
     } catch (err: any) {
       console.error('Failed to process edit:', err);
-      const message = err.response?.data?.detail || 'Failed to process edit';
+      const message = _formatErrorMessage(err, 'Failed to process edit');
       setEditError(message);
       throw new Error(message);
     } finally {
@@ -708,7 +708,7 @@ export const useImageStudio = () => {
       return response.data as FaceSwapResult;
     } catch (err: any) {
       console.error('Failed to process face swap:', err);
-      const message = err.response?.data?.detail || 'Failed to process face swap';
+      const message = _formatErrorMessage(err, 'Failed to process face swap');
       setFaceSwapError(message);
       throw new Error(message);
     } finally {
@@ -731,7 +731,7 @@ export const useImageStudio = () => {
       return response.data as UpscaleResult;
     } catch (err: any) {
       console.error('Failed to upscale image:', err);
-      const message = err.response?.data?.detail || 'Failed to upscale image';
+      const message = _formatErrorMessage(err, 'Failed to upscale image');
       setUpscaleError(message);
       throw new Error(message);
     } finally {
@@ -767,7 +767,7 @@ export const useImageStudio = () => {
       return response.data as ControlResult;
     } catch (err: any) {
       console.error('Failed to process control:', err);
-      const message = err.response?.data?.detail || 'Failed to process control';
+      const message = _formatErrorMessage(err, 'Failed to process control');
       setControlError(message);
       throw new Error(message);
     } finally {
@@ -798,7 +798,7 @@ export const useImageStudio = () => {
       return response.data as SocialOptimizeResult;
     } catch (err: any) {
       console.error('Failed to optimize for social:', err);
-      const message = err.response?.data?.detail || 'Failed to optimize for social platforms';
+      const message = _formatErrorMessage(err, 'Failed to optimize for social platforms');
       setOptimizeError(message);
       throw new Error(message);
     } finally {
@@ -875,7 +875,7 @@ export const useImageStudio = () => {
       return response.data;
     } catch (err: any) {
       console.error('Failed to compress image:', err);
-      const message = err.response?.data?.detail || 'Failed to compress image';
+      const message = _formatErrorMessage(err, 'Failed to compress image');
       setCompressionError(message);
       throw new Error(message);
     } finally {
@@ -923,7 +923,7 @@ export const useImageStudio = () => {
       return response.data;
     } catch (err: any) {
       console.error('Failed to convert format:', err);
-      const message = err.response?.data?.detail || 'Failed to convert image format';
+      const message = _formatErrorMessage(err, 'Failed to convert image format');
       setFormatConversionError(message);
       throw new Error(message);
     } finally {
@@ -936,6 +936,48 @@ export const useImageStudio = () => {
     setFormatConversionError(null);
     setFormatRecommendations([]);
   }, []);
+
+  // Save generated image to asset library
+  const saveImageToLibrary = useCallback(async (params: {
+    imageBase64: string;
+    prompt?: string;
+    provider?: string;
+    model?: string;
+    cost?: number;
+    operation?: string;
+    outputFormat?: string;
+  }) => {
+    try {
+      const response = await aiApiClient.post('/api/image-studio/save-to-library', {
+        image_base64: params.imageBase64,
+        prompt: params.prompt,
+        provider: params.provider,
+        model: params.model,
+        cost: params.cost,
+        operation: params.operation || 'image-generation',
+        output_format: params.outputFormat || 'png',
+      });
+      return response.data;
+    } catch (err: any) {
+      console.error('Failed to save to library:', err);
+      return null;
+    }
+  }, []);
+
+  // Helper to extract user-friendly error messages including 402 subscription errors
+  const _formatErrorMessage = (err: any, fallback: string): string => {
+    if (err?.response?.status === 402 || err?.response?.status === 429) {
+      return `Subscription limit reached. Upgrade your plan to continue using this feature.`;
+    }
+    if (err?.response?.data?.detail) {
+      const detail = err.response.data.detail;
+      if (typeof detail === 'object' && detail?.message) {
+        return detail.message;
+      }
+      return String(detail);
+    }
+    return fallback;
+  };
 
   return {
     // State
@@ -1024,6 +1066,8 @@ export const useImageStudio = () => {
     formatConversionError,
     formatRecommendations,
     clearFormatConversionResult,
+    // Save to library
+    saveImageToLibrary,
   };
 };
 
