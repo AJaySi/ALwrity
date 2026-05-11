@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from typing import Dict, Any, Optional
 from loguru import logger
 from pydantic import BaseModel
+import uuid
 
 from services.wix_service import WixService
 from services.integrations.wix_oauth import WixOAuthService
@@ -18,6 +19,7 @@ import json
 from urllib.parse import urlparse
 
 router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
+qa_router = APIRouter(prefix="/api/wix/test", tags=["Wix Integration QA"])
 
 
 def _sanitize_error_message(error: Exception) -> str:
@@ -122,8 +124,41 @@ class WixConnectionStatus(BaseModel):
     error: Optional[str] = None
 
 
+def _is_wix_test_mode_enabled() -> bool:
+    return os.getenv("WIX_TEST_ROUTES_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _is_admin_user(current_user: Dict[str, Any]) -> bool:
+    email = (current_user.get("email") or "").lower()
+    role = current_user.get("role")
+    public_metadata = current_user.get("public_metadata")
+    if isinstance(public_metadata, dict):
+        role = public_metadata.get("role") or role
+
+    admin_emails = {
+        e.strip().lower()
+        for e in os.getenv("ADMIN_EMAILS", "").split(",")
+        if e.strip()
+    }
+    admin_domain = (os.getenv("ADMIN_EMAIL_DOMAIN") or "").lower().strip()
+
+    return bool(
+        role == "admin"
+        or (email and email in admin_emails)
+        or (email and admin_domain and email.endswith(f"@{admin_domain}"))
+    )
+
+
+def _require_wix_test_access(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    if not _is_wix_test_mode_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+
 @router.get("/auth/url")
-async def get_authorization_url(state: Optional[str] = None) -> Dict[str, str]:
+async def get_authorization_url(state: Optional[str] = None, current_user: dict = Depends(get_current_user)) -> Dict[str, str]:
     """
     Get Wix OAuth authorization URL
     
@@ -134,8 +169,21 @@ async def get_authorization_url(state: Optional[str] = None) -> Dict[str, str]:
         Authorization URL
     """
     try:
-        url = wix_service.get_authorization_url(state)
-        return {"authorization_url": url}
+        user_id = current_user.get('id') if current_user else None
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        oauth_state = state or str(uuid.uuid4())
+        oauth_payload = wix_service.get_authorization_url(oauth_state)
+        saved = wix_oauth_service.store_pkce_verifier(
+            user_id=user_id,
+            state=oauth_state,
+            code_verifier=oauth_payload["code_verifier"],
+            ttl_seconds=600
+        )
+        if not saved:
+            raise HTTPException(status_code=500, detail="Failed to persist OAuth verifier state")
+        return {"authorization_url": oauth_payload["authorization_url"], "state": oauth_state}
     except Exception as e:
         logger.error(f"Failed to generate authorization URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -158,8 +206,16 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
         
+        if not request.state:
+            raise HTTPException(status_code=400, detail="Missing OAuth state")
+        code_verifier = wix_oauth_service.consume_pkce_verifier(user_id=user_id, state=request.state)
+        if not code_verifier:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired OAuth state. Please restart Wix connection."
+            )
         # Exchange code for tokens
-        tokens = wix_service.exchange_code_for_tokens(request.code)
+        tokens = wix_service.exchange_code_for_tokens(request.code, code_verifier=code_verifier)
         
         # Get site information to extract site_id and member_id
         site_info = wix_service.get_site_info(tokens['access_token'])
@@ -212,32 +268,38 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
 async def handle_oauth_callback_get(code: str, state: Optional[str] = None, request: Request = None, current_user: dict = Depends(get_current_user)):
     """HTML callback page for Wix OAuth that exchanges code and notifies opener via postMessage."""
     try:
-        tokens = wix_service.exchange_code_for_tokens(code)
+        user_id = current_user.get('id') if current_user else None
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if not state:
+            raise HTTPException(status_code=400, detail="Missing OAuth state")
+        code_verifier = wix_oauth_service.consume_pkce_verifier(user_id=user_id, state=state)
+        if not code_verifier:
+            raise HTTPException(status_code=400, detail="Invalid or expired OAuth state. Please reconnect Wix.")
+        tokens = wix_service.exchange_code_for_tokens(code, code_verifier=code_verifier)
         site_info = wix_service.get_site_info(tokens['access_token'])
         permissions = wix_service.check_blog_permissions(tokens['access_token'])
         
         # Store tokens in database if we have user_id
-        user_id = current_user.get('id') if current_user else None
-        if user_id:
-            site_id = site_info.get('siteId') or site_info.get('site_id')
-            member_id = None
-            try:
-                member_id = wix_service.extract_member_id_from_access_token(tokens['access_token'])
-            except Exception:
-                pass
-            
-            stored = wix_oauth_service.store_tokens(
-                user_id=user_id,
-                access_token=tokens['access_token'],
-                refresh_token=tokens.get('refresh_token'),
-                expires_in=tokens.get('expires_in'),
-                token_type=tokens.get('token_type', 'Bearer'),
-                scope=tokens.get('scope'),
-                site_id=site_id,
-                member_id=member_id
-            )
-            if not stored:
-                logger.warning(f"Failed to store Wix tokens for user {user_id} in GET callback")
+        site_id = site_info.get('siteId') or site_info.get('site_id')
+        member_id = None
+        try:
+            member_id = wix_service.extract_member_id_from_access_token(tokens['access_token'])
+        except Exception:
+            pass
+        
+        stored = wix_oauth_service.store_tokens(
+            user_id=user_id,
+            access_token=tokens['access_token'],
+            refresh_token=tokens.get('refresh_token'),
+            expires_in=tokens.get('expires_in'),
+            token_type=tokens.get('token_type', 'Bearer'),
+            scope=tokens.get('scope'),
+            site_id=site_id,
+            member_id=member_id
+        )
+        if not stored:
+            logger.warning(f"Failed to store Wix tokens for user {user_id} in GET callback")
 
         # Build success payload for postMessage
         payload = {
@@ -493,8 +555,8 @@ async def disconnect_wix(current_user: dict = Depends(get_current_user)) -> Dict
 # TEST ENDPOINTS - No authentication required for testing
 # =============================================================================
 
-@router.get("/test/connection/status")
-async def get_test_connection_status() -> WixConnectionStatus:
+@qa_router.get("/connection/status")
+async def get_test_connection_status(_: Dict[str, Any] = Depends(_require_wix_test_access)) -> WixConnectionStatus:
     """
     TEST ENDPOINT: Check Wix connection status without authentication
     
@@ -519,8 +581,8 @@ async def get_test_connection_status() -> WixConnectionStatus:
         )
 
 
-@router.get("/test/auth/url")
-async def get_test_authorization_url(state: Optional[str] = None) -> Dict[str, str]:
+@qa_router.get("/auth/url")
+async def get_test_authorization_url(state: Optional[str] = None, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, str]:
     """
     TEST ENDPOINT: Get Wix OAuth authorization URL without authentication
     
@@ -557,8 +619,8 @@ async def get_test_authorization_url(state: Optional[str] = None) -> Dict[str, s
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/test/publish")
-async def test_publish_to_wix(request: WixPublishRequest) -> Dict[str, Any]:
+@qa_router.post("/publish")
+async def test_publish_to_wix(request: WixPublishRequest, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     """
     TEST ENDPOINT: Simulate publishing a blog post to Wix without authentication.
 
@@ -610,8 +672,8 @@ async def refresh_wix_token(request: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to refresh token: {str(e)}")
 
 
-@router.post("/test/publish/real")
-async def test_publish_real(payload: Dict[str, Any]) -> Dict[str, Any]:
+@qa_router.post("/publish/real")
+async def test_publish_real(payload: Dict[str, Any], _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     """
     TEST ENDPOINT: Perform a real publish to Wix using a provided access token.
 
@@ -688,8 +750,8 @@ async def test_publish_real(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/test/category")
-async def test_create_category(request: WixCreateCategoryRequest) -> Dict[str, Any]:
+@qa_router.post("/category")
+async def test_create_category(request: WixCreateCategoryRequest, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     try:
         result = wix_service.create_category(
             access_token=request.access_token,
@@ -703,8 +765,8 @@ async def test_create_category(request: WixCreateCategoryRequest) -> Dict[str, A
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/test/tag")
-async def test_create_tag(request: WixCreateTagRequest) -> Dict[str, Any]:
+@qa_router.post("/tag")
+async def test_create_tag(request: WixCreateTagRequest, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     try:
         result = wix_service.create_tag(
             access_token=request.access_token,

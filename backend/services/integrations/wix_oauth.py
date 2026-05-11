@@ -48,7 +48,94 @@ class WixOAuthService:
                     is_active BOOLEAN DEFAULT TRUE
                 )
             ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS wix_oauth_pkce_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    state TEXT NOT NULL UNIQUE,
+                    code_verifier TEXT NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    used_at TIMESTAMP
+                )
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_wix_oauth_pkce_user_state
+                ON wix_oauth_pkce_states (user_id, state)
+            ''')
             conn.commit()
+
+    def cleanup_expired_pkce_states(self, user_id: str) -> int:
+        """Delete expired or already-used PKCE state records."""
+        try:
+            self._init_db(user_id)
+            db_path = self._get_db_path(user_id)
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    DELETE FROM wix_oauth_pkce_states
+                    WHERE used_at IS NOT NULL OR expires_at <= datetime('now')
+                    '''
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return deleted if deleted is not None else 0
+        except Exception as e:
+            logger.warning(f"Failed to cleanup expired Wix PKCE states for user {user_id}: {e}")
+            return 0
+
+    def store_pkce_verifier(self, user_id: str, state: str, code_verifier: str, ttl_seconds: int = 600) -> bool:
+        """Store PKCE code verifier by OAuth state with short TTL."""
+        try:
+            self._init_db(user_id)
+            self.cleanup_expired_pkce_states(user_id)
+            db_path = self._get_db_path(user_id)
+            expires_at = datetime.now() + timedelta(seconds=ttl_seconds)
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    INSERT OR REPLACE INTO wix_oauth_pkce_states (user_id, state, code_verifier, expires_at, created_at, used_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
+                    ''',
+                    (user_id, state, code_verifier, expires_at)
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed storing Wix PKCE verifier for user {user_id}, state {state}: {e}")
+            return False
+
+    def consume_pkce_verifier(self, user_id: str, state: str) -> Optional[str]:
+        """Get and invalidate one-time PKCE verifier for a state if valid and unexpired."""
+        try:
+            self._init_db(user_id)
+            self.cleanup_expired_pkce_states(user_id)
+            db_path = self._get_db_path(user_id)
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    SELECT id, code_verifier
+                    FROM wix_oauth_pkce_states
+                    WHERE user_id = ? AND state = ? AND used_at IS NULL AND expires_at > datetime('now')
+                    LIMIT 1
+                    ''',
+                    (user_id, state)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                cursor.execute(
+                    "UPDATE wix_oauth_pkce_states SET used_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (row[0],)
+                )
+                conn.commit()
+                return row[1]
+        except Exception as e:
+            logger.error(f"Failed consuming Wix PKCE verifier for user {user_id}, state {state}: {e}")
+            return None
     
     def store_tokens(
         self,
@@ -302,4 +389,3 @@ class WixOAuthService:
         except Exception as e:
             logger.error(f"Error revoking Wix token: {e}")
             return False
-

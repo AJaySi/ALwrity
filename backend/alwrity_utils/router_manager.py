@@ -18,7 +18,7 @@ CORE_ROUTER_REGISTRY = [
     {"name": "step3_research", "module": "api.onboarding_utils.step3_routes", "attr": "router", "features": {"all", "core"}},
     {"name": "step4_assets", "module": "api.onboarding_utils.step4_asset_routes", "attr": "router", "features": {"all", "core", "podcast"}},
     {"name": "step4_persona", "module": "api.onboarding_utils.step4_persona_routes_optimized", "attr": "router", "features": {"all", "core"}},
-    {"name": "gsc_auth", "module": "routers.gsc_auth", "attr": "router", "features": {"all", "core", "seo"}},
+    {"name": "gsc_auth", "module": "routers.gsc_auth", "attr": "router", "features": {"all", "core", "seo", "blog_writer"}},
     {"name": "wordpress_oauth", "module": "routers.wordpress_oauth", "attr": "router", "features": {"all", "core"}},
     {"name": "bing_oauth", "module": "routers.bing_oauth", "attr": "router", "features": {"all", "core"}},
     {"name": "bing_analytics", "module": "routers.bing_analytics", "attr": "router", "features": {"all", "core"}},
@@ -45,6 +45,7 @@ OPTIONAL_ROUTER_REGISTRY = [
     {"name": "blog_writer", "module": "api.blog_writer.router", "attr": "router", "features": {"all", "blog_writer"}},
     {"name": "story_writer", "module": "api.story_writer.router", "attr": "router", "features": {"all", "story_writer"}},
     {"name": "wix", "module": "api.wix_routes", "attr": "router", "features": {"all"}},
+{"name": "wix_test", "module": "api.wix_routes", "attr": "qa_router", "features": {"all"}},
     {"name": "blog_seo_analysis", "module": "api.blog_writer.seo_analysis", "attr": "router", "features": {"all", "blog_writer"}},
     {"name": "persona", "module": "api.persona_routes", "attr": "router", "features": {"all", "persona"}},
     {"name": "video_studio", "module": "api.video_studio.router", "attr": "router", "features": {"all", "video_studio"}},
@@ -159,6 +160,12 @@ class RouterManager:
                 logger.info(f"Including {group_name} routers with features: {enabled_features}...")
             
             for entry in registry:
+                if entry["name"] == "wix_test" and not self._should_include_wix_test_router():
+                    reason = "wix test routes disabled or running in production environment"
+                    self.skipped_routers.append({"name": entry["name"], "reason": reason})
+                    if verbose:
+                        logger.info(f"⏭️  Skipping {entry['name']}: {reason}")
+                    continue
                 if not self._should_include_router(entry, enabled_features):
                     reason = f"features {enabled_features} not matching {entry.get('features', set())}"
                     self.skipped_routers.append({"name": entry["name"], "reason": reason})
@@ -178,6 +185,13 @@ class RouterManager:
         except Exception as e:
             logger.error(f"❌ Error including {group_name} routers: {e}")
             return False
+
+    @staticmethod
+    def _should_include_wix_test_router() -> bool:
+        environment = (os.getenv("ENVIRONMENT") or os.getenv("APP_ENV") or "development").strip().lower()
+        is_production = environment in {"prod", "production"}
+        wix_test_enabled = os.getenv("WIX_TEST_ROUTES_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+        return wix_test_enabled and not is_production
     
     def include_core_routers(self) -> bool:
         """Include core application routers."""
