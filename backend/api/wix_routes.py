@@ -17,6 +17,7 @@ from middleware.auth_middleware import get_current_user
 import os
 import json
 from urllib.parse import urlparse
+import requests
 
 router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
 qa_router = APIRouter(prefix="/api/wix/test", tags=["Wix Integration QA"])
@@ -84,6 +85,63 @@ wix_service = WixService()
 
 # Initialize Wix OAuth service for token storage
 wix_oauth_service = WixOAuthService()
+
+
+def _get_current_user_id(current_user: dict) -> str:
+    user_id = current_user.get("id") if current_user else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Missing authenticated user context")
+    return user_id
+
+
+def _map_wix_error(exc: Exception, fallback: str = "Wix API request failed") -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
+    if isinstance(exc, requests.HTTPError):
+        status = exc.response.status_code if exc.response is not None else None
+        if status == 401:
+            return HTTPException(status_code=401, detail="Wix authentication expired or invalid")
+        if status == 403:
+            return HTTPException(status_code=403, detail="Insufficient Wix permissions/scope")
+        return HTTPException(status_code=502, detail=fallback)
+    if isinstance(exc, requests.RequestException):
+        return HTTPException(status_code=502, detail=fallback)
+    return HTTPException(status_code=500, detail=str(exc))
+
+
+def _resolve_valid_wix_token(current_user: dict) -> Dict[str, Any]:
+    user_id = _get_current_user_id(current_user)
+    tokens = wix_oauth_service.get_user_tokens(user_id)
+    if tokens:
+        return tokens[0]
+
+    token_status = wix_oauth_service.get_user_token_status(user_id)
+    expired_tokens = token_status.get("expired_tokens", [])
+    if not expired_tokens:
+        raise HTTPException(status_code=401, detail="Wix account not connected")
+
+    latest = expired_tokens[0]
+    refresh_token = latest.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Wix token expired and cannot be refreshed")
+    try:
+        refreshed = wix_service.refresh_access_token(refresh_token)
+    except Exception as exc:
+        raise _map_wix_error(exc, "Failed to refresh Wix access token")
+
+    wix_oauth_service.update_tokens(
+        user_id=user_id,
+        access_token=refreshed.get("access_token"),
+        refresh_token=refreshed.get("refresh_token", refresh_token),
+        expires_in=refreshed.get("expires_in"),
+    )
+
+    return {
+        "access_token": refreshed.get("access_token"),
+        "refresh_token": refreshed.get("refresh_token", refresh_token),
+        "member_id": latest.get("member_id"),
+        "site_id": latest.get("site_id"),
+    }
 
 
 class WixAuthRequest(BaseModel):
@@ -351,21 +409,20 @@ async def get_connection_status(current_user: dict = Depends(get_current_user)) 
         Connection status and permissions
     """
     try:
-        # Check if user has Wix tokens stored in sessionStorage (frontend approach)
-        # This is a simplified check - in production you'd store tokens in database
+        token_info = _resolve_valid_wix_token(current_user)
+        access_token = token_info["access_token"]
+        site_info = wix_service.get_site_info(access_token)
+        permissions = wix_service.check_blog_permissions(access_token)
         return WixConnectionStatus(
-            connected=False,
-            has_permissions=False,
-            error="No Wix connection found. Please connect your Wix account first."
+            connected=True,
+            has_permissions=permissions.get("has_permissions", False),
+            site_info=site_info,
+            permissions=permissions
         )
-        
     except Exception as e:
         logger.error(f"Failed to check connection status: {e}")
-        return WixConnectionStatus(
-            connected=False,
-            has_permissions=False,
-            error=str(e)
-        )
+        mapped = _map_wix_error(e, "Failed to check Wix connection status")
+        raise mapped
 
 
 @router.get("/status")
@@ -376,22 +433,18 @@ async def get_wix_status(current_user: dict = Depends(get_current_user)) -> Dict
     The frontend will check sessionStorage and update the UI accordingly.
     """
     try:
-        # Since Wix tokens are stored in frontend sessionStorage (not backend database),
-        # we return a default response. The frontend will check sessionStorage directly.
+        token_info = _resolve_valid_wix_token(current_user)
+        site_info = wix_service.get_site_info(token_info["access_token"])
         return {
-            "connected": False,
-            "sites": [],
-            "total_sites": 0,
-            "error": "Wix connection status managed by frontend sessionStorage"
+            "connected": True,
+            "sites": [site_info],
+            "total_sites": 1,
+            "site_info": site_info
         }
     except Exception as e:
         logger.error(f"Failed to get Wix status: {e}")
-        return {
-            "connected": False,
-            "sites": [],
-            "total_sites": 0,
-            "error": str(e)
-        }
+        mapped = _map_wix_error(e, "Failed to get Wix status")
+        raise mapped
 
 
 @router.post("/publish")
@@ -407,63 +460,36 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
         Published blog post information
     """
     try:
-        # TODO: Retrieve stored access token from database for current_user
-        # For now, we'll return an error asking user to connect first
-        
+        token_info = _resolve_valid_wix_token(current_user)
+        access_token = token_info["access_token"]
+
+        member_id = token_info.get("member_id") or wix_service.extract_member_id_from_access_token(access_token)
+        if not member_id:
+            member_info = wix_service.get_current_member(access_token)
+            member_id = (member_info.get("member") or {}).get("id") or member_info.get("id")
+        if not member_id:
+            raise HTTPException(status_code=401, detail="Unable to resolve Wix member ID")
+
+        result = wix_service.create_blog_post(
+            access_token=access_token,
+            title=request.title,
+            content=request.content,
+            cover_image_url=request.cover_image_url,
+            category_ids=request.category_ids,
+            tag_ids=request.tag_ids,
+            publish=request.publish,
+            member_id=member_id,
+        )
+        post = result.get("draftPost") or result.get("post") or result
         return {
-            "success": False,
-            "error": "Wix account not connected. Please connect your Wix account first.",
-            "message": "Use the /api/wix/auth/url endpoint to get the authorization URL"
+            "success": True,
+            "post_id": post.get("id"),
+            "url": post.get("url"),
+            "publish_state": "PUBLISHED" if request.publish else "DRAFT"
         }
-        
-        # Example of what the actual implementation would look like:
-        # access_token = get_stored_access_token(current_user['id'])
-        # 
-        # if not access_token:
-        #     raise HTTPException(status_code=401, detail="Wix account not connected")
-        # 
-        # # Check if token is still valid, refresh if needed
-        # try:
-        #     site_info = wix_service.get_site_info(access_token)
-        # except:
-        #     # Token expired, try to refresh
-        #     refresh_token = get_stored_refresh_token(current_user['id'])
-        #     if refresh_token:
-        #         new_tokens = wix_service.refresh_access_token(refresh_token)
-        #         access_token = new_tokens['access_token']
-        #         # Store new tokens
-        #     else:
-        #         raise HTTPException(status_code=401, detail="Wix session expired. Please reconnect.")
-        # 
-        # # Get current member ID (required for third-party apps)
-        # member_info = wix_service.get_current_member(access_token)
-        # member_id = member_info.get('member', {}).get('id')
-        # 
-        # if not member_id:
-        #     raise HTTPException(status_code=400, detail="Could not retrieve member ID")
-        # 
-        # # Create blog post
-        # result = wix_service.create_blog_post(
-        #     access_token=access_token,
-        #     title=request.title,
-        #     content=request.content,
-        #     cover_image_url=request.cover_image_url,
-        #     category_ids=request.category_ids,
-        #     tag_ids=request.tag_ids,
-        #     publish=request.publish,
-        #     member_id=member_id  # Required for third-party apps
-        # )
-        # 
-        # return {
-        #     "success": True,
-        #     "post_id": result.get('draftPost', {}).get('id'),
-        #     "url": result.get('draftPost', {}).get('url'),
-        #     "message": "Blog post published successfully to Wix"
-        # }
-        
     except Exception as e:
         logger.error(f"Failed to publish to Wix: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _map_wix_error(e, "Failed to publish to Wix")
 
 
 @router.get("/categories")
@@ -478,23 +504,15 @@ async def get_blog_categories(current_user: dict = Depends(get_current_user)) ->
         List of blog categories
     """
     try:
-        # TODO: Retrieve stored access token from database for current_user
+        token_info = _resolve_valid_wix_token(current_user)
+        categories = wix_service.get_blog_categories(token_info["access_token"])
         return {
-            "success": False,
-            "error": "Wix account not connected. Please connect your Wix account first."
+            "success": True,
+            "categories": categories
         }
-        
-        # Example implementation:
-        # access_token = get_stored_access_token(current_user['id'])
-        # if not access_token:
-        #     raise HTTPException(status_code=401, detail="Wix account not connected")
-        # 
-        # categories = wix_service.get_blog_categories(access_token)
-        # return {"categories": categories}
-        
     except Exception as e:
         logger.error(f"Failed to get blog categories: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _map_wix_error(e, "Failed to fetch Wix blog categories")
 
 
 @router.get("/tags")
@@ -509,23 +527,15 @@ async def get_blog_tags(current_user: dict = Depends(get_current_user)) -> Dict[
         List of blog tags
     """
     try:
-        # TODO: Retrieve stored access token from database for current_user
+        token_info = _resolve_valid_wix_token(current_user)
+        tags = wix_service.get_blog_tags(token_info["access_token"])
         return {
-            "success": False,
-            "error": "Wix account not connected. Please connect your Wix account first."
+            "success": True,
+            "tags": tags
         }
-        
-        # Example implementation:
-        # access_token = get_stored_access_token(current_user['id'])
-        # if not access_token:
-        #     raise HTTPException(status_code=401, detail="Wix account not connected")
-        # 
-        # tags = wix_service.get_blog_tags(access_token)
-        # return {"tags": tags}
-        
     except Exception as e:
         logger.error(f"Failed to get blog tags: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _map_wix_error(e, "Failed to fetch Wix blog tags")
 
 
 @router.post("/disconnect")
@@ -540,15 +550,22 @@ async def disconnect_wix(current_user: dict = Depends(get_current_user)) -> Dict
         Disconnection status
     """
     try:
-        # TODO: Remove stored tokens from database for current_user
+        user_id = _get_current_user_id(current_user)
+        token_status = wix_oauth_service.get_user_token_status(user_id)
+        all_tokens = token_status.get("active_tokens", []) + token_status.get("expired_tokens", [])
+        for token in all_tokens:
+            token_id = token.get("id")
+            if token_id:
+                wix_oauth_service.revoke_token(user_id, token_id)
         return {
             "success": True,
+            "connected": False,
             "message": "Wix account disconnected successfully"
         }
         
     except Exception as e:
         logger.error(f"Failed to disconnect Wix: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _map_wix_error(e, "Failed to disconnect Wix account")
 
 
 # =============================================================================
