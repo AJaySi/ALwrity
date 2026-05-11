@@ -16,6 +16,7 @@ from middleware.auth_middleware import get_current_user
 import os
 
 router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
+qa_router = APIRouter(prefix="/api/wix/test", tags=["Wix Integration QA"])
 
 # Initialize Wix service
 wix_service = WixService()
@@ -60,6 +61,39 @@ class WixConnectionStatus(BaseModel):
     site_info: Optional[Dict[str, Any]] = None
     permissions: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+def _is_wix_test_mode_enabled() -> bool:
+    return os.getenv("WIX_TEST_ROUTES_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _is_admin_user(current_user: Dict[str, Any]) -> bool:
+    email = (current_user.get("email") or "").lower()
+    role = current_user.get("role")
+    public_metadata = current_user.get("public_metadata")
+    if isinstance(public_metadata, dict):
+        role = public_metadata.get("role") or role
+
+    admin_emails = {
+        e.strip().lower()
+        for e in os.getenv("ADMIN_EMAILS", "").split(",")
+        if e.strip()
+    }
+    admin_domain = (os.getenv("ADMIN_EMAIL_DOMAIN") or "").lower().strip()
+
+    return bool(
+        role == "admin"
+        or (email and email in admin_emails)
+        or (email and admin_domain and email.endswith(f"@{admin_domain}"))
+    )
+
+
+def _require_wix_test_access(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    if not _is_wix_test_mode_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 
 @router.get("/auth/url")
@@ -454,8 +488,8 @@ async def disconnect_wix(current_user: dict = Depends(get_current_user)) -> Dict
 # TEST ENDPOINTS - No authentication required for testing
 # =============================================================================
 
-@router.get("/test/connection/status")
-async def get_test_connection_status() -> WixConnectionStatus:
+@qa_router.get("/connection/status")
+async def get_test_connection_status(_: Dict[str, Any] = Depends(_require_wix_test_access)) -> WixConnectionStatus:
     """
     TEST ENDPOINT: Check Wix connection status without authentication
     
@@ -480,8 +514,8 @@ async def get_test_connection_status() -> WixConnectionStatus:
         )
 
 
-@router.get("/test/auth/url")
-async def get_test_authorization_url(state: Optional[str] = None) -> Dict[str, str]:
+@qa_router.get("/auth/url")
+async def get_test_authorization_url(state: Optional[str] = None, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, str]:
     """
     TEST ENDPOINT: Get Wix OAuth authorization URL without authentication
     
@@ -518,8 +552,8 @@ async def get_test_authorization_url(state: Optional[str] = None) -> Dict[str, s
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/test/publish")
-async def test_publish_to_wix(request: WixPublishRequest) -> Dict[str, Any]:
+@qa_router.post("/publish")
+async def test_publish_to_wix(request: WixPublishRequest, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     """
     TEST ENDPOINT: Simulate publishing a blog post to Wix without authentication.
 
@@ -571,8 +605,8 @@ async def refresh_wix_token(request: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to refresh token: {str(e)}")
 
 
-@router.post("/test/publish/real")
-async def test_publish_real(payload: Dict[str, Any]) -> Dict[str, Any]:
+@qa_router.post("/publish/real")
+async def test_publish_real(payload: Dict[str, Any], _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     """
     TEST ENDPOINT: Perform a real publish to Wix using a provided access token.
 
@@ -649,8 +683,8 @@ async def test_publish_real(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/test/category")
-async def test_create_category(request: WixCreateCategoryRequest) -> Dict[str, Any]:
+@qa_router.post("/category")
+async def test_create_category(request: WixCreateCategoryRequest, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     try:
         result = wix_service.create_category(
             access_token=request.access_token,
@@ -664,8 +698,8 @@ async def test_create_category(request: WixCreateCategoryRequest) -> Dict[str, A
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/test/tag")
-async def test_create_tag(request: WixCreateTagRequest) -> Dict[str, Any]:
+@qa_router.post("/tag")
+async def test_create_tag(request: WixCreateTagRequest, _: Dict[str, Any] = Depends(_require_wix_test_access)) -> Dict[str, Any]:
     try:
         result = wix_service.create_tag(
             access_token=request.access_token,
