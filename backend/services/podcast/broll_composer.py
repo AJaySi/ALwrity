@@ -8,6 +8,8 @@ import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+import tempfile
+import uuid
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib
 matplotlib.use("Agg")
@@ -40,7 +42,12 @@ def crossfade_concat(scenes: list, fade_dur: float = 0.5):
         if i > 0:
             c = c.fx(vfx.CrossFadeIn, fade_dur)
         faded.append(c)
-    return concatenate_videoclips(faded, padding=-int(fade_dur), method="compose")
+    return concatenate_videoclips(faded, padding=-fade_dur, method="compose")
+
+
+def _temp_png(prefix: str) -> str:
+    """Create a unique temp PNG path to avoid concurrent render collisions."""
+    return str(Path(tempfile.gettempdir()) / f"{prefix}_{uuid.uuid4().hex}.png")
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +434,7 @@ def build_data_scene(assets: SceneAssets, insight: Insight) -> CompositeVideoCli
                  .fx(vfx.fadeout, 0.4))
         layers.append(chart)
 
-    card_path = "/tmp/insight_card.png"
+    card_path = _temp_png("insight_card")
     make_insight_card(insight.key_insight, insight.supporting_stat, card_path)
     card = (ImageClip(card_path)
             .set_duration(d - 1)
@@ -460,7 +467,7 @@ def build_bullet_scene(assets: SceneAssets, insight: Insight,
     bg = bg.fx(vfx.lum_contrast, 0, -50)
     layers.append(bg)
 
-    bullet_path = "/tmp/bullets.png"
+    bullet_path = _temp_png("bullets")
     make_bullet_overlay(bullets, bullet_path, width=860)
     bullets_clip = (ImageClip(bullet_path)
                     .set_duration(d - 1)
@@ -498,7 +505,7 @@ def dispatch_scene(insight: Insight, assets: SceneAssets,
         return build_full_avatar_scene(assets, insight)
 
     elif cue in ("bar_comparison", "bar_chart_comparison", "bar_horizontal", "line_trend", "pie", "stacked_bar"):
-        chart_path = "/tmp/chart.png"
+        chart_path = _temp_png("chart")
         chart_data = insight.chart_data or {}
         if cue in ("bar_comparison", "bar_chart_comparison"):
             # Normalize {labels, values} -> {labels, before, after} for make_bar_chart
