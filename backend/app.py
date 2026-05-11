@@ -149,6 +149,7 @@ if not PODCAST_ONLY_DEMO_MODE:
     from routers.image_studio import router as image_studio_router
     from routers.product_marketing import router as product_marketing_router
     from routers.campaign_creator import router as campaign_creator_router
+    from routers.backlink_outreach import router as backlink_outreach_router
 else:
     # In podcast-only mode, only load essential podcast assets router
     from api.assets_serving import router as assets_serving_router
@@ -157,6 +158,7 @@ else:
     image_studio_router = None
     product_marketing_router = None
     campaign_creator_router = None
+    backlink_outreach_router = None
 
 # Import hallucination detector router (skip in podcast-only mode - triggers heavy ML)
 if not PODCAST_ONLY_DEMO_MODE:
@@ -633,6 +635,8 @@ if not PODCAST_ONLY_DEMO_MODE:
         app.include_router(product_marketing_router)
     if campaign_creator_router:
         app.include_router(campaign_creator_router)
+    if backlink_outreach_router:
+        app.include_router(backlink_outreach_router)
 
     # Include content assets router
     from api.content_assets.router import router as content_assets_router

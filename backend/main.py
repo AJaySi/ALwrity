@@ -77,6 +77,7 @@ from api.images import router as images_router
 from routers.image_studio import router as image_studio_router
 from routers.product_marketing import router as product_marketing_router
 from routers.campaign_creator import router as campaign_creator_router
+from routers.backlink_outreach import router as backlink_outreach_router
 
 # Import hallucination detector router
 from api.hallucination_detector import router as hallucination_detector_router
@@ -394,6 +395,7 @@ app.include_router(images_router)
 app.include_router(image_studio_router)
 app.include_router(product_marketing_router)
 app.include_router(campaign_creator_router)
+app.include_router(backlink_outreach_router)
 
 # Include content assets router
 from api.content_assets.router import router as content_assets_router
