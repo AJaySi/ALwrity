@@ -14,8 +14,68 @@ from services.wix_service import WixService
 from services.integrations.wix_oauth import WixOAuthService
 from middleware.auth_middleware import get_current_user
 import os
+import json
+from urllib.parse import urlparse
 
 router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
+
+
+def _sanitize_error_message(error: Exception) -> str:
+    return " ".join(str(error).split())[:500]
+
+
+def _normalize_origin(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _trusted_frontend_origin() -> Optional[str]:
+    origins_env = os.getenv("OAUTH_CALLBACK_ALLOWED_ORIGINS", "")
+    configured_origins = [
+        _normalize_origin(origin)
+        for origin in origins_env.split(",")
+        if origin.strip()
+    ]
+    configured_origins = [origin for origin in configured_origins if origin]
+    if configured_origins:
+        return configured_origins[0]
+    return _normalize_origin(os.getenv("FRONTEND_URL"))
+
+
+def _build_oauth_callback_html(payload: Dict[str, Any], title: str, heading: str, message: str) -> str:
+    trusted_origin = _trusted_frontend_origin()
+    payload_json = json.dumps(payload)
+    target_origin_json = json.dumps(trusted_origin or "")
+    heading_html = heading.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    message_html = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>{title}</title></head>
+    <body>
+      <h1>{heading_html}</h1>
+      <p>{message_html}</p>
+      <script>
+        (function() {{
+          var payload = {payload_json};
+          var targetOrigin = {target_origin_json};
+          var destination = window.opener || window.parent;
+          if (destination && targetOrigin) {{
+            try {{
+              destination.postMessage(payload, targetOrigin);
+              window.close();
+              return;
+            }} catch (_e) {{}}
+          }}
+        }})();
+      </script>
+    </body>
+    </html>
+    """
 
 # Initialize Wix service
 wix_service = WixService()
@@ -193,45 +253,24 @@ async def handle_oauth_callback_get(code: str, state: Optional[str] = None, requ
             "permissions": permissions
         }
 
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head><title>Wix Connected</title></head>
-        <body>
-          <script>
-            (function() {{
-              try {{
-                var payload = {payload};
-                (window.opener || window.parent).postMessage(payload, '*');
-              }} catch (e) {{}}
-              window.close();
-            }})();
-          </script>
-        </body>
-        </html>
-        """
+        html = _build_oauth_callback_html(
+            payload=payload,
+            title="Wix Connected",
+            heading="Connection Successful",
+            message="Your Wix account was connected. You can close this window."
+        )
         return HTMLResponse(content=html, headers={
             "Cross-Origin-Opener-Policy": "unsafe-none",
             "Cross-Origin-Embedder-Policy": "unsafe-none"
         })
     except Exception as e:
         logger.error(f"Wix OAuth GET callback failed: {e}")
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head><title>Wix Connection Failed</title></head>
-        <body>
-          <script>
-            (function() {{
-              try {{
-                (window.opener || window.parent).postMessage({{ type: 'WIX_OAUTH_ERROR', success: false, error: '{str(e)}' }}, '*');
-              }} catch (e) {{}}
-              window.close();
-            }})();
-          </script>
-        </body>
-        </html>
-        """
+        html = _build_oauth_callback_html(
+            payload={"type": "WIX_OAUTH_ERROR", "success": False, "error": _sanitize_error_message(e)},
+            title="Wix Connection Failed",
+            heading="Connection Failed",
+            message="There was an issue connecting your Wix account. You can close this window and try again."
+        )
         return HTMLResponse(content=html, headers={
             "Cross-Origin-Opener-Policy": "unsafe-none",
             "Cross-Origin-Embedder-Policy": "unsafe-none"
