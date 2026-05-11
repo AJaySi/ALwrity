@@ -40,7 +40,7 @@ class WixService:
         if not self.client_id:
             logger.warning("Wix client ID not configured. Set WIX_CLIENT_ID environment variable.")
     
-    def get_authorization_url(self, state: str = None) -> str:
+    def get_authorization_url(self, state: str = None) -> Dict[str, str]:
         """
         Generate Wix OAuth authorization URL for "on behalf of user" authentication
         
@@ -54,8 +54,7 @@ class WixService:
             Authorization URL for user to visit
         """
         url, code_verifier = self.auth_service.generate_authorization_url(state)
-        self._code_verifier = code_verifier
-        return url
+        return {"authorization_url": url, "state": state, "code_verifier": code_verifier}
     
     def _create_redirect_session_for_auth(self, redirect_uri: str, client_id: str, code_challenge: str, state: str) -> str:
         """
@@ -97,13 +96,13 @@ class WixService:
             logger.error(f"Failed to create redirect session for auth: {e}")
             raise
     
-    def exchange_code_for_tokens(self, code: str, code_verifier: str = None) -> Dict[str, Any]:
+    def exchange_code_for_tokens(self, code: str, code_verifier: str) -> Dict[str, Any]:
         """
         Exchange authorization code for access and refresh tokens using PKCE
         
         Args:
             code: Authorization code from Wix
-            code_verifier: PKCE code verifier (uses stored one if not provided)
+            code_verifier: PKCE code verifier
             
         Returns:
             Token response with access_token, refresh_token, etc.
@@ -111,9 +110,7 @@ class WixService:
         if not self.client_id:
             raise ValueError("Wix client ID not configured")
         if not code_verifier:
-            code_verifier = getattr(self, '_code_verifier', None)
-            if not code_verifier:
-                raise ValueError("Code verifier not found. Please provide code_verifier parameter.")
+            raise ValueError("Code verifier is required.")
         try:
             return self.auth_service.exchange_code_for_tokens(code, code_verifier)
         except requests.RequestException as e:
