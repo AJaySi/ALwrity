@@ -10,8 +10,7 @@ import requests
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from loguru import logger
-import json
-import base64
+from cryptography.fernet import Fernet, InvalidToken
 
 from services.database import get_user_db_path
 
@@ -35,11 +34,79 @@ class WordPressOAuthService:
             self.redirect_uri = os.getenv('WORDPRESS_REDIRECT_URI', default_redirect)
             
         self.base_url = "https://public-api.wordpress.com"
+        self.token_encryption_key = (
+            os.getenv("WORDPRESS_TOKEN_ENCRYPTION_KEY")
+            or os.getenv("OAUTH_TOKEN_ENCRYPTION_KEY")
+        )
+        self._fernet = self._initialize_fernet()
 
         # Validate configuration
         if not self.client_id or not self.client_secret or self.client_id == 'your_wordpress_com_client_id_here':
             logger.error("WordPress OAuth client credentials not configured. Please set WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET environment variables with valid WordPress.com application credentials.")
             logger.error("To get credentials: 1. Go to https://developer.wordpress.com/apps/ 2. Create a new application 3. Set redirect URI to: https://your-domain.com/wp/callback")
+    
+    def _initialize_fernet(self) -> Optional[Fernet]:
+        """Initialize token encryption using managed key from env/secret manager."""
+        if not self.token_encryption_key:
+            logger.error("WordPress token encryption key is not configured.")
+            return None
+        try:
+            return Fernet(self.token_encryption_key.encode("utf-8"))
+        except Exception:
+            logger.error("WordPress token encryption key is invalid.")
+            return None
+
+    def _encrypt_token(self, token: Optional[str]) -> Optional[str]:
+        if not token:
+            return None
+        if not self._fernet:
+            raise ValueError("Token encryption is unavailable: missing/invalid managed key")
+        return self._fernet.encrypt(token.encode("utf-8")).decode("utf-8")
+
+    def _decrypt_token(self, token_blob: Optional[str]) -> Optional[str]:
+        if not token_blob:
+            return None
+        if not self._fernet:
+            raise ValueError("Token decryption is unavailable: missing/invalid managed key")
+        return self._fernet.decrypt(token_blob.encode("utf-8")).decode("utf-8")
+
+    def _is_likely_encrypted_blob(self, value: Optional[str]) -> bool:
+        return bool(value and value.startswith("gAAAAA"))
+
+    def _migrate_plaintext_tokens_if_needed(self, conn: sqlite3.Connection, user_id: str) -> None:
+        """One-time migration path: re-encrypt plaintext rows during rollout."""
+        if not self._fernet:
+            return
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, access_token, refresh_token
+            FROM wordpress_oauth_tokens
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+        migrated = 0
+        for token_id, access_token, refresh_token in rows:
+            needs_access_migration = access_token and not self._is_likely_encrypted_blob(access_token)
+            needs_refresh_migration = refresh_token and not self._is_likely_encrypted_blob(refresh_token)
+            if not (needs_access_migration or needs_refresh_migration):
+                continue
+            encrypted_access = self._encrypt_token(access_token) if needs_access_migration else access_token
+            encrypted_refresh = self._encrypt_token(refresh_token) if needs_refresh_migration else refresh_token
+            cursor.execute(
+                """
+                UPDATE wordpress_oauth_tokens
+                SET access_token = ?, refresh_token = ?, updated_at = datetime('now')
+                WHERE id = ? AND user_id = ?
+                """,
+                (encrypted_access, encrypted_refresh, token_id, user_id),
+            )
+            migrated += 1
+        if migrated:
+            conn.commit()
+            logger.info(f"WordPress OAuth token migration completed for user {user_id}; rows migrated={migrated}")
 
     def _get_db_path(self, user_id: str) -> str:
         return get_user_db_path(user_id)
@@ -128,7 +195,7 @@ class WordPressOAuthService:
     def handle_oauth_callback(self, code: str, state: str) -> Optional[Dict[str, Any]]:
         """Handle OAuth callback and exchange code for access token."""
         try:
-            logger.info(f"WordPress OAuth callback started - code: {code[:20]}..., state: {state[:20]}...")
+            logger.info("WordPress OAuth callback started")
             
             # Extract user_id from state
             if ':' not in state:
@@ -184,6 +251,7 @@ class WordPressOAuthService:
             
             # Store token information
             access_token = token_info.get('access_token')
+            refresh_token = token_info.get('refresh_token')
             blog_id = token_info.get('blog_id')
             blog_url = token_info.get('blog_url')
             scope = token_info.get('scope', '')
@@ -191,20 +259,22 @@ class WordPressOAuthService:
             # Calculate expiration (WordPress tokens typically expire in 2 weeks)
             expires_at = datetime.now() + timedelta(days=14)
             
+            encrypted_access_token = self._encrypt_token(access_token)
+            encrypted_refresh_token = self._encrypt_token(refresh_token) if refresh_token else None
+
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO wordpress_oauth_tokens 
-                    (user_id, access_token, token_type, expires_at, scope, blog_id, blog_url)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (user_id, access_token, 'bearer', expires_at, scope, blog_id, blog_url))
+                    (user_id, access_token, refresh_token, token_type, expires_at, scope, blog_id, blog_url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (user_id, encrypted_access_token, encrypted_refresh_token, 'bearer', expires_at, scope, blog_id, blog_url))
                 conn.commit()
                 logger.info(f"WordPress OAuth: Token inserted into database for user {user_id}")
             
             logger.info(f"WordPress OAuth token stored successfully for user {user_id}, blog: {blog_url}")
             return {
                 "success": True,
-                "access_token": access_token,
                 "blog_id": blog_id,
                 "blog_url": blog_url,
                 "scope": scope,
@@ -226,6 +296,7 @@ class WordPressOAuthService:
                 return []
                 
             with sqlite3.connect(db_path) as conn:
+                self._migrate_plaintext_tokens_if_needed(conn, user_id)
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, access_token, token_type, expires_at, scope, blog_id, blog_url, created_at
@@ -236,9 +307,19 @@ class WordPressOAuthService:
                 
                 tokens = []
                 for row in cursor.fetchall():
+                    access_token_value = row[1]
+                    try:
+                        decrypted_access_token = (
+                            self._decrypt_token(access_token_value)
+                            if self._is_likely_encrypted_blob(access_token_value)
+                            else access_token_value
+                        )
+                    except InvalidToken:
+                        logger.error(f"Failed to decrypt WordPress token for user {user_id}, token_id={row[0]}")
+                        continue
                     tokens.append({
                         "id": row[0],
-                        "access_token": row[1],
+                        "access_token": decrypted_access_token,
                         "token_type": row[2],
                         "expires_at": row[3],
                         "scope": row[4],
@@ -272,6 +353,7 @@ class WordPressOAuthService:
                 }
 
             with sqlite3.connect(db_path) as conn:
+                self._migrate_plaintext_tokens_if_needed(conn, user_id)
                 cursor = conn.cursor()
                 
                 # Get all tokens (active and expired)
@@ -289,8 +371,6 @@ class WordPressOAuthService:
                 for row in cursor.fetchall():
                     token_data = {
                         "id": row[0],
-                        "access_token": row[1],
-                        "refresh_token": row[2],
                         "token_type": row[3],
                         "expires_at": row[4],
                         "scope": row[5],
